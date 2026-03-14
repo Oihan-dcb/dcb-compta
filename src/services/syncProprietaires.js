@@ -20,14 +20,19 @@ async function evolizCall(action, payload = {}) {
  */
 export async function syncProprietairesEvoliz() {
   // 1. Récupérer tous les clients Evoliz (paginé)
+  // 1. Récupérer tous les clients Evoliz (paginé)
+  // La réponse Evoliz est wrappée : { status, data: { data: [...], current_page, last_page } }
   let allClients = []
   let page = 1
   while (true) {
-    const data = await evolizCall('listClients', { page, per_page: 100 })
-    const clients = data?.data || data || []
-    if (!Array.isArray(clients) || clients.length === 0) break
+    const resp = await evolizCall('listClients', { page, per_page: 100 })
+    // Unwrap : resp peut être { data: { data: [...] } } ou { data: [...] } selon la version
+    const pageData = resp?.data?.data || resp?.data || resp || []
+    const clients = Array.isArray(pageData) ? pageData : []
+    if (clients.length === 0) break
     allClients = allClients.concat(clients)
-    if (clients.length < 100) break
+    const lastPage = resp?.data?.last_page || 1
+    if (page >= lastPage || clients.length < 100) break
     page++
   }
 
@@ -36,18 +41,16 @@ export async function syncProprietairesEvoliz() {
   }
 
   // 2. Préparer les lignes à upsert
+  // Structure Evoliz : { clientid, name, civility, type, mobile, phone, address:{addr, postcode, town}, enabled }
   const rows = allClients
-    .filter(c => !c.disabled)
+    .filter(c => c.enabled !== false)
     .map(c => {
-      // Evoliz retourne : clientid, name, civility, type, address{addr, postcode, town}, phones, emails
-      const name = c.name || ''
-      const parts = name.trim().split(/\s+/)
-      let nom = name.trim()
+      const name = (c.name || '').trim()
+      const parts = name.split(/\s+/)
+      let nom = name
       let prenom = null
 
-      // Si particulier, essayer de séparer NOM Prénom
       if (c.type === 'Particulier' && parts.length >= 2) {
-        // Convention Evoliz : NOM Prénom (NOM en MAJ ou premier mot)
         const upperParts = parts.filter(p => p === p.toUpperCase() && p.length > 1)
         const mixedParts = parts.filter(p => p !== p.toUpperCase() || p.length <= 1)
         if (upperParts.length > 0 && mixedParts.length > 0) {
@@ -60,19 +63,20 @@ export async function syncProprietairesEvoliz() {
       }
 
       const addr = c.address || {}
-      const email = (c.emails && c.emails[0]?.email) || null
-      const tel = (c.phones && (c.phones.find(p => p.type === 'mobile') || c.phones[0])?.phone) || null
+      // Evoliz v1 : mobile, phone directs (pas de tableau phones/emails)
+      const tel = (c.mobile || c.phone || '').trim() || null
+      const email = (c.email || '').trim() || null
 
       return {
         id_evoliz: String(c.clientid),
         nom: nom.trim(),
         prenom: prenom?.trim() || null,
-        email,
+        email: email || null,
         telephone: tel,
         adresse: addr.addr || null,
         code_postal: addr.postcode || null,
         ville: addr.town || null,
-        pays: 'France',
+        pays: addr.country?.label || 'France',
         actif: true,
       }
     })
