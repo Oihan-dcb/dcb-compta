@@ -45,6 +45,34 @@ export default function PageBiens() {
     }
   }
 
+  const [editing, setEditing] = useState({}) // { [bienId]: { forfait_dcb_ref, provision_ae_ref, has_ae } }
+  const [saving, setSaving] = useState({})
+
+  async function saveField(bienId, field, value) {
+    setSaving(s => ({ ...s, [bienId]: true }))
+    try {
+      const { supabase } = await import('../lib/supabase')
+      const numVal = value === '' ? null : Math.round(parseFloat(value) * 100)
+      await supabase.from('bien').update({ [field]: numVal }).eq('id', bienId)
+      setBiens(prev => prev.map(b => b.id === bienId ? { ...b, [field]: numVal } : b))
+      setEditing(e => { const n = {...e}; delete n[bienId+'_'+field]; return n })
+    } catch (err) {
+      alert('Erreur : ' + err.message)
+    } finally {
+      setSaving(s => { const n = {...s}; delete n[bienId]; return n })
+    }
+  }
+
+  async function toggleAE(bienId, currentVal) {
+    try {
+      const { supabase } = await import('../lib/supabase')
+      await supabase.from('bien').update({ has_ae: !currentVal }).eq('id', bienId)
+      setBiens(prev => prev.map(b => b.id === bienId ? { ...b, has_ae: !currentVal } : b))
+    } catch (err) {
+      alert('Erreur : ' + err.message)
+    }
+  }
+
   const biensActifs = biens.filter(b => b.listed)
   const biensAvecProprio = biens.filter(b => b.proprietaire_id)
   const biensAConfigurer = biens.filter(b => !b.proprietaire_id || (!b.provision_ae_ref && !b.forfait_dcb_ref))
@@ -162,17 +190,49 @@ export default function PageBiens() {
                     )}
                   </td>
                   <td>
-                    {bien.has_ae ? (
-                      <span className="badge badge-success">Oui</span>
+                    <button
+                      onClick={() => toggleAE(bien.id, bien.has_ae)}
+                      className={`badge ${bien.has_ae ? 'badge-success' : 'badge-neutral'}`}
+                      style={{cursor:'pointer',border:'none',background:'none'}}
+                      title="Cliquer pour activer/désactiver AE">
+                      {bien.has_ae ? 'Oui' : 'Non'}
+                    </button>
+                  </td>
+                  <td className="right montant">
+                    {editing[bien.id+'_provision_ae_ref'] !== undefined ? (
+                      <input
+                        type="number" step="0.01" autoFocus
+                        defaultValue={bien.provision_ae_ref ? bien.provision_ae_ref / 100 : ''}
+                        style={{width:'80px',textAlign:'right',padding:'2px 4px',fontSize:'0.9em'}}
+                        onBlur={e => saveField(bien.id, 'provision_ae_ref', e.target.value)}
+                        onKeyDown={e => { if (e.key === 'Enter') e.target.blur(); if (e.key === 'Escape') setEditing(ev => { const n={...ev}; delete n[bien.id+'_provision_ae_ref']; return n }) }}
+                      />
                     ) : (
-                      <span className="badge badge-neutral">Non</span>
+                      <span
+                        onClick={() => setEditing(e => ({...e, [bien.id+'_provision_ae_ref']: true}))}
+                        style={{cursor:'pointer',borderBottom:'1px dashed var(--text-muted)',paddingBottom:'1px'}}
+                        title="Cliquer pour éditer">
+                        {bien.provision_ae_ref ? formatMontant(bien.provision_ae_ref) : <span style={{color:'var(--text-muted)'}}>—</span>}
+                      </span>
                     )}
                   </td>
                   <td className="right montant">
-                    {bien.provision_ae_ref ? formatMontant(bien.provision_ae_ref) : '—'}
-                  </td>
-                  <td className="right montant">
-                    {bien.forfait_dcb_ref ? formatMontant(bien.forfait_dcb_ref) : '—'}
+                    {editing[bien.id+'_forfait_dcb_ref'] !== undefined ? (
+                      <input
+                        type="number" step="0.01" autoFocus
+                        defaultValue={bien.forfait_dcb_ref ? bien.forfait_dcb_ref / 100 : ''}
+                        style={{width:'80px',textAlign:'right',padding:'2px 4px',fontSize:'0.9em'}}
+                        onBlur={e => saveField(bien.id, 'forfait_dcb_ref', e.target.value)}
+                        onKeyDown={e => { if (e.key === 'Enter') e.target.blur(); if (e.key === 'Escape') setEditing(ev => { const n={...ev}; delete n[bien.id+'_forfait_dcb_ref']; return n }) }}
+                      />
+                    ) : (
+                      <span
+                        onClick={() => setEditing(e => ({...e, [bien.id+'_forfait_dcb_ref']: true}))}
+                        style={{cursor:'pointer',borderBottom:'1px dashed var(--text-muted)',paddingBottom:'1px'}}
+                        title="Cliquer pour éditer">
+                        {bien.forfait_dcb_ref ? formatMontant(bien.forfait_dcb_ref) : <span style={{color:'var(--text-muted)'}}>—</span>}
+                      </span>
+                    )}
                   </td>
                   <td>
                     {bien.listed ? (

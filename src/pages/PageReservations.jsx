@@ -325,7 +325,7 @@ function TableVentilation({ recap, parProprio, mois }) {
   const totalTVA = recap.reduce((s, r) => s + r.tva, 0)
   const totalTTC = recap.reduce((s, r) => s + r.ttc, 0)
 
-  const codeOrder = ['COM', 'MEN', 'MGT', 'AE', 'LOY', 'DIV', 'TAX']
+  const codeOrder = ['COM', 'MEN', 'MOE', 'AE', 'LOY', 'DIV', 'TAX']
   const sorted = [...recap].sort((a, b) =>
     codeOrder.indexOf(a.code) - codeOrder.indexOf(b.code)
   )
@@ -389,6 +389,7 @@ function TableVentilation({ recap, parProprio, mois }) {
                 <th>Propriétaire</th>
                 <th className="right">COM HT</th>
                 <th className="right">MEN HT</th>
+                <th className="right">MOE</th>
                 <th className="right">AE</th>
                 <th className="right">LOY (reversement)</th>
                 <th className="right">Total DCB</th>
@@ -400,6 +401,7 @@ function TableVentilation({ recap, parProprio, mois }) {
                   <td style={{ fontWeight: 500 }}>{p.nom}</td>
                   <td className="right montant">{p.total_com > 0 ? formatMontant(p.total_com) : '—'}</td>
                   <td className="right montant">{p.total_men > 0 ? formatMontant(p.total_men) : '—'}</td>
+                  <td className="right montant">{p.total_moe > 0 ? formatMontant(p.total_moe) : '—'}</td>
                   <td className="right montant">{p.total_ae > 0 ? formatMontant(p.total_ae) : '—'}</td>
                   <td className="right montant">{p.total_loy > 0 ? formatMontant(p.total_loy) : '—'}</td>
                   <td className="right montant" style={{ fontWeight: 700 }}>
