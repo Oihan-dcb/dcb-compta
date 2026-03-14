@@ -189,6 +189,8 @@ function ModalResa({ resa, onClose }) {
           <div><span style={{color:'#888',fontSize:'0.8em',textTransform:'uppercase'}}>Statut réservation</span><br/>
             {resa.final_status === 'cancelled'
               ? <span style={{color:'#dc2626',fontWeight:700}}>⚠ Annulée</span>
+              : resa.final_status === 'request'
+              ? <span style={{color:'#0369a1',fontWeight:700}}>⏳ En attente</span>
               : <span style={{color:'#16a34a',fontWeight:700}}>✓ Confirmée</span>}
           </div>
           <div><span style={{color:'#888',fontSize:'0.8em',textTransform:'uppercase'}}>Revenue net</span><br/><strong>{resa.fin_revenue ? formatMontant(resa.fin_revenue) : '—'}</strong></div>
@@ -274,6 +276,8 @@ function TableReservations({ reservations, onSelect }) {
                   ? <span className="badge" style={{background:'#fee2e2',color:'#dc2626',borderRadius:'4px',padding:'2px 6px',fontSize:'0.75em',fontWeight:600}}>Annulée</span>
                   : r.final_status === 'accepted'
                   ? <span className="badge" style={{background:'#dcfce7',color:'#16a34a',borderRadius:'4px',padding:'2px 6px',fontSize:'0.75em',fontWeight:600}}>Confirmée</span>
+                  : r.final_status === 'request'
+                  ? <span className="badge" style={{background:'#e0f2fe',color:'#0369a1',borderRadius:'4px',padding:'2px 6px',fontSize:'0.75em',fontWeight:600}}>En attente</span>
                   : <span className="badge" style={{background:'#fef9c3',color:'#ca8a04',borderRadius:'4px',padding:'2px 6px',fontSize:'0.75em',fontWeight:600}}>{r.final_status || '—'}</span>
                 }
               </td>
