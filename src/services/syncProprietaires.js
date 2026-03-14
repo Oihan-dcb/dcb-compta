@@ -1,26 +1,17 @@
 import { supabase } from '../lib/supabase'
 
 const EVOLIZ_COMPANY_ID = parseInt(import.meta.env.VITE_EVOLIZ_COMPANY_ID || '114158')
-const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL
-const SUPABASE_ANON_KEY = import.meta.env.VITE_SUPABASE_ANON_KEY
 
 /**
- * Appelle la Edge Function evoliz-proxy
+ * Appelle la Edge Function evoliz-proxy via supabase.functions.invoke
+ * (évite les problèmes CORS et de variables d'env)
  */
 async function evolizCall(action, payload = {}) {
-  const res = await fetch(`${SUPABASE_URL}/functions/v1/evoliz-proxy`, {
-    method: 'POST',
-    headers: {
-      'Authorization': `Bearer ${SUPABASE_ANON_KEY}`,
-      'Content-Type': 'application/json',
-    },
-    body: JSON.stringify({ action, companyId: EVOLIZ_COMPANY_ID, payload }),
+  const { data, error } = await supabase.functions.invoke('evoliz-proxy', {
+    body: { action, companyId: EVOLIZ_COMPANY_ID, payload },
   })
-  if (!res.ok) {
-    const text = await res.text()
-    throw new Error(`Evoliz proxy error ${res.status}: ${text.substring(0, 200)}`)
-  }
-  return res.json()
+  if (error) throw new Error(`Evoliz proxy error: ${error.message}`)
+  return data
 }
 
 /**
