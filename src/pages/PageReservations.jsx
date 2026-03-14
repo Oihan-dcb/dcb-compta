@@ -154,7 +154,7 @@ export default function PageReservations() {
           className={`btn ${onglet === 'ventilation' ? 'btn-primary' : 'btn-secondary'}`}
           onClick={() => setOnglet('ventilation')}
         >
-          Ventilation ({recap.length} codes)
+          Ventilation ({recap?.parCode?.length || recap?.length || 0} codes)
         </button>
       </div>
 
@@ -294,7 +294,7 @@ function TableReservations({ reservations, onSelect }) {
 
 function TableVentilation({ recap, parProprio, mois }) {
   const [vue, setVue] = useState('codes') // codes | proprios
-  if (recap.length === 0) {
+  if (!recap || recap.length === 0) {
     return (
       <div className="empty-state">
         <div className="empty-state-title">Aucune ventilation calculée</div>
