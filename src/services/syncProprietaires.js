@@ -19,20 +19,17 @@ async function evolizCall(action, payload = {}) {
  * Crée les nouveaux, met à jour les existants (par id_evoliz)
  */
 export async function syncProprietairesEvoliz() {
-  // 1. Récupérer tous les clients Evoliz (paginé)
-  // 1. Récupérer tous les clients Evoliz (paginé)
-  // La réponse Evoliz est wrappée : { status, data: { data: [...], current_page, last_page } }
+  // 1. Récupérer tous les clients Evoliz avec pagination
+  // Structure réponse : { status, data: { data: [...], meta: { last_page, total }, links } }
   let allClients = []
   let page = 1
   while (true) {
-    const resp = await evolizCall('listClients', { page, per_page: 100 })
-    // Unwrap : resp peut être { data: { data: [...] } } ou { data: [...] } selon la version
-    const pageData = resp?.data?.data || resp?.data || resp || []
-    const clients = Array.isArray(pageData) ? pageData : []
-    if (clients.length === 0) break
+    const resp = await evolizCall('listClients', { page })
+    const clients = resp?.data?.data
+    if (!Array.isArray(clients) || clients.length === 0) break
     allClients = allClients.concat(clients)
-    const lastPage = resp?.data?.last_page || 1
-    if (page >= lastPage || clients.length < 100) break
+    const lastPage = resp?.data?.meta?.last_page || 1
+    if (page >= lastPage) break
     page++
   }
 
