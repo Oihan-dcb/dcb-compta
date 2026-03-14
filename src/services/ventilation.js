@@ -204,8 +204,11 @@ export async function calculerVentilationResa(resa) {
 // --- Helpers ---
 
 function ligneTVA(code, libelle, montantHT, bien, resa, tauxCalcule, montantTTC) {
-  // Si montantTTC fourni (calculé depuis base×taux), on l'utilise directement
-  // Sinon on recalcule TVA = HT × 20%
+  // CONTRAT STRICT :
+  // montantHT  = montant HORS TAXE (ex: 226,04 € = comTTC/1.20)
+  // montantTTC = montant TTC (ex: 271,25 € = base × taux)
+  // TVA        = montantTTC - montantHT (ex: 45,21 €)
+  // Ne JAMAIS passer comTTC comme montantHT — c'est l'erreur historique corrigée
   const ttc = montantTTC || Math.round(montantHT * (1 + TVA_RATE))
   const tva = ttc - montantHT
   return {
