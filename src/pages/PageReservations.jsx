@@ -1,6 +1,5 @@
 import { useState, useEffect } from 'react'
 import { syncReservations, getReservationsMois } from '../services/syncReservations'
-import { importHospitableCSV } from '../services/importCSV'
 import { calculerVentilationMois, getRecapVentilation } from '../services/ventilation'
 import { setToken, formatMontant } from '../lib/hospitable'
 import { format } from 'date-fns'
@@ -22,25 +21,7 @@ export default function PageReservations() {
   const [error, setError] = useState(null)
   const [onglet, setOnglet] = useState('reservations') // reservations | ventilation
   const [selectedResa, setSelectedResa] = useState(null)
-  const [importing, setImporting] = useState(false)
-  const [importResult, setImportResult] = useState(null)
 
-  async function handleImportCSV(e) {
-    const file = e.target.files?.[0]
-    if (!file) return
-    setImporting(true)
-    setImportResult(null)
-    try {
-      const result = await importHospitableCSV(file)
-      setImportResult(result)
-      await charger()
-    } catch (err) {
-      setError(err.message)
-    } finally {
-      setImporting(false)
-      e.target.value = ''
-    }
-  }
 
   useEffect(() => {
     if (HOSP_TOKEN) setToken(HOSP_TOKEN)
@@ -114,10 +95,7 @@ export default function PageReservations() {
             onChange={e => setMois(e.target.value)}
           />
           <button className="btn btn-secondary" onClick={charger} disabled={loading}>↺</button>
-          <label className={`btn btn-secondary ${importing ? 'disabled' : ''}`} style={{cursor:'pointer'}} title="Importer le CSV Hospitable pour les noms voyageurs et frais">
-            {importing ? '⏳ Import…' : '📥 CSV Hospitable'}
-            <input type="file" accept=".csv" style={{display:'none'}} onChange={handleImportCSV} disabled={importing} />
-          </label>
+
           <button className="btn btn-secondary" onClick={lancerSync} disabled={syncing}>
             {syncing ? <><span className="spinner" /> Sync…</> : '⟳ Sync Hospitable'}
           </button>
@@ -158,12 +136,7 @@ export default function PageReservations() {
       </div>
 
       {/* Alertes */}
-      {importResult && (
-        <div className="alert alert-success" style={{ marginBottom: 16 }}>
-          ✓ Import CSV — {importResult.updated} réservations mises à jour
-          {importResult.errors > 0 && ` · ${importResult.errors} erreurs`}
-        </div>
-      )}
+
       {syncResult && (
         <div className="alert alert-success">
           ✓ Sync {mois} — {syncResult.created} créées, {syncResult.updated} mises à jour

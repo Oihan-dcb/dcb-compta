@@ -190,3 +190,80 @@ function parseCSVLine(line) {
   result.push(current)
   return result
 }
+
+/**
+ * Détecte et fusionne les doublons dans la table reservation
+ * Un doublon = même code mais IDs différents
+ */
+export async function fusionnerDoublons() {
+  // 1. Trouver tous les codes en double
+  const { data: doublons } = await supabase.rpc('find_duplicate_reservations')
+    .catch(() => ({ data: null }))
+
+  // Fallback si la fonction RPC n'existe pas encore
+  const { data: allResas } = await supabase
+    .from('reservation')
+    .select('id, code, hospitable_id, guest_name, fin_revenue, mois_comptable, bien_id')
+    .order('code')
+
+  if (!allResas) return { fusions: 0, errors: 0 }
+
+  // Grouper par code
+  const parCode = {}
+  for (const r of allResas) {
+    if (!r.code) continue
+    if (!parCode[r.code]) parCode[r.code] = []
+    parCode[r.code].push(r)
+  }
+
+  const codes = Object.entries(parCode).filter(([, v]) => v.length > 1)
+  const log = { doublons: codes.length, fusions: 0, errors: 0 }
+
+  for (const [code, resas] of codes) {
+    try {
+      // Stratégie : garder la resa avec hospitable_id (sync API) comme master
+      // Merger les données de la resa CSV (guest_name, fees) dedans
+      const master = resas.find(r => r.hospitable_id) || resas[0]
+      const slaves = resas.filter(r => r.id !== master.id)
+
+      for (const slave of slaves) {
+        // Copier les données manquantes du slave vers le master
+        const updates = {}
+        if (!master.guest_name && slave.guest_name) updates.guest_name = slave.guest_name
+        if (!master.fin_revenue && slave.fin_revenue) updates.fin_revenue = slave.fin_revenue
+
+        if (Object.keys(updates).length > 0) {
+          await supabase.from('reservation').update(updates).eq('id', master.id)
+        }
+
+        // Réassigner les fees du slave vers le master (si master n'en a pas)
+        const { count: masterFees } = await supabase
+          .from('reservation_fee')
+          .select('id', { count: 'exact', head: true })
+          .eq('reservation_id', master.id)
+
+        if (masterFees === 0) {
+          await supabase.from('reservation_fee')
+            .update({ reservation_id: master.id })
+            .eq('reservation_id', slave.id)
+        }
+
+        // Réassigner les ventilations
+        await supabase.from('ventilation')
+          .update({ reservation_id: master.id })
+          .eq('reservation_id', slave.id)
+
+        // Supprimer le doublon
+        await supabase.from('reservation_fee').delete().eq('reservation_id', slave.id)
+        await supabase.from('reservation').delete().eq('id', slave.id)
+      }
+
+      log.fusions++
+    } catch (err) {
+      console.error('Fusion error for code', code, err)
+      log.errors++
+    }
+  }
+
+  return log
+}

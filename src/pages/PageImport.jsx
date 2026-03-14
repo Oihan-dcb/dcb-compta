@@ -1,5 +1,5 @@
 import { useState, useRef } from 'react'
-import { analyseCSV, importHospitableCSV } from '../services/importCSV'
+import { analyseCSV, importHospitableCSV, fusionnerDoublons } from '../services/importCSV'
 import { format } from 'date-fns'
 import { fr } from 'date-fns/locale'
 
@@ -13,6 +13,7 @@ export default function PageImport() {
   const [result, setResult] = useState(null)
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState(null)
+  const [fusionResult, setFusionResult] = useState(null)
   const fileRef = useRef()
 
   async function handleFile(e) {
@@ -48,7 +49,9 @@ export default function PageImport() {
     setError(null)
     try {
       const r = await importHospitableCSV(rows, selected)
-      setResult(r)
+      // Fusion automatique des doublons après import
+      const fusion = await fusionnerDoublons()
+      setResult({ ...r, fusion })
       setStep('done')
     } catch (err) {
       setError(err.message)
@@ -209,8 +212,8 @@ export default function PageImport() {
             {[
               { label: 'Mises à jour', value: result.updated, color: 'var(--success)' },
               { label: 'Créées', value: result.created, color: 'var(--brand)' },
-              { label: 'Ignorées', value: result.skipped, color: 'var(--text-muted)' },
-              { label: 'Erreurs', value: result.errors, color: result.errors > 0 ? 'var(--error)' : 'var(--text-muted)' },
+              { label: 'Doublons fusionnés', value: result.fusion?.fusions || 0, color: 'var(--warning)' },
+              { label: 'Erreurs', value: result.errors + (result.fusion?.errors || 0), color: (result.errors + (result.fusion?.errors || 0)) > 0 ? 'var(--error)' : 'var(--text-muted)' },
             ].map(s => (
               <div key={s.label} style={{padding: 20, background: 'var(--bg-card)', borderRadius: 8, textAlign: 'center'}}>
                 <div style={{fontSize: '2rem', fontWeight: 700, color: s.color}}>{s.value}</div>
@@ -218,8 +221,19 @@ export default function PageImport() {
               </div>
             ))}
           </div>
+          {fusionResult && (
+            <div className="alert alert-info" style={{marginBottom: 16}}>
+              🔍 Analyse doublons : {fusionResult.doublons} doublon(s) trouvé(s), {fusionResult.fusions} fusionné(s)
+            </div>
+          )}
           <div style={{display: 'flex', gap: 12}}>
             <button className="btn btn-primary" onClick={reset}>📥 Nouvel import</button>
+            <button className="btn btn-secondary" onClick={async () => {
+              setLoading(true)
+              const f = await fusionnerDoublons()
+              setFusionResult(f)
+              setLoading(false)
+            }} disabled={loading}>🔍 Re-détecter doublons</button>
             <a href="/reservations" className="btn btn-secondary">→ Voir les réservations</a>
           </div>
         </div>
