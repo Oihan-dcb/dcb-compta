@@ -163,7 +163,7 @@ export default function PageBiens() {
                 <th>Code</th>
                 <th>Ville</th>
                 <th>Propriétaire</th>
-                <th title="Provision AE configurée">AE</th>
+                <th title="Auto-entrepreneur">AUTO</th>
                 <th className="right">Provision AE</th>
                 <th className="right">Forfait DCB</th>
                 <th>Statut</th>
