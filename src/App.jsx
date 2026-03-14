@@ -6,6 +6,7 @@ import PageMatching from './pages/PageMatching'
 import PageFacturesAE from './pages/PageFacturesAE'
 import PageFactures from './pages/PageFactures'
 import PageConfig from './pages/PageConfig'
+import PageImport from './pages/PageImport'
 import './App.css'
 
 export default function App() {
@@ -24,6 +25,7 @@ export default function App() {
             <NavLink to="/matching" className={({isActive}) => isActive ? 'nav-link active' : 'nav-link'}>Rapprochement</NavLink>
             <NavLink to="/factures-ae" className={({isActive}) => isActive ? 'nav-link active' : 'nav-link'}>Factures AE</NavLink>
             <NavLink to="/factures" className={({isActive}) => isActive ? 'nav-link active' : 'nav-link'}>Factures</NavLink>
+            <NavLink to="/import" className={({isActive}) => isActive ? 'nav-link active' : 'nav-link'}>Import</NavLink>
             <NavLink to="/config" className={({isActive}) => isActive ? 'nav-link active' : 'nav-link'}>Config</NavLink>
           </nav>
         </header>
@@ -35,6 +37,7 @@ export default function App() {
             <Route path="/matching" element={<PageMatching />} />
             <Route path="/factures-ae" element={<PageFacturesAE />} />
             <Route path="/factures" element={<PageFactures />} />
+            <Route path="/import" element={<PageImport />} />
             <Route path="/config" element={<PageConfig />} />
           </Routes>
         </main>
