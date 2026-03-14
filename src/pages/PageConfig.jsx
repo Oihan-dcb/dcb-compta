@@ -1,5 +1,6 @@
 import { useState } from 'react'
 import { pingEvoliz, getPaytermsEvoliz } from '../services/evoliz'
+import { syncProprietairesEvoliz } from '../services/syncProprietaires'
 import { formatMontant } from '../lib/hospitable'
 
 export default function PageConfig() {
@@ -10,6 +11,22 @@ export default function PageConfig() {
 
   const companyId = import.meta.env.VITE_EVOLIZ_COMPANY_ID
   const supabaseUrl = import.meta.env.VITE_SUPABASE_URL
+
+  const [syncingProprio, setSyncingProprio] = useState(false)
+  const [syncProprioResult, setSyncProprioResult] = useState(null)
+
+  async function syncProprio() {
+    setSyncingProprio(true)
+    setSyncProprioResult(null)
+    try {
+      const result = await syncProprietairesEvoliz()
+      setSyncProprioResult({ ok: true, ...result })
+    } catch (err) {
+      setSyncProprioResult({ ok: false, error: err.message })
+    } finally {
+      setSyncingProprio(false)
+    }
+  }
 
   async function testerEvoliz() {
     setTesting(true)
@@ -76,6 +93,35 @@ export default function PageConfig() {
             ))}
           </tbody>
         </table>
+      </div>
+
+      {/* Sync Propriétaires Evoliz */}
+      <div className="card" style={{marginBottom: 24}}>
+        <div className="card-header" style={{display:'flex', justifyContent:'space-between', alignItems:'center'}}>
+          <div>
+            <h3 style={{margin:0}}>Propriétaires Evoliz</h3>
+            <p style={{margin:'4px 0 0', color:'var(--text-muted)', fontSize:'0.9em'}}>
+              Synchronise automatiquement les clients Evoliz → table propriétaires
+            </p>
+          </div>
+          <button
+            className="btn btn-primary"
+            onClick={syncProprio}
+            disabled={syncingProprio}>
+            {syncingProprio ? '⏳ Sync…' : '⟳ Sync depuis Evoliz'}
+          </button>
+        </div>
+        {syncProprioResult && (
+          <div style={{padding:'12px 16px'}}>
+            {syncProprioResult.ok ? (
+              <div className="alert alert-success">
+                ✓ {syncProprioResult.synced} propriétaires synchronisés depuis Evoliz ({syncProprioResult.total_evoliz} clients au total)
+              </div>
+            ) : (
+              <div className="alert alert-error">✕ {syncProprioResult.error}</div>
+            )}
+          </div>
+        )}
       </div>
 
       {/* Comment trouver le Company ID Evoliz */}
