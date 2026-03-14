@@ -77,12 +77,12 @@ export async function syncBiens() {
   } catch (err) {
     console.error('Erreur sync biens:', err)
 
-    await supabase.from('import_log').insert({
+    try { await supabase.from('import_log').insert({
       type: 'hospitable_properties',
       statut: 'error',
       nb_erreurs: 1,
       message: err.message,
-    })
+    }) } catch (_) {}
 
     throw err
   }
@@ -116,7 +116,7 @@ export async function getBiens() {
     .select(`
       *,
       proprietaire (
-        id, nom, prenom, email, iban, id_evoliz
+        id, nom, prenom, email, iban, id_evoliz, taux_commission
       )
     `)
     .eq('listed', true)

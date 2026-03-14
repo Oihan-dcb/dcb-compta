@@ -75,10 +75,13 @@ export default function PageBiens() {
     setSaving(s => ({ ...s, [bienId]: true }))
     try {
       const { supabase } = await import('../lib/supabase')
-      const numVal = value === '' ? null : Math.round(parseFloat(value) * 100)
+      // taux_commission_override est un ratio (ex: 0.20 pour 20%), pas en centimes
+      const numVal = value === '' || value === null ? null
+        : field === 'taux_commission_override' ? parseFloat(value)
+        : Math.round(parseFloat(value) * 100)
       await supabase.from('bien').update({ [field]: numVal }).eq('id', bienId)
       setBiens(prev => prev.map(b => b.id === bienId ? { ...b, [field]: numVal } : b))
-      setEditing(e => { const n = {...e}; delete n[bienId+'_'+field]; return n })
+      setEditing(e => { const n = {...e}; delete n[bienId+'_'+field]; delete n[bienId+'_taux_com']; return n })
     } catch (err) {
       alert('Erreur : ' + err.message)
     } finally {
@@ -187,6 +190,7 @@ export default function PageBiens() {
                 <th>Ville</th>
                 <th>Propriétaire</th>
                 <th>AUTO</th>
+                <th className="right">Taux COM</th>
                 <th className="right">Provision Auto</th>
                 <th className="right">Forfait DCB</th>
                 <th>Statut</th>
@@ -235,6 +239,34 @@ export default function PageBiens() {
                     {bien.provision_ae_ref
                       ? <span className="badge badge-success" title="Provision Auto configurée">✓</span>
                       : <span className="badge badge-neutral">—</span>}
+                  </td>
+                  <td className="right">
+                    {editing[bien.id+'_taux_com'] !== undefined ? (
+                      <input
+                        type="number" step="1" min="0" max="100" autoFocus
+                        defaultValue={bien.taux_commission_override != null ? bien.taux_commission_override * 100 : (bien.proprietaire?.taux_commission ?? 25)}
+                        style={{width:'60px',textAlign:'right',padding:'2px 4px',fontSize:'0.9em'}}
+                        onBlur={e => {
+                          const val = e.target.value === '' ? null : Math.round(parseFloat(e.target.value)) / 100
+                          saveField(bien.id, 'taux_commission_override', val === null ? null : val * 100)
+                        }}
+                        onKeyDown={e => { if (e.key === 'Enter') e.target.blur(); if (e.key === 'Escape') setEditing(ev => { const n={...ev}; delete n[bien.id+'_taux_com']; return n }) }}
+                      />
+                    ) : (
+                      <span
+                        onClick={() => setEditing(e => ({...e, [bien.id+'_taux_com']: true}))}
+                        style={{cursor:'pointer', borderBottom:'1px dashed var(--text-muted)', paddingBottom:'1px',
+                          color: bien.taux_commission_override != null ? 'var(--brand)' : 'inherit',
+                          fontWeight: bien.taux_commission_override != null ? 600 : 'normal'
+                        }}
+                        title={bien.taux_commission_override != null ? 'Override bien' : 'Taux proprio (cliquer pour override)'}>
+                        {bien.taux_commission_override != null
+                          ? `${Math.round(bien.taux_commission_override * 100)}%`
+                          : bien.proprietaire?.taux_commission != null
+                            ? `${bien.proprietaire.taux_commission}% (proprio)`
+                            : '25% (défaut)'}
+                      </span>
+                    )}
                   </td>
                   <td className="right montant">
                     {editing[bien.id+'_provision_ae_ref'] !== undefined ? (
