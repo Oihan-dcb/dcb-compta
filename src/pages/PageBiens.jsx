@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react'
 import { syncBiens, getBiens } from '../services/syncBiens'
+import { getProprietaires } from '../services/syncProprietaires'
 import { setToken } from '../lib/hospitable'
 import { formatMontant } from '../lib/hospitable'
 
@@ -45,7 +46,29 @@ export default function PageBiens() {
     }
   }
 
-  const [editing, setEditing] = useState({}) // { [bienId]: { forfait_dcb_ref, provision_ae_ref, has_ae } }
+  const [editing, setEditing] = useState({})
+  const [proprietaires, setProprietaires] = useState([])
+
+  useEffect(() => {
+    getProprietaires().then(setProprietaires).catch(() => {})
+  }, [])
+
+  async function saveProprietaire(bienId, proprietaireId) {
+    try {
+      const { supabase } = await import('../lib/supabase')
+      await supabase.from('bien')
+        .update({ proprietaire_id: proprietaireId || null })
+        .eq('id', bienId)
+      setBiens(prev => prev.map(b => {
+        if (b.id !== bienId) return b
+        const proprio = proprietaires.find(p => p.id === proprietaireId)
+        return { ...b, proprietaire_id: proprietaireId || null, proprietaire: proprio || null }
+      }))
+      setEditing(e => { const n={...e}; delete n[bienId+'_proprio']; return n })
+    } catch (err) {
+      alert('Erreur : ' + err.message)
+    }
+  } // { [bienId]: { forfait_dcb_ref, provision_ae_ref, has_ae } }
   const [saving, setSaving] = useState({})
 
   async function saveField(bienId, field, value) {
@@ -183,10 +206,29 @@ export default function PageBiens() {
                   </td>
                   <td>{bien.ville || '—'}</td>
                   <td>
-                    {bien.proprietaire ? (
-                      <span>{bien.proprietaire.nom} {bien.proprietaire.prenom || ''}</span>
+                    {editing[bien.id+'_proprio'] ? (
+                      <select
+                        autoFocus
+                        defaultValue={bien.proprietaire_id || ''}
+                        style={{width:'100%', padding:'3px 6px', fontSize:'0.85em', borderRadius:4, border:'1px solid var(--border)'}}
+                        onChange={e => saveProprietaire(bien.id, e.target.value || null)}
+                        onBlur={() => setEditing(e => { const n={...e}; delete n[bien.id+'_proprio']; return n })}>
+                        <option value="">— Aucun —</option>
+                        {proprietaires.map(p => (
+                          <option key={p.id} value={p.id}>
+                            {p.nom}{p.prenom ? ' ' + p.prenom : ''}
+                          </option>
+                        ))}
+                      </select>
                     ) : (
-                      <span style={{ color: 'var(--warning)' }}>⚠ Non configuré</span>
+                      <span
+                        onClick={() => setEditing(e => ({...e, [bien.id+'_proprio']: true}))}
+                        style={{cursor:'pointer', borderBottom: bien.proprietaire_id ? 'none' : '1px dashed var(--warning)'}}
+                        title="Cliquer pour assigner un propriétaire">
+                        {bien.proprietaire
+                          ? `${bien.proprietaire.nom}${bien.proprietaire.prenom ? ' ' + bien.proprietaire.prenom : ''}`
+                          : <span style={{color:'var(--warning)'}}>⚠ Cliquer pour assigner</span>}
+                      </span>
                     )}
                   </td>
                   <td>
