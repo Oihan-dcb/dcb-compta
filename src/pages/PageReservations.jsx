@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react'
 import { syncReservations, getReservationsMois } from '../services/syncReservations'
+import { supabase } from '../lib/supabase'
 import { calculerVentilationMois, getRecapVentilation } from '../services/ventilation'
 import { setToken, formatMontant } from '../lib/hospitable'
 import { format } from 'date-fns'
@@ -72,7 +73,7 @@ function MoisSelector({ mois, setMois, moisDispos }) {
                   style={{
                     padding: '6px 4px', borderRadius: 6, border: 'none', cursor: 'pointer',
                     fontSize: '0.85em', fontWeight: isActive ? 700 : 400,
-                    background: isActive ? 'var(--brand)' : 'transparent',
+                    background: isActive ? 'var(--brand)' : 'var(--bg)',
                     color: isActive ? '#fff' : 'var(--text)',
                     textAlign: 'center',
                   }}>
@@ -112,15 +113,23 @@ export default function PageReservations() {
 
   async function chargerMoisDispos() {
     try {
-      const { supabase } = await import('../lib/supabase')
-      const { data } = await supabase
-        .from('reservation')
-        .select('mois_comptable')
-        .not('mois_comptable', 'is', null)
-      if (!data) return
-      const uniques = [...new Set(data.map(r => r.mois_comptable))].sort((a,b) => b.localeCompare(a))
+      // Charger tous les mois distincts avec pagination (peut dépasser 1000 lignes)
+      const PAGE = 1000
+      let all = [], page = 0
+      while (true) {
+        const { data } = await supabase
+          .from('reservation')
+          .select('mois_comptable')
+          .not('mois_comptable', 'is', null)
+          .range(page * PAGE, (page + 1) * PAGE - 1)
+        if (!data || data.length === 0) break
+        all = all.concat(data)
+        if (data.length < PAGE) break
+        page++
+      }
+      const uniques = [...new Set(all.map(r => r.mois_comptable))].sort((a,b) => b.localeCompare(a))
       setMoisDispos(uniques)
-    } catch (e) {}
+    } catch (e) { console.error('chargerMoisDispos:', e) }
   }
 
   async function charger() {

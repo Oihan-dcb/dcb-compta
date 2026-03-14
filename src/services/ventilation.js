@@ -38,7 +38,7 @@ export async function calculerVentilationMois(mois) {
     .eq('mois_comptable', mois)
     .eq('ventilation_calculee', false)
     .eq('owner_stay', false)       // Ignorer séjours proprio
-    .neq('reservation_status', 'cancelled')
+    .neq('final_status', 'cancelled')
 
   if (error) throw error
 
