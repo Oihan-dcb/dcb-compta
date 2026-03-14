@@ -174,25 +174,25 @@ function ModalResa({ resa, onClose }) {
   const ventil = (resa.ventilation || [])
   const com = ventil.find(v => v.code === 'COM')
   return (
-    <div style={{position:'fixed',inset:0,background:'rgba(0,0,0,0.5)',zIndex:1000,display:'flex',alignItems:'center',justifyContent:'center'}} onClick={onClose}>
-      <div style={{background:'var(--bg-card)',borderRadius:'12px',padding:'24px',minWidth:'480px',maxWidth:'600px',maxHeight:'80vh',overflowY:'auto'}} onClick={e => e.stopPropagation()}>
+    <div style={{position:'fixed',inset:0,background:'rgba(0,0,0,0.6)',zIndex:9999,display:'flex',alignItems:'center',justifyContent:'center'}} onClick={onClose}>
+      <div style={{background:'#ffffff',color:'#1a1a2e',borderRadius:'12px',padding:'28px',minWidth:'500px',maxWidth:'620px',maxHeight:'85vh',overflowY:'auto',boxShadow:'0 20px 60px rgba(0,0,0,0.4)'}} onClick={e => e.stopPropagation()}>
         <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:'16px'}}>
-          <h3 style={{margin:0}}>{resa.bien?.hospitable_name || resa.bien?.code || '—'}</h3>
-          <button onClick={onClose} style={{background:'none',border:'none',fontSize:'1.5rem',cursor:'pointer',color:'var(--text-muted)'}}>×</button>
+          <h3 style={{margin:0,color:'#1a1a2e'}}>{resa.bien?.hospitable_name || resa.bien?.code || '—'}</h3>
+          <button onClick={onClose} style={{background:'none',border:'none',fontSize:'1.5rem',cursor:'pointer',color:'#666'}}>×</button>
         </div>
         <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:'8px',marginBottom:'16px',fontSize:'0.9em'}}>
-          <div><span style={{color:'var(--text-muted)'}}>Code</span><br/><strong className="mono">{resa.code}</strong></div>
-          <div><span style={{color:'var(--text-muted)'}}>Plateforme</span><br/><span className={`badge badge-${resa.platform}`}>{resa.platform}</span></div>
-          <div><span style={{color:'var(--text-muted)'}}>Check-in</span><br/><strong>{resa.arrival_date ? format(new Date(resa.arrival_date), 'd MMM yyyy', {locale: fr}) : '—'}</strong></div>
-          <div><span style={{color:'var(--text-muted)'}}>Nuits</span><br/><strong>{resa.nights}</strong></div>
-          <div><span style={{color:'var(--text-muted)'}}>Voyageur</span><br/><strong>{resa.guest_name || '—'}</strong></div>
-          <div><span style={{color:'var(--text-muted)'}}>Revenue net</span><br/><strong>{resa.fin_revenue ? formatMontant(resa.fin_revenue) : '—'}</strong></div>
+          <div><span style={{color:'#888',fontSize:'0.8em',textTransform:'uppercase'}}>Code</span><br/><strong className="mono">{resa.code}</strong></div>
+          <div><span style={{color:'#888',fontSize:'0.8em',textTransform:'uppercase'}}>Plateforme</span><br/><span className={`badge badge-${resa.platform}`}>{resa.platform}</span></div>
+          <div><span style={{color:'#888',fontSize:'0.8em',textTransform:'uppercase'}}>Check-in</span><br/><strong>{resa.arrival_date ? format(new Date(resa.arrival_date), 'd MMM yyyy', {locale: fr}) : '—'}</strong></div>
+          <div><span style={{color:'#888',fontSize:'0.8em',textTransform:'uppercase'}}>Nuits</span><br/><strong>{resa.nights}</strong></div>
+          <div><span style={{color:'#888',fontSize:'0.8em',textTransform:'uppercase'}}>Voyageur</span><br/><strong>{resa.guest_name || '—'}</strong></div>
+          <div><span style={{color:'#888',fontSize:'0.8em',textTransform:'uppercase'}}>Revenue net</span><br/><strong>{resa.fin_revenue ? formatMontant(resa.fin_revenue) : '—'}</strong></div>
         </div>
         {ventil.length > 0 ? (
           <>
-            <div style={{fontWeight:600,marginBottom:'8px',fontSize:'0.9em',color:'var(--text-muted)',textTransform:'uppercase',letterSpacing:'0.05em'}}>Ventilation</div>
+            <div style={{fontWeight:700,marginBottom:'12px',fontSize:'0.8em',color:'#888',textTransform:'uppercase',letterSpacing:'0.08em',borderTop:'1px solid #eee',paddingTop:'16px'}}>Ventilation</div>
             <table style={{width:'100%',fontSize:'0.9em'}}>
-              <thead><tr style={{color:'var(--text-muted)'}}>
+              <thead><tr style={{color:'#888',fontSize:'0.8em'}}>
                 <th style={{textAlign:'left',paddingBottom:'6px'}}>Code</th>
                 <th style={{textAlign:'left',paddingBottom:'6px'}}>Libellé</th>
                 <th style={{textAlign:'right',paddingBottom:'6px'}}>HT</th>
@@ -201,16 +201,16 @@ function ModalResa({ resa, onClose }) {
               </tr></thead>
               <tbody>
                 {ventil.map((v,i) => (
-                  <tr key={i} style={{borderTop:'1px solid var(--border)'}}>
+                  <tr key={i} style={{borderTop:'1px solid #eee'}}>
                     <td style={{padding:'6px 0'}}><strong>{v.code}</strong></td>
-                    <td style={{padding:'6px 8px',color:'var(--text-muted)'}}>{v.libelle}</td>
+                    <td style={{padding:'6px 8px',color:'#555'}}>{v.libelle}</td>
                     <td style={{textAlign:'right',padding:'6px 0'}}>{formatMontant(v.montant_ht)}</td>
-                    <td style={{textAlign:'right',padding:'6px 0',color:'var(--text-muted)'}}>{v.montant_tva > 0 ? formatMontant(v.montant_tva) : '—'}</td>
+                    <td style={{textAlign:'right',padding:'6px 0',color:'#999'}}>{v.montant_tva > 0 ? formatMontant(v.montant_tva) : '—'}</td>
                     <td style={{textAlign:'right',padding:'6px 0'}}><strong>{formatMontant(v.montant_ttc)}</strong></td>
                   </tr>
                 ))}
                 {com?.taux_calcule && (
-                  <tr><td colSpan={5} style={{paddingTop:'8px',color:'var(--text-muted)',fontSize:'0.85em'}}>
+                  <tr><td colSpan={5} style={{paddingTop:'8px',color:'#888',fontSize:'0.85em',fontStyle:'italic'}}>
                     Taux calculé : {Math.round(com.taux_calcule * 100)}%
                   </td></tr>
                 )}
@@ -218,7 +218,7 @@ function ModalResa({ resa, onClose }) {
             </table>
           </>
         ) : (
-          <div style={{color:'var(--text-muted)',fontSize:'0.9em'}}>Pas encore ventilée</div>
+          <div style={{color:'#999',fontSize:'0.9em',fontStyle:'italic'}}>Pas encore ventilée — lance la ventilation pour voir le détail.</div>
         )}
       </div>
     </div>
