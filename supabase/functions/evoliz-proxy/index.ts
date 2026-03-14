@@ -1,0 +1,238 @@
+/**
+ * Supabase Edge Function — Proxy API Evoliz
+ * Base URL : https://www.evoliz.io/
+ * Auth : POST /api/login → access_token (valide 20 min)
+ * Company ID : entier numérique (pas le slug)
+ */
+
+import { serve } from 'https://deno.land/std@0.168.0/http/server.ts'
+
+const EVOLIZ_BASE = 'https://www.evoliz.io'
+const CORS_HEADERS = {
+  'Access-Control-Allow-Origin': '*',
+  'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
+}
+
+// Cache du token en mémoire (valide 20 min, marge de 60s)
+let _token: string | null = null
+let _tokenExpiry = 0
+
+async function getToken(): Promise<string> {
+  if (_token && Date.now() < _tokenExpiry) return _token
+
+  const publicKey = Deno.env.get('EVOLIZ_PUBLIC_KEY')
+  const secretKey = Deno.env.get('EVOLIZ_SECRET_KEY')
+
+  if (!publicKey || !secretKey) {
+    throw new Error('Clés Evoliz manquantes dans les secrets Supabase (EVOLIZ_PUBLIC_KEY, EVOLIZ_SECRET_KEY)')
+  }
+
+  const res = await fetch(`${EVOLIZ_BASE}/api/login`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', 'Accept': 'application/json' },
+    body: JSON.stringify({ public_key: publicKey, secret_key: secretKey }),
+  })
+
+  if (!res.ok) {
+    const err = await res.text()
+    throw new Error(`Auth Evoliz échouée: ${res.status} — ${err.substring(0, 200)}`)
+  }
+
+  const data = await res.json()
+  _token = data.access_token
+
+  // expires_at = "2019-10-10T09:26:40.000000Z" — parser et soustraire 60s
+  if (data.expires_at) {
+    _tokenExpiry = new Date(data.expires_at).getTime() - 60_000
+  } else {
+    _tokenExpiry = Date.now() + 19 * 60 * 1000 // 19 min par défaut
+  }
+
+  return _token!
+}
+
+async function evolizReq(method: string, path: string, companyId: string, body?: object) {
+  const token = await getToken()
+  const url = `${EVOLIZ_BASE}/api/v1/companies/${companyId}${path}`
+
+  const res = await fetch(url, {
+    method,
+    headers: {
+      'Authorization': `Bearer ${token}`,
+      'Content-Type': 'application/json',
+      'Accept': 'application/json',
+    },
+    body: body ? JSON.stringify(body) : undefined,
+  })
+
+  // Essayer de parser le JSON même si erreur
+  const text = await res.text()
+  let data
+  try { data = JSON.parse(text) } catch { data = { raw: text } }
+
+  return { status: res.status, data }
+}
+
+serve(async (req) => {
+  if (req.method === 'OPTIONS') {
+    return new Response('ok', { headers: CORS_HEADERS })
+  }
+
+  try {
+    const { action, payload, companyId } = await req.json()
+    const company = companyId || Deno.env.get('EVOLIZ_COMPANY_ID')
+    if (!company) throw new Error('company_id manquant')
+
+    let result
+
+    switch (action) {
+
+      // ── TEST ──────────────────────────────────────────────
+      case 'ping': {
+        // Récupère les infos de la société pour tester la connexion
+        result = await evolizReq('GET', '', company)
+        break
+      }
+
+      // ── CLIENTS ───────────────────────────────────────────
+      case 'listClients': {
+        const qs = payload?.search ? `?search=${encodeURIComponent(payload.search)}` : ''
+        result = await evolizReq('GET', `/clients${qs}`, company)
+        break
+      }
+
+      case 'getClient': {
+        result = await evolizReq('GET', `/clients/${payload.clientId}`, company)
+        break
+      }
+
+      case 'createClient': {
+        // Champs requis : name, type, address (postcode, town, iso2)
+        result = await evolizReq('POST', '/clients', company, {
+          name: payload.name,
+          type: payload.type || 'Particulier', // Particulier | Professionnel | Administration publique
+          address: {
+            addr: payload.address || '',
+            postcode: payload.postcode || '',
+            town: payload.town || '',
+            iso2: payload.country || 'FR',
+          },
+          phone: payload.phone || undefined,
+          // email via contact client (séparé dans l'API Evoliz)
+        })
+        break
+      }
+
+      case 'updateClient': {
+        result = await evolizReq('PATCH', `/clients/${payload.clientId}`, company, payload.data)
+        break
+      }
+
+      // ── FACTURES ──────────────────────────────────────────
+      case 'listInvoices': {
+        const params = new URLSearchParams()
+        if (payload?.clientId) params.set('clientid', payload.clientId)
+        if (payload?.period) params.set('period', payload.period)
+        if (payload?.dateFrom) { params.set('period', 'custom'); params.set('date_min', payload.dateFrom) }
+        if (payload?.dateTo) params.set('date_max', payload.dateTo)
+        const qs = params.toString() ? `?${params}` : ''
+        result = await evolizReq('GET', `/invoices${qs}`, company)
+        break
+      }
+
+      case 'getInvoice': {
+        result = await evolizReq('GET', `/invoices/${payload.invoiceId}`, company)
+        break
+      }
+
+      case 'createInvoice': {
+        /**
+         * payload: {
+         *   clientId: number,
+         *   documentdate: "YYYY-MM-DD",
+         *   paytermid: number (défaut 1 = comptant),
+         *   comment: string (note bas de facture),
+         *   items: [{ designation, quantity, unitPrice (€), vatRate }]
+         * }
+         * Crée une facture en statut "filled" (brouillon)
+         * Appeler createInvoice puis saveInvoice pour la finaliser
+         */
+        result = await evolizReq('POST', '/invoices', company, {
+          documentdate: payload.documentdate,
+          clientid: payload.clientId,
+          comment: payload.comment || '',
+          term: {
+            paytermid: payload.paytermid || 1, // 1 = comptant
+            paytypeid: payload.paytypeid || undefined,
+          },
+          items: (payload.items || []).map((l: any) => ({
+            type: 'article',
+            designation: l.designation,
+            quantity: l.quantity || 1,
+            unit_price: l.unitPrice,     // En euros (pas en centimes)
+            vat_rate: l.vatRate ?? 20,
+          })),
+        })
+        break
+      }
+
+      case 'saveInvoice': {
+        // Passe la facture de "filled" → "create" avec numéro définitif
+        result = await evolizReq('POST', `/invoices/${payload.invoiceId}/create`, company)
+        break
+      }
+
+      case 'sendInvoice': {
+        result = await evolizReq('POST', `/invoices/${payload.invoiceId}/send`, company, {
+          to: payload.to ? [payload.to] : undefined,
+          subject: payload.subject,
+          body: payload.body,
+          attachment: true,
+        })
+        break
+      }
+
+      case 'deleteInvoice': {
+        // Uniquement si statut "filled" (brouillon)
+        result = await evolizReq('DELETE', `/invoices/${payload.invoiceId}`, company)
+        break
+      }
+
+      // ── PAIEMENTS ─────────────────────────────────────────
+      case 'createPayment': {
+        result = await evolizReq('POST', `/invoices/${payload.invoiceId}/payments`, company, {
+          paydate: payload.paydate,
+          label: payload.label || 'Règlement',
+          paytypeid: payload.paytypeid || 4, // 4 = virement
+          amount: payload.amount,
+        })
+        break
+      }
+
+      // ── UTILITAIRES ───────────────────────────────────────
+      case 'getPayterms': {
+        result = await evolizReq('GET', '/payterms', company)
+        break
+      }
+
+      case 'getPaytypes': {
+        result = await evolizReq('GET', '/paytypes', company)
+        break
+      }
+
+      default:
+        throw new Error(`Action inconnue: ${action}`)
+    }
+
+    return new Response(JSON.stringify(result), {
+      headers: { ...CORS_HEADERS, 'Content-Type': 'application/json' },
+      status: 200,
+    })
+
+  } catch (err) {
+    return new Response(
+      JSON.stringify({ error: err.message }),
+      { headers: { ...CORS_HEADERS, 'Content-Type': 'application/json' }, status: 500 }
+    )
+  }
+})
