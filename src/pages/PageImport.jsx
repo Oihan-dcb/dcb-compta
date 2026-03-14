@@ -1,5 +1,6 @@
 import { useState, useRef } from 'react'
 import { analyseCSV, importHospitableCSV, fusionnerDoublons } from '../services/importCSV'
+import { useNavigate } from 'react-router-dom'
 import { format } from 'date-fns'
 import { fr } from 'date-fns/locale'
 
@@ -16,6 +17,7 @@ export default function PageImport() {
   const [fusionResult, setFusionResult] = useState(null)
   const [progress, setProgress] = useState(null) // { step, pct }
   const fileRef = useRef()
+  const navigate = useNavigate()
 
   async function handleFile(e) {
     const file = e.target.files?.[0]
@@ -253,7 +255,7 @@ export default function PageImport() {
               setFusionResult(f)
               setLoading(false)
             }} disabled={loading}>🔍 Re-détecter doublons</button>
-            <a href="/reservations" className="btn btn-secondary">→ Voir les réservations</a>
+            <button className="btn btn-secondary" onClick={() => navigate('/reservations')}>→ Voir les réservations</button>
           </div>
         </div>
       )}

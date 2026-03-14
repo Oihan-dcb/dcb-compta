@@ -34,16 +34,33 @@ export async function importHospitableCSV(rows, moisFiltres = null, onProgress =
   const log = { total: filtered.length, updated: 0, created: 0, errors: 0, skipped: 0 }
 
   // ── Étape 1 : charger tous les biens (map hospitable_id → bien_id) ──
-  const { data: biens } = await supabase.from('bien').select('id, hospitable_id')
   const bienMap = {}
-  for (const b of biens || []) bienMap[b.hospitable_id] = b.id
+  let bienPage = 0
+  while (true) {
+    const { data: bienData } = await supabase
+      .from('bien')
+      .select('id, hospitable_id')
+      .range(bienPage * PAGE_SIZE, (bienPage + 1) * PAGE_SIZE - 1)
+    if (!bienData || bienData.length === 0) break
+    for (const b of bienData) bienMap[b.hospitable_id] = b.id
+    if (bienData.length < PAGE_SIZE) break
+    bienPage++
+  }
 
-  // ── Étape 2 : charger toutes les réservations existantes (map code → id) ──
-  const { data: existing } = await supabase
-    .from('reservation')
-    .select('id, code')
+  // ── Étape 2 : charger TOUTES les réservations existantes avec pagination ──
   const resaMap = {}
-  for (const r of existing || []) resaMap[r.code] = r.id
+  let page = 0
+  const PAGE_SIZE = 1000
+  while (true) {
+    const { data: pageData } = await supabase
+      .from('reservation')
+      .select('id, code')
+      .range(page * PAGE_SIZE, (page + 1) * PAGE_SIZE - 1)
+    if (!pageData || pageData.length === 0) break
+    for (const r of pageData) resaMap[r.code] = r.id
+    if (pageData.length < PAGE_SIZE) break
+    page++
+  }
 
   onProgress?.({ step: 'prepare', pct: 10 })
 
