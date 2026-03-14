@@ -79,6 +79,7 @@ export default function PageReservations() {
 
   return (
     <div>
+      {selectedResa && <ModalResa resa={selectedResa} onClose={() => setSelectedResa(null)} />}
       <div className="page-header">
         <div>
           <h1 className="page-title">Réservations</h1>
@@ -312,39 +313,94 @@ function TableVentilation({ recap, parProprio, mois }) {
   )
 
   return (
-    <div className="table-container">
-      <table>
-        <thead>
-          <tr>
-            <th>Code</th>
-            <th>Libellé</th>
-            <th className="right">Lignes</th>
-            <th className="right">Montant HT</th>
-            <th className="right">TVA</th>
-            <th className="right">TTC</th>
-          </tr>
-        </thead>
-        <tbody>
-          {sorted.map(r => (
-            <tr key={r.code}>
-              <td><span className={`code-${r.code}`}>{r.code}</span></td>
-              <td>{r.libelle}</td>
-              <td className="right">{r.nb}</td>
-              <td className="right montant">{formatMontant(r.ht)}</td>
-              <td className="right montant" style={{ color: 'var(--text-muted)' }}>
-                {r.tva > 0 ? formatMontant(r.tva) : '—'}
-              </td>
-              <td className="right montant">{formatMontant(r.ttc)}</td>
-            </tr>
-          ))}
-          <tr style={{ borderTop: '2px solid var(--border)', background: 'var(--brand-pale)' }}>
-            <td colSpan={3} style={{ fontWeight: 600 }}>Total</td>
-            <td className="right montant" style={{ fontWeight: 700 }}>{formatMontant(totalHT)}</td>
-            <td className="right montant" style={{ fontWeight: 700, color: 'var(--text-muted)' }}>{formatMontant(totalTVA)}</td>
-            <td className="right montant" style={{ fontWeight: 700 }}>{formatMontant(totalTTC)}</td>
-          </tr>
-        </tbody>
-      </table>
+    <div>
+      {/* Sélecteur de vue */}
+      <div style={{ display: 'flex', gap: '8px', marginBottom: '16px' }}>
+        <button
+          className={`btn btn-sm ${vue === 'codes' ? 'btn-primary' : 'btn-secondary'}`}
+          onClick={() => setVue('codes')}>
+          Par code
+        </button>
+        <button
+          className={`btn btn-sm ${vue === 'proprios' ? 'btn-primary' : 'btn-secondary'}`}
+          onClick={() => setVue('proprios')}>
+          Par propriétaire ({parProprio.length})
+        </button>
+      </div>
+
+      {vue === 'codes' ? (
+        <div className="table-container">
+          <table>
+            <thead>
+              <tr>
+                <th>Code</th>
+                <th>Libellé</th>
+                <th className="right">Lignes</th>
+                <th className="right">Montant HT</th>
+                <th className="right">TVA</th>
+                <th className="right">TTC</th>
+              </tr>
+            </thead>
+            <tbody>
+              {sorted.map(r => (
+                <tr key={r.code}>
+                  <td><span className={`code-${r.code}`}>{r.code}</span></td>
+                  <td>{r.libelle}</td>
+                  <td className="right">{r.nb}</td>
+                  <td className="right montant">{formatMontant(r.ht)}</td>
+                  <td className="right montant" style={{ color: 'var(--text-muted)' }}>
+                    {r.tva > 0 ? formatMontant(r.tva) : '—'}
+                  </td>
+                  <td className="right montant">{formatMontant(r.ttc)}</td>
+                </tr>
+              ))}
+              <tr style={{ borderTop: '2px solid var(--border)', background: 'var(--brand-pale)' }}>
+                <td colSpan={3} style={{ fontWeight: 600 }}>Total</td>
+                <td className="right montant" style={{ fontWeight: 700 }}>{formatMontant(totalHT)}</td>
+                <td className="right montant" style={{ fontWeight: 700, color: 'var(--text-muted)' }}>{formatMontant(totalTVA)}</td>
+                <td className="right montant" style={{ fontWeight: 700 }}>{formatMontant(totalTTC)}</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      ) : (
+        <div className="table-container">
+          <table>
+            <thead>
+              <tr>
+                <th>Propriétaire</th>
+                <th className="right">COM HT</th>
+                <th className="right">MEN HT</th>
+                <th className="right">AE</th>
+                <th className="right">LOY (reversement)</th>
+                <th className="right">Total DCB</th>
+              </tr>
+            </thead>
+            <tbody>
+              {parProprio.map(p => (
+                <tr key={p.id}>
+                  <td style={{ fontWeight: 500 }}>{p.nom}</td>
+                  <td className="right montant">{p.total_com > 0 ? formatMontant(p.total_com) : '—'}</td>
+                  <td className="right montant">{p.total_men > 0 ? formatMontant(p.total_men) : '—'}</td>
+                  <td className="right montant">{p.total_ae > 0 ? formatMontant(p.total_ae) : '—'}</td>
+                  <td className="right montant">{p.total_loy > 0 ? formatMontant(p.total_loy) : '—'}</td>
+                  <td className="right montant" style={{ fontWeight: 700 }}>
+                    {formatMontant(p.total_com + p.total_men + p.total_ae)}
+                  </td>
+                </tr>
+              ))}
+              <tr style={{ borderTop: '2px solid var(--border)', background: 'var(--brand-pale)' }}>
+                <td style={{ fontWeight: 600 }}>Total</td>
+                <td className="right montant" style={{ fontWeight: 700 }}>{formatMontant(parProprio.reduce((s,p) => s + p.total_com, 0))}</td>
+                <td className="right montant" style={{ fontWeight: 700 }}>{formatMontant(parProprio.reduce((s,p) => s + p.total_men, 0))}</td>
+                <td className="right montant" style={{ fontWeight: 700 }}>{formatMontant(parProprio.reduce((s,p) => s + p.total_ae, 0))}</td>
+                <td className="right montant" style={{ fontWeight: 700 }}>{formatMontant(parProprio.reduce((s,p) => s + p.total_loy, 0))}</td>
+                <td className="right montant" style={{ fontWeight: 700 }}>{formatMontant(parProprio.reduce((s,p) => s + p.total_com + p.total_men + p.total_ae, 0))}</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      )}
     </div>
   )
 }
