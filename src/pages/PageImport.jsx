@@ -14,6 +14,7 @@ export default function PageImport() {
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState(null)
   const [fusionResult, setFusionResult] = useState(null)
+  const [progress, setProgress] = useState(null) // { step, pct }
   const fileRef = useRef()
 
   async function handleFile(e) {
@@ -48,10 +49,8 @@ export default function PageImport() {
     setLoading(true)
     setError(null)
     try {
-      const r = await importHospitableCSV(rows, selected)
-      // Fusion automatique des doublons après import
-      const fusion = await fusionnerDoublons()
-      setResult({ ...r, fusion })
+      const r = await importHospitableCSV(rows, selected, (p) => setProgress(p))
+      setResult(r)
       setStep('done')
     } catch (err) {
       setError(err.message)
@@ -194,11 +193,31 @@ export default function PageImport() {
       )}
 
       {step === 'importing' && (
-        <div style={{textAlign: 'center', padding: 64}}>
-          <div style={{fontSize: '3rem', marginBottom: 16}}>⏳</div>
-          <div style={{fontWeight: 600, fontSize: '1.1rem'}}>Import en cours…</div>
-          <div style={{color: 'var(--text-muted)', marginTop: 8}}>
-            Mise à jour des réservations et des fees en base
+        <div style={{maxWidth: 500, margin: '64px auto', textAlign: 'center'}}>
+          <div style={{fontSize: '3rem', marginBottom: 16}}>⚡</div>
+          <div style={{fontWeight: 600, fontSize: '1.1rem', marginBottom: 8}}>Import en cours…</div>
+          <div style={{color: 'var(--text-muted)', marginBottom: 24, fontSize: '0.9em'}}>
+            {{
+              prepare: '📋 Chargement des données…',
+              upsert: '💾 Mise à jour des réservations…',
+              insert: '➕ Création des nouvelles réservations…',
+              fees: '🧾 Préparation des frais…',
+              clean_fees: '🗑 Nettoyage des anciens frais…',
+              insert_fees: '💾 Enregistrement des frais…',
+              dedup: '🔍 Fusion des doublons…',
+              done: '✓ Finalisation…',
+            }[progress?.step] || 'Initialisation…'}
+          </div>
+          <div style={{background: 'var(--border)', borderRadius: 8, height: 12, overflow: 'hidden'}}>
+            <div style={{
+              height: '100%', borderRadius: 8,
+              background: 'var(--brand)',
+              width: `${progress?.pct || 0}%`,
+              transition: 'width 0.3s ease'
+            }} />
+          </div>
+          <div style={{marginTop: 8, color: 'var(--text-muted)', fontSize: '0.85em'}}>
+            {progress?.pct || 0}%
           </div>
         </div>
       )}
