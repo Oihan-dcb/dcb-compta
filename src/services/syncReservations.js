@@ -107,7 +107,7 @@ export async function syncReservations(mois) {
       statut: 'error',
       nb_erreurs: 1,
       message: err.message,
-    } catch (_) {}
+    })
     throw err
   }
 }

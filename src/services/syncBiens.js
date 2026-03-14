@@ -82,7 +82,7 @@ export async function syncBiens() {
       statut: 'error',
       nb_erreurs: 1,
       message: err.message,
-    } catch (_) {}
+    })
 
     throw err
   }
