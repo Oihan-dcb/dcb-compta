@@ -20,6 +20,7 @@ export default function PageReservations() {
   const [syncResult, setSyncResult] = useState(null)
   const [error, setError] = useState(null)
   const [onglet, setOnglet] = useState('reservations') // reservations | ventilation
+  const [selectedResa, setSelectedResa] = useState(null)
 
   useEffect(() => {
     if (HOSP_TOKEN) setToken(HOSP_TOKEN)
@@ -159,15 +160,71 @@ export default function PageReservations() {
       {loading ? (
         <div className="loading-state"><span className="spinner" /> Chargement…</div>
       ) : onglet === 'reservations' ? (
-        <TableReservations reservations={reservations} />
+        <TableReservations reservations={reservations} onSelect={setSelectedResa} />
       ) : (
-        <TableVentilation recap={recap} mois={mois} />
+        <TableVentilation recap={recap?.parCode || recap || []} parProprio={recap?.parProprio || []} mois={mois} />
       )}
     </div>
   )
 }
 
-function TableReservations({ reservations }) {
+function ModalResa({ resa, onClose }) {
+  if (!resa) return null
+  const ventil = (resa.ventilation || [])
+  const com = ventil.find(v => v.code === 'COM')
+  return (
+    <div style={{position:'fixed',inset:0,background:'rgba(0,0,0,0.5)',zIndex:1000,display:'flex',alignItems:'center',justifyContent:'center'}} onClick={onClose}>
+      <div style={{background:'var(--bg-card)',borderRadius:'12px',padding:'24px',minWidth:'480px',maxWidth:'600px',maxHeight:'80vh',overflowY:'auto'}} onClick={e => e.stopPropagation()}>
+        <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:'16px'}}>
+          <h3 style={{margin:0}}>{resa.bien?.hospitable_name || resa.bien?.code || '—'}</h3>
+          <button onClick={onClose} style={{background:'none',border:'none',fontSize:'1.5rem',cursor:'pointer',color:'var(--text-muted)'}}>×</button>
+        </div>
+        <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:'8px',marginBottom:'16px',fontSize:'0.9em'}}>
+          <div><span style={{color:'var(--text-muted)'}}>Code</span><br/><strong className="mono">{resa.code}</strong></div>
+          <div><span style={{color:'var(--text-muted)'}}>Plateforme</span><br/><span className={`badge badge-${resa.platform}`}>{resa.platform}</span></div>
+          <div><span style={{color:'var(--text-muted)'}}>Check-in</span><br/><strong>{resa.arrival_date ? format(new Date(resa.arrival_date), 'd MMM yyyy', {locale: fr}) : '—'}</strong></div>
+          <div><span style={{color:'var(--text-muted)'}}>Nuits</span><br/><strong>{resa.nights}</strong></div>
+          <div><span style={{color:'var(--text-muted)'}}>Voyageur</span><br/><strong>{resa.guest_name || '—'}</strong></div>
+          <div><span style={{color:'var(--text-muted)'}}>Revenue net</span><br/><strong>{resa.fin_revenue ? formatMontant(resa.fin_revenue) : '—'}</strong></div>
+        </div>
+        {ventil.length > 0 ? (
+          <>
+            <div style={{fontWeight:600,marginBottom:'8px',fontSize:'0.9em',color:'var(--text-muted)',textTransform:'uppercase',letterSpacing:'0.05em'}}>Ventilation</div>
+            <table style={{width:'100%',fontSize:'0.9em'}}>
+              <thead><tr style={{color:'var(--text-muted)'}}>
+                <th style={{textAlign:'left',paddingBottom:'6px'}}>Code</th>
+                <th style={{textAlign:'left',paddingBottom:'6px'}}>Libellé</th>
+                <th style={{textAlign:'right',paddingBottom:'6px'}}>HT</th>
+                <th style={{textAlign:'right',paddingBottom:'6px'}}>TVA</th>
+                <th style={{textAlign:'right',paddingBottom:'6px'}}>TTC</th>
+              </tr></thead>
+              <tbody>
+                {ventil.map((v,i) => (
+                  <tr key={i} style={{borderTop:'1px solid var(--border)'}}>
+                    <td style={{padding:'6px 0'}}><strong>{v.code}</strong></td>
+                    <td style={{padding:'6px 8px',color:'var(--text-muted)'}}>{v.libelle}</td>
+                    <td style={{textAlign:'right',padding:'6px 0'}}>{formatMontant(v.montant_ht)}</td>
+                    <td style={{textAlign:'right',padding:'6px 0',color:'var(--text-muted)'}}>{v.montant_tva > 0 ? formatMontant(v.montant_tva) : '—'}</td>
+                    <td style={{textAlign:'right',padding:'6px 0'}}><strong>{formatMontant(v.montant_ttc)}</strong></td>
+                  </tr>
+                ))}
+                {com?.taux_calcule && (
+                  <tr><td colSpan={5} style={{paddingTop:'8px',color:'var(--text-muted)',fontSize:'0.85em'}}>
+                    Taux calculé : {Math.round(com.taux_calcule * 100)}%
+                  </td></tr>
+                )}
+              </tbody>
+            </table>
+          </>
+        ) : (
+          <div style={{color:'var(--text-muted)',fontSize:'0.9em'}}>Pas encore ventilée</div>
+        )}
+      </div>
+    </div>
+  )
+}
+
+function TableReservations({ reservations, onSelect }) {
   if (reservations.length === 0) {
     return (
       <div className="empty-state">
@@ -189,22 +246,31 @@ function TableReservations({ reservations }) {
             <th>Check-in</th>
             <th>Nuits</th>
             <th className="right">Revenue net</th>
+            <th className="right">Taux COM</th>
             <th>Statut</th>
           </tr>
         </thead>
         <tbody>
           {reservations.map(r => (
-            <tr key={r.id}>
+            <tr key={r.id} onClick={() => onSelect(r)} style={{cursor:'pointer'}}>
               <td><span className="mono">{r.code}</span></td>
               <td>
                 <span className={`badge badge-${r.platform}`}>{r.platform}</span>
               </td>
-              <td>{r.bien?.code || r.bien?.hospitable_name?.substring(0, 15) || '—'}</td>
+              <td title={r.bien?.hospitable_name}>
+                <span className='mono'>{r.bien?.code || '—'}</span>
+                {r.bien?.hospitable_name && <div style={{fontSize:'0.75em',color:'var(--text-muted)',whiteSpace:'nowrap',overflow:'hidden',textOverflow:'ellipsis',maxWidth:'160px'}}>{r.bien.hospitable_name}</div>}
+              </td>
               <td>{r.guest_name || '—'}</td>
               <td>{r.arrival_date ? format(new Date(r.arrival_date), 'd MMM', { locale: fr }) : '—'}</td>
               <td>{r.nights}</td>
               <td className="right montant">
                 {r.fin_revenue ? formatMontant(r.fin_revenue) : '—'}
+              </td>
+              <td className="right">
+                {r.ventilation?.[0]?.taux_calcule != null
+                  ? <span title="Taux calculé depuis les financials Hospitable" style={{cursor:'help',borderBottom:'1px dashed var(--text-muted)'}}>{Math.round(r.ventilation[0].taux_calcule * 100)}%</span>
+                  : '—'}
               </td>
               <td>
                 {r.owner_stay ? (
@@ -225,7 +291,8 @@ function TableReservations({ reservations }) {
   )
 }
 
-function TableVentilation({ recap, mois }) {
+function TableVentilation({ recap, parProprio, mois }) {
+  const [vue, setVue] = useState('codes') // codes | proprios
   if (recap.length === 0) {
     return (
       <div className="empty-state">

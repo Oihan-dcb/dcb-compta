@@ -73,35 +73,42 @@ export async function calculerVentilationResa(resa) {
 
   // --- Extraire les fees ---
 
-  // Guest fees = Cleaning Fee + Community Fee (= forfait ménage total facturé au voyageur)
+  // Guest fees
   const guestFees = fees.filter(f => f.fee_type === 'guest_fee')
   const cleaningFee = guestFees.find(f => f.label?.toLowerCase().includes('cleaning'))
   const communityFee = guestFees.find(f => f.label?.toLowerCase().includes('community'))
   const managementFee = guestFees.find(f => f.label?.toLowerCase().includes('management'))
+  // Host fees (Host Service Fee Hospitable = négatif, frais de la plateforme)
+  const hostFees = fees.filter(f => f.fee_type === 'host_fee')
+  const hostServiceFee = hostFees.reduce((s, f) => s + (f.amount || 0), 0) // négatif
 
   const totalMenageProvision = (cleaningFee?.amount || 0) + (communityFee?.amount || 0)
   const mgmtFeeAmount = managementFee?.amount || 0
 
   // Taxes pass-through
   const taxes = fees.filter(f => f.fee_type === 'tax')
-  const taxesTotal = taxes.reduce((s, t) => s + (t.amount || 0), 0)
 
-  // Accommodation de base (sans fees ni taxes)
+  // Accommodation de base (nuitées seules, en centimes)
   const accommodation = resa.fin_accommodation || 0
 
+  // --- Commissionable base (= base Hospitable pour les commissions DCB) ---
+  // = accommodation + management_fee + host_service_fee (négatif)
+  // Correspond exactement à la colonne "Commissionable base" du statement Hospitable
+  const commissionableBase = accommodation + mgmtFeeAmount + hostServiceFee
+
   // --- Calculer COM (commission DCB) ---
-  // = accommodation × taux_commission du proprio
-  // Note : le taux est dans l'agreement Hospitable, stocké sur le bien via le proprio
-  // TODO: récupérer le taux depuis bien.proprietaire.taux_commission
-  // Pour l'instant on calcule COM = revenue - totalMenageProvision - mgmtFeeAmount
-  // car revenue = accommodation_net - host_service_fee, et COM = accommodation × taux
-  // On utilise une approximation jusqu'à avoir le taux exact dans Supabase
+  // Taux — priorité : override par bien > proprio > défaut 25%
+  const tauxCom = bien.taux_commission_override
+    || (bien.proprietaire?.taux_commission ? bien.proprietaire.taux_commission / 100 : null)
+    || 0.25
 
-  // Taux de commission (à récupérer depuis bien.proprietaire ou bien directement)
-  const tauxCom = bien.proprietaire?.taux_commission || 0.25 // 25% par défaut
+  // Taux réel calculé depuis les financials pour vérification/affichage
+  const tauxCalcule = commissionableBase > 0
+    ? Math.round((revenue / commissionableBase - 1) * -10000) / 10000
+    : null
 
-  // Base de commission = accommodation (loyer brut nuitées)
-  const comHT = Math.round(accommodation * tauxCom)
+  // COM = commissionable base × taux
+  const comHT = Math.round(commissionableBase * tauxCom)
 
   // --- Calculer AE (provision auto-entrepreneur) ---
   const aeAmount = bien.has_ae
@@ -121,7 +128,7 @@ export async function calculerVentilationResa(resa) {
 
   // COM — commission DCB
   if (comHT > 0) {
-    lignes.push(ligneTVA('COM', 'Honoraires de gestion', comHT, bien, resa))
+    lignes.push(ligneTVA('COM', 'Honoraires de gestion', comHT, bien, resa, tauxCalcule))
   }
 
   // MEN — forfait ménage DCB (sans AE)
@@ -164,7 +171,7 @@ export async function calculerVentilationResa(resa) {
 
 // --- Helpers ---
 
-function ligneTVA(code, libelle, montantHT, bien, resa) {
+function ligneTVA(code, libelle, montantHT, bien, resa, tauxCalcule) {
   const tva = Math.round(montantHT * TVA_RATE)
   return {
     reservation_id: resa.id,
@@ -178,6 +185,7 @@ function ligneTVA(code, libelle, montantHT, bien, resa) {
     montant_ttc: montantHT + tva,
     mois_comptable: resa.mois_comptable,
     calcul_source: 'auto',
+    taux_calcule: code === 'COM' ? tauxCalcule : null,
   }
 }
 
@@ -205,8 +213,9 @@ export async function getVentilationMois(mois) {
     .from('ventilation')
     .select(`
       *,
-      reservation (code, platform, arrival_date, departure_date),
-      bien (hospitable_name, code)
+      reservation (code, platform, arrival_date, departure_date, nights, guest_name),
+      bien (hospitable_name, code),
+      proprietaire (id, nom, prenom)
     `)
     .eq('mois_comptable', mois)
     .order('code')
@@ -221,6 +230,7 @@ export async function getVentilationMois(mois) {
 export async function getRecapVentilation(mois) {
   const lignes = await getVentilationMois(mois)
 
+  // Récap global par code
   const recap = {}
   for (const l of lignes) {
     if (!recap[l.code]) {
@@ -232,5 +242,28 @@ export async function getRecapVentilation(mois) {
     recap[l.code].nb++
   }
 
-  return Object.values(recap)
+  // Récap par propriétaire
+  const parProprio = {}
+  for (const l of lignes) {
+    const propId = l.proprietaire_id || 'sans_proprio'
+    const propNom = l.proprietaire ? `${l.proprietaire.prenom || ''} ${l.proprietaire.nom || ''}`.trim() : 'Sans propriétaire'
+    if (!parProprio[propId]) {
+      parProprio[propId] = { id: propId, nom: propNom, codes: {}, total_com: 0, total_men: 0, total_loy: 0, total_ae: 0 }
+    }
+    const p = parProprio[propId]
+    if (!p.codes[l.code]) p.codes[l.code] = { ht: 0, ttc: 0, nb: 0 }
+    p.codes[l.code].ht += l.montant_ht
+    p.codes[l.code].ttc += l.montant_ttc
+    p.codes[l.code].nb++
+    if (l.code === 'COM') p.total_com += l.montant_ht
+    if (l.code === 'MEN') p.total_men += l.montant_ht
+    if (l.code === 'LOY') p.total_loy += l.montant_ht
+    if (l.code === 'AE') p.total_ae += l.montant_ht
+  }
+
+  return {
+    parCode: Object.values(recap),
+    parProprio: Object.values(parProprio).sort((a, b) => a.nom.localeCompare(b.nom)),
+    lignes,
+  }
 }

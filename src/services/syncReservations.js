@@ -35,12 +35,19 @@ export async function syncReservations(mois) {
     const bienMap = new Map(biens.map(b => [b.hospitable_id, b]))
     const hospIds = biens.map(b => b.hospitable_id)
 
-    // 2. Récupérer les réservations (1 bien à la fois car API v2 ne retourne pas property_id)
+    // 2. Récupérer les réservations en parallèle (batch de 10) — l'API v2 ne retourne pas property_id
+    const BATCH = 10
     let allReservations = []
-    for (const hospId of hospIds) {
-      const resas = await fetchReservations([hospId], { startDate, endDate })
-      resas.forEach(r => { r.property_id = hospId })
-      allReservations = allReservations.concat(resas)
+    for (let i = 0; i < hospIds.length; i += BATCH) {
+      const batch = hospIds.slice(i, i + BATCH)
+      const results = await Promise.all(
+        batch.map(async hospId => {
+          const resas = await fetchReservations([hospId], { startDate, endDate })
+          resas.forEach(r => { r.property_id = hospId })
+          return resas
+        })
+      )
+      allReservations = allReservations.concat(results.flat())
     }
 
     log.total = allReservations.length
@@ -100,13 +107,13 @@ export async function syncReservations(mois) {
     return log
   } catch (err) {
     console.error('Erreur sync réservations:', err)
-    await supabase.from('import_log').insert({
+    try { await supabase.from('import_log').insert({
       type: 'hospitable_reservations',
       mois_concerne: mois,
       statut: 'error',
       nb_erreurs: 1,
       message: err.message,
-    })
+    }) } catch (_) {}
     throw err
   }
 }
@@ -242,9 +249,11 @@ export async function getReservationsMois(mois) {
       bien (
         id, hospitable_name, code, proprietaire_id,
         provision_ae_ref, forfait_dcb_ref, has_ae,
-        proprietaire (id, nom, prenom)
+        taux_commission_override,
+        proprietaire (id, nom, prenom, taux_commission)
       ),
-      reservation_fee (*)
+      reservation_fee (*),
+      ventilation (code, taux_calcule)
     `)
     .eq('mois_comptable', mois)
     .order('arrival_date')
