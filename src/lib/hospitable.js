@@ -52,8 +52,9 @@ async function fetchAll(path, params = {}, pageSize = 50) {
     all = all.concat(items)
 
     const meta = data.meta || {}
+    const lastPage = meta.last_page || 1
     const total = meta.total || items.length
-    if (all.length >= total || items.length < pageSize) break
+    if (page >= lastPage || all.length >= total) break
     page++
   }
 
