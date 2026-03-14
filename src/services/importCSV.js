@@ -70,12 +70,13 @@ export async function importHospitableCSV(rows, moisFiltres = null, onProgress =
     }
 
     if (resaMap[code]) {
-      // Existe → update seulement les champs CSV
+      // Existe → update ciblé par id (pas d'upsert pour éviter les contraintes NOT NULL)
       toUpsert.push({ id: resaMap[code], ...base })
     } else {
-      // Nouvelle → insert complet
+      // Nouvelle → insert complet avec hospitable_id depuis le champ uuid du CSV
       toInsert.push({
         ...base,
+        hospitable_id: row.uuid || null,
         bien_id: bienId,
         platform: row.platform,
         arrival_date: row.checkin_date || null,
@@ -89,14 +90,20 @@ export async function importHospitableCSV(rows, moisFiltres = null, onProgress =
 
   onProgress?.({ step: 'upsert', pct: 20 })
 
-  // ── Étape 4 : upsert en bulk (batch 500) ──
+  // ── Étape 4 : updates individuels en parallèle (batch de 50) ──
   const BULK = 500
-  for (let i = 0; i < toUpsert.length; i += BULK) {
-    const batch = toUpsert.slice(i, i + BULK)
-    const { error } = await supabase.from('reservation').upsert(batch, { onConflict: 'id' })
-    if (error) { log.errors += batch.length; console.error('upsert error:', error) }
-    else log.updated += batch.length
-    onProgress?.({ step: 'upsert', pct: 20 + Math.round((i / toUpsert.length) * 30) })
+  const UPDATE_BATCH = 50
+  for (let i = 0; i < toUpsert.length; i += UPDATE_BATCH) {
+    const batch = toUpsert.slice(i, i + UPDATE_BATCH)
+    const results = await Promise.all(
+      batch.map(({ id, ...fields }) =>
+        supabase.from('reservation').update(fields).eq('id', id)
+      )
+    )
+    const errs = results.filter(r => r.error).length
+    log.errors += errs
+    log.updated += batch.length - errs
+    onProgress?.({ step: 'upsert', pct: 20 + Math.round((i / Math.max(toUpsert.length, 1)) * 30) })
   }
 
   for (let i = 0; i < toInsert.length; i += BULK) {
