@@ -32,6 +32,7 @@ export async function importHospitableCSV(rows, moisFiltres = null, onProgress =
     : rows
 
   const log = { total: filtered.length, updated: 0, created: 0, errors: 0, skipped: 0 }
+  const PAGE_SIZE = 1000
 
   // ── Étape 1 : charger tous les biens (map hospitable_id → bien_id) ──
   const bienMap = {}
@@ -50,7 +51,6 @@ export async function importHospitableCSV(rows, moisFiltres = null, onProgress =
   // ── Étape 2 : charger TOUTES les réservations existantes avec pagination ──
   const resaMap = {}
   let page = 0
-  const PAGE_SIZE = 1000
   while (true) {
     const { data: pageData } = await supabase
       .from('reservation')
