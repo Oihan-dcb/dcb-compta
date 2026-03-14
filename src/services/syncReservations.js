@@ -35,12 +35,11 @@ export async function syncReservations(mois) {
     const bienMap = new Map(biens.map(b => [b.hospitable_id, b]))
     const hospIds = biens.map(b => b.hospitable_id)
 
-    // 2. Récupérer les réservations depuis Hospitable (par batch de 20 biens)
-    const BATCH_SIZE = 20
+    // 2. Récupérer les réservations (1 bien à la fois car API v2 ne retourne pas property_id)
     let allReservations = []
-    for (let i = 0; i < hospIds.length; i += BATCH_SIZE) {
-      const batch = hospIds.slice(i, i + BATCH_SIZE)
-      const resas = await fetchReservations(batch, { startDate, endDate })
+    for (const hospId of hospIds) {
+      const resas = await fetchReservations([hospId], { startDate, endDate })
+      resas.forEach(r => { r.property_id = hospId })
       allReservations = allReservations.concat(resas)
     }
 
