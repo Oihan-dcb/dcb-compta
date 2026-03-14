@@ -34,16 +34,21 @@ export async function importHospitableCSV(rows, moisFiltres = null, onProgress =
   const log = { total: filtered.length, updated: 0, created: 0, errors: 0, skipped: 0 }
   const PAGE_SIZE = 1000
 
-  // ── Étape 1 : charger tous les biens (map hospitable_id → bien_id) ──
-  const bienMap = {}
+  // ── Étape 1 : charger tous les biens (map par nom ET par hospitable_id) ──
+  // Le CSV utilise property_name (ex: '416 "Harea"') qui = hospitable_name en base
+  const bienByName = {}   // hospitable_name → bien_id
+  const bienById = {}     // hospitable_id UUID → bien_id
   let bienPage = 0
   while (true) {
     const { data: bienData } = await supabase
       .from('bien')
-      .select('id, hospitable_id')
+      .select('id, hospitable_id, hospitable_name')
       .range(bienPage * PAGE_SIZE, (bienPage + 1) * PAGE_SIZE - 1)
     if (!bienData || bienData.length === 0) break
-    for (const b of bienData) bienMap[b.hospitable_id] = b.id
+    for (const b of bienData) {
+      if (b.hospitable_name) bienByName[b.hospitable_name.trim()] = b.id
+      if (b.hospitable_id) bienById[b.hospitable_id] = b.id
+    }
     if (bienData.length < PAGE_SIZE) break
     bienPage++
   }
@@ -72,7 +77,8 @@ export async function importHospitableCSV(rows, moisFiltres = null, onProgress =
     const code = row.code?.trim()
     if (!code) { log.skipped++; continue }
 
-    const bienId = bienMap[row.property_id]
+    // Chercher le bien par nom (source CSV) — plus fiable que l'ID numérique
+    const bienId = bienByName[row.property_name?.trim()] || bienById[row.property_id]
     if (!bienId && !resaMap[code]) { log.skipped++; continue }
 
     const guestName = [row.guest_first_name, row.guest_last_name].filter(Boolean).join(' ') || null
