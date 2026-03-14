@@ -49,7 +49,7 @@ export async function syncPayouts(mois) {
     await supabase.from('import_log').insert({
       type: 'hospitable_payouts', mois_concerne: mois,
       statut: 'error', nb_erreurs: 1, message: err.message,
-    }).catch(() => {})
+    } catch (_) {}
     throw err
   }
 }
@@ -353,7 +353,7 @@ async function matcherSepa(mvt, reservations) {
       await supabase.from('payout_reservation').insert({
         payout_id: payout.id,
         reservation_id: match.id,
-      }).catch(() => {})
+      } catch (_) {}
     }
 
     // Marquer le mouvement et la réservation
