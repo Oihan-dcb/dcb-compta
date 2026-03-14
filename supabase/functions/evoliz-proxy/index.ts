@@ -96,7 +96,11 @@ serve(async (req) => {
 
       // ── CLIENTS ───────────────────────────────────────────
       case 'listClients': {
-        const qs = payload?.search ? `?search=${encodeURIComponent(payload.search)}` : ''
+        const params = new URLSearchParams()
+        if (payload?.search) params.set('search', payload.search)
+        if (payload?.page) params.set('page', String(payload.page))
+        if (payload?.per_page) params.set('per_page', String(payload.per_page))
+        const qs = params.toString() ? `?${params.toString()}` : ''
         result = await evolizReq('GET', `/clients${qs}`, company)
         break
       }
