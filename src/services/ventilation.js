@@ -108,8 +108,10 @@ export async function calculerVentilationResa(resa) {
     ? Math.round((revenue / commissionableBase - 1) * -10000) / 10000
     : null
 
-  // COM = commissionable base × taux
-  const comHT = Math.round(commissionableBase * tauxCom)
+  // COM = commissionable base × taux → résultat TTC (le taux Hospitable est TTC)
+  // HT = TTC / 1.20, TVA = TTC - HT
+  const comTTC = Math.round(commissionableBase * tauxCom)
+  const comHT = Math.round(comTTC / (1 + TVA_RATE))
 
   // --- Calculer AE (provision auto-entrepreneur) ---
   const aeAmount = bien.has_ae
@@ -117,27 +119,28 @@ export async function calculerVentilationResa(resa) {
     : 0
 
   // --- Calculer MEN (forfait ménage DCB) ---
-  // = Total forfait ménage voyageur - provision AE + management fee
-  const menHT = totalMenageProvision - aeAmount + mgmtFeeAmount
+  // = Total forfait ménage voyageur + management fee - AE (montants TTC → on déduit HT)
+  const menTTC = totalMenageProvision + mgmtFeeAmount - aeAmount
+  const menHT = Math.round(menTTC / (1 + TVA_RATE))
 
   // --- Taxes pass-through (taxe de séjour, etc.) ---
   const taxesTotal = taxes.reduce((s, t) => s + (t.amount || 0), 0)
 
   // --- Calculer LOY (reversement propriétaire) ---
   // = Revenue - COM - MEN - AE - Taxes (les taxes sont pass-through, hors calcul DCB)
-  const loyAmount = revenue - comHT - menHT - aeAmount - taxesTotal
+  const loyAmount = revenue - comTTC - menTTC - taxesTotal
 
   // --- Lignes de ventilation ---
   const lignes = []
 
   // COM — commission DCB
   if (comHT > 0) {
-    lignes.push(ligneTVA('COM', 'Honoraires de gestion', comHT, bien, resa, tauxCalcule))
+    lignes.push(ligneTVA('COM', 'Honoraires de gestion', comHT, bien, resa, tauxCalcule, comTTC))
   }
 
   // MEN — forfait ménage DCB (sans AE)
   if (menHT > 0) {
-    lignes.push(ligneTVA('MEN', 'Forfait ménage & frais', menHT, bien, resa))
+    lignes.push(ligneTVA('MEN', 'Forfait ménage & frais', menHT, bien, resa, null, menTTC))
   }
 
   // AE — provision auto-entrepreneur (hors TVA)
@@ -175,8 +178,11 @@ export async function calculerVentilationResa(resa) {
 
 // --- Helpers ---
 
-function ligneTVA(code, libelle, montantHT, bien, resa, tauxCalcule) {
-  const tva = Math.round(montantHT * TVA_RATE)
+function ligneTVA(code, libelle, montantHT, bien, resa, tauxCalcule, montantTTC) {
+  // Si montantTTC fourni (calculé depuis base×taux), on l'utilise directement
+  // Sinon on recalcule TVA = HT × 20%
+  const ttc = montantTTC || Math.round(montantHT * (1 + TVA_RATE))
+  const tva = ttc - montantHT
   return {
     reservation_id: resa.id,
     bien_id: bien.id,
@@ -186,7 +192,7 @@ function ligneTVA(code, libelle, montantHT, bien, resa, tauxCalcule) {
     montant_ht: montantHT,
     taux_tva: 20,
     montant_tva: tva,
-    montant_ttc: montantHT + tva,
+    montant_ttc: ttc,
     mois_comptable: resa.mois_comptable,
     calcul_source: 'auto',
     taux_calcule: code === 'COM' ? tauxCalcule : null,
