@@ -10,8 +10,86 @@ const HOSP_TOKEN = import.meta.env.VITE_HOSPITABLE_TOKEN
 // Mois courant par défaut
 const moisCourant = new Date().toISOString().substring(0, 7)
 
+const MOIS_FR = ['Jan','Fév','Mar','Avr','Mai','Jun','Jul','Aoû','Sep','Oct','Nov','Déc']
+
+function MoisSelector({ mois, setMois, moisDispos }) {
+  const [open, setOpen] = useState(false)
+
+  // Grouper par année
+  const parAnnee = {}
+  for (const m of moisDispos) {
+    const [y] = m.split('-')
+    if (!parAnnee[y]) parAnnee[y] = []
+    parAnnee[y].push(m)
+  }
+  const annees = Object.keys(parAnnee).sort((a,b) => b - a)
+  const [anneeActive, setAnneeActive] = useState(() => mois.split('-')[0])
+
+  const [year, monthIdx] = mois.split('-')
+  const labelMois = MOIS_FR[parseInt(monthIdx) - 1]
+
+  return (
+    <div style={{ position: 'relative' }}>
+      <button
+        className="btn btn-secondary"
+        onClick={() => setOpen(o => !o)}
+        style={{ minWidth: 120, display: 'flex', alignItems: 'center', gap: 6 }}>
+        <span>📅</span>
+        <span style={{ fontWeight: 600 }}>{labelMois} {year}</span>
+        <span style={{ fontSize: 10, opacity: 0.6 }}>▼</span>
+      </button>
+
+      {open && (
+        <div style={{
+          position: 'absolute', top: '110%', left: 0, zIndex: 100,
+          background: 'var(--bg-card)', border: '1px solid var(--border)',
+          borderRadius: 10, boxShadow: '0 8px 24px rgba(0,0,0,0.15)',
+          minWidth: 280, padding: 12,
+        }}
+        onMouseLeave={() => setOpen(false)}>
+          {/* Sélecteur d'année */}
+          <div style={{ display: 'flex', gap: 6, marginBottom: 10, flexWrap: 'wrap' }}>
+            {annees.map(y => (
+              <button key={y}
+                onClick={() => setAnneeActive(y)}
+                style={{
+                  padding: '3px 10px', borderRadius: 20, border: 'none', cursor: 'pointer', fontSize: '0.85em', fontWeight: 600,
+                  background: anneeActive === y ? 'var(--brand)' : 'var(--border)',
+                  color: anneeActive === y ? '#fff' : 'var(--text)',
+                }}>
+                {y}
+              </button>
+            ))}
+          </div>
+          {/* Grille des mois */}
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 5 }}>
+            {(parAnnee[anneeActive] || []).map(m => {
+              const mi = parseInt(m.split('-')[1]) - 1
+              const isActive = m === mois
+              return (
+                <button key={m}
+                  onClick={() => { setMois(m); setOpen(false) }}
+                  style={{
+                    padding: '6px 4px', borderRadius: 6, border: 'none', cursor: 'pointer',
+                    fontSize: '0.85em', fontWeight: isActive ? 700 : 400,
+                    background: isActive ? 'var(--brand)' : 'transparent',
+                    color: isActive ? '#fff' : 'var(--text)',
+                    textAlign: 'center',
+                  }}>
+                  {MOIS_FR[mi]}
+                </button>
+              )
+            })}
+          </div>
+        </div>
+      )}
+    </div>
+  )
+}
+
 export default function PageReservations() {
   const [mois, setMois] = useState(moisCourant)
+  const [moisDispos, setMoisDispos] = useState([])
   const [reservations, setReservations] = useState([])
   const [recap, setRecap] = useState([])
   const [loading, setLoading] = useState(false)
@@ -27,6 +105,23 @@ export default function PageReservations() {
     if (HOSP_TOKEN) setToken(HOSP_TOKEN)
     charger()
   }, [mois])
+
+  useEffect(() => {
+    chargerMoisDispos()
+  }, [])
+
+  async function chargerMoisDispos() {
+    try {
+      const { supabase } = await import('../lib/supabase')
+      const { data } = await supabase
+        .from('reservation')
+        .select('mois_comptable')
+        .not('mois_comptable', 'is', null)
+      if (!data) return
+      const uniques = [...new Set(data.map(r => r.mois_comptable))].sort((a,b) => b.localeCompare(a))
+      setMoisDispos(uniques)
+    } catch (e) {}
+  }
 
   async function charger() {
     setLoading(true)
@@ -87,13 +182,7 @@ export default function PageReservations() {
           <p className="page-subtitle">{reservations.length} réservations · {formatMontant(totalRevenue)} encaissé</p>
         </div>
         <div style={{ display: 'flex', gap: 10, alignItems: 'center' }}>
-          <input
-            type="month"
-            className="form-input"
-            style={{ width: 160 }}
-            value={mois}
-            onChange={e => setMois(e.target.value)}
-          />
+          <MoisSelector mois={mois} setMois={setMois} moisDispos={moisDispos} />
           <button className="btn btn-secondary" onClick={charger} disabled={loading}>↺</button>
 
           <button className="btn btn-secondary" onClick={lancerSync} disabled={syncing}>
