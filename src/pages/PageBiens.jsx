@@ -116,9 +116,9 @@ export default function PageBiens() {
           <div className="stat-sub">proprio ou ménage manquant</div>
         </div>
         <div className="stat-card">
-          <div className="stat-label">Avec AE</div>
+          <div className="stat-label">Avec AUTO</div>
           <div className="stat-value">{biens.filter(b => b.provision_ae_ref).length}</div>
-          <div className="stat-sub">auto-entrepreneur ménage</div>
+          <div className="stat-sub">Auto-entrepreneur ménage</div>
         </div>
       </div>
 
@@ -163,8 +163,8 @@ export default function PageBiens() {
                 <th>Code</th>
                 <th>Ville</th>
                 <th>Propriétaire</th>
-                <th title="Auto-entrepreneur">AUTO</th>
-                <th className="right">Provision AE</th>
+                <th>AUTO</th>
+                <th className="right">Provision Auto</th>
                 <th className="right">Forfait DCB</th>
                 <th>Statut</th>
               </tr>
@@ -191,7 +191,7 @@ export default function PageBiens() {
                   </td>
                   <td>
                     {bien.provision_ae_ref
-                      ? <span className="badge badge-success" title="Provision AE configurée">✓</span>
+                      ? <span className="badge badge-success" title="Provision Auto configurée">✓</span>
                       : <span className="badge badge-neutral">—</span>}
                   </td>
                   <td className="right montant">
