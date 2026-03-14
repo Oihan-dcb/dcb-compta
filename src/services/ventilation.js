@@ -92,9 +92,10 @@ export async function calculerVentilationResa(resa) {
   const accommodation = resa.fin_accommodation || 0
 
   // --- Commissionable base (= base Hospitable pour les commissions DCB) ---
-  // = accommodation + management_fee + host_service_fee (négatif)
-  // Correspond exactement à la colonne "Commissionable base" du statement Hospitable
-  const commissionableBase = accommodation + mgmtFeeAmount + hostServiceFee
+  // = accommodation + host_service_fee (négatif)
+  // Note: le management fee est EXCLU de la base (va dans MEN, pas dans COM)
+  // Source: statement Hospitable "Commission is charged on the accommodation after discounts, plus Host Service Fee"
+  const commissionableBase = accommodation + hostServiceFee
 
   // --- Calculer COM (commission DCB) ---
   // Taux — priorité : override par bien > proprio > défaut 25%
@@ -119,9 +120,12 @@ export async function calculerVentilationResa(resa) {
   // = Total forfait ménage voyageur - provision AE + management fee
   const menHT = totalMenageProvision - aeAmount + mgmtFeeAmount
 
+  // --- Taxes pass-through (taxe de séjour, etc.) ---
+  const taxesTotal = taxes.reduce((s, t) => s + (t.amount || 0), 0)
+
   // --- Calculer LOY (reversement propriétaire) ---
-  // = Revenue - COM - MEN - AE
-  const loyAmount = revenue - comHT - menHT - aeAmount
+  // = Revenue - COM - MEN - AE - Taxes (les taxes sont pass-through, hors calcul DCB)
+  const loyAmount = revenue - comHT - menHT - aeAmount - taxesTotal
 
   // --- Lignes de ventilation ---
   const lignes = []
