@@ -37,6 +37,14 @@ export async function syncProprietairesEvoliz() {
     throw new Error('Aucun client retourné par Evoliz — vérifier les clés API')
   }
 
+  // Dédupliquer par clientid (sécurité si pagination retourne des doublons)
+  const seen = new Set()
+  allClients = allClients.filter(c => {
+    if (seen.has(c.clientid)) return false
+    seen.add(c.clientid)
+    return true
+  })
+
   // 2. Préparer les lignes à upsert
   // Structure Evoliz : { clientid, name, civility, type, mobile, phone, address:{addr, postcode, town}, enabled }
   const rows = allClients
