@@ -154,6 +154,7 @@ function parseReservation(resa, bien, mois) {
     stay_type: resa.stay_type || 'guest',
     owner_stay: resa.owner_stay || false,
     reservation_status: resa.reservation_status,
+    final_status: resa.reservation_status?.current?.category || resa.status || 'accepted',
     // Financials en centimes
     fin_accommodation: fin.accommodation?.amount ?? null,
     fin_revenue: fin.revenue?.amount ?? null,
@@ -245,7 +246,9 @@ export async function getReservationsMois(mois) {
   const { data, error } = await supabase
     .from('reservation')
     .select(`
-      *,
+      id, code, platform, arrival_date, departure_date, nights, guest_name,
+      fin_revenue, fin_accommodation, owner_stay, ventilation_calculee, rapprochee,
+      final_status, mois_comptable,
       bien (
         id, hospitable_name, code, proprietaire_id,
         provision_ae_ref, forfait_dcb_ref, has_ae,
@@ -253,7 +256,7 @@ export async function getReservationsMois(mois) {
         proprietaire (id, nom, prenom, taux_commission)
       ),
       reservation_fee (*),
-      ventilation (code, taux_calcule)
+      ventilation (code, taux_calcule, montant_ht, montant_tva, montant_ttc, libelle)
     `)
     .eq('mois_comptable', mois)
     .order('arrival_date')
