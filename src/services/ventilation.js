@@ -71,22 +71,26 @@ export async function calculerVentilationResa(resa) {
   const revenue = resa.fin_revenue || 0
   if (revenue === 0) return // Réservation à €0, rien à ventiler
 
-  // --- Extraire les fees ---
-
-  // Guest fees
-  const guestFees = fees.filter(f => f.fee_type === 'guest_fee')
-  const cleaningFee = guestFees.find(f => f.label?.toLowerCase().includes('cleaning'))
-  const communityFee = guestFees.find(f => f.label?.toLowerCase().includes('community'))
-  const managementFee = guestFees.find(f => f.label?.toLowerCase().includes('management'))
-  // Host fees (Host Service Fee Hospitable = négatif, frais de la plateforme)
+  // --- Extraire les fees depuis financials.host ---
+  // Formule exacte vérifiée : revenue = accommodation + host_fees + guest_fees + taxes + adjustments + discounts
+  
+  // Host fees (Host Service Fee = négatif)
   const hostFees = fees.filter(f => f.fee_type === 'host_fee')
-  const hostServiceFee = hostFees.reduce((s, f) => s + (f.amount || 0), 0) // négatif
+  const hostServiceFee = hostFees.reduce((s, f) => s + (f.amount || 0), 0)
+  
+  // Guest fees = tout ce que le voyageur paie en plus des nuitées (ménage, community, management, etc.)
+  const guestFeesAll = fees.filter(f => f.fee_type === 'guest_fee')
+  const totalGuestFees = guestFeesAll.reduce((s, f) => s + (f.amount || 0), 0) // = MEN TTC total
 
-  const totalMenageProvision = (cleaningFee?.amount || 0) + (communityFee?.amount || 0)
-  const mgmtFeeAmount = managementFee?.amount || 0
+  // Pour compatibilité (AE utilise toujours le community fee comme provision)
+  const communityFee = guestFeesAll.find(f => f.label?.toLowerCase().includes('community'))
 
   // Taxes pass-through
   const taxes = fees.filter(f => f.fee_type === 'tax')
+  
+  // Adjustments et discounts
+  const adjustments = fees.filter(f => f.fee_type === 'adjustment')
+  const adjustmentsTotal = adjustments.reduce((s, f) => s + (f.amount || 0), 0)
 
   // Accommodation de base (nuitées seules, en centimes)
   const accommodation = resa.fin_accommodation || 0
@@ -119,8 +123,9 @@ export async function calculerVentilationResa(resa) {
     : 0
 
   // --- Calculer MEN (forfait ménage DCB) ---
-  // = Total forfait ménage voyageur + management fee - AE (montants TTC → on déduit HT)
-  const menTTC = totalMenageProvision + mgmtFeeAmount - aeAmount
+  // = Total guest_fees (tout ce que le voyageur paie hors nuitées) - provision AE
+  // totalGuestFees = accommodation_breakdown des fees, déjà TTC
+  const menTTC = totalGuestFees - aeAmount
   const menHT = Math.round(menTTC / (1 + TVA_RATE))
 
   // --- Taxes pass-through (taxe de séjour, etc.) ---
@@ -128,7 +133,8 @@ export async function calculerVentilationResa(resa) {
 
   // --- Calculer LOY (reversement propriétaire) ---
   // = Revenue - COM - MEN - AE - Taxes (les taxes sont pass-through, hors calcul DCB)
-  const loyAmount = revenue - comTTC - menTTC - taxesTotal
+  // LOY = tout ce qui reste après COM, MEN, taxes et ajustements
+  const loyAmount = revenue - comTTC - menTTC - taxesTotal - adjustmentsTotal
 
   // --- Lignes de ventilation ---
   const lignes = []
