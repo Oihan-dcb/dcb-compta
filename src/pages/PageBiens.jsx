@@ -75,7 +75,7 @@ export default function PageBiens() {
 
   const biensActifs = biens.filter(b => b.listed)
   const biensAvecProprio = biens.filter(b => b.proprietaire_id)
-  const biensAConfigurer = biens.filter(b => !b.proprietaire_id || (!b.provision_ae_ref && !b.forfait_dcb_ref))
+  const biensAConfigurer = biens.filter(b => !b.proprietaire_id || !b.provision_ae_ref)
 
   return (
     <div>
@@ -117,7 +117,7 @@ export default function PageBiens() {
         </div>
         <div className="stat-card">
           <div className="stat-label">Avec AE</div>
-          <div className="stat-value">{biens.filter(b => b.has_ae).length}</div>
+          <div className="stat-value">{biens.filter(b => b.provision_ae_ref).length}</div>
           <div className="stat-sub">auto-entrepreneur ménage</div>
         </div>
       </div>
@@ -163,7 +163,7 @@ export default function PageBiens() {
                 <th>Code</th>
                 <th>Ville</th>
                 <th>Propriétaire</th>
-                <th>AE</th>
+                <th title="Provision AE configurée">AE</th>
                 <th className="right">Provision AE</th>
                 <th className="right">Forfait DCB</th>
                 <th>Statut</th>
@@ -190,13 +190,9 @@ export default function PageBiens() {
                     )}
                   </td>
                   <td>
-                    <button
-                      onClick={() => toggleAE(bien.id, bien.has_ae)}
-                      className={`badge ${bien.has_ae ? 'badge-success' : 'badge-neutral'}`}
-                      style={{cursor:'pointer',border:'none',background:'none'}}
-                      title="Cliquer pour activer/désactiver AE">
-                      {bien.has_ae ? 'Oui' : 'Non'}
-                    </button>
+                    {bien.provision_ae_ref
+                      ? <span className="badge badge-success" title="Provision AE configurée">✓</span>
+                      : <span className="badge badge-neutral">—</span>}
                   </td>
                   <td className="right montant">
                     {editing[bien.id+'_provision_ae_ref'] !== undefined ? (

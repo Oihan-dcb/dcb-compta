@@ -118,9 +118,8 @@ export async function calculerVentilationResa(resa) {
   const comHT = Math.round(comTTC / (1 + TVA_RATE))
 
   // --- Calculer AE (provision auto-entrepreneur) ---
-  const aeAmount = bien.has_ae
-    ? (bien.provision_ae_ref || 0)
-    : 0
+  // Les AE travaillent sur tous les biens — si provision_ae_ref est rempli, elle s'applique
+  const aeAmount = bien.provision_ae_ref || 0
 
   // --- Calculer MEN (forfait ménage DCB) ---
   // Décomposition : ménage fixe (forfait_dcb_ref ou community fee) + autres frais (management, etc.)
