@@ -99,24 +99,12 @@ export async function calculerVentilationResa(resa) {
   // Accommodation de base (nuitées seules, en centimes)
   const accommodation = resa.fin_accommodation || 0
 
-  // --- Commissionable base (= base Hospitable pour les commissions DCB) ---
-  // = accommodation + host_service_fee (négatif)
-  // Note: le management fee est EXCLU de la base (va dans MEN, pas dans COM)
-  // Source: statement Hospitable "Commission is charged on the accommodation after discounts, plus Host Service Fee"
-  const commissionableBase = accommodation + hostServiceFee
-
-  // --- Calculer COM (commission DCB) ---
   // Taux — priorité : override par bien > proprio > défaut 25%
   const tauxCom = bien.taux_commission_override
     || (bien.proprietaire?.taux_commission ? bien.proprietaire.taux_commission / 100 : null)
     || 0.25
 
-  // Taux réel calculé depuis les financials pour vérification/affichage
-  const tauxCalcule = commissionableBase > 0
-    ? Math.round((revenue / commissionableBase - 1) * -10000) / 10000
-    : null
-
-  // COM = commissionable base × taux → résultat TTC (le taux Hospitable est TTC)
+  const tauxCalcule = tauxCom // taux configuré
 // ─────────────────────────────────────────────────────────────────────────
   // FORMULE DCB :
   //   Base commissionable = revenue - mgmt_fee_brut - cleaning_fee_brut - taxes
