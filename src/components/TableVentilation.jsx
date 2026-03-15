@@ -55,10 +55,15 @@ export default function TableVentilation({ recap, parProprio, reservations }) {
                 </tr>
               ))}
               <tr style={{ borderTop: '2px solid var(--border)', background: 'var(--brand-pale)' }}>
-                <td colSpan={3} style={{ fontWeight: 600 }}>Total</td>
-                <td className="right montant" style={{ fontWeight: 700 }}>{formatMontant(totalHT)}</td>
-                <td className="right montant" style={{ fontWeight: 700, color: 'var(--text-muted)' }}>{formatMontant(totalTVA)}</td>
-                <td className="right montant" style={{ fontWeight: 700 }}>{formatMontant(totalTTC)}</td>
+                <td colSpan={3} style={{ fontWeight: 600 }}>Total DCB</td>
+                <td className="right montant" style={{ fontWeight: 700 }}>{formatMontant(recap.filter(r=>!['LOY','VIR'].includes(r.code)).reduce((s,r)=>s+r.ht,0))}</td>
+                <td className="right montant" style={{ fontWeight: 700, color: 'var(--text-muted)' }}>{formatMontant(recap.filter(r=>!['LOY','VIR'].includes(r.code)).reduce((s,r)=>s+r.tva,0))}</td>
+                <td className="right montant" style={{ fontWeight: 700 }}>{formatMontant(recap.filter(r=>!['LOY','VIR'].includes(r.code)).reduce((s,r)=>s+r.ttc,0))}</td>
+              </tr>
+              <tr>
+                <td colSpan={6} style={{ fontStyle: 'italic', fontSize: '0.8em', color: 'var(--text-muted)', paddingTop: 6 }}>
+                  LOY et VIR exclus du total (reversements propriétaire — non comptabilisés en produit DCB)
+                </td>
               </tr>
             </tbody>
           </table>
@@ -89,11 +94,17 @@ export default function TableVentilation({ recap, parProprio, reservations }) {
               ))}
               <tr style={{ borderTop: '2px solid var(--border)', background: 'var(--brand-pale)' }}>
                 <td style={{ fontWeight: 600 }}>Total</td>
-                {['total_com','total_men','total_auto','total_loy'].map(k => (
+                {['total_com','total_men','total_auto'].map(k => (
                   <td key={k} className="right montant" style={{ fontWeight: 700 }}>{formatMontant(parProprio.reduce((s, p) => s + (p[k]||0), 0))}</td>
                 ))}
+                <td className="right montant" style={{ color: 'var(--text-muted)', fontStyle: 'italic' }}>{formatMontant(parProprio.reduce((s, p) => s + (p.total_loy||0), 0))}</td>
                 <td className="right montant" style={{ fontWeight: 700, color: 'var(--brand)' }}>{formatMontant(parProprio.reduce((s, p) => s + (p.total_vir||0), 0))}</td>
                 <td className="right montant" style={{ fontWeight: 700 }}>{formatMontant(parProprio.reduce((s, p) => s + p.total_com + p.total_men + p.total_auto, 0))}</td>
+              </tr>
+              <tr>
+                <td colSpan={7} style={{ fontStyle: 'italic', fontSize: '0.8em', color: 'var(--text-muted)', paddingTop: 6 }}>
+                  LOY et VIR exclus du Total DCB — reversements propriétaire
+                </td>
               </tr>
             </tbody>
           </table>
