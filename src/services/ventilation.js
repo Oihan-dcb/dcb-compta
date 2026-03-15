@@ -121,54 +121,51 @@ export async function calculerVentilationResa(resa) {
   const comTTC = Math.round(commissionableBase * tauxCom)
   const comHT = Math.round(comTTC / (1 + TVA_RATE))
 
-  // --- Calculer AE (provision auto-entrepreneur) ---
-  // Les AE travaillent sur tous les biens — si provision_ae_ref est rempli, elle s'applique
+  // --- Hospitable prend 0,77% de commission sur les fees directs ---
+  // Les fees bruts Hospitable = valeur réelle / 1,0077
+  // On divise pour retrouver la valeur avant commission Hospitable
+  const HOSP_FEE_RATE = 1.0077
+
+  // --- COMD : commission DCB sur résa directe = management fee / 1,0077 ---
+  const managementFeeRaw = (guestFeesAll.find(f => f.label?.toLowerCase().includes('management'))?.amount || 0)
+  const comdTTC = managementFeeRaw > 0 ? Math.round(managementFeeRaw / HOSP_FEE_RATE) : 0
+  const comdHT = comdTTC > 0 ? Math.round(comdTTC / (1 + TVA_RATE)) : 0
+
+  // --- FMEN : forfait ménage = community fee / 1,0077 ---
+  const communityFeeRaw = (guestFeesAll.find(f => f.label?.toLowerCase().includes('community'))?.amount || 0)
+  // Priorité : forfait_dcb_ref configuré manuellement sur le bien, sinon community fee corrigé
+  const fmenTTC = bien.forfait_dcb_ref || (communityFeeRaw > 0 ? Math.round(communityFeeRaw / HOSP_FEE_RATE) : 0)
+  const fmenHT = fmenTTC > 0 ? Math.round(fmenTTC / (1 + TVA_RATE)) : 0
+
+  // --- AUTO : provision auto-entrepreneur (hors TVA) ---
   const aeAmount = bien.provision_ae_ref || 0
 
-  // --- Calculer MEN (forfait ménage DCB) ---
-  // Décomposition : ménage fixe (forfait_dcb_ref ou community fee) + autres frais (management, etc.)
-  const communityFeeAmount = (guestFeesAll.find(f => f.label?.toLowerCase().includes('community'))?.amount || 0)
-  const managementFeeAmount = (guestFeesAll.find(f => f.label?.toLowerCase().includes('management'))?.amount || 0)
-  // Forfait ménage fixe = community fee (ou forfait_dcb_ref configuré sur le bien)
-  const forfaitMenageTTC = bien.forfait_dcb_ref || communityFeeAmount
-  // Autres frais = management fee + reste des guest_fees non couverts
-  const autresFraisTTC = totalGuestFees - forfaitMenageTTC - aeAmount
-  // MEN total = ménage + autres frais
-  const menTTC = totalGuestFees - aeAmount
-  const menHT = Math.round(menTTC / (1 + TVA_RATE))
-  // --- Taxes pass-through (taxe de séjour, etc.) ---
+  // --- Taxes pass-through ---
   const taxesTotal = taxes.reduce((s, t) => s + (t.amount || 0), 0)
 
-  // --- Calculer LOY (reversement propriétaire) ---
-  // = Revenue - COM - MEN - AE - Taxes (les taxes sont pass-through, hors calcul DCB)
-  // LOY = tout ce qui reste après HON, FMEN, taxes et ajustements
-  const loyAmount = revenue - comTTC - menTTC - taxesTotal - adjustmentsTotal
+  // --- LOY : reversement propriétaire ---
+  // = revenue - HON_TTC - COMD_TTC - FMEN_TTC - AUTO - TAXE - ajustements
+  const loyAmount = revenue - comTTC - comdTTC - fmenTTC - aeAmount - taxesTotal - adjustmentsTotal
 
   // --- Lignes de ventilation ---
   const lignes = []
 
-  // COM — commission DCB
+  // HON — honoraires de gestion (accommodation × taux, TVA 20%)
   if (comHT > 0) {
     lignes.push(ligneTVA('HON', 'Honoraires de gestion', comHT, bien, resa, tauxCalcule, comTTC))
   }
 
-  // MEN — forfait ménage fixe (community fee ou forfait_dcb_ref)
-  if (forfaitMenageTTC > 0) {
-    const htM = Math.round(forfaitMenageTTC / (1 + TVA_RATE))
-    lignes.push(ligneTVA('FMEN', 'Forfait ménage', htM, bien, resa, null, forfaitMenageTTC))
+  // COMD — commission directe DCB (management fee, TVA 20%)
+  if (comdHT > 0) {
+    lignes.push(ligneTVA('COMD', 'Commission directe', comdHT, bien, resa, null, comdTTC))
   }
 
-  // MEN_AUT — autres frais ménage (management fee, etc.)
-  if (autresFraisTTC > 0) {
-    const htA = Math.round(autresFraisTTC / (1 + TVA_RATE))
-    lignes.push(ligneTVA('FMEN', 'Autres frais ménage', htA, bien, resa, null, autresFraisTTC))
+  // FMEN — forfait ménage (community fee corrigé, TVA 20%)
+  if (fmenHT > 0) {
+    lignes.push(ligneTVA('FMEN', 'Forfait ménage', fmenHT, bien, resa, null, fmenTTC))
   }
 
   // AUTO — débours auto-entrepreneur (hors TVA)
-  if (aeAmount > 0) {
-  }
-
-  // AE — provision auto-entrepreneur (hors TVA)
   if (aeAmount > 0) {
     lignes.push(ligneHorsTVA('AUTO', 'Débours auto-entrepreneur', aeAmount, bien, resa))
   }
@@ -286,7 +283,7 @@ export async function getRecapVentilation(mois) {
     const propId = l.proprietaire_id || 'sans_proprio'
     const propNom = l.proprietaire ? `${l.proprietaire.prenom || ''} ${l.proprietaire.nom || ''}`.trim() : 'Sans propriétaire'
     if (!parProprio[propId]) {
-      parProprio[propId] = { id: propId, nom: propNom, codes: {}, total_com: 0, total_men: 0, total_loy: 0, total_auto: 0 }
+      parProprio[propId] = { id: propId, nom: propNom, codes: {}, total_com: 0, total_comd: 0, total_men: 0, total_loy: 0, total_auto: 0 }
     }
     const p = parProprio[propId]
     if (!p.codes[l.code]) p.codes[l.code] = { ht: 0, ttc: 0, nb: 0 }
@@ -294,6 +291,7 @@ export async function getRecapVentilation(mois) {
     p.codes[l.code].ttc += l.montant_ttc
     p.codes[l.code].nb++
     if (l.code === 'HON') p.total_com += l.montant_ht
+    if (l.code === 'COMD') p.total_comd += l.montant_ht
     if (l.code === 'FMEN') p.total_men += l.montant_ht
     if (l.code === 'LOY') p.total_loy += l.montant_ht
     if (l.code === 'AUTO') p.total_auto += l.montant_ht
