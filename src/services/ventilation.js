@@ -125,7 +125,10 @@ export async function calculerVentilationResa(resa) {
   const communityFeeRaw  = (guestFeesAll.find(f => f.label?.toLowerCase().includes('community'))?.amount || 0)
 
   // AUTO = provision AE (hors TVA)
-  const aeAmount = bien.provision_ae_ref || 0
+  // Pour les réservations annulées avec frais : pas de provision AE
+  // (le ménage n'a pas forcément eu lieu, ou partiel — AUTO = 0)
+  const isCancelled = resa.final_status === 'cancelled'
+  const aeAmount = isCancelled ? 0 : (bien.provision_ae_ref || 0)
 
   // Taxes pass-through
   const taxesTotal = taxes.reduce((s, t) => s + (t.amount || 0), 0)
