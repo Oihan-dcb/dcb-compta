@@ -67,7 +67,6 @@ export async function calculerVentilationMois(mois) {
  */
 export async function calculerVentilationResa(resa) {
   const bien = resa.bien
-  const fees = resa.reservation_fee || []
 
   if (!bien) throw new Error(`Bien manquant pour résa ${resa.code}`)
 
@@ -75,16 +74,30 @@ export async function calculerVentilationResa(resa) {
   const revenue = resa.fin_revenue || 0
   if (revenue === 0) return // Réservation à €0, rien à ventiler
 
-  // --- Extraire les fees depuis financials.host ---
-  // Formule exacte vérifiée : revenue = accommodation + host_fees + guest_fees + taxes + adjustments + discounts
-  
+  // --- Extraire les fees ---
+  // Priorité : reservation_fee en base (resas importées CSV)
+  // Fallback : hospitable_raw.financials.host (resas Booking/Airbnb sans CSV)
+  let fees = resa.reservation_fee || []
+
+  if (fees.length === 0 && resa.hospitable_raw?.financials?.host) {
+    const fin = resa.hospitable_raw.financials.host
+    const rawHostFees = fin.host_fees || []
+    const rawGuestFees = fin.guest_fees || []
+    const rawTaxes = fin.taxes || []
+    fees = [
+      ...rawHostFees.map(f => ({ label: f.label, amount: f.amount, fee_type: 'host_fee' })),
+      ...rawGuestFees.map(f => ({ label: f.label, amount: f.amount, fee_type: 'guest_fee' })),
+      ...rawTaxes.map(f => ({ label: f.label, amount: f.amount, fee_type: 'tax' })),
+    ]
+  }
+
   // Host fees (Host Service Fee = négatif)
   const hostFees = fees.filter(f => f.fee_type === 'host_fee')
   const hostServiceFee = hostFees.reduce((s, f) => s + (f.amount || 0), 0)
-  
+
   // Guest fees = tout ce que le voyageur paie en plus des nuitées (ménage, community, management, etc.)
   const guestFeesAll = fees.filter(f => f.fee_type === 'guest_fee')
-  const totalGuestFees = guestFeesAll.reduce((s, f) => s + (f.amount || 0), 0) // = MEN TTC total
+  const totalGuestFees = guestFeesAll.reduce((s, f) => s + (f.amount || 0), 0)
 
   // Pour compatibilité (AE utilise toujours le community fee comme provision)
   const communityFee = guestFeesAll.find(f => f.label?.toLowerCase().includes('community'))
