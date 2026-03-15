@@ -233,9 +233,40 @@ async function syncReservationFees(reservationId, hostFinancials) {
 
 /**
  * Fallback pour trouver le bien d'une réservation quand property_id est absent
+ * Stratégie en cascade : platform_id → nom annonce → correspondance partielle nom
  */
 function findBienByResa(resa, biens) {
-  // Essayer via code de réservation ou autres champs
+  if (!resa || !biens || biens.length === 0) return null
+
+  // 1. Match par platform_id (ex: ID Airbnb de l'annonce)
+  if (resa.platform_id) {
+    const byPlatform = biens.find(b =>
+      b.hospitable_id && b.hospitable_id.toString() === resa.platform_id.toString()
+    )
+    if (byPlatform) return byPlatform.id
+  }
+
+  // 2. Match par nom d'annonce exact (hospitable_name)
+  if (resa.property_name || resa.listing_name) {
+    const name = (resa.property_name || resa.listing_name || '').toLowerCase().trim()
+    const byName = biens.find(b =>
+      b.hospitable_name && b.hospitable_name.toLowerCase().trim() === name
+    )
+    if (byName) return byName.id
+  }
+
+  // 3. Match partiel sur le nom (ex: "416 Harea" ↔ "416")
+  if (resa.property_name || resa.listing_name) {
+    const name = (resa.property_name || resa.listing_name || '').toLowerCase()
+    const byPartial = biens.find(b =>
+      b.hospitable_name && (
+        name.includes(b.hospitable_name.toLowerCase().substring(0, 6)) ||
+        b.hospitable_name.toLowerCase().includes(name.substring(0, 6))
+      )
+    )
+    if (byPartial) return byPartial.id
+  }
+
   return null
 }
 
