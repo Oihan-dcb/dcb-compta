@@ -274,6 +274,77 @@ function ModalResa({ resa, onClose }) {
   if (!resa) return null
   const ventil = (resa.ventilation || [])
   const com = ventil.find(v => v.code === 'HON')
+  const isManual = resa.platform === 'manual'
+  const [editLines, setEditLines] = React.useState(null) // null = pas en édition
+  const [saving, setSaving] = React.useState(false)
+
+  // Initialiser les lignes éditables depuis la ventilation existante ou template vide
+  function startEdit() {
+    const existing = ventil.length > 0
+      ? ventil.map(v => ({ code: v.code, libelle: v.libelle, ht: (v.montant_ht/100).toFixed(2), tva: (v.montant_tva/100).toFixed(2), ttc: (v.montant_ttc/100).toFixed(2) }))
+      : [{ code: 'HON', libelle: 'Honoraires de gestion', ht: '', tva: '', ttc: '' }]
+    setEditLines(existing)
+  }
+
+  function addLine() {
+    setEditLines(l => [...l, { code: 'LOY', libelle: 'Reversement propriétaire', ht: '', tva: '', ttc: '' }])
+  }
+
+  function removeLine(i) {
+    setEditLines(l => l.filter((_, idx) => idx !== i))
+  }
+
+  function updateLine(i, field, value) {
+    setEditLines(l => l.map((line, idx) => {
+      if (idx !== i) return line
+      const updated = { ...line, [field]: value }
+      // Auto-calcul TTC = HT + TVA si les deux sont remplis
+      if (field === 'ht' || field === 'tva') {
+        const ht = parseFloat(field === 'ht' ? value : updated.ht) || 0
+        const tva = parseFloat(field === 'tva' ? value : updated.tva) || 0
+        if (ht > 0) updated.ttc = (ht + tva).toFixed(2)
+      }
+      return updated
+    }))
+  }
+
+  async function saveManualVentil() {
+    setSaving(true)
+    try {
+      const { supabase } = await import('../lib/supabase')
+      // Supprimer les anciennes lignes
+      await supabase.from('ventilation').delete().eq('reservation_id', resa.id)
+      // Insérer les nouvelles
+      const lignes = editLines
+        .filter(l => l.code && parseFloat(l.ttc) > 0)
+        .map(l => ({
+          reservation_id: resa.id,
+          bien_id: resa.bien?.id,
+          proprietaire_id: resa.bien?.proprietaire_id || null,
+          code: l.code.toUpperCase(),
+          libelle: l.libelle,
+          montant_ht: Math.round(parseFloat(l.ht || 0) * 100),
+          montant_tva: Math.round(parseFloat(l.tva || 0) * 100),
+          montant_ttc: Math.round(parseFloat(l.ttc || 0) * 100),
+          taux_tva: parseFloat(l.tva) > 0 ? 20 : 0,
+          mois_comptable: resa.mois_comptable,
+          calcul_source: 'manual',
+        }))
+      if (lignes.length > 0) {
+        const { error } = await supabase.from('ventilation').insert(lignes)
+        if (error) throw error
+      }
+      await supabase.from('reservation').update({ ventilation_calculee: true }).eq('id', resa.id)
+      setEditLines(null)
+      // Rafraîchir les données
+      onClose()
+    } catch (err) {
+      alert('Erreur : ' + err.message)
+    } finally {
+      setSaving(false)
+    }
+  }
+
   return (
     <div style={{position:'fixed',inset:0,background:'rgba(0,0,0,0.6)',zIndex:9999,display:'flex',alignItems:'center',justifyContent:'center'}} onClick={onClose}>
       <div style={{background:'#ffffff',color:'#1a1a2e',borderRadius:'12px',padding:'28px',minWidth:'500px',maxWidth:'620px',maxHeight:'85vh',overflowY:'auto',boxShadow:'0 20px 60px rgba(0,0,0,0.4)'}} onClick={e => e.stopPropagation()}>
@@ -296,9 +367,78 @@ function ModalResa({ resa, onClose }) {
           </div>
           <div><span style={{color:'#888',fontSize:'0.8em',textTransform:'uppercase'}}>Revenue net</span><br/><strong>{resa.fin_revenue ? formatMontant(resa.fin_revenue) : '—'}</strong></div>
         </div>
-        {ventil.length > 0 ? (
+        {/* ── Mode édition manuelle ── */}
+        {isManual && editLines ? (
+          <div style={{borderTop:'1px solid #eee',paddingTop:'16px'}}>
+            <div style={{fontWeight:700,marginBottom:'12px',fontSize:'0.8em',color:'#888',textTransform:'uppercase',letterSpacing:'0.08em'}}>Ventilation manuelle</div>
+            <table style={{width:'100%',fontSize:'0.85em',borderCollapse:'collapse'}}>
+              <thead><tr style={{color:'#888',fontSize:'0.8em'}}>
+                <th style={{textAlign:'left',paddingBottom:'6px',width:'70px'}}>Code</th>
+                <th style={{textAlign:'left',paddingBottom:'6px'}}>Libellé</th>
+                <th style={{textAlign:'right',paddingBottom:'6px',width:'75px'}}>HT €</th>
+                <th style={{textAlign:'right',paddingBottom:'6px',width:'65px'}}>TVA €</th>
+                <th style={{textAlign:'right',paddingBottom:'6px',width:'75px'}}>TTC €</th>
+                <th style={{width:'24px'}}></th>
+              </tr></thead>
+              <tbody>
+                {editLines.map((line, i) => (
+                  <tr key={i} style={{borderTop:'1px solid #f0f0f0'}}>
+                    <td style={{padding:'4px 4px 4px 0'}}>
+                      <select value={line.code} onChange={e => updateLine(i, 'code', e.target.value)}
+                        style={{width:'100%',fontSize:'0.85em',padding:'3px',border:'1px solid #ddd',borderRadius:4}}>
+                        {['HON','FMEN','AUTO','LOY','TAXE','VIR','DIV'].map(c => <option key={c}>{c}</option>)}
+                      </select>
+                    </td>
+                    <td style={{padding:'4px'}}>
+                      <input value={line.libelle} onChange={e => updateLine(i, 'libelle', e.target.value)}
+                        style={{width:'100%',fontSize:'0.85em',padding:'3px',border:'1px solid #ddd',borderRadius:4}}/>
+                    </td>
+                    <td style={{padding:'4px'}}>
+                      <input type="number" step="0.01" value={line.ht} onChange={e => updateLine(i, 'ht', e.target.value)}
+                        style={{width:'100%',fontSize:'0.85em',padding:'3px',border:'1px solid #ddd',borderRadius:4,textAlign:'right'}}/>
+                    </td>
+                    <td style={{padding:'4px'}}>
+                      <input type="number" step="0.01" value={line.tva} onChange={e => updateLine(i, 'tva', e.target.value)}
+                        style={{width:'100%',fontSize:'0.85em',padding:'3px',border:'1px solid #ddd',borderRadius:4,textAlign:'right'}}/>
+                    </td>
+                    <td style={{padding:'4px'}}>
+                      <input type="number" step="0.01" value={line.ttc} onChange={e => updateLine(i, 'ttc', e.target.value)}
+                        style={{width:'100%',fontSize:'0.85em',padding:'3px',border:'1px solid #ddd',borderRadius:4,textAlign:'right',fontWeight:600}}/>
+                    </td>
+                    <td style={{padding:'4px 0 4px 4px'}}>
+                      <button onClick={() => removeLine(i)}
+                        style={{background:'none',border:'none',cursor:'pointer',color:'#dc2626',fontSize:'1em',padding:'0 2px'}}>×</button>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+            <div style={{display:'flex',gap:'8px',marginTop:'12px'}}>
+              <button onClick={addLine}
+                style={{fontSize:'0.85em',padding:'5px 12px',background:'#f5f5f5',border:'1px solid #ddd',borderRadius:6,cursor:'pointer'}}>
+                + Ligne
+              </button>
+              <button onClick={saveManualVentil} disabled={saving}
+                style={{fontSize:'0.85em',padding:'5px 16px',background:'var(--brand)',color:'white',border:'none',borderRadius:6,cursor:'pointer',fontWeight:600}}>
+                {saving ? 'Enregistrement…' : '✓ Enregistrer'}
+              </button>
+              <button onClick={() => setEditLines(null)}
+                style={{fontSize:'0.85em',padding:'5px 12px',background:'#f5f5f5',border:'1px solid #ddd',borderRadius:6,cursor:'pointer',marginLeft:'auto'}}>
+                Annuler
+              </button>
+            </div>
+          </div>
+        ) : ventil.length > 0 ? (
           <>
-            <div style={{fontWeight:700,marginBottom:'12px',fontSize:'0.8em',color:'#888',textTransform:'uppercase',letterSpacing:'0.08em',borderTop:'1px solid #eee',paddingTop:'16px'}}>Ventilation</div>
+            <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',borderTop:'1px solid #eee',paddingTop:'16px',marginBottom:'12px'}}>
+              <div style={{fontWeight:700,fontSize:'0.8em',color:'#888',textTransform:'uppercase',letterSpacing:'0.08em'}}>Ventilation</div>
+              {isManual && (
+                <button onClick={startEdit}
+                  style={{fontSize:'0.8em',padding:'3px 10px',background:'#f5f5f5',border:'1px solid #ddd',borderRadius:5,cursor:'pointer'}}>
+                  ✏️ Modifier
+                </button>
+              )}
+            </div>
             <table style={{width:'100%',fontSize:'0.9em'}}>
               <thead><tr style={{color:'#888',fontSize:'0.8em'}}>
                 <th style={{textAlign:'left',paddingBottom:'6px'}}>Code</th>
@@ -326,7 +466,17 @@ function ModalResa({ resa, onClose }) {
             </table>
           </>
         ) : (
-          <div style={{color:'#999',fontSize:'0.9em',fontStyle:'italic'}}>Pas encore ventilée — lance la ventilation pour voir le détail.</div>
+          <div style={{borderTop:'1px solid #eee',paddingTop:'16px'}}>
+            <div style={{color:'#999',fontSize:'0.9em',fontStyle:'italic',marginBottom: isManual ? '12px' : '0'}}>
+              {isManual ? 'Réservation manuelle — saisie libre de la ventilation.' : 'Pas encore ventilée.'}
+            </div>
+            {isManual && (
+              <button onClick={startEdit}
+                style={{fontSize:'0.85em',padding:'6px 16px',background:'var(--brand)',color:'white',border:'none',borderRadius:6,cursor:'pointer',fontWeight:600}}>
+                ✏️ Saisir la ventilation
+              </button>
+            )}
+          </div>
         )}
       </div>
     </div>
