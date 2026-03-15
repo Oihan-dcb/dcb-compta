@@ -171,6 +171,16 @@ export async function calculerVentilationResa(resa) {
     lignes.push(ligneHorsTVA('LOY', 'Reversement propriétaire', loyAmount, bien, resa))
   }
 
+  // VIR — virement propriétaire = LOY + TAXE + remboursement commission Hospitable sur fees
+  // Pour les réservations directes : Hospitable retient 0,77% sur les fees (mgmt + cleaning)
+  // et rembourse ce montant avec le virement → VIR = LOY + TAXE + 0,77% × fees bruts
+  const feesHospBruts = managementFeeRaw + communityFeeRaw
+  const remboursHosp = isDirect ? Math.round(feesHospBruts * 0.0077) : 0
+  const virAmount = loyAmount + taxesTotal + remboursHosp
+  if (virAmount > 0) {
+    lignes.push(ligneHorsTVA('VIR', 'Virement propriétaire', virAmount, bien, resa))
+  }
+
   // TAX — taxes pass-through (tracé, hors TVA)
   for (const tax of taxes) {
     if (tax.amount > 0) {
