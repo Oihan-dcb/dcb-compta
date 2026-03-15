@@ -173,3 +173,20 @@ export async function getMouvementsARapprocher(mois) {
   if (error) throw error
   return data || []
 }
+
+/**
+ * Retourne la liste des mois ayant des mouvements en base
+ */
+export async function getMoisDispos() {
+  const { data, error } = await supabase
+    .from('mouvement_bancaire')
+    .select('mois_releve')
+    .order('mois_releve', { ascending: false })
+  if (error) throw new Error(error.message)
+  const seen = new Set()
+  for (const row of (data || [])) seen.add(row.mois_releve)
+  // Toujours inclure le mois courant
+  const courant = new Date().toISOString().substring(0, 7)
+  seen.add(courant)
+  return [...seen].sort((a, b) => b.localeCompare(a))
+}

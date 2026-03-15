@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef } from 'react'
-import { parseCSVCaisseEpargne, importerMouvements, getMouvementsMois } from '../services/banque'
+import { parseCSVCaisseEpargne, importerMouvements, getMouvementsMois, getMoisDispos } from '../services/banque'
+import MoisSelector from '../components/MoisSelector'
 import { formatMontant } from '../lib/hospitable'
 import { format } from 'date-fns'
 import { fr } from 'date-fns/locale'
@@ -27,9 +28,11 @@ export default function PageBanque() {
   const [preview, setPreview] = useState(null)
   const [error, setError] = useState(null)
   const [filtre, setFiltre] = useState('tous')
+  const [moisDispos, setMoisDispos] = useState([new Date().toISOString().substring(0, 7)])
   const fileRef = useRef()
 
   useEffect(() => { charger() }, [mois])
+  useEffect(() => { chargerMoisDispos() }, [])
 
   async function charger() {
     setLoading(true)
@@ -42,6 +45,13 @@ export default function PageBanque() {
     } finally {
       setLoading(false)
     }
+  }
+
+  async function chargerMoisDispos() {
+    try {
+      const mois_list = await getMoisDispos()
+      if (mois_list.length > 0) setMoisDispos(mois_list)
+    } catch (err) { /* silencieux */ }
   }
 
   async function handleFile(e) {
@@ -95,7 +105,7 @@ export default function PageBanque() {
           <p className="page-subtitle">Caisse d'Épargne — {mouvements.length} opérations</p>
         </div>
         <div style={{ display: 'flex', gap: 10, alignItems: 'center' }}>
-          <input type="month" className="form-input" style={{ width: 160 }} value={mois} onChange={e => setMois(e.target.value)} />
+          <MoisSelector mois={mois} setMois={setMois} moisDispos={moisDispos} />
           <button className="btn btn-secondary" onClick={charger} disabled={loading}>↺</button>
           <label className="btn btn-primary" style={{ cursor: 'pointer' }}>
             ↑ Import CSV
