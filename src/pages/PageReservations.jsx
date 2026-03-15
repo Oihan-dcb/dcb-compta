@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react'
 import { syncReservations, getReservationsMois } from '../services/syncReservations'
+import { agregerSejoursProrio } from '../services/ventilation'
 import { supabase } from '../lib/supabase'
 import { calculerVentilationMois, getRecapVentilation } from '../services/ventilation'
 import { setToken, formatMontant } from '../lib/hospitable'
@@ -273,7 +274,7 @@ export default function PageReservations() {
       ) : onglet === 'reservations' ? (
         <TableReservations reservations={reservations} onSelect={setSelectedResa} />
       ) : (
-        <TableVentilation recap={recap?.parCode || recap || []} parProprio={recap?.parProprio || []} mois={mois} />
+        <TableVentilation recap={recap?.parCode || recap || []} parProprio={recap?.parProprio || []} reservations={reservations} mois={mois} />
       )}
     </div>
   )
@@ -603,7 +604,7 @@ function TableReservations({ reservations, onSelect }) {
   )
 }
 
-function TableVentilation({ recap, parProprio, mois }) {
+function TableVentilation({ recap, parProprio, reservations, mois }) {
   const [vue, setVue] = useState('codes') // codes | proprios
   if (!recap || recap.length === 0) {
     return (
@@ -619,6 +620,7 @@ function TableVentilation({ recap, parProprio, mois }) {
   const totalTTC = recap.reduce((s, r) => s + r.ttc, 0)
 
   const codeOrder = ['HON', 'FMEN', 'AUTO', 'LOY', 'DIV', 'TAXE', 'VIR']
+  const sejoursProrio = reservations ? agregerSejoursProrio(reservations) : []
   const sorted = [...recap].sort((a, b) =>
     codeOrder.indexOf(a.code) - codeOrder.indexOf(b.code)
   )
@@ -714,6 +716,41 @@ function TableVentilation({ recap, parProprio, mois }) {
             </tbody>
           </table>
         </div>
+
+        {/* ── Séjours propriétaire (owner_stay) ── */}
+        {sejoursProrio.length > 0 && (
+          <div style={{marginTop: 24}}>
+            <div style={{fontWeight:700, fontSize:'0.8em', color:'var(--text-muted)', textTransform:'uppercase', letterSpacing:'0.08em', marginBottom:8}}>
+              Séjours propriétaire — frais ménage facturés
+            </div>
+            <div className="table-container">
+              <table>
+                <thead>
+                  <tr>
+                    <th>Propriétaire</th>
+                    <th className="right">Séjours</th>
+                    <th className="right">FMEN TTC</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {sejoursProrio.map(p => (
+                    <tr key={p.id}>
+                      <td style={{fontWeight:500}}>{p.nom}</td>
+                      <td className="right">{p.nb_resas}</td>
+                      <td className="right montant" style={{fontWeight:600}}>{formatMontant(p.total_fmen)}</td>
+                    </tr>
+                  ))}
+                  <tr style={{borderTop:'2px solid var(--border)', background:'var(--brand-pale)'}}>
+                    <td style={{fontWeight:600}}>Total</td>
+                    <td className="right" style={{fontWeight:700}}>{sejoursProrio.reduce((s,p) => s + p.nb_resas, 0)}</td>
+                    <td className="right montant" style={{fontWeight:700}}>{formatMontant(sejoursProrio.reduce((s,p) => s + p.total_fmen, 0))}</td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+          </div>
+        )}
+      </div>
       )}
     </div>
   )

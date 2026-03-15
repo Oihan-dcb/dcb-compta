@@ -65,6 +65,31 @@ export async function calculerVentilationMois(mois) {
 }
 
 /**
+ * Agrège les séjours proprio (owner_stay=true) pour affichage séparé
+ */
+export function agregerSejoursProrio(reservations) {
+  const sejours = {}
+  for (const resa of reservations) {
+    if (!resa.owner_stay) continue
+    const ventil = resa.ventilation || []
+    if (ventil.length === 0) continue
+    const propId = resa.bien?.proprietaire_id || 'sans_proprio'
+    const propNom = resa.bien?.proprietaire
+      ? `${resa.bien.proprietaire.nom}${resa.bien.proprietaire.prenom ? ' ' + resa.bien.proprietaire.prenom : ''}`
+      : 'Sans propriétaire'
+    if (!sejours[propId]) {
+      sejours[propId] = { id: propId, nom: propNom, total_fmen: 0, nb_resas: 0 }
+    }
+    const p = sejours[propId]
+    p.nb_resas++
+    for (const l of ventil) {
+      if (l.code === 'FMEN') p.total_fmen += l.montant_ttc
+    }
+  }
+  return Object.values(sejours).filter(p => p.total_fmen > 0)
+}
+
+/**
  * Calcule la ventilation d'une réservation individuelle
  */
 export async function calculerVentilationResa(resa) {
