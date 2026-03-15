@@ -2,7 +2,7 @@ import { useState } from 'react'
 import { formatMontant } from '../lib/hospitable'
 import { agregerSejoursProrio } from '../services/ventilation'
 
-const CODE_ORDER = ['HON', 'FMEN', 'AUTO', 'LOY', 'DIV', 'TAXE', 'VIR']
+const CODE_ORDER = ['HON', 'FMEN', 'AUTO', 'VIR', 'LOY', 'TAXE', 'DIV']
 
 export default function TableVentilation({ recap, parProprio, reservations }) {
   const [vue, setVue] = useState('codes')
@@ -44,25 +44,28 @@ export default function TableVentilation({ recap, parProprio, reservations }) {
               </tr>
             </thead>
             <tbody>
-              {sorted.map(r => (
-                <tr key={r.code}>
-                  <td><span className={`code-${r.code}`}>{r.code}</span></td>
-                  <td>{r.libelle}</td>
-                  <td className="right">{r.nb}</td>
-                  <td className="right montant">{formatMontant(r.ht)}</td>
-                  <td className="right montant" style={{ color: 'var(--text-muted)' }}>{r.tva > 0 ? formatMontant(r.tva) : '—'}</td>
-                  <td className="right montant">{formatMontant(r.ttc)}</td>
-                </tr>
-              ))}
+              {sorted.map(r => {
+                const isMemo = ['LOY','TAXE'].includes(r.code)
+                return (
+                  <tr key={r.code} style={{ fontStyle: isMemo ? 'italic' : 'normal', color: isMemo ? 'var(--text-muted)' : 'inherit' }}>
+                    <td><span className={`code-${r.code}`}>{r.code}</span>{isMemo && <span style={{fontSize:'0.75em',marginLeft:4}}>*</span>}</td>
+                    <td>{r.libelle}</td>
+                    <td className="right">{r.nb}</td>
+                    <td className="right montant">{formatMontant(r.ht)}</td>
+                    <td className="right montant">{r.tva > 0 ? formatMontant(r.tva) : '—'}</td>
+                    <td className="right montant">{formatMontant(r.ttc)}</td>
+                  </tr>
+                )
+              })}
               <tr style={{ borderTop: '2px solid var(--border)', background: 'var(--brand-pale)' }}>
                 <td colSpan={3} style={{ fontWeight: 600 }}>Total DCB</td>
-                <td className="right montant" style={{ fontWeight: 700 }}>{formatMontant(recap.filter(r=>!['LOY','VIR'].includes(r.code)).reduce((s,r)=>s+r.ht,0))}</td>
-                <td className="right montant" style={{ fontWeight: 700, color: 'var(--text-muted)' }}>{formatMontant(recap.filter(r=>!['LOY','VIR'].includes(r.code)).reduce((s,r)=>s+r.tva,0))}</td>
-                <td className="right montant" style={{ fontWeight: 700 }}>{formatMontant(recap.filter(r=>!['LOY','VIR'].includes(r.code)).reduce((s,r)=>s+r.ttc,0))}</td>
+                <td className="right montant" style={{ fontWeight: 700 }}>{formatMontant(recap.filter(r=>!['LOY','TAXE'].includes(r.code)).reduce((s,r)=>s+r.ht,0))}</td>
+                <td className="right montant" style={{ fontWeight: 700, color: 'var(--text-muted)' }}>{formatMontant(recap.filter(r=>!['LOY','TAXE'].includes(r.code)).reduce((s,r)=>s+r.tva,0))}</td>
+                <td className="right montant" style={{ fontWeight: 700 }}>{formatMontant(recap.filter(r=>!['LOY','TAXE'].includes(r.code)).reduce((s,r)=>s+r.ttc,0))}</td>
               </tr>
               <tr>
-                <td colSpan={6} style={{ fontStyle: 'italic', fontSize: '0.8em', color: 'var(--text-muted)', paddingTop: 6 }}>
-                  LOY et VIR exclus du total (reversements propriétaire — non comptabilisés en produit DCB)
+                <td colSpan={6} style={{ fontStyle: 'italic', fontSize: '0.78em', color: 'var(--text-muted)', paddingTop: 4 }}>
+                  * LOY et TAXE pour info — reversements propriétaire, non inclus dans le total DCB
                 </td>
               </tr>
             </tbody>
