@@ -92,6 +92,7 @@ export default function PageReservations() {
   const [mois, setMois] = useState(moisCourant)
   const [moisDispos, setMoisDispos] = useState([])
   const [reservations, setReservations] = useState([])
+  const [refreshKey, setRefreshKey] = useState(0)
   const [recap, setRecap] = useState([])
   const [loading, setLoading] = useState(false)
   const [syncing, setSyncing] = useState(false)
@@ -185,7 +186,7 @@ export default function PageReservations() {
 
   return (
     <div>
-      {selectedResa && <ModalResa resa={selectedResa} onClose={() => setSelectedResa(null)} />}
+      {selectedResa && <ModalResa resa={selectedResa} onClose={() => setSelectedResa(null)} onSaved={() => { setSelectedResa(null); setRefreshKey(k => k + 1) }} />}
       <div className="page-header">
         <div>
           <h1 className="page-title">Réservations</h1>
@@ -278,7 +279,7 @@ export default function PageReservations() {
   )
 }
 
-function ModalResa({ resa, onClose }) {
+function ModalResa({ resa, onClose, onSaved }) {
   if (!resa) return null
   const ventil = (resa.ventilation || [])
   const com = ventil.find(v => v.code === 'HON')
@@ -348,9 +349,7 @@ function ModalResa({ resa, onClose }) {
     setSaving(true)
     try {
       const { supabase } = await import('../lib/supabase')
-      // Supprimer les anciennes lignes
       await supabase.from('ventilation').delete().eq('reservation_id', resa.id)
-      // Insérer les nouvelles
       const lignes = editLines
         .filter(l => l.code && parseFloat(l.ttc) > 0)
         .map(l => ({
@@ -372,8 +371,9 @@ function ModalResa({ resa, onClose }) {
       }
       await supabase.from('reservation').update({ ventilation_calculee: true }).eq('id', resa.id)
       setEditLines(null)
-      // Rafraîchir les données
-      onClose()
+      // Notifier le parent pour recharger les données puis fermer
+      if (onSaved) onSaved()
+      else onClose()
     } catch (err) {
       alert('Erreur : ' + err.message)
     } finally {
