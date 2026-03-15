@@ -200,7 +200,7 @@ export default function PageReservations() {
 
   return (
     <div>
-      {selectedResa && <ModalResa resa={selectedResa} onClose={() => setSelectedResa(null)} onSaved={() => { setSelectedResa(null); setRefreshKey(k => k + 1) }} />}
+      {selectedResa && <ModalResa resa={selectedResa} onClose={() => setSelectedResa(null)} onSaved={(reventile) => { setSelectedResa(null); setRefreshKey(k => k + 1); if (reventile) setTimeout(lancerVentilation, 300) }} />}
       <div className="page-header">
         <div>
           <h1 className="page-title">Réservations</h1>
@@ -496,9 +496,13 @@ function ModalResa({ resa, onClose, onSaved }) {
                   </button>
                   <button onClick={async () => {
                     const { supabase } = await import('../lib/supabase')
-                    await supabase.from('reservation').update({ owner_stay: !resa.owner_stay }).eq('id', resa.id)
+                    const newVal = !resa.owner_stay
+                    await supabase.from('reservation').update({ owner_stay: newVal }).eq('id', resa.id)
+                    // Supprimer les ventilations de cette resa et reset flag
+                    await supabase.from('ventilation').delete().eq('reservation_id', resa.id)
+                    await supabase.from('reservation').update({ ventilation_calculee: false }).eq('id', resa.id)
                     onClose()
-                    if (onSaved) setTimeout(onSaved, 100)
+                    if (onSaved) setTimeout(() => onSaved(true), 100)
                   }}
                     style={{fontSize:'0.8em',padding:'3px 10px',background: resa.owner_stay ? '#f59e0b' : '#f3f4f6',color: resa.owner_stay ? 'white' : '#374151',border:'1px solid #d1d5db',borderRadius:5,cursor:'pointer'}}>
                     {resa.owner_stay ? '🏠 Proprio ✓' : '🏠 Proprio'}
@@ -547,8 +551,10 @@ function ModalResa({ resa, onClose, onSaved }) {
                   const { supabase } = await import('../lib/supabase')
                   const newVal = !resa.owner_stay
                   await supabase.from('reservation').update({ owner_stay: newVal }).eq('id', resa.id)
+                  await supabase.from('ventilation').delete().eq('reservation_id', resa.id)
+                  await supabase.from('reservation').update({ ventilation_calculee: false }).eq('id', resa.id)
                   onClose()
-                  if (onSaved) setTimeout(onSaved, 100)
+                  if (onSaved) setTimeout(() => onSaved(true), 100)
                 }}
                   style={{fontSize:'0.85em',padding:'6px 16px',background: resa.owner_stay ? '#f59e0b' : '#f3f4f6',color: resa.owner_stay ? 'white' : '#374151',border:'1px solid #d1d5db',borderRadius:6,cursor:'pointer',fontWeight:600}}>
                   {resa.owner_stay ? '🏠 Séjour proprio ✓' : '🏠 Marquer séjour proprio'}
