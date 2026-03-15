@@ -536,8 +536,8 @@ function ModalResa({ resa, onClose, onSaved }) {
                   const { supabase } = await import('../lib/supabase')
                   const newVal = !resa.owner_stay
                   await supabase.from('reservation').update({ owner_stay: newVal }).eq('id', resa.id)
-                  if (onSaved) onSaved()
-                  else onClose()
+                  onClose()
+                  if (onSaved) setTimeout(onSaved, 100)
                 }}
                   style={{fontSize:'0.85em',padding:'6px 16px',background: resa.owner_stay ? '#f59e0b' : '#f3f4f6',color: resa.owner_stay ? 'white' : '#374151',border:'1px solid #d1d5db',borderRadius:6,cursor:'pointer',fontWeight:600}}>
                   {resa.owner_stay ? '🏠 Séjour proprio ✓' : '🏠 Marquer séjour proprio'}
