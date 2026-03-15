@@ -119,9 +119,8 @@ export async function calculerVentilationResa(resa) {
   // ─────────────────────────────────────────────────────────────────────────
 
   const isDirect = resa.platform === 'direct'
-  const HOSP_FEE_RATE = isDirect ? 1.0077 : 1.0
 
-  // Fees bruts depuis Hospitable (utilisés bruts pour la base commissionable)
+  // Fees depuis Hospitable
   const managementFeeRaw = (guestFeesAll.find(f => f.label?.toLowerCase().includes('management'))?.amount || 0)
   const communityFeeRaw  = (guestFeesAll.find(f => f.label?.toLowerCase().includes('community'))?.amount || 0)
 
@@ -131,20 +130,41 @@ export async function calculerVentilationResa(resa) {
   // Taxes pass-through
   const taxesTotal = taxes.reduce((s, t) => s + (t.amount || 0), 0)
 
-  // Base commissionable = revenue - fees BRUTS - taxes - ajustements
-  const commissionableBase = revenue - managementFeeRaw - communityFeeRaw - taxesTotal - adjustmentsTotal
+  // ── Taux commission plateforme sur le ménage ──────────────────────────────
+  // Airbnb/Booking prennent ~13,95% sur le community fee
+  // Directes : Hospitable prend 0,77% (corrigé via /1,0077 sur FMEN)
+  const AIRBNB_CLEANING_RATE = 0.1395  // taux fixe Airbnb/Booking sur ménage
+
+  let commissionableBase, loyAmount, cleaningFeeNet, platformRateOnCleaning
+
+  if (isDirect) {
+    // ── DIRECTE ──────────────────────────────────────────────────────────
+    // Base = revenue - mgmt_fee - cleaning_fee - taxes
+    commissionableBase = revenue - managementFeeRaw - communityFeeRaw - taxesTotal - adjustmentsTotal
+    // Cleaning net = community fee / 1,0077 (corrige la commission Hospitable)
+    cleaningFeeNet = bien.forfait_dcb_ref || (communityFeeRaw > 0 ? Math.round(communityFeeRaw / 1.0077) : 0)
+    platformRateOnCleaning = 0
+  } else {
+    // ── AIRBNB / BOOKING / AUTRES ─────────────────────────────────────────
+    // Base = accommodation + host_service_fee (net plateforme, sans ménage)
+    commissionableBase = accommodation + hostServiceFee
+    // La plateforme prend 13,95% sur le community fee
+    cleaningFeeNet = bien.forfait_dcb_ref || communityFeeRaw
+    platformRateOnCleaning = AIRBNB_CLEANING_RATE
+  }
 
   // HON = base × taux (TVA 20%)
   const honTTC = Math.round(commissionableBase * tauxCom)
   const honHT  = Math.round(honTTC / (1 + TVA_RATE))
 
-  // LOY = base - HON (reversement propriétaire, hors TVA)
-  const loyAmount = commissionableBase - honTTC
+  // Part plateforme remboursée sur le ménage (ex: 13,95% × 97€ = 13,53€)
+  const platformRembourseMenage = Math.round(platformRateOnCleaning * communityFeeRaw)
 
-  // FMEN = cleaning fee CORRIGÉ (÷1,0077 pour directes) - AUTO (TVA 20%)
-  // Le /1,0077 corrige la commission Hospitable sur les fees directs
-  const cleaningFeeNet = bien.forfait_dcb_ref || (communityFeeRaw > 0 ? Math.round(communityFeeRaw / HOSP_FEE_RATE) : 0)
-  const fmenTTC = Math.max(0, cleaningFeeNet - aeAmount)
+  // LOY = base - HON + remboursement plateforme sur ménage
+  loyAmount = commissionableBase - honTTC + platformRembourseMenage
+
+  // FMEN = cleaning fee net - part plateforme - AUTO (TVA 20%)
+  const fmenTTC = Math.max(0, cleaningFeeNet - platformRembourseMenage - aeAmount)
   const fmenHT  = fmenTTC > 0 ? Math.round(fmenTTC / (1 + TVA_RATE)) : 0
 
   // --- Lignes de ventilation ---
@@ -171,9 +191,9 @@ export async function calculerVentilationResa(resa) {
     lignes.push(ligneHorsTVA('LOY', 'Reversement propriétaire', loyAmount, bien, resa))
   }
 
-  // VIR — virement propriétaire = LOY + TAXE + remboursement commission Hospitable sur fees
-  // Pour les réservations directes : Hospitable retient 0,77% sur les fees (mgmt + cleaning)
-  // et rembourse ce montant avec le virement → VIR = LOY + TAXE + 0,77% × fees bruts
+  // VIR — virement propriétaire
+  // Direct  : LOY + TAXE + 0,77% × (mgmt_fee + cleaning_fee) [Hospitable rembourse sa commission]
+  // Airbnb  : LOY + TAXE  [pas de remboursement]
   const feesHospBruts = managementFeeRaw + communityFeeRaw
   const remboursHosp = isDirect ? Math.round(feesHospBruts * 0.0077) : 0
   const virAmount = loyAmount + taxesTotal + remboursHosp
