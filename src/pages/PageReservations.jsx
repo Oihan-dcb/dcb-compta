@@ -1,3 +1,4 @@
+// build: 1773544024
 import { useState, useEffect } from 'react'
 import { syncReservations, getReservationsMois } from '../services/syncReservations'
 import { agregerSejoursProrio } from '../services/ventilation'
