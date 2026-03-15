@@ -341,7 +341,7 @@ export async function getRecapVentilation(mois) {
     const propId = l.proprietaire_id || 'sans_proprio'
     const propNom = l.proprietaire ? `${l.proprietaire.prenom || ''} ${l.proprietaire.nom || ''}`.trim() : 'Sans propriétaire'
     if (!parProprio[propId]) {
-      parProprio[propId] = { id: propId, nom: propNom, codes: {}, total_com: 0, total_men: 0, total_loy: 0, total_auto: 0 }
+      parProprio[propId] = { id: propId, nom: propNom, codes: {}, total_com: 0, total_men: 0, total_loy: 0, total_auto: 0, total_vir: 0 }
     }
     const p = parProprio[propId]
     if (!p.codes[l.code]) p.codes[l.code] = { ht: 0, ttc: 0, nb: 0 }
@@ -352,6 +352,7 @@ export async function getRecapVentilation(mois) {
     if (l.code === 'FMEN') p.total_men += l.montant_ht
     if (l.code === 'LOY') p.total_loy += l.montant_ht
     if (l.code === 'AUTO') p.total_auto += l.montant_ht
+    if (l.code === 'VIR') p.total_vir += l.montant_ttc
   }
 
   return {
