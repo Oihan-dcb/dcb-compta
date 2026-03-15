@@ -126,8 +126,7 @@ export default function PageReservations() {
       .reduce((s, r) => s + (r.ventilation || []).filter(v => codes.includes(v.code)).reduce((a, v) => a + v.montant_ttc, 0), 0)
     return sum > 0 ? sum : totalRevenue
   })()
-  // Total TTC ventilation = HON+FMEN+AUTO+VIR (sans LOY ni TAXE) — utilisé pour cohérence avec le tableau
-    return (
+  return (
     <div>
       {selectedResa && (
         <ModalResa
@@ -144,7 +143,7 @@ export default function PageReservations() {
       <div className="page-header">
         <div>
           <h1 className="page-title">Réservations</h1>
-          <p className="page-subtitle">{reservations.length} réservations · {formatMontant(revAffiche)} encaissé</p>
+          <p className="page-subtitle">{reservations.length} réservations · {formatMontant(richesseGeneree)} encaissé</p>
         </div>
         <div style={{ display: 'flex', gap: 10, alignItems: 'center' }}>
           <MoisSelector mois={mois} setMois={setMois} moisDispos={moisDispos} />
@@ -166,7 +165,7 @@ export default function PageReservations() {
         </div>
         <div className="stat-card">
           <div className="stat-label">Revenue total</div>
-          <div className="stat-value" style={{ fontSize: 20 }}>{formatMontant(revAffiche)}</div>
+          <div className="stat-value" style={{ fontSize: 20 }}>{formatMontant(richesseGeneree)}</div>
           <div className="stat-sub">net reçu en banque</div>
         </div>
         <div className="stat-card">
