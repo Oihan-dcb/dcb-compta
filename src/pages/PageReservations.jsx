@@ -247,10 +247,16 @@ export default function PageReservations() {
           <div className="stat-sub">virement identifié</div>
         </div>
         {nbManuellesNonVentilees > 0 && (
-          <div className="stat-card" style={{borderLeft:'3px solid #f59e0b',background:'#fffbeb'}}>
+          <div className="stat-card" style={{borderLeft:'3px solid #f59e0b',background:'#fffbeb',cursor:'pointer'}}
+            onClick={() => {
+              setOnglet('reservations')
+              const premiere = reservations.find(r => r.platform === 'manual' && (!r.ventilation || r.ventilation.length === 0))
+              if (premiere) setSelectedResa(premiere)
+            }}
+            title="Cliquer pour saisir la ventilation">
             <div className="stat-label" style={{color:'#92400e'}}>⚠ MANUELLES</div>
             <div className="stat-value" style={{color:'#d97706'}}>{nbManuellesNonVentilees}</div>
-            <div className="stat-sub" style={{color:'#b45309'}}>à saisir manuellement</div>
+            <div className="stat-sub" style={{color:'#b45309'}}>à saisir manuellement →</div>
           </div>
         )}
       </div>
