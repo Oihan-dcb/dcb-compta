@@ -751,7 +751,6 @@ function TableVentilation({ recap, parProprio, reservations, mois }) {
           </div>
         )}
       </div>
-      )}
     </div>
   )
 }
