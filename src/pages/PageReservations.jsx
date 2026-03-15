@@ -179,6 +179,7 @@ export default function PageReservations() {
 
   const nbVentilees = reservations.filter(r => r.ventilation_calculee).length
   const nbRapprochees = reservations.filter(r => r.rapprochee).length
+  const nbManuellesNonVentilees = reservations.filter(r => r.platform === 'manual' && (!r.ventilation || r.ventilation.length === 0)).length
   const totalRevenue = reservations.reduce((s, r) => s + (r.fin_revenue || 0), 0)
   const nbDirectes = reservations.filter(r => r.platform === 'direct' || r.platform === 'manual').length
 
@@ -231,6 +232,13 @@ export default function PageReservations() {
           <div className="stat-value">{nbRapprochees}/{reservations.length}</div>
           <div className="stat-sub">virement identifié</div>
         </div>
+        {nbManuellesNonVentilees > 0 && (
+          <div className="stat-card" style={{borderLeft:'3px solid #f59e0b',background:'#fffbeb'}}>
+            <div className="stat-label" style={{color:'#92400e'}}>⚠ MANUELLES</div>
+            <div className="stat-value" style={{color:'#d97706'}}>{nbManuellesNonVentilees}</div>
+            <div className="stat-sub" style={{color:'#b45309'}}>à saisir manuellement</div>
+          </div>
+        )}
       </div>
 
       {/* Alertes */}
@@ -577,6 +585,8 @@ function TableReservations({ reservations, onSelect }) {
               <td>
                 {r.owner_stay ? (
                   <span className="badge badge-neutral">Séjour proprio</span>
+                ) : r.platform === 'manual' && (!r.ventilation || r.ventilation.length === 0) ? (
+                  <span className="badge" style={{background:'#fff7ed',color:'#c2410c',border:'1px solid #fed7aa',borderRadius:'4px',padding:'2px 6px',fontSize:'0.75em',fontWeight:600}}>⚠ À saisir</span>
                 ) : r.rapprochee ? (
                   <span className="badge badge-success">✓ Rapprochée</span>
                 ) : r.ventilation_calculee ? (
