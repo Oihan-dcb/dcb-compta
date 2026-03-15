@@ -48,6 +48,7 @@ export default function PageBiens() {
 
   const [editing, setEditing] = useState({})
   const [proprietaires, setProprietaires] = useState([])
+  const [airbnbAccounts, setAirbnbAccounts] = useState(['DCB'])
 
   useEffect(() => {
     getProprietaires().then(setProprietaires).catch(() => {})
@@ -241,26 +242,27 @@ export default function PageBiens() {
                     )}
                   </td>
                   <td>
-                    {editing[bien.id+'_airbnb_account'] ? (
-                      <input
-                        autoFocus
-                        type="text"
-                        defaultValue={bien.airbnb_account || ''}
-                        placeholder="ex: DCB, Zora S., Vincent B."
-                        style={{width:'130px', padding:'3px 6px', fontSize:'0.85em', borderRadius:4, border:'1px solid var(--border)'}}
-                        onBlur={e => saveField(bien.id, 'airbnb_account', e.target.value || null)}
-                        onKeyDown={e => { if (e.key === 'Enter') e.target.blur(); if (e.key === 'Escape') setEditing(ev => { const n={...ev}; delete n[bien.id+'_airbnb_account']; return n }) }}
-                      />
-                    ) : (
-                      <span
-                        onClick={() => setEditing(e => ({...e, [bien.id+'_airbnb_account']: true}))}
-                        style={{cursor:'pointer', borderBottom: bien.airbnb_account ? 'none' : '1px dashed var(--text-muted)', fontSize:'0.85em'}}
-                        title="Titulaire du compte Airbnb (détermine le groupement des virements)">
-                        {bien.airbnb_account
-                          ? <span style={{background:'var(--brand-pale)', color:'var(--brand)', padding:'1px 6px', borderRadius:10, fontWeight:500}}>{bien.airbnb_account}</span>
-                          : <span style={{color:'var(--text-muted)'}}>— cliquer</span>}
-                      </span>
-                    )}
+                    <select
+                      value={bien.airbnb_account || ''}
+                      style={{width:'130px', padding:'3px 6px', fontSize:'0.85em', borderRadius:4, border:'1px solid var(--border)', background:'var(--bg)', color:'var(--text)', cursor:'pointer'}}
+                      onChange={e => {
+                        const val = e.target.value
+                        if (val === '__add__') {
+                          const nouveau = window.prompt('Nom du nouveau compte Airbnb :')
+                          if (nouveau && nouveau.trim()) {
+                            setAirbnbAccounts(prev => [...new Set([...prev, nouveau.trim()])])
+                            saveField(bien.id, 'airbnb_account', nouveau.trim())
+                          }
+                        } else {
+                          saveField(bien.id, 'airbnb_account', val || null)
+                        }
+                      }}>
+                      <option value="">— Aucun —</option>
+                      {airbnbAccounts.map(a => (
+                        <option key={a} value={a}>{a}</option>
+                      ))}
+                      <option value="__add__">➕ Ajouter…</option>
+                    </select>
                   </td>
                   <td>
                     {bien.provision_ae_ref
