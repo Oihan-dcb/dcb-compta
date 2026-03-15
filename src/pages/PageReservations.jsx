@@ -94,6 +94,18 @@ export default function PageReservations() {
   const [moisDispos, setMoisDispos] = useState([])
   const [reservations, setReservations] = useState([])
   const [refreshKey, setRefreshKey] = useState(0)
+
+  async function toggleOwnerStay(e, resa) {
+    e.stopPropagation() // Ne pas ouvrir le modal
+    try {
+      const { supabase } = await import('../lib/supabase')
+      const newVal = !resa.owner_stay
+      await supabase.from('reservation').update({ owner_stay: newVal }).eq('id', resa.id)
+      setRefreshKey(k => k + 1)
+    } catch (err) {
+      alert('Erreur : ' + err.message)
+    }
+  }
   const [recap, setRecap] = useState([])
   const [loading, setLoading] = useState(false)
   const [syncing, setSyncing] = useState(false)
@@ -235,10 +247,17 @@ export default function PageReservations() {
           <div className="stat-sub">virement identifié</div>
         </div>
         {nbManuellesNonVentilees > 0 && (
-          <div className="stat-card" style={{borderLeft:'3px solid #f59e0b',background:'#fffbeb'}}>
+          <div className="stat-card" style={{borderLeft:'3px solid #f59e0b',background:'#fffbeb',cursor:'pointer'}}
+            onClick={() => {
+              // Basculer sur l'onglet réservations et ouvrir la première manuelle non ventilée
+              setOnglet('reservations')
+              const premiere = reservations.find(r => r.platform === 'manual' && (!r.ventilation || r.ventilation.length === 0))
+              if (premiere) setSelectedResa(premiere)
+            }}
+            title="Cliquer pour saisir la ventilation">
             <div className="stat-label" style={{color:'#92400e'}}>⚠ MANUELLES</div>
             <div className="stat-value" style={{color:'#d97706'}}>{nbManuellesNonVentilees}</div>
-            <div className="stat-sub" style={{color:'#b45309'}}>à saisir manuellement</div>
+            <div className="stat-sub" style={{color:'#b45309'}}>à saisir manuellement →</div>
           </div>
         )}
       </div>
@@ -585,13 +604,31 @@ function TableReservations({ reservations, onSelect }) {
               </td>
               <td>
                 {r.owner_stay ? (
-                  <span className="badge badge-neutral">Séjour proprio</span>
+                  <span
+                    className="badge badge-neutral"
+                    onClick={r.platform === 'manual' ? e => toggleOwnerStay(e, r) : undefined}
+                    style={{cursor: r.platform === 'manual' ? 'pointer' : 'default'}}
+                    title={r.platform === 'manual' ? 'Cliquer pour retirer le statut séjour proprio' : ''}>
+                    🏠 Séjour proprio
+                  </span>
                 ) : r.platform === 'manual' && (!r.ventilation || r.ventilation.length === 0) ? (
-                  <span className="badge" style={{background:'#fff7ed',color:'#c2410c',border:'1px solid #fed7aa',borderRadius:'4px',padding:'2px 6px',fontSize:'0.75em',fontWeight:600}}>⚠ À saisir</span>
+                  <span
+                    className="badge"
+                    onClick={e => toggleOwnerStay(e, r)}
+                    style={{background:'#fff7ed',color:'#c2410c',border:'1px solid #fed7aa',borderRadius:'4px',padding:'2px 6px',fontSize:'0.75em',fontWeight:600,cursor:'pointer'}}
+                    title="Cliquer pour marquer comme séjour propriétaire">
+                    ⚠ À saisir
+                  </span>
                 ) : r.rapprochee ? (
                   <span className="badge badge-success">✓ Rapprochée</span>
                 ) : r.ventilation_calculee ? (
-                  <span className="badge badge-warning">Ventilée</span>
+                  <span
+                    className="badge badge-warning"
+                    onClick={r.platform === 'manual' ? e => toggleOwnerStay(e, r) : undefined}
+                    style={{cursor: r.platform === 'manual' ? 'pointer' : 'default'}}
+                    title={r.platform === 'manual' ? 'Cliquer pour marquer comme séjour propriétaire' : ''}>
+                    Ventilée
+                  </span>
                 ) : (
                   <span className="badge badge-info">Importée</span>
                 )}
