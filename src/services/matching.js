@@ -46,10 +46,10 @@ export async function syncPayouts(mois) {
     return syncPayoutsData(payouts, mois, log)
   } catch (err) {
     console.error('Erreur sync payouts:', err)
-    await supabase.from('import_log').insert({
+    try { await supabase.from('import_log').insert({
       type: 'hospitable_payouts', mois_concerne: mois,
       statut: 'error', nb_erreurs: 1, message: err.message,
-    })
+    }) } catch (_) {}
     throw err
   }
 }
@@ -168,17 +168,17 @@ async function matcherMouvement(mvt, payouts, reservations) {
 
   // --- Booking : match par référence ---
   if (canal === 'booking') {
-    return matcherBooking(mvt, payouts)
+    return matcherBooking(mvt, payouts, reservations)
   }
 
   // --- Stripe : match par mois + montant ---
   if (canal === 'stripe') {
-    return matcherStripe(mvt, payouts)
+    return matcherStripe(mvt, payouts, reservations)
   }
 
-  // --- Airbnb : match par montant + date, avec subset sum ---
+  // --- Airbnb : match direct sur resas si pas de payouts dispo ---
   if (canal === 'airbnb') {
-    return matcherAirbnb(mvt, payouts)
+    return matcherAirbnb(mvt, payouts, reservations)
   }
 
   // --- SEPA manuel : match par montant exact + nom ---
@@ -270,42 +270,44 @@ async function matcherStripe(mvt, payouts) {
  * Airbnb : match par montant ±2 centimes + date ±3 jours
  * Si pas de match simple → tente subset sum sur les payouts non matchés
  */
-async function matcherAirbnb(mvt, payouts) {
+async function matcherAirbnb(mvt, payouts, reservations = []) {
   const montant = mvt.credit
   const dateMvt = new Date(mvt.date_operation)
 
-  // Filtrer les payouts Airbnb non matchés
+  // --- Priorité 1 : match via payouts Hospitable si disponibles ---
   const airbnbPayouts = payouts.filter(p => p.platform === 'airbnb' && p.statut_matching === 'en_attente')
 
-  // Tentative 1 : match direct (1 payout = 1 virement)
-  const matchDirect = airbnbPayouts.find(p => {
-    const ecartMontant = Math.abs(p.amount - montant) <= 2
-    const datePayout = new Date(p.date_payout)
-    const ecartJours = Math.abs((datePayout - dateMvt) / (1000 * 60 * 60 * 24))
-    return ecartMontant && ecartJours <= 3
-  })
-
-  if (matchDirect) {
-    return confirmerMatch(mvt, [matchDirect], 'matche_auto', `Airbnb direct ${matchDirect.amount}c`)
-  }
-
-  // Tentative 2 : subset sum (virement groupé)
-  const subsetResult = subsetSum(airbnbPayouts, montant, dateMvt)
-
-  if (subsetResult.found) {
-    if (subsetResult.combinations.length === 1) {
-      // Combinaison unique → match automatique
+  if (airbnbPayouts.length > 0) {
+    const matchDirect = airbnbPayouts.find(p => {
+      const ecartMontant = Math.abs(p.amount - montant) <= 2
+      const datePayout = new Date(p.date_payout)
+      const ecartJours = Math.abs((datePayout - dateMvt) / (1000 * 60 * 60 * 24))
+      return ecartMontant && ecartJours <= 3
+    })
+    if (matchDirect) {
+      return confirmerMatch(mvt, [matchDirect], 'matche_auto', `Airbnb direct ${matchDirect.amount}c`)
+    }
+    const subsetResult = subsetSum(airbnbPayouts, montant, dateMvt)
+    if (subsetResult.found && subsetResult.combinations.length === 1) {
       return confirmerMatch(mvt, subsetResult.combinations[0], 'matche_auto',
         `Airbnb groupé (${subsetResult.combinations[0].length} résa)`)
-    } else {
-      // Plusieurs combinaisons possibles → proposer à la validation manuelle
-      await supabase.from('mouvement_bancaire').update({
-        statut_matching: 'en_attente',
-        // Stocker les propositions dans un champ JSON pour l'interface
-      }).eq('id', mvt.id)
-
-      return { matched: false, raison: `Airbnb : ${subsetResult.combinations.length} combinaisons possibles — validation manuelle requise`, propositions: subsetResult.combinations }
     }
+  }
+
+  // --- Priorité 2 : match direct sur réservations (si pas de payouts) ---
+  const airbnbResas = reservations.filter(r => r.platform === 'airbnb' && !r.rapprochee && r.fin_revenue > 0)
+
+  // Match exact sur 1 resa (tolérance ±2c)
+  const resaDirecte = airbnbResas.find(r => Math.abs((r.fin_revenue || 0) - montant) <= 2)
+  if (resaDirecte) {
+    return confirmerMatchResa(mvt, [resaDirecte], 'matche_auto', `Airbnb resa directe ${resaDirecte.code}`)
+  }
+
+  // Subset sum sur resas : virement groupé = somme de N resas
+  const subsetResas = subsetSumResas(airbnbResas, montant)
+  if (subsetResas.found && subsetResas.resas.length > 0) {
+    return confirmerMatchResa(mvt, subsetResas.resas, 'matche_auto',
+      `Airbnb groupé ${subsetResas.resas.length} resas`)
   }
 
   return { matched: false, raison: `Airbnb : aucun payout correspondant à ${montant}c (±2c, ±3j)` }
@@ -350,10 +352,10 @@ async function matcherSepa(mvt, reservations) {
 
     if (payout) {
       // Lier à la réservation
-      await supabase.from('payout_reservation').insert({
+      try { await supabase.from('payout_reservation').insert({
         payout_id: payout.id,
         reservation_id: match.id,
-      })
+      }) } catch (_) {}
     }
 
     // Marquer le mouvement et la réservation
@@ -476,6 +478,63 @@ function subsetSum(payouts, cible, dateMvt, maxItems = 8) {
   backtrack(0, [], 0)
 
   return { found: combinations.length > 0, combinations }
+}
+
+/**
+ * Subset sum sur réservations (fallback sans payouts)
+ */
+function subsetSumResas(resas, cible) {
+  const TOLERANCE = 2
+  // Cherche une combinaison unique dont la somme = cible ±2c
+  // D'abord match exact sur 1 resa
+  const direct = resas.find(r => Math.abs((r.fin_revenue||0) - cible) <= TOLERANCE)
+  if (direct) return { found: true, resas: [direct] }
+  // Puis combinaisons de 2-4 resas
+  for (let size = 2; size <= 4; size++) {
+    const result = findCombination(resas, cible, size, TOLERANCE)
+    if (result) return { found: true, resas: result }
+  }
+  return { found: false, resas: [] }
+}
+
+function findCombination(resas, cible, size, tol) {
+  function bt(start, current, sum) {
+    if (current.length === size) {
+      return Math.abs(sum - cible) <= tol ? [...current] : null
+    }
+    for (let i = start; i < resas.length; i++) {
+      current.push(resas[i])
+      const r = bt(i + 1, current, sum + (resas[i].fin_revenue||0))
+      current.pop()
+      if (r) return r
+    }
+    return null
+  }
+  return bt(0, [], 0)
+}
+
+/**
+ * Confirme un match virement ↔ réservations directes (sans payouts)
+ */
+async function confirmerMatchResa(mvt, resas, statut, note) {
+  const resaIds = resas.map(r => r.id)
+
+  await supabase.from('mouvement_bancaire').update({
+    statut_matching: statut,
+    note_matching: note,
+  }).eq('id', mvt.id)
+
+  if (resaIds.length > 0) {
+    await supabase.from('reservation')
+      .update({ rapprochee: true })
+      .in('id', resaIds)
+
+    await supabase.from('ventilation')
+      .update({ mouvement_id: mvt.id })
+      .in('reservation_id', resaIds)
+  }
+
+  return { matched: true, raison: note, reservationIds: resaIds }
 }
 
 // ============================================================
