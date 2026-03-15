@@ -140,9 +140,10 @@ export async function calculerVentilationResa(resa) {
   const taxesTotal = taxes.reduce((s, t) => s + (t.amount || 0), 0)
 
   // ── Taux commission plateforme sur le ménage ──────────────────────────────
-  // Airbnb/Booking prennent ~13,95% sur le community fee
-  // Directes : Hospitable prend 0,77% (corrigé via /1,0077 sur FMEN)
-  const AIRBNB_CLEANING_RATE = 0.1395  // taux fixe Airbnb/Booking sur ménage
+  // Airbnb  : 13,95% sur le community fee
+  // Booking : 13,83% sur le frais de ménage
+  // Direct  : 0,77% (corrigé via /1,0077 sur FMEN)
+  const PLATFORM_CLEANING_RATES = { airbnb: 0.1395, booking: 0.1383 }
 
   let commissionableBase, loyAmount, cleaningFeeNet, platformRateOnCleaning
 
@@ -155,11 +156,12 @@ export async function calculerVentilationResa(resa) {
     platformRateOnCleaning = 0
   } else {
     // ── AIRBNB / BOOKING / AUTRES ─────────────────────────────────────────
-    // Base = accommodation + host_service_fee (net plateforme, sans ménage)
+    // Base = net income - ménage = (accommodation + host_fees) - community_fee
+    // hostServiceFee inclut TOUS les host_fees (HSF + Payment Charge pour Booking)
     commissionableBase = accommodation + hostServiceFee
-    // La plateforme prend 13,95% sur le community fee
+    // Taux spécifique à la plateforme sur le ménage
     cleaningFeeNet = bien.forfait_dcb_ref || communityFeeRaw
-    platformRateOnCleaning = AIRBNB_CLEANING_RATE
+    platformRateOnCleaning = PLATFORM_CLEANING_RATES[resa.platform] || PLATFORM_CLEANING_RATES.airbnb
   }
 
   // HON = base × taux (TVA 20%)
