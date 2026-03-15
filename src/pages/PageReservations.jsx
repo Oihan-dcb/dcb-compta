@@ -275,8 +275,8 @@ function ModalResa({ resa, onClose }) {
   const ventil = (resa.ventilation || [])
   const com = ventil.find(v => v.code === 'HON')
   const isManual = resa.platform === 'manual'
-  const [editLines, setEditLines] = React.useState(null) // null = pas en édition
-  const [saving, setSaving] = React.useState(false)
+  const [editLines, setEditLines] = useState(null) // null = pas en édition
+  const [saving, setSaving] = useState(false)
 
   // Initialiser les lignes éditables depuis la ventilation existante ou template vide
   function startEdit() {
