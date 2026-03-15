@@ -48,10 +48,23 @@ export default function PageBiens() {
 
   const [editing, setEditing] = useState({})
   const [proprietaires, setProprietaires] = useState([])
-  const [airbnbAccounts, setAirbnbAccounts] = useState(['DCB'])
+  const [airbnbAccounts, setAirbnbAccounts] = useState([])
 
   useEffect(() => {
     getProprietaires().then(setProprietaires).catch(() => {})
+  }, [])
+
+  useEffect(() => {
+    // Charger les comptes Airbnb distincts depuis Supabase (source de vérité unique)
+    import('../lib/supabase').then(({ supabase }) => {
+      supabase.from('bien').select('airbnb_account').not('airbnb_account', 'is', null)
+        .then(({ data }) => {
+          if (data) {
+            const uniq = [...new Set(data.map(d => d.airbnb_account).filter(Boolean))].sort()
+            setAirbnbAccounts(uniq)
+          }
+        })
+    })
   }, [])
 
   async function saveProprietaire(bienId, proprietaireId) {
@@ -250,8 +263,18 @@ export default function PageBiens() {
                         if (val === '__add__') {
                           const nouveau = window.prompt('Nom du nouveau compte Airbnb :')
                           if (nouveau && nouveau.trim()) {
-                            setAirbnbAccounts(prev => [...new Set([...prev, nouveau.trim()])])
-                            saveField(bien.id, 'airbnb_account', nouveau.trim())
+                            // Sauvegarder en base, puis recharger la liste depuis Supabase
+                            saveField(bien.id, 'airbnb_account', nouveau.trim()).then(() => {
+                              import('../lib/supabase').then(({ supabase }) => {
+                                supabase.from('bien').select('airbnb_account').not('airbnb_account', 'is', null)
+                                  .then(({ data }) => {
+                                    if (data) {
+                                      const uniq = [...new Set(data.map(d => d.airbnb_account).filter(Boolean))].sort()
+                                      setAirbnbAccounts(uniq)
+                                    }
+                                  })
+                              })
+                            })
                           }
                         } else {
                           saveField(bien.id, 'airbnb_account', val || null)
