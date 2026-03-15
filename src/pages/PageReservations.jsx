@@ -119,18 +119,15 @@ export default function PageReservations() {
   const nbManuellesNonVentilees = reservations.filter(r => r.platform === 'manual' && (!r.ventilation || r.ventilation.length === 0)).length
   const totalRevenue = reservations.filter(r => !r.owner_stay).reduce((s, r) => s + (r.fin_revenue || 0), 0)
   // Richesse générée = total TTC ventilation (HON+FMEN+AUTO+VIR) si ventilé, sinon fin_revenue
-  const totalVentilCalc = (() => {
-    const codes = ['HON','FMEN','AUTO','VIR']
-    let sum = 0
-    for (const r of reservations) {
-      if (r.owner_stay) continue
-      for (const v of (r.ventilation || [])) {
-        if (codes.includes(v.code)) sum += v.montant_ttc
-      }
+  const CODES_RICHESSE = ['HON','FMEN','AUTO','VIR']
+  let _richesseSum = 0
+  for (const _r of reservations) {
+    if (_r.owner_stay) continue
+    for (const _v of (_r.ventilation || [])) {
+      if (CODES_RICHESSE.includes(_v.code)) _richesseSum += _v.montant_ttc
     }
-    return sum
-  })()
-  const richesseGeneree = totalVentilCalc > 0 ? totalVentilCalc : totalRevenue
+  }
+  const richesseGeneree = _richesseSum > 0 ? _richesseSum : totalRevenue
   // Total TTC ventilation = HON+FMEN+AUTO+VIR (sans LOY ni TAXE) — utilisé pour cohérence avec le tableau
     return (
     <div>
