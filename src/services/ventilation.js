@@ -42,7 +42,9 @@ export async function calculerVentilationMois(mois) {
     .eq('mois_comptable', mois)
     .eq('ventilation_calculee', false)
     .eq('owner_stay', false)       // Ignorer séjours proprio
-    .neq('final_status', 'cancelled')
+    // NE PAS exclure les annulées ici — certaines ont des valeurs (Airbnb/Booking)
+    // Le filtre revenue=0 dans calculerVentilationResa gère les vraies annulées à zéro
+    // Les directes annulées sont gérées par early return dans calculerVentilationResa
 
   if (error) throw error
 
