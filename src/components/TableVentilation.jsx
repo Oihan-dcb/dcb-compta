@@ -108,18 +108,26 @@ export default function TableVentilation({ recap, parProprio, reservations }) {
           <div className="table-container">
             <table>
               <thead>
-                <tr><th>Propriétaire</th><th className="right">Séjours</th><th className="right">FMEN TTC</th></tr>
+                <tr>
+                  <th>Propriétaire</th>
+                  <th>Biens</th>
+                  <th className="right">Séjours</th>
+                  <th className="right">FMEN TTC</th>
+                </tr>
               </thead>
               <tbody>
                 {sejoursProrio.map(p => (
                   <tr key={p.id}>
                     <td style={{ fontWeight: 500 }}>{p.nom}</td>
+                    <td style={{ fontSize: '0.8em', color: 'var(--text-muted)' }}>{(p.biens||[]).join(', ') || '—'}</td>
                     <td className="right">{p.nb_resas}</td>
-                    <td className="right montant" style={{ fontWeight: 600 }}>{formatMontant(p.total_fmen)}</td>
+                    <td className="right montant" style={{ fontWeight: 600 }}>
+                      {p.total_fmen > 0 ? formatMontant(p.total_fmen) : <span style={{color:'var(--text-muted)'}}>—</span>}
+                    </td>
                   </tr>
                 ))}
                 <tr style={{ borderTop: '2px solid var(--border)', background: 'var(--brand-pale)' }}>
-                  <td style={{ fontWeight: 600 }}>Total</td>
+                  <td colSpan={2} style={{ fontWeight: 600 }}>Total</td>
                   <td className="right" style={{ fontWeight: 700 }}>{sejoursProrio.reduce((s, p) => s + p.nb_resas, 0)}</td>
                   <td className="right montant" style={{ fontWeight: 700 }}>{formatMontant(sejoursProrio.reduce((s, p) => s + p.total_fmen, 0))}</td>
                 </tr>
