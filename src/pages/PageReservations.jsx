@@ -118,9 +118,21 @@ export default function PageReservations() {
   const nbRapprochees = reservations.filter(r => r.rapprochee).length
   const nbManuellesNonVentilees = reservations.filter(r => r.platform === 'manual' && (!r.ventilation || r.ventilation.length === 0)).length
   const totalRevenue = reservations.filter(r => !r.owner_stay).reduce((s, r) => s + (r.fin_revenue || 0), 0)
-  const nbDirectes = reservations.filter(r => r.platform === 'direct' || r.platform === 'manual').length
-
-  return (
+  // Richesse générée = total TTC ventilation (HON+FMEN+AUTO+VIR) si ventilé, sinon fin_revenue
+  const totalVentilCalc = (() => {
+    const codes = ['HON','FMEN','AUTO','VIR']
+    let sum = 0
+    for (const r of reservations) {
+      if (r.owner_stay) continue
+      for (const v of (r.ventilation || [])) {
+        if (codes.includes(v.code)) sum += v.montant_ttc
+      }
+    }
+    return sum
+  })()
+  const richesseGeneree = totalVentilCalc > 0 ? totalVentilCalc : totalRevenue
+  // Total TTC ventilation = HON+FMEN+AUTO+VIR (sans LOY ni TAXE) — utilisé pour cohérence avec le tableau
+    return (
     <div>
       {selectedResa && (
         <ModalResa
@@ -137,7 +149,7 @@ export default function PageReservations() {
       <div className="page-header">
         <div>
           <h1 className="page-title">Réservations</h1>
-          <p className="page-subtitle">{reservations.length} réservations · {formatMontant(totalRevenue)} encaissé</p>
+          <p className="page-subtitle">{reservations.length} réservations · {formatMontant(revAffiche)} encaissé</p>
         </div>
         <div style={{ display: 'flex', gap: 10, alignItems: 'center' }}>
           <MoisSelector mois={mois} setMois={setMois} moisDispos={moisDispos} />
@@ -159,7 +171,7 @@ export default function PageReservations() {
         </div>
         <div className="stat-card">
           <div className="stat-label">Revenue total</div>
-          <div className="stat-value" style={{ fontSize: 20 }}>{formatMontant(totalRevenue)}</div>
+          <div className="stat-value" style={{ fontSize: 20 }}>{formatMontant(revAffiche)}</div>
           <div className="stat-sub">net reçu en banque</div>
         </div>
         <div className="stat-card">
