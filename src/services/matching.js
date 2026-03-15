@@ -646,3 +646,35 @@ export async function getMatchingStats(mois) {
   stats.taux = stats.total > 0 ? Math.round((stats.auto + stats.manuel) / stats.total * 100) : 0
   return stats
 }
+
+/**
+ * Valide manuellement un match virement ↔ réservations
+ * Version sans payouts — directement sur les réservations
+ */
+export async function validerMatchManuelResas(mouvementId, resaIds) {
+  if (!resaIds || resaIds.length === 0) throw new Error('Aucune réservation sélectionnée')
+
+  const { data: mvt, error: mvtErr } = await supabase
+    .from('mouvement_bancaire')
+    .select('*')
+    .eq('id', mouvementId)
+    .single()
+
+  if (mvtErr || !mvt) throw new Error('Mouvement introuvable')
+
+  await supabase.from('mouvement_bancaire')
+    .update({ statut_matching: 'matche_manuel', note_matching: `Manuel — ${resaIds.length} resa(s)` })
+    .eq('id', mouvementId)
+
+  if (resaIds.length > 0) {
+    await supabase.from('reservation')
+      .update({ rapprochee: true })
+      .in('id', resaIds)
+
+    await supabase.from('ventilation')
+      .update({ mouvement_id: mouvementId })
+      .in('reservation_id', resaIds)
+  }
+
+  return { matched: true, resaIds }
+}

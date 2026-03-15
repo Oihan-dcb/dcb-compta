@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react'
 import { setToken, formatMontant } from '../lib/hospitable'
-import { syncPayouts, lancerMatching, marquerNonRapprochable, getPayoutsMois, getMatchingStats } from '../services/matching'
+import { syncPayouts, lancerMatching, marquerNonRapprochable, getPayoutsMois, getMatchingStats, validerMatchManuelResas } from '../services/matching'
 import { getMouvementsARapprocher } from '../services/banque'
 import { supabase } from '../lib/supabase'
 import { format } from 'date-fns'
@@ -10,14 +10,6 @@ import MoisSelector from '../components/MoisSelector'
 const HOSP_TOKEN = import.meta.env.VITE_HOSPITABLE_TOKEN
 const moisCourant = new Date().toISOString().substring(0, 7)
 
-async function validerMatchManuelResas(mvtId, resaIds) {
-  await supabase.from('mouvement_bancaire')
-    .update({ statut_matching: 'matche_manuel', note_matching: 'Validation manuelle' })
-    .eq('id', mvtId)
-  if (resaIds.length > 0) {
-    await supabase.from('reservation').update({ rapprochee: true }).in('id', resaIds)
-  }
-}
 
 export default function PageMatching() {
   const [mois, setMois] = useState(moisCourant)

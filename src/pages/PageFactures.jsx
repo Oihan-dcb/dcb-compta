@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react'
+import MoisSelector from '../components/MoisSelector'
 import {
   getFacturesMois, genererFacturesMois, validerFacture,
   getStatsFactures, exportCSVComptable, telechargerCSV
@@ -19,6 +20,7 @@ const STATUTS = {
 
 export default function PageFactures() {
   const [mois, setMois] = useState(moisCourant)
+  const [moisDispos, setMoisDispos] = useState([moisCourant])
   const [factures, setFactures] = useState([])
   const [stats, setStats] = useState(null)
   const [loading, setLoading] = useState(false)
@@ -31,6 +33,16 @@ export default function PageFactures() {
   const [success, setSuccess] = useState(null)
 
   useEffect(() => { charger() }, [mois])
+  useEffect(() => {
+    import('../lib/supabase').then(function(mod) {
+      mod.supabase.from('facture_evoliz').select('mois_facturation').then(function(res) {
+        if (res.data) {
+          var uniq = [...new Set(res.data.map(function(d) { return d.mois_facturation }).filter(Boolean))].sort(function(a,b) { return b.localeCompare(a) })
+          if (uniq.length) setMoisDispos(function(p) { return [...new Set([...p, ...uniq])] })
+        }
+      })
+    })
+  }, [])
 
   async function charger() {
     setLoading(true)
@@ -111,7 +123,7 @@ export default function PageFactures() {
           </p>
         </div>
         <div style={{ display: 'flex', gap: 10, alignItems: 'center' }}>
-          <input type="month" className="form-input" style={{ width: 160 }} value={mois} onChange={e => setMois(e.target.value)} />
+          <MoisSelector mois={mois} setMois={setMois} moisDispos={moisDispos} />
           <button className="btn btn-secondary" onClick={charger} disabled={loading}>↺</button>
           <button className="btn btn-secondary" onClick={exporterCSV} disabled={exporting || factures.length === 0}>
             {exporting ? <><span className="spinner" /> Export…</> : '↓ Export comptable'}
