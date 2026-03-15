@@ -76,11 +76,14 @@ export default function PageBiens() {
     try {
       const { supabase } = await import('../lib/supabase')
       // taux_commission_override est un ratio (ex: 0.20 pour 20%), pas en centimes
-      const numVal = value === '' || value === null ? null
-        : field === 'taux_commission_override' ? value  // déjà un ratio (ex: 0.25)
+      // Champs texte : sauvegarder tel quel
+      const TEXT_FIELDS = ['airbnb_account']
+      const finalVal = value === '' || value === null ? null
+        : TEXT_FIELDS.includes(field) ? value
+        : field === 'taux_commission_override' ? value
         : Math.round(parseFloat(value) * 100)
-      await supabase.from('bien').update({ [field]: numVal }).eq('id', bienId)
-      setBiens(prev => prev.map(b => b.id === bienId ? { ...b, [field]: numVal } : b))
+      await supabase.from('bien').update({ [field]: finalVal }).eq('id', bienId)
+      setBiens(prev => prev.map(b => b.id === bienId ? { ...b, [field]: finalVal } : b))
       setEditing(e => { const n = {...e}; delete n[bienId+'_'+field]; delete n[bienId+'_taux_com']; return n })
     } catch (err) {
       alert('Erreur : ' + err.message)
