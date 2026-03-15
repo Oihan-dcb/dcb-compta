@@ -132,20 +132,27 @@ export async function lancerMatching(mois) {
 
   if (pErr) throw pErr
 
-  // Récupérer les réservations du mois non rapprochées
+  // Récupérer les réservations du mois non rapprochées + airbnb_account du bien
   const { data: reservations, error: rErr } = await supabase
     .from('reservation')
-    .select('id, code, platform, fin_revenue, arrival_date, guest_name')
+    .select('id, code, platform, fin_revenue, arrival_date, guest_name, bien(code, airbnb_account)')
     .eq('mois_comptable', mois)
     .eq('rapprochee', false)
     .eq('owner_stay', false)
 
   if (rErr) throw rErr
 
+  // Enrichir les resas avec airbnb_account pour faciliter le matching
+  const resasEnrichies = (reservations || []).map(r => ({
+    ...r,
+    airbnb_account: r.bien?.airbnb_account || null,
+    bien_code: r.bien?.code || null,
+  }))
+
   // Matcher chaque mouvement
   for (const mvt of (mouvements || [])) {
     try {
-      const matchResult = await matcherMouvement(mvt, payouts || [], reservations || [])
+      const matchResult = await matcherMouvement(mvt, payouts || [], resasEnrichies)
       if (matchResult.matched) {
         result.matched++
       } else {
@@ -294,23 +301,49 @@ async function matcherAirbnb(mvt, payouts, reservations = []) {
     }
   }
 
-  // --- Priorité 2 : match direct sur réservations (si pas de payouts) ---
+  // --- Priorité 2 : match direct sur réservations groupées par compte Airbnb ---
+  // Toutes les resas Airbnb non rapprochées
   const airbnbResas = reservations.filter(r => r.platform === 'airbnb' && !r.rapprochee && r.fin_revenue > 0)
 
-  // Match exact sur 1 resa (tolérance ±2c)
-  const resaDirecte = airbnbResas.find(r => Math.abs((r.fin_revenue || 0) - montant) <= 2)
-  if (resaDirecte) {
-    return confirmerMatchResa(mvt, [resaDirecte], 'matche_auto', `Airbnb resa directe ${resaDirecte.code}`)
+  // Grouper par airbnb_account (dynamique — basé sur les données en base)
+  // Si un bien n'a pas de compte renseigné → groupe "null" (traité individuellement)
+  const groupes = {}
+  for (const r of airbnbResas) {
+    const compte = r.airbnb_account || '__inconnu__'
+    if (!groupes[compte]) groupes[compte] = []
+    groupes[compte].push(r)
   }
 
-  // Subset sum sur resas : virement groupé = somme de N resas
-  const subsetResas = subsetSumResas(airbnbResas, montant)
-  if (subsetResas.found && subsetResas.resas.length > 0) {
-    return confirmerMatchResa(mvt, subsetResas.resas, 'matche_auto',
-      `Airbnb groupé ${subsetResas.resas.length} resas`)
+  // Tentative 1 : match exact dans chaque groupe (1 resa = 1 virement)
+  for (const [compte, resas] of Object.entries(groupes)) {
+    const resaDirecte = resas.find(r => Math.abs((r.fin_revenue || 0) - montant) <= 2)
+    if (resaDirecte) {
+      return confirmerMatchResa(mvt, [resaDirecte], 'matche_auto',
+        `Airbnb resa directe ${resaDirecte.code}${compte !== '__inconnu__' ? ' ['+compte+']' : ''}`)
+    }
   }
 
-  return { matched: false, raison: `Airbnb : aucun payout correspondant à ${montant}c (±2c, ±3j)` }
+  // Tentative 2 : subset sum dans chaque groupe (virement groupé = N resas du même compte)
+  for (const [compte, resas] of Object.entries(groupes)) {
+    if (resas.length < 2) continue // pas assez de resas pour un groupé
+    const subsetResas = subsetSumResas(resas, montant)
+    if (subsetResas.found && subsetResas.resas.length > 0) {
+      return confirmerMatchResa(mvt, subsetResas.resas, 'matche_auto',
+        `Airbnb groupé ${subsetResas.resas.length} resas${compte !== '__inconnu__' ? ' ['+compte+']' : ''}`)
+    }
+  }
+
+  // Tentative 3 : fallback tous comptes confondus (si aucun compte renseigné)
+  const allHaveAccount = airbnbResas.every(r => r.airbnb_account)
+  if (!allHaveAccount) {
+    const subsetAll = subsetSumResas(airbnbResas, montant)
+    if (subsetAll.found && subsetAll.resas.length > 0) {
+      return confirmerMatchResa(mvt, subsetAll.resas, 'matche_auto',
+        `Airbnb groupé ${subsetAll.resas.length} resas (comptes non configurés)`)
+    }
+  }
+
+  return { matched: false, raison: `Airbnb : aucun match pour ${montant}c — vérifier les comptes Airbnb dans Biens` }
 }
 
 /**
