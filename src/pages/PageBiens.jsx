@@ -193,6 +193,7 @@ export default function PageBiens() {
                 <th className="right">Taux COM</th>
                 <th className="right">Provision Auto</th>
                 <th className="right">Forfait DCB</th>
+                <th className="right">Ménage proprio</th>
                 <th>Statut</th>
               </tr>
             </thead>
@@ -301,6 +302,25 @@ export default function PageBiens() {
                         style={{cursor:'pointer',borderBottom:'1px dashed var(--text-muted)',paddingBottom:'1px'}}
                         title="Cliquer pour éditer">
                         {bien.forfait_dcb_ref ? formatMontant(bien.forfait_dcb_ref) : <span style={{color:'var(--text-muted)'}}>—</span>}
+                      </span>
+                    )}
+                  </td>
+                  <td className="right montant">
+                    {editing[bien.id+'_forfait_menage_proprio'] !== undefined ? (
+                      <input
+                        type="number" step="0.01" autoFocus
+                        defaultValue={bien.forfait_menage_proprio ? bien.forfait_menage_proprio / 100 : ''}
+                        style={{width:'80px',textAlign:'right',padding:'2px 4px',fontSize:'0.9em'}}
+                        placeholder="ex: 60"
+                        onBlur={e => saveField(bien.id, 'forfait_menage_proprio', e.target.value)}
+                        onKeyDown={e => { if (e.key === 'Enter') e.target.blur(); if (e.key === 'Escape') setEditing(ev => { const n={...ev}; delete n[bien.id+'_forfait_menage_proprio']; return n }) }}
+                      />
+                    ) : (
+                      <span
+                        onClick={() => setEditing(e => ({...e, [bien.id+'_forfait_menage_proprio']: true}))}
+                        style={{cursor:'pointer',borderBottom:'1px dashed var(--text-muted)',paddingBottom:'1px'}}
+                        title="Forfait ménage automatique pour séjours proprio">
+                        {bien.forfait_menage_proprio ? formatMontant(bien.forfait_menage_proprio) : <span style={{color:'var(--text-muted)'}}>—</span>}
                       </span>
                     )}
                   </td>
