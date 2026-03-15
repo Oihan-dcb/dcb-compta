@@ -492,8 +492,8 @@ function TableVentilation({ recap, parProprio, mois }) {
             <thead>
               <tr>
                 <th>Propriétaire</th>
-                <th className="right">COM HT</th>
-                <th className="right">MEN HT</th>
+                <th className="right">HON HT</th>
+                <th className="right">FMEN HT</th>
                                 <th className="right">AUTO</th>
                 <th className="right">LOY (reversement)</th>
                 <th className="right">Total DCB</th>
