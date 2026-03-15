@@ -143,7 +143,13 @@ export async function calculerVentilationResa(resa) {
 
   // Fees depuis Hospitable
   const managementFeeRaw = (guestFeesAll.find(f => f.label?.toLowerCase().includes('management'))?.amount || 0)
-  const communityFeeRaw  = (guestFeesAll.find(f => f.label?.toLowerCase().includes('community'))?.amount || 0)
+  // Ménage = "community fee" (Airbnb) ou "frais de ménage" / "cleaning fee" (Booking/autres)
+  const communityFeeRaw = (guestFeesAll.find(f =>
+    f.label?.toLowerCase().includes('community') ||
+    f.label?.toLowerCase().includes('ménage') ||
+    f.label?.toLowerCase().includes('menage') ||
+    f.label?.toLowerCase().includes('cleaning')
+  )?.amount || 0)
 
   // AUTO = provision AE (hors TVA)
   // Pour les réservations annulées non-directes (Airbnb/Booking avec frais) : pas de provision AE
