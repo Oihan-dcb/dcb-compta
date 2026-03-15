@@ -119,15 +119,21 @@ export async function calculerVentilationResa(resa) {
   // ─────────────────────────────────────────────────────────────────────────
 
   const isDirect = resa.platform === 'direct'
+  const isCancelled = resa.final_status === 'cancelled'
+
+  // Réservation directe annulée → pas de ventilation (zéro virement)
+  if (isDirect && isCancelled) {
+    await supabase.from('ventilation').delete().eq('reservation_id', resa.id)
+    await supabase.from('reservation').update({ ventilation_calculee: true }).eq('id', resa.id)
+    return []
+  }
 
   // Fees depuis Hospitable
   const managementFeeRaw = (guestFeesAll.find(f => f.label?.toLowerCase().includes('management'))?.amount || 0)
   const communityFeeRaw  = (guestFeesAll.find(f => f.label?.toLowerCase().includes('community'))?.amount || 0)
 
   // AUTO = provision AE (hors TVA)
-  // Pour les réservations annulées avec frais : pas de provision AE
-  // (le ménage n'a pas forcément eu lieu, ou partiel — AUTO = 0)
-  const isCancelled = resa.final_status === 'cancelled'
+  // Pour les réservations annulées non-directes (Airbnb/Booking avec frais) : pas de provision AE
   const aeAmount = isCancelled ? 0 : (bien.provision_ae_ref || 0)
 
   // Taxes pass-through
