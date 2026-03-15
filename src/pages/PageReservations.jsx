@@ -298,12 +298,40 @@ function ModalResa({ resa, onClose }) {
     setEditLines(l => l.map((line, idx) => {
       if (idx !== i) return line
       const updated = { ...line, [field]: value }
-      // Auto-calcul TTC = HT + TVA si les deux sont remplis
-      if (field === 'ht' || field === 'tva') {
-        const ht = parseFloat(field === 'ht' ? value : updated.ht) || 0
-        const tva = parseFloat(field === 'tva' ? value : updated.tva) || 0
-        if (ht > 0) updated.ttc = (ht + tva).toFixed(2)
+      const TVA_RATE = 0.20
+
+      if (field === 'ttc') {
+        // TTC modifié → recalcule HT et TVA selon taux 20%
+        const ttc = parseFloat(value) || 0
+        const ht = Math.round(ttc / 1.20 * 100) / 100
+        const tva = Math.round((ttc - ht) * 100) / 100
+        // Si TVA était à zéro avant, garder à zéro (ligne hors TVA)
+        if (parseFloat(line.tva) === 0 || line.tva === '' || line.tva === '0') {
+          updated.ht = ttc.toFixed(2)
+          updated.tva = '0'
+        } else {
+          updated.ht = ht.toFixed(2)
+          updated.tva = tva.toFixed(2)
+        }
+      } else if (field === 'ht') {
+        // HT modifié → recalcule TVA et TTC
+        const ht = parseFloat(value) || 0
+        // Si TVA était à zéro, garder hors TVA
+        if (parseFloat(line.tva) === 0 || line.tva === '' || line.tva === '0') {
+          updated.tva = '0'
+          updated.ttc = ht.toFixed(2)
+        } else {
+          const tva = Math.round(ht * TVA_RATE * 100) / 100
+          updated.tva = tva.toFixed(2)
+          updated.ttc = (ht + tva).toFixed(2)
+        }
+      } else if (field === 'tva') {
+        // TVA modifiée → recalcule TTC (HT reste fixe)
+        const ht = parseFloat(updated.ht) || 0
+        const tva = parseFloat(value) || 0
+        updated.ttc = (ht + tva).toFixed(2)
       }
+
       return updated
     }))
   }
