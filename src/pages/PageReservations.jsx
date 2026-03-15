@@ -527,10 +527,22 @@ function ModalResa({ resa, onClose, onSaved }) {
               {isManual ? 'Réservation manuelle — saisie libre de la ventilation.' : 'Pas encore ventilée.'}
             </div>
             {isManual && (
-              <button onClick={startEdit}
-                style={{fontSize:'0.85em',padding:'6px 16px',background:'var(--brand)',color:'white',border:'none',borderRadius:6,cursor:'pointer',fontWeight:600}}>
-                ✏️ Saisir la ventilation
-              </button>
+              <div style={{display:'flex',gap:8,flexWrap:'wrap'}}>
+                <button onClick={startEdit}
+                  style={{fontSize:'0.85em',padding:'6px 16px',background:'var(--brand)',color:'white',border:'none',borderRadius:6,cursor:'pointer',fontWeight:600}}>
+                  ✏️ Saisir la ventilation
+                </button>
+                <button onClick={async () => {
+                  const { supabase } = await import('../lib/supabase')
+                  const newVal = !resa.owner_stay
+                  await supabase.from('reservation').update({ owner_stay: newVal }).eq('id', resa.id)
+                  if (onSaved) onSaved()
+                  else onClose()
+                }}
+                  style={{fontSize:'0.85em',padding:'6px 16px',background: resa.owner_stay ? '#f59e0b' : '#f3f4f6',color: resa.owner_stay ? 'white' : '#374151',border:'1px solid #d1d5db',borderRadius:6,cursor:'pointer',fontWeight:600}}>
+                  {resa.owner_stay ? '🏠 Séjour proprio ✓' : '🏠 Marquer séjour proprio'}
+                </button>
+              </div>
             )}
           </div>
         )}
