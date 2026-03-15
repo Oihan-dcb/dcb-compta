@@ -388,8 +388,12 @@ function TableReservations({ reservations, onSelect }) {
                 {r.fin_revenue ? formatMontant(r.fin_revenue) : '—'}
               </td>
               <td className="right">
-                {r.ventilation?.[0]?.taux_calcule != null
-                  ? <span title="Taux calculé depuis les financials Hospitable" style={{cursor:'help',borderBottom:'1px dashed var(--text-muted)'}}>{Math.round(r.ventilation[0].taux_calcule * 100)}%</span>
+                {r.bien?.taux_commission_override != null
+                  ? <span title="Override bien" style={{fontWeight:600}}>{Math.round(r.bien.taux_commission_override * 100)}%</span>
+                  : r.bien?.proprietaire?.taux_commission != null
+                  ? <span title="Taux proprio">{r.bien.proprietaire.taux_commission}%</span>
+                  : r.ventilation_calculee
+                  ? <span title="Taux défaut">25%</span>
                   : '—'}
               </td>
               <td>

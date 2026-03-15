@@ -77,7 +77,7 @@ export default function PageBiens() {
       const { supabase } = await import('../lib/supabase')
       // taux_commission_override est un ratio (ex: 0.20 pour 20%), pas en centimes
       const numVal = value === '' || value === null ? null
-        : field === 'taux_commission_override' ? parseFloat(value)
+        : field === 'taux_commission_override' ? value  // déjà un ratio (ex: 0.25)
         : Math.round(parseFloat(value) * 100)
       await supabase.from('bien').update({ [field]: numVal }).eq('id', bienId)
       setBiens(prev => prev.map(b => b.id === bienId ? { ...b, [field]: numVal } : b))
@@ -247,8 +247,8 @@ export default function PageBiens() {
                         defaultValue={bien.taux_commission_override != null ? bien.taux_commission_override * 100 : (bien.proprietaire?.taux_commission ?? 25)}
                         style={{width:'60px',textAlign:'right',padding:'2px 4px',fontSize:'0.9em'}}
                         onBlur={e => {
-                          const val = e.target.value === '' ? null : Math.round(parseFloat(e.target.value)) / 100
-                          saveField(bien.id, 'taux_commission_override', val === null ? null : val * 100)
+                          const val = e.target.value === '' ? null : parseFloat(e.target.value) / 100
+                          saveField(bien.id, 'taux_commission_override', val)
                         }}
                         onKeyDown={e => { if (e.key === 'Enter') e.target.blur(); if (e.key === 'Escape') setEditing(ev => { const n={...ev}; delete n[bien.id+'_taux_com']; return n }) }}
                       />
