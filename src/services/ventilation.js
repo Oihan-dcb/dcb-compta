@@ -7,7 +7,11 @@
  * MEN  — Forfait ménage DCB (guest_fees - provision AE) — TVA 20%
  * MGT  — Management fee résa directe — TVA 20%
  * AE   — Débours auto-entrepreneur — Hors TVA
+ * HON  — Honoraires de gestion DCB — TVA 20%
+ * FMEN — Forfait ménage (total ménage - MOE provisionnée) — TVA 20%
+ * AUTO — Débours auto-entrepreneur — Hors TVA
  * LOY  — Reversement propriétaire — Hors TVA
+ * TAXE — Taxe de séjour — Hors TVA
  * DIV  — Frais divers DCB (expenses [DCB]) — TVA 20%
  * TAX  — Taxe de séjour (pass-through) — Hors TVA, tracé uniquement
  */
@@ -132,15 +136,12 @@ export async function calculerVentilationResa(resa) {
   // MEN total = ménage + autres frais
   const menTTC = totalGuestFees - aeAmount
   const menHT = Math.round(menTTC / (1 + TVA_RATE))
-  // MOE = provision main d'oeuvre (pour affichage visuel seulement, pas une ligne comptable réelle)
-  const moeTTC = aeAmount
-
   // --- Taxes pass-through (taxe de séjour, etc.) ---
   const taxesTotal = taxes.reduce((s, t) => s + (t.amount || 0), 0)
 
   // --- Calculer LOY (reversement propriétaire) ---
   // = Revenue - COM - MEN - AE - Taxes (les taxes sont pass-through, hors calcul DCB)
-  // LOY = tout ce qui reste après COM, MEN, taxes et ajustements
+  // LOY = tout ce qui reste après HON, FMEN, taxes et ajustements
   const loyAmount = revenue - comTTC - menTTC - taxesTotal - adjustmentsTotal
 
   // --- Lignes de ventilation ---
@@ -148,24 +149,23 @@ export async function calculerVentilationResa(resa) {
 
   // COM — commission DCB
   if (comHT > 0) {
-    lignes.push(ligneTVA('COM', 'Honoraires de gestion', comHT, bien, resa, tauxCalcule, comTTC))
+    lignes.push(ligneTVA('HON', 'Honoraires de gestion', comHT, bien, resa, tauxCalcule, comTTC))
   }
 
   // MEN — forfait ménage fixe (community fee ou forfait_dcb_ref)
   if (forfaitMenageTTC > 0) {
     const htM = Math.round(forfaitMenageTTC / (1 + TVA_RATE))
-    lignes.push(ligneTVA('MEN', 'Forfait ménage', htM, bien, resa, null, forfaitMenageTTC))
+    lignes.push(ligneTVA('FMEN', 'Forfait ménage', htM, bien, resa, null, forfaitMenageTTC))
   }
 
   // MEN_AUT — autres frais ménage (management fee, etc.)
   if (autresFraisTTC > 0) {
     const htA = Math.round(autresFraisTTC / (1 + TVA_RATE))
-    lignes.push(ligneTVA('MEN', 'Autres frais ménage', htA, bien, resa, null, autresFraisTTC))
+    lignes.push(ligneTVA('FMEN', 'Autres frais ménage', htA, bien, resa, null, autresFraisTTC))
   }
 
-  // MOE — main d'œuvre AE (affichage visuel, = provision AE)
+  // AUTO — débours auto-entrepreneur (hors TVA)
   if (aeAmount > 0) {
-    lignes.push(ligneHorsTVA('MOE', "Main d'œuvre", aeAmount, bien, resa))
   }
 
   // AE — provision auto-entrepreneur (hors TVA)
@@ -181,7 +181,7 @@ export async function calculerVentilationResa(resa) {
   // TAX — taxes pass-through (tracé, hors TVA)
   for (const tax of taxes) {
     if (tax.amount > 0) {
-      lignes.push(ligneHorsTVA('TAX', tax.label || 'Taxe séjour', tax.amount, bien, resa))
+      lignes.push(ligneHorsTVA('TAXE', tax.label || 'Taxe séjour', tax.amount, bien, resa))
     }
   }
 
@@ -223,7 +223,7 @@ function ligneTVA(code, libelle, montantHT, bien, resa, tauxCalcule, montantTTC)
     montant_ttc: ttc,
     mois_comptable: resa.mois_comptable,
     calcul_source: 'auto',
-    taux_calcule: code === 'COM' ? tauxCalcule : null,
+    taux_calcule: code === 'HON' ? tauxCalcule : null,
   }
 }
 
@@ -286,16 +286,15 @@ export async function getRecapVentilation(mois) {
     const propId = l.proprietaire_id || 'sans_proprio'
     const propNom = l.proprietaire ? `${l.proprietaire.prenom || ''} ${l.proprietaire.nom || ''}`.trim() : 'Sans propriétaire'
     if (!parProprio[propId]) {
-      parProprio[propId] = { id: propId, nom: propNom, codes: {}, total_com: 0, total_men: 0, total_moe: 0, total_loy: 0, total_auto: 0 }
+      parProprio[propId] = { id: propId, nom: propNom, codes: {}, total_com: 0, total_men: 0, total_loy: 0, total_auto: 0 }
     }
     const p = parProprio[propId]
     if (!p.codes[l.code]) p.codes[l.code] = { ht: 0, ttc: 0, nb: 0 }
     p.codes[l.code].ht += l.montant_ht
     p.codes[l.code].ttc += l.montant_ttc
     p.codes[l.code].nb++
-    if (l.code === 'COM') p.total_com += l.montant_ht
-    if (l.code === 'MEN') p.total_men += l.montant_ht
-    if (l.code === 'MOE') p.total_moe += l.montant_ht
+    if (l.code === 'HON') p.total_com += l.montant_ht
+    if (l.code === 'FMEN') p.total_men += l.montant_ht
     if (l.code === 'LOY') p.total_loy += l.montant_ht
     if (l.code === 'AUTO') p.total_auto += l.montant_ht
   }

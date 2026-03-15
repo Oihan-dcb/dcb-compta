@@ -124,8 +124,8 @@ async function genererFactureProprietaire(proprio, mois) {
       ttc: s.ttc + l.montant_ttc,
     }), { ht: 0, tva: 0, ttc: 0 })
 
-  const com = sumByCode('COM')
-  const men = sumByCode('MEN')
+  const com = sumByCode('HON')
+  const men = sumByCode('FMEN')
   const mgt = sumByCode('MGT')
   const ae  = sumByCode('AE')
   const loy = sumByCode('LOY')
@@ -206,7 +206,7 @@ async function genererFactureProprietaire(proprio, mois) {
   if (com.ht > 0) {
     lignes.push({
       facture_id: factureId,
-      code: 'COM',
+      code: 'HON',
       libelle: 'Honoraires de gestion',
       description: `${reservations?.length || 0} réservation(s) — ${mois}`,
       montant_ht: com.ht,
@@ -220,7 +220,7 @@ async function genererFactureProprietaire(proprio, mois) {
   if (menConsolide.ht > 0) {
     lignes.push({
       facture_id: factureId,
-      code: 'MEN',
+      code: 'FMEN',
       libelle: 'Forfait ménage, linge et frais de service',
       description: MENTION_MANDAT,
       montant_ht: menConsolide.ht,

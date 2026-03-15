@@ -187,7 +187,7 @@ async function recalculerVentilationAE(factureId, montantReel) {
         .from('ventilation')
         .select('id, montant_ht')
         .eq('reservation_id', resa.id)
-        .eq('code', 'MEN')
+        .eq('code', 'FMEN')
         .single()
 
       if (ligneMEN) {

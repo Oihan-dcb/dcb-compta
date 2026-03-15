@@ -273,7 +273,7 @@ export default function PageReservations() {
 function ModalResa({ resa, onClose }) {
   if (!resa) return null
   const ventil = (resa.ventilation || [])
-  const com = ventil.find(v => v.code === 'COM')
+  const com = ventil.find(v => v.code === 'HON')
   return (
     <div style={{position:'fixed',inset:0,background:'rgba(0,0,0,0.6)',zIndex:9999,display:'flex',alignItems:'center',justifyContent:'center'}} onClick={onClose}>
       <div style={{background:'#ffffff',color:'#1a1a2e',borderRadius:'12px',padding:'28px',minWidth:'500px',maxWidth:'620px',maxHeight:'85vh',overflowY:'auto',boxShadow:'0 20px 60px rgba(0,0,0,0.4)'}} onClick={e => e.stopPropagation()}>
@@ -426,7 +426,7 @@ function TableVentilation({ recap, parProprio, mois }) {
   const totalTVA = recap.reduce((s, r) => s + r.tva, 0)
   const totalTTC = recap.reduce((s, r) => s + r.ttc, 0)
 
-  const codeOrder = ['COM', 'MEN', 'MOE', 'AUTO', 'LOY', 'DIV', 'TAX']
+  const codeOrder = ['HON', 'FMEN', 'AUTO', 'LOY', 'DIV', 'TAXE']
   const sorted = [...recap].sort((a, b) =>
     codeOrder.indexOf(a.code) - codeOrder.indexOf(b.code)
   )
@@ -490,8 +490,7 @@ function TableVentilation({ recap, parProprio, mois }) {
                 <th>Propriétaire</th>
                 <th className="right">COM HT</th>
                 <th className="right">MEN HT</th>
-                <th className="right">MOE</th>
-                <th className="right">AUTO</th>
+                                <th className="right">AUTO</th>
                 <th className="right">LOY (reversement)</th>
                 <th className="right">Total DCB</th>
               </tr>
@@ -502,7 +501,7 @@ function TableVentilation({ recap, parProprio, mois }) {
                   <td style={{ fontWeight: 500 }}>{p.nom}</td>
                   <td className="right montant">{p.total_com > 0 ? formatMontant(p.total_com) : '—'}</td>
                   <td className="right montant">{p.total_men > 0 ? formatMontant(p.total_men) : '—'}</td>
-                  <td className="right montant">{p.total_moe > 0 ? formatMontant(p.total_moe) : '—'}</td>
+                  <td className="right montant">{'—'}</td>
                   <td className="right montant">{p.total_auto > 0 ? formatMontant(p.total_auto) : '—'}</td>
                   <td className="right montant">{p.total_loy > 0 ? formatMontant(p.total_loy) : '—'}</td>
                   <td className="right montant" style={{ fontWeight: 700 }}>
