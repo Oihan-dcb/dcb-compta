@@ -1,13 +1,13 @@
 import { useState, useEffect } from 'react'
 import {
-  getFacturesAE, initialiserFacturesAE, updateFactureAE,
-  validerFactureAE, getStatsFacturesAE, getMontantEffectifAE
+  getFacturesAuto, initialiserFacturesAuto, updateFactureAE,
+  validerFactureAE, getStatsFacturesAuto, getMontantEffectifAE
 } from '../services/facturesAE'
 import { formatMontant } from '../lib/hospitable'
 
 const moisCourant = new Date().toISOString().substring(0, 7)
 
-export default function PageFacturesAE() {
+export default function PageFacturesAuto() {
   const [mois, setMois] = useState(moisCourant)
   const [factures, setFactures] = useState([])
   const [stats, setStats] = useState(null)
@@ -24,7 +24,7 @@ export default function PageFacturesAE() {
     setLoading(true)
     setError(null)
     try {
-      const [f, s] = await Promise.all([getFacturesAE(mois), getStatsFacturesAE(mois)])
+      const [f, s] = await Promise.all([getFacturesAuto(mois), getStatsFacturesAuto(mois)])
       setFactures(f)
       setStats(s)
     } catch (err) {
@@ -38,7 +38,7 @@ export default function PageFacturesAE() {
     setLoading(true)
     setError(null)
     try {
-      const result = await initialiserFacturesAE(mois)
+      const result = await initialiserFacturesAuto(mois)
       setSuccess(`${result.created} fiches AE créées pour ${mois}`)
       await charger()
     } catch (err) {

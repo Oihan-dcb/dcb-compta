@@ -716,41 +716,41 @@ function TableVentilation({ recap, parProprio, reservations, mois }) {
             </tbody>
           </table>
         </div>
+      )}
 
-        {/* ── Séjours propriétaire (owner_stay) ── */}
-        {sejoursProrio.length > 0 && (
-          <div style={{marginTop: 24}}>
-            <div style={{fontWeight:700, fontSize:'0.8em', color:'var(--text-muted)', textTransform:'uppercase', letterSpacing:'0.08em', marginBottom:8}}>
-              Séjours propriétaire — frais ménage facturés
-            </div>
-            <div className="table-container">
-              <table>
-                <thead>
-                  <tr>
-                    <th>Propriétaire</th>
-                    <th className="right">Séjours</th>
-                    <th className="right">FMEN TTC</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {sejoursProrio.map(p => (
-                    <tr key={p.id}>
-                      <td style={{fontWeight:500}}>{p.nom}</td>
-                      <td className="right">{p.nb_resas}</td>
-                      <td className="right montant" style={{fontWeight:600}}>{formatMontant(p.total_fmen)}</td>
-                    </tr>
-                  ))}
-                  <tr style={{borderTop:'2px solid var(--border)', background:'var(--brand-pale)'}}>
-                    <td style={{fontWeight:600}}>Total</td>
-                    <td className="right" style={{fontWeight:700}}>{sejoursProrio.reduce((s,p) => s + p.nb_resas, 0)}</td>
-                    <td className="right montant" style={{fontWeight:700}}>{formatMontant(sejoursProrio.reduce((s,p) => s + p.total_fmen, 0))}</td>
-                  </tr>
-                </tbody>
-              </table>
-            </div>
+      {/* ── Séjours propriétaire (owner_stay) ── */}
+      {sejoursProrio.length > 0 && (
+        <div style={{marginTop: 24}}>
+          <div style={{fontWeight:700, fontSize:'0.8em', color:'var(--text-muted)', textTransform:'uppercase', letterSpacing:'0.08em', marginBottom:8}}>
+            Séjours propriétaire — frais ménage facturés
           </div>
-        )}
-      </div>
+          <div className="table-container">
+            <table>
+              <thead>
+                <tr>
+                  <th>Propriétaire</th>
+                  <th className="right">Séjours</th>
+                  <th className="right">FMEN TTC</th>
+                </tr>
+              </thead>
+              <tbody>
+                {sejoursProrio.map(p => (
+                  <tr key={p.id}>
+                    <td style={{fontWeight:500}}>{p.nom}</td>
+                    <td className="right">{p.nb_resas}</td>
+                    <td className="right montant" style={{fontWeight:600}}>{formatMontant(p.total_fmen)}</td>
+                  </tr>
+                ))}
+                <tr style={{borderTop:'2px solid var(--border)', background:'var(--brand-pale)'}}>
+                  <td style={{fontWeight:600}}>Total</td>
+                  <td className="right" style={{fontWeight:700}}>{sejoursProrio.reduce((s,p) => s + p.nb_resas, 0)}</td>
+                  <td className="right montant" style={{fontWeight:700}}>{formatMontant(sejoursProrio.reduce((s,p) => s + p.total_fmen, 0))}</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
     </div>
   )
 }

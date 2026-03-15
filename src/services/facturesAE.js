@@ -241,3 +241,10 @@ export async function getStatsFacturesAE(mois) {
     total_reel: all.reduce((s, f) => s + (f.montant_reel ?? f.montant_theorique ?? 0), 0),
   }
 }
+
+// Aliases pour compatibilité (anciens noms → nouveaux noms)
+export const getFacturesAuto = getFacturesAE
+export const initialiserFacturesAuto = initialiserFacturesAE
+export const updateFactureAuto = updateFactureAE
+export const getStatsFacturesAuto = getStatsFacturesAE
+export const getMontantEffectifAuto = getMontantEffectifAE
