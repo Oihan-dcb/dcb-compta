@@ -489,10 +489,21 @@ function ModalResa({ resa, onClose, onSaved }) {
             <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',borderTop:'1px solid #eee',paddingTop:'16px',marginBottom:'12px'}}>
               <div style={{fontWeight:700,fontSize:'0.8em',color:'#888',textTransform:'uppercase',letterSpacing:'0.08em'}}>Ventilation</div>
               {isManual && (
-                <button onClick={startEdit}
-                  style={{fontSize:'0.8em',padding:'3px 10px',background:'#f5f5f5',border:'1px solid #ddd',borderRadius:5,cursor:'pointer'}}>
-                  ✏️ Modifier
-                </button>
+                <div style={{display:'flex',gap:6}}>
+                  <button onClick={startEdit}
+                    style={{fontSize:'0.8em',padding:'3px 10px',background:'#f5f5f5',border:'1px solid #ddd',borderRadius:5,cursor:'pointer'}}>
+                    ✏️ Modifier
+                  </button>
+                  <button onClick={async () => {
+                    const { supabase } = await import('../lib/supabase')
+                    await supabase.from('reservation').update({ owner_stay: !resa.owner_stay }).eq('id', resa.id)
+                    onClose()
+                    if (onSaved) setTimeout(onSaved, 100)
+                  }}
+                    style={{fontSize:'0.8em',padding:'3px 10px',background: resa.owner_stay ? '#f59e0b' : '#f3f4f6',color: resa.owner_stay ? 'white' : '#374151',border:'1px solid #d1d5db',borderRadius:5,cursor:'pointer'}}>
+                    {resa.owner_stay ? '🏠 Proprio ✓' : '🏠 Proprio'}
+                  </button>
+                </div>
               )}
             </div>
             <table style={{width:'100%',fontSize:'0.9em'}}>
