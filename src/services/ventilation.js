@@ -131,10 +131,13 @@ export async function calculerVentilationResa(resa) {
   const comdTTC = managementFeeRaw > 0 ? Math.round(managementFeeRaw / HOSP_FEE_RATE) : 0
   const comdHT = comdTTC > 0 ? Math.round(comdTTC / (1 + TVA_RATE)) : 0
 
-  // --- FMEN : forfait ménage = community fee / 1,0077 ---
+  // --- FMEN : forfait ménage DCB = community fee / 1,0077 - provision AUTO ---
+  // FMEN représente ce que DCB facture pour le ménage, net de la part reversée à l'auto-entrepreneur
   const communityFeeRaw = (guestFeesAll.find(f => f.label?.toLowerCase().includes('community'))?.amount || 0)
-  // Priorité : forfait_dcb_ref configuré manuellement sur le bien, sinon community fee corrigé
-  const fmenTTC = bien.forfait_dcb_ref || (communityFeeRaw > 0 ? Math.round(communityFeeRaw / HOSP_FEE_RATE) : 0)
+  // Brut ménage = forfait_dcb_ref configuré manuellement, sinon community fee corrigé Hospitable
+  const menageBrut = bien.forfait_dcb_ref || (communityFeeRaw > 0 ? Math.round(communityFeeRaw / HOSP_FEE_RATE) : 0)
+  // FMEN = ménage brut - provision AUTO (part reversée à l'AE)
+  const fmenTTC = Math.max(0, menageBrut - aeAmount)
   const fmenHT = fmenTTC > 0 ? Math.round(fmenTTC / (1 + TVA_RATE)) : 0
 
   // --- AUTO : provision auto-entrepreneur (hors TVA) ---
@@ -145,7 +148,8 @@ export async function calculerVentilationResa(resa) {
 
   // --- LOY : reversement propriétaire ---
   // = revenue - HON_TTC - COMD_TTC - FMEN_TTC - AUTO - TAXE - ajustements
-  const loyAmount = revenue - comTTC - comdTTC - fmenTTC - aeAmount - taxesTotal - adjustmentsTotal
+  // LOY = revenue - HON - COMD - ménage brut (community fee) - AUTO - TAXE
+  const loyAmount = revenue - comTTC - comdTTC - menageBrut - aeAmount - taxesTotal - adjustmentsTotal
 
   // --- Lignes de ventilation ---
   const lignes = []
