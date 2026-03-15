@@ -430,7 +430,7 @@ function TableVentilation({ recap, parProprio, mois }) {
   const totalTVA = recap.reduce((s, r) => s + r.tva, 0)
   const totalTTC = recap.reduce((s, r) => s + r.ttc, 0)
 
-  const codeOrder = ['HON', 'COMD', 'FMEN', 'AUTO', 'LOY', 'DIV', 'TAXE']
+  const codeOrder = ['HON', 'FMEN', 'AUTO', 'LOY', 'DIV', 'TAXE']
   const sorted = [...recap].sort((a, b) =>
     codeOrder.indexOf(a.code) - codeOrder.indexOf(b.code)
   )
@@ -493,7 +493,6 @@ function TableVentilation({ recap, parProprio, mois }) {
               <tr>
                 <th>Propriétaire</th>
                 <th className="right">HON HT</th>
-                <th className="right">COMD HT</th>
                 <th className="right">FMEN HT</th>
                                 <th className="right">AUTO</th>
                 <th className="right">LOY (reversement)</th>
@@ -505,13 +504,12 @@ function TableVentilation({ recap, parProprio, mois }) {
                 <tr key={p.id}>
                   <td style={{ fontWeight: 500 }}>{p.nom}</td>
                   <td className="right montant">{p.total_com > 0 ? formatMontant(p.total_com) : '—'}</td>
-                  <td className="right montant">{p.total_comd > 0 ? formatMontant(p.total_comd) : '—'}</td>
                   <td className="right montant">{p.total_men > 0 ? formatMontant(p.total_men) : '—'}</td>
                   <td className="right montant">{'—'}</td>
                   <td className="right montant">{p.total_auto > 0 ? formatMontant(p.total_auto) : '—'}</td>
                   <td className="right montant">{p.total_loy > 0 ? formatMontant(p.total_loy) : '—'}</td>
                   <td className="right montant" style={{ fontWeight: 700 }}>
-                    {formatMontant(p.total_com + (p.total_comd||0) + p.total_men + p.total_auto)}
+                    {formatMontant(p.total_com + p.total_men + p.total_auto)}
                   </td>
                 </tr>
               ))}
@@ -522,7 +520,7 @@ function TableVentilation({ recap, parProprio, mois }) {
                 <td className="right montant" style={{ fontWeight: 700 }}>{formatMontant(parProprio.reduce((s,p) => s + p.total_men, 0))}</td>
                 <td className="right montant" style={{ fontWeight: 700 }}>{formatMontant(parProprio.reduce((s,p) => s + p.total_auto, 0))}</td>
                 <td className="right montant" style={{ fontWeight: 700 }}>{formatMontant(parProprio.reduce((s,p) => s + p.total_loy, 0))}</td>
-                <td className="right montant" style={{ fontWeight: 700 }}>{formatMontant(parProprio.reduce((s,p) => s + p.total_com + (p.total_comd||0) + p.total_men + p.total_auto, 0))}</td>
+                <td className="right montant" style={{ fontWeight: 700 }}>{formatMontant(parProprio.reduce((s,p) => s + p.total_com + p.total_men + p.total_auto, 0))}</td>
               </tr>
             </tbody>
           </table>
