@@ -115,6 +115,7 @@ export default function PageReservations() {
   }
 
   const nbVentilees = reservations.filter(r => r.ventilation_calculee).length
+  const nbDirectes = reservations.filter(r => r.platform === 'direct' || r.platform === 'manual').length
   const nbRapprochees = reservations.filter(r => r.rapprochee).length
   const nbManuellesNonVentilees = reservations.filter(r => r.platform === 'manual' && (!r.ventilation || r.ventilation.length === 0)).length
   const totalRevenue = reservations.filter(r => !r.owner_stay).reduce((s, r) => s + (r.fin_revenue || 0), 0)
