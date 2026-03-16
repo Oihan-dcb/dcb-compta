@@ -19,6 +19,7 @@
 import { supabase } from '../lib/supabase'
 
 const TVA_RATE = 0.20
+const AIRBNB_FEES_RATE = 0.1395  // 13,95% retenu par Airbnb sur cleaning + community fees
 
 /**
  * Calcule et sauvegarde la ventilation pour toutes les réservations
@@ -262,7 +263,6 @@ export async function calculerVentilationResa(resa) {
       ? (cleaningFeeAirbnb + communityFeeRaw)
       : menageBrut
     const rateForPlatform = (resa.platform === 'airbnb') ? AIRBNB_FEES_RATE : platformRateOnCleaning
-    // Airbnb : Math.ceil pour correspondre exactement au statement (arrondi supérieur)
     platformRembourseMenage = (resa.platform === 'airbnb')
       ? Math.ceil(rateForPlatform * feesBaseForPlatform)
       : Math.round(rateForPlatform * feesBaseForPlatform)
@@ -277,7 +277,6 @@ export async function calculerVentilationResa(resa) {
   // Direct  : fees_ménage = cleaning_fee + community_fee (management_fee = expense séparé → AUTO)
   // Vérifié ligne par ligne sur statement 602 "Horizonte" fév 2026
   const fmenBase = cleaningFeeAirbnb + communityFeeRaw  // = MEN brut (fees ménage voyageur)
-  const AIRBNB_FEES_RATE = 0.1395  // 13,95% retenu par Airbnb sur les fees (due to owner)
   const dueToOwner = (resa.platform === 'airbnb') ? Math.round(fmenBase * AIRBNB_FEES_RATE) : 0
   const fmenTTC = Math.max(0, fmenBase - dueToOwner - aeAmount)
   const fmenHT  = fmenTTC > 0 ? Math.round(fmenTTC / (1 + TVA_RATE)) : 0
