@@ -98,16 +98,32 @@ export async function lancerMatchingAuto(mois) {
             .update({ mouvement_id: mouv.id, statut_matching: 'rapproche' })
             .eq('id', payout.id)
 
-          // 3. Trouver les VIR dont la somme = montant du mouvement (subset sum)
+          // 3. Lier les VIR via payout_reservation (si peuplé) sinon subset sum
           const virsCible = virCanal.filter(v => !v.mouvement_id)
-          const exact = virsCible.find(v => Math.abs(v.montant_ttc - mouv.credit) <= 2)
           let virIds = []
 
-          if (exact) {
-            virIds = [exact.id]
-          } else {
-            const subset = _subsetSum(virsCible, mouv.credit)
-            if (subset) virIds = subset.map(v => v.id)
+          // Essai 1 : via payout_reservation → réservations liées au payout
+          if (payout) {
+            const { data: prLinks } = await supabase
+              .from('payout_reservation')
+              .select('reservation_id')
+              .eq('payout_id', payout.id)
+            if (prLinks?.length) {
+              const resaIds = prLinks.map(r => r.reservation_id)
+              const matchedVirs = virsCible.filter(v => resaIds.includes(v.reservation?.id))
+              if (matchedVirs.length) virIds = matchedVirs.map(v => v.id)
+            }
+          }
+
+          // Essai 2 : exact ou subset sum sur montant
+          if (virIds.length === 0) {
+            const exact = virsCible.find(v => Math.abs(v.montant_ttc - mouv.credit) <= 2)
+            if (exact) {
+              virIds = [exact.id]
+            } else {
+              const subset = _subsetSum(virsCible, mouv.credit)
+              if (subset) virIds = subset.map(v => v.id)
+            }
           }
 
           if (virIds.length > 0) {
