@@ -4,6 +4,7 @@ import {
   getMouvementsMois, getVirNonRapproches, getStatsRapprochement,
   lancerMatchingAuto, matcherManuellement, marquerNonIdentifie, annulerRapprochement
 } from '../services/rapprochement'
+import { syncPayouts } from '../services/matching'
 import MoisSelector from '../components/MoisSelector'
 import { format } from 'date-fns'
 import { fr } from 'date-fns/locale'
@@ -45,6 +46,8 @@ export default function PageRapprochement() {
   const [mouvSelId, setMouvSelId] = useState(null)   // mouvement sélectionné pour matching manuel
   const [virsSel, setVirsSel] = useState([])           // VIR sélectionnés pour matching manuel
   const [saving, setSaving] = useState(false)
+  const [syncing, setSyncing] = useState(false)
+  const [syncLog, setSyncLog] = useState(null)
 
   const charger = useCallback(async () => {
     setLoading(true)
@@ -72,6 +75,21 @@ export default function PageRapprochement() {
   }, [mois])
 
   useEffect(() => { charger() }, [charger])
+
+  async function lancerSync() {
+    setSyncing(true)
+    setSyncLog(null)
+    setError(null)
+    try {
+      const log = await syncPayouts(mois)
+      setSyncLog(log)
+      await charger()
+    } catch (err) {
+      setError('Sync payouts: ' + err.message)
+    } finally {
+      setSyncing(false)
+    }
+  }
 
   async function lancerAuto() {
     setMatching(true)
@@ -142,6 +160,10 @@ export default function PageRapprochement() {
         </div>
         <div style={{ display: 'flex', gap: 10, alignItems: 'center', flexWrap: 'wrap' }}>
           <MoisSelector mois={mois} setMois={setMois} moisDispos={moisDispos} />
+          <button onClick={lancerSync} disabled={syncing || loading}
+            style={{ background: syncing ? '#aaa' : '#059669', color: '#fff', border: 'none', borderRadius: 8, padding: '8px 18px', fontWeight: 600, cursor: syncing ? 'not-allowed' : 'pointer', fontSize: 14 }}>
+            {syncing ? '⏳ Sync...' : '↻ Sync payouts'}
+          </button>
           <button onClick={lancerAuto} disabled={matching || loading}
             style={{ background: matching ? '#aaa' : '#1a56db', color: '#fff', border: 'none', borderRadius: 8, padding: '8px 18px', fontWeight: 600, cursor: matching ? 'not-allowed' : 'pointer', fontSize: 14 }}>
             {matching ? '⏳ Matching...' : '⚡ Matching auto'}
@@ -161,6 +183,11 @@ export default function PageRapprochement() {
       )}
 
       {/* LOG MATCHING */}
+      {syncLog && (
+        <div style={{ background: '#ECFDF5', border: '1px solid #6EE7B7', borderRadius: 8, padding: '12px 16px', marginBottom: 16, fontSize: 14 }}>
+          <strong>Sync payouts :</strong> {syncLog.created || 0} créés, {syncLog.updated || 0} mis à jour{syncLog.errors > 0 ? <span style={{ color: '#B71C1C', marginLeft: 8 }}>{syncLog.errors} erreurs</span> : null}
+        </div>
+      )}
       {matchLog && (
         <div style={{ background: matchLog.errors > 0 ? '#FEF3C7' : '#ECFDF5', border: `1px solid ${matchLog.errors > 0 ? '#FCD34D' : '#6EE7B7'}`, borderRadius: 8, padding: '12px 16px', marginBottom: 16, fontSize: 14 }}>
           <strong>Résultat matching auto :</strong>{' '}
