@@ -112,6 +112,41 @@ async function syncPayoutsData(payouts, mois, log) {
       .upsert(toUpsert, { onConflict: 'hospitable_id', ignoreDuplicates: false })
 
     if (error) throw error
+
+    // Peupler payout_reservation depuis les transactions Hospitable
+    // Les transactions contiennent les réservations incluses dans chaque payout
+    const { data: savedPayouts } = await supabase
+      .from('payout_hospitable')
+      .select('id, hospitable_id')
+      .in('hospitable_id', payouts.map(p => p.id))
+
+    const payoutIdMap = new Map((savedPayouts || []).map(p => [p.hospitable_id, p.id]))
+
+    const prLinks = []
+    for (const payout of payouts) {
+      const dbId = payoutIdMap.get(payout.id)
+      if (!dbId) continue
+      const txns = payout.transactions?.data || payout.transactions || []
+      for (const tx of txns) {
+        // Trouver la réservation Hospitable correspondante
+        const resaCode = tx.reservation?.confirmation_code || tx.confirmation_code || tx.reservation_id
+        if (!resaCode) continue
+        const { data: resa } = await supabase
+          .from('reservation')
+          .select('id')
+          .eq('code', resaCode)
+          .single()
+        if (resa?.id) {
+          prLinks.push({ payout_id: dbId, reservation_id: resa.id })
+        }
+      }
+    }
+
+    if (prLinks.length > 0) {
+      await supabase
+        .from('payout_reservation')
+        .upsert(prLinks, { onConflict: 'payout_id,reservation_id', ignoreDuplicates: true })
+    }
   }
 
   log.created = toUpsert.filter(p => !existingMap.has(p.hospitable_id)).length
