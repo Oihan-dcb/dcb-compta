@@ -225,9 +225,11 @@ export async function calculerVentilationResa(resa) {
     // communityFeeRaw = ménage pour les directes (label "Community fee" Hospitable)
     // managementFeeRaw = frais gestion
     // Hospitable prend 0,77% sur (communityFeeRaw + managementFeeRaw)
-    commissionableBase = revenue - managementFeeRaw - communityFeeRaw - taxesTotal - adjustmentsTotal
-    const feesDirectBruts = communityFeeRaw + managementFeeRaw
-    const feesDirectNets = feesDirectBruts > 0 ? Math.round(feesDirectBruts / 1.0077) : 0
+    // Base = revenue - TOUS les fees ménage (cleaning + community + management) - taxes
+    commissionableBase = revenue - cleaningFeeAirbnb - communityFeeRaw - managementFeeRaw - taxesTotal - adjustmentsTotal
+    const feesDirectBruts = cleaningFeeAirbnb + communityFeeRaw + managementFeeRaw
+    // Math.floor pour platformRemb exact (arrondi supérieur sur la retenue)
+    const feesDirectNets = feesDirectBruts > 0 ? Math.floor(feesDirectBruts / 1.0077) : 0
     // Ménage net = total net - management = part ménage après déduction commission Hospitable
     cleaningFeeNet = bien.forfait_dcb_ref || Math.max(0, feesDirectNets - managementFeeRaw)
     platformRateOnCleaning = 0
@@ -242,7 +244,8 @@ export async function calculerVentilationResa(resa) {
   }
 
   // HON = base × taux (TVA 20%)
-  const honTTC = Math.round(commissionableBase * tauxCom)
+  // Direct : Math.floor pour correspondre exactement au statement Hospitable
+  const honTTC = isDirect ? Math.floor(commissionableBase * tauxCom) : Math.round(commissionableBase * tauxCom)
   const honHT  = Math.round(honTTC / (1 + TVA_RATE))
 
   // Part plateforme retenue sur les fees (écriture comptable côté owner dans statement)
@@ -328,9 +331,8 @@ export async function calculerVentilationResa(resa) {
   // Direct  : LOY + TAXE + 0,77% × (mgmt_fee + cleaning_fee) [Hospitable rembourse sa commission]
   // Airbnb  : LOY + TAXE  [pas de remboursement]
   // Pour les directes : Hospitable prend 0,77% sur (management + community/ménage)
-  const feesHospBruts = managementFeeRaw + communityFeeRaw
-  const remboursHosp = isDirect ? Math.round(feesHospBruts * 0.0077) : 0
-  const virAmount = loyAmount + taxesTotal + remboursHosp
+  // VIR direct = LOY + taxes (remboursement 0,77% Hospitable déjà dans platformRemb → LOY)
+  const virAmount = loyAmount + taxesTotal
   if (virAmount > 0) {
     lignes.push(ligneHorsTVA('VIR', 'Virement propriétaire', virAmount, bien, resa))
   }
