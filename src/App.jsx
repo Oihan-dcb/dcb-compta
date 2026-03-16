@@ -3,6 +3,7 @@ import PageBiens from './pages/PageBiens'
 import PageReservations from './pages/PageReservations'
 import PageBanque from './pages/PageBanque'
 import PageMatching from './pages/PageMatching'
+import PageRapprochement from './pages/PageRapprochement'
 import PageFacturesAE from './pages/PageFacturesAE'
 import PageFactures from './pages/PageFactures'
 import PageConfig from './pages/PageConfig'
@@ -35,6 +36,7 @@ export default function App() {
             <Route path="/reservations" element={<PageReservations />} />
             <Route path="/banque" element={<PageBanque />} />
             <Route path="/matching" element={<PageMatching />} />
+              <Route path="/rapprochement" element={<PageRapprochement />} />
             <Route path="/factures-ae" element={<PageFacturesAE />} />
             <Route path="/factures" element={<PageFactures />} />
             <Route path="/import" element={<PageImport />} />
