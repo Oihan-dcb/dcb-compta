@@ -171,13 +171,36 @@ export async function calculerVentilationResa(resa) {
   }
 
   // Fees depuis Hospitable
+  // ─────────────────────────────────────────────────────────────────────────
+  // STRUCTURE RÉELLE DES FEES HOSPITABLE (confirmée sur statement 602 fév 2026) :
+  //
+  // AIRBNB :
+  //   "Cleaning fee"   = frais ménage facturés au voyageur
+  //   "Community fee"  = commission Airbnb sur l'hébergement (PAS le ménage)
+  //   "Host Service Fee" = déduction (négatif)
+  //   → FMEN basé sur "Cleaning fee" uniquement
+  //   → Airbnb prend 13,95% sur le "Cleaning fee"
+  //
+  // DIRECT (Hospitable) :
+  //   "Management fee" = frais de gestion
+  //   "Community fee"  = frais ménage (convention Hospitable pour les directes)
+  //   "Host Service Fee" = -0,77% sur tous les fees (cleaning+mgmt+community)
+  //   → FMEN basé sur "Community fee" (= ménage direct)
+  //   → Hospitable prend 0,77% sur (Community fee + Management fee)
+  // ─────────────────────────────────────────────────────────────────────────
+
   const managementFeeRaw = (guestFeesAll.find(f => f.label?.toLowerCase().includes('management'))?.amount || 0)
-  // Ménage total = SOMME de tous les fees de type ménage
-  // (Airbnb peut envoyer "Cleaning fee" + "Community fee" séparément — il faut les additionner)
-  const MENAGE_LABELS = ['community', 'ménage', 'menage', 'cleaning']
-  const communityFeeRaw = guestFeesAll
-    .filter(f => MENAGE_LABELS.some(lbl => f.label?.toLowerCase().includes(lbl)))
-    .reduce((s, f) => s + (f.amount || 0), 0)
+
+  // Cleaning fee (Airbnb) = label "Cleaning fee" uniquement
+  const cleaningFeeAirbnb = (guestFeesAll.find(f => f.label?.toLowerCase() === 'cleaning fee')?.amount || 0)
+
+  // Community fee = label "Community fee"
+  // Pour Airbnb : commission hébergement (pas le ménage)
+  // Pour Direct : frais ménage
+  const communityFeeRaw = (guestFeesAll.find(f => f.label?.toLowerCase() === 'community fee')?.amount || 0)
+
+  // Ménage brut selon la plateforme
+  const menageBrut = resa.platform === 'airbnb' ? cleaningFeeAirbnb : communityFeeRaw
 
   // AUTO = provision AE (hors TVA)
   // Pour les réservations annulées non-directes (Airbnb/Booking avec frais) : pas de provision AE
@@ -186,31 +209,33 @@ export async function calculerVentilationResa(resa) {
   // Taxes pass-through
   const taxesTotal = taxes.reduce((s, t) => s + (t.amount || 0), 0)
 
-  // ── Taux commission plateforme sur le ménage ──────────────────────────────
-  // Airbnb  : 13,95% sur le community fee
-  // Booking : 13,83% sur le frais de ménage
-  // Direct  : 0,77% (corrigé via /1,0077 sur FMEN)
-  const PLATFORM_CLEANING_RATES = { airbnb: 0.1395, booking: 0.1383 }
+  // ── Taux commission plateforme sur les fees ───────────────────────────────
+  // Airbnb  : 16,21% sur (cleaning fee + community fee / host service fee)
+  //           Vérifié sur statement 602 Horizonte fév 2026 ligne par ligne
+  // Booking : à vérifier sur statement réel
+  // Direct  : 0,77% sur (cleaning + management) via /1.0077
+  const PLATFORM_CLEANING_RATES = { airbnb: 0.1621, booking: 0.1383 }
 
   let commissionableBase, loyAmount, cleaningFeeNet, platformRateOnCleaning
 
   if (isDirect) {
     // ── DIRECTE ──────────────────────────────────────────────────────────
-    // Base = revenue - mgmt_fee - cleaning_fee - taxes
+    // communityFeeRaw = ménage pour les directes (label "Community fee" Hospitable)
+    // managementFeeRaw = frais gestion
+    // Hospitable prend 0,77% sur (communityFeeRaw + managementFeeRaw)
     commissionableBase = revenue - managementFeeRaw - communityFeeRaw - taxesTotal - adjustmentsTotal
-    // Cleaning net = (cleaning + management) / 1,0077 - management (Hospitable prélève 0,77% sur cleaning+mgmt)
-    // On isole la part ménage nette après correction de la commission Hospitable
     const feesDirectBruts = communityFeeRaw + managementFeeRaw
     const feesDirectNets = feesDirectBruts > 0 ? Math.round(feesDirectBruts / 1.0077) : 0
+    // Ménage net = total net - management = part ménage après déduction commission Hospitable
     cleaningFeeNet = bien.forfait_dcb_ref || Math.max(0, feesDirectNets - managementFeeRaw)
     platformRateOnCleaning = 0
   } else {
     // ── AIRBNB / BOOKING / AUTRES ─────────────────────────────────────────
-    // Base = net income - ménage = (accommodation + host_fees) - community_fee
-    // hostServiceFee inclut TOUS les host_fees (HSF + Payment Charge pour Booking)
+    // Pour Airbnb : menageBrut = cleaningFeeAirbnb (label "Cleaning fee")
+    // communityFeeRaw = commission Airbnb sur hébergement (pas utilisé pour FMEN)
     commissionableBase = accommodation + hostServiceFee
-    // Taux spécifique à la plateforme sur le ménage
-    cleaningFeeNet = bien.forfait_dcb_ref || communityFeeRaw
+    // FMEN basé sur le ménage réel (cleaningFeeAirbnb pour Airbnb)
+    cleaningFeeNet = bien.forfait_dcb_ref || menageBrut
     platformRateOnCleaning = PLATFORM_CLEANING_RATES[resa.platform] || PLATFORM_CLEANING_RATES.airbnb
   }
 
@@ -218,14 +243,34 @@ export async function calculerVentilationResa(resa) {
   const honTTC = Math.round(commissionableBase * tauxCom)
   const honHT  = Math.round(honTTC / (1 + TVA_RATE))
 
-  // Part plateforme remboursée sur le ménage (ex: 13,95% × 97€ = 13,53€)
-  const platformRembourseMenage = Math.round(platformRateOnCleaning * communityFeeRaw)
+  // Part plateforme retenue sur les fees (écriture comptable côté owner dans statement)
+  // Airbnb : 16,21% × (cleaning fee + community fee) — vérifié sur statement réel
+  // Booking : taux × ménage brut
+  // Direct : 0,77% × (cleaning + mgmt) — même logique, remboursé au proprio via LOY
+  let platformRembourseMenage
+  if (isDirect) {
+    // Pour les directes : le remboursement 0,77% s'applique sur TOUS les fees
+    // (cleaning + community + management) — vérifié sur statement HOST-3QKPIK
+    const feesDirectBruts = cleaningFeeAirbnb + communityFeeRaw + managementFeeRaw
+    const feesDirectNets = feesDirectBruts > 0 ? Math.round(feesDirectBruts / 1.0077) : 0
+    platformRembourseMenage = feesDirectBruts - feesDirectNets
+  } else {
+    const feesBaseForPlatform = (resa.platform === 'airbnb')
+      ? (cleaningFeeAirbnb + communityFeeRaw)
+      : menageBrut
+    platformRembourseMenage = Math.round(platformRateOnCleaning * feesBaseForPlatform)
+  }
 
-  // LOY = base - HON + remboursement plateforme sur ménage
+  // LOY = base - HON + remboursement plateforme (même logique direct et plateforme)
   loyAmount = commissionableBase - honTTC + platformRembourseMenage
 
-  // FMEN = cleaning fee net - part plateforme - AUTO (TVA 20%)
-  const fmenTTC = Math.max(0, cleaningFeeNet - platformRembourseMenage - aeAmount)
+  // FMEN = fees_ménage_brut - AUTO (TVA 20%)
+  // RÈGLE : platform_remb est une écriture comptable côté owner → LOY uniquement, PAS dans FMEN
+  // Airbnb  : fees_ménage = cleaning_fee + community_fee (host service fee)
+  // Direct  : fees_ménage = cleaning_fee + community_fee (management_fee = expense séparé → AUTO)
+  // Vérifié ligne par ligne sur statement 602 "Horizonte" fév 2026
+  const fmenBase = cleaningFeeAirbnb + communityFeeRaw  // même règle pour toutes les plateformes
+  const fmenTTC = Math.max(0, fmenBase - aeAmount)
   const fmenHT  = fmenTTC > 0 ? Math.round(fmenTTC / (1 + TVA_RATE)) : 0
 
   // --- Lignes de ventilation ---
@@ -255,6 +300,7 @@ export async function calculerVentilationResa(resa) {
   // VIR — virement propriétaire
   // Direct  : LOY + TAXE + 0,77% × (mgmt_fee + cleaning_fee) [Hospitable rembourse sa commission]
   // Airbnb  : LOY + TAXE  [pas de remboursement]
+  // Pour les directes : Hospitable prend 0,77% sur (management + community/ménage)
   const feesHospBruts = managementFeeRaw + communityFeeRaw
   const remboursHosp = isDirect ? Math.round(feesHospBruts * 0.0077) : 0
   const virAmount = loyAmount + taxesTotal + remboursHosp
