@@ -207,16 +207,16 @@ export async function calculerVentilationResa(resa) {
   // Pour les réservations annulées non-directes (Airbnb/Booking avec frais) : pas de provision AE
   const aeAmount = isCancelled ? 0 : (bien.provision_ae_ref || 0)
 
-  // Taxes pass-through
-  // Airbnb reverse directement les taxes de séjour → pas incluses dans taxesTotal/VIR
-  const taxesTotal = (resa.platform === 'airbnb') ? 0 : taxes.reduce((s, t) => s + (t.amount || 0), 0)
+  // Taxes pass-through - Airbnb ET Booking reversent certaines taxes directement (Remitted)
+  const isRemitted = t => t.label?.toLowerCase().includes('remitted')
+  const taxesTotal = (resa.platform === 'airbnb') ? 0 : taxes.filter(t => !isRemitted(t)).reduce((s, t) => s + (t.amount || 0), 0)
 
   // ── Taux commission plateforme sur les fees ───────────────────────────────
   // Airbnb  : 16,21% sur (cleaning fee + community fee / host service fee)
   //           Vérifié sur statement 602 Horizonte fév 2026 ligne par ligne
   // Booking : à vérifier sur statement réel
   // Direct  : 0,77% sur (cleaning + management) via /1.0077
-  const PLATFORM_CLEANING_RATES = { airbnb: 0.1621, booking: 0.1784 }  // Booking ~17,84% vérifié statements Maison Maïté fév 2026
+  const PLATFORM_CLEANING_RATES = { airbnb: 0.1621, booking: 0.1517 }  // Booking ~15,17% mesuré statement Chambre Txomin fév 2026
 
   let commissionableBase, loyAmount, cleaningFeeNet, platformRateOnCleaning
 
@@ -293,6 +293,11 @@ export async function calculerVentilationResa(resa) {
   const comAmount = isDirect ? managementFeeRaw : 0
   const comHT = comAmount > 0 ? Math.round(comAmount / (1 + TVA_RATE)) : 0
 
+  // LOY Booking : recalcul depuis fin_revenue (taux Booking variable sur cleaning)
+  if (resa.platform === 'booking') {
+    loyAmount = (resa.fin_revenue || 0) - honTTC - fmenTTC - aeAmount - taxesTotal
+  }
+
   // --- Lignes de ventilation ---
   const lignes = []
 
@@ -337,11 +342,10 @@ export async function calculerVentilationResa(resa) {
     lignes.push(ligneHorsTVA('VIR', 'Virement propriétaire', virAmount, bien, resa))
   }
 
-  // TAXE — taxe de séjour (hors TVA)
-  // Airbnb reverse directement les taxes → pas de ligne TAXE pour Airbnb
+  // TAXE — Airbnb: exclue. Booking: pass-through seulement. Direct: toutes.
   if (resa.platform !== 'airbnb') {
     for (const tax of taxes) {
-      if (tax.amount > 0) {
+      if (tax.amount > 0 && !isRemitted(tax)) {
         lignes.push(ligneHorsTVA('TAXE', tax.label || 'Taxe séjour', tax.amount, bien, resa))
       }
     }
