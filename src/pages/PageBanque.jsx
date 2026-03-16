@@ -156,15 +156,15 @@ export default function PageBanque() {
       {formatDetecte && (
         <div style={{ marginBottom: 12, padding: '8px 14px', borderRadius: 8, background: formatDetecte === 'budgetbakers' ? '#FFF3E0' : '#E3F2FD', border: `1px solid ${formatDetecte === 'budgetbakers' ? '#FFB74D' : '#64B5F6'}`, fontSize: 13, display: 'inline-flex', alignItems: 'center', gap: 8 }}>
           <strong>Format détecté :</strong>
-          {formatDetecte === 'budgetbakers' ? '🟠 BudgetBakers (ancienne banque)' : '🔵 Caisse d\'Épargne'}
+          {formatDetecte === 'budgetbakers' ? "🟠 BudgetBakers (ancienne banque)" : "🔵 Caisse d'Épargne"}
         </div>
       )}
       {preview && (
         <div className="card" style={{ marginBottom: 16 }}>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
             <div>
-              <strong>{preview?.total || preview?.rows?.length || 0} mouvements</strong> détectés
-              {preview[0]?.mois_releve && ` — mois ${preview[0].mois_releve}`}
+              <strong>{preview?.total || 0} mouvements</strong> détectés
+              {preview?.mois_disponibles?.length > 0 && ` — ${preview.mois_disponibles.length} mois (de ${preview.mois_disponibles[0].mois} à ${preview.mois_disponibles[preview.mois_disponibles.length-1].mois})`}
             </div>
             <div style={{ display: 'flex', gap: 8 }}>
               <button className="btn btn-secondary btn-sm" onClick={() => setPreview(null)}>Annuler</button>
