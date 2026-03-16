@@ -154,9 +154,12 @@ export default function PageBanque() {
       )}
 
       {formatDetecte && (
-        <div style={{ marginBottom: 12, padding: '8px 14px', borderRadius: 8, background: formatDetecte === 'budgetbakers' ? '#FFF3E0' : '#E3F2FD', border: `1px solid ${formatDetecte === 'budgetbakers' ? '#FFB74D' : '#64B5F6'}`, fontSize: 13, display: 'inline-flex', alignItems: 'center', gap: 8 }}>
-          <strong>Format détecté :</strong>
-          {formatDetecte === 'budgetbakers' ? "🟠 BudgetBakers (ancienne banque)" : "🔵 Caisse d'Épargne"}
+        <div style={{ marginBottom: 12, padding: '8px 14px', borderRadius: 8,
+          background: formatDetecte === 'budgetbakers' ? '#FFF3E0' : '#E3F2FD',
+          border: formatDetecte === 'budgetbakers' ? '1px solid #FFB74D' : '1px solid #64B5F6',
+          fontSize: 13, display: 'inline-flex', alignItems: 'center', gap: 8 }}>
+          <strong>Format :</strong>
+          {formatDetecte === 'budgetbakers' ? '🟠 BudgetBakers' : '🔵 Caisse Epargne'}
         </div>
       )}
       {preview && (
