@@ -112,13 +112,36 @@ export async function importerMouvementsBancaires(rows, moisSelectionnes) {
   const aImporter = moisSelectionnes
     ? rows.filter(r => moisSelectionnes.includes(r.mois_releve))
     : rows
-  const log = { inseres: 0, erreurs: 0 }
+
+  const log = { inseres: 0, ignores: 0, erreurs: 0 }
+  if (aImporter.length === 0) return log
+
+  // Recuperer les numero_operation deja en base pour eviter les doublons
+  const numeros = aImporter.map(r => r.numero_operation).filter(Boolean)
+  let existants = new Set()
+  if (numeros.length > 0) {
+    const QBATCH = 500
+    for (let i = 0; i < numeros.length; i += QBATCH) {
+      const chunk = numeros.slice(i, i + QBATCH)
+      const { data } = await supabase
+        .from('mouvement_bancaire')
+        .select('numero_operation')
+        .in('numero_operation', chunk)
+      if (data) data.forEach(r => existants.add(r.numero_operation))
+    }
+  }
+
+  // Filtrer les nouveaux uniquement
+  const nouveaux = aImporter.filter(r => !r.numero_operation || !existants.has(r.numero_operation))
+  log.ignores = aImporter.length - nouveaux.length
+
+  // Inserer par batch de 200
   const BATCH = 200
-  for (let i = 0; i < aImporter.length; i += BATCH) {
-    const batch = aImporter.slice(i, i + BATCH)
+  for (let i = 0; i < nouveaux.length; i += BATCH) {
+    const batch = nouveaux.slice(i, i + BATCH)
     const { error } = await supabase
       .from('mouvement_bancaire')
-      .upsert(batch, { onConflict: 'numero_operation', ignoreDuplicates: true })
+      .insert(batch)
     if (error) { log.erreurs += batch.length; console.error('Import batch:', error.message) }
     else log.inseres += batch.length
   }
