@@ -2,11 +2,9 @@ import { supabase } from '../lib/supabase'
 
 export function detecterFormatCSV(texte) {
   const lignes = texte.split('\n').slice(0, 10).map(l => l.toLowerCase())
-  // BudgetBakers : premiere ligne avec Transaction ID
   if (lignes[0].includes('transaction id') || lignes[0].includes('date de la valeur')) return 'budgetbakers'
-  // Caisse Epargne : commence par "code de la banque" ou contient "numero d operation" dans les 10 premieres lignes
-  if (lignes[0].includes('code de la banque') || lignes[0].includes('numéro de compte')) return 'caisse_epargne'
-  if (lignes.some(l => l.includes("numéro d'opération") || l.includes('numero d operation') || (l.startsWith('date;') && l.includes('débit')))) return 'caisse_epargne'
+  if (lignes[0].includes('code de la banque') || lignes[0].includes('numéro de compte') || lignes[0].includes('numero de compte')) return 'caisse_epargne'
+  if (lignes.some(l => l.startsWith('date;') && (l.includes('débit') || l.includes('debit')))) return 'caisse_epargne'
   return 'inconnu'
 }
 
@@ -88,11 +86,10 @@ export function parserBudgetBakers(texte) {
 
 export function parserCaisseEpargne(texte) {
   const toutesLignes = texte.replace(/\r/g, '').split('\n').map(splitCSVLine)
-  // Trouver la ligne d en-tete (celle qui contient Date et Debit)
+  // Trouver la ligne d en-tete (date + debit + credit)
   const idxHeader = toutesLignes.findIndex(cols => {
     const row = cols.join(';').toLowerCase()
-    return (row.includes('date') && (row.includes('débit') || row.includes('debit'))) &&
-           (row.includes('crédit') || row.includes('credit'))
+    return row.includes('date') && (row.includes('débit') || row.includes('debit')) && (row.includes('crédit') || row.includes('credit'))
   })
   const lignes = idxHeader >= 0 ? toutesLignes.slice(idxHeader) : toutesLignes
   const h = lignes[0].map(x => x.toLowerCase().trim())
@@ -107,4 +104,43 @@ export function parserCaisseEpargne(texte) {
     'CaisseEpargne')
 }
 
+export async function parserFichierBancaire(file) {
+  // Lire en ArrayBuffer pour gérer l'encodage
+  const buf = await file.arrayBuffer()
+  // Essayer UTF-8, si trop de caractères invalides → latin-1 (Caisse Epargne)
+  let texte = new TextDecoder('utf-8').decode(buf)
+  if ((texte.match(/\uFFFD/g) || []).length > 5) {
+    texte = new TextDecoder('iso-8859-1').decode(buf)
+  }
 
+  const format = detecterFormatCSV(texte)
+  let rows = []
+  if (format === 'budgetbakers') rows = parserBudgetBakers(texte)
+  else if (format === 'caisse_epargne') rows = parserCaisseEpargne(texte)
+  else throw new Error('Format CSV non reconnu. Formats supportes: BudgetBakers, Caisse Epargne.')
+
+  const moisCount = {}
+  for (const r of rows) moisCount[r.mois_releve] = (moisCount[r.mois_releve] || 0) + 1
+  const mois_disponibles = Object.entries(moisCount)
+    .sort(([a],[b]) => a.localeCompare(b))
+    .map(([mois, count]) => ({ mois, count }))
+  return { format, rows, mois_disponibles, total: rows.length }
+}
+
+export async function importerMouvementsBancaires(rows, moisSelectionnes) {
+  const aImporter = moisSelectionnes
+    ? rows.filter(r => moisSelectionnes.includes(r.mois_releve))
+    : rows
+  const log = { inseres: 0, ignores: 0, erreurs: 0 }
+  if (aImporter.length === 0) return log
+  const BATCH = 100
+  for (let i = 0; i < aImporter.length; i += BATCH) {
+    const batch = aImporter.slice(i, i + BATCH)
+    const { error } = await supabase.from('mouvement_bancaire').insert(batch)
+    if (error) {
+      if (error.code === '23505') { log.ignores += batch.length }
+      else { log.erreurs += batch.length; console.error('Import batch:', error.message) }
+    } else { log.inseres += batch.length }
+  }
+  return log
+}
