@@ -1,4 +1,3 @@
-// v1773607106
 import { useState, useEffect, useRef } from 'react'
 import { getMouvementsMois, getMoisDispos } from '../services/banque'
 import { parserFichierBancaire, importerMouvementsBancaires } from '../services/importBanque'
@@ -9,16 +8,16 @@ import { fr } from 'date-fns/locale'
 
 const moisCourant = new Date().toISOString().substring(0, 7)
 
-const CANAL_LABELS = {
-  airbnb: { label: 'Airbnb', cls: 'badge-airbnb' },
-  booking: { label: 'Booking', cls: 'badge-booking' },
-  stripe: { label: 'Stripe', cls: 'badge-direct' },
-  sepa_manuel: { label: 'SEPA', cls: 'badge-manual' },
-  interne: { label: 'Interne', cls: 'badge-neutral' },
-  sortant_proprio: { label: 'Reversement', cls: 'badge-neutral' },
-  sortant_ae: { label: 'Débours AE', cls: 'badge-neutral' },
-  sortant_honoraires: { label: 'Honoraires', cls: 'badge-neutral' },
-  frais_bancaires: { label: 'Frais CE', cls: 'badge-neutral' },
+const CANAUX = {
+  airbnb:            { label: 'Airbnb',      cls: 'badge-airbnb' },
+  booking:           { label: 'Booking',     cls: 'badge-booking' },
+  stripe:            { label: 'Stripe',      cls: 'badge-stripe' },
+  sepa_manuel:       { label: 'SEPA',        cls: 'badge-sepa' },
+  interne:           { label: 'Interne',     cls: 'badge-neutral' },
+  sortant_proprio:   { label: 'Proprio',     cls: 'badge-proprio' },
+  sortant_honoraires:{ label: 'Honoraires',  cls: 'badge-neutral' },
+  sortant_ae:        { label: 'AE',          cls: 'badge-neutral' },
+  frais_bancaires:   { label: 'Frais',       cls: 'badge-neutral' },
 }
 
 export default function PageBanque() {
@@ -26,35 +25,28 @@ export default function PageBanque() {
   const [mouvements, setMouvements] = useState([])
   const [loading, setLoading] = useState(false)
   const [importing, setImporting] = useState(false)
-  const [importResult, setImportResult] = useState(null)
-  const [preview, setPreview] = useState(null)
-  const [formatDetecte, setFormatDetecte] = useState(null)
   const [error, setError] = useState(null)
   const [filtre, setFiltre] = useState('tous')
-  const [moisDispos, setMoisDispos] = useState([new Date().toISOString().substring(0, 7)])
+  const [moisDispos, setMoisDispos] = useState([moisCourant])
+  const [preview, setPreview] = useState(null)
+  const [formatDetecte, setFormatDetecte] = useState(null)
+  const [importResult, setImportResult] = useState(null)
   const fileRef = useRef()
 
   useEffect(() => { charger() }, [mois])
-  useEffect(() => { chargerMoisDispos() }, [])
 
   async function charger() {
     setLoading(true)
     setError(null)
     try {
-      const data = await getMouvementsMois(mois)
-      setMouvements(data)
-    } catch (err) {
-      setError(err.message)
+      const [m, d] = await Promise.all([getMouvementsMois(mois), getMoisDispos()])
+      setMouvements(m || [])
+      setMoisDispos(d?.length ? d : [moisCourant])
+    } catch(e) {
+      setError(e.message)
     } finally {
       setLoading(false)
     }
-  }
-
-  async function chargerMoisDispos() {
-    try {
-      const mois_list = await getMoisDispos()
-      if (mois_list.length > 0) setMoisDispos(mois_list)
-    } catch (err) { /* silencieux */ }
   }
 
   async function handleFile(e) {
@@ -63,14 +55,14 @@ export default function PageBanque() {
     setError(null)
     setPreview(null)
     setImportResult(null)
+    setFormatDetecte(null)
     try {
       const result = await parserFichierBancaire(file)
       setFormatDetecte(result.format)
-      setPreview({ rows: result.rows, mois: result.mois_disponibles, total: result.total })
-    } catch (err) {
-      setError(`Erreur parsing CSV : ${err.message}`)
+      setPreview(result)
+    } catch(e) {
+      setError('Erreur parsing CSV : ' + e.message)
     }
-    // Reset input pour permettre re-upload du même fichier
     if (fileRef.current) fileRef.current.value = ''
   }
 
@@ -81,175 +73,140 @@ export default function PageBanque() {
       const result = await importerMouvementsBancaires(preview.rows)
       setImportResult(result)
       setPreview(null)
+      setFormatDetecte(null)
       await charger()
-    } catch (err) {
-      setError(err.message)
+    } catch(e) {
+      setError(e.message)
     } finally {
       setImporting(false)
     }
   }
 
-  const entrants = mouvements.filter(m => m.credit !== null)
-  const sortants = mouvements.filter(m => m.debit !== null)
-  const aRapprocher = entrants.filter(m => m.statut_matching === 'en_attente')
-  const totalEntrant = entrants.reduce((s, m) => s + (m.credit || 0), 0)
-  const totalSortant = sortants.reduce((s, m) => s + (m.debit || 0), 0)
+  const liste = mouvements.filter(m => {
+    if (filtre === 'entrees') return (m.credit || 0) > 0
+    if (filtre === 'rapprocher') return m.statut_matching === 'en_attente' && (m.credit || 0) > 0
+    return true
+  })
 
-  const mvtFiltres = filtre === 'a_rapprocher'
-    ? aRapprocher
-    : filtre === 'entrants'
-    ? entrants
-    : mouvements
+  const entrees  = mouvements.filter(m => (m.credit||0) > 0)
+  const sorties  = mouvements.filter(m => (m.debit||0) > 0)
+  const aRapprocher = mouvements.filter(m => m.statut_matching === 'en_attente' && (m.credit||0) > 0)
+  const rapproches  = mouvements.filter(m => m.statut_matching === 'rapproche')
+
+  const formatBadge = formatDetecte === 'budgetbakers'
+    ? { bg: '#FFF3E0', border: '1px solid #FFB74D', label: String.fromCodePoint(0x1F7E0) + ' BudgetBakers (ancienne banque)' }
+    : { bg: '#E3F2FD', border: '1px solid #64B5F6', label: String.fromCodePoint(0x1F535) + ' Caisse Epargne' }
 
   return (
-    <div>
-      <div className="page-header">
+    <div className='page-container'>
+      <div className='page-header'>
         <div>
-          <h1 className="page-title">Compte de gestion</h1>
-          <p className="page-subtitle">Caisse d'Épargne — {mouvements.length} opérations</p>
+          <h1 className='page-title'>Compte de gestion</h1>
+          <p className='page-subtitle'>Caisse Epargne -- {mouvements.length} operations</p>
         </div>
-        <div style={{ display: 'flex', gap: 10, alignItems: 'center' }}>
+        <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
           <MoisSelector mois={mois} setMois={setMois} moisDispos={moisDispos} />
-          <button className="btn btn-secondary" onClick={charger} disabled={loading}>↺</button>
-          <label className="btn btn-primary" style={{ cursor: 'pointer' }}>
-            ↑ Import CSV
-            <input ref={fileRef} type="file" accept=".csv" style={{ display: 'none' }} onChange={handleFile} />
+          <button onClick={charger} className='btn btn-secondary btn-sm' disabled={loading}>
+            {loading ? '...' : String.fromCodePoint(0x21BB)}
+          </button>
+          <label className='btn btn-primary' style={{ cursor: 'pointer' }}>
+            {String.fromCodePoint(0x2191)} Import CSV
+            <input ref={fileRef} type='file' accept='.csv' style={{ display: 'none' }} onChange={handleFile} />
           </label>
         </div>
       </div>
 
-      <div className="stats-row">
-        <div className="stat-card">
-          <div className="stat-label">Entrées</div>
-          <div className="stat-value montant-positif" style={{ fontSize: 20 }}>{formatMontant(totalEntrant)}</div>
-          <div className="stat-sub">{entrants.length} opérations</div>
-        </div>
-        <div className="stat-card">
-          <div className="stat-label">Sorties</div>
-          <div className="stat-value montant-negatif" style={{ fontSize: 20 }}>{formatMontant(totalSortant)}</div>
-          <div className="stat-sub">{sortants.length} opérations</div>
-        </div>
-        <div className="stat-card">
-          <div className="stat-label">À rapprocher</div>
-          <div className="stat-value" style={{ color: aRapprocher.length > 0 ? 'var(--warning)' : 'var(--success)' }}>
-            {aRapprocher.length}
-          </div>
-          <div className="stat-sub">virements en attente</div>
-        </div>
-        <div className="stat-card">
-          <div className="stat-label">Rapprochés</div>
-          <div className="stat-value">
-            {entrants.filter(m => ['matche_auto','matche_manuel'].includes(m.statut_matching)).length}
-          </div>
-          <div className="stat-sub">sur {entrants.length} entrées</div>
-        </div>
-      </div>
+      {error && <div className='alert alert-error'>{error}</div>}
 
-      {error && <div className="alert alert-error">✕ {error}</div>}
       {importResult && (
-        <div className="alert alert-success">
-          ✓ Import terminé — {importResult.inserted} mouvements importés
-          {importResult.skipped > 0 && `, ${importResult.skipped} doublons ignorés`}
+        <div className='alert alert-success'>
+          Import termine -- {importResult.inseres} mouvements importes
         </div>
       )}
 
       {formatDetecte && (
         <div style={{ marginBottom: 12, padding: '8px 14px', borderRadius: 8,
-          background: formatDetecte === 'budgetbakers' ? '#FFF3E0' : '#E3F2FD',
-          border: formatDetecte === 'budgetbakers' ? '1px solid #FFB74D' : '1px solid #64B5F6',
+          background: formatBadge.bg, border: formatBadge.border,
           fontSize: 13, display: 'inline-flex', alignItems: 'center', gap: 8 }}>
-          <strong>Format :</strong>
-          {formatDetecte === 'budgetbakers' ? '🟠 BudgetBakers' : '🔵 Caisse Epargne'}
+          <strong>Format :</strong> {formatBadge.label}
         </div>
       )}
+
       {preview && (
-        <div className="card" style={{ marginBottom: 16 }}>
+        <div className='card' style={{ marginBottom: 16 }}>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
             <div>
-              <strong>{preview?.total || 0} mouvements</strong> détectés
-              {preview?.mois_disponibles?.length > 0 && ` — ${preview.mois_disponibles.length} mois (de ${preview.mois_disponibles[0].mois} à ${preview.mois_disponibles[preview.mois_disponibles.length-1].mois})`}
+              <strong>{preview.total} mouvements</strong> detectes
+              {preview.mois_disponibles?.length > 0 && (
+                <span style={{ marginLeft: 8, color: '#666', fontSize: 13 }}>
+                  {preview.mois_disponibles.length} mois
+                  {' '}({preview.mois_disponibles[0].mois} a {preview.mois_disponibles[preview.mois_disponibles.length-1].mois})
+                </span>
+              )}
             </div>
             <div style={{ display: 'flex', gap: 8 }}>
-              <button className="btn btn-secondary btn-sm" onClick={() => setPreview(null)}>Annuler</button>
-              <button className="btn btn-primary btn-sm" onClick={confirmerImport} disabled={importing}>
-                {importing ? <><span className="spinner" style={{ width: 14, height: 14 }} /> Import…</> : `✓ Confirmer`}
+              <button className='btn btn-secondary btn-sm' onClick={() => { setPreview(null); setFormatDetecte(null) }}>Annuler</button>
+              <button className='btn btn-primary' onClick={confirmerImport} disabled={importing}>
+                {importing ? 'Import...' : 'Confirmer import'}
               </button>
             </div>
           </div>
-          <div className="table-container" style={{ maxHeight: 200, overflowY: 'auto' }}>
-            <table>
-              <thead><tr><th>Date</th><th>Libellé</th><th>Canal</th><th className="right">Crédit</th><th className="right">Débit</th></tr></thead>
+          <div style={{ maxHeight: 200, overflowY: 'auto' }}>
+            <table className='table'>
+              <thead><tr><th>Date</th><th>Libelle</th><th>Canal</th><th className='right'>Credit</th><th className='right'>Debit</th></tr></thead>
               <tbody>
-                {preview.slice(0, 10).map((m, i) => (
+                {preview.rows.slice(0, 20).map((m, i) => (
                   <tr key={i}>
                     <td>{m.date_operation}</td>
-                    <td style={{ maxWidth: 260 }}>{m.libelle}</td>
-                    <td>
-                      {CANAL_LABELS[m.canal]
-                        ? <span className={`badge ${CANAL_LABELS[m.canal].cls}`}>{CANAL_LABELS[m.canal].label}</span>
-                        : m.canal}
-                    </td>
-                    <td className="right montant montant-positif">{m.credit ? formatMontant(m.credit) : ''}</td>
-                    <td className="right montant montant-negatif">{m.debit ? formatMontant(m.debit) : ''}</td>
+                    <td>{m.libelle}</td>
+                    <td><span className={'badge ' + (CANAUX[m.canal]?.cls || 'badge-neutral')}>{CANAUX[m.canal]?.label || m.canal}</span></td>
+                    <td className='right montant montant-positif'>{m.credit ? formatMontant(m.credit) : '--'}</td>
+                    <td className='right montant montant-negatif'>{m.debit ? formatMontant(m.debit) : '--'}</td>
                   </tr>
                 ))}
-                {preview.length > 10 && (
-                  <tr><td colSpan={5} style={{ textAlign: 'center', color: 'var(--text-muted)', fontStyle: 'italic' }}>
-                    + {preview.length - 10} autres mouvements…
-                  </td></tr>
-                )}
               </tbody>
             </table>
+            {preview.rows.length > 20 && <p style={{ textAlign: 'center', color: '#888', fontSize: 13, margin: '8px 0' }}>... et {preview.rows.length - 20} autres</p>}
           </div>
         </div>
       )}
 
-      <div className="toolbar">
-        {[
-          { key: 'tous', label: `Tous (${mouvements.length})` },
-          { key: 'entrants', label: `Entrées (${entrants.length})` },
-          { key: 'a_rapprocher', label: `À rapprocher (${aRapprocher.length})` },
-        ].map(f => (
-          <button key={f.key} className={`btn btn-sm ${filtre === f.key ? 'btn-primary' : 'btn-secondary'}`} onClick={() => setFiltre(f.key)}>
-            {f.label}
-          </button>
+      <div className='stats-row'>
+        <div className='stat-card'><div className='stat-label'>ENTREES</div><div className='stat-value stat-positive'>{formatMontant(entrees.reduce((s,m)=>s+(m.credit||0),0))}</div><div className='stat-sub'>{entrees.length} operations</div></div>
+        <div className='stat-card'><div className='stat-label'>SORTIES</div><div className='stat-value stat-negative'>{formatMontant(sorties.reduce((s,m)=>s+(m.debit||0),0))}</div><div className='stat-sub'>{sorties.length} operations</div></div>
+        <div className='stat-card'><div className='stat-label'>A RAPPROCHER</div><div className='stat-value' style={{ color: aRapprocher.length > 0 ? 'var(--warning)' : 'var(--success)' }}>{aRapprocher.length}</div><div className='stat-sub'>virements en attente</div></div>
+        <div className='stat-card'><div className='stat-label'>RAPPROCHES</div><div className='stat-value'>{rapproches.length}</div><div className='stat-sub'>sur {entrees.length} entrees</div></div>
+      </div>
+
+      <div className='filter-tabs' style={{ marginBottom: 16 }}>
+        {[['tous','Tous'],['entrees','Entrees'],['rapprocher','A rapprocher']].map(([k,l]) => (
+          <button key={k} className={'filter-tab' + (filtre===k?' active':'')} onClick={() => setFiltre(k)}>{l} ({k==='tous'?mouvements.length:k==='entrees'?entrees.length:aRapprocher.length})</button>
         ))}
       </div>
 
-      {loading ? (
-        <div className="loading-state"><span className="spinner" /> Chargement…</div>
-      ) : mvtFiltres.length === 0 ? (
-        <div className="empty-state">
-          <div className="empty-state-title">Aucun mouvement</div>
-          <p>Importe un relevé CSV Caisse d'Épargne pour ce mois.</p>
+      {!loading && liste.length === 0 && (
+        <div className='empty-state'>
+          <p>Aucun mouvement</p>
+          <p>Importe un releve CSV pour ce mois.</p>
         </div>
-      ) : (
-        <div className="table-container">
-          <table>
-            <thead>
-              <tr>
-                <th>Date</th><th>Libellé</th><th>Détail</th><th>Canal</th>
-                <th className="right">Crédit</th><th className="right">Débit</th><th>Statut</th>
-              </tr>
-            </thead>
+      )}
+
+      {liste.length > 0 && (
+        <div className='table-container'>
+          <table className='table'>
+            <thead><tr><th>Date</th><th>Libelle</th><th>Canal</th><th className='right'>Credit</th><th className='right'>Debit</th><th>Statut</th></tr></thead>
             <tbody>
-              {mvtFiltres.map(m => {
-                const canal = CANAL_LABELS[m.canal]
+              {liste.map(m => {
+                const canal = CANAUX[m.canal]
+                const d = m.date_operation ? format(new Date(m.date_operation), 'd MMM', { locale: fr }) : ''
                 return (
                   <tr key={m.id}>
-                    <td>{m.date_operation ? format(new Date(m.date_operation), 'd MMM', { locale: fr }) : m.date_operation}</td>
-                    <td style={{ maxWidth: 220, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{m.libelle}</td>
-                    <td style={{ maxWidth: 180, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', color: 'var(--text-muted)', fontSize: 12 }}>{m.detail || '—'}</td>
-                    <td>{canal ? <span className={`badge ${canal.cls}`}>{canal.label}</span> : <span className="badge badge-neutral">{m.canal || '?'}</span>}</td>
-                    <td className="right montant montant-positif">{m.credit ? formatMontant(m.credit) : ''}</td>
-                    <td className="right montant montant-negatif">{m.debit ? formatMontant(m.debit) : ''}</td>
-                    <td>
-                      {m.statut_matching === 'matche_auto' && <span className="badge badge-success">✓ Auto</span>}
-                      {m.statut_matching === 'matche_manuel' && <span className="badge badge-success">✓ Manuel</span>}
-                      {m.statut_matching === 'en_attente' && m.credit && <span className="badge badge-warning">En attente</span>}
-                      {m.statut_matching === 'non_rapprochable' && <span className="badge badge-neutral">N/A</span>}
-                      {m.debit && !['matche_auto','matche_manuel'].includes(m.statut_matching) && <span className="badge badge-neutral">Sortant</span>}
-                    </td>
+                    <td>{d}</td>
+                    <td><div>{m.libelle}</div>{m.detail && <div style={{ fontSize: 12, color: '#888' }}>{m.detail}</div>}</td>
+                    <td>{canal ? <span className={'badge ' + canal.cls}>{canal.label}</span> : <span className='badge badge-neutral'>{m.canal}</span>}</td>
+                    <td className='right montant montant-positif'>{m.credit ? formatMontant(m.credit) : '--'}</td>
+                    <td className='right montant montant-negatif'>{m.debit ? formatMontant(m.debit) : '--'}</td>
+                    <td><span className={m.statut_matching === 'rapproche' ? 'badge badge-success' : 'badge badge-neutral'}>{m.statut_matching === 'rapproche' ? 'Rapproche' : 'En attente'}</span></td>
                   </tr>
                 )
               })}
