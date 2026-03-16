@@ -63,7 +63,8 @@ export async function syncPayouts(mois) {
     const lastDay = new Date(year, month, 0).getDate()
     const endDate = `${mois}-${String(lastDay).padStart(2, '0')}`
 
-    const payouts = await fetchPayouts({ startDate, endDate })
+    // Utiliser fetchPayoutsForMonth (early exit, évite pagination infinie)
+    const payouts = await fetchPayoutsForMonth(mois)
     log.total = payouts.length
 
     if (payouts.length === 0) {
