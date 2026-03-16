@@ -23,7 +23,7 @@ export default function App() {
             <NavLink to="/" end className={({isActive}) => isActive ? 'nav-link active' : 'nav-link'}>Biens</NavLink>
             <NavLink to="/reservations" className={({isActive}) => isActive ? 'nav-link active' : 'nav-link'}>Réservations</NavLink>
             <NavLink to="/banque" className={({isActive}) => isActive ? 'nav-link active' : 'nav-link'}>Banque</NavLink>
-            <NavLink to="/matching" className={({isActive}) => isActive ? 'nav-link active' : 'nav-link'}>Rapprochement</NavLink>
+            <NavLink to="/rapprochement" className={({isActive}) => isActive ? 'nav-link active' : 'nav-link'}>Rapprochement</NavLink>
             <NavLink to="/factures-ae" className={({isActive}) => isActive ? 'nav-link active' : 'nav-link'}>Factures Auto</NavLink>
             <NavLink to="/factures" className={({isActive}) => isActive ? 'nav-link active' : 'nav-link'}>Factures</NavLink>
             <NavLink to="/import" className={({isActive}) => isActive ? 'nav-link active' : 'nav-link'}>Import</NavLink>
