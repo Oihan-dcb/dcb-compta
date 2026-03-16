@@ -19,6 +19,40 @@ import { fetchPayouts } from '../lib/hospitable'
  * Synchronise les payouts Hospitable dans la table payout_hospitable
  * @param {string} mois - YYYY-MM
  */
+
+/**
+ * Récupère les payouts d'un mois donné en paginant et en s'arrêtant
+ * dès qu'on dépasse la plage cible (l'API trie par date décroissante)
+ */
+async function fetchPayoutsForMonth(mois) {
+  const [year, month] = mois.split('-').map(Number)
+  const startDate = new Date(year, month - 1, 1)
+  const endDate = new Date(year, month, 0)
+  const result = []
+  let page = 1
+
+  while (true) {
+    const data = await fetch(`https://public.api.hospitable.com/v2/payouts?include=transactions&limit=50&page=${page}`, {
+      headers: { Authorization: `Bearer ${import.meta.env.VITE_HOSPITABLE_TOKEN}` }
+    }).then(r => r.json())
+
+    const items = data.data || []
+    if (items.length === 0) break
+
+    for (const item of items) {
+      const d = new Date(item.date || item.date_payout || '')
+      if (isNaN(d)) continue
+      if (d >= startDate && d <= endDate) result.push(item)
+      // Payouts triés par date desc → on s'arrête quand on passe avant le mois
+      if (d < startDate) return result
+    }
+
+    const meta = data.meta || {}
+    if (page >= (meta.last_page || 1)) break
+    page++
+  }
+  return result
+}
 export async function syncPayouts(mois) {
   const log = { created: 0, updated: 0, errors: 0, total: 0 }
 
@@ -33,13 +67,9 @@ export async function syncPayouts(mois) {
     log.total = payouts.length
 
     if (payouts.length === 0) {
-      // Fallback : récupérer tous et filtrer côté client
-      // L'API Hospitable ne supporte pas forcément le filtre par date sur /payouts
-      const allPayouts = await fetchPayouts({})
-      const filtered = allPayouts.filter(p => {
-        const d = (p.date || p.date_payout || '').substring(0, 7)
-        return d === mois
-      })
+      // L'API Hospitable ne supporte pas le filtre date sur /payouts
+      // → paginer manuellement et s'arrêter dès qu'on dépasse le mois cible
+      const filtered = await fetchPayoutsForMonth(mois)
       return syncPayoutsData(filtered, mois, log)
     }
 
@@ -678,3 +708,4 @@ export async function validerMatchManuelResas(mouvementId, resaIds) {
 
   return { matched: true, resaIds }
 }
+// end
