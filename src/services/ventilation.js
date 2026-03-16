@@ -281,7 +281,12 @@ export async function calculerVentilationResa(resa) {
   // Direct  : fees_ménage = cleaning_fee + community_fee (management_fee = expense séparé → AUTO)
   // Vérifié ligne par ligne sur statement 602 "Horizonte" fév 2026
   const fmenBase = cleaningFeeAirbnb + communityFeeRaw  // = MEN brut (fees ménage voyageur)
-  const dueToOwner = (resa.platform === 'airbnb') ? Math.round(fmenBase * AIRBNB_FEES_RATE) : 0
+  // dueToOwner : part plateforme sur fees ménage (Airbnb 13,95%, Booking 15,17%)
+  const dueToOwner = (resa.platform === 'airbnb')
+    ? Math.round(fmenBase * AIRBNB_FEES_RATE)
+    : (resa.platform === 'booking')
+      ? Math.round(fmenBase * PLATFORM_CLEANING_RATES.booking)
+      : 0
   const fmenTTC = Math.max(0, fmenBase - dueToOwner - aeAmount)
   const fmenHT  = fmenTTC > 0 ? Math.round(fmenTTC / (1 + TVA_RATE)) : 0
 
