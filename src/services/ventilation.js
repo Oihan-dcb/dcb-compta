@@ -275,8 +275,27 @@ export async function calculerVentilationResa(resa) {
   const fmenTTC = Math.max(0, fmenBase - dueToOwner - aeAmount)
   const fmenHT  = fmenTTC > 0 ? Math.round(fmenTTC / (1 + TVA_RATE)) : 0
 
+  // ── MEN : ménage brut collecté voyageur (toutes guest fees sauf management) — Hors TVA
+  const menLabelsToExclude = ['management fee', 'host service fee']
+  const menFees = guestFeesAll.filter(f => !menLabelsToExclude.includes(f.label?.toLowerCase()))
+  const menAmount = menFees.reduce((s, f) => s + (f.amount || 0), 0)
+
+  // ── COM : commission DCB sur locations directes (Management fee brut) — TVA 20%
+  const comAmount = isDirect ? managementFeeRaw : 0
+  const comHT = comAmount > 0 ? Math.round(comAmount / (1 + TVA_RATE)) : 0
+
   // --- Lignes de ventilation ---
   const lignes = []
+
+  // MEN — ménage brut collecté voyageur (Hors TVA)
+  if (menAmount > 0) {
+    lignes.push(ligneHorsTVA('MEN', 'Ménage brut voyageur', menAmount, bien, resa))
+  }
+
+  // COM — commission DCB sur locations directes (Management fee, TVA 20%)
+  if (comHT > 0) {
+    lignes.push(ligneTVA('COM', 'Commission DCB', comHT, bien, resa, null, comAmount))
+  }
 
   // HON — honoraires de gestion (TVA 20%)
   if (honHT > 0) {
