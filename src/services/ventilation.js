@@ -207,7 +207,8 @@ export async function calculerVentilationResa(resa) {
   const aeAmount = isCancelled ? 0 : (bien.provision_ae_ref || 0)
 
   // Taxes pass-through
-  const taxesTotal = taxes.reduce((s, t) => s + (t.amount || 0), 0)
+  // Airbnb reverse directement les taxes de séjour → pas incluses dans taxesTotal/VIR
+  const taxesTotal = (resa.platform === 'airbnb') ? 0 : taxes.reduce((s, t) => s + (t.amount || 0), 0)
 
   // ── Taux commission plateforme sur les fees ───────────────────────────────
   // Airbnb  : 16,21% sur (cleaning fee + community fee / host service fee)
@@ -255,10 +256,16 @@ export async function calculerVentilationResa(resa) {
     const feesDirectNets = feesDirectBruts > 0 ? Math.round(feesDirectBruts / 1.0077) : 0
     platformRembourseMenage = feesDirectBruts - feesDirectNets
   } else {
+    // Airbnb : 13,95% sur (cleaning + community) — même taux que dueToOwner
+    // Booking et autres : taux spécifique plateforme sur ménage brut
     const feesBaseForPlatform = (resa.platform === 'airbnb')
       ? (cleaningFeeAirbnb + communityFeeRaw)
       : menageBrut
-    platformRembourseMenage = Math.round(platformRateOnCleaning * feesBaseForPlatform)
+    const rateForPlatform = (resa.platform === 'airbnb') ? AIRBNB_FEES_RATE : platformRateOnCleaning
+    // Airbnb : Math.ceil pour correspondre exactement au statement (arrondi supérieur)
+    platformRembourseMenage = (resa.platform === 'airbnb')
+      ? Math.ceil(rateForPlatform * feesBaseForPlatform)
+      : Math.round(rateForPlatform * feesBaseForPlatform)
   }
 
   // LOY = base - HON + remboursement plateforme (même logique direct et plateforme)
@@ -329,10 +336,13 @@ export async function calculerVentilationResa(resa) {
     lignes.push(ligneHorsTVA('VIR', 'Virement propriétaire', virAmount, bien, resa))
   }
 
-  // TAX — taxes pass-through (tracé, hors TVA)
-  for (const tax of taxes) {
-    if (tax.amount > 0) {
-      lignes.push(ligneHorsTVA('TAXE', tax.label || 'Taxe séjour', tax.amount, bien, resa))
+  // TAXE — taxe de séjour (hors TVA)
+  // Airbnb reverse directement les taxes → pas de ligne TAXE pour Airbnb
+  if (resa.platform !== 'airbnb') {
+    for (const tax of taxes) {
+      if (tax.amount > 0) {
+        lignes.push(ligneHorsTVA('TAXE', tax.label || 'Taxe séjour', tax.amount, bien, resa))
+      }
     }
   }
 
