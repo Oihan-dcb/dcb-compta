@@ -296,7 +296,10 @@ export async function calculerVentilationResa(resa) {
 
   // LOY Booking : recalcul depuis fin_revenue (taux Booking variable sur cleaning)
   if (resa.platform === 'booking') {
-    loyAmount = (resa.fin_revenue || 0) - honTTC - fmenTTC - aeAmount - taxesTotal
+    // fin_revenue Hospitable inclut les Remitted taxes → déduire pour avoir le net statement
+    const remittedTotal = taxes.filter(t => isRemitted(t)).reduce((s,t) => s + (t.amount||0), 0)
+    const finRevenueNet = (resa.fin_revenue || 0) - remittedTotal
+    loyAmount = finRevenueNet - honTTC - fmenTTC - aeAmount - taxesTotal
   }
 
   // --- Lignes de ventilation ---
