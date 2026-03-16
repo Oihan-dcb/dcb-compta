@@ -3,17 +3,17 @@
  * Transforme les financials Hospitable en lignes comptables DCB
  *
  * Codes ventilation :
- * COM  — Commission DCB (% accommodation) — TVA 20%
- * MEN  — Forfait ménage DCB (guest_fees - provision AE) — TVA 20%
+ * COM  — Commission DCB sur les locations directes (Management fee sur CSV HOSP) — TVA 20%
+ * MEN  — Forfait ménage Brut collecté auprès du voyageur (Cleaning fee + Community fee + Other fee + pet fee + resort fee) — Hors TVA
  * MGT  — Management fee résa directe — TVA 20%
- * AE   — Débours auto-entrepreneur — Hors TVA
- * HON  — Honoraires de gestion DCB — TVA 20%
- * FMEN — Forfait ménage (total ménage - MOE provisionnée) — TVA 20%
  * AUTO — Débours auto-entrepreneur — Hors TVA
+ * HON  — Honoraires de gestion DCB — TVA 20%
+ * FMEN — Forfait ménage DCB (MEN - AUTO provisionnée) — TVA 20%
  * LOY  — Reversement propriétaire — Hors TVA
  * TAXE — Taxe de séjour — Hors TVA
  * DIV  — Frais divers DCB (expenses [DCB]) — TVA 20%
  * TAX  — Taxe de séjour (pass-through) — Hors TVA, tracé uniquement
+ * MISC — Autre mouvements non identifiés (extra guest fee) — Hors TVA
  */
 
 import { supabase } from '../lib/supabase'
@@ -269,8 +269,10 @@ export async function calculerVentilationResa(resa) {
   // Airbnb  : fees_ménage = cleaning_fee + community_fee (host service fee)
   // Direct  : fees_ménage = cleaning_fee + community_fee (management_fee = expense séparé → AUTO)
   // Vérifié ligne par ligne sur statement 602 "Horizonte" fév 2026
-  const fmenBase = cleaningFeeAirbnb + communityFeeRaw  // même règle pour toutes les plateformes
-  const fmenTTC = Math.max(0, fmenBase - aeAmount)
+  const fmenBase = cleaningFeeAirbnb + communityFeeRaw  // = MEN brut (fees ménage voyageur)
+  const AIRBNB_FEES_RATE = 0.1395  // 13,95% retenu par Airbnb sur les fees (due to owner)
+  const dueToOwner = (resa.platform === 'airbnb') ? Math.round(fmenBase * AIRBNB_FEES_RATE) : 0
+  const fmenTTC = Math.max(0, fmenBase - dueToOwner - aeAmount)
   const fmenHT  = fmenTTC > 0 ? Math.round(fmenTTC / (1 + TVA_RATE)) : 0
 
   // --- Lignes de ventilation ---
