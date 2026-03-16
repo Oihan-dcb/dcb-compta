@@ -98,12 +98,12 @@ export async function lancerMatchingAuto(mois) {
             .update({ mouvement_id: mouv.id, statut_matching: 'rapproche' })
             .eq('id', payout.id)
 
-          // 3. Lier les VIR via payout_reservation (si peuplé) sinon subset sum
+          // 3. Lier les VIR — 3 stratégies en cascade
           const virsCible = virCanal.filter(v => !v.mouvement_id)
           let virIds = []
 
-          // Essai 1 : via payout_reservation → réservations liées au payout
-          if (payout) {
+          // Stratégie A : via payout_reservation (peuplé par syncPayouts)
+          if (payout && virIds.length === 0) {
             const { data: prLinks } = await supabase
               .from('payout_reservation')
               .select('reservation_id')
@@ -115,7 +115,23 @@ export async function lancerMatchingAuto(mois) {
             }
           }
 
-          // Essai 2 : exact ou subset sum sur montant
+          // Stratégie B : arrival_date ≈ date_operation ±2j (Airbnb verse au check-in)
+          if (virIds.length === 0 && mouv.date_operation) {
+            const mouvDate = new Date(mouv.date_operation).getTime()
+            const byCheckin = virsCible.filter(v => {
+              const arr = v.reservation?.arrival_date
+              if (!arr) return false
+              const diff = Math.abs(new Date(arr).getTime() - mouvDate) / 86400000
+              return diff <= 2
+            })
+            // Vérifier que la somme des VIR par checkin = montant du mouvement ±5%
+            const sumCheckin = byCheckin.reduce((s, v) => s + v.montant_ttc, 0)
+            if (byCheckin.length > 0 && Math.abs(sumCheckin - mouv.credit) / mouv.credit < 0.05) {
+              virIds = byCheckin.map(v => v.id)
+            }
+          }
+
+          // Stratégie C : exact ou subset sum sur montant
           if (virIds.length === 0) {
             const exact = virsCible.find(v => Math.abs(v.montant_ttc - mouv.credit) <= 2)
             if (exact) {
