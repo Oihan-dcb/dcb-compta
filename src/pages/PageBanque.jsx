@@ -1,6 +1,7 @@
 // v1773607106
 import { useState, useEffect, useRef } from 'react'
-import { parseCSVCaisseEpargne, importerMouvements, getMouvementsMois, getMoisDispos } from '../services/banque'
+import { getMouvementsMois, getMoisDispos } from '../services/banque'
+import { parserFichierBancaire, importerMouvementsBancaires } from '../services/importBanque'
 import MoisSelector from '../components/MoisSelector'
 import { formatMontant } from '../lib/hospitable'
 import { format } from 'date-fns'
@@ -27,6 +28,7 @@ export default function PageBanque() {
   const [importing, setImporting] = useState(false)
   const [importResult, setImportResult] = useState(null)
   const [preview, setPreview] = useState(null)
+  const [formatDetecte, setFormatDetecte] = useState(null)
   const [error, setError] = useState(null)
   const [filtre, setFiltre] = useState('tous')
   const [moisDispos, setMoisDispos] = useState([new Date().toISOString().substring(0, 7)])
@@ -62,8 +64,9 @@ export default function PageBanque() {
     setPreview(null)
     setImportResult(null)
     try {
-      const parsed = await parseCSVCaisseEpargne(file)
-      setPreview(parsed)
+      const result = await parserFichierBancaire(file)
+      setFormatDetecte(result.format)
+      setPreview({ rows: result.rows, mois: result.mois_disponibles, total: result.total })
     } catch (err) {
       setError(`Erreur parsing CSV : ${err.message}`)
     }
@@ -75,7 +78,7 @@ export default function PageBanque() {
     if (!preview) return
     setImporting(true)
     try {
-      const result = await importerMouvements(preview)
+      const result = await importerMouvementsBancaires(preview.rows)
       setImportResult(result)
       setPreview(null)
       await charger()
@@ -150,11 +153,17 @@ export default function PageBanque() {
         </div>
       )}
 
+      {formatDetecte && (
+        <div style={{ marginBottom: 12, padding: '8px 14px', borderRadius: 8, background: formatDetecte === 'budgetbakers' ? '#FFF3E0' : '#E3F2FD', border: `1px solid ${formatDetecte === 'budgetbakers' ? '#FFB74D' : '#64B5F6'}`, fontSize: 13, display: 'inline-flex', alignItems: 'center', gap: 8 }}>
+          <strong>Format détecté :</strong>
+          {formatDetecte === 'budgetbakers' ? '🟠 BudgetBakers (ancienne banque)' : '🔵 Caisse d\'Épargne'}
+        </div>
+      )}
       {preview && (
         <div className="card" style={{ marginBottom: 16 }}>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
             <div>
-              <strong>{preview.length} mouvements</strong> détectés
+              <strong>{preview?.total || preview?.rows?.length || 0} mouvements</strong> détectés
               {preview[0]?.mois_releve && ` — mois ${preview[0].mois_releve}`}
             </div>
             <div style={{ display: 'flex', gap: 8 }}>
