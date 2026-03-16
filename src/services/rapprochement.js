@@ -67,11 +67,17 @@ export async function lancerMatchingAuto(mois) {
     ])
     const libres = mouvements.filter(m => m.statut_matching === 'en_attente' && (m.credit || 0) > 0)
 
-    // Charger les payouts du mois (déjà en base via sync précédente)
+    // Charger les payouts dont la date_payout correspond au mois du relevé bancaire
+    // NB: mois_comptable = mois de la résa, pas du payout → filtrer par date_payout
+    const [year, month] = mois.split('-').map(Number)
+    const dateStart = `${mois}-01`
+    const lastDay = new Date(year, month, 0).getDate()
+    const dateEnd = `${mois}-${String(lastDay).padStart(2,'0')}`
     const { data: payouts } = await supabase
       .from('payout_hospitable')
-      .select('id, amount, platform, mois_comptable, mouvement_id')
-      .eq('mois_comptable', mois)
+      .select('id, amount, platform, mois_comptable, mouvement_id, date_payout')
+      .gte('date_payout', dateStart)
+      .lte('date_payout', dateEnd)
       .is('mouvement_id', null)
 
     const payoutsLibres = payouts || []
