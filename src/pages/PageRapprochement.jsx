@@ -5,6 +5,9 @@ import {
   lancerMatchingAuto, matcherManuellement, marquerNonIdentifie, annulerRapprochement
 } from '../services/rapprochement'
 import { syncPayouts } from '../services/matching'
+import { setToken } from '../lib/hospitable'
+
+const HOSP_TOKEN = import.meta.env.VITE_HOSPITABLE_TOKEN
 import MoisSelector from '../components/MoisSelector'
 import { format } from 'date-fns'
 import { fr } from 'date-fns/locale'
@@ -81,6 +84,8 @@ export default function PageRapprochement() {
     setSyncLog(null)
     setError(null)
     try {
+      if (!HOSP_TOKEN) throw new Error('Token Hospitable non configuré (VITE_HOSPITABLE_TOKEN)')
+      setToken(HOSP_TOKEN)
       const log = await syncPayouts(mois)
       setSyncLog(log)
       await charger()
@@ -363,3 +368,4 @@ export default function PageRapprochement() {
     </div>
   )
 }
+// v2
