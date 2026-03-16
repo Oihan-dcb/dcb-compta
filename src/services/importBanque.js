@@ -1,9 +1,12 @@
 import { supabase } from '../lib/supabase'
 
 export function detecterFormatCSV(texte) {
-  const ligne = texte.split('\n')[0].toLowerCase()
-  if (ligne.includes('transaction id') || ligne.includes('date de la valeur')) return 'budgetbakers'
-  if (ligne.includes('date op') && (ligne.includes('libellé') || ligne.includes('libelle') || ligne.includes('credit'))) return 'caisse_epargne'
+  const lignes = texte.split('\n').slice(0, 10).map(l => l.toLowerCase())
+  // BudgetBakers : premiere ligne avec Transaction ID
+  if (lignes[0].includes('transaction id') || lignes[0].includes('date de la valeur')) return 'budgetbakers'
+  // Caisse Epargne : commence par "code de la banque" ou contient "numero d operation" dans les 10 premieres lignes
+  if (lignes[0].includes('code de la banque') || lignes[0].includes('numéro de compte')) return 'caisse_epargne'
+  if (lignes.some(l => l.includes("numéro d'opération") || l.includes('numero d operation') || (l.startsWith('date;') && l.includes('débit')))) return 'caisse_epargne'
   return 'inconnu'
 }
 
@@ -84,59 +87,24 @@ export function parserBudgetBakers(texte) {
 }
 
 export function parserCaisseEpargne(texte) {
-  const lignes = texte.replace(/\r/g, '').split('\n').map(splitCSVLine)
+  const toutesLignes = texte.replace(/\r/g, '').split('\n').map(splitCSVLine)
+  // Trouver la ligne d en-tete (celle qui contient Date et Debit)
+  const idxHeader = toutesLignes.findIndex(cols => {
+    const row = cols.join(';').toLowerCase()
+    return (row.includes('date') && (row.includes('débit') || row.includes('debit'))) &&
+           (row.includes('crédit') || row.includes('credit'))
+  })
+  const lignes = idxHeader >= 0 ? toutesLignes.slice(idxHeader) : toutesLignes
   const h = lignes[0].map(x => x.toLowerCase().trim())
   const find = (...terms) => h.findIndex(x => terms.some(t => x.includes(t)))
   return parserLignes(lignes,
-    find('date'), find('numéro', 'numero'),
-    find('libellé', 'libelle'), find('détail', 'detail'),
-    find('débit', 'debit'), find('crédit', 'credit'), 'CaisseEpargne')
+    find('date'),
+    find('numéro', 'numero'),
+    find('libellé', 'libelle'),
+    find('détail', 'detail'),
+    find('débit', 'debit'),
+    find('crédit', 'credit'),
+    'CaisseEpargne')
 }
 
-export async function parserFichierBancaire(file) {
-  const texte = await file.text()
-  const format = detecterFormatCSV(texte)
-  let rows = []
-  if (format === 'budgetbakers') rows = parserBudgetBakers(texte)
-  else if (format === 'caisse_epargne') rows = parserCaisseEpargne(texte)
-  else throw new Error('Format CSV non reconnu. Formats supportes: BudgetBakers, Caisse Epargne.')
-  const moisCount = {}
-  for (const r of rows) moisCount[r.mois_releve] = (moisCount[r.mois_releve] || 0) + 1
-  const mois_disponibles = Object.entries(moisCount)
-    .sort(([a],[b]) => a.localeCompare(b))
-    .map(([mois, count]) => ({ mois, count }))
-  return { format, rows, mois_disponibles, total: rows.length }
-}
 
-export async function importerMouvementsBancaires(rows, moisSelectionnes) {
-  const aImporter = moisSelectionnes
-    ? rows.filter(r => moisSelectionnes.includes(r.mois_releve))
-    : rows
-
-  const log = { inseres: 0, ignores: 0, erreurs: 0 }
-  if (aImporter.length === 0) return log
-
-  const SUPABASE_URL = 'https://omuncchvypbtxkpalwcr.supabase.co'
-  const SUPABASE_KEY = import.meta.env.VITE_SUPABASE_KEY || (await supabase.auth.getSession().then(() => null))
-
-  // Utiliser fetch direct avec Prefer: resolution=ignore-duplicates
-  // Supabase supporte ca sans contrainte UNIQUE — insere si pas doublon sur id auto
-  // Pour eviter vrais doublons on delete+reinsere pas, on insere juste les nouveaux
-  // Strategie: INSERT simple par batch de 100, les doublons de numero_operation seront des erreurs ignorees
-  const BATCH = 100
-  for (let i = 0; i < aImporter.length; i += BATCH) {
-    const batch = aImporter.slice(i, i + BATCH)
-    const { error, count } = await supabase
-      .from('mouvement_bancaire')
-      .insert(batch)
-      .select('id', { count: 'exact', head: true })
-    if (error) {
-      // Erreur de doublon = normal, on continue
-      if (error.code === '23505') { log.ignores += batch.length }
-      else { log.erreurs += batch.length; console.error('Import:', error.message) }
-    } else {
-      log.inseres += batch.length
-    }
-  }
-  return log
-}
