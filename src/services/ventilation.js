@@ -214,7 +214,7 @@ export async function calculerVentilationResa(resa) {
   //           Vérifié sur statement 602 Horizonte fév 2026 ligne par ligne
   // Booking : à vérifier sur statement réel
   // Direct  : 0,77% sur (cleaning + management) via /1.0077
-  const PLATFORM_CLEANING_RATES = { airbnb: 0.1621, booking: 0.1383 }
+  const PLATFORM_CLEANING_RATES = { airbnb: 0.1621, booking: 0.1784 }  // Booking ~17,84% vérifié statements Maison Maïté fév 2026
 
   let commissionableBase, loyAmount, cleaningFeeNet, platformRateOnCleaning
 
