@@ -172,13 +172,12 @@ export async function calculerVentilationResa(resa) {
 
   // Fees depuis Hospitable
   const managementFeeRaw = (guestFeesAll.find(f => f.label?.toLowerCase().includes('management'))?.amount || 0)
-  // Ménage = "community fee" (Airbnb) ou "frais de ménage" / "cleaning fee" (Booking/autres)
-  const communityFeeRaw = (guestFeesAll.find(f =>
-    f.label?.toLowerCase().includes('community') ||
-    f.label?.toLowerCase().includes('ménage') ||
-    f.label?.toLowerCase().includes('menage') ||
-    f.label?.toLowerCase().includes('cleaning')
-  )?.amount || 0)
+  // Ménage total = SOMME de tous les fees de type ménage
+  // (Airbnb peut envoyer "Cleaning fee" + "Community fee" séparément — il faut les additionner)
+  const MENAGE_LABELS = ['community', 'ménage', 'menage', 'cleaning']
+  const communityFeeRaw = guestFeesAll
+    .filter(f => MENAGE_LABELS.some(lbl => f.label?.toLowerCase().includes(lbl)))
+    .reduce((s, f) => s + (f.amount || 0), 0)
 
   // AUTO = provision AE (hors TVA)
   // Pour les réservations annulées non-directes (Airbnb/Booking avec frais) : pas de provision AE
@@ -199,8 +198,11 @@ export async function calculerVentilationResa(resa) {
     // ── DIRECTE ──────────────────────────────────────────────────────────
     // Base = revenue - mgmt_fee - cleaning_fee - taxes
     commissionableBase = revenue - managementFeeRaw - communityFeeRaw - taxesTotal - adjustmentsTotal
-    // Cleaning net = community fee / 1,0077 (corrige la commission Hospitable)
-    cleaningFeeNet = bien.forfait_dcb_ref || (communityFeeRaw > 0 ? Math.round(communityFeeRaw / 1.0077) : 0)
+    // Cleaning net = (cleaning + management) / 1,0077 - management (Hospitable prélève 0,77% sur cleaning+mgmt)
+    // On isole la part ménage nette après correction de la commission Hospitable
+    const feesDirectBruts = communityFeeRaw + managementFeeRaw
+    const feesDirectNets = feesDirectBruts > 0 ? Math.round(feesDirectBruts / 1.0077) : 0
+    cleaningFeeNet = bien.forfait_dcb_ref || Math.max(0, feesDirectNets - managementFeeRaw)
     platformRateOnCleaning = 0
   } else {
     // ── AIRBNB / BOOKING / AUTRES ─────────────────────────────────────────
