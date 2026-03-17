@@ -216,7 +216,7 @@ export default function PageBiens() {
             ⟳ Sync Hospitable
           </button>
         </div>
-      ) : (
+      ) : (<>
               <div style={{marginBottom:10,display:'flex',gap:6,alignItems:'center'}}>
                 <span style={{fontSize:12,color:'#888'}}>Agence :</span>
                 {['dcb','lauian','tous'].map(a => (
@@ -426,6 +426,7 @@ export default function PageBiens() {
             </tbody>
           </table>
         </div>
+      </>
       )}
     </div>
   )
