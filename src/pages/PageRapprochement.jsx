@@ -290,6 +290,8 @@ export default function PageRapprochement() {
                               {m._resa.agence === 'lauian' && <span style={{background:'#FEF3C7',color:'#B45309',fontSize:10,padding:'1px 4px',borderRadius:3,fontWeight:700}}>Lauian</span>}
                               {m._resa.guest_name && <span style={{color:'#555'}}>· {m._resa.guest_name}</span>}
                               {m._resa.arrival_date && <span style={{color:'#888'}}>· {m._resa.arrival_date?.slice(5,10).replace('-','/')}</span>}
+                              {m._resa.platform && <span style={{background:'#F3F4F6',color:'#374151',fontSize:10,padding:'1px 5px',borderRadius:3,fontWeight:600,textTransform:'uppercase'}}>{m._resa.platform}</span>}
+                              {m._resa.fin_revenue > 0 && <span style={{color:'#2E7D32',fontWeight:700}}>· {(m._resa.fin_revenue/100).toLocaleString('fr-FR',{minimumFractionDigits:2})} €</span>}
                              {m._resa.arrival_date && <span style={{ color: '#999' }}>{fmtDate(m._resa.arrival_date)}</span>}
                            </div>
                          ) : m.detail ? (
@@ -384,7 +386,10 @@ export default function PageRapprochement() {
                       </div>
                       <div style={{ color: '#666', marginTop: 1 }}>{v.reservation?.code}</div>
                     </div>
-                    <div style={{ fontWeight: 700, color: '#1a56db', whiteSpace: 'nowrap' }}>{fmt(v.montant_ttc)}</div>
+                    <div style={{ textAlign:'right' }}>
+                  <div style={{ fontWeight: 700, color: '#1a56db', whiteSpace: 'nowrap' }}>{fmt(v.montant_ttc)}</div>
+                  {v.reservation?.fin_revenue > 0 && <div style={{fontSize:10,color:'#888'}}>rev: {fmt(v.reservation.fin_revenue)}</div>}
+                </div>
                   </label>
                 )
               })}
