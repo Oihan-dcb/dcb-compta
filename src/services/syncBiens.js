@@ -50,7 +50,7 @@ export async function syncBiens() {
 
     // Insérer les nouveaux avec gestion_loyer: true par défaut
     if (nouveaux.length) {
-      const { error: e1 } = await supabase.from('bien').insert(nouveaux.map(p => ({ ...p, gestion_loyer: true })))
+      const { error: e1 } = await supabase.from('bien').insert(nouveaux.map(p => ({ ...p, gestion_loyer: true, agence: 'dcb' })))
       if (e1) throw e1
     }
 
