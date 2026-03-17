@@ -23,6 +23,7 @@ const CANAL_COLOR = {
   airbnb: '#FF5A5F', booking: '#003580', stripe: '#635BFF',
   sepa_manuel: '#2E7D32', interne: '#546E7A', sortant_proprio: '#E65100',
   sortant_ae: '#6D4C41', sortant_honoraires: '#37474F', frais_bancaires: '#90A4AE'
+}
 const STATUT_COLOR = { rapproche: '#2E7D32', en_attente: '#E65100', non_identifie: '#B71C1C', debit_en_attente: '#78909C' }
 const STATUT_LABEL = { rapproche: '✓ Rapproché', en_attente: '⏳ En attente', non_identifie: '✗ Non identifié', debit_en_attente: 'Débit' }
 
