@@ -26,8 +26,9 @@ export async function syncReservations(mois) {
     // 1. Récupérer tous les biens actifs avec leurs IDs Hospitable
     const { data: biens, error: biensError } = await supabase
       .from('bien')
-      .select('id, hospitable_id, hospitable_name, proprietaire_id, provision_ae_ref, forfait_dcb_ref, has_ae')
+      .select('id, hospitable_id, hospitable_name, proprietaire_id, provision_ae_ref, forfait_dcb_ref, has_ae, agence')
       .eq('listed', true)
+    .eq('agence', 'dcb') // Biens DCB uniquement - exclure Lauian
 
     if (biensError) throw biensError
     if (!biens || biens.length === 0) throw new Error('Aucun bien actif trouvé')
@@ -281,7 +282,7 @@ export async function getReservationsMois(mois) {
       fin_revenue, fin_accommodation, owner_stay, ventilation_calculee, rapprochee,
       final_status, mois_comptable,
       bien (
-        id, hospitable_name, code, proprietaire_id,
+        id, hospitable_name, code, proprietaire_id, agence,
         provision_ae_ref, forfait_dcb_ref, has_ae,
         taux_commission_override,
         proprietaire (id, nom, prenom, taux_commission)
@@ -294,5 +295,6 @@ export async function getReservationsMois(mois) {
     .order('arrival_date')
 
   if (error) throw error
-  return data || []
+  // Exclure les réservations des biens Lauian
+  return (data || []).filter(r => (r.bien?.agence || 'dcb') === 'dcb')
 }
