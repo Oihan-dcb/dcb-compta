@@ -61,115 +61,75 @@ export async function lancerMatchingAuto(mois) {
   const log = { matched: 0, skipped: 0, errors: 0, details: [] }
 
   try {
-    const [mouvements, virs] = await Promise.all([
-      getMouvementsMois(mois),
-      getVirNonRapproches(mois),
-    ])
-
+    // Charger les mouvements du mois en attente (entrées seulement)
+    const mouvements = await getMouvementsMois(mois)
     const libres = mouvements.filter(m => m.statut_matching === 'en_attente' && (m.credit || 0) > 0)
 
-    // Charger payouts du mois (filtrés par date_payout)
+    // Charger les VIR non rapprochés du mois
+    const virs = await getVirNonRapproches(mois)
+
+    // Charger les payouts sur une fenêtre ±1 mois autour du mois relevé
+    // → couvre les décalages de date (virement en fin de mois, payout début du suivant)
     const [year, month] = mois.split('-').map(Number)
-    const dateStart = mois + '-01'
-    const lastDay = new Date(year, month, 0).getDate()
-    const dateEnd = mois + '-' + String(lastDay).padStart(2, '0')
-    const { data: payouts } = await supabase
+    const prevMois = month === 1
+      ? (year - 1) + '-12'
+      : year + '-' + String(month - 1).padStart(2, '0')
+    const nextMois = month === 12
+      ? (year + 1) + '-01'
+      : year + '-' + String(month + 1).padStart(2, '0')
+
+    const dateStart = prevMois + '-01'
+    const lastDayNext = new Date(
+      month === 12 ? year + 1 : year,
+      month === 12 ? 1 : month + 1,
+      0
+    ).getDate()
+    const dateEnd = nextMois + '-' + String(lastDayNext).padStart(2, '0')
+
+    const { data: payoutsAll } = await supabase
       .from('payout_hospitable')
-      .select('id, amount, platform, mois_comptable, mouvement_id, date_payout')
+      .select('id, amount, platform, date_payout, mouvement_id')
       .gte('date_payout', dateStart)
       .lte('date_payout', dateEnd)
       .is('mouvement_id', null)
 
-    const payoutsLibres = payouts || []
+    const payoutsLibres = payoutsAll || []
 
-    // ── HELPER : extraire checkin du detail ────────────────────────
-    function extractCheckin(detail) {
-      if (!detail) return null
-      const m = detail.match(/checkin:(\d{4}-\d{2}-\d{2}|\d{2}\/\d{2}\/\d{4}|\d{2}\/\d{2}\/\d{2})/)
-      if (!m) return null
-      const s = m[1]
-      if (s.includes('/')) {
-        const p = s.split('/')
-        if (p[2].length === 2) return '20' + p[2] + '-' + p[1] + '-' + p[0]
-        return p[2] + '-' + p[1] + '-' + p[0]
-      }
-      return s
-    }
-
-    function datesDiff(a, b) {
-      return Math.abs(new Date(a).getTime() - new Date(b).getTime()) / 86400000
-    }
-
-    // ── AIRBNB + BOOKING : matching multi-stratégies ───────────────
+    // ── AIRBNB + BOOKING ───────────────────────────────────────────
     for (const canal of ['airbnb', 'booking']) {
       const mouvCanal = libres.filter(m => m.canal === canal)
       const payoutsCanal = payoutsLibres.filter(p => p.platform === canal)
       const virCanal = virs.filter(v => v.reservation?.platform === canal)
 
       for (const mouv of mouvCanal) {
-        // 1. Trouver le payout par montant (±2 centimes)
-        const payout = payoutsCanal.find(p => Math.abs(p.amount - mouv.credit) <= 2)
 
-        if (payout) {
-          // Lier mouvement au payout
+        // ── Étape 1 : montant exact (1 payout = 1 mouvement) ──────
+        const payoutExact = payoutsCanal.find(p => Math.abs(p.amount - mouv.credit) <= 2)
+
+        if (payoutExact) {
           await supabase.from('payout_hospitable')
             .update({ mouvement_id: mouv.id, statut_matching: 'rapproche' })
-            .eq('id', payout.id)
+            .eq('id', payoutExact.id)
 
-          const virsCible = virCanal.filter(v => !v.mouvement_id)
+          // Chercher les VIR liés à ce payout
           let virIds = []
-
-          // Stratégie A : via payout_reservation
-          if (virIds.length === 0) {
-            const { data: prLinks } = await supabase
-              .from('payout_reservation')
-              .select('reservation_id')
-              .eq('payout_id', payout.id)
-            if (prLinks?.length) {
-              const resaIds = prLinks.map(r => r.reservation_id)
-              const matched = virsCible.filter(v => resaIds.includes(v.reservation?.id))
-              if (matched.length) virIds = matched.map(v => v.id)
-            }
+          const { data: prLinks } = await supabase
+            .from('payout_reservation')
+            .select('reservation_id')
+            .eq('payout_id', payoutExact.id)
+          if (prLinks?.length) {
+            const resaIds = prLinks.map(r => r.reservation_id)
+            const matched = virCanal.filter(v => resaIds.includes(v.reservation?.id))
+            if (matched.length) virIds = matched.map(v => v.id)
           }
 
-          // Stratégie B : checkin extrait du detail (NOUVEAU - prioritaire)
-          if (virIds.length === 0 && mouv.detail) {
-            const checkin = extractCheckin(mouv.detail)
-            if (checkin) {
-              const byDetail = virsCible.filter(v => {
-                const arr = v.reservation?.arrival_date
-                return arr && datesDiff(arr, checkin) <= 1
-              })
-              if (byDetail.length > 0) virIds = byDetail.map(v => v.id)
-            }
-          }
-
-          // Stratégie C : arrival_date ≈ date_operation ±5j (élargi de 2j à 5j)
+          // Fallback VIR : subset sum sur virCanal
           if (virIds.length === 0) {
-            const mouvDate = mouv.date_operation
-            const byCheckin = virsCible.filter(v => {
-              const arr = v.reservation?.arrival_date
-              return arr && datesDiff(arr, mouvDate) <= 5
-            })
-            // 1 seul VIR → lier directement (sans contrainte de somme)
-            if (byCheckin.length === 1) {
-              virIds = byCheckin.map(v => v.id)
-            } else if (byCheckin.length > 1) {
-              // Plusieurs → vérifier que la somme = montant ±10%
-              const sum = byCheckin.reduce((s, v) => s + v.montant_ttc, 0)
-              if (Math.abs(sum - mouv.credit) / mouv.credit < 0.10) {
-                virIds = byCheckin.map(v => v.id)
-              }
-            }
-          }
-
-          // Stratégie D : exact ou subset sum sur montant
-          if (virIds.length === 0) {
-            const exact = virsCible.find(v => Math.abs(v.montant_ttc - mouv.credit) <= 2)
+            const exact = virCanal.find(v => !v.mouvement_id && Math.abs(v.montant_ttc - mouv.credit) <= 2)
             if (exact) {
               virIds = [exact.id]
             } else {
-              const subset = _subsetSum(virsCible, mouv.credit)
+              const subset = _subsetSum(virCanal.filter(v => !v.mouvement_id), mouv.credit)
               if (subset) virIds = subset.map(v => v.id)
             }
           }
@@ -182,29 +142,58 @@ export async function lancerMatchingAuto(mois) {
               .eq('id', mouv.id)
           }
 
-          payoutsCanal.splice(payoutsCanal.indexOf(payout), 1)
+          payoutsCanal.splice(payoutsCanal.indexOf(payoutExact), 1)
           libres.splice(libres.indexOf(mouv), 1)
           log.matched++
-          log.details.push({ type: canal, montant: mouv.credit / 100, date: mouv.date_operation, nb_virs: virIds.length })
+          log.details.push({ type: canal + '_exact', montant: mouv.credit / 100, nb_virs: virIds.length })
           continue
         }
 
-        // Pas de payout → tenter matching direct via detail (sans payout)
-        if (mouv.detail) {
-          const checkin = extractCheckin(mouv.detail)
-          if (checkin) {
-            const virsCible = virCanal.filter(v => !v.mouvement_id)
-            const byDetail = virsCible.filter(v => {
-              const arr = v.reservation?.arrival_date
-              return arr && datesDiff(arr, checkin) <= 1
-            })
-            if (byDetail.length > 0) {
-              await _lier(mouv.id, byDetail.map(v => v.id))
-              log.matched++
-              log.details.push({ type: canal + '_detail', montant: mouv.credit / 100, nb_virs: byDetail.length })
-              continue
-            }
+        // ── Étape 2 : regroupement (N payouts → 1 mouvement) ──────
+        // Chercher une combinaison de payouts dont la somme = mouvement.credit
+        const subsetPay = _subsetSum(payoutsCanal, mouv.credit, 2)
+        if (subsetPay) {
+          // Lier tous les payouts du regroupement
+          for (const p of subsetPay) {
+            await supabase.from('payout_hospitable')
+              .update({ mouvement_id: mouv.id, statut_matching: 'rapproche' })
+              .eq('id', p.id)
           }
+
+          // Chercher les VIR de toutes les réservations liées
+          let virIds = []
+          const allResaIds = []
+          for (const p of subsetPay) {
+            const { data: prLinks } = await supabase
+              .from('payout_reservation')
+              .select('reservation_id')
+              .eq('payout_id', p.id)
+            if (prLinks?.length) allResaIds.push(...prLinks.map(r => r.reservation_id))
+          }
+          if (allResaIds.length) {
+            const matched = virCanal.filter(v => !v.mouvement_id && allResaIds.includes(v.reservation?.id))
+            if (matched.length) virIds = matched.map(v => v.id)
+          }
+
+          // Fallback VIR : subset sum
+          if (virIds.length === 0) {
+            const subset = _subsetSum(virCanal.filter(v => !v.mouvement_id), mouv.credit)
+            if (subset) virIds = subset.map(v => v.id)
+          }
+
+          if (virIds.length > 0) {
+            await _lier(mouv.id, virIds)
+          } else {
+            await supabase.from('mouvement_bancaire')
+              .update({ statut_matching: 'rapproche' })
+              .eq('id', mouv.id)
+          }
+
+          for (const p of subsetPay) payoutsCanal.splice(payoutsCanal.indexOf(p), 1)
+          libres.splice(libres.indexOf(mouv), 1)
+          log.matched++
+          log.details.push({ type: canal + '_groupe', montant: mouv.credit / 100, nb_payouts: subsetPay.length, nb_virs: virIds.length })
+          continue
         }
 
         log.skipped++
@@ -213,32 +202,24 @@ export async function lancerMatchingAuto(mois) {
 
     // ── STRIPE ─────────────────────────────────────────────────────
     const mouvStripe = libres.filter(m => m.canal === 'stripe')
-    const virStripe = virs.filter(v => v.reservation?.platform === 'stripe')
+    const virStripe = virs.filter(v => v.reservation?.platform === 'stripe' && !v.mouvement_id)
 
     for (const mouv of mouvStripe) {
-      // Tenter matching par detail d'abord
-      if (mouv.detail) {
-        const checkin = extractCheckin(mouv.detail)
-        if (checkin) {
-          const byDetail = virStripe.filter(v => {
-            const arr = v.reservation?.arrival_date
-            return arr && datesDiff(arr, checkin) <= 2
-          })
-          if (byDetail.length > 0) {
-            await _lier(mouv.id, byDetail.map(v => v.id))
-            log.matched++
-            log.details.push({ type: 'stripe_detail', montant: mouv.credit / 100, nb_virs: byDetail.length })
-            continue
-          }
-        }
+      // Montant exact sur un seul VIR
+      const exact = virStripe.find(v => Math.abs(v.montant_ttc - mouv.credit) <= 2)
+      if (exact) {
+        await _lier(mouv.id, [exact.id])
+        log.matched++
+        log.details.push({ type: 'stripe_exact', montant: mouv.credit / 100 })
+        continue
       }
-      // Fallback : somme totale
+      // Somme de VIR = montant du virement Stripe
       const total = virStripe.reduce((s, v) => s + v.montant_ttc, 0)
-      if (Math.abs(total - mouv.credit) / mouv.credit < 0.05) {
+      if (Math.abs(total - mouv.credit) / (mouv.credit || 1) < 0.05) {
         await _lier(mouv.id, virStripe.map(v => v.id))
         log.matched++
-        log.details.push({ type: 'stripe', montant: mouv.credit / 100, nb_virs: virStripe.length })
-        break
+        log.details.push({ type: 'stripe_total', montant: mouv.credit / 100, nb_virs: virStripe.length })
+        continue
       }
       log.skipped++
     }
