@@ -97,7 +97,7 @@ export async function getStatsRapprochement(mois) {
   return {
     total_mouvements: mouvements.length,
     rapproches: mouvements.filter(x => x.statut_matching === 'rapproche').length,
-    en_attente: mouvements.filter(x => x.statut_matching === 'en_attente').length,
+    en_attente: mouvements.filter(x => x.statut_matching === 'en_attente' && (x.credit || 0) > 0).length,
     non_identifie: mouvements.filter(x => x.statut_matching === 'non_identifie').length,
     total_entrees: mouvements.filter(x => x.credit > 0).reduce((s, x) => s + (x.credit || 0), 0),
     total_sorties: mouvements.filter(x => x.debit > 0).reduce((s, x) => s + (x.debit || 0), 0),
