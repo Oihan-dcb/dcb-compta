@@ -135,9 +135,10 @@ export default function PageBiens() {
     } catch (err) { alert('Erreur : ' + err.message) }
   }
 
-  const biensActifs = biens.filter(b => b.listed)
-  const biensAvecProprio = biens.filter(b => b.proprietaire_id)
-  const biensAConfigurer = biens.filter(b => !b.proprietaire_id || !b.provision_ae_ref)
+  const biensDCB = biens.filter(b => (b.agence || 'dcb') === 'dcb')
+  const biensActifs = biensDCB.filter(b => b.listed)
+  const biensAvecProprio = biensDCB.filter(b => b.proprietaire_id)
+  const biensAConfigurer = biensDCB.filter(b => b.listed && (!b.proprietaire_id || !b.provision_ae_ref))
 
   return (
     <div>
@@ -145,7 +146,7 @@ export default function PageBiens() {
         <div>
           <h1 className="page-title">Biens</h1>
           <p className="page-subtitle">
-            {biensActifs.length} biens actifs · {biensAvecProprio.length} avec propriétaire
+            {biensActifs.length} biens DCB actifs · {biensAvecProprio.length} avec propriétaire
           </p>
         </div>
         <div style={{ display: 'flex', gap: 10 }}>
@@ -179,7 +180,7 @@ export default function PageBiens() {
         </div>
         <div className="stat-card">
           <div className="stat-label">Avec AUTO</div>
-          <div className="stat-value">{biens.filter(b => b.provision_ae_ref).length}</div>
+          <div className="stat-value">{biensDCB.filter(b => b.has_ae).length}</div>
           <div className="stat-sub">Auto-entrepreneur ménage</div>
         </div>
       </div>
