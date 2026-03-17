@@ -1,3 +1,4 @@
+// v2
 import { BrowserRouter, Routes, Route, NavLink } from 'react-router-dom'
 import PageBiens from './pages/PageBiens'
 import PageReservations from './pages/PageReservations'
