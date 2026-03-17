@@ -25,8 +25,8 @@ const CANAL_COLOR = {
   sepa_manuel: '#2E7D32', interne: '#546E7A', sortant_proprio: '#E65100',
   sortant_ae: '#6D4C41', sortant_honoraires: '#37474F', frais_bancaires: '#90A4AE'
 }
-const STATUT_COLOR = { rapproche: '#2E7D32', en_attente: '#E65100', non_identifie: '#B71C1C', debit_en_attente: '#78909C' }
-const STATUT_LABEL = { rapproche: '✓ Rapproché', en_attente: '⏳ En attente', non_identifie: '✗ Non identifié', debit_en_attente: 'Débit' }
+const STATUT_COLOR = { rapproche: '#2E7D32', en_attente: '#E65100', non_identifie: '#B71C1C', debit_en_attente: '#78909C', non_gere: '#9CA3AF' }
+const STATUT_LABEL = { rapproche: '✓ Rapproché', en_attente: '⏳ En attente', non_identifie: '✗ Non identifié', debit_en_attente: 'Débit', non_gere: '— Non géré' }
 
 function fmt(centimes) {
   return (centimes / 100).toLocaleString('fr-FR', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) + ' €'
@@ -218,6 +218,7 @@ export default function PageRapprochement() {
             { label: 'Mouvements', value: stats.total_mouvements, color: '#1a56db' },
             { label: 'Rapprochés', value: stats.rapproches, color: '#2E7D32' },
             { label: 'En attente', value: stats.en_attente, color: '#E65100' },
+            { label: 'Non géré', value: mouvements.filter(m => m._resa?.gestion_loyer === false).length, color: '#9CA3AF' },
             { label: 'Non identifiés', value: stats.non_identifie, color: '#B71C1C' },
             { label: 'VIR liés', value: `${stats.vir_rapproches}/${stats.vir_total}`, color: '#7C3AED' },
             { label: 'Entrées', value: fmt(stats.total_entrees), color: '#2E7D32', small: true },
@@ -290,8 +291,8 @@ export default function PageRapprochement() {
                         {m.debit > 0 ? '−' + fmt(m.debit) : '—'}
                       </td>
                       <td style={{ padding: '9px 12px' }}>
-                        <span style={{ color: STATUT_COLOR[m.statut_matching] || '#888', fontSize: 12, fontWeight: 600 }}>
-                          {STATUT_LABEL[m.statut_matching] || m.statut_matching}
+                        <span style={{ color: (m._resa?.gestion_loyer === false && m.statut_matching === 'en_attente') ? '#9CA3AF' : STATUT_COLOR[m.statut_matching] || '#888', fontSize: 12, fontWeight: 600 }}>
+                          {(m._resa?.gestion_loyer === false && m.statut_matching === 'en_attente') ? '— Non géré' : (STATUT_LABEL[m.statut_matching] || m.statut_matching)}
                         </span>
                       </td>
                       <td style={{ padding: '9px 12px', whiteSpace: 'nowrap' }}>
