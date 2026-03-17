@@ -221,7 +221,7 @@ export default function PageBiens() {
                 <span style={{fontSize:12,color:'#888'}}>Agence :</span>
                 {['dcb','lauian','tous'].map(a => (
                   <button key={a} onClick={() => setFiltreAgence(a)} style={{padding:'2px 8px',borderRadius:4,border:'1px solid',fontSize:11,cursor:'pointer',background:filtreAgence===a?(a==='lauian'?'#FEF3C7':a==='dcb'?'#EFF6FF':'#F3F4F6'):'#fff',color:filtreAgence===a?(a==='lauian'?'#B45309':a==='dcb'?'#1D4ED8':'#374151'):'#888',borderColor:filtreAgence===a?(a==='lauian'?'#F59E0B':a==='dcb'?'#3B82F6':'#9CA3AF'):'#E5E7EB'}}>
-                    {a==='tous'?'Tous':a==='dcb'?'DCB 🌅':'Lauian'}
+                    {a==='tous'?'Tous':a==='dcb'?'DCB':'Lauian'}
                   </button>
                 ))}
               </div>
@@ -235,7 +235,6 @@ export default function PageBiens() {
                 <th>Ville</th>
                 <th>Propriétaire</th>
                 <th>Compte Airbnb</th>
-                <th>AUTO</th>
                 <th className="right">Taux COM</th>
                 <th className="right">Provision Auto</th>
                 <th className="right">Forfait DCB</th>
@@ -408,7 +407,7 @@ export default function PageBiens() {
                   <td style={{textAlign:'center',padding:'6px 8px'}}>
                     <div style={{display:'flex',flexDirection:'column',gap:4,alignItems:'center'}}>
                       <span onClick={() => toggleAgence(bien.id, bien.agence || 'dcb')} title="Changer d'agence" style={{fontSize:11,fontWeight:700,padding:'2px 6px',borderRadius:4,cursor:'pointer',background:bien.agence==='lauian'?'#FEF3C7':'#EFF6FF',color:bien.agence==='lauian'?'#B45309':'#1D4ED8'}}>
-                        {bien.agence === 'lauian' ? 'Lauian' : 'DCB 🌅'}
+                        {bien.agence === 'lauian' ? 'Lauian' : 'DCB'}
                       </span>
                       <span onClick={() => toggleGestionLoyer(bien.id, bien.gestion_loyer)} style={{fontSize:16,cursor:'pointer'}} title={bien.gestion_loyer === false ? 'Proprio gere' : 'DCB collecte'}>
                         {bien.gestion_loyer === false ? '🚫' : '✅'}
