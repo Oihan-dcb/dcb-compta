@@ -35,6 +35,7 @@ export default function PageBanque() {
   const fileRef = useRef()
   const [suppression, setSuppression] = useState(null) // { source, mois, count }
   const [supprimant, setSupprimant] = useState(false)
+  const [supprimantId, setSupprimantId] = useState(null)
 
   useEffect(() => { charger() }, [mois])
 
@@ -50,6 +51,17 @@ export default function PageBanque() {
     } finally {
       setLoading(false)
     }
+  }
+
+  async function supprimerMouvement(id) {
+    if (!window.confirm('Supprimer ce mouvement ?')) return
+    setSupprimantId(id)
+    try {
+      const { error } = await supabase.from('mouvement_bancaire').delete().eq('id', id)
+      if (error) throw error
+      await charger()
+    } catch(e) { alert('Erreur : ' + e.message) }
+    finally { setSupprimantId(null) }
   }
 
   async function supprimerMois() {
@@ -249,7 +261,7 @@ export default function PageBanque() {
       {liste.length > 0 && (
         <div className='table-container'>
           <table className='table'>
-            <thead><tr><th>Date</th><th>Libelle</th><th>Canal</th><th className='right'>Credit</th><th className='right'>Debit</th><th>Statut</th></tr></thead>
+            <thead><tr><th>Date</th><th>Libelle</th><th>Canal</th><th className='right'>Credit</th><th className='right'>Debit</th><th>Statut</th><th style={{width:32}}></th></tr></thead>
             <tbody>
               {liste.map(m => {
                 const canal = CANAUX[m.canal]
@@ -262,6 +274,13 @@ export default function PageBanque() {
                     <td className='right montant montant-positif'>{m.credit ? formatMontant(m.credit) : '--'}</td>
                     <td className='right montant montant-negatif'>{m.debit ? formatMontant(m.debit) : '--'}</td>
                     <td><span className={m.statut_matching === 'rapproche' ? 'badge badge-success' : 'badge badge-neutral'}>{m.statut_matching === 'rapproche' ? 'Rapproche' : 'En attente'}</span></td>
+                     <td style={{textAlign:'center',width:32}}>
+                       <button onClick={() => supprimerMouvement(m.id)} disabled={supprimantId === m.id}
+                         title='Supprimer' style={{background:'none',border:'none',cursor:'pointer',color:'#ccc',fontSize:18,lineHeight:1,padding:'0 4px'}}
+                         onMouseEnter={e=>e.currentTarget.style.color='#B91C1C'} onMouseLeave={e=>e.currentTarget.style.color='#ccc'}>
+                         {supprimantId === m.id ? '⏳' : '×'}
+                       </button>
+                     </td>
                   </tr>
                 )
               })}
