@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef } from 'react'
 import { getMouvementsMois, getMoisDispos } from '../services/banque'
+import { supabase } from '../lib/supabase'
 import { parserFichierBancaire, importerMouvementsBancaires } from '../services/importBanque'
 import MoisSelector from '../components/MoisSelector'
 import { formatMontant } from '../lib/hospitable'
@@ -32,6 +33,8 @@ export default function PageBanque() {
   const [formatDetecte, setFormatDetecte] = useState(null)
   const [importResult, setImportResult] = useState(null)
   const fileRef = useRef()
+  const [suppression, setSuppression] = useState(null) // { source, mois, count }
+  const [supprimant, setSupprimant] = useState(false)
 
   useEffect(() => { charger() }, [mois])
 
@@ -46,6 +49,26 @@ export default function PageBanque() {
       setError(e.message)
     } finally {
       setLoading(false)
+    }
+  }
+
+  async function supprimerMois() {
+    if (!suppression) return
+    setSupprimant(true)
+    try {
+      // Supprimer tous les mouvements du mois sélectionné pour cette source
+      const { error } = await supabase
+        .from('mouvement_bancaire')
+        .delete()
+        .eq('source', suppression.source)
+        .eq('mois_releve', suppression.mois)
+      if (error) throw error
+      setSuppression(null)
+      await charger()
+    } catch(e) {
+      alert('Erreur suppression : ' + e.message)
+    } finally {
+      setSupprimant(false)
     }
   }
 
@@ -113,6 +136,11 @@ export default function PageBanque() {
             {String.fromCodePoint(0x2191)} Import CSV
             <input ref={fileRef} type='file' accept='.csv' style={{ display: 'none' }} onChange={handleFile} />
           </label>
+          <button
+            onClick={() => setSuppression(suppression ? null : { source: 'CaisseEpargne', mois, count: mouvements.length })}
+            style={{ background: '#FEF2F2', color: '#B91C1C', border: '1px solid #FCA5A5', borderRadius: 8, padding: '8px 14px', fontWeight: 600, cursor: 'pointer', fontSize: 14 }}>
+            Supprimer
+          </button>
         </div>
       </div>
 
@@ -121,6 +149,33 @@ export default function PageBanque() {
       {importResult && (
         <div className='alert alert-success'>
           Import termine -- {importResult.inseres} mouvements importes
+        </div>
+      )}
+
+      {suppression && (
+        <div style={{ background: '#FEF2F2', border: '1px solid #FCA5A5', borderRadius: 8, padding: '12px 16px', marginBottom: 12, display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
+          <span style={{ fontSize: 14, color: '#B91C1C', fontWeight: 600 }}>Supprimer les mouvements de ce mois ?</span>
+          <select
+            value={suppression.source}
+            onChange={e => setSuppression({ ...suppression, source: e.target.value })}
+            style={{ border: '1px solid #FCA5A5', borderRadius: 6, padding: '4px 8px', fontSize: 13 }}>
+            <option value='CaisseEpargne'>Caisse Epargne</option>
+            <option value='BudgetBakers'>BudgetBakers</option>
+          </select>
+          <select
+            value={suppression.mois}
+            onChange={e => setSuppression({ ...suppression, mois: e.target.value })}
+            style={{ border: '1px solid #FCA5A5', borderRadius: 6, padding: '4px 8px', fontSize: 13 }}>
+            {moisDispos.map(m => <option key={m} value={m}>{m}</option>)}
+          </select>
+          <button onClick={supprimerMois} disabled={supprimant}
+            style={{ background: '#B91C1C', color: '#fff', border: 'none', borderRadius: 6, padding: '5px 14px', fontWeight: 700, cursor: 'pointer', fontSize: 13 }}>
+            {supprimant ? 'Suppression...' : 'Confirmer suppression'}
+          </button>
+          <button onClick={() => setSuppression(null)}
+            style={{ background: '#fff', color: '#888', border: '1px solid #ddd', borderRadius: 6, padding: '5px 10px', fontSize: 13, cursor: 'pointer' }}>
+            Annuler
+          </button>
         </div>
       )}
 
