@@ -257,9 +257,9 @@ export async function calculerVentilationResa(resa) {
   if (isDirect) {
     // Pour les directes : le remboursement 0,77% s'applique sur TOUS les fees
     // (cleaning + community + management) — vérifié sur statement HOST-3QKPIK
-    const feesDirectBruts = cleaningFeeAirbnb + communityFeeRaw + managementFeeRaw
-    const feesDirectNets = feesDirectBruts > 0 ? Math.round(feesDirectBruts / 1.0077) : 0
-    platformRembourseMenage = feesDirectBruts - feesDirectNets
+    const feesDirectBruts2 = cleaningFeeAirbnb + communityFeeRaw + managementFeeRaw
+    const feesDirectNets2 = feesDirectBruts2 > 0 ? Math.round(feesDirectBruts2 / 1.0077) : 0
+    platformRembourseMenage = feesDirectBruts2 - feesDirectNets2
   } else {
     // Airbnb : 13,95% sur (cleaning + community) — même taux que dueToOwner
     // Booking et autres : taux spécifique plateforme sur ménage brut
