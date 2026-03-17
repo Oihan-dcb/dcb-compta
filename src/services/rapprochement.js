@@ -13,13 +13,64 @@ import { supabase } from '../lib/supabase'
 // ── LECTURE ────────────────────────────────────────────────────
 
 export async function getMouvementsMois(mois) {
+  // Charger les mouvements du mois
   const { data, error } = await supabase
     .from('mouvement_bancaire')
     .select('*')
     .eq('mois_releve', mois)
     .order('date_operation', { ascending: true })
   if (error) throw error
-  return data || []
+  const mouvements = data || []
+
+  // Pour les mouvements rapprochés, enrichir avec les infos réservation via payout
+  const rapproches = mouvements.filter(m => m.statut_matching === 'rapproche')
+  if (rapproches.length > 0) {
+    const ids = rapproches.map(m => m.id)
+    const { data: payouts } = await supabase
+      .from('payout_hospitable')
+      .select(`
+        mouvement_id,
+        payout_reservation (
+          reservation (
+            guest_name, arrival_date,
+            bien (hospitable_name)
+          )
+        )
+      `)
+      .in('mouvement_id', ids)
+
+    if (payouts) {
+      const infoByMouv = {}
+      for (const p of payouts) {
+        if (!p.mouvement_id) continue
+        const resaLinks = p.payout_reservation || []
+        for (const pr of resaLinks) {
+          const resa = pr.reservation
+          if (!resa) continue
+          if (!infoByMouv[p.mouvement_id]) {
+            infoByMouv[p.mouvement_id] = {
+              guest_name: resa.guest_name,
+              arrival_date: resa.arrival_date,
+              bien_name: resa.bien?.hospitable_name,
+            }
+          }
+        }
+      }
+      for (const m of rapproches) {
+        if (infoByMouv[m.id]) m._resa = infoByMouv[m.id]
+      }
+    }
+  }
+
+  // Marquer automatiquement les débits avec statut 'debit_en_attente'
+  // si leur statut est 'en_attente' et qu'ils n'ont que du débit (pas de crédit)
+  for (const m of mouvements) {
+    if (m.statut_matching === 'en_attente' && (m.debit || 0) > 0 && (m.credit || 0) === 0) {
+      m.statut_matching = 'debit_en_attente'
+    }
+  }
+
+  return mouvements
 }
 
 export async function getVirNonRapproches(mois) {
