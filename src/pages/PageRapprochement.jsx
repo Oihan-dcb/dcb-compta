@@ -50,6 +50,7 @@ export default function PageRapprochement() {
   const [mouvSelId, setMouvSelId] = useState(null)   // mouvement sélectionné pour matching manuel
   const [virsSel, setVirsSel] = useState([])           // VIR sélectionnés pour matching manuel
   const [saving, setSaving] = useState(false)
+  const [virSearch, setVirSearch] = useState('')
   const [syncing, setSyncing] = useState(false)
   const [filtreCanal, setFiltreCanal] = useState('tous')
   const [syncLog, setSyncLog] = useState(null)
@@ -224,7 +225,7 @@ export default function PageRapprochement() {
             { label: 'En attente', value: stats.en_attente, color: '#E65100' },
             { label: 'Non géré', value: mouvements.filter(m => m._resa?.gestion_loyer === false).length, color: '#9CA3AF' },
             { label: 'Non identifiés', value: stats.non_identifie, color: '#B71C1C' },
-            { label: 'VIR ventilés', value: `${stats.vir_rapproches}/${stats.vir_total}`, color: '#7C3AED' },
+            { label: 'LOY reversés', value: `${stats.vir_rapproches}/${stats.vir_total}`, color: '#7C3AED', sub: stats.vir_montant_total ? fmt(stats.vir_montant_total) : null },
             { label: 'Entrées', value: fmt(stats.total_entrees), color: '#2E7D32', small: true },
           ].map(s => (
             <div key={s.label} style={{ background: '#fff', border: '1px solid #e5e7eb', borderRadius: 10, padding: '14px 16px' }}>
@@ -369,10 +370,22 @@ export default function PageRapprochement() {
               )}
             </div>
 
-            <div style={{ maxHeight: 400, overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: 6, marginBottom: 16 }}>
+            <input
+              placeholder="Rechercher par bien, voyageur..."
+              value={virSearch} onChange={e => setVirSearch(e.target.value)}
+              style={{ width: '100%', padding: '7px 10px', borderRadius: 8, border: '1px solid #e5e7eb', fontSize: 12, marginBottom: 10, boxSizing: 'border-box' }}
+            />
+            <div style={{ maxHeight: 380, overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: 6, marginBottom: 16 }}>
               {virs.length === 0 ? (
                 <div style={{ color: '#aaa', fontSize: 13, textAlign: 'center', padding: 16 }}>Tous les VIR sont déjà rapprochés</div>
-              ) : virs.map(v => {
+              ) : virs.filter(v => {
+              if (!virSearch) return true
+              const q = virSearch.toLowerCase()
+              return (v.reservation?.guest_name?.toLowerCase().includes(q)) ||
+                     (v.reservation?.bien?.hospitable_name?.toLowerCase().includes(q)) ||
+                     (v.reservation?.bien?.code?.toLowerCase().includes(q)) ||
+                     (v.reservation?.code?.toLowerCase().includes(q))
+            }).map(v => {
                 const checked = virsSel.includes(v.id)
                 return (
                   <label key={v.id} style={{ display: 'flex', alignItems: 'flex-start', gap: 8, padding: '8px 10px', borderRadius: 8, border: `1.5px solid ${checked ? '#93C5FD' : '#e5e7eb'}`, background: checked ? '#EFF6FF' : '#fff', cursor: 'pointer', fontSize: 12 }}>
