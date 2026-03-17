@@ -158,6 +158,8 @@ export default function PageRapprochement() {
 
   const mouvSel = mouvements.find(m => m.id === mouvSelId)
 
+  function handleFiltreChange(k) { setFiltre(k); setFiltreCanal('tous') }
+
   return (
     <div className="page-rapprochement" style={{ padding: '24px', maxWidth: '1400px', margin: '0 auto' }}>
 
@@ -240,7 +242,7 @@ export default function PageRapprochement() {
           {/* FILTRES */}
           <div style={{ display: 'flex', gap: 8, marginBottom: 14, flexWrap: 'wrap' }}>
             {[['tous', 'Tous'], ['attente', 'En attente'], ['rapproche', 'Rapprochés'], ['inconnu', 'Non identifiés']].map(([k, l]) => (
-              <button key={k} onClick={() => setFiltre(k); setFiltreCanal('tous')
+              <button key={k} onClick={() => handleFiltreChange(k)}; fn() || true }}
                 style={{ padding: '5px 14px', borderRadius: 20, border: '1.5px solid', fontSize: 13, fontWeight: 600, cursor: 'pointer',
                   background: filtre === k ? '#1a56db' : '#fff', color: filtre === k ? '#fff' : '#555', borderColor: filtre === k ? '#1a56db' : '#ddd' }}>
                 {l}
