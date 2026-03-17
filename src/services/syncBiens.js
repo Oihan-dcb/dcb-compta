@@ -44,13 +44,22 @@ export async function syncBiens() {
     }))
 
     // 4. Upsert dans Supabase (conflit sur hospitable_id)
-    const { data: upserted, error } = await supabase
-      .from('bien')
-      .upsert(toUpsert, {
-        onConflict: 'hospitable_id',
-        ignoreDuplicates: false,
-      })
-      .select('id, hospitable_id')
+    // Séparer nouveaux et existants pour protéger gestion_loyer
+    const nouveaux = toUpsert.filter(p => !existingMap.has(p.hospitable_id))
+    const existants = toUpsert.filter(p => existingMap.has(p.hospitable_id))
+
+    // Insérer les nouveaux avec gestion_loyer: true par défaut
+    if (nouveaux.length) {
+      const { error: e1 } = await supabase.from('bien').insert(nouveaux.map(p => ({ ...p, gestion_loyer: true })))
+      if (e1) throw e1
+    }
+
+    // Mettre à jour les existants SANS toucher gestion_loyer
+    for (const p of existants) {
+      const { error: e2 } = await supabase.from('bien').update(p).eq('hospitable_id', p.hospitable_id)
+      if (e2) console.warn('syncBiens update error:', e2.message)
+    }
+    const upserted = { data: [] } // compatibilité
 
     if (error) throw error
 
