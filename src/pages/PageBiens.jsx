@@ -217,6 +217,15 @@ export default function PageBiens() {
           </button>
         </div>
       ) : (
+              <div style={{marginBottom:10,display:'flex',gap:6,alignItems:'center'}}>
+                <span style={{fontSize:12,color:'#888'}}>Agence :</span>
+                {['dcb','lauian','tous'].map(a => (
+                  <button key={a} onClick={() => setFiltreAgence(a)} style={{padding:'2px 8px',borderRadius:4,border:'1px solid',fontSize:11,cursor:'pointer',background:filtreAgence===a?(a==='lauian'?'#FEF3C7':a==='dcb'?'#EFF6FF':'#F3F4F6'):'#fff',color:filtreAgence===a?(a==='lauian'?'#B45309':a==='dcb'?'#1D4ED8':'#374151'):'#888',borderColor:filtreAgence===a?(a==='lauian'?'#F59E0B':a==='dcb'?'#3B82F6':'#9CA3AF'):'#E5E7EB'}}>
+                    {a==='tous'?'Tous':a==='dcb'?'DCB 🌅':'Lauian'}
+                  </button>
+                ))}
+              </div>
+
         <div className="table-container">
           <table>
             <thead>
@@ -231,20 +240,11 @@ export default function PageBiens() {
                 <th className="right">Provision Auto</th>
                 <th className="right">Forfait DCB</th>
                 <th className="right">Ménage proprio</th>
-                 <th>Agence</th>
-                 <th>Collecte</th>
+                 <th style={{whiteSpace:'nowrap',textAlign:'center'}}>Agence / Collecte</th>
                 <th>Statut</th>
               </tr>
             </thead>
             <tbody>
-              <div style={{marginBottom:10,display:'flex',gap:6,alignItems:'center'}}>
-                <span style={{fontSize:12,color:'#888'}}>Agence :</span>
-                {['dcb','lauian','tous'].map(a => (
-                  <button key={a} onClick={() => setFiltreAgence(a)} style={{padding:'2px 8px',borderRadius:4,border:'1px solid',fontSize:11,cursor:'pointer',background:filtreAgence===a?(a==='lauian'?'#FEF3C7':a==='dcb'?'#EFF6FF':'#F3F4F6'):'#fff',color:filtreAgence===a?(a==='lauian'?'#B45309':a==='dcb'?'#1D4ED8':'#374151'):'#888',borderColor:filtreAgence===a?(a==='lauian'?'#F59E0B':a==='dcb'?'#3B82F6':'#9CA3AF'):'#E5E7EB'}}>
-                    {a==='tous'?'Tous':a==='dcb'?'DCB 🌅':'Lauian'}
-                  </button>
-                ))}
-              </div>
               {biens.filter(b => filtreAgence === "tous" || (b.agence || "dcb") === filtreAgence).map(bien => (
                 <tr key={bien.id}>
                   <td>
@@ -404,13 +404,16 @@ export default function PageBiens() {
                       </span>
                     )}
                   </td>
-                  <td style={{textAlign:'center',cursor:'pointer',padding:'6px 8px'}} onClick={() => toggleAgence(bien.id, bien.agence || 'dcb')} title={bien.agence === 'lauian' ? 'Lauian - cliquer pour DCB' : 'DCB - cliquer pour Lauian'}>
-                    <span style={{fontSize:11,fontWeight:700,padding:'2px 6px',borderRadius:4,background:bien.agence==='lauian'?'#FEF3C7':'#EFF6FF',color:bien.agence==='lauian'?'#B45309':'#1D4ED8',whiteSpace:'nowrap'}}>
-                      {bien.agence === 'lauian' ? 'Lauian' : 'DCB 🌅'}
-                    </span>
-                  </td>
-                  <td style={{textAlign:'center',cursor:'pointer'}} onClick={() => toggleGestionLoyer(bien.id, bien.gestion_loyer)} title={bien.gestion_loyer === false ? 'Proprio gere — cliquer pour activer' : 'DCB collecte — cliquer pour desactiver'}>
-                    {bien.gestion_loyer === false ? '🚫' : '✅'}
+                  
+                  <td style={{textAlign:'center',padding:'6px 8px'}}>
+                    <div style={{display:'flex',flexDirection:'column',gap:4,alignItems:'center'}}>
+                      <span onClick={() => toggleAgence(bien.id, bien.agence || 'dcb')} title="Changer d'agence" style={{fontSize:11,fontWeight:700,padding:'2px 6px',borderRadius:4,cursor:'pointer',background:bien.agence==='lauian'?'#FEF3C7':'#EFF6FF',color:bien.agence==='lauian'?'#B45309':'#1D4ED8'}}>
+                        {bien.agence === 'lauian' ? 'Lauian' : 'DCB 🌅'}
+                      </span>
+                      <span onClick={() => toggleGestionLoyer(bien.id, bien.gestion_loyer)} style={{fontSize:16,cursor:'pointer'}} title={bien.gestion_loyer === false ? 'Proprio gere' : 'DCB collecte'}>
+                        {bien.gestion_loyer === false ? '🚫' : '✅'}
+                      </span>
+                    </div>
                   </td>
                   <td>
                     {bien.listed ? (
