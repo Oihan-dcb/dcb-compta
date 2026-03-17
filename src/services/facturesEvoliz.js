@@ -33,11 +33,12 @@ export async function genererFacturesMois(mois) {
     .select(`
       id, nom, prenom, id_evoliz, iban,
       bien!inner (
-        id, hospitable_name, code, listed,
+        id, hospitable_name, code, listed, agence,
         provision_ae_ref, forfait_dcb_ref, has_ae
       )
     `)
     .eq('bien.listed', true)
+    .eq('bien.agence', 'dcb')
 
   if (propErr) throw propErr
 
@@ -78,7 +79,7 @@ async function genererFactureProprietaire(proprio, mois) {
     .in('bien_id', bienIds)
     .eq('mois_comptable', mois)
     .eq('owner_stay', false)
-    .neq('reservation_status', 'cancelled')
+    .neq('final_status', 'cancelled')
     .gt('fin_revenue', 0)
 
   if (resaErr) throw resaErr
