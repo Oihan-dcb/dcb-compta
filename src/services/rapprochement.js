@@ -34,7 +34,7 @@ export async function getMouvementsMois(mois) {
       const chunk = ids.slice(i, i + BATCH)
       const { data: virs } = await supabase
         .from('ventilation')
-        .select(`mouvement_id, reservation (guest_name, arrival_date, bien (hospitable_name, gestion_loyer, agence))`)
+        .select(`mouvement_id, reservation (guest_name, arrival_date, departure_date, platform, fin_revenue, bien (hospitable_name, gestion_loyer, agence))`)
         .eq('code', 'VIR')
         .in('mouvement_id', chunk)
       if (virs) {
@@ -47,6 +47,10 @@ export async function getMouvementsMois(mois) {
               bien_name: v.reservation.bien?.hospitable_name,
               gestion_loyer: v.reservation.bien?.gestion_loyer,
               agence: v.reservation.bien?.agence,
+              arrival_date: v.reservation.arrival_date,
+              departure_date: v.reservation.departure_date,
+              platform: v.reservation.platform,
+              fin_revenue: v.reservation.fin_revenue,
             }
           }
         }
@@ -86,7 +90,7 @@ export async function getVirNonRapproches(mois) {
 export async function getStatsRapprochement(mois) {
   const [{ data: m }, { data: v }] = await Promise.all([
     supabase.from('mouvement_bancaire').select('statut_matching,credit,debit,canal').eq('mois_releve', mois),
-    supabase.from('ventilation').select('montant_ttc,mouvement_id').eq('mois_comptable', mois).eq('code', 'VIR'),
+    supabase.from('ventilation').select('montant_ttc,mouvement_id').eq('mois_comptable', mois).eq('code', 'VIR').not('bien_id', 'is', null),
   ])
   const mouvements = m || [], virs = v || []
   return {
@@ -97,7 +101,8 @@ export async function getStatsRapprochement(mois) {
     total_entrees: mouvements.filter(x => x.credit > 0).reduce((s, x) => s + (x.credit || 0), 0),
     total_sorties: mouvements.filter(x => x.debit > 0).reduce((s, x) => s + (x.debit || 0), 0),
     vir_total: virs.length,
-    vir_rapproches: virs.filter(x => x.mouvement_id).length,
+    vir_rapproches: virs.filter(x => x.mouvement_id !== null).length,
+    vir_montant_total: virs.reduce((s,v) => s + (v.montant_ttc || 0), 0),
   }
 }
 
