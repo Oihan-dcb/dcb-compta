@@ -23,8 +23,8 @@ const CANAL_COLOR = {
   airbnb: '#FF5A5F', booking: '#003580', stripe: '#635BFF',
   sepa_manuel: '#2E7D32', interne: '#546E7A', sortant_proprio: '#E65100',
   sortant_ae: '#6D4C41', sortant_honoraires: '#37474F', frais_bancaires: '#90A4AE'
-}
-const STATUT_COLOR = { rapproche: '#2E7D32', en_attente: '#E65100', non_identifie: '#B71C1C' }
+const STATUT_COLOR = { rapproche: '#2E7D32', en_attente: '#E65100', non_identifie: '#B71C1C', debit_en_attente: '#78909C' }
+const STATUT_LABEL = { rapproche: '✓ Rapproché', en_attente: '⏳ En attente', non_identifie: '✗ Non identifié', debit_en_attente: '↩ Débit' }
 const STATUT_LABEL = { rapproche: '✓ Rapproché', en_attente: '⏳ En attente', non_identifie: '✗ Non identifié' }
 
 function fmt(centimes) {
@@ -147,6 +147,7 @@ export default function PageRapprochement() {
   const mouvFiltres = mouvements.filter(m => {
     if (filtre === 'tous') return true
     if (filtre === 'attente') return m.statut_matching === 'en_attente'
+    if (filtre === 'debit') return m.statut_matching === 'debit_en_attente'
     if (filtre === 'rapproche') return m.statut_matching === 'rapproche'
     if (filtre === 'inconnu') return m.statut_matching === 'non_identifie'
     return true
@@ -262,9 +263,19 @@ export default function PageRapprochement() {
                     <tr key={m.id}
                       style={{ borderBottom: '1px solid #f0f0f0', background: mouvSelId === m.id ? '#EFF6FF' : 'transparent', cursor: 'default' }}>
                       <td style={{ padding: '9px 12px', fontWeight: 500, whiteSpace: 'nowrap' }}>{fmtDate(m.date_operation)}</td>
-                      <td style={{ padding: '9px 12px', maxWidth: 220 }}>
-                        <div style={{ fontWeight: 500, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{m.libelle}</div>
-                        {m.detail && <div style={{ fontSize: 11, color: '#888', marginTop: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{m.detail}</div>}
+                       <td style={{ padding: '9px 12px', maxWidth: 280 }}>
+                         <div style={{ fontWeight: 500, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{m.libelle}</div>
+                         {m._resa ? (
+                           <div style={{ fontSize: 11, color: '#2E7D32', marginTop: 2, display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+                             {m._resa.bien_name && <span style={{ fontWeight: 700 }}>{m._resa.bien_name}</span>}
+                             {m._resa.guest_name && <span>{m._resa.guest_name}</span>}
+                             {m._resa.arrival_date && <span style={{ color: '#999' }}>{fmtDate(m._resa.arrival_date)}</span>}
+                           </div>
+                         ) : m.detail ? (
+                           <div style={{ fontSize: 11, color: m.statut_matching === 'rapproche' ? '#2E7D32' : '#888', marginTop: 2, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                             {m.detail.split('|').slice(0,2).map(s => s.trim()).filter(Boolean).join(' · ')}
+                           </div>
+                         ) : null}
                       </td>
                       <td style={{ padding: '9px 12px' }}>
                         <span style={{ background: CANAL_COLOR[m.canal] + '22', color: CANAL_COLOR[m.canal] || '#555', borderRadius: 12, padding: '2px 8px', fontSize: 11, fontWeight: 700 }}>
