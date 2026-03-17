@@ -36,7 +36,7 @@ export async function calculerVentilationMois(mois) {
       bien (
         id, proprietaire_id,
         provision_ae_ref, forfait_dcb_ref, has_ae,
-        taux_commission_override,
+        taux_commission_override, gestion_loyer,
         proprietaire (id, taux_commission)
       ),
       reservation_fee (*)
@@ -53,7 +53,7 @@ export async function calculerVentilationMois(mois) {
   let total = 0
   let errors = 0
 
-  for (const resa of (reservations || [])) {
+  for (const resa of (reservations || []).filter(r => r.bien?.gestion_loyer !== false)) {
     try {
       await calculerVentilationResa(resa)
       total++
@@ -100,6 +100,8 @@ export async function calculerVentilationResa(resa) {
   const bien = resa.bien
 
   if (!bien) throw new Error(`Bien manquant pour résa ${resa.code}`)
+
+  if (bien.gestion_loyer === false) return []  // Proprio gere le loyer - pas de ventilation
 
   // Revenue = montant net reçu en banque (en centimes)
   const revenue = resa.fin_revenue || 0
