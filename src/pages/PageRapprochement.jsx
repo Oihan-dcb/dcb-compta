@@ -24,8 +24,7 @@ const CANAL_COLOR = {
   sepa_manuel: '#2E7D32', interne: '#546E7A', sortant_proprio: '#E65100',
   sortant_ae: '#6D4C41', sortant_honoraires: '#37474F', frais_bancaires: '#90A4AE'
 const STATUT_COLOR = { rapproche: '#2E7D32', en_attente: '#E65100', non_identifie: '#B71C1C', debit_en_attente: '#78909C' }
-const STATUT_LABEL = { rapproche: '✓ Rapproché', en_attente: '⏳ En attente', non_identifie: '✗ Non identifié', debit_en_attente: '↩ Débit' }
-const STATUT_LABEL = { rapproche: '✓ Rapproché', en_attente: '⏳ En attente', non_identifie: '✗ Non identifié' }
+const STATUT_LABEL = { rapproche: '✓ Rapproché', en_attente: '⏳ En attente', non_identifie: '✗ Non identifié', debit_en_attente: 'Débit' }
 
 function fmt(centimes) {
   return (centimes / 100).toLocaleString('fr-FR', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) + ' €'
@@ -294,7 +293,7 @@ export default function PageRapprochement() {
                         </span>
                       </td>
                       <td style={{ padding: '9px 12px', whiteSpace: 'nowrap' }}>
-                        {m.statut_matching === 'en_attente' && (
+                        {m.statut_matching === 'en_attente' && (m.credit || 0) > 0 && (
                           <div style={{ display: 'flex', gap: 6 }}>
                             <button onClick={() => { setMouvSelId(m.id); setVirsSel([]) }}
                               style={{ background: '#EFF6FF', color: '#1a56db', border: '1px solid #93C5FD', borderRadius: 6, padding: '3px 8px', fontSize: 12, cursor: 'pointer' }}>
