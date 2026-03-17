@@ -136,7 +136,7 @@ export async function importerMouvementsBancaires(rows, moisSelectionnes) {
   const BATCH = 100
   for (let i = 0; i < aImporter.length; i += BATCH) {
     const batch = aImporter.slice(i, i + BATCH)
-    const { error } = await supabase.from('mouvement_bancaire').insert(batch)
+    const { error } = await supabase.from('mouvement_bancaire').upsert(batch, { onConflict: 'source,date_operation,libelle,credit,debit', ignoreDuplicates: true })
     if (error) {
       if (error.code === '23505') { log.ignores += batch.length }
       else { log.erreurs += batch.length; console.error('Import batch:', error.message) }
