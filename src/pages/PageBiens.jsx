@@ -315,11 +315,6 @@ export default function PageBiens() {
                       <option value="__add__">➕ Ajouter…</option>
                     </select>
                   </td>
-                  <td>
-                    {bien.provision_ae_ref
-                      ? <span className="badge badge-success" title="Provision Auto configurée">✓</span>
-                      : <span className="badge badge-neutral">—</span>}
-                  </td>
                   <td className="right">
                     {editing[bien.id+'_taux_com'] !== undefined ? (
                       <input
