@@ -242,7 +242,7 @@ export default function PageRapprochement() {
           {/* FILTRES */}
           <div style={{ display: 'flex', gap: 8, marginBottom: 14, flexWrap: 'wrap' }}>
             {[['tous', 'Tous'], ['attente', 'En attente'], ['rapproche', 'Rapprochés'], ['inconnu', 'Non identifiés']].map(([k, l]) => (
-              <button key={k} onClick={() => handleFiltreChange(k)}; fn() || true }}
+              <button key={k} onClick={() => handleFiltreChange(k)}
                 style={{ padding: '5px 14px', borderRadius: 20, border: '1.5px solid', fontSize: 13, fontWeight: 600, cursor: 'pointer',
                   background: filtre === k ? '#1a56db' : '#fff', color: filtre === k ? '#fff' : '#555', borderColor: filtre === k ? '#1a56db' : '#ddd' }}>
                 {l}
