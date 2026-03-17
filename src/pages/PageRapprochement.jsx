@@ -272,8 +272,8 @@ export default function PageRapprochement() {
                              {m._resa.arrival_date && <span style={{ color: '#999' }}>{fmtDate(m._resa.arrival_date)}</span>}
                            </div>
                          ) : m.detail ? (
-                           <div style={{ fontSize: 11, color: m.statut_matching === 'rapproche' ? '#2E7D32' : '#888', marginTop: 2, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                             {m.detail.split('|').slice(0,2).map(s => s.trim()).filter(Boolean).join(' · ')}
+                           <div style={{ fontSize: 11, marginTop: 2, display: 'flex', gap: 4, flexWrap: 'wrap', alignItems: 'center' }}>
+                             {(() => { const parts = m.detail.split('|').map(s => s.trim()).filter(Boolean); const fraisPart = parts.find(p => p.startsWith('frais:')); const mainParts = parts.filter(p => !p.startsWith('frais:')); return <>{mainParts.length > 0 && <span style={{ color: m.statut_matching === 'rapproche' ? '#2E7D32' : '#888' }}>{mainParts.join(' · ')}</span>}{fraisPart && <span style={{ background: '#FEF2F2', color: '#B91C1C', border: '1px solid #FCA5A5', borderRadius: 4, padding: '1px 5px', fontWeight: 700, whiteSpace: 'nowrap', marginLeft: 4 }}>⚡ {fraisPart}</span>}</> })()} 
                            </div>
                          ) : null}
                       </td>
