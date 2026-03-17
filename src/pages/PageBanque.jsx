@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef } from 'react'
 import { getMouvementsMois, getMoisDispos } from '../services/banque'
 import { supabase } from '../lib/supabase'
+import { importBookingCSV } from '../services/importBooking'
 import { parserFichierBancaire, importerMouvementsBancaires } from '../services/importBanque'
 import MoisSelector from '../components/MoisSelector'
 import { formatMontant } from '../lib/hospitable'
@@ -36,6 +37,9 @@ export default function PageBanque() {
   const [suppression, setSuppression] = useState(null) // { source, mois, count }
   const [supprimant, setSupprimant] = useState(false)
   const [supprimantId, setSupprimantId] = useState(null)
+  const [bookingLog, setBookingLog] = useState(null)
+  const [importingBooking, setImportingBooking] = useState(false)
+  const bookingRef = useRef()
 
   useEffect(() => { charger() }, [mois])
 
@@ -50,6 +54,24 @@ export default function PageBanque() {
       setError(e.message)
     } finally {
       setLoading(false)
+    }
+  }
+
+  async function handleBookingFile(e) {
+    const file = e.target.files?.[0]
+    if (!file) return
+    setImportingBooking(true)
+    setBookingLog(null)
+    try {
+      const text = await file.text()
+      const log = await importBookingCSV(text)
+      setBookingLog(log)
+      await charger()
+    } catch(err) {
+      setBookingLog({ errors: 1, details: [err.message] })
+    } finally {
+      setImportingBooking(false)
+      if (bookingRef.current) bookingRef.current.value = ''
     }
   }
 
@@ -148,6 +170,10 @@ export default function PageBanque() {
             {String.fromCodePoint(0x2191)} Import CSV
             <input ref={fileRef} type='file' accept='.csv' style={{ display: 'none' }} onChange={handleFile} />
           </label>
+          <label style={{ cursor:'pointer', background:'#003580', color:'#fff', border:'none', borderRadius:8, padding:'8px 14px', fontWeight:600, fontSize:14, display:'inline-flex', alignItems:'center', gap:6 }}>
+            {importingBooking ? '⏳' : '📋'} CSV Booking
+            <input ref={bookingRef} type='file' accept='.csv' style={{ display:'none' }} onChange={handleBookingFile} />
+          </label>
           <button
             onClick={() => setSuppression(suppression ? null : { source: 'CaisseEpargne', mois, count: mouvements.length })}
             style={{ background: '#FEF2F2', color: '#B91C1C', border: '1px solid #FCA5A5', borderRadius: 8, padding: '8px 14px', fontWeight: 600, cursor: 'pointer', fontSize: 14 }}>
@@ -191,6 +217,16 @@ export default function PageBanque() {
         </div>
       )}
 
+      {bookingLog && (
+        <div style={{ background: bookingLog.errors > 0 ? '#FEF2F2' : '#F0FDF4', border: '1px solid ' + (bookingLog.errors > 0 ? '#FCA5A5' : '#86EFAC'), borderRadius:8, padding:'10px 16px', marginBottom:12, fontSize:13 }}>
+          <strong>Import Booking :</strong>{' '}
+          <span style={{ color:'#2E7D32' }}>{bookingLog.matched || 0} virements matchés</span>{' · '}
+          <span>{bookingLog.inserted || 0} nouvelles lignes</span>
+          {(bookingLog.already_existing || 0) > 0 && <span style={{ color:'#888' }}>{' · '}{bookingLog.already_existing} déjà présentes (ignorées)</span>}
+          {bookingLog.errors > 0 && <span style={{ color:'#B91C1C' }}>{' · '}{bookingLog.errors} erreur(s)</span>}
+          {bookingLog.details?.length > 0 && <div style={{ color:'#666', marginTop:4 }}>{bookingLog.details.join(' | ')}</div>}
+        </div>
+      )}
       {formatDetecte && (
         <div style={{ marginBottom: 12, padding: '8px 14px', borderRadius: 8,
           background: formatBadge.bg, border: formatBadge.border,
