@@ -22,47 +22,40 @@ export async function getMouvementsMois(mois) {
   if (error) throw error
   const mouvements = data || []
 
-  // Pour les mouvements rapprochés, enrichir avec les infos réservation via payout
+  // Pour les mouvements rapprochés, enrichir avec les infos réservation
+  // via ventilation.mouvement_id → reservation → guest_name, arrival_date, bien
   const rapproches = mouvements.filter(m => m.statut_matching === 'rapproche')
   if (rapproches.length > 0) {
     const ids = rapproches.map(m => m.id)
-    const { data: payouts } = await supabase
-      .from('payout_hospitable')
-      .select(`
-        mouvement_id,
-        payout_reservation (
-          reservation (
-            guest_name, arrival_date,
-            bien (hospitable_name)
-          )
-        )
-      `)
-      .in('mouvement_id', ids)
-
-    if (payouts) {
-      const infoByMouv = {}
-      for (const p of payouts) {
-        if (!p.mouvement_id) continue
-        const resaLinks = p.payout_reservation || []
-        for (const pr of resaLinks) {
-          const resa = pr.reservation
-          if (!resa) continue
-          if (!infoByMouv[p.mouvement_id]) {
-            infoByMouv[p.mouvement_id] = {
-              guest_name: resa.guest_name,
-              arrival_date: resa.arrival_date,
-              bien_name: resa.bien?.hospitable_name,
+    // Charger les VIR liés par batch de 100
+    const BATCH = 100
+    const infoByMouv = {}
+    for (let i = 0; i < ids.length; i += BATCH) {
+      const chunk = ids.slice(i, i + BATCH)
+      const { data: virs } = await supabase
+        .from('ventilation')
+        .select(`mouvement_id, reservation (guest_name, arrival_date, bien (hospitable_name))`)
+        .eq('code', 'VIR')
+        .in('mouvement_id', chunk)
+      if (virs) {
+        for (const v of virs) {
+          if (!v.mouvement_id || !v.reservation) continue
+          if (!infoByMouv[v.mouvement_id]) {
+            infoByMouv[v.mouvement_id] = {
+              guest_name: v.reservation.guest_name,
+              arrival_date: v.reservation.arrival_date,
+              bien_name: v.reservation.bien?.hospitable_name,
             }
           }
         }
       }
-      for (const m of rapproches) {
-        if (infoByMouv[m.id]) m._resa = infoByMouv[m.id]
-      }
+    }
+    for (const m of rapproches) {
+      if (infoByMouv[m.id]) m._resa = infoByMouv[m.id]
     }
   }
 
-  // Marquer automatiquement les débits avec statut 'debit_en_attente'
+    // Marquer automatiquement les débits avec statut 'debit_en_attente'
   // si leur statut est 'en_attente' et qu'ils n'ont que du débit (pas de crédit)
   for (const m of mouvements) {
     if (m.statut_matching === 'en_attente' && (m.debit || 0) > 0 && (m.credit || 0) === 0) {
