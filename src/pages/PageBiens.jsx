@@ -116,6 +116,15 @@ export default function PageBiens() {
     }
   }
 
+  async function toggleGestionLoyer(bienId, currentVal) {
+    try {
+      const { supabase } = await import('../lib/supabase')
+      const newVal = (currentVal === false || currentVal === null) ? true : false
+      await supabase.from('bien').update({ gestion_loyer: newVal }).eq('id', bienId)
+      setBiens(prev => prev.map(b => b.id === bienId ? { ...b, gestion_loyer: newVal } : b))
+    } catch (err) { alert('Erreur : ' + err.message) }
+  }
+
   const biensActifs = biens.filter(b => b.listed)
   const biensAvecProprio = biens.filter(b => b.proprietaire_id)
   const biensAConfigurer = biens.filter(b => !b.proprietaire_id || !b.provision_ae_ref)
@@ -212,6 +221,7 @@ export default function PageBiens() {
                 <th className="right">Provision Auto</th>
                 <th className="right">Forfait DCB</th>
                 <th className="right">Ménage proprio</th>
+                 <th>Collecte</th>
                 <th>Statut</th>
               </tr>
             </thead>
@@ -374,6 +384,9 @@ export default function PageBiens() {
                         {bien.forfait_menage_proprio ? formatMontant(bien.forfait_menage_proprio) : <span style={{color:'var(--text-muted)'}}>—</span>}
                       </span>
                     )}
+                  </td>
+                  <td style={{textAlign:'center',cursor:'pointer'}} onClick={() => toggleGestionLoyer(bien.id, bien.gestion_loyer)} title={bien.gestion_loyer === false ? 'Proprio gere — cliquer pour activer' : 'DCB collecte — cliquer pour desactiver'}>
+                    {bien.gestion_loyer === false ? '🚫' : '✅'}
                   </td>
                   <td>
                     {bien.listed ? (
