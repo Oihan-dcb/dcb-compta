@@ -51,6 +51,7 @@ export default function PageRapprochement() {
   const [virsSel, setVirsSel] = useState([])           // VIR sélectionnés pour matching manuel
   const [saving, setSaving] = useState(false)
   const [syncing, setSyncing] = useState(false)
+  const [filtreCanal, setFiltreCanal] = useState('tous')
   const [syncLog, setSyncLog] = useState(null)
 
   const charger = useCallback(async () => {
@@ -66,9 +67,9 @@ export default function PageRapprochement() {
       setVirs(v)
       setStats(s)
       // Mois dispos
-      const { data: md } = await supabase.from('mouvement_bancaire').select('mois_releve')
+    const { data: md } = await supabase.from('mouvement_bancaire').select('mois_releve').not('mois_releve','is',null)
       if (md) {
-        const uniq = [...new Set(md.map(x => x.mois_releve))].sort((a, b) => b.localeCompare(a))
+      const uniq = [...new Set(md.map(x => x.mois_releve))]
         setMoisDispos([...new Set([...uniq, moisCourant])])
       }
     } catch (err) {
@@ -145,6 +146,7 @@ export default function PageRapprochement() {
     }
   }
 
+  const canaux = [...new Set(mouvements.filter(m => m.statut_matching === 'en_attente').map(m => m.canal).filter(Boolean))]
   const mouvFiltres = mouvements.filter(m => {
     if (filtre === 'tous') return true
     if (filtre === 'attente') return m.statut_matching === 'en_attente'
@@ -220,7 +222,7 @@ export default function PageRapprochement() {
             { label: 'En attente', value: stats.en_attente, color: '#E65100' },
             { label: 'Non géré', value: mouvements.filter(m => m._resa?.gestion_loyer === false).length, color: '#9CA3AF' },
             { label: 'Non identifiés', value: stats.non_identifie, color: '#B71C1C' },
-            { label: 'VIR liés', value: `${stats.vir_rapproches}/${stats.vir_total}`, color: '#7C3AED' },
+            { label: 'VIR ventilés', value: `${stats.vir_rapproches}/${stats.vir_total}`, color: '#7C3AED' },
             { label: 'Entrées', value: fmt(stats.total_entrees), color: '#2E7D32', small: true },
           ].map(s => (
             <div key={s.label} style={{ background: '#fff', border: '1px solid #e5e7eb', borderRadius: 10, padding: '14px 16px' }}>
@@ -238,7 +240,7 @@ export default function PageRapprochement() {
           {/* FILTRES */}
           <div style={{ display: 'flex', gap: 8, marginBottom: 14, flexWrap: 'wrap' }}>
             {[['tous', 'Tous'], ['attente', 'En attente'], ['rapproche', 'Rapprochés'], ['inconnu', 'Non identifiés']].map(([k, l]) => (
-              <button key={k} onClick={() => setFiltre(k)}
+              <button key={k} onClick={() => setFiltre(k); setFiltreCanal('tous')
                 style={{ padding: '5px 14px', borderRadius: 20, border: '1.5px solid', fontSize: 13, fontWeight: 600, cursor: 'pointer',
                   background: filtre === k ? '#1a56db' : '#fff', color: filtre === k ? '#fff' : '#555', borderColor: filtre === k ? '#1a56db' : '#ddd' }}>
                 {l}
@@ -246,7 +248,19 @@ export default function PageRapprochement() {
             ))}
           </div>
 
-          {loading ? (
+          {filtre === 'attente' && canaux.length > 1 && (
+        <div style={{ display: 'flex', gap: 6, marginBottom: 10, flexWrap: 'wrap', alignItems: 'center' }}>
+          <span style={{ fontSize: 11, color: '#888', fontWeight: 600 }}>Canal :</span>
+          {['tous', ...canaux].map(c => (
+            <button key={c} onClick={() => setFiltreCanal(c)}
+              style={{ padding: '3px 10px', borderRadius: 20, border: '1.5px solid', fontSize: 11, cursor: 'pointer',
+                background: filtreCanal === c ? '#374151' : '#fff', color: filtreCanal === c ? '#fff' : '#555', borderColor: filtreCanal === c ? '#374151' : '#e5e7eb' }}>
+              {c === 'tous' ? 'Tous' : c.charAt(0).toUpperCase() + c.slice(1)}
+            </button>
+          ))}
+        </div>
+      )}
+      {loading ? (
             <div style={{ textAlign: 'center', padding: 40, color: '#888' }}>Chargement...</div>
           ) : (
             <div style={{ background: '#fff', borderRadius: 12, border: '1px solid #e5e7eb', overflow: 'hidden' }}>
@@ -270,7 +284,10 @@ export default function PageRapprochement() {
                          {m._resa ? (
                            <div style={{ fontSize: 11, color: '#2E7D32', marginTop: 2, display: 'flex', gap: 6, flexWrap: 'wrap' }}>
                              {m._resa.bien_name && <span style={{ fontWeight: 700 }}>{m._resa.bien_name}</span>}
-                             {m._resa.guest_name && <span>{m._resa.guest_name}</span>}
+                             {m._resa.bien_name && <span style={{fontWeight:600,color:'#1a56db'}}>{m._resa.bien_name}</span>}
+                              {m._resa.agence === 'lauian' && <span style={{background:'#FEF3C7',color:'#B45309',fontSize:10,padding:'1px 4px',borderRadius:3,fontWeight:700}}>Lauian</span>}
+                              {m._resa.guest_name && <span style={{color:'#555'}}>· {m._resa.guest_name}</span>}
+                              {m._resa.arrival_date && <span style={{color:'#888'}}>· {m._resa.arrival_date?.slice(5,10).replace('-','/')}</span>}
                              {m._resa.arrival_date && <span style={{ color: '#999' }}>{fmtDate(m._resa.arrival_date)}</span>}
                            </div>
                          ) : m.detail ? (
