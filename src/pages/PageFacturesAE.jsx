@@ -1,8 +1,8 @@
 import { useState, useEffect } from 'react'
 import MoisSelector from '../components/MoisSelector'
 import {
-  getFacturesAuto, initialiserFacturesAuto, updateFactureAE,
-  validerFactureAE, getStatsFacturesAuto, getMontantEffectifAE
+  getFacturesAE, initialiserFacturesAE, updateFactureAE,
+  validerFactureAE, getStatsFacturesAE, getMontantEffectifAE
 } from '../services/facturesAE'
 import { formatMontant } from '../lib/hospitable'
 
@@ -36,7 +36,7 @@ export default function PageFacturesAuto() {
     setLoading(true)
     setError(null)
     try {
-      const [f, s] = await Promise.all([getFacturesAuto(mois), getStatsFacturesAuto(mois)])
+      const [f, s] = await Promise.all([getFacturesAE(mois), getStatsFacturesAE(mois)])
       setFactures(f)
       setStats(s)
     } catch (err) {
@@ -50,7 +50,7 @@ export default function PageFacturesAuto() {
     setLoading(true)
     setError(null)
     try {
-      const result = await initialiserFacturesAuto(mois)
+      const result = await initialiserFacturesAE(mois)
       setSuccess(`${result.created} fiches AE créées pour ${mois}`)
       await charger()
     } catch (err) {
