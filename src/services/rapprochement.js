@@ -25,10 +25,10 @@ export async function getMouvementsMois(mois) {
   // Pour les mouvements rapprochés, enrichir avec les infos réservation
   // via ventilation.mouvement_id → reservation → guest_name, arrival_date, bien
   const rapproches = mouvements.filter(m => m.statut_matching === 'rapproche')
+  const infoByMouv = {}
   if (rapproches.length > 0) {
     const ids = rapproches.map(m => m.id)
     // Charger les VIR liés par batch de 100
-    const BATCH = 100
     const infoByMouv = {}
     for (let i = 0; i < ids.length; i += BATCH) {
       const chunk = ids.slice(i, i + BATCH)
@@ -52,6 +52,11 @@ export async function getMouvementsMois(mois) {
         }
       }
     }
+  // si leur statut est 'en_attente' et qu'ils n'ont que du débit (pas de crédit)
+    // Normaliser : calculer bien_name et guest_name agrégés
+    for (const info of Object.values(infoByMouv)) {
+      info.bien_name = info.biens.join(' · ')
+      info.guest_name = info.guests.length === 1 ? info.guests[0] : (info.nb_resas + ' résa(s)')
     for (const m of rapproches) {
       if (infoByMouv[m.id]) m._resa = infoByMouv[m.id]
   }
@@ -100,11 +105,6 @@ export async function getMouvementsMois(mois) {
   }
 
     // Marquer automatiquement les débits avec statut 'debit_en_attente'
-  // si leur statut est 'en_attente' et qu'ils n'ont que du débit (pas de crédit)
-    // Normaliser : calculer bien_name et guest_name agrégés
-    for (const info of Object.values(infoByMouv)) {
-      info.bien_name = info.biens.join(' · ')
-      info.guest_name = info.guests.length === 1 ? info.guests[0] : (info.nb_resas + ' résa(s)')
     }
   for (const m of mouvements) {
     if (m.statut_matching === 'en_attente' && (m.debit || 0) > 0 && (m.credit || 0) === 0) {
