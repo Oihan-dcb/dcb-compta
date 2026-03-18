@@ -151,7 +151,6 @@ export default function PageRapprochement() {
   }
 
   const canaux = [...new Set(mouvements.filter(m => m.statut_matching === 'en_attente').map(m => m.canal).filter(Boolean))]
-  const canaux = [...new Set(mouvements.filter(m => m.statut_matching === 'en_attente').map(m => m.canal).filter(Boolean))]
   const mouvFiltres = mouvements.filter(m => {
     if (filtre === 'tous') return true
     if (filtre === 'attente') return m.statut_matching === 'en_attente'
