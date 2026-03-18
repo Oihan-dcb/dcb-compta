@@ -225,7 +225,6 @@ export default function PageRapprochement() {
       )}
 
       {/* STATS */}
-      {stats && (
       {(alertes.virOrphelins > 0 || alertes.resasNonRapprochees > 0) && (
         <div style={{ display: 'flex', flexDirection: 'column', gap: 8, marginBottom: 16 }}>
           {alertes.virOrphelins > 0 && (
@@ -259,7 +258,6 @@ export default function PageRapprochement() {
             </div>
           ))}
         </div>
-      )}
 
       <div style={{ display: 'grid', gridTemplateColumns: mouvSelId ? '1fr 380px' : '1fr', gap: 20 }}>
 
