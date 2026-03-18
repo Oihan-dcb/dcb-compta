@@ -41,18 +41,14 @@ export async function getMouvementsMois(mois) {
         for (const v of virs) {
           if (!v.mouvement_id || !v.reservation) continue
           if (!infoByMouv[v.mouvement_id]) {
-            infoByMouv[v.mouvement_id] = {
-              guest_name: v.reservation.guest_name,
-              arrival_date: v.reservation.arrival_date,
-              bien_name: v.reservation.bien?.hospitable_name,
-              gestion_loyer: v.reservation.bien?.gestion_loyer,
-              agence: v.reservation.bien?.agence,
-              arrival_date: v.reservation.arrival_date,
-              departure_date: v.reservation.departure_date,
-              platform: v.reservation.platform,
-              fin_revenue: v.reservation.fin_revenue,
-            }
+            infoByMouv[v.mouvement_id] = { biens: [], guests: [], platform: v.reservation.platform, gestion_loyer: v.reservation.bien?.gestion_loyer, agence: v.reservation.bien?.agence, arrival_date: v.reservation.arrival_date, fin_revenue: 0, nb_resas: 0 }
           }
+          const _info = infoByMouv[v.mouvement_id]
+          const _bien = v.reservation.bien?.hospitable_name
+          if (_bien && !_info.biens.includes(_bien)) _info.biens.push(_bien)
+          if (v.reservation.guest_name && !_info.guests.includes(v.reservation.guest_name)) _info.guests.push(v.reservation.guest_name)
+          _info.fin_revenue += (v.reservation.fin_revenue || 0)
+          _info.nb_resas++
         }
       }
     }
@@ -105,6 +101,11 @@ export async function getMouvementsMois(mois) {
 
     // Marquer automatiquement les débits avec statut 'debit_en_attente'
   // si leur statut est 'en_attente' et qu'ils n'ont que du débit (pas de crédit)
+    // Normaliser : calculer bien_name et guest_name agrégés
+    for (const info of Object.values(infoByMouv)) {
+      info.bien_name = info.biens.join(' · ')
+      info.guest_name = info.guests.length === 1 ? info.guests[0] : (info.nb_resas + ' résa(s)')
+    }
   for (const m of mouvements) {
     if (m.statut_matching === 'en_attente' && (m.debit || 0) > 0 && (m.credit || 0) === 0) {
       m.statut_matching = 'debit_en_attente'
