@@ -19,6 +19,7 @@ export default function PageFacturesAuto() {
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState(null)
   const [success, setSuccess] = useState(null)
+  const [importing, setImporting] = useState(false)
 
   useEffect(() => { charger() }, [mois])
   useEffect(() => {
