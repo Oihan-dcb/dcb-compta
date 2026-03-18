@@ -8,6 +8,7 @@ import PageRapprochement from './pages/PageRapprochement'
 import PageFacturesAE from './pages/PageFacturesAE'
 import PageFactures from './pages/PageFactures'
 import PageConfig from './pages/PageConfig'
+import PageAutoEntrepreneurs from './pages/PageAutoEntrepreneurs'
 import PageImport from './pages/PageImport'
 import './App.css'
 
@@ -28,7 +29,8 @@ export default function App() {
             <NavLink to="/factures-ae" className={({isActive}) => isActive ? 'nav-link active' : 'nav-link'}>Factures Auto</NavLink>
             <NavLink to="/factures" className={({isActive}) => isActive ? 'nav-link active' : 'nav-link'}>Factures</NavLink>
             <NavLink to="/import" className={({isActive}) => isActive ? 'nav-link active' : 'nav-link'}>Import</NavLink>
-            <NavLink to="/config" className={({isActive}) => isActive ? 'nav-link active' : 'nav-link'}>Config</NavLink>
+            <NavLink to="/auto-entrepreneurs" className={({isActive}) => isActive ? 'nav-link active' : 'nav-link'}>AEs</NavLink>
+        <NavLink to="/config" className={({isActive}) => isActive ? 'nav-link active' : 'nav-link'}>Config</NavLink>
           </nav>
         </header>
         <main className="app-main">
@@ -41,7 +43,8 @@ export default function App() {
             <Route path="/factures-ae" element={<PageFacturesAE />} />
             <Route path="/factures" element={<PageFactures />} />
             <Route path="/import" element={<PageImport />} />
-            <Route path="/config" element={<PageConfig />} />
+            <Route path="/auto-entrepreneurs" element={<PageAutoEntrepreneurs />} />
+          <Route path="/config" element={<PageConfig />} />
           </Routes>
         </main>
       </div>
