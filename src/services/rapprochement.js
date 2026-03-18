@@ -61,6 +61,28 @@ export async function getMouvementsMois(mois) {
     for (const m of rapproches) {
       m._resa = infoByMouv[m.id] || null
     }
+
+  // Enrichissement secondaire : mouvements rapprochés sans _resa (Airbnb groupés via payout)
+  // Matcher par montant de réservation dans le mois
+  const nonEnriches = rapproches.filter(m => !m._resa)
+  if (nonEnriches.length > 0) {
+    const { data: resasByMois } = await supabase
+      .from('reservation')
+      .select('id, code, guest_name, arrival_date, departure_date, platform, fin_revenue, bien(hospitable_name, agence)')
+      .eq('mois_comptable', mois)
+      .in('platform', ['airbnb', 'booking', 'direct'])
+      .gt('fin_revenue', 0)
+    const usedResaIds = new Set()
+    for (const m of nonEnriches) {
+      const best = (resasByMois || [])
+        .filter(r => !usedResaIds.has(r.id) && Math.abs(r.fin_revenue - m.credit) <= m.credit * 0.05 && (r.bien?.agence || 'dcb') === 'dcb')
+        .sort((a, b) => Math.abs(a.fin_revenue - m.credit) - Math.abs(b.fin_revenue - m.credit))[0]
+      if (best) {
+        usedResaIds.add(best.id)
+        m._resa = { guest_name: best.guest_name, bien_name: best.bien?.hospitable_name, arrival_date: best.arrival_date, departure_date: best.departure_date, platform: best.platform, fin_revenue: best.fin_revenue, agence: best.bien?.agence, biens: [best.bien?.hospitable_name].filter(Boolean), guests: [best.guest_name].filter(Boolean), nb_resas: 1 }
+      }
+    }
+  }
   }
 
   // Marquer les débits seuls comme debit_en_attente
