@@ -29,7 +29,6 @@ const STATUT_COLOR = { rapproche: '#2E7D32', en_attente: '#E65100', non_identifi
 const STATUT_LABEL = { rapproche: '✓ Rapproché', en_attente: '⏳ En attente', non_identifie: '✗ Non identifié', debit_en_attente: 'Débit', non_gere: '— Non géré' }
 
 function fmt(centimes) {
-  function handleFiltreChange(k) { setFiltre(k); setFiltreCanal('tous') }
 
   return (centimes / 100).toLocaleString('fr-FR', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) + ' €'
 }
@@ -55,7 +54,6 @@ export default function PageRapprochement() {
   const [filtreCanal, setFiltreCanal] = useState('tous')
   const [virSearch, setVirSearch] = useState('')
   const [syncing, setSyncing] = useState(false)
-  const [filtreCanal, setFiltreCanal] = useState('tous')
   const [syncLog, setSyncLog] = useState(null)
 
   const charger = useCallback(async () => {
