@@ -8,7 +8,7 @@ import PageRapprochement from './pages/PageRapprochement'
 import PageFacturesAE from './pages/PageFacturesAE'
 import PageFactures from './pages/PageFactures'
 import PageConfig from './pages/PageConfig'
-const PageAutoEntrepreneurs = () => <div style={{padding:40,textAlign:'center',color:'#888',fontSize:16}}>🧹 Auto-entrepreneurs — en cours de création</div>
+import PageAutoEntrepreneurs from './pages/PageAutoEntrepreneurs'
 import PageImport from './pages/PageImport'
 import './App.css'
 
