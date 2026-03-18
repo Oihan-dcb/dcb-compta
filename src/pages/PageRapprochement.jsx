@@ -156,7 +156,7 @@ export default function PageRapprochement() {
     if (filtre === 'rapproche') return m.statut_matching === 'rapproche'
     if (filtre === 'inconnu') return m.statut_matching === 'non_identifie'
     return true
-  })
+  }).filter(m => filtreCanal === 'tous' || m.canal === filtreCanal)
 
   const mouvSel = mouvements.find(m => m.id === mouvSelId)
 
@@ -263,19 +263,6 @@ export default function PageRapprochement() {
             </button>
           ))}
         </div>
-      )}
-      {filtre === 'attente' && canaux.length > 1 && (
-        <div style={{ display: 'flex', gap: 6, marginBottom: 10, flexWrap: 'wrap', alignItems: 'center' }}>
-          <span style={{ fontSize: 11, color: '#888', fontWeight: 600 }}>Canal :</span>
-          {['tous', ...canaux].map(c => (
-            <button key={c} onClick={() => setFiltreCanal(c)}
-              style={{ padding: '3px 10px', borderRadius: 20, border: '1.5px solid', fontSize: 11, cursor: 'pointer',
-                background: filtreCanal === c ? '#374151' : '#fff', color: filtreCanal === c ? '#fff' : '#555', borderColor: filtreCanal === c ? '#374151' : '#e5e7eb' }}>
-              {c === 'tous' ? 'Tous' : c.charAt(0).toUpperCase() + c.slice(1)}
-            </button>
-          ))}
-        </div>
-      )}
       {loading ? (
             <div style={{ textAlign: 'center', padding: 40, color: '#888' }}>Chargement...</div>
           ) : (
