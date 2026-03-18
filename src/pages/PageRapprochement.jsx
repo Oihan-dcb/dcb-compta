@@ -242,6 +242,7 @@ export default function PageRapprochement() {
           )}
         </div>
       )}
+      {stats && (
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(160px, 1fr))', gap: 12, marginBottom: 24 }}>
           {[
             { label: 'Mouvements', value: stats.total_mouvements, color: '#1a56db' },
@@ -258,6 +259,7 @@ export default function PageRapprochement() {
             </div>
           ))}
         </div>
+      )}
 
       <div style={{ display: 'grid', gridTemplateColumns: mouvSelId ? '1fr 380px' : '1fr', gap: 20 }}>
 
