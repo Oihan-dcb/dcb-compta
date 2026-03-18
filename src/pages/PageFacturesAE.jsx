@@ -108,27 +108,152 @@ export default function PageFacturesAuto() {
 
   function telechargerTemplate() {
     if (!factures.length) return
-    const header = 'facture_id,bien_code,bien_nom,mois,ae_nom,montant_theorique_eur,montant_reel_eur'
-    const rows = factures.map(f => [
-      f.id,
-      f.bien?.code || '',
-      (f.bien?.hospitable_name || '').replace(/,/g, ' '),
-      mois,
-      (f.ae_nom || '').replace(/,/g, ' '),
-      ((f.montant_theorique || 0) / 100).toFixed(2),
-      f.montant_reel !== null ? (f.montant_reel / 100).toFixed(2) : ''
-    ].join(','))
-    const csv = [header, ...rows].join('\n')
-    const blob = new Blob(['\uFEFF' + csv], { type: 'text/csv;charset=utf-8;' })
+    const moisLabel = new Date(mois + '-01').toLocaleDateString('fr-FR', { month: 'long', year: 'numeric' })
+    const dateEmission = new Date().toLocaleDateString('fr-FR')
+
+    // Une page par fiche AE
+    const pages = factures.map(f => {
+      const bienNom = f.bien?.hospitable_name || f.bien?.code || '—'
+      const bienCode = f.bien?.code || '—'
+      const aeNom = f.ae_nom || '(Auto-entrepreneur)'
+      const aeInitiales = f.ae_initiales || ''
+      const numFacture = `AE-${mois.replace('-','')}-${bienCode}`
+      return `
+        <div class="page">
+          <div class="header">
+            <div class="logo-bloc">
+              <div class="logo">DCB</div>
+              <div class="logo-sub">Destination Côte Basque</div>
+            </div>
+            <div class="facture-titre">
+              <div class="titre-label">FACTURE</div>
+              <div class="titre-num">N° ${numFacture}</div>
+              <div class="titre-date">Date : ${dateEmission}</div>
+            </div>
+          </div>
+          <div class="parties">
+            <div class="partie">
+              <div class="partie-label">ÉMETTEUR</div>
+              <div class="partie-nom">${aeNom}${aeInitiales ? ' (' + aeInitiales + ')' : ''}</div>
+              <div class="partie-info">Auto-entrepreneur ménage</div>
+              <div class="partie-info">Prestation de services</div>
+            </div>
+            <div class="partie">
+              <div class="partie-label">DESTINATAIRE</div>
+              <div class="partie-nom">Destination Côte Basque</div>
+              <div class="partie-info">Gestion locative saisonnière</div>
+              <div class="partie-info">Biarritz, France</div>
+            </div>
+          </div>
+          <div class="objet-bloc">
+            <span class="objet-label">Objet :</span> Prestations ménage — <strong>${bienNom}</strong> — ${moisLabel}
+          </div>
+          <table class="table-prestations">
+            <thead>
+              <tr>
+                <th>Désignation</th>
+                <th>Bien</th>
+                <th>Période</th>
+                <th class="montant-col">Montant HT</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td>Prestations de ménage</td>
+                <td>${bienNom}</td>
+                <td>${moisLabel}</td>
+                <td class="montant-col saisir">________ €</td>
+              </tr>
+            </tbody>
+            <tfoot>
+              <tr>
+                <td colspan="3" class="total-label">Total HT</td>
+                <td class="montant-col saisir">________ €</td>
+              </tr>
+              <tr>
+                <td colspan="3" class="total-label">TVA (non applicable — art. 293B CGI)</td>
+                <td class="montant-col">0,00 €</td>
+              </tr>
+              <tr class="total-ttc">
+                <td colspan="3" class="total-label">TOTAL TTC</td>
+                <td class="montant-col saisir">________ €</td>
+              </tr>
+            </tfoot>
+          </table>
+          <div class="mentions">
+            <div>TVA non applicable en vertu de l'article 293B du CGI</div>
+            <div>Règlement par virement bancaire — à réception de facture</div>
+          </div>
+          <div class="signature-bloc">
+            <div class="signature-label">Signature :</div>
+            <div class="signature-ligne"></div>
+          </div>
+          <div class="footer">
+            <div>Facture à retourner complétée à Destination Côte Basque</div>
+            <div>Fichier CSV d'import : indiquer le montant dans la colonne montant_reel_eur</div>
+          </div>
+        </div>
+      `
+    }).join('<div class="page-break"></div>')
+
+    const html = `<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8">
+<title>Factures AE ${mois}</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; font-family: Arial, sans-serif; }
+  body { background: #f5f5f5; }
+  .page { background: white; width: 210mm; min-height: 297mm; margin: 20px auto; padding: 20mm 20mm 15mm 20mm; display: flex; flex-direction: column; gap: 20px; }
+  .page-break { page-break-after: always; }
+  .header { display: flex; justify-content: space-between; align-items: flex-start; border-bottom: 3px solid #1a3a6e; padding-bottom: 16px; }
+  .logo { font-size: 36px; font-weight: 900; color: #1a3a6e; letter-spacing: 2px; }
+  .logo-sub { font-size: 11px; color: #666; margin-top: 4px; }
+  .facture-titre { text-align: right; }
+  .titre-label { font-size: 28px; font-weight: 700; color: #1a3a6e; }
+  .titre-num { font-size: 14px; color: #444; margin-top: 4px; }
+  .titre-date { font-size: 12px; color: #888; margin-top: 2px; }
+  .parties { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; }
+  .partie { background: #f8f9fa; border-radius: 6px; padding: 14px 16px; border-left: 4px solid #1a3a6e; }
+  .partie-label { font-size: 10px; font-weight: 700; color: #1a3a6e; letter-spacing: 1px; text-transform: uppercase; margin-bottom: 6px; }
+  .partie-nom { font-size: 14px; font-weight: 700; color: #222; margin-bottom: 4px; }
+  .partie-info { font-size: 12px; color: #666; }
+  .objet-bloc { background: #eef2ff; border-radius: 6px; padding: 12px 16px; font-size: 13px; color: #333; }
+  .objet-label { font-weight: 700; color: #1a3a6e; }
+  .table-prestations { width: 100%; border-collapse: collapse; margin-top: 4px; }
+  .table-prestations th { background: #1a3a6e; color: white; padding: 10px 12px; font-size: 12px; text-align: left; }
+  .table-prestations td { padding: 12px; font-size: 13px; border-bottom: 1px solid #e5e7eb; }
+  .table-prestations tfoot td { border-bottom: none; }
+  .montant-col { text-align: right; min-width: 120px; }
+  .saisir { font-size: 15px; color: #1a3a6e; font-weight: 700; letter-spacing: 1px; }
+  .total-label { text-align: right; font-weight: 600; color: #444; padding-right: 12px; }
+  .total-ttc { background: #1a3a6e; }
+  .total-ttc td { color: white; font-weight: 700; font-size: 14px; padding: 12px; }
+  .mentions { font-size: 10px; color: #888; padding: 8px 0; border-top: 1px solid #e5e7eb; line-height: 1.8; }
+  .signature-bloc { margin-top: auto; }
+  .signature-label { font-size: 12px; color: #555; margin-bottom: 6px; }
+  .signature-ligne { border-bottom: 1px solid #333; width: 200px; height: 40px; }
+  .footer { border-top: 1px solid #e5e7eb; padding-top: 10px; font-size: 10px; color: #aaa; text-align: center; line-height: 1.8; }
+  @media print {
+    body { background: white; }
+    .page { margin: 0; padding: 15mm; }
+    .page-break { page-break-after: always; height: 0; }
+  }
+</style>
+</head>
+<body>${pages}</body>
+</html>`
+
+    const blob = new Blob([html], { type: 'text/html;charset=utf-8;' })
     const url = URL.createObjectURL(blob)
     const a = document.createElement('a')
     a.href = url
-    a.download = `factures-ae-${mois}.csv`
+    a.download = `factures-ae-${mois}.html`
     a.click()
     URL.revokeObjectURL(url)
   }
 
-  async function importerCSV(e) {
+    async function importerCSV(e) {
     const file = e.target.files[0]
     if (!file) return
     setImporting(true)
