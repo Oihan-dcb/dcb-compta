@@ -29,8 +29,6 @@ const STATUT_COLOR = { rapproche: '#2E7D32', en_attente: '#E65100', non_identifi
 const STATUT_LABEL = { rapproche: '✓ Rapproché', en_attente: '⏳ En attente', non_identifie: '✗ Non identifié', debit_en_attente: 'Débit', non_gere: '— Non géré' }
 
 function fmt(centimes) {
-  function handleFiltreChange(k) { setFiltre(k); setFiltreCanal('tous') }
-
   return (centimes / 100).toLocaleString('fr-FR', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) + ' €'
 }
 function fmtDate(d) {
@@ -52,8 +50,6 @@ export default function PageRapprochement() {
   const [mouvSelId, setMouvSelId] = useState(null)   // mouvement sélectionné pour matching manuel
   const [virsSel, setVirsSel] = useState([])           // VIR sélectionnés pour matching manuel
   const [saving, setSaving] = useState(false)
-  const [filtreCanal, setFiltreCanal] = useState('tous')
-  const [virSearch, setVirSearch] = useState('')
   const [syncing, setSyncing] = useState(false)
   const [filtreCanal, setFiltreCanal] = useState('tous')
   const [syncLog, setSyncLog] = useState(null)
@@ -71,7 +67,7 @@ export default function PageRapprochement() {
       setVirs(v)
       setStats(s)
       // Mois dispos
-    const { data: md } = await supabase.from('mouvement_bancaire').select('mois_releve').not('mois_releve','is',null).not('mois_releve','is',null)
+    const { data: md } = await supabase.from('mouvement_bancaire').select('mois_releve').not('mois_releve','is',null)
       if (md) {
       const uniq = [...new Set(md.map(x => x.mois_releve))]
         setMoisDispos([...new Set([...uniq, moisCourant])])
@@ -151,7 +147,6 @@ export default function PageRapprochement() {
   }
 
   const canaux = [...new Set(mouvements.filter(m => m.statut_matching === 'en_attente').map(m => m.canal).filter(Boolean))]
-  const canaux = [...new Set(mouvements.filter(m => m.statut_matching === 'en_attente').map(m => m.canal).filter(Boolean))]
   const mouvFiltres = mouvements.filter(m => {
     if (filtre === 'tous') return true
     if (filtre === 'attente') return m.statut_matching === 'en_attente'
@@ -229,7 +224,7 @@ export default function PageRapprochement() {
             { label: 'En attente', value: stats.en_attente, color: '#E65100' },
             { label: 'Non géré', value: mouvements.filter(m => m._resa?.gestion_loyer === false).length, color: '#9CA3AF' },
             { label: 'Non identifiés', value: stats.non_identifie, color: '#B71C1C' },
-    { label: 'LOY reversés', value: `${stats.vir_rapproches}/${stats.vir_total}`, color: '#7C3AED' },
+            { label: 'VIR ventilés', value: `${stats.vir_rapproches}/${stats.vir_total}`, color: '#7C3AED' },
             { label: 'Entrées', value: fmt(stats.total_entrees), color: '#2E7D32', small: true },
           ].map(s => (
             <div key={s.label} style={{ background: '#fff', border: '1px solid #e5e7eb', borderRadius: 10, padding: '14px 16px' }}>
@@ -267,18 +262,6 @@ export default function PageRapprochement() {
           ))}
         </div>
       )}
-      {filtre === 'attente' && canaux.length > 1 && (
-        <div style={{ display: 'flex', gap: 6, marginBottom: 10, flexWrap: 'wrap', alignItems: 'center' }}>
-          <span style={{ fontSize: 11, color: '#888', fontWeight: 600 }}>Canal :</span>
-          {['tous', ...canaux].map(c => (
-            <button key={c} onClick={() => setFiltreCanal(c)}
-              style={{ padding: '3px 10px', borderRadius: 20, border: '1.5px solid', fontSize: 11, cursor: 'pointer',
-                background: filtreCanal === c ? '#374151' : '#fff', color: filtreCanal === c ? '#fff' : '#555', borderColor: filtreCanal === c ? '#374151' : '#e5e7eb' }}>
-              {c === 'tous' ? 'Tous' : c.charAt(0).toUpperCase() + c.slice(1)}
-            </button>
-          ))}
-        </div>
-      )}
       {loading ? (
             <div style={{ textAlign: 'center', padding: 40, color: '#888' }}>Chargement...</div>
           ) : (
@@ -300,23 +283,23 @@ export default function PageRapprochement() {
                       <td style={{ padding: '9px 12px', fontWeight: 500, whiteSpace: 'nowrap' }}>{fmtDate(m.date_operation)}</td>
                        <td style={{ padding: '9px 12px', maxWidth: 280 }}>
                          <div style={{ fontWeight: 500, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{m.libelle}</div>
-          {m._resa ? (
-          <div style={{ fontSize: 11, color: '#2E7D32', marginTop: 3, display: 'flex', gap: 6, flexWrap: 'wrap', alignItems: 'center' }}>
-            {m._resa.bien_name && <span style={{fontWeight:600,color:'#1a56db'}}>{m._resa.bien_name}</span>}
-            {m._resa.agence === 'lauian' && <span style={{background:'#FEF3C7',color:'#B45309',fontSize:10,padding:'1px 4px',borderRadius:3,fontWeight:700}}>Lauian</span>}
-            {m._resa.guest_name && <span style={{color:'#555'}}>· {m._resa.guest_name}</span>}
-            {m._resa.arrival_date && <span style={{color:'#888'}}>· {m._resa.arrival_date?.slice(5,10).replace('-','/')}</span>}
-            {m._resa.platform && <span style={{background:'#F3F4F6',color:'#374151',fontSize:10,padding:'1px 5px',borderRadius:3,fontWeight:600,textTransform:'uppercase'}}>{m._resa.platform}</span>}
-            {m._resa.fin_revenue > 0 && <span style={{color:'#2E7D32',fontWeight:700}}>· {(m._resa.fin_revenue/100).toLocaleString('fr-FR',{minimumFractionDigits:2})} €</span>}
-          </div>
-          )
-          </div>
-          ) : m.detail ? (
-            <div style={{ fontSize: 11, marginTop: 2, display: 'flex', gap: 4, flexWrap: 'wrap', alignItems: 'center' }}>
-              {(() => { const parts = m.detail.split('|').map(s => s.trim()).filter(Boolean); const fraisPart = parts.find(p => p.startsWith('frais:')); const mainParts = parts.filter(p => !p.startsWith('frais:')); return <>{mainParts.length > 0 && <span style={{ color: m.statut_matching === 'rapproche' ? '#2E7D32' : '#888' }}>{mainParts.join(' · ')}</span>}{fraisPart && <span style={{ background: '#FEF2F2', color: '#B91C1C', border: '1px solid #FCA5A5', borderRadius: 4, padding: '1px 5px', fontWeight: 700, whiteSpace: 'nowrap', marginLeft: 4 }}>⚡ {fraisPart}</span>}</> })()}
-            </div>
-          ) : null}
-        </td>
+                         {m._resa ? (
+                           <div style={{ fontSize: 11, color: '#2E7D32', marginTop: 2, display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+                             {m._resa.bien_name && <span style={{ fontWeight: 700 }}>{m._resa.bien_name}</span>}
+                             {m._resa.bien_name && <span style={{fontWeight:600,color:'#1a56db'}}>{m._resa.bien_name}</span>}
+                              {m._resa.agence === 'lauian' && <span style={{background:'#FEF3C7',color:'#B45309',fontSize:10,padding:'1px 4px',borderRadius:3,fontWeight:700}}>Lauian</span>}
+                              {m._resa.guest_name && <span style={{color:'#555'}}>· {m._resa.guest_name}</span>}
+                              {m._resa.arrival_date && <span style={{color:'#888'}}>· {m._resa.arrival_date?.slice(5,10).replace('-','/')}</span>}
+                              {m._resa.platform && <span style={{background:'#F3F4F6',color:'#374151',fontSize:10,padding:'1px 5px',borderRadius:3,fontWeight:600,textTransform:'uppercase'}}>{m._resa.platform}</span>}
+                              {m._resa.fin_revenue > 0 && <span style={{color:'#2E7D32',fontWeight:700}}>· {(m._resa.fin_revenue/100).toLocaleString('fr-FR',{minimumFractionDigits:2})} €</span>}
+                             {m._resa.arrival_date && <span style={{ color: '#999' }}>{fmtDate(m._resa.arrival_date)}</span>}
+                           </div>
+                         ) : m.detail ? (
+                           <div style={{ fontSize: 11, marginTop: 2, display: 'flex', gap: 4, flexWrap: 'wrap', alignItems: 'center' }}>
+                             {(() => { const parts = m.detail.split('|').map(s => s.trim()).filter(Boolean); const fraisPart = parts.find(p => p.startsWith('frais:')); const mainParts = parts.filter(p => !p.startsWith('frais:')); return <>{mainParts.length > 0 && <span style={{ color: m.statut_matching === 'rapproche' ? '#2E7D32' : '#888' }}>{mainParts.join(' · ')}</span>}{fraisPart && <span style={{ background: '#FEF2F2', color: '#B91C1C', border: '1px solid #FCA5A5', borderRadius: 4, padding: '1px 5px', fontWeight: 700, whiteSpace: 'nowrap', marginLeft: 4 }}>⚡ {fraisPart}</span>}</> })()} 
+                           </div>
+                         ) : null}
+                      </td>
                       <td style={{ padding: '9px 12px' }}>
                         <span style={{ background: CANAL_COLOR[m.canal] + '22', color: CANAL_COLOR[m.canal] || '#555', borderRadius: 12, padding: '2px 8px', fontSize: 11, fontWeight: 700 }}>
                           {CANAL_LABEL[m.canal] || m.canal}
@@ -386,11 +369,10 @@ export default function PageRapprochement() {
               )}
             </div>
 
-            <input placeholder="Rechercher..." value={virSearch} onChange={e => setVirSearch(e.target.value)} style={{ width:'100%', padding:'7px 10px', borderRadius:8, border:'1px solid #e5e7eb', fontSize:12, marginBottom:10, boxSizing:'border-box' }} />
-            <div style={{ maxHeight: 380, overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: 6, marginBottom: 16 }}>
+            <div style={{ maxHeight: 400, overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: 6, marginBottom: 16 }}>
               {virs.length === 0 ? (
                 <div style={{ color: '#aaa', fontSize: 13, textAlign: 'center', padding: 16 }}>Tous les VIR sont déjà rapprochés</div>
-              ) : virs.filter(v => !virSearch || v.reservation?.guest_name?.toLowerCase().includes(virSearch.toLowerCase()) || v.reservation?.bien?.hospitable_name?.toLowerCase().includes(virSearch.toLowerCase()) || v.reservation?.code?.toLowerCase().includes(virSearch.toLowerCase())).map(v => {
+              ) : virs.map(v => {
                 const checked = virsSel.includes(v.id)
                 return (
                   <label key={v.id} style={{ display: 'flex', alignItems: 'flex-start', gap: 8, padding: '8px 10px', borderRadius: 8, border: `1.5px solid ${checked ? '#93C5FD' : '#e5e7eb'}`, background: checked ? '#EFF6FF' : '#fff', cursor: 'pointer', fontSize: 12 }}>
@@ -424,4 +406,3 @@ export default function PageRapprochement() {
   )
 }
 // v2
-
