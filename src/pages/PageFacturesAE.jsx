@@ -106,6 +106,64 @@ export default function PageFacturesAuto() {
 
   const totalEffectif = factures.reduce((s, f) => s + getMontantEffectifAE(f), 0)
 
+  function telechargerTemplate() {
+    if (!factures.length) return
+    const header = 'facture_id,bien_code,bien_nom,mois,ae_nom,montant_theorique_eur,montant_reel_eur'
+    const rows = factures.map(f => [
+      f.id,
+      f.bien?.code || '',
+      (f.bien?.hospitable_name || '').replace(/,/g, ' '),
+      mois,
+      (f.ae_nom || '').replace(/,/g, ' '),
+      ((f.montant_theorique || 0) / 100).toFixed(2),
+      f.montant_reel !== null ? (f.montant_reel / 100).toFixed(2) : ''
+    ].join(','))
+    const csv = [header, ...rows].join('\n')
+    const blob = new Blob(['\uFEFF' + csv], { type: 'text/csv;charset=utf-8;' })
+    const url = URL.createObjectURL(blob)
+    const a = document.createElement('a')
+    a.href = url
+    a.download = `factures-ae-${mois}.csv`
+    a.click()
+    URL.revokeObjectURL(url)
+  }
+
+  async function importerCSV(e) {
+    const file = e.target.files[0]
+    if (!file) return
+    setImporting(true)
+    setError(null)
+    try {
+      const text = await file.text()
+      const lines = text.replace(/\r/g, '').split('\n').filter(Boolean)
+      const headers = lines[0].split(',')
+      const idIdx = headers.indexOf('facture_id')
+      const reelIdx = headers.indexOf('montant_reel_eur')
+      const aeIdx = headers.indexOf('ae_nom')
+      if (idIdx < 0 || reelIdx < 0) throw new Error('Colonnes manquantes: facture_id et montant_reel_eur requis')
+      let updated = 0
+      for (const line of lines.slice(1)) {
+        const cols = line.split(',')
+        const id = cols[idIdx]?.trim()
+        const reelStr = cols[reelIdx]?.trim()
+        const aeNom = aeIdx >= 0 ? cols[aeIdx]?.trim() : undefined
+        if (!id || reelStr === '') continue
+        const montant_reel = Math.round(parseFloat(reelStr) * 100)
+        if (isNaN(montant_reel)) continue
+        await updateFactureAE(id, { montant_reel, ...(aeNom ? { ae_nom: aeNom } : {}), statut: 'valide' })
+        updated++
+      }
+      setSuccess(`${updated} fiche(s) AE mise(s) à jour`)
+      await charger()
+    } catch (err) {
+      setError(err.message)
+    } finally {
+      setImporting(false)
+      e.target.value = ''
+    }
+  }
+
+
   return (
     <div>
       <div className="page-header">
