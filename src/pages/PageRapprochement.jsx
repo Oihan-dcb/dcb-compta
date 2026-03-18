@@ -263,6 +263,7 @@ export default function PageRapprochement() {
             </button>
           ))}
         </div>
+      )}
       {loading ? (
             <div style={{ textAlign: 'center', padding: 40, color: '#888' }}>Chargement...</div>
           ) : (
