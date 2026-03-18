@@ -61,7 +61,6 @@ export async function syncBiens() {
     }
     const upserted = { data: [] } // compatibilité
 
-    if (error) throw error
 
     // Compter créations vs mises à jour
     for (const prop of properties) {
