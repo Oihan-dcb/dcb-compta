@@ -117,6 +117,15 @@ export default function PageFacturesAuto() {
         <div style={{ display: 'flex', gap: 10, alignItems: 'center' }}>
           <MoisSelector mois={mois} setMois={setMois} moisDispos={moisDispos} />
           <button className="btn btn-secondary" onClick={charger} disabled={loading}>↺</button>
+          <label style={{ cursor: importing ? 'not-allowed' : 'pointer', background: '#fff', color: '#374151', border: '1.5px solid #e5e7eb', borderRadius: 8, padding: '8px 16px', fontSize: 13, fontWeight: 600, display: 'inline-flex', alignItems: 'center', gap: 6, opacity: importing ? 0.6 : 1 }}>
+            {importing ? '⏳ Import...' : '📤 Importer CSV'}
+            <input type="file" accept=".csv" style={{ display: 'none' }} onChange={importerCSV} disabled={importing} />
+          </label>
+          {factures.length > 0 && (
+            <button onClick={telechargerTemplate} style={{ background: '#fff', color: '#374151', border: '1.5px solid #e5e7eb', borderRadius: 8, padding: '8px 16px', fontSize: 13, fontWeight: 600, cursor: 'pointer' }}>
+              📥 Template CSV
+            </button>
+          )}
           <button className="btn btn-primary" onClick={initialiser} disabled={loading}>
             + Initialiser le mois
           </button>
