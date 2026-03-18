@@ -51,6 +51,7 @@ export default function PageRapprochement() {
   const [mouvSelId, setMouvSelId] = useState(null)   // mouvement sélectionné pour matching manuel
   const [virsSel, setVirsSel] = useState([])           // VIR sélectionnés pour matching manuel
   const [saving, setSaving] = useState(false)
+  const [alertes, setAlertes] = useState({ virOrphelins: 0, resasNonRapprochees: 0 })
   const [filtreCanal, setFiltreCanal] = useState('tous')
   const [virSearch, setVirSearch] = useState('')
   const [syncing, setSyncing] = useState(false)
@@ -68,6 +69,12 @@ export default function PageRapprochement() {
       setMouvements(m)
       setVirs(v)
       setStats(s)
+      const cutoff = new Date(Date.now() - 7*86400000).toISOString().slice(0,10)
+      const [{ count: virCount }, { count: resaCount }] = await Promise.all([
+        supabase.from('mouvement_bancaire').select('*', { count: 'exact', head: true }).eq('statut_matching', 'en_attente').gt('credit', 0).lt('date_operation', cutoff),
+        supabase.from('reservation').select('*', { count: 'exact', head: true }).eq('mois_comptable', mois).eq('ventilation_calculee', true).eq('rapprochee', false).eq('owner_stay', false).neq('final_status', 'cancelled').gt('fin_revenue', 0)
+      ])
+      setAlertes({ virOrphelins: virCount || 0, resasNonRapprochees: resaCount || 0 })
       // Mois dispos
     const { data: md } = await supabase.from('mouvement_bancaire').select('mois_releve').not('mois_releve','is',null).not('mois_releve','is',null)
       if (md) {
@@ -219,6 +226,23 @@ export default function PageRapprochement() {
 
       {/* STATS */}
       {stats && (
+      {(alertes.virOrphelins > 0 || alertes.resasNonRapprochees > 0) && (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 8, marginBottom: 16 }}>
+          {alertes.virOrphelins > 0 && (
+            <div style={{ background: '#FEF3C7', border: '1px solid #F59E0B', borderRadius: 8, padding: '10px 16px', display: 'flex', alignItems: 'center', gap: 10, fontSize: 13 }}>
+              <span>⚠️</span>
+              <span><strong>{alertes.virOrphelins} virement(s) sans réservation depuis +7j</strong> — en attente de rapprochement.</span>
+              <button onClick={() => handleFiltreChange('attente')} style={{ marginLeft: 'auto', background: '#F59E0B', color: '#fff', border: 'none', borderRadius: 6, padding: '4px 12px', cursor: 'pointer', fontSize: 12, fontWeight: 600 }}>Voir</button>
+            </div>
+          )}
+          {alertes.resasNonRapprochees > 0 && (
+            <div style={{ background: '#FEE2E2', border: '1px solid #EF4444', borderRadius: 8, padding: '10px 16px', display: 'flex', alignItems: 'center', gap: 10, fontSize: 13 }}>
+              <span>🔴</span>
+              <span><strong>{alertes.resasNonRapprochees} réservation(s) ventilée(s) sans virement identifié</strong> pour ce mois.</span>
+            </div>
+          )}
+        </div>
+      )}
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(160px, 1fr))', gap: 12, marginBottom: 24 }}>
           {[
             { label: 'Mouvements', value: stats.total_mouvements, color: '#1a56db' },
