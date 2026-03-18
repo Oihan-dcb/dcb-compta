@@ -284,6 +284,7 @@ export default function PageRapprochement() {
                       <td style={{ padding: '9px 12px', fontWeight: 500, whiteSpace: 'nowrap' }}>{fmtDate(m.date_operation)}</td>
                        <td style={{ padding: '9px 12px', maxWidth: 280 }}>
                          <div style={{ fontWeight: 500, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{m.libelle}</div>
+          {m._resa ? (
               <div style={{ fontSize: 11, color: '#2E7D32', marginTop: 3, display: 'flex', gap: 6, flexWrap: 'wrap', alignItems:'center' }}>
                 {m._resa.bien_name && <span style={{fontWeight:600,color:'#1a56db'}}>{m._resa.bien_name}</span>}
                 {m._resa.agence === 'lauian' && <span style={{background:'#FEF3C7',color:'#B45309',fontSize:10,padding:'1px 4px',borderRadius:3,fontWeight:700}}>Lauian</span>}
