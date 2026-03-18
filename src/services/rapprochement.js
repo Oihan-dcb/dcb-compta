@@ -13,7 +13,6 @@ import { supabase } from '../lib/supabase'
 // ── LECTURE ────────────────────────────────────────────────────
 
 export async function getMouvementsMois(mois) {
-  // Charger les mouvements du mois
   const { data, error } = await supabase
     .from('mouvement_bancaire')
     .select('*')
@@ -22,14 +21,14 @@ export async function getMouvementsMois(mois) {
   if (error) throw error
   const mouvements = data || []
 
-  // Pour les mouvements rapprochés, enrichir avec les infos réservation
-  // via ventilation.mouvement_id → reservation → guest_name, arrival_date, bien
+  // Enrichir les mouvements rapprochés via ventilation → reservation → bien
   const rapproches = mouvements.filter(m => m.statut_matching === 'rapproche')
   const infoByMouv = {}
+
   if (rapproches.length > 0) {
     const ids = rapproches.map(m => m.id)
     // Charger les VIR liés par batch de 100
-    const infoByMouv = {}
+    const BATCH = 100
     for (let i = 0; i < ids.length; i += BATCH) {
       const chunk = ids.slice(i, i + BATCH)
       const { data: virs } = await supabase
@@ -52,62 +51,21 @@ export async function getMouvementsMois(mois) {
         }
       }
     }
-  // si leur statut est 'en_attente' et qu'ils n'ont que du débit (pas de crédit)
-    // Normaliser : calculer bien_name et guest_name agrégés
+
+    // Normaliser : bien_name et guest_name agrégés
     for (const info of Object.values(infoByMouv)) {
       info.bien_name = info.biens.join(' · ')
       info.guest_name = info.guests.length === 1 ? info.guests[0] : (info.nb_resas + ' résa(s)')
+    }
+
     for (const m of rapproches) {
-      if (infoByMouv[m.id]) m._resa = infoByMouv[m.id]
-  }
-  
-  // Enrichissement secondaire : pour les mouvements rapprochés sans _resa
-  // (Airbnb/Booking payés via payout_hospitable, sans ventilation VIR liée)
-  // Chercher la réservation via montant exact dans le même mois
-  const nonEnriches = rapproches.filter(m => !m._resa && m.credit > 0 && ['airbnb','booking'].includes(m.canal))
-  if (nonEnriches.length > 0) {
-    const { data: resasByMois } = await supabase
-      .from('reservation')
-      .select('id, code, guest_name, arrival_date, departure_date, platform, fin_revenue, bien(hospitable_name, agence)')
-      .eq('mois_comptable', mois)
-      .in('platform', ['airbnb', 'booking'])
-      .gt('fin_revenue', 0)
-    
-    const usedResaIds = new Set()
-    for (const m of nonEnriches) {
-      // Match par montant exact (±2 centimes)
-      const match = (resasByMois || []).find(r =>
-        !usedResaIds.has(r.id) &&
-        Math.abs(r.fin_revenue - m.credit) <= 2 &&
-        (r.bien?.agence || 'dcb') === 'dcb'
-      )
-      // Si pas de match exact, prendre la réservation dont le montant est le plus proche dans ±5%
-      const fallback = !match ? (resasByMois || [])
-        .filter(r => !usedResaIds.has(r.id) && (r.bien?.agence || 'dcb') === 'dcb')
-        .sort((a, b) => Math.abs(a.fin_revenue - m.credit) - Math.abs(b.fin_revenue - m.credit))[0]
-        : null
-      const best = match || (fallback && Math.abs(fallback.fin_revenue - m.credit) < m.credit * 0.1 ? fallback : null)
-      if (best) {
-        usedResaIds.add(best.id)
-        m._resa = {
-          guest_name: best.guest_name,
-          bien_name: best.bien?.hospitable_name,
-          arrival_date: best.arrival_date,
-          departure_date: best.departure_date,
-          platform: best.platform,
-          fin_revenue: best.fin_revenue,
-          agence: best.bien?.agence,
-        }
-      }
+      m._resa = infoByMouv[m.id] || null
     }
   }
 
-  }
-
-    // Marquer automatiquement les débits avec statut 'debit_en_attente'
-    }
+  // Marquer les débits seuls comme debit_en_attente
   for (const m of mouvements) {
-    if (m.statut_matching === 'en_attente' && (m.debit || 0) > 0 && (m.credit || 0) === 0) {
+    if (m.statut_matching === 'en_attente' && !(m.credit > 0) && m.debit > 0) {
       m.statut_matching = 'debit_en_attente'
     }
   }
