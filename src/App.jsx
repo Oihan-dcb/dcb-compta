@@ -1,5 +1,7 @@
 // v2
 import { BrowserRouter, Routes, Route, NavLink } from 'react-router-dom'
+import { useState, useEffect } from 'react'
+import { supabase } from './lib/supabase'
 import PageBiens from './pages/PageBiens'
 import PageReservations from './pages/PageReservations'
 import PageBanque from './pages/PageBanque'
@@ -8,11 +10,22 @@ import PageRapprochement from './pages/PageRapprochement'
 import PageFactures from './pages/PageFactures'
 import PageConfig from './pages/PageConfig'
 import PageAutoEntrepreneurs from './pages/PageAutoEntrepreneurs'
+import PagePrestationsAE from './pages/PagePrestationsAE'
 import PortailAEWrapper from './pages/PortailAEWrapper'
 import PageImport from './pages/PageImport'
 import './App.css'
 
 export default function App() {
+  const [nbEnAttente, setNbEnAttente] = useState(0)
+
+  useEffect(() => {
+    // Charger le nb de prestations en attente pour le badge
+    const mois = new Date().toISOString().slice(0, 7)
+    supabase.from('prestation_hors_forfait').select('id', { count: 'exact' })
+      .eq('statut', 'en_attente').eq('mois', mois)
+      .then(({ count }) => setNbEnAttente(count || 0))
+  }, [])
+
   return (
     <BrowserRouter>
       <div className="app">
@@ -29,6 +42,14 @@ export default function App() {
             <NavLink to="/factures" className={({isActive}) => isActive ? 'nav-link active' : 'nav-link'}>Factures</NavLink>
             <NavLink to="/import" className={({isActive}) => isActive ? 'nav-link active' : 'nav-link'}>Import</NavLink>
             <NavLink to="/auto-entrepreneurs" className={({isActive}) => isActive ? 'nav-link active' : 'nav-link'}>AEs</NavLink>
+            <NavLink to="/prestations-ae" className={({isActive}) => isActive ? 'nav-link active' : 'nav-link'} style={{ position: 'relative' }}>
+              Prestations
+              {nbEnAttente > 0 && (
+                <span style={{ position: 'absolute', top: -6, right: -8, background: '#ef4444', color: '#fff', borderRadius: 10, fontSize: 10, fontWeight: 700, padding: '1px 5px', minWidth: 16, textAlign: 'center' }}>
+                  {nbEnAttente}
+                </span>
+              )}
+            </NavLink>
             <NavLink to="/config" className={({isActive}) => isActive ? 'nav-link active' : 'nav-link'}>Config</NavLink>
           </nav>
         </header>
@@ -43,6 +64,7 @@ export default function App() {
             <Route path="/import" element={<PageImport />} />
             <Route path="/portail-ae/:token" element={<PortailAEWrapper />} />
             <Route path="/auto-entrepreneurs" element={<PageAutoEntrepreneurs />} />
+            <Route path="/prestations-ae" element={<PagePrestationsAE />} />
             <Route path="/config" element={<PageConfig />} />
           </Routes>
         </main>
