@@ -265,6 +265,7 @@ export default function PageBiens() {
                 <th className="right">Forfait DCB</th>
                 <th className="right">Ménage proprio</th>
                  <th style={{whiteSpace:'nowrap',textAlign:'center'}}>Agence / Collecte</th>
+                <th style={{whiteSpace:'nowrap',textAlign:'center'}}>Code iCal</th>
                 <th>Statut</th>
               </tr>
             </thead>
@@ -433,6 +434,26 @@ export default function PageBiens() {
                         {bien.gestion_loyer === false ? '🚫' : '✅'}
                       </span>
                     </div>
+                  </td>
+                  <td style={{textAlign:'center',padding:'6px 8px',minWidth:130}}>
+                    <select
+                      value={bien.ical_code || ''}
+                      onChange={e => {
+                        const val = e.target.value || null
+                        saveField(bien.id, 'ical_code', val)
+                        setUsedIcalCodes(prev => {
+                          const next = {...prev}
+                          Object.keys(next).forEach(k => { if(next[k]===bien.ical_code) delete next[k] })
+                          if(val) next[bien.id] = val
+                          return next
+                        })
+                      }}
+                      style={{fontSize:11,padding:'2px 6px',borderRadius:5,border:'1px solid #e5e7eb',background:bien.ical_code?'#f0fdf4':'#fff',color:bien.ical_code?'#16a34a':'#888',maxWidth:120}}>
+                      <option value="">— Non lié —</option>
+                      {icalCodes.filter(c => c===bien.ical_code || !Object.values(usedIcalCodes).includes(c)).map(c=>(
+                        <option key={c} value={c}>{c}</option>
+                      ))}
+                    </select>
                   </td>
                   <td>
                     {bien.listed ? (
