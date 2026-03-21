@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react'
-import { getAutoEntrepreneurs, saveAutoEntrepreneur, deleteAutoEntrepreneur } from '../services/autoEntrepreneurs'
+import { getAutoEntrepreneurs, saveAutoEntrepreneur, deleteAutoEntrepreneur, createAEWithAuth } from '../services/autoEntrepreneurs'
 import { supabase } from '../lib/supabase'
 
 const EMPTY_AE = {
@@ -15,6 +15,7 @@ export default function PageAutoEntrepreneurs() {
   const [editing, setEditing] = useState(null)
   const [form, setForm] = useState(EMPTY_AE)
   const [saving, setSaving] = useState(false)
+  const [credentials, setCredentials] = useState(null) // { email, password, nom } après création
   const [error, setError] = useState(null)
   const [success, setSuccess] = useState(null)
   // Prestation type form
@@ -228,6 +229,49 @@ export default function PageAutoEntrepreneurs() {
               <button onClick={sauvegarder} disabled={saving}
                 style={{ background: '#1a3a6e', color: '#fff', border: 'none', borderRadius: 8, padding: '9px 18px', fontSize: 13, fontWeight: 600, cursor: saving ? 'not-allowed' : 'pointer', opacity: saving ? .7 : 1 }}>
                 {saving ? 'Enregistrement...' : '✓ Enregistrer'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+
+      {/* Modal credentials après création AE */}
+      {credentials && (
+        <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,.5)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 2000, padding: 20 }}>
+          <div style={{ background: '#fff', borderRadius: 16, padding: 32, width: '100%', maxWidth: 480, boxShadow: '0 20px 60px rgba(0,0,0,.3)' }}>
+            <div style={{ textAlign: 'center', marginBottom: 24 }}>
+              <div style={{ fontSize: 40, marginBottom: 8 }}>✅</div>
+              <h2 style={{ margin: 0, fontSize: 20, fontWeight: 700 }}>Compte créé !</h2>
+              <p style={{ margin: '8px 0 0', color: '#666', fontSize: 14 }}>{credentials.nom} peut maintenant accéder au portail</p>
+            </div>
+            <div style={{ background: '#f8fafc', borderRadius: 12, padding: 20, marginBottom: 20, border: '1px solid #e5e7eb' }}>
+              <div style={{ marginBottom: 16 }}>
+                <div style={{ fontSize: 11, fontWeight: 700, color: '#666', textTransform: 'uppercase', marginBottom: 4 }}>URL du portail</div>
+                <div style={{ fontSize: 13, fontWeight: 600, color: '#1a3a6e', wordBreak: 'break-all' }}>https://dcb-portail-ae.vercel.app</div>
+              </div>
+              <div style={{ marginBottom: 16 }}>
+                <div style={{ fontSize: 11, fontWeight: 700, color: '#666', textTransform: 'uppercase', marginBottom: 4 }}>Email</div>
+                <div style={{ fontSize: 14, fontWeight: 600 }}>{credentials.email}</div>
+              </div>
+              <div>
+                <div style={{ fontSize: 11, fontWeight: 700, color: '#666', textTransform: 'uppercase', marginBottom: 4 }}>Mot de passe temporaire</div>
+                <div style={{ fontSize: 18, fontWeight: 900, color: '#1a3a6e', letterSpacing: 2, fontFamily: 'monospace' }}>{credentials.password}</div>
+                <div style={{ fontSize: 11, color: '#f59e0b', marginTop: 4 }}>⚠️ À communiquer à l'AE — il pourra le modifier depuis le portail</div>
+              </div>
+            </div>
+            <div style={{ display: 'flex', gap: 10 }}>
+              <button onClick={() => {
+                const txt = `Portail DCB : https://dcb-portail-ae.vercel.app\nEmail : ${credentials.email}\nMot de passe : ${credentials.password}`
+                navigator.clipboard.writeText(txt)
+                setSuccess('Copié !')
+                setTimeout(() => setSuccess(null), 2000)
+              }} style={{ flex: 1, background: '#f3f4f6', border: 'none', borderRadius: 10, padding: '12px', fontSize: 13, cursor: 'pointer', fontWeight: 600 }}>
+                📋 Copier les infos
+              </button>
+              <button onClick={() => setCredentials(null)}
+                style={{ flex: 1, background: '#1a3a6e', color: '#fff', border: 'none', borderRadius: 10, padding: '12px', fontSize: 13, cursor: 'pointer', fontWeight: 700 }}>
+                Fermer
               </button>
             </div>
           </div>
