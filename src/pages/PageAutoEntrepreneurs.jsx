@@ -179,6 +179,30 @@ export default function PageAutoEntrepreneurs() {
                   <div style={{ fontSize: 13 }}>Cliquez sur "+ Ajouter AE" pour créer la première fiche</div>
                 </div>
               )}
+              {/* Sync iCal global */}
+              <div style={{ background: '#eff6ff', borderRadius: 10, padding: '12px 16px', marginBottom: 14, border: '1px solid #bfdbfe', display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
+                <span style={{ fontSize: 13, fontWeight: 700, color: '#1e40af' }}>📅 Sync iCal</span>
+                <input type="month" value={syncMois} onChange={e => setSyncMois(e.target.value)}
+                  style={{ padding: '4px 10px', borderRadius: 6, border: '1.5px solid #bfdbfe', fontSize: 13 }} />
+                <button onClick={syncTousLesAEs} disabled={syncing}
+                  style={{ background: syncing ? '#94a3b8' : '#1d4ed8', color: '#fff', border: 'none', borderRadius: 7, padding: '6px 14px', fontSize: 13, fontWeight: 600, cursor: syncing ? 'not-allowed' : 'pointer' }}>
+                  {syncing ? '⏳ En cours...' : '🔄 Sync tous'}
+                </button>
+                {syncResults && (
+                  <div style={{ width: '100%', marginTop: 6, display: 'flex', flexDirection: 'column', gap: 3 }}>
+                    {syncResults.map((res, i) => (
+                      <div key={i} style={{ fontSize: 12, display: 'flex', gap: 8 }}>
+                        <span style={{ fontWeight: 600, color: '#1e40af', minWidth: 130 }}>{res.nom}</span>
+                        {res.error
+                          ? <span style={{ color: '#dc2626' }}>✕ {res.error}</span>
+                          : <span style={{ color: '#16a34a' }}>✓ {res.created} nouvelle(s) / {res.total_events} événements iCal</span>
+                        }
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+
               {aes.map(ae => (
                 <div key={ae.id} style={{ background: '#fff', borderRadius: 10, border: '1px solid #e5e7eb', padding: '14px 18px', display: 'flex', alignItems: 'center', gap: 16 }}>
                   <div style={{ width: 44, height: 44, borderRadius: 22, background: ae.actif ? '#1a3a6e' : '#9ca3af', color: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 16, fontWeight: 700, flexShrink: 0 }}>
