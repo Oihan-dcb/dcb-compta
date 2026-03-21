@@ -56,6 +56,7 @@ export default function App() {
         <main className="app-main">
           <Routes>
             <Route path="/" element={<PageBiens />} />
+            <Route path="/biens" element={<PageBiens />} />
             <Route path="/reservations" element={<PageReservations />} />
             <Route path="/banque" element={<PageBanque />} />
             <Route path="/matching" element={<PageMatching />} />
