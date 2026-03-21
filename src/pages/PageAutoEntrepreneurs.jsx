@@ -4,7 +4,7 @@ import { supabase } from '../lib/supabase'
 
 const EMPTY_AE = {
   nom: '', prenom: '', siret: '', adresse: '', code_postal: '', ville: '',
-  email: '', telephone: '', iban: '', ical_url: '', taux_horaire: 2500, note: '', actif: true
+  email: '', telephone: '', iban: '', ical_url: '', taux_horaire: 2500, note: '', actif: true, type: 'ae'
 }
 
 export default function PageAutoEntrepreneurs() {
@@ -62,11 +62,13 @@ export default function PageAutoEntrepreneurs() {
     catch (err) { setError(err.message) }
   }
 
-  async function copierLien(ae) {
-    const url = window.location.origin + '/portail-ae/' + ae.token_acces
-    await navigator.clipboard.writeText(url)
-    setSuccess('Lien copié !')
-    setTimeout(() => setSuccess(null), 2000)
+  async function envoyerIdentifiants(ae) {
+    const portailUrl = 'https://dcb-portail-ae.vercel.app'
+    const mdp = ae.mdp_temporaire || '(non disponible - recréer le compte)'
+    const msg = `Bonjour ${ae.prenom || ae.nom},\n\nVoici vos accès au portail Destination Côte Basque 🌅\n\nURL : ${portailUrl}\nEmail : ${ae.email}\nMot de passe : ${mdp}\n\nConnectez-vous pour voir vos missions et déclarer vos prestations.\n\nÀ bientôt,\nDestination Côte Basque`
+    await navigator.clipboard.writeText(msg)
+    setSuccess('Message copié ! Collez-le dans un SMS ou email.')
+    setTimeout(() => setSuccess(null), 3000)
   }
 
   async function sauvegarderPT() {
@@ -155,7 +157,8 @@ export default function PageAutoEntrepreneurs() {
                       {((ae.taux_horaire || 2500) / 100).toFixed(0)} €/h
                     </div>
                     {ae.ical_url && <div style={{ background: '#eff6ff', color: '#2563eb', borderRadius: 6, padding: '4px 10px', fontSize: 12, fontWeight: 600 }}>📅 iCal</div>}
-                    <button onClick={() => copierLien(ae)} title="Copier le lien du portail AE" style={{ background: '#f0fdf4', color: '#16a34a', border: '1px solid #bbf7d0', borderRadius: 6, padding: '6px 10px', fontSize: 12, cursor: 'pointer' }}>🔗 Lien portail</button>
+                {ae.type === 'staff' && <div style={{ background: '#fef3c7', color: '#92400e', borderRadius: 6, padding: '4px 10px', fontSize: 12, fontWeight: 700 }}>🌅 DCB Staff</div>}
+                    <button onClick={() => envoyerIdentifiants(ae)} title="Copier message avec identifiants" style={{ background: '#f0fdf4', color: '#16a34a', border: '1px solid #bbf7d0', borderRadius: 6, padding: '6px 10px', fontSize: 12, cursor: 'pointer' }}>📨 Identifiants</button>
                     <button onClick={() => ouvrir(ae)} style={{ background: '#f3f4f6', border: 'none', borderRadius: 6, padding: '6px 12px', fontSize: 12, cursor: 'pointer', fontWeight: 600 }}>Modifier</button>
                     <button onClick={() => supprimer(ae.id)} style={{ background: '#fee2e2', color: '#dc2626', border: 'none', borderRadius: 6, padding: '6px 10px', fontSize: 12, cursor: 'pointer' }}>✕</button>
                   </div>
@@ -200,11 +203,21 @@ export default function PageAutoEntrepreneurs() {
               {inp('prenom', 'Prénom')}
               {inp('siret', 'SIRET', { placeholder: '000 000 000 00000' })}
               <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+                <label style={{ fontSize: 11, fontWeight: 600, color: '#666', textTransform: 'uppercase' }}>Type</label>
+                <select value={form.type || 'ae'} onChange={e => change('type', e.target.value)}
+                  style={{ padding: '8px 10px', borderRadius: 7, border: '1.5px solid #e5e7eb', fontSize: 13 }}>
+                  <option value="ae">🧹 Auto-entrepreneur</option>
+                  <option value="staff">🌅 Staff DCB</option>
+                </select>
+              </div>
+              {form.type !== 'staff' && (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
                 <label style={{ fontSize: 11, fontWeight: 600, color: '#666', textTransform: 'uppercase' }}>Taux horaire (€/h)</label>
                 <input type="number" step="0.5" min="0" value={(form.taux_horaire || 2500) / 100}
                   onChange={e => change('taux_horaire', Math.round(parseFloat(e.target.value || 0) * 100))}
                   style={{ padding: '8px 10px', borderRadius: 7, border: '1.5px solid #e5e7eb', fontSize: 13 }} />
               </div>
+              )}
               <div style={{ gridColumn: '1/-1' }}>{inp('adresse', 'Adresse')}</div>
               {inp('code_postal', 'Code postal')}
               {inp('ville', 'Ville')}
