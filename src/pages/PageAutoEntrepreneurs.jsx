@@ -19,6 +19,8 @@ export default function PageAutoEntrepreneurs() {
   const [syncMois, setSyncMois] = useState(() => new Date().toISOString().slice(0, 7))
   const [syncing, setSyncing] = useState(false)
   const [syncResults, setSyncResults] = useState(null) // { email, password, nom } après création
+  const [moisBalance, setMoisBalance] = useState(() => new Date().toISOString().slice(0, 7))
+  const [balance, setBalance] = useState(null) // { nb_auto, auto_provision, auto_saisis, auto_reel, fmen_provision, fmen_reel }
   const [error, setError] = useState(null)
   const [success, setSuccess] = useState(null)
   // Prestation type form
@@ -148,6 +150,57 @@ export default function PageAutoEntrepreneurs() {
   })
 
   return (
+    {balance && (
+      <div style={{ display:'flex', gap:12, marginBottom:20, flexWrap:'wrap' }}>
+        {/* Sélecteur de mois balance */}
+        <div style={{ display:'flex', alignItems:'center', gap:8, width:'100%', marginBottom:4 }}>
+          <span style={{ fontSize:13, color:'var(--text-muted)' }}>Balance ménage</span>
+          <input type="month" value={moisBalance}
+            onChange={async e => {
+              setMoisBalance(e.target.value)
+              const { data } = await supabase.from('ventilation').select('code, montant_ht, montant_reel').eq('mois_comptable', e.target.value).in('code', ['AUTO','FMEN'])
+              if (data) {
+                const auto = data.filter(v => v.code === 'AUTO')
+                const fmen = data.filter(v => v.code === 'FMEN')
+                setBalance({ mois: e.target.value,
+                  nb_auto: auto.length,
+                  auto_provision: auto.reduce((s,v)=>s+(v.montant_ht||0),0),
+                  auto_saisis: auto.filter(v=>v.montant_reel!=null).length,
+                  auto_reel: auto.filter(v=>v.montant_reel!=null).reduce((s,v)=>s+(v.montant_reel||0),0),
+                  fmen_provision: fmen.reduce((s,v)=>s+(v.montant_ht||0),0),
+                  fmen_reel: fmen.filter(v=>v.montant_reel!=null).reduce((s,v)=>s+(v.montant_reel||0),0),
+                })
+              }
+            }}
+            style={{ fontSize:13, padding:'2px 8px', borderRadius:6, border:'1px solid var(--border)', background:'var(--bg-input)' }}
+          />
+          <span style={{ fontSize:12, color:'var(--text-muted)' }}>{balance.auto_saisis}/{balance.nb_auto} missions saisies</span>
+        </div>
+        {[
+          { label:'AUTO provision', val: balance.auto_provision, color:'#888' },
+          { label:'AUTO réel', val: balance.auto_saisis > 0 ? balance.auto_reel : null,
+            color: balance.auto_saisis > 0 ? (balance.auto_reel > balance.auto_provision ? '#dc2626' : '#16a34a') : '#888' },
+          { label:'FMEN provision', val: balance.fmen_provision, color:'#888' },
+          { label:'FMEN réel', val: balance.auto_saisis > 0 ? balance.fmen_reel : null,
+            color: balance.auto_saisis > 0 ? (balance.fmen_reel < balance.fmen_provision ? '#16a34a' : '#dc2626') : '#888' },
+        ].map(({ label, val, color }) => (
+          <div key={label} style={{ background:'var(--bg-card)', border:'1px solid var(--border)', borderRadius:10, padding:'10px 16px', minWidth:160 }}>
+            <div style={{ fontSize:11, color:'var(--text-muted)', marginBottom:4 }}>{label}</div>
+            <div style={{ fontSize:18, fontWeight:600, color }}>
+              {val != null ? (val/100).toFixed(2)+' €' : '—'}
+            </div>
+            {val != null && label.includes('réel') && (
+              <div style={{ fontSize:11, color, marginTop:2 }}>
+                {label === 'AUTO réel'
+                  ? (balance.auto_reel > balance.auto_provision ? '🔴 dépassement' : '🟢 économie')
+                  : (balance.fmen_reel < balance.fmen_provision ? '🟢 économie' : '🔴 dépassement')
+                } {((Math.abs((label==='AUTO réel'?balance.auto_reel:balance.fmen_reel) - (label==='AUTO réel'?balance.auto_provision:balance.fmen_provision)))/100).toFixed(2)} €
+              </div>
+            )}
+          </div>
+        ))}
+      </div>
+    )}
     <div style={{ padding: 24, maxWidth: 1100, margin: '0 auto' }}>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20 }}>
         <div>
