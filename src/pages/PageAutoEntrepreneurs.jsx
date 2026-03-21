@@ -44,7 +44,7 @@ export default function PageAutoEntrepreneurs() {
     if (!form.nom.trim()) { setError('Le nom est requis'); return }
     setSaving(true); setError(null)
     try {
-      const data = { ...form, taux_horaire: Math.round(parseFloat(form.taux_horaire) * 100) || 2500 }
+      const data = { ...form, taux_horaire: parseInt(form.taux_horaire) || 2500 }
       // taux_horaire est en centimes en base mais on affiche en €
       if (editing !== 'new') data.id = editing
       await saveAutoEntrepreneur(data)
