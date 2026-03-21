@@ -51,13 +51,13 @@ export async function createAEWithAuth(ae, email) {
     .single()
   if (error) throw error
 
-  // 3. Appeler l'Edge Function via fetch direct
-  const fnResp = await fetch('https://omuncchvypbtxkpalwcr.supabase.co/functions/v1/create-ae-user', {
+  // 3. Appeler via la route Vercel proxy (serveur→serveur, pas de CORS)
+  const fnResp = await fetch('/api/ae-action', {
     method: 'POST',
-    headers: { 'Authorization': 'Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im9tdW5jY2h2eXBidHhrcGFsd2NyIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzI4OTE4NzIsImV4cCI6MjA4ODQ2Nzg3Mn0.jvPn6LkBfT1eeHmkGI-_vAD2pdM_Y0JWgtbJAG-DLjM', 'Content-Type': 'application/json' },
-    body: JSON.stringify({ ae_id: data.id, email, password })
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ action: 'create', ae_id: data.id, email, password })
   })
-  if (!fnResp.ok) throw new Error('Edge Function inaccessible: ' + fnResp.status)
+  if (!fnResp.ok) throw new Error('Erreur serveur: ' + fnResp.status)
   const fnData = await fnResp.json()
   if (fnData?.error) throw new Error(fnData.error)
 
@@ -66,12 +66,12 @@ export async function createAEWithAuth(ae, email) {
 
 export async function resetAEPassword(ae_id, email) {
   const password = 'DCB' + Math.random().toString(36).slice(2, 8).toUpperCase() + Math.floor(Math.random() * 100)
-  const fnResp = await fetch('https://omuncchvypbtxkpalwcr.supabase.co/functions/v1/reset-ae-password', {
+  const fnResp = await fetch('/api/ae-action', {
     method: 'POST',
-    headers: { 'Authorization': 'Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im9tdW5jY2h2eXBidHhrcGFsd2NyIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzI4OTE4NzIsImV4cCI6MjA4ODQ2Nzg3Mn0.jvPn6LkBfT1eeHmkGI-_vAD2pdM_Y0JWgtbJAG-DLjM', 'Content-Type': 'application/json' },
-    body: JSON.stringify({ ae_id, email, password })
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ action: 'reset', ae_id, email, password })
   })
-  if (!fnResp.ok) throw new Error('Edge Function inaccessible: ' + fnResp.status)
+  if (!fnResp.ok) throw new Error('Erreur serveur: ' + fnResp.status)
   const data = await fnResp.json()
   if (data?.error) throw new Error(data.error)
   return { password }
