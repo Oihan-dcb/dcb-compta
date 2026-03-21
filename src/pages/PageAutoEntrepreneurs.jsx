@@ -175,8 +175,8 @@ export default function PageAutoEntrepreneurs() {
                     {ae.ical_url && <div style={{ background: '#eff6ff', color: '#2563eb', borderRadius: 6, padding: '4px 10px', fontSize: 12, fontWeight: 600 }}>📅 iCal</div>}
                 {ae.type === 'staff' && <div style={{ background: '#fef3c7', color: '#92400e', borderRadius: 6, padding: '4px 10px', fontSize: 12, fontWeight: 700 }}>🌅 DCB Staff</div>}
                     <button onClick={() => envoyerIdentifiants(ae)} title="Copier message avec identifiants" style={{ background: '#f0fdf4', color: '#16a34a', border: '1px solid #bbf7d0', borderRadius: 6, padding: '6px 10px', fontSize: 12, cursor: 'pointer' }}>📨 Identifiants</button>
-                    {!ae.mdp_temporaire && ae.ae_user_id && (
-                      <button onClick={() => resetMdp(ae)} title="Réinitialiser le mot de passe" style={{ background: '#fff7ed', color: '#c2410c', border: '1px solid #fed7aa', borderRadius: 6, padding: '6px 10px', fontSize: 12, cursor: 'pointer' }}>🔑 Regen mdp</button>
+                    {(!ae.mdp_temporaire || !ae.ae_user_id) && ae.email && (
+                      <button onClick={() => resetMdp(ae)} title="Créer/réinitialiser le mot de passe" style={{ background: '#fff7ed', color: '#c2410c', border: '1px solid #fed7aa', borderRadius: 6, padding: '6px 10px', fontSize: 12, cursor: 'pointer' }}>🔑 {ae.ae_user_id ? 'Regen mdp' : 'Créer accès'}</button>
                     )}
                     <button onClick={() => ouvrir(ae)} style={{ background: '#f3f4f6', border: 'none', borderRadius: 6, padding: '6px 12px', fontSize: 12, cursor: 'pointer', fontWeight: 600 }}>Modifier</button>
                     <button onClick={() => supprimer(ae.id)} style={{ background: '#fee2e2', color: '#dc2626', border: 'none', borderRadius: 6, padding: '6px 10px', fontSize: 12, cursor: 'pointer' }}>✕</button>
