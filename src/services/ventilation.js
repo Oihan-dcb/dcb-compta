@@ -19,7 +19,7 @@
 import { supabase } from '../lib/supabase'
 
 const TVA_RATE = 0.20
-const AIRBNB_FEES_RATE = 0.1395  // 13,95% retenu par Airbnb sur cleaning + community fees
+const AIRBNB_FEES_RATE = 0.1621  // 16.21% retenu par Airbnb sur cleaning + community fees (validé audit mars 2026)
 
 /**
  * Calcule et sauvegarde la ventilation pour toutes les réservations
