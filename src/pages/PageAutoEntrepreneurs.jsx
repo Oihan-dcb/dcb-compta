@@ -15,7 +15,10 @@ export default function PageAutoEntrepreneurs() {
   const [editing, setEditing] = useState(null)
   const [form, setForm] = useState(EMPTY_AE)
   const [saving, setSaving] = useState(false)
-  const [credentials, setCredentials] = useState(null) // { email, password, nom } après création
+  const [credentials, setCredentials] = useState(null)
+  const [syncMois, setSyncMois] = useState(() => new Date().toISOString().slice(0, 7))
+  const [syncing, setSyncing] = useState(false)
+  const [syncResults, setSyncResults] = useState(null) // { email, password, nom } après création
   const [error, setError] = useState(null)
   const [success, setSuccess] = useState(null)
   // Prestation type form
@@ -55,6 +58,27 @@ export default function PageAutoEntrepreneurs() {
       setTimeout(() => setSuccess(null), 4000)
     } catch (err) { setError(err.message) }
     finally { setSaving(false) }
+  }
+
+  async function syncTousLesAEs() {
+    setSyncing(true); setSyncResults(null); setError(null)
+    const aesAvecICal = aes.filter(a => a.ical_url && a.actif !== false)
+    const results = []
+    for (const ae of aesAvecICal) {
+      try {
+        const r = await fetch('/api/ae-action', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ action: 'sync', ae_id: ae.id, mois: syncMois })
+        })
+        const d = await r.json()
+        results.push({ nom: ae.prenom + ' ' + ae.nom, ...d })
+      } catch (err) {
+        results.push({ nom: ae.prenom + ' ' + ae.nom, error: err.message })
+      }
+    }
+    setSyncResults(results)
+    setSyncing(false)
   }
 
   async function sauvegarder() {
