@@ -56,7 +56,7 @@ export default function TableReservations({ reservations, onSelect, onRefresh })
           <tr>
             <th>Code</th><th>Plateforme</th><th>Bien</th><th>Voyageur</th>
             <th>Statut</th><th>Check-in</th><th>Nuits</th>
-            <th className="right">Revenue net</th><th className="right">Taux COM</th><th>Statut</th>
+            <th className="right">Revenue net</th><th className="right" title="AUTO réel vs provision">AUTO</th><th className="right">Taux COM</th><th>Statut</th>
           </tr>
         </thead>
         <tbody>
@@ -86,6 +86,25 @@ export default function TableReservations({ reservations, onSelect, onRefresh })
               <td>{r.arrival_date ? format(new Date(r.arrival_date), 'd MMM', { locale: fr }) : '—'}</td>
               <td>{r.nights}</td>
               <td className="right montant">{r.fin_revenue ? formatMontant(r.fin_revenue) : '—'}</td>
+              <td className="right" style={{ padding: '0 8px' }}>
+                {(() => {
+                  if (!r.ventilation_calculee) return <span style={{ color: 'var(--text-muted)' }}>—</span>
+                  const vAuto = (r.ventilation || []).find(v => v.code === 'AUTO')
+                  if (!vAuto) return <span style={{ color: 'var(--text-muted)' }}>—</span>
+                  const provision = vAuto.montant_ht
+                  const reel = vAuto.montant_reel
+                  if (reel == null) return <span style={{ color: 'var(--text-muted)', fontSize: '0.8em' }}>non saisi</span>
+                  const ecart = reel - provision
+                  if (ecart === 0) return <span title="AUTO réel = provision" style={{ color: '#888', fontSize: '0.85em' }}>✓</span>
+                  const color = ecart > 0 ? '#dc2626' : '#16a34a'
+                  const sign = ecart > 0 ? '+' : ''
+                  const label = ecart > 0 ? '🔴' : '🟢'
+                  return <span title={`Provision: ${(provision/100).toFixed(2)}€ → Réel: ${(reel/100).toFixed(2)}€ (${sign}${(ecart/100).toFixed(2)}€)`}
+                    style={{ color, fontSize: '0.85em', fontWeight: 600, cursor: 'default' }}>
+                    {label} {sign}{(ecart/100).toFixed(0)}€
+                  </span>
+                })()}
+              </td>
               <td className="right">
                 {r.bien?.taux_commission_override != null
                   ? <span title="Override bien" style={{ fontWeight: 600 }}>{Math.round(r.bien.taux_commission_override * 100)}%</span>
