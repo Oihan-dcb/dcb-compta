@@ -3,7 +3,7 @@ import { supabase } from '../lib/supabase'
 
 const STATUT_LABEL = { en_attente: 'En attente', valide: 'Validé', annule: 'Annulé' }
 const STATUT_COLOR = { en_attente: '#f59e0b', valide: '#16a34a', annule: '#dc2626' }
-const IMPUTATION_LABEL = { deduction_loy: 'Déduction LOY proprio', debours_proprio: 'Facture débours proprio' }
+const IMPUTATION_LABEL = { deduction_loy: 'Déduction LOY proprio', debours_proprio: 'Facture débours proprio', dcb_direct: 'Facturé à DCB 🌅' }
 
 export default function PagePrestationsAE() {
   const [prestations, setPrestations] = useState([])
@@ -280,6 +280,7 @@ export default function PagePrestationsAE() {
                   style={{ padding: '8px 10px', borderRadius: 7, border: '1.5px solid #e5e7eb', fontSize: 13 }}>
                   <option value="deduction_loy">Déduction LOY propriétaire</option>
                   <option value="debours_proprio">Facture débours propriétaire</option>
+                  <option value="dcb_direct">Facturé à DCB 🌅 (Pick'n'Drop, Lingerie)</option>
                 </select>
               </div>
             </div>
