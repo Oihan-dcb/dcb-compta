@@ -38,3 +38,25 @@ export async function deleteAutoEntrepreneur(id) {
     .eq('id', id)
   if (error) throw error
 }
+
+export async function createAEWithAuth(ae, email) {
+  // 1. Générer un mot de passe temporaire sécurisé
+  const password = 'DCB' + Math.random().toString(36).slice(2, 8).toUpperCase() + Math.floor(Math.random()*100)
+
+  // 2. Créer la fiche AE en base (sans ae_user_id pour l'instant)
+  const { data, error } = await supabase
+    .from('auto_entrepreneur')
+    .insert({ ...ae, email })
+    .select()
+    .single()
+  if (error) throw error
+
+  // 3. Appeler l'Edge Function pour créer le compte Auth
+  const { data: fnData, error: fnErr } = await supabase.functions.invoke('create-ae-user', {
+    body: { ae_id: data.id, email, password }
+  })
+  if (fnErr) throw fnErr
+  if (fnData?.error) throw new Error(fnData.error)
+
+  return { ae: data, email, password }
+}
