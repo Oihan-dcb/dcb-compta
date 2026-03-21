@@ -16,7 +16,6 @@
  */
 
 import { supabase } from '../lib/supabase'
-import { getMontantEffectifAE } from './facturesAE'
 
 const MENTION_MANDAT = "Conformément au mandat de gestion, les honoraires de gestion sont directement prélevés sur le loyer encaissé avant reversement au propriétaire."
 
