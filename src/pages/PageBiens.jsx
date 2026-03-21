@@ -435,25 +435,22 @@ export default function PageBiens() {
                       </span>
                     </div>
                   </td>
-                  <td style={{textAlign:'center',padding:'6px 8px',minWidth:130}}>
-                    <select
-                      value={bien.ical_code || ''}
-                      onChange={e => {
-                        const val = e.target.value || null
-                        saveField(bien.id, 'ical_code', val)
-                        setUsedIcalCodes(prev => {
-                          const next = {...prev}
-                          Object.keys(next).forEach(k => { if(next[k]===bien.ical_code) delete next[k] })
-                          if(val) next[bien.id] = val
-                          return next
-                        })
+                  <td style={{textAlign:'center',padding:'6px 8px',minWidth:110}}>
+                    <input
+                      type="text"
+                      defaultValue={bien.ical_code || ''}
+                      placeholder="ex: 416Harea"
+                      onBlur={e => {
+                        const val = e.target.value.trim() || null
+                        if (val !== (bien.ical_code || null)) saveField(bien.id, 'ical_code', val)
                       }}
-                      style={{fontSize:11,padding:'2px 6px',borderRadius:5,border:'1px solid #e5e7eb',background:bien.ical_code?'#f0fdf4':'#fff',color:bien.ical_code?'#16a34a':'#888',maxWidth:120}}>
-                      <option value="">— Non lié —</option>
-                      {icalCodes.filter(c => c===bien.ical_code || !Object.values(usedIcalCodes).includes(c)).map(c=>(
-                        <option key={c} value={c}>{c}</option>
-                      ))}
-                    </select>
+                      style={{
+                        fontSize:11, padding:'3px 6px', borderRadius:5,
+                        border:'1px solid #e5e7eb', width:100,
+                        background: bien.ical_code ? '#f0fdf4' : '#fff',
+                        color: bien.ical_code ? '#16a34a' : '#888'
+                      }}
+                    />
                   </td>
                   <td>
                     {bien.listed ? (
