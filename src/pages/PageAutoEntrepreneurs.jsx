@@ -42,6 +42,26 @@ export default function PageAutoEntrepreneurs() {
     finally { setLoading(false) }
   }
 
+  async function chargerBalance(mois) {
+    const { data } = await supabase
+      .from('ventilation')
+      .select('code, montant_ht, montant_reel')
+      .eq('mois_comptable', mois)
+      .in('code', ['AUTO', 'FMEN'])
+    if (!data) return
+    const auto = data.filter(v => v.code === 'AUTO')
+    const fmen = data.filter(v => v.code === 'FMEN')
+    setBalance({
+      mois,
+      nb_auto: auto.length,
+      auto_provision: auto.reduce((s, v) => s + (v.montant_ht || 0), 0),
+      auto_saisis: auto.filter(v => v.montant_reel != null).length,
+      auto_reel: auto.filter(v => v.montant_reel != null).reduce((s, v) => s + (v.montant_reel || 0), 0),
+      fmen_provision: fmen.reduce((s, v) => s + (v.montant_ht || 0), 0),
+      fmen_reel: fmen.filter(v => v.montant_reel != null).reduce((s, v) => s + (v.montant_reel || 0), 0),
+    })
+  }
+
   function ouvrir(ae) { setForm(ae ? { ...ae } : EMPTY_AE); setEditing(ae ? ae.id : 'new'); setError(null); setSuccess(null) }
   function fermer() { setEditing(null); setError(null) }
   function change(k, v) { setForm(f => ({ ...f, [k]: v })) }
@@ -150,58 +170,7 @@ export default function PageAutoEntrepreneurs() {
   })
 
   return (
-    {balance && (
-      <div style={{ display:'flex', gap:12, marginBottom:20, flexWrap:'wrap' }}>
-        {/* Sélecteur de mois balance */}
-        <div style={{ display:'flex', alignItems:'center', gap:8, width:'100%', marginBottom:4 }}>
-          <span style={{ fontSize:13, color:'var(--text-muted)' }}>Balance ménage</span>
-          <input type="month" value={moisBalance}
-            onChange={async e => {
-              setMoisBalance(e.target.value)
-              const { data } = await supabase.from('ventilation').select('code, montant_ht, montant_reel').eq('mois_comptable', e.target.value).in('code', ['AUTO','FMEN'])
-              if (data) {
-                const auto = data.filter(v => v.code === 'AUTO')
-                const fmen = data.filter(v => v.code === 'FMEN')
-                setBalance({ mois: e.target.value,
-                  nb_auto: auto.length,
-                  auto_provision: auto.reduce((s,v)=>s+(v.montant_ht||0),0),
-                  auto_saisis: auto.filter(v=>v.montant_reel!=null).length,
-                  auto_reel: auto.filter(v=>v.montant_reel!=null).reduce((s,v)=>s+(v.montant_reel||0),0),
-                  fmen_provision: fmen.reduce((s,v)=>s+(v.montant_ht||0),0),
-                  fmen_reel: fmen.filter(v=>v.montant_reel!=null).reduce((s,v)=>s+(v.montant_reel||0),0),
-                })
-              }
-            }}
-            style={{ fontSize:13, padding:'2px 8px', borderRadius:6, border:'1px solid var(--border)', background:'var(--bg-input)' }}
-          />
-          <span style={{ fontSize:12, color:'var(--text-muted)' }}>{balance.auto_saisis}/{balance.nb_auto} missions saisies</span>
-        </div>
-        {[
-          { label:'AUTO provision', val: balance.auto_provision, color:'#888' },
-          { label:'AUTO réel', val: balance.auto_saisis > 0 ? balance.auto_reel : null,
-            color: balance.auto_saisis > 0 ? (balance.auto_reel > balance.auto_provision ? '#dc2626' : '#16a34a') : '#888' },
-          { label:'FMEN provision', val: balance.fmen_provision, color:'#888' },
-          { label:'FMEN réel', val: balance.auto_saisis > 0 ? balance.fmen_reel : null,
-            color: balance.auto_saisis > 0 ? (balance.fmen_reel < balance.fmen_provision ? '#16a34a' : '#dc2626') : '#888' },
-        ].map(({ label, val, color }) => (
-          <div key={label} style={{ background:'var(--bg-card)', border:'1px solid var(--border)', borderRadius:10, padding:'10px 16px', minWidth:160 }}>
-            <div style={{ fontSize:11, color:'var(--text-muted)', marginBottom:4 }}>{label}</div>
-            <div style={{ fontSize:18, fontWeight:600, color }}>
-              {val != null ? (val/100).toFixed(2)+' €' : '—'}
-            </div>
-            {val != null && label.includes('réel') && (
-              <div style={{ fontSize:11, color, marginTop:2 }}>
-                {label === 'AUTO réel'
-                  ? (balance.auto_reel > balance.auto_provision ? '🔴 dépassement' : '🟢 économie')
-                  : (balance.fmen_reel < balance.fmen_provision ? '🟢 économie' : '🔴 dépassement')
-                } {((Math.abs((label==='AUTO réel'?balance.auto_reel:balance.fmen_reel) - (label==='AUTO réel'?balance.auto_provision:balance.fmen_provision)))/100).toFixed(2)} €
-              </div>
-            )}
-          </div>
-        ))}
-      </div>
-    )}
-    <div style={{ padding: 24, maxWidth: 1100, margin: '0 auto' }}>
+       <div style={{ padding: 24, maxWidth: 1100, margin: '0 auto' }}>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20 }}>
         <div>
           <h1 style={{ margin: 0, fontSize: 22, fontWeight: 700 }}>Auto-entrepreneurs</h1>
@@ -459,4 +428,36 @@ export default function PageAutoEntrepreneurs() {
       )}
     </div>
   )
+
+    {balance && (() => {
+      const ecartAuto = balance.auto_saisis > 0 ? balance.auto_reel - balance.auto_provision : null
+      const ecartFmen = balance.auto_saisis > 0 ? balance.fmen_reel - balance.fmen_provision : null
+      const fmt = v => (v / 100).toFixed(2) + ' €'
+      const fmtEcart = v => (v >= 0 ? '+' : '') + (v / 100).toFixed(2) + ' €'
+      return (
+        <div style={{ display:'flex', gap:12, marginBottom:20, flexWrap:'wrap', alignItems:'center' }}>
+          <input type="month" value={moisBalance}
+            onChange={e => { setMoisBalance(e.target.value); chargerBalance(e.target.value) }}
+            style={{ fontSize:13, padding:'3px 8px', borderRadius:6, border:'1px solid var(--border)', background:'var(--bg-input)' }}
+          />
+          <span style={{ fontSize:12, color:'var(--text-muted)' }}>{balance.auto_saisis}/{balance.nb_auto} missions saisies</span>
+          {[
+            { label: 'AUTO provision', val: fmt(balance.auto_provision), color: '#888', flag: null },
+            { label: 'AUTO réel', val: ecartAuto != null ? fmt(balance.auto_reel) : '—',
+              color: ecartAuto != null ? (ecartAuto > 0 ? '#dc2626' : '#16a34a') : '#888',
+              flag: ecartAuto != null ? (ecartAuto > 0 ? '🔴 ' : '🟢 ') + fmtEcart(ecartAuto) : null },
+            { label: 'FMEN provision', val: fmt(balance.fmen_provision), color: '#888', flag: null },
+            { label: 'FMEN réel', val: ecartFmen != null ? fmt(balance.fmen_reel) : '—',
+              color: ecartFmen != null ? (ecartFmen < 0 ? '#16a34a' : '#dc2626') : '#888',
+              flag: ecartFmen != null ? (ecartFmen < 0 ? '🟢 ' : '🔴 ') + fmtEcart(ecartFmen) : null },
+          ].map(item => (
+            <div key={item.label} style={{ background:'var(--bg-card,#fff)', border:'1px solid var(--border,#e5e7eb)', borderRadius:10, padding:'10px 16px', minWidth:150 }}>
+              <div style={{ fontSize:11, color:'var(--text-muted,#888)', marginBottom:4 }}>{item.label}</div>
+              <div style={{ fontSize:18, fontWeight:600, color: item.color }}>{item.val}</div>
+              {item.flag && <div style={{ fontSize:11, color: item.color, marginTop:2 }}>{item.flag}</div>}
+            </div>
+          ))}
+        </div>
+      )
+    })()}
 }
