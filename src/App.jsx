@@ -26,11 +26,10 @@ export default function App() {
             <NavLink to="/reservations" className={({isActive}) => isActive ? 'nav-link active' : 'nav-link'}>Réservations</NavLink>
             <NavLink to="/banque" className={({isActive}) => isActive ? 'nav-link active' : 'nav-link'}>Banque</NavLink>
             <NavLink to="/rapprochement" className={({isActive}) => isActive ? 'nav-link active' : 'nav-link'}>Rapprochement</NavLink>
-            <NavLink to="/factures-ae" className={({isActive}) => isActive ? 'nav-link active' : 'nav-link'}>Factures Auto</NavLink>
             <NavLink to="/factures" className={({isActive}) => isActive ? 'nav-link active' : 'nav-link'}>Factures</NavLink>
             <NavLink to="/import" className={({isActive}) => isActive ? 'nav-link active' : 'nav-link'}>Import</NavLink>
             <NavLink to="/auto-entrepreneurs" className={({isActive}) => isActive ? 'nav-link active' : 'nav-link'}>AEs</NavLink>
-        <NavLink to="/config" className={({isActive}) => isActive ? 'nav-link active' : 'nav-link'}>Config</NavLink>
+            <NavLink to="/config" className={({isActive}) => isActive ? 'nav-link active' : 'nav-link'}>Config</NavLink>
           </nav>
         </header>
         <main className="app-main">
@@ -39,13 +38,12 @@ export default function App() {
             <Route path="/reservations" element={<PageReservations />} />
             <Route path="/banque" element={<PageBanque />} />
             <Route path="/matching" element={<PageMatching />} />
-              <Route path="/rapprochement" element={<PageRapprochement />} />
-} />
+            <Route path="/rapprochement" element={<PageRapprochement />} />
             <Route path="/factures" element={<PageFactures />} />
             <Route path="/import" element={<PageImport />} />
             <Route path="/portail-ae/:token" element={<PortailAEWrapper />} />
-          <Route path="/auto-entrepreneurs" element={<PageAutoEntrepreneurs />} />
-          <Route path="/config" element={<PageConfig />} />
+            <Route path="/auto-entrepreneurs" element={<PageAutoEntrepreneurs />} />
+            <Route path="/config" element={<PageConfig />} />
           </Routes>
         </main>
       </div>
