@@ -11,7 +11,6 @@ import PageFactures from './pages/PageFactures'
 import PageConfig from './pages/PageConfig'
 import PageAutoEntrepreneurs from './pages/PageAutoEntrepreneurs'
 import PagePrestationsAE from './pages/PagePrestationsAE'
-import PortailAEWrapper from './pages/PortailAEWrapper'
 import PageImport from './pages/PageImport'
 import './App.css'
 
@@ -63,7 +62,6 @@ export default function App() {
             <Route path="/rapprochement" element={<PageRapprochement />} />
             <Route path="/factures" element={<PageFactures />} />
             <Route path="/import" element={<PageImport />} />
-            <Route path="/portail-ae/:token" element={<PortailAEWrapper />} />
             <Route path="/auto-entrepreneurs" element={<PageAutoEntrepreneurs />} />
             <Route path="/prestations-ae" element={<PagePrestationsAE />} />
             <Route path="/config" element={<PageConfig />} />
