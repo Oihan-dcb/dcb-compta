@@ -50,6 +50,8 @@ export default function PageBiens() {
   const [editing, setEditing] = useState({})
   const [proprietaires, setProprietaires] = useState([])
   const [airbnbAccounts, setAirbnbAccounts] = useState([])
+  const [icalCodes, setIcalCodes] = useState([]) // codes courts extraits des missions iCal
+  const [usedIcalCodes, setUsedIcalCodes] = useState({}) // { bien_id: ical_code }
 
   useEffect(() => {
     getProprietaires().then(setProprietaires).catch(() => {})
@@ -63,6 +65,28 @@ export default function PageBiens() {
           if (data) {
             const uniq = [...new Set(data.map(d => d.airbnb_account).filter(Boolean))].sort()
             setAirbnbAccounts(uniq)
+          }
+        })
+      // Charger les codes iCal disponibles depuis les missions
+      supabase.from('mission_menage').select('titre_ical').not('titre_ical', 'is', null)
+        .then(({ data: missions }) => {
+          if (missions) {
+            const codes = [...new Set(
+              missions.map(m => {
+                const match = m.titre_ical?.match(/\(([A-Za-z]+)/)
+                return match ? match[1] : null
+              }).filter(Boolean)
+            )].sort()
+            setIcalCodes(codes)
+          }
+        })
+      // Charger les associations ical_code déjà faites
+      supabase.from('bien').select('id, ical_code').not('ical_code', 'is', null)
+        .then(({ data: biensWithCode }) => {
+          if (biensWithCode) {
+            const map = {}
+            biensWithCode.forEach(b => { map[b.id] = b.ical_code })
+            setUsedIcalCodes(map)
           }
         })
     })
@@ -92,7 +116,7 @@ export default function PageBiens() {
       const { supabase } = await import('../lib/supabase')
       // taux_commission_override est un ratio (ex: 0.20 pour 20%), pas en centimes
       // Champs texte : sauvegarder tel quel
-      const TEXT_FIELDS = ['airbnb_account']
+      const TEXT_FIELDS = ['airbnb_account', 'ical_code']
       const finalVal = value === '' || value === null ? null
         : TEXT_FIELDS.includes(field) ? value
         : field === 'taux_commission_override' ? value
