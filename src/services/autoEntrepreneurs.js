@@ -60,3 +60,13 @@ export async function createAEWithAuth(ae, email) {
 
   return { ae: data, email, password }
 }
+
+export async function resetAEPassword(ae_id, email) {
+  const password = 'DCB' + Math.random().toString(36).slice(2, 8).toUpperCase() + Math.floor(Math.random() * 100)
+  const { data, error } = await supabase.functions.invoke('reset-ae-password', {
+    body: { ae_id, email, password }
+  })
+  if (error) throw error
+  if (data?.error) throw new Error(data.error)
+  return { password }
+}
