@@ -311,7 +311,7 @@ export default function PageRapprochement() {
           </button>
           <button onClick={exportCSV} disabled={loading || mouvements.length === 0}
             style={{ padding: '8px 14px', borderRadius: 8, border: '1.5px solid var(--brand,#CC9933)', background: 'var(--bg,#F7F3EC)', color: 'var(--brand,#CC9933)', cursor: 'pointer', fontWeight: 600, fontSize: 13, display: 'flex', alignItems: 'center', gap: 6 }}>
-            ? Export CSV
+            &#8595; Export CSV
           </button>
         </div>
       </div>
