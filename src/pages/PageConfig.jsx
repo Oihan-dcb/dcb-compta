@@ -5,7 +5,7 @@ import { formatMontant } from '../lib/hospitable'
 import { syncBiens } from '../services/syncBiens'
 import { syncReservations } from '../services/syncReservations'
 import { calculerVentilationMois } from '../services/ventilation'
-import { syncPayouts, lancerMatchingAuto } from '../services/matching'
+import { syncPayouts, lancerMatching } from '../services/matching'
 import { supabase } from '../lib/supabase'
 
 export default function PageConfig() {
@@ -71,7 +71,7 @@ export default function PageConfig() {
     // 5. Matching bancaire
     update('matching', 'running')
     try {
-      const m = await lancerMatchingAuto(mois)
+      const m = await lancerMatching(mois)
       update('matching', 'ok', `${m?.matched || 0} virement(s) rapproché(s)`)
     } catch(e) { update('matching', 'error', e.message) }
 
