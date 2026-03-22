@@ -106,54 +106,89 @@ export default function PageConfig() {
       prev.map(s => s.id === id ? { ...s, status, detail } : s)
     )
 
-    // Lancer le timer
+    // Générer tous les mois depuis 2022-01
+    const allMois = []
+    const now = new Date()
+    let y = 2022, m = 1
+    while (y < now.getFullYear() || (y === now.getFullYear() && m <= now.getMonth() + 1)) {
+      allMois.push(`${y}-${String(m).padStart(2,'0')}`)
+      m++; if (m > 12) { m = 1; y++ }
+    }
+
+    const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL
+    const ANON_KEY     = import.meta.env.VITE_SUPABASE_ANON_KEY
+
+    // Timer
     const startTime = Date.now()
     const timerInterval = setInterval(() => {
       setGlobalTimer(Math.floor((Date.now() - startTime) / 1000))
     }, 1000)
 
-    // Simuler la progression pendant que la Edge Function tourne
-    // Ordre : biens (2s) -> resas (60s) -> payouts (30s) -> vent (20s) -> matching (10s)
-    const delays = { biens: 0, resas: 2000, payouts: 62000, vent: 95000, matching: 120000 }
-    for (const [id, delay] of Object.entries(delays)) {
-      setTimeout(() => update(id, 'running'), delay)
+    // Compteurs globaux
+    const totals = { biens: 0, resas: 0, payouts: 0, vent: 0, matching: 0 }
+    let hasError = false
+
+    // Appeler la Edge Function par chunks de 3 mois
+    const CHUNK = 3
+    const chunks = []
+    for (let i = 0; i < allMois.length; i += CHUNK) {
+      chunks.push({ debut: allMois[i], fin: allMois[Math.min(i + CHUNK - 1, allMois.length - 1)] })
+    }
+    const total = chunks.length
+
+    // Étape 1-3 : sync via Edge Function par chunk
+    update('biens', 'running', 'Sync en cours...')
+    update('resas', 'running', 'Sync en cours...')
+    update('payouts', 'running', 'Sync en cours...')
+
+    for (let ci = 0; ci < chunks.length; ci++) {
+      const { debut, fin } = chunks[ci]
+      const progress = `chunk ${ci+1}/${total} (${debut})`
+      update('resas', 'running', progress)
+      try {
+        const resp = await fetch(`${SUPABASE_URL}/functions/v1/global-sync`, {
+          method: 'POST',
+          headers: { 'Authorization': `Bearer ${ANON_KEY}`, 'Content-Type': 'application/json' },
+          body: JSON.stringify({ mois_debut: debut, mois_fin: fin })
+        })
+        if (resp.ok) {
+          const result = await resp.json()
+          if (result.success && result.log) {
+            // Extraire les nombres des messages
+            const extractNum = (s) => parseInt((s || '0').match(/\d+/)?.[0] || '0')
+            if (ci === 0) totals.biens = extractNum(result.log.biens)
+            totals.resas    += extractNum(result.log.resas)
+            totals.payouts  += extractNum(result.log.payouts)
+            totals.vent     += extractNum(result.log.vent)
+            totals.matching += extractNum(result.log.matching)
+          } else if (!result.success) {
+            hasError = true
+            setGlobalError(result.error || 'Erreur chunk ' + debut)
+          }
+        }
+      } catch(e) {
+        hasError = true
+        setGlobalError(e.message)
+        break
+      }
     }
 
-    try {
-      const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL
-      const ANON_KEY     = import.meta.env.VITE_SUPABASE_ANON_KEY
+    clearInterval(timerInterval)
+    setGlobalTimer(Math.floor((Date.now() - startTime) / 1000))
 
-      const resp = await fetch(`${SUPABASE_URL}/functions/v1/global-sync`, {
-        method: 'POST',
-        headers: {
-          'Authorization': `Bearer ${ANON_KEY}`,
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({})
-      })
-
-      clearInterval(timerInterval)
-      const elapsed = Math.floor((Date.now() - startTime) / 1000)
-      setGlobalTimer(elapsed)
-
-      const result = await resp.json()
-
-      if (!resp.ok || !result.success) {
-        GLOBAL_STEPS.forEach(s => update(s.id, 'error', result.error || 'Erreur Edge Function'))
-        setGlobalError(result.error || 'Erreur inconnue')
-      } else {
-        const { log } = result
-        update('biens',    log.biens    ? 'ok' : 'error', log.biens    || 'Erreur')
-        update('resas',    log.resas    ? 'ok' : 'error', log.resas    || 'Erreur')
-        update('payouts',  log.payouts  ? 'ok' : 'error', log.payouts  || 'Erreur')
-        update('vent',     log.vent     ? 'ok' : 'error', log.vent     || 'Erreur')
-        update('matching', log.matching ? 'ok' : 'error', log.matching || 'Erreur')
-        if (log.errors?.length) setGlobalError(`${log.errors.length} avertissement(s) — voir console`)
-      }
-    } catch(e) {
-      clearInterval(timerInterval)
-      GLOBAL_STEPS.forEach(s => update(s.id, s.status === 'running' ? 'error' : s.status, s.status === 'running' ? e.message : undefined))
-      setGlobalError(e.message)
+    if (!hasError) {
+      update('biens',    'ok', `${totals.biens} biens vérifiés`)
+      update('resas',    'ok', `${totals.resas} réservations syncées`)
+      update('payouts',  'ok', `${totals.payouts} payouts syncés`)
+      update('vent',     totals.vent > 0 ? 'ok' : 'ok', `${totals.vent} résa(s) ventilées`)
+      update('matching', 'ok', `${totals.matching} virement(s) rapprochés`)
+    } else {
+      // Mettre à jour ce qu'on a réussi
+      update('biens',   totals.biens > 0   ? 'ok' : 'error', `${totals.biens} biens`)
+      update('resas',   totals.resas > 0   ? 'ok' : 'error', `${totals.resas} résas`)
+      update('payouts', totals.payouts > 0 ? 'ok' : 'error', `${totals.payouts} payouts`)
+      update('vent',    totals.vent > 0    ? 'ok' : 'error', `${totals.vent} ventilées`)
+      update('matching','ok', `${totals.matching} rapprochés`)
     }
 
     setGlobalRunning(false)
