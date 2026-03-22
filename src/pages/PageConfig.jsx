@@ -3,6 +3,7 @@ import { pingEvoliz, getPaytermsEvoliz } from '../services/evoliz'
 import { syncProprietairesEvoliz } from '../services/syncProprietaires'
 import { formatMontant } from '../lib/hospitable'
 import { syncBiens } from '../services/syncBiens'
+import { setToken } from '../lib/hospitable'
 import { syncReservations } from '../services/syncReservations'
 import { calculerVentilationMois } from '../services/ventilation'
 import { syncPayouts, lancerMatching } from '../services/matching'
@@ -32,6 +33,8 @@ export default function PageConfig() {
 
   async function lancerGlobalUpdate() {
     const mois = new Date().toISOString().slice(0, 7)
+    const HOSP_TOKEN = import.meta.env.VITE_HOSPITABLE_TOKEN
+    if (HOSP_TOKEN) setToken(HOSP_TOKEN)
     setGlobalRunning(true)
     setGlobalDone(false)
     setGlobalSteps(GLOBAL_STEPS.map(s => ({ ...s, status: 'pending' })))
