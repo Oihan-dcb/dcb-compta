@@ -23,6 +23,7 @@ export default function PageAutoEntrepreneurs() {
   const [balance, setBalance] = useState(null) // { nb_auto, auto_provision, auto_saisis, auto_reel, fmen_provision, fmen_reel }
   const [error, setError] = useState(null)
   const [success, setSuccess] = useState(null)
+  const [confirmModal, setConfirmModal] = useState(null)
   // Prestation type form
   const [editingPT, setEditingPT] = useState(null)
   const [formPT, setFormPT] = useState({ nom: '', description: '', taux_defaut: 2500, unite: 'heure' })
@@ -68,18 +69,19 @@ export default function PageAutoEntrepreneurs() {
 
   async function resetMdp(ae) {
     if (!ae.email) { setError('Email requis pour réinitialiser le mot de passe'); return }
-    if (!confirm(`Réinitialiser le mot de passe de ${ae.prenom} ${ae.nom} ?`)) return
-    setSaving(true); setError(null)
-    try {
-      const { password } = await resetAEPassword(ae.id, ae.email)
-      await import('../lib/supabase').then(({ supabase }) =>
-        supabase.from('auto_entrepreneur').update({ mdp_temporaire: password }).eq('id', ae.id)
-      )
-      await charger()
-      setSuccess(`Mot de passe réinitialisé ✓ — Cliquez "📨 Identifiants" pour le récupérer`)
-      setTimeout(() => setSuccess(null), 4000)
-    } catch (err) { setError(err.message) }
-    finally { setSaving(false) }
+    setConfirmModal({
+      message: `Réinitialiser le mot de passe de ${ae.prenom} ${ae.nom} ?\nUn nouveau mot de passe temporaire sera généré.`,
+      onConfirm: async () => {
+        setConfirmModal(null)
+        setSaving(true)
+        try {
+          const { data, error: fnErr } = await supabase.functions.invoke('create-ae-user', { body: { aeId: ae.id, email: ae.email, reset: true } })
+          if (fnErr) throw fnErr
+          setSuccess(`Nouveau mot de passe : ${data?.password}`)
+        } catch(err) { setError(err.message) }
+        finally { setSaving(false) }
+      }
+    })
   }
 
   async function syncTousLesAEs() {
@@ -119,9 +121,14 @@ export default function PageAutoEntrepreneurs() {
   }
 
   async function supprimer(id) {
-    if (!confirm('Supprimer cet auto-entrepreneur ?')) return
-    try { await deleteAutoEntrepreneur(id); await charger() }
-    catch (err) { setError(err.message) }
+    setConfirmModal({
+      message: 'Supprimer cet auto-entrepreneur ?\nCette action est irréversible.',
+      onConfirm: async () => {
+        setConfirmModal(null)
+        try { await deleteAutoEntrepreneur(id); await charger() }
+        catch (err) { setError(err.message) }
+      }
+    })
   }
 
   async function envoyerIdentifiants(ae) {
@@ -150,9 +157,14 @@ export default function PageAutoEntrepreneurs() {
   }
 
   async function supprimerPT(id) {
-    if (!confirm('Supprimer ce type de prestation ?')) return
-    await supabase.from('prestation_type').delete().eq('id', id)
-    await charger()
+    setConfirmModal({
+      message: 'Supprimer ce type de prestation ?\nCette action est irréversible.',
+      onConfirm: async () => {
+        setConfirmModal(null)
+        await supabase.from('prestation_type').delete().eq('id', id)
+        await charger()
+      }
+    })
   }
 
   const inp = (k, label, opts = {}) => (
@@ -205,7 +217,7 @@ export default function PageAutoEntrepreneurs() {
               <div style={{ background: '#F0FAFB', borderRadius: 10, padding: '12px 16px', marginBottom: 14, border: '1px solid #A5D8E0e', display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
                 <span style={{ fontSize: 13, fontWeight: 700, color: '#0891B2' }}>📅 Sync iCal</span>
                 <input type="month" value={syncMois} onChange={e => setSyncMois(e.target.value)}
-                  style={{ padding: '4px 10px', borderRadius: 6, border: '1.5px solid #bfdbfe', fontSize: 13 }} />
+                  style={{ padding: '4px 10px', borderRadius: 6, border: '1.5px solid #E4A853', fontSize: 13 }} />
                 <button onClick={syncTousLesAEs} disabled={syncing}
                   style={{ background: syncing ? '#94a3b8' : '#0891B2', color: '#fff', border: 'none', borderRadius: 7, padding: '6px 14px', fontSize: 13, fontWeight: 600, cursor: syncing ? 'not-allowed' : 'pointer' }}>
                   {syncing ? '⏳ En cours...' : '🔄 Sync tous'}
@@ -457,7 +469,24 @@ export default function PageAutoEntrepreneurs() {
               {item.flag && <div style={{ fontSize:11, color: item.color, marginTop:2 }}>{item.flag}</div>}
             </div>
           ))}
+              {confirmModal && (
+        <div style={{ position:'fixed',inset:0,background:'rgba(44,36,22,0.45)',display:'flex',alignItems:'center',justifyContent:'center',zIndex:1000 }}>
+          <div style={{ background:'var(--bg,#F7F3EC)',border:'2px solid var(--brand,#CC9933)',borderRadius:16,padding:'28px 32px',maxWidth:400,width:'90%',boxShadow:'0 8px 32px rgba(44,36,22,0.18)' }}>
+            <p style={{ margin:'0 0 24px',color:'var(--text,#2C2416)',fontSize:14,lineHeight:1.6,whiteSpace:'pre-line' }}>{confirmModal.message}</p>
+            <div style={{ display:'flex',gap:10,justifyContent:'flex-end' }}>
+              <button onClick={() => setConfirmModal(null)}
+                style={{ padding:'9px 18px',borderRadius:8,border:'1.5px solid var(--border,#D9CEB8)',background:'white',color:'var(--text,#2C2416)',cursor:'pointer',fontWeight:600,fontSize:13 }}>
+                Annuler
+              </button>
+              <button onClick={confirmModal.onConfirm}
+                style={{ padding:'9px 18px',borderRadius:8,border:'none',background:'#DC2626',color:'white',cursor:'pointer',fontWeight:700,fontSize:13 }}>
+                Confirmer
+              </button>
+            </div>
+          </div>
         </div>
+      )}
+</div>
       )
     })()}
 }
