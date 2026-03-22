@@ -2,6 +2,11 @@ import { useState } from 'react'
 import { pingEvoliz, getPaytermsEvoliz } from '../services/evoliz'
 import { syncProprietairesEvoliz } from '../services/syncProprietaires'
 import { formatMontant } from '../lib/hospitable'
+import { syncBiens } from '../services/syncBiens'
+import { syncReservations } from '../services/syncReservations'
+import { calculerVentilationMois } from '../services/ventilation'
+import { syncPayouts, lancerMatchingAuto } from '../services/matching'
+import { supabase } from '../lib/supabase'
 
 export default function PageConfig() {
   const [testing, setTesting] = useState(false)
@@ -11,6 +16,68 @@ export default function PageConfig() {
 
   const companyId = import.meta.env.VITE_EVOLIZ_COMPANY_ID
   const supabaseUrl = import.meta.env.VITE_SUPABASE_URL
+
+  // Global Update
+  const [globalRunning, setGlobalRunning] = useState(false)
+  const [globalSteps, setGlobalSteps] = useState([])
+  const [globalDone, setGlobalDone] = useState(false)
+
+  const GLOBAL_STEPS = [
+    { id: 'biens',    label: 'Sync biens Hospitable' },
+    { id: 'resas',    label: 'Sync réservations Hospitable' },
+    { id: 'payouts',  label: 'Sync payouts (Airbnb / Stripe)' },
+    { id: 'vent',     label: 'Ventilation comptable' },
+    { id: 'matching', label: 'Matching bancaire automatique' },
+  ]
+
+  async function lancerGlobalUpdate() {
+    const mois = new Date().toISOString().slice(0, 7)
+    setGlobalRunning(true)
+    setGlobalDone(false)
+    setGlobalSteps(GLOBAL_STEPS.map(s => ({ ...s, status: 'pending' })))
+
+    const update = (id, status, detail) => setGlobalSteps(prev =>
+      prev.map(s => s.id === id ? { ...s, status, detail } : s)
+    )
+
+    // 1. Sync biens
+    update('biens', 'running')
+    try {
+      await syncBiens()
+      update('biens', 'ok', 'Biens synchronisés')
+    } catch(e) { update('biens', 'error', e.message) }
+
+    // 2. Sync réservations
+    update('resas', 'running')
+    try {
+      const r = await syncReservations(mois)
+      update('resas', 'ok', `${r?.synced || 0} réservation(s) syncées`)
+    } catch(e) { update('resas', 'error', e.message) }
+
+    // 3. Sync payouts
+    update('payouts', 'running')
+    try {
+      await syncPayouts(mois)
+      update('payouts', 'ok', 'Payouts synchronisés')
+    } catch(e) { update('payouts', 'error', e.message) }
+
+    // 4. Ventilation
+    update('vent', 'running')
+    try {
+      const v = await calculerVentilationMois(mois)
+      update('vent', 'ok', `${v?.total || 0} résa(s) ventilée(s)${v?.errors ? ` — ${v.errors} erreur(s)` : ''}`)
+    } catch(e) { update('vent', 'error', e.message) }
+
+    // 5. Matching bancaire
+    update('matching', 'running')
+    try {
+      const m = await lancerMatchingAuto(mois)
+      update('matching', 'ok', `${m?.matched || 0} virement(s) rapproché(s)`)
+    } catch(e) { update('matching', 'error', e.message) }
+
+    setGlobalRunning(false)
+    setGlobalDone(true)
+  }
 
   const [syncingProprio, setSyncingProprio] = useState(false)
   const [syncProprioResult, setSyncProprioResult] = useState(null)
@@ -213,6 +280,42 @@ export default function PageConfig() {
           La clé secrète n'est jamais envoyée au browser — elle reste côté serveur dans la Edge Function.
         </p>
       </div>
+      {/* Global Update */}
+      <div className="card" style={{ marginBottom: 24, border: '2px solid var(--brand)' }}>
+        <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom: 16 }}>
+          <div>
+            <h2 style={{ fontSize: 16, fontWeight: 700, color: 'var(--brand)', margin: 0 }}>
+              ⚡ Mise à jour globale
+            </h2>
+            <p style={{ margin: '4px 0 0', fontSize: 13, color: 'var(--text-muted)' }}>
+              Sync biens → réservations → payouts → ventilation → matching — mois courant
+            </p>
+          </div>
+          <button onClick={lancerGlobalUpdate} disabled={globalRunning}
+            style={{ padding: '10px 20px', borderRadius: 8, border: 'none', background: globalRunning ? '#aaa' : 'var(--brand)', color: 'white', fontWeight: 700, fontSize: 14, cursor: globalRunning ? 'not-allowed' : 'pointer', display: 'flex', alignItems: 'center', gap: 8 }}>
+            {globalRunning ? <><span className="spinner" /> En cours...</> : '⚡ Lancer'}
+          </button>
+        </div>
+        {(globalSteps.length > 0) && (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+            {globalSteps.map(step => (
+              <div key={step.id} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '8px 12px', borderRadius: 8, background: step.status === 'ok' ? 'var(--success-bg)' : step.status === 'error' ? 'var(--danger-bg)' : step.status === 'running' ? 'var(--brand-pale)' : '#f9f9f9', border: `1px solid ${step.status === 'ok' ? '#bbf7d0' : step.status === 'error' ? '#fca5a5' : step.status === 'running' ? 'var(--brand)' : 'var(--border)'}` }}>
+                <span style={{ fontSize: 16, width: 20, textAlign: 'center' }}>
+                  {step.status === 'ok' ? '✅' : step.status === 'error' ? '❌' : step.status === 'running' ? '⏳' : '○'}
+                </span>
+                <span style={{ flex: 1, fontWeight: 500, fontSize: 13 }}>{step.label}</span>
+                {step.detail && <span style={{ fontSize: 12, color: 'var(--text-muted)' }}>{step.detail}</span>}
+              </div>
+            ))}
+          </div>
+        )}
+        {globalDone && (
+          <div className="alert alert-success" style={{ marginTop: 12 }}>
+            ✅ Mise à jour terminée — toutes les données sont à jour pour {new Date().toISOString().slice(0,7)}
+          </div>
+        )}
+      </div>
+
     </div>
   )
 }
