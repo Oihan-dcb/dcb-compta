@@ -146,6 +146,8 @@ export default function PageRapprochement() {
       'Check-in', 'Check-out', 'Nuits',
       'Code résa', 'Revenu net EUR',
       ...ventHeaders,
+      'Acompte EUR',
+      '% du total',
       'Type paiement',
       'Note'
     ].map(q).join(';')
@@ -195,6 +197,18 @@ export default function PageRapprochement() {
         q(codes),
         q(r.fin_revenue ? eu(r.fin_revenue) : ''),
         ...ventCols.map(q),
+        // Acompte + % du total
+        q((() => {
+          if (!r.type_paiement || r.type_paiement === 'total') return ''
+          const credit = m.credit || 0
+          return eu(credit)
+        })()),
+        q((() => {
+          const credit = m.credit || 0
+          const virTTC = ventAggr['VIR']?.ttc || 0
+          if (!virTTC || !credit) return ''
+          return (credit / virTTC * 100).toFixed(1).replace('.', ',') + ' %'
+        })()),
         q(r.type_paiement || ''),
         q(note),
       ].join(';')
