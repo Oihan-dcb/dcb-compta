@@ -52,9 +52,11 @@ export async function getMouvementsMois(mois) {
         if (r.guest_name && !info.guests.includes(r.guest_name)) info.guests.push(r.guest_name)
         if (!info.reservation_ids.includes(r.id)) info.reservation_ids.push(r.id)
         if (!info.codes.includes(r.code)) info.codes.push(r.code)
-        // fin_revenue = valeur de la résa (pas cumulative — une résa a un seul fin_revenue)
-        if (!info.fin_revenue) info.fin_revenue = r.fin_revenue || 0
-        info.nb_resas++
+        // fin_revenue = somme de toutes les resas liées au virement
+        info.fin_revenue += (r.fin_revenue || 0)
+        info.nights = (info.nights || 0) + (r.nights || 0)
+        if (!info.arrival_date || (r.arrival_date && r.arrival_date < info.arrival_date)) info.arrival_date = r.arrival_date
+        if (!info.departure_date || (r.departure_date && r.departure_date > info.departure_date)) info.departure_date = r.departure_date
       }
       // Normaliser + marquer comme enrichi par passe 0
       for (const info of Object.values(infoByMouv)) {
