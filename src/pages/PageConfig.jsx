@@ -32,7 +32,6 @@ export default function PageConfig() {
   ]
 
   async function lancerGlobalUpdate() {
-    const mois = new Date().toISOString().slice(0, 7)
     const HOSP_TOKEN = import.meta.env.VITE_HOSPITABLE_TOKEN
     if (HOSP_TOKEN) setToken(HOSP_TOKEN)
     setGlobalRunning(true)
@@ -43,6 +42,15 @@ export default function PageConfig() {
       prev.map(s => s.id === id ? { ...s, status, detail } : s)
     )
 
+    // Générer tous les mois depuis 2022-01 jusqu'au mois courant
+    const allMois = []
+    const now = new Date()
+    let y = 2022, m = 1
+    while (y < now.getFullYear() || (y === now.getFullYear() && m <= now.getMonth() + 1)) {
+      allMois.push(`${y}-${String(m).padStart(2,'0')}`)
+      m++; if (m > 12) { m = 1; y++ }
+    }
+
     // 1. Sync biens
     update('biens', 'running')
     try {
@@ -50,32 +58,48 @@ export default function PageConfig() {
       update('biens', 'ok', 'Biens synchronisés')
     } catch(e) { update('biens', 'error', e.message) }
 
-    // 2. Sync réservations
+    // 2. Sync réservations — tous les mois
     update('resas', 'running')
     try {
-      const r = await syncReservations(mois)
-      update('resas', 'ok', `${r?.synced || 0} réservation(s) syncées`)
+      let totalSync = 0
+      for (const mois of allMois) {
+        const r = await syncReservations(mois)
+        totalSync += (r?.created || 0) + (r?.updated || 0)
+      }
+      update('resas', 'ok', `${totalSync} réservation(s) syncées (all-time)`)
     } catch(e) { update('resas', 'error', e.message) }
 
-    // 3. Sync payouts
+    // 3. Sync payouts — tous les mois
     update('payouts', 'running')
     try {
-      await syncPayouts(mois)
-      update('payouts', 'ok', 'Payouts synchronisés')
+      let totalPayouts = 0
+      for (const mois of allMois) {
+        const r = await syncPayouts(mois)
+        totalPayouts += (r?.created || 0) + (r?.updated || 0)
+      }
+      update('payouts', 'ok', `Payouts synchronisés (${totalPayouts} opération(s))`)
     } catch(e) { update('payouts', 'error', e.message) }
 
-    // 4. Ventilation
+    // 4. Ventilation — tous les mois
     update('vent', 'running')
     try {
-      const v = await calculerVentilationMois(mois)
-      update('vent', 'ok', `${v?.total || 0} résa(s) ventilée(s)${v?.errors ? ` — ${v.errors} erreur(s)` : ''}`)
+      let totalVent = 0
+      for (const mois of allMois) {
+        const v = await calculerVentilationMois(mois)
+        totalVent += (v?.total || 0)
+      }
+      update('vent', 'ok', `${totalVent} résa(s) ventilée(s) (all-time)`)
     } catch(e) { update('vent', 'error', e.message) }
 
-    // 5. Matching bancaire
+    // 5. Matching bancaire — tous les mois
     update('matching', 'running')
     try {
-      const m = await lancerMatching(mois)
-      update('matching', 'ok', `${m?.matched || 0} virement(s) rapproché(s)`)
+      let totalMatch = 0
+      for (const mois of allMois) {
+        const m = await lancerMatching(mois)
+        totalMatch += (m?.matched || 0)
+      }
+      update('matching', 'ok', `${totalMatch} virement(s) rapproché(s) (all-time)`)
     } catch(e) { update('matching', 'error', e.message) }
 
     setGlobalRunning(false)
@@ -291,7 +315,7 @@ export default function PageConfig() {
               ⚡ Mise à jour globale
             </h2>
             <p style={{ margin: '4px 0 0', fontSize: 13, color: 'var(--text-muted)' }}>
-              Sync biens → réservations → payouts → ventilation → matching — mois courant
+              Sync biens → réservations → payouts → ventilation → matching — all-time (depuis 2022)
             </p>
           </div>
           <button onClick={lancerGlobalUpdate} disabled={globalRunning}
