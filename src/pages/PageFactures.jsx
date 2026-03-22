@@ -13,7 +13,7 @@ const STATUTS = {
   calcul_en_cours: { label: 'Calcul en cours', color: 'var(--text-muted)', bg: '#F3F4F6' },
   brouillon: { label: 'Brouillon', color: '#D97706', bg: '#FEF3C7' },
   valide: { label: 'Validée', color: '#059669', bg: '#D1FAE5' },
-  envoye_evoliz: { label: 'Envoyée Evoliz', color: '#2563EB', bg: '#DBEAFE' },
+  envoye_evoliz: { label: 'Envoyée Evoliz', color: '#EA580C', bg: '#FFF7ED' },
   payee: { label: 'Payée', color: '#059669', bg: '#D1FAE5' },
   solde_negatif: { label: 'Solde négatif', color: '#DC2626', bg: '#FEE2E2' },
 }
@@ -338,7 +338,7 @@ export default function PageFactures() {
 
                     {/* Info reversement et IBAN */}
                     {f.montant_reversement > 0 && (
-                      <div style={{ marginTop: 12, padding: '10px 14px', background: '#EFF6FF', borderRadius: 6, fontSize: 13 }}>
+                      <div style={{ marginTop: 12, padding: '10px 14px', background: 'var(--bg, #F7F3EC)', borderRadius: 6, fontSize: 13, border: '1px solid var(--border, #D9CEB8)' }}>
                         <strong>Ordre de virement à préparer :</strong> {formatMontant(f.montant_reversement)} vers{' '}
                         {proprio?.iban || <span style={{ color: 'var(--warning)' }}>⚠ IBAN non renseigné</span>}
                       </div>
