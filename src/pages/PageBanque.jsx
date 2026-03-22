@@ -38,6 +38,7 @@ export default function PageBanque() {
   const [supprimant, setSupprimant] = useState(false)
   const [supprimantId, setSupprimantId] = useState(null)
   const [bookingLog, setBookingLog] = useState(null)
+  const [confirmModal, setConfirmModal] = useState(null)
   const [importingBooking, setImportingBooking] = useState(false)
   const bookingRef = useRef()
 
@@ -76,14 +77,24 @@ export default function PageBanque() {
   }
 
   async function supprimerMouvement(id) {
-    if (!window.confirm('Supprimer ce mouvement ?')) return
-    setSupprimantId(id)
+    setConfirmModal({
+      message: 'Supprimer ce mouvement bancaire ?\nCette action est irréversible.',
+      onConfirm: async () => {
+        setConfirmModal(null)
+        setSupprimantId(id)
+        try {
+          const { error } = await supabase.from('mouvement_bancaire').delete().eq('id', id)
+          if (error) throw error
+          await charger()
+        } catch(e) { setError('Erreur : ' + e.message) }
+        finally { setSupprimantId(null) }
+      }
+    })
+  }
+
+
     try {
       const { error } = await supabase.from('mouvement_bancaire').delete().eq('id', id)
-      if (error) throw error
-      await charger()
-    } catch(e) { setError('Erreur : ' + e.message) }
-    finally { setSupprimantId(null) }
   }
 
   async function supprimerMois() {
@@ -324,6 +335,23 @@ export default function PageBanque() {
           </table>
         </div>
       )}
-    </div>
+          {confirmModal && (
+        <div style={{ position:'fixed',inset:0,background:'rgba(44,36,22,0.45)',display:'flex',alignItems:'center',justifyContent:'center',zIndex:1000 }}>
+          <div style={{ background:'var(--bg,#F7F3EC)',border:'2px solid var(--brand,#CC9933)',borderRadius:16,padding:'28px 32px',maxWidth:400,width:'90%',boxShadow:'0 8px 32px rgba(44,36,22,0.18)' }}>
+            <p style={{ margin:'0 0 24px',color:'var(--text,#2C2416)',fontSize:14,lineHeight:1.6,whiteSpace:'pre-line' }}>{confirmModal.message}</p>
+            <div style={{ display:'flex',gap:10,justifyContent:'flex-end' }}>
+              <button onClick={() => setConfirmModal(null)}
+                style={{ padding:'9px 18px',borderRadius:8,border:'1.5px solid var(--border,#D9CEB8)',background:'white',color:'var(--text,#2C2416)',cursor:'pointer',fontWeight:600,fontSize:13 }}>
+                Annuler
+              </button>
+              <button onClick={confirmModal.onConfirm}
+                style={{ padding:'9px 18px',borderRadius:8,border:'none',background:'#DC2626',color:'white',cursor:'pointer',fontWeight:700,fontSize:13 }}>
+                Confirmer
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+</div>
   )
 }
