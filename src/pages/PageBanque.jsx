@@ -82,7 +82,7 @@ export default function PageBanque() {
       const { error } = await supabase.from('mouvement_bancaire').delete().eq('id', id)
       if (error) throw error
       await charger()
-    } catch(e) { alert('Erreur : ' + e.message) }
+    } catch(e) { setError('Erreur : ' + e.message) }
     finally { setSupprimantId(null) }
   }
 
@@ -100,7 +100,7 @@ export default function PageBanque() {
       setSuppression(null)
       await charger()
     } catch(e) {
-      alert('Erreur suppression : ' + e.message)
+      setError('Erreur suppression : ' + e.message)
     } finally {
       setSupprimant(false)
     }
