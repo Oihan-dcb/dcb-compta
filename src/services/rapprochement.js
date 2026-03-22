@@ -50,13 +50,14 @@ export async function getMouvementsMois(mois) {
         const bien = r.bien?.hospitable_name
         if (bien && !info.biens.includes(bien)) info.biens.push(bien)
         if (r.guest_name && !info.guests.includes(r.guest_name)) info.guests.push(r.guest_name)
-        if (!info.reservation_ids.includes(r.id)) info.reservation_ids.push(r.id)
+        const isNewResa = !info.reservation_ids.includes(r.id)
+        if (isNewResa) info.reservation_ids.push(r.id)
         if (!info.codes.includes(r.code)) info.codes.push(r.code)
-        // fin_revenue = somme de toutes les resas liées au virement
-        info.fin_revenue += (r.fin_revenue || 0)
-        info.nights = (info.nights || 0) + (r.nights || 0)
-        if (!info.arrival_date || (r.arrival_date && r.arrival_date < info.arrival_date)) info.arrival_date = r.arrival_date
-        if (!info.departure_date || (r.departure_date && r.departure_date > info.departure_date)) info.departure_date = r.departure_date
+        // fin_revenue et nights : additionner UNE SEULE fois par résa (dédup)
+        if (isNewResa) info.fin_revenue += (r.fin_revenue || 0)
+        if (isNewResa) info.nights = (info.nights || 0) + (r.nights || 0)
+        if (isNewResa && r.arrival_date && (!info.arrival_date || r.arrival_date < info.arrival_date)) info.arrival_date = r.arrival_date
+        if (isNewResa && r.departure_date && (!info.departure_date || r.departure_date > info.departure_date)) info.departure_date = r.departure_date
       }
       // Normaliser + marquer comme enrichi par passe 0
       for (const info of Object.values(infoByMouv)) {
@@ -178,7 +179,7 @@ export async function getMouvementsMois(mois) {
             if (!info.codes.includes(resa.code)) info.codes.push(resa.code)
             info.fin_revenue += (resa.fin_revenue || 0)
             info.nights += (resa.nights || 0)
-            info.nb_resas++
+        if (isNewResa) info.nb_resas++
             if (!info.arrival_date || resa.arrival_date < info.arrival_date) info.arrival_date = resa.arrival_date
             if (!info.departure_date || resa.departure_date > info.departure_date) info.departure_date = resa.departure_date
           } else if (line.guest_name && !info.guests.includes(line.guest_name)) {
