@@ -237,11 +237,11 @@ export default function PageRapprochement() {
             {syncing ? '⏳ Sync...' : '↻ Sync payouts'}
           </button>
           <button onClick={lancerAuto} disabled={matching || loading}
-            style={{ background: matching ? '#aaa' : '#1a56db', color: '#fff', border: 'none', borderRadius: 8, padding: '8px 18px', fontWeight: 600, cursor: matching ? 'not-allowed' : 'pointer', fontSize: 14 }}>
+            style={{ background: matching ? '#aaa' : '#CC9933', color: '#fff', border: 'none', borderRadius: 8, padding: '8px 18px', fontWeight: 600, cursor: matching ? 'not-allowed' : 'pointer', fontSize: 14 }}>
             {matching ? '⏳ Matching...' : '⚡ Matching auto'}
           </button>
           <button onClick={charger} disabled={loading}
-            style={{ background: '#f0f4ff', color: '#1a56db', border: '1.5px solid #1a56db', borderRadius: 8, padding: '8px 14px', fontWeight: 600, cursor: 'pointer', fontSize: 14 }}>
+            style={{ background: '#f0f4ff', color: '#CC9933', border: '1.5px solid #CC9933', borderRadius: 8, padding: '8px 14px', fontWeight: 600, cursor: 'pointer', fontSize: 14 }}>
             ↻ Actualiser
           </button>
         </div>
@@ -297,7 +297,7 @@ export default function PageRapprochement() {
       {stats && (
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(160px, 1fr))', gap: 12, marginBottom: 24 }}>
           {[
-            { label: 'Mouvements', value: stats.total_mouvements, color: '#1a56db' },
+            { label: 'Mouvements', value: stats.total_mouvements, color: '#CC9933' },
             { label: 'Rapprochés', value: stats.rapproches, color: '#2E7D32' },
             { label: 'En attente', value: stats.en_attente, color: '#E65100' },
             { label: 'Non géré', value: mouvements.filter(m => m._resa?.gestion_loyer === false).length, color: '#9CA3AF' },
@@ -322,7 +322,7 @@ export default function PageRapprochement() {
             {[['tous', 'Tous'], ['attente', 'En attente'], ['rapproche', 'Rapprochés'], ['inconnu', 'Non identifiés']].map(([k, l]) => (
               <button key={k} onClick={() => handleFiltreChange(k)}
                 style={{ padding: '5px 14px', borderRadius: 20, border: '1.5px solid', fontSize: 13, fontWeight: 600, cursor: 'pointer',
-                  background: filtre === k ? '#1a56db' : '#fff', color: filtre === k ? '#fff' : '#555', borderColor: filtre === k ? '#1a56db' : '#ddd' }}>
+                  background: filtre === k ? '#CC9933' : '#fff', color: filtre === k ? '#fff' : '#555', borderColor: filtre === k ? '#CC9933' : '#ddd' }}>
                 {l}
               </button>
             ))}
@@ -357,13 +357,13 @@ export default function PageRapprochement() {
                     <tr><td colSpan={7} style={{ textAlign: 'center', padding: 32, color: '#aaa' }}>Aucun mouvement</td></tr>
                   ) : mouvFiltres.map(m => (
                     <tr key={m.id}
-                      style={{ borderBottom: '1px solid #f0f0f0', background: mouvSelId === m.id ? '#EFF6FF' : 'transparent', cursor: 'default' }}>
+                      style={{ borderBottom: '1px solid #f0f0f0', background: mouvSelId === m.id ? '#FFF8EC' : 'transparent', cursor: 'default' }}>
                       <td style={{ padding: '9px 12px', fontWeight: 500, whiteSpace: 'nowrap' }}>{fmtDate(m.date_operation)}</td>
                        <td style={{ padding: '9px 12px', maxWidth: 280 }}>
                          <div style={{ fontWeight: 500, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{m.libelle}</div>
                          {m._resa ? (
             <div style={{ fontSize: 11, color: '#2E7D32', marginTop: 3, display: 'flex', gap: 6, flexWrap: 'wrap', alignItems: 'center' }}>
-              {m._resa.bien_name && <span style={{fontWeight:600,color:'#1a56db'}}>{m._resa.bien_name}</span>}
+              {m._resa.bien_name && <span style={{fontWeight:600,color:'#CC9933'}}>{m._resa.bien_name}</span>}
               {m._resa.agence === 'lauian' && <span style={{background:'#FEF3C7',color:'#B45309',fontSize:10,padding:'1px 4px',borderRadius:3,fontWeight:700}}>Lauian</span>}
               {m._resa.guest_name && <span style={{color:'#555'}}>· {m._resa.guest_name}</span>}
               {m._resa.arrival_date && <span style={{color:'#888'}}>· {m._resa.arrival_date?.slice(5,10).replace('-','/')}</span>}
@@ -396,7 +396,7 @@ export default function PageRapprochement() {
                         {m.statut_matching === 'en_attente' && (m.credit || 0) > 0 && (
                           <div style={{ display: 'flex', gap: 6 }}>
                             <button onClick={() => { setMouvSelId(m.id); setVirsSel([]) }}
-                              style={{ background: '#EFF6FF', color: '#1a56db', border: '1px solid #93C5FD', borderRadius: 6, padding: '3px 8px', fontSize: 12, cursor: 'pointer' }}>
+                              style={{ background: '#FFF8EC', color: '#CC9933', border: '1px solid #E4A853', borderRadius: 6, padding: '3px 8px', fontSize: 12, cursor: 'pointer' }}>
                               Lier
                             </button>
                             <button onClick={() => marquerInconnu(m.id)}
@@ -422,7 +422,7 @@ export default function PageRapprochement() {
 
         {/* PANNEAU MATCHING MANUEL */}
         {mouvSelId && mouvSel && (
-          <div style={{ background: '#fff', border: '1.5px solid #93C5FD', borderRadius: 12, padding: 20, height: 'fit-content', position: 'sticky', top: 20 }}>
+          <div style={{ background: '#fff', border: '1.5px solid #CC9933', borderRadius: 12, padding: 20, height: 'fit-content', position: 'sticky', top: 20 }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 14 }}>
               <h3 style={{ margin: 0, fontSize: 15, fontWeight: 700 }}>Lier manuellement</h3>
               <button onClick={() => { setMouvSelId(null); setVirsSel([]) }}
@@ -439,7 +439,7 @@ export default function PageRapprochement() {
             <div style={{ marginBottom: 12, fontSize: 13, fontWeight: 600, color: '#555' }}>
               VIR disponibles ({virs.length})
               {virsSel.length > 0 && (
-                <span style={{ marginLeft: 8, color: '#1a56db' }}>
+                <span style={{ marginLeft: 8, color: '#CC9933' }}>
                   — sélection : {fmt(virs.filter(v => virsSel.includes(v.id)).reduce((s, v) => s + v.montant_ttc, 0))}
                 </span>
               )}
@@ -452,10 +452,10 @@ export default function PageRapprochement() {
               ) : virs.filter(v => !virSearch || v.reservation?.guest_name?.toLowerCase().includes(virSearch.toLowerCase()) || v.reservation?.bien?.hospitable_name?.toLowerCase().includes(virSearch.toLowerCase()) || v.reservation?.code?.toLowerCase().includes(virSearch.toLowerCase())).map(v => {
                 const checked = virsSel.includes(v.id)
                 return (
-                  <label key={v.id} style={{ display: 'flex', alignItems: 'flex-start', gap: 8, padding: '8px 10px', borderRadius: 8, border: `1.5px solid ${checked ? '#93C5FD' : '#e5e7eb'}`, background: checked ? '#EFF6FF' : '#fff', cursor: 'pointer', fontSize: 12 }}>
+                  <label key={v.id} style={{ display: 'flex', alignItems: 'flex-start', gap: 8, padding: '8px 10px', borderRadius: 8, border: `1.5px solid ${checked ? '#E4A853' : '#e5e7eb'}`, background: checked ? '#FFF8EC' : '#fff', cursor: 'pointer', fontSize: 12 }}>
                     <input type="checkbox" checked={checked} onChange={e => {
                       setVirsSel(prev => e.target.checked ? [...prev, v.id] : prev.filter(x => x !== v.id))
-                    }} style={{ marginTop: 2, accentColor: '#1a56db' }} />
+                    }} style={{ marginTop: 2, accentColor: '#CC9933' }} />
                     <div style={{ flex: 1 }}>
                       <div style={{ fontWeight: 600 }}>{v.reservation?.guest_name || '—'}</div>
                       <div style={{ color: '#666', marginTop: 1 }}>
@@ -464,7 +464,7 @@ export default function PageRapprochement() {
                       <div style={{ color: '#666', marginTop: 1 }}>{v.reservation?.code}</div>
                     </div>
                     <div style={{ textAlign:'right' }}>
-                  <div style={{ fontWeight: 700, color: '#1a56db', whiteSpace: 'nowrap' }}>{fmt(v.montant_ttc)}</div>
+                  <div style={{ fontWeight: 700, color: '#CC9933', whiteSpace: 'nowrap' }}>{fmt(v.montant_ttc)}</div>
                   {v.reservation?.fin_revenue > 0 && <div style={{fontSize:10,color:'#888'}}>rev: {fmt(v.reservation.fin_revenue)}</div>}
                 </div>
                   </label>
@@ -473,7 +473,7 @@ export default function PageRapprochement() {
             </div>
 
             <button onClick={confirmerMatchManuel} disabled={virsSel.length === 0 || saving}
-              style={{ width: '100%', background: virsSel.length === 0 ? '#aaa' : '#1a56db', color: '#fff', border: 'none', borderRadius: 8, padding: '10px', fontWeight: 700, cursor: virsSel.length === 0 ? 'not-allowed' : 'pointer', fontSize: 14 }}>
+              style={{ width: '100%', background: virsSel.length === 0 ? '#aaa' : '#CC9933', color: '#fff', border: 'none', borderRadius: 8, padding: '10px', fontWeight: 700, cursor: virsSel.length === 0 ? 'not-allowed' : 'pointer', fontSize: 14 }}>
               {saving ? 'Enregistrement...' : `Confirmer (${virsSel.length} VIR)`}
             </button>
           </div>
