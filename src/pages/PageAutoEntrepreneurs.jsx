@@ -202,19 +202,19 @@ export default function PageAutoEntrepreneurs() {
                 </div>
               )}
               {/* Sync iCal global */}
-              <div style={{ background: '#eff6ff', borderRadius: 10, padding: '12px 16px', marginBottom: 14, border: '1px solid #bfdbfe', display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
-                <span style={{ fontSize: 13, fontWeight: 700, color: '#1e40af' }}>📅 Sync iCal</span>
+              <div style={{ background: '#F0FAFB', borderRadius: 10, padding: '12px 16px', marginBottom: 14, border: '1px solid #A5D8E0e', display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
+                <span style={{ fontSize: 13, fontWeight: 700, color: '#0891B2' }}>📅 Sync iCal</span>
                 <input type="month" value={syncMois} onChange={e => setSyncMois(e.target.value)}
                   style={{ padding: '4px 10px', borderRadius: 6, border: '1.5px solid #bfdbfe', fontSize: 13 }} />
                 <button onClick={syncTousLesAEs} disabled={syncing}
-                  style={{ background: syncing ? '#94a3b8' : '#1d4ed8', color: '#fff', border: 'none', borderRadius: 7, padding: '6px 14px', fontSize: 13, fontWeight: 600, cursor: syncing ? 'not-allowed' : 'pointer' }}>
+                  style={{ background: syncing ? '#94a3b8' : '#0891B2', color: '#fff', border: 'none', borderRadius: 7, padding: '6px 14px', fontSize: 13, fontWeight: 600, cursor: syncing ? 'not-allowed' : 'pointer' }}>
                   {syncing ? '⏳ En cours...' : '🔄 Sync tous'}
                 </button>
                 {syncResults && (
                   <div style={{ width: '100%', marginTop: 6, display: 'flex', flexDirection: 'column', gap: 3 }}>
                     {syncResults.map((res, i) => (
                       <div key={i} style={{ fontSize: 12, display: 'flex', gap: 8 }}>
-                        <span style={{ fontWeight: 600, color: '#1e40af', minWidth: 130 }}>{res.nom}</span>
+                        <span style={{ fontWeight: 600, color: '#0891B2', minWidth: 130 }}>{res.nom}</span>
                         {res.error
                           ? <span style={{ color: '#dc2626' }}>✕ {res.error}</span>
                           : <span style={{ color: '#16a34a' }}>✓ {res.created} nouvelle(s) / {res.total_events} événements iCal</span>
@@ -242,7 +242,7 @@ export default function PageAutoEntrepreneurs() {
                     <div style={{ background: '#f0fdf4', color: '#16a34a', borderRadius: 6, padding: '4px 10px', fontSize: 12, fontWeight: 600 }}>
                       {((ae.taux_horaire || 2500) / 100).toFixed(0)} €/h
                     </div>
-                    {ae.ical_url && <div style={{ background: '#eff6ff', color: '#2563eb', borderRadius: 6, padding: '4px 10px', fontSize: 12, fontWeight: 600 }}>📅 iCal</div>}
+                    {ae.ical_url && <div style={{ background: '#eff6ff', color: '#CC9933', borderRadius: 6, padding: '4px 10px', fontSize: 12, fontWeight: 600 }}>📅 iCal</div>}
                 {ae.type === 'staff' && <div style={{ background: '#fef3c7', color: '#92400e', borderRadius: 6, padding: '4px 10px', fontSize: 12, fontWeight: 700 }}>🌅 DCB Staff</div>}
                     <button onClick={() => envoyerIdentifiants(ae)} title="Copier message avec identifiants" style={{ background: '#f0fdf4', color: '#16a34a', border: '1px solid #bbf7d0', borderRadius: 6, padding: '6px 10px', fontSize: 12, cursor: 'pointer' }}>📨 Identifiants</button>
                     {(!ae.mdp_temporaire || !ae.ae_user_id) && ae.email && (
@@ -314,10 +314,10 @@ export default function PageAutoEntrepreneurs() {
               {inp('telephone', 'Téléphone')}
               <div style={{ gridColumn: '1/-1' }}>{inp('iban', 'IBAN', { placeholder: 'FR76 0000 0000 0000 0000 0000 000' })}</div>
               <div style={{ gridColumn: '1/-1', display: 'flex', flexDirection: 'column', gap: 4 }}>
-                <label style={{ fontSize: 11, fontWeight: 600, color: '#2563eb', textTransform: 'uppercase' }}>URL iCal missions 📅</label>
+                <label style={{ fontSize: 11, fontWeight: 600, color: '#CC9933', textTransform: 'uppercase' }}>URL iCal missions 📅</label>
                 <input value={form.ical_url ?? ''} onChange={e => change('ical_url', e.target.value)}
                   placeholder="https://calendar.google.com/calendar/ical/..."
-                  style={{ padding: '8px 10px', borderRadius: 7, border: '1.5px solid #93c5fd', fontSize: 13 }} />
+                  style={{ padding: '8px 10px', borderRadius: 7, border: '1.5px solid #E4A853', fontSize: 13 }} />
                 <div style={{ fontSize: 11, color: '#6b7280' }}>L'iCal sera lu pour pré-remplir les missions dans le portail AE</div>
               </div>
               <div style={{ gridColumn: '1/-1', display: 'flex', flexDirection: 'column', gap: 4 }}>
