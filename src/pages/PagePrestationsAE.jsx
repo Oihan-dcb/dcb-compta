@@ -17,6 +17,7 @@ export default function PagePrestationsAE() {
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState(null)
   const [success, setSuccess] = useState(null)
+  const [confirmModal, setConfirmModal] = useState(null)
 
   useEffect(() => { charger() }, [mois, filtre])
 
@@ -66,17 +67,22 @@ export default function PagePrestationsAE() {
   }
 
   async function annuler(id) {
-    if (!confirm('Annuler cette prestation ?')) return
-    setSaving(true)
-    try {
-      await supabase.from('prestation_hors_forfait')
-        .update({ statut: 'annule', valide_par: 'DCB', valide_at: new Date().toISOString() })
-        .eq('id', id)
-      setSuccess('Prestation annulée')
-      await charger()
-      setTimeout(() => setSuccess(null), 2000)
-    } catch (err) { setError(err.message) }
-    finally { setSaving(false) }
+    setConfirmModal({
+      message: 'Annuler cette prestation ?\nElle passera en statut \u00ab annulée \u00bb.',
+      onConfirm: async () => {
+        setConfirmModal(null)
+        setSaving(true)
+        try {
+          await supabase.from('prestation_hors_forfait')
+            .update({ statut: 'annule', valide_par: 'DCB', valide_at: new Date().toISOString() })
+            .eq('id', id)
+          setSuccess('Prestation annulée')
+          await charger()
+          setTimeout(() => setSuccess(null), 2000)
+        } catch (err) { setError(err.message) }
+        finally { setSaving(false) }
+      }
+    })
   }
 
   async function sauvegarderModif() {
@@ -294,6 +300,23 @@ export default function PagePrestationsAE() {
           </div>
         </div>
       )}
-    </div>
+          {confirmModal && (
+        <div style={{ position:'fixed',inset:0,background:'rgba(44,36,22,0.45)',display:'flex',alignItems:'center',justifyContent:'center',zIndex:1000 }}>
+          <div style={{ background:'var(--bg,#F7F3EC)',border:'2px solid var(--brand,#CC9933)',borderRadius:16,padding:'28px 32px',maxWidth:400,width:'90%',boxShadow:'0 8px 32px rgba(44,36,22,0.18)' }}>
+            <p style={{ margin:'0 0 24px',color:'var(--text,#2C2416)',fontSize:14,lineHeight:1.6,whiteSpace:'pre-line' }}>{confirmModal.message}</p>
+            <div style={{ display:'flex',gap:10,justifyContent:'flex-end' }}>
+              <button onClick={() => setConfirmModal(null)}
+                style={{ padding:'9px 18px',borderRadius:8,border:'1.5px solid var(--border,#D9CEB8)',background:'white',color:'var(--text,#2C2416)',cursor:'pointer',fontWeight:600,fontSize:13 }}>
+                Annuler
+              </button>
+              <button onClick={confirmModal.onConfirm}
+                style={{ padding:'9px 18px',borderRadius:8,border:'none',background:'#DC2626',color:'white',cursor:'pointer',fontWeight:700,fontSize:13 }}>
+                Confirmer
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+</div>
   )
 }
