@@ -137,7 +137,7 @@ export default function PageAutoEntrepreneurs() {
     if (!formPT.nom.trim()) return
     setSaving(true)
     try {
-      const data = { ...formPT, taux_defaut: Math.round(parseFloat(formPT.taux_defaut) * 100) || 2500 }
+      const data = { ...formPT, taux_defaut: Math.round(parseFloat(formPT.taux_defaut) * 100) || 2500, actif: true }
       if (editingPT && editingPT !== 'new') {
         await supabase.from('prestation_type').update(data).eq('id', editingPT)
       } else {
