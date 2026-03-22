@@ -96,8 +96,11 @@ export async function getMouvementsMois(mois) {
 }
 
 export async function getVirNonRapproches(mois) {
-  // Charge les VIR non rapproch?s de TOUS les mois
-  // (un accompte peut ?tre pay? avant le mois du s?jour)
+  // Charge les VIR non rapproch?s : -2 mois jusqu'? +6 mois (fenetre glissante)
+  // Couvre les accomptes (paiement avant s?jour) et les arr?r?s r?cents
+  const now = new Date()
+  const dateMin = new Date(now.getFullYear(), now.getMonth() - 2, 1).toISOString().slice(0, 7)
+  const dateMax = new Date(now.getFullYear(), now.getMonth() + 7, 1).toISOString().slice(0, 7)
   const { data, error } = await supabase
     .from('ventilation')
     .select(`
@@ -107,6 +110,8 @@ export async function getVirNonRapproches(mois) {
     `)
     .eq('code', 'VIR')
     .is('mouvement_id', null)
+    .gte('mois_comptable', dateMin)
+    .lte('mois_comptable', dateMax)
     .order('mois_comptable', { ascending: false })
   if (error) throw error
   return data || []
