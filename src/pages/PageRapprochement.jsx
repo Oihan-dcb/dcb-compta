@@ -88,7 +88,14 @@ export default function PageRapprochement() {
     }
   }, [mois])
 
-  useEffect(() => { charger() }, [charger])
+  useEffect(() => {
+    charger()
+    const channel = supabase.channel('rapproch-changes')
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'mouvement_bancaire' }, () => charger())
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'reservation' }, () => charger())
+      .subscribe()
+    return () => { supabase.removeChannel(channel) }
+  }, [charger])
 
   
   function exportCSV() {
