@@ -77,7 +77,7 @@ export default function TableVentilation({ recap, parProprio, reservations }) {
             <thead>
               <tr>
                 <th>Propriétaire</th>
-                <th className="right">HON HT</th><th className="right">FMEN HT</th>
+                <th className="right">HON TTC</th><th className="right">FMEN TTC</th>
                 <th className="right">AUTO</th><th className="right">LOY</th>
                 <th className="right" style={{ color: 'var(--brand)' }}>VIR</th>
                 <th className="right">Total DCB</th>
