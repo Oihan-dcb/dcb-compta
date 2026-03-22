@@ -413,7 +413,7 @@ export default function PageFactures() {
                   fontWeight: 700, fontSize: 14
                 }}
               >
-                {pushing ? 'Envoi…' : 'Confirmer l'envoi'}
+                {pushing ? 'Envoi…' : "Confirmer l'envoi"}
               </button>
             </div>
           </div>
