@@ -71,8 +71,9 @@ export default function PageReservations() {
   const totalRevenue = reservations.filter(r => !r.owner_stay).reduce((s, r) => s + (r.fin_revenue || 0), 0)
   // Richesse générée = total TTC ventilation (HON+FMEN+AUTO+VIR) si ventilé, sinon fin_revenue
   const richesseGeneree = (() => {
-    const codes = ['HON','FMEN','AUTO','VIR']
-    // Inclure toutes les resas : HON+FMEN+AUTO+VIR pour les normales, FMEN pour les séjours proprio
+    const codes = ['HON','FMEN','AUTO','LOY']
+    // Inclure toutes les resas : HON+FMEN+AUTO+LOY pour les normales, FMEN pour les séjours proprio
+    // LOY = reversement proprio (disponible dès ventilation, indépendant du rapprochement)
     const sum = reservations.reduce((s, r) => {
       const codesR = r.owner_stay ? ['FMEN'] : codes
       return s + (r.ventilation || []).filter(v => codesR.includes(v.code)).reduce((a, v) => a + v.montant_ttc, 0)
