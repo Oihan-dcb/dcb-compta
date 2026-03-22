@@ -143,6 +143,11 @@ export async function calculerVentilationResa(resa) {
   const adjustments = fees.filter(f => f.fee_type === 'adjustment')
   const adjustmentsTotal = adjustments.reduce((s, f) => s + (f.amount || 0), 0)
 
+  // Remises promotionnelles (Promotion Discount, Last Minute Discount, Ad-hoc fee...)
+  // Tableau séparé dans hospitable_raw.financials.host.discounts (négatifs)
+  const discountsRaw = resa.hospitable_raw?.financials?.host?.discounts || []
+  const discountsTotal = discountsRaw.reduce((s, d) => s + (d.amount || 0), 0)
+
   // Accommodation de base (nuitées seules, en centimes)
   const accommodation = resa.fin_accommodation || 0
 
@@ -241,7 +246,7 @@ export async function calculerVentilationResa(resa) {
     // ── AIRBNB / BOOKING / AUTRES ─────────────────────────────────────────
     // Pour Airbnb : menageBrut = cleaningFeeAirbnb (label "Cleaning fee")
     // communityFeeRaw = commission Airbnb sur hébergement (pas utilisé pour FMEN)
-    commissionableBase = accommodation + hostServiceFee
+    commissionableBase = accommodation + hostServiceFee + discountsTotal
     // FMEN basé sur le ménage réel (cleaningFeeAirbnb pour Airbnb)
     cleaningFeeNet = bien.forfait_dcb_ref || menageBrut
     platformRateOnCleaning = PLATFORM_CLEANING_RATES[resa.platform] || PLATFORM_CLEANING_RATES.airbnb
