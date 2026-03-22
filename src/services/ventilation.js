@@ -235,7 +235,7 @@ export async function calculerVentilationResa(resa) {
     // managementFeeRaw = frais gestion
     // Hospitable prend 0,77% sur (communityFeeRaw + managementFeeRaw)
     // Base = revenue - TOUS les fees ménage (cleaning + community + management) - taxes
-    commissionableBase = revenue - cleaningFeeAirbnb - communityFeeRaw - managementFeeRaw - taxesTotal - adjustmentsTotal
+    commissionableBase = revenue - cleaningFeeAirbnb - communityFeeRaw - managementFeeRaw - taxesTotal - adjustmentsTotal + discountsTotal
     const feesDirectBruts = cleaningFeeAirbnb + communityFeeRaw + managementFeeRaw
     // Math.floor pour platformRemb exact (arrondi supérieur sur la retenue)
     const feesDirectNets = feesDirectBruts > 0 ? Math.floor(feesDirectBruts / 1.0077) : 0
