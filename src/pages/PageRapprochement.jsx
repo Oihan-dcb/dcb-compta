@@ -126,7 +126,7 @@ export default function PageRapprochement() {
     if (allMouvIds.length > 0) {
       const { data: paiements } = await supabase
         .from('reservation_paiement')
-        .select(`mouvement_id, reservation_id, montant, type_paiement,
+        .select(`mouvement_id, reservation_id, montant, type_paiement, description_paiement,
           reservation (id, code, platform, guest_name, arrival_date, departure_date, nights, fin_revenue,
             bien (hospitable_name))`)
         .in('mouvement_id', allMouvIds)
@@ -169,11 +169,12 @@ export default function PageRapprochement() {
       'Acompte EUR',
       '% du total',
       'Type paiement',
+      'Description paiement',
       'Note'
     ].map(q).join(';')
 
     // Générer les lignes — éclater Stripe/Booking en 1 ligne par résa
-    const makeRow = (m, resaData, montantResa, typePmt) => {
+    const makeRow = (m, resaData, montantResa, typePmt, descPmt) => {
       const id     = resaData?.id || null
       const finRev = resaData?.fin_revenue || 0
       const vMap   = id ? (ventByResa[id] || {}) : {}
@@ -193,7 +194,7 @@ export default function PageRapprochement() {
         q(dt(resaData?.arrival_date)), q(dt(resaData?.departure_date)), q(resaData?.nights || ''),
         q(resaData?.code || ''), q(finRev ? eu(finRev) : ''),
         ...ventCols.map(q),
-        q(montantResa ? eu(montantResa) : ''), q(pct), q(typePmt || ''), q(note),
+        q(montantResa ? eu(montantResa) : ''), q(pct), q(typePmt || ''), q(descPmt || ''), q(note),
       ].join(';')
     }
 
@@ -204,7 +205,7 @@ export default function PageRapprochement() {
 
       // Stripe/Booking : 1 ligne par résa
       if (paiements?.length > 0 && ['stripe','booking'].includes(m.canal)) {
-        return paiements.map(p => makeRow(m, p.reservation, p.montant, p.type_paiement))
+        return paiements.map(p => makeRow(m, p.reservation, p.montant, p.type_paiement, p.description_paiement))
       }
 
       // Autres canaux : 1 ligne globale
@@ -238,7 +239,7 @@ export default function PageRapprochement() {
         q(r.codes?.length ? r.codes.join(' | ') : (r.code || '')),
         q(r.fin_revenue ? eu(r.fin_revenue) : ''),
         ...ventCols.map(q),
-        q(acompte), q(pct), q(r.type_paiement || ''), q(note),
+        q(acompte), q(pct), q(r.type_paiement || ''), q(''), q(note),
       ].join(';')]
     })
 
