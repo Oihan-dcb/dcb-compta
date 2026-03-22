@@ -30,6 +30,11 @@ export default function PageMatching() {
   useEffect(() => {
     if (HOSP_TOKEN) setToken(HOSP_TOKEN)
     charger()
+    const channel = supabase.channel('matching-changes')
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'mouvement_bancaire' }, () => charger())
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'reservation' }, () => charger())
+      .subscribe()
+    return () => { supabase.removeChannel(channel) }
   }, [mois])
 
   async function charger() {
