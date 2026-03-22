@@ -143,7 +143,7 @@ function parseReservation(resa, bien, mois) {
     hospitable_id: resa.id,
     bien_id: bien.id,
     code: resa.code,
-    platform: resa.platform,
+    platform: (resa.platform === 'booking.com' ? 'booking' : resa.platform),
     platform_id: resa.platform_id,
     arrival_date: resa.arrival_date?.substring(0, 10),
     departure_date: resa.departure_date?.substring(0, 10),
