@@ -112,11 +112,31 @@ export default function PageRapprochement() {
 
     // Collecter tous les reservation_ids des mouvements rapprochés
     const allResaIds = []
+    const allMouvIds = mouvements.filter(m => m.statut_matching === 'rapproche').map(m => m.id)
     for (const m of mouvements) {
       const r = m._resa || {}
       const ids = r.reservation_ids || (r.id ? [r.id] : [])
       for (const id of ids) {
         if (id && !allResaIds.includes(id)) allResaIds.push(id)
+      }
+    }
+
+    // Charger reservation_paiement pour Stripe/Booking (1 montant par resa)
+    let paiementsByMouv = {}
+    if (allMouvIds.length > 0) {
+      const { data: paiements } = await supabase
+        .from('reservation_paiement')
+        .select(`mouvement_id, reservation_id, montant, type_paiement,
+          reservation (id, code, platform, guest_name, arrival_date, departure_date, nights, fin_revenue,
+            bien (hospitable_name))`)
+        .in('mouvement_id', allMouvIds)
+      if (paiements) {
+        for (const p of paiements) {
+          if (!paiementsByMouv[p.mouvement_id]) paiementsByMouv[p.mouvement_id] = []
+          if (!paiementsByMouv[p.mouvement_id].find(x => x.reservation_id === p.reservation_id)) {
+            paiementsByMouv[p.mouvement_id].push(p)
+          }
+        }
       }
     }
 
@@ -152,68 +172,74 @@ export default function PageRapprochement() {
       'Note'
     ].map(q).join(';')
 
-    const rows = mouvements.map(m => {
-      const r = m._resa || {}
-      const biens   = r.biens?.length  ? r.biens.join(' | ')  : (r.bien_name  || '')
-      const guests  = r.guests?.length ? r.guests.join(' | ') : (r.guest_name || '')
-      const codes   = r.codes?.length  ? r.codes.join(' | ')  : (r.code       || '')
-      const ids     = r.reservation_ids || (r.id ? [r.id] : [])
+    // Générer les lignes — éclater Stripe/Booking en 1 ligne par résa
+    const makeRow = (m, resaData, montantResa, typePmt) => {
+      const id     = resaData?.id || null
+      const finRev = resaData?.fin_revenue || 0
+      const vMap   = id ? (ventByResa[id] || {}) : {}
+      const ventCols = CODES.flatMap(c => {
+        const v = vMap[c]
+        if (!v) return ['', '', '']
+        return [eu(v.montant_ht), eu(v.montant_tva), eu(v.montant_ttc)]
+      })
+      const pct = (montantResa && finRev) ? (montantResa/finRev*100).toFixed(1).replace('.',',') + ' %' : ''
+      const note = m.statut_matching === 'non_identifie' ? 'Non identifié' : m.statut_matching === 'en_attente' ? 'En attente' : ''
+      return [
+        q(dt(m.date_operation)), q(m.libelle), q(m.reference || ''),
+        q((m.credit||0) > 0 ? eu(m.credit) : ''), q((m.debit||0) > 0 ? eu(m.debit) : ''),
+        q(m.statut_matching || ''), q(m.canal || ''),
+        q(resaData?.bien?.hospitable_name || ''), q(resaData?.guest_name || ''),
+        q(resaData?.platform || ''),
+        q(dt(resaData?.arrival_date)), q(dt(resaData?.departure_date)), q(resaData?.nights || ''),
+        q(resaData?.code || ''), q(finRev ? eu(finRev) : ''),
+        ...ventCols.map(q),
+        q(montantResa ? eu(montantResa) : ''), q(pct), q(typePmt || ''), q(note),
+      ].join(';')
+    }
 
-      // Agréger la ventilation de toutes les resas liées
+    const rows = mouvements.flatMap(m => {
+      const r = m._resa || {}
+      const paiements = paiementsByMouv[m.id]
+      const note = m.statut_matching === 'non_identifie' ? 'Non identifié' : m.statut_matching === 'en_attente' ? 'En attente' : ''
+
+      // Stripe/Booking : 1 ligne par résa
+      if (paiements?.length > 0 && ['stripe','booking'].includes(m.canal)) {
+        return paiements.map(p => makeRow(m, p.reservation, p.montant, p.type_paiement))
+      }
+
+      // Autres canaux : 1 ligne globale
+      const ids = r.reservation_ids || (r.id ? [r.id] : [])
       const ventAggr = {}
       for (const id of ids) {
         const vMap = ventByResa[id] || {}
-        for (const code of CODES) {
-          if (!ventAggr[code]) ventAggr[code] = { ht: 0, tva: 0, ttc: 0 }
-          ventAggr[code].ht  += vMap[code]?.montant_ht  || 0
-          ventAggr[code].tva += vMap[code]?.montant_tva || 0
-          ventAggr[code].ttc += vMap[code]?.montant_ttc || 0
+        for (const c of CODES) {
+          if (!ventAggr[c]) ventAggr[c] = { ht: 0, tva: 0, ttc: 0 }
+          ventAggr[c].ht  += vMap[c]?.montant_ht  || 0
+          ventAggr[c].tva += vMap[c]?.montant_tva || 0
+          ventAggr[c].ttc += vMap[c]?.montant_ttc || 0
         }
       }
-
       const ventCols = CODES.flatMap(c => {
         const v = ventAggr[c]
         if (!v || v.ttc === 0) return ['', '', '']
         return [eu(v.ht), eu(v.tva), eu(v.ttc)]
       })
-
-      const note = m.statut_matching === 'non_identifie' ? 'Non identifié' :
-                   m.statut_matching === 'en_attente'     ? 'En attente'       : ''
-
-      return [
-        q(dt(m.date_operation)),
-        q(m.libelle),
-        q(m.reference || ''),
-        q((m.credit || 0) > 0 ? eu(m.credit) : ''),
-        q((m.debit  || 0) > 0 ? eu(m.debit)  : ''),
-        q(m.statut_matching || ''),
-        q(m.canal || ''),
-        q(biens),
-        q(guests),
-        q(r.platform || ''),
-        q(dt(r.arrival_date)),
-        q(dt(r.departure_date)),
-        q(r.nights || ''),
-        q(codes),
+      const credit = m.credit || 0
+      const base = r.fin_revenue || 0
+      const pct = (base && credit) ? (credit/base*100).toFixed(1).replace('.',',') + ' %' : ''
+      const acompte = (r.reservation_ids?.length || r.codes?.length) ? (credit ? eu(credit) : '') : ''
+      return [[
+        q(dt(m.date_operation)), q(m.libelle), q(m.reference || ''),
+        q(credit > 0 ? eu(credit) : ''), q((m.debit||0) > 0 ? eu(m.debit) : ''),
+        q(m.statut_matching || ''), q(m.canal || ''),
+        q(r.biens?.length ? r.biens.join(' | ') : (r.bien_name || '')),
+        q(r.guests?.length ? r.guests.join(' | ') : (r.guest_name || '')),
+        q(r.platform || ''), q(dt(r.arrival_date)), q(dt(r.departure_date)), q(r.nights || ''),
+        q(r.codes?.length ? r.codes.join(' | ') : (r.code || '')),
         q(r.fin_revenue ? eu(r.fin_revenue) : ''),
         ...ventCols.map(q),
-        // Acompte + % du total
-        q((() => {
-          // Montant du virement voyageur reçu (toujours affiché si rapproché à une resa)
-          if (!r.reservation_ids?.length && !r.codes?.length) return ''
-          const credit = m.credit || 0
-          return credit ? eu(credit) : ''
-        })()),
-        q((() => {
-          const credit = m.credit || 0
-          // Base = fin_revenue (total encaissé par DCB pour la résa, côté voyageur)
-          const base = r.fin_revenue || 0
-          if (!base || !credit) return ''
-          return (credit / base * 100).toFixed(1).replace('.', ',') + ' %'
-        })()),
-        q(r.type_paiement || ''),
-        q(note),
-      ].join(';')
+        q(acompte), q(pct), q(r.type_paiement || ''), q(note),
+      ].join(';')]
     })
 
     const csv  = '﻿' + header + '\n' + rows.join('\n')
