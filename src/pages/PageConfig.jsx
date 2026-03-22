@@ -1,8 +1,9 @@
 import { useState } from 'react'
 import { pingEvoliz, getPaytermsEvoliz } from '../services/evoliz'
 import { syncProprietairesEvoliz } from '../services/syncProprietaires'
-import { formatMontant } from '../lib/hospitable'
-import { setToken } from '../lib/hospitable'
+import { formatMontant, setToken } from '../lib/hospitable'
+import { calculerVentilationMois } from '../services/ventilation'
+import { syncPayouts, lancerMatching } from '../services/matching'
 
 export default function PageConfig() {
   const [testing, setTesting] = useState(false)
@@ -12,6 +13,61 @@ export default function PageConfig() {
 
   const companyId = import.meta.env.VITE_EVOLIZ_COMPANY_ID
   const supabaseUrl = import.meta.env.VITE_SUPABASE_URL
+
+  // Ventiler + Matcher
+  const [ventRunning, setVentRunning] = useState(false)
+  const [ventSteps, setVentSteps] = useState([])
+  const [ventDone, setVentDone] = useState(false)
+
+  const VENT_STEPS = [
+    { id: 'vent',     label: 'Ventilation comptable (all-time)' },
+    { id: 'matching', label: 'Matching bancaire automatique (all-time)' },
+  ]
+
+  async function lancerVentMatcher() {
+    setVentRunning(true)
+    setVentDone(false)
+    setVentSteps(VENT_STEPS.map(s => ({ ...s, status: 'pending' })))
+
+    const update = (id, status, detail) => setVentSteps(prev =>
+      prev.map(s => s.id === id ? { ...s, status, detail } : s)
+    )
+
+    // G\u00e9n\u00e9rer tous les mois depuis 2022-01
+    const allMois = []
+    const now = new Date()
+    let y = 2022, m = 1
+    while (y < now.getFullYear() || (y === now.getFullYear() && m <= now.getMonth() + 1)) {
+      allMois.push(`${y}-${String(m).padStart(2,'0')}`)
+      m++; if (m > 12) { m = 1; y++ }
+    }
+
+    // 1. Ventilation
+    update('vent', 'running')
+    try {
+      let total = 0, errors = 0
+      for (const mois of allMois) {
+        const v = await calculerVentilationMois(mois)
+        total += (v?.total || 0)
+        errors += (v?.errors || 0)
+      }
+      update('vent', 'ok', `${total} r\u00e9sa(s) ventil\u00e9e(s)${errors ? ` — ${errors} erreur(s)` : ''}`)
+    } catch(e) { update('vent', 'error', e.message) }
+
+    // 2. Matching
+    update('matching', 'running')
+    try {
+      let total = 0
+      for (const mois of allMois) {
+        const r = await lancerMatching(mois)
+        total += (r?.matched || 0)
+      }
+      update('matching', 'ok', `${total} virement(s) rapproch\u00e9(s)`)
+    } catch(e) { update('matching', 'error', e.message) }
+
+    setVentRunning(false)
+    setVentDone(true)
+  }
 
   // Global Update
   const [globalRunning, setGlobalRunning] = useState(false)
@@ -312,6 +368,42 @@ export default function PageConfig() {
         {globalDone && (
           <div className="alert alert-success" style={{ marginTop: 12 }}>
             ✅ Mise à jour terminée — toutes les données sont à jour pour {new Date().toISOString().slice(0,7)}
+          </div>
+        )}
+      </div>
+
+      {/* Ventiler + Matcher */}
+      <div className="card" style={{ marginBottom: 24, border: '2px solid #059669' }}>
+        <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom: 16 }}>
+          <div>
+            <h2 style={{ fontSize: 16, fontWeight: 700, color: '#059669', margin: 0 }}>
+              ⚡ Ventilation + Matching all-time
+            </h2>
+            <p style={{ margin: '4px 0 0', fontSize: 13, color: 'var(--text-muted)' }}>
+              Ventile toutes les réservations non ventilées + matching bancaire — all-time
+            </p>
+          </div>
+          <button onClick={lancerVentMatcher} disabled={ventRunning}
+            style={{ padding: '10px 20px', borderRadius: 8, border: 'none', background: ventRunning ? '#aaa' : '#059669', color: 'white', fontWeight: 700, fontSize: 14, cursor: ventRunning ? 'not-allowed' : 'pointer' }}>
+            {ventRunning ? '⏳ En cours...' : '⚡ Lancer'}
+          </button>
+        </div>
+        {ventSteps.length > 0 && (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+            {ventSteps.map(step => (
+              <div key={step.id} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '8px 12px', borderRadius: 8, background: step.status === 'ok' ? 'var(--success-bg)' : step.status === 'error' ? 'var(--danger-bg)' : step.status === 'running' ? '#ECFDF5' : '#f9f9f9', border: `1px solid ${step.status === 'ok' ? '#bbf7d0' : step.status === 'error' ? '#fca5a5' : step.status === 'running' ? '#059669' : 'var(--border)'}` }}>
+                <span style={{ fontSize: 16, width: 20, textAlign: 'center' }}>
+                  {step.status === 'ok' ? '✅' : step.status === 'error' ? '❌' : step.status === 'running' ? '⏳' : '○'}
+                </span>
+                <span style={{ flex: 1, fontWeight: 500, fontSize: 13 }}>{step.label}</span>
+                {step.detail && <span style={{ fontSize: 12, color: 'var(--text-muted)' }}>{step.detail}</span>}
+              </div>
+            ))}
+          </div>
+        )}
+        {ventDone && (
+          <div className="alert alert-success" style={{ marginTop: 12 }}>
+            ✅ Ventilation + matching terminés
           </div>
         )}
       </div>
