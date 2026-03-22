@@ -90,56 +90,112 @@ export async function getMouvementsMois(mois) {
   }
   }
 
-  // Enrichissement tertiaire : Stripe/Booking rapproch?s via payout_hospitable → payout_reservation
-  // Ces mouvements ont statut_matching = 'rapproche' mais pas de VIR li? directement
+  // Enrichissement tertiaire : Stripe via stripe_payout_line, Booking via booking_payout_line
   const encoreVides = mouvements.filter(m =>
     (m.statut_matching === 'rapproche' || m.statut_matching === 'matche_auto' || m.statut_matching === 'matche_manuel') && !m._resa
   )
   if (encoreVides.length > 0) {
     const mvtIds = encoreVides.map(m => m.id)
-    // Trouver les payouts li?s ? ces mouvements
-    const { data: payoutsLies } = await supabase
-      .from('payout_hospitable')
-      .select('id, mouvement_id, platform')
-      .in('mouvement_id', mvtIds)
-    if (payoutsLies?.length > 0) {
-      const payoutIds = payoutsLies.map(p => p.id)
-      // Trouver les r?servations via payout_reservation
-      const { data: prLinks } = await supabase
-        .from('payout_reservation')
-        .select(`payout_id, reservation_id,
-          reservation (id, code, platform, guest_name, arrival_date, departure_date, nights, fin_revenue,
-            bien (hospitable_name, agence, gestion_loyer))`)
-        .in('payout_id', payoutIds)
-      if (prLinks?.length > 0) {
-        // Construire un map mouvement_id → infos resa agr?g?es
-        const payoutToMvt = Object.fromEntries(payoutsLies.map(p => [p.id, p.mouvement_id]))
-        const infoByMouvP = {}
-        for (const link of prLinks) {
-          const mvtId = payoutToMvt[link.payout_id]
-          if (!mvtId || !link.reservation) continue
-          const r = link.reservation
-          if (!infoByMouvP[mvtId]) {
-            infoByMouvP[mvtId] = {
-              biens: [], guests: [], reservation_ids: [], codes: [],
-              platform: r.platform, arrival_date: r.arrival_date,
-              departure_date: r.departure_date, nights: 0, fin_revenue: 0, nb_resas: 0
-            }
+    const stripeIds  = encoreVides.filter(m => m.canal === 'stripe').map(m => m.id)
+    const bookingIds = encoreVides.filter(m => m.canal === 'booking').map(m => m.id)
+
+    // ── Stripe : stripe_payout_line → reservation via reservation_code ──────
+    if (stripeIds.length > 0) {
+      const { data: stripeLines } = await supabase
+        .from('stripe_payout_line')
+        .select('mouvement_id, reservation_code, guest_name, montant_net, description')
+        .in('mouvement_id', stripeIds)
+        .eq('type_ligne', 'reservation')
+
+      if (stripeLines?.length > 0) {
+        // Charger les r?servations correspondantes
+        const codes = [...new Set(stripeLines.map(l => l.reservation_code).filter(Boolean))]
+        const { data: resas } = await supabase
+          .from('reservation')
+          .select('id, code, platform, guest_name, arrival_date, departure_date, nights, fin_revenue, bien(hospitable_name, agence, gestion_loyer)')
+          .in('code', codes)
+
+        const resaByCode = Object.fromEntries((resas || []).map(r => [r.code, r]))
+
+        const infoStripe = {}
+        for (const line of stripeLines) {
+          const mvtId = line.mouvement_id
+          if (!infoStripe[mvtId]) infoStripe[mvtId] = { biens: [], guests: [], reservation_ids: [], codes: [], platform: 'direct', arrival_date: null, departure_date: null, nights: 0, fin_revenue: 0, nb_resas: 0 }
+          const info = infoStripe[mvtId]
+          const resa = resaByCode[line.reservation_code]
+          if (resa) {
+            const bien = resa.bien?.hospitable_name
+            if (bien && !info.biens.includes(bien)) info.biens.push(bien)
+            if (resa.guest_name && !info.guests.includes(resa.guest_name)) info.guests.push(resa.guest_name)
+            if (!info.reservation_ids.includes(resa.id)) info.reservation_ids.push(resa.id)
+            if (!info.codes.includes(resa.code)) info.codes.push(resa.code)
+            info.fin_revenue += (resa.fin_revenue || 0)
+            info.nights += (resa.nights || 0)
+            info.nb_resas++
+            if (!info.arrival_date || resa.arrival_date < info.arrival_date) info.arrival_date = resa.arrival_date
+            if (!info.departure_date || resa.departure_date > info.departure_date) info.departure_date = resa.departure_date
+          } else if (line.guest_name && !info.guests.includes(line.guest_name)) {
+            info.guests.push(line.guest_name)
           }
-          const info = infoByMouvP[mvtId]
-          const bien = r.bien?.hospitable_name
-          if (bien && !info.biens.includes(bien)) info.biens.push(bien)
-          if (r.guest_name && !info.guests.includes(r.guest_name)) info.guests.push(r.guest_name)
-          if (r.id && !info.reservation_ids.includes(r.id)) info.reservation_ids.push(r.id)
-          if (r.code && !info.codes.includes(r.code)) info.codes.push(r.code)
-          info.fin_revenue += (r.fin_revenue || 0)
-          info.nights += (r.nights || 0)
-          info.nb_resas++
+          if (line.reservation_code && !info.codes.includes(line.reservation_code)) info.codes.push(line.reservation_code)
         }
-        for (const m of encoreVides) {
-          if (infoByMouvP[m.id]) {
-            const info = infoByMouvP[m.id]
-            info.bien_name = info.biens.join(' | ')
+        for (const m of encoreVides.filter(m => m.canal === 'stripe')) {
+          if (infoStripe[m.id]) {
+            const info = infoStripe[m.id]
+            info.bien_name  = info.biens.join(' | ')
+            info.guest_name = info.guests.length === 1 ? info.guests[0] : (info.nb_resas + ' r?sa(s)')
+            m._resa = info
+          }
+        }
+      }
+    }
+
+    // ── Booking : booking_payout_line → reservation via booking_ref ──────────
+    if (bookingIds.length > 0) {
+      const { data: bookingLines } = await supabase
+        .from('booking_payout_line')
+        .select('mouvement_id, booking_ref, guest_name, checkin, checkout, property_name, amount_cents, gross_cents')
+        .in('mouvement_id', bookingIds)
+        .not('booking_ref', 'is', null)
+
+      if (bookingLines?.length > 0) {
+        // Chercher les r?servations Booking par platform_id (booking_ref)
+        const refs = [...new Set(bookingLines.map(l => l.booking_ref).filter(Boolean))]
+        const { data: resas } = await supabase
+          .from('reservation')
+          .select('id, code, platform, platform_id, guest_name, arrival_date, departure_date, nights, fin_revenue, bien(hospitable_name, agence, gestion_loyer)')
+          .eq('platform', 'booking')
+          .in('platform_id', refs)
+
+        const resaByRef = Object.fromEntries((resas || []).map(r => [r.platform_id, r]))
+
+        const infoBooking = {}
+        for (const line of bookingLines) {
+          const mvtId = line.mouvement_id
+          if (!infoBooking[mvtId]) infoBooking[mvtId] = { biens: [], guests: [], reservation_ids: [], codes: [], platform: 'booking', arrival_date: null, departure_date: null, nights: 0, fin_revenue: 0, nb_resas: 0 }
+          const info = infoBooking[mvtId]
+          const resa = resaByRef[line.booking_ref]
+          if (resa) {
+            const bien = resa.bien?.hospitable_name
+            if (bien && !info.biens.includes(bien)) info.biens.push(bien)
+            if (resa.guest_name && !info.guests.includes(resa.guest_name)) info.guests.push(resa.guest_name)
+            if (!info.reservation_ids.includes(resa.id)) info.reservation_ids.push(resa.id)
+            if (!info.codes.includes(resa.code)) info.codes.push(resa.code)
+            info.fin_revenue += (resa.fin_revenue || 0)
+            info.nights += (resa.nights || 0)
+            info.nb_resas++
+          } else {
+            // Fallback : utiliser les infos directement de booking_payout_line
+            if (line.property_name && !info.biens.includes(line.property_name)) info.biens.push(line.property_name)
+            if (line.checkin && (!info.arrival_date || line.checkin < info.arrival_date)) info.arrival_date = line.checkin
+            if (line.checkout && (!info.departure_date || line.checkout > info.departure_date)) info.departure_date = line.checkout
+          }
+          if (line.booking_ref && !info.codes.includes(line.booking_ref)) info.codes.push(line.booking_ref)
+        }
+        for (const m of encoreVides.filter(m => m.canal === 'booking')) {
+          if (infoBooking[m.id]) {
+            const info = infoBooking[m.id]
+            info.bien_name  = info.biens.join(' | ')
             info.guest_name = info.guests.length === 1 ? info.guests[0] : (info.nb_resas + ' r?sa(s)')
             m._resa = info
           }
@@ -148,7 +204,7 @@ export async function getMouvementsMois(mois) {
     }
   }
 
-  // Marquer les débits seuls comme debit_en_attente
+  // Marquer les d  // Marquer les débits seuls comme debit_en_attente
   for (const m of mouvements) {
     if (m.statut_matching === 'en_attente' && !(m.credit > 0) && m.debit > 0) {
       m.statut_matching = 'debit_en_attente'
