@@ -18,11 +18,21 @@ export default function App() {
   const [nbEnAttente, setNbEnAttente] = useState(0)
 
   useEffect(() => {
-    // Charger le nb de prestations en attente pour le badge
     const mois = new Date().toISOString().slice(0, 7)
-    supabase.from('prestation_hors_forfait').select('id', { count: 'exact' })
-      .eq('statut', 'en_attente').eq('mois', mois)
-      .then(({ count }) => setNbEnAttente(count || 0))
+    // Fonction de chargement du badge
+    const chargerBadge = () => {
+      supabase.from('prestation_hors_forfait').select('id', { count: 'exact' })
+        .eq('statut', 'en_attente').eq('mois', mois)
+        .then(({ count }) => setNbEnAttente(count || 0))
+    }
+    chargerBadge()
+    // Realtime : badge se met à jour dès qu'une prestation est créée ou validée
+    const channel = supabase.channel('badge-prestations')
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'prestation_hors_forfait' },
+        () => chargerBadge()
+      )
+      .subscribe()
+    return () => { supabase.removeChannel(channel) }
   }, [])
 
   return (
