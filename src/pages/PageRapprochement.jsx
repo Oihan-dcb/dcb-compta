@@ -90,6 +90,52 @@ export default function PageRapprochement() {
 
   useEffect(() => { charger() }, [charger])
 
+  
+  function exportCSV() {
+    const fmt = (v) => v != null ? String(v).replace(/"/g, '""') : ''
+    const fmtMontant = (v) => v != null ? (v / 100).toFixed(2).replace('.', ',') : ''
+    const fmtDate = (v) => v ? v.slice(0, 10) : ''
+
+    const rows = [
+      // En-tête
+      [
+        'Date', 'Libellé', 'N° virement', 'Entrée (€)', 'Sortie (€)',
+        'Statut', 'Canal', 'Bien(s)', 'Voyageur(s)', 'Plateforme',
+        'Arrivée', 'Départ', 'Revenu résa (€)'
+      ]
+    ]
+
+    for (const m of mouvements) {
+      const info = m._info || {}
+      const isEntree = (m.credit || 0) > 0
+      const isSortie = (m.debit || 0) > 0
+      rows.push([
+        fmt(fmtDate(m.date_operation)),
+        fmt(m.libelle),
+        fmt(m.reference || m.id?.slice(0, 8)),
+        isEntree ? fmtMontant(m.credit) : '',
+        isSortie ? fmtMontant(m.debit) : '',
+        fmt(m.statut_matching),
+        fmt(m.canal),
+        fmt((info.biens || []).join(' | ')),
+        fmt((info.guests || []).join(' | ')),
+        fmt(info.platform || ''),
+        fmt(info.arrival_date ? fmtDate(info.arrival_date) : ''),
+        fmt(info.departure_date ? fmtDate(info.departure_date) : ''),
+        info.fin_revenue ? fmtMontant(info.fin_revenue) : '',
+      ])
+    }
+
+    const csv = '\uFEFF' + rows.map(r => r.map(c => '"' + c + '"').join(';')).join('\n')
+    const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' })
+    const url = URL.createObjectURL(blob)
+    const a = document.createElement('a')
+    a.href = url
+    a.download = 'Rapprochement_' + mois + '.csv'
+    a.click()
+    URL.revokeObjectURL(url)
+  }
+
   async function lancerSync() {
     setSyncing(true)
     setSyncLog(null)
