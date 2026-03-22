@@ -40,7 +40,7 @@ export async function getMouvementsMois(mois) {
         for (const v of virs) {
           if (!v.mouvement_id || !v.reservation) continue
           if (!infoByMouv[v.mouvement_id]) {
-            infoByMouv[v.mouvement_id] = { biens: [], guests: [], platform: v.reservation.platform, gestion_loyer: v.reservation.bien?.gestion_loyer, agence: v.reservation.bien?.agence, arrival_date: v.reservation.arrival_date, fin_revenue: 0, nb_resas: 0 }
+            infoByMouv[v.mouvement_id] = { biens: [], guests: [], reservation_ids: [], codes: [], platform: v.reservation.platform, gestion_loyer: v.reservation.bien?.gestion_loyer, agence: v.reservation.bien?.agence, arrival_date: v.reservation.arrival_date, departure_date: v.reservation.departure_date, nights: v.reservation.nights, fin_revenue: 0, nb_resas: 0 }
           }
           const _info = infoByMouv[v.mouvement_id]
           const _bien = v.reservation.bien?.hospitable_name
@@ -48,6 +48,11 @@ export async function getMouvementsMois(mois) {
           if (v.reservation.guest_name && !_info.guests.includes(v.reservation.guest_name)) _info.guests.push(v.reservation.guest_name)
           _info.fin_revenue += (v.reservation.fin_revenue || 0)
           _info.nb_resas++
+          if (v.reservation.id && !_info.reservation_ids.includes(v.reservation.id)) _info.reservation_ids.push(v.reservation.id)
+          if (v.reservation.code && !_info.codes.includes(v.reservation.code)) _info.codes.push(v.reservation.code)
+          // Mettre à jour departure_date et nights si plusieurs resas
+          if (v.reservation.departure_date && (!_info.departure_date || v.reservation.departure_date > _info.departure_date)) _info.departure_date = v.reservation.departure_date
+          if (v.reservation.nights) _info.nights = (_info.nights || 0) + v.reservation.nights
         }
       }
     }
@@ -79,7 +84,7 @@ export async function getMouvementsMois(mois) {
         .sort((a, b) => Math.abs(a.fin_revenue - m.credit) - Math.abs(b.fin_revenue - m.credit))[0]
       if (best) {
         usedResaIds.add(best.id)
-        m._resa = { guest_name: best.guest_name, bien_name: best.bien?.hospitable_name, arrival_date: best.arrival_date, departure_date: best.departure_date, platform: best.platform, fin_revenue: best.fin_revenue, agence: best.bien?.agence, biens: [best.bien?.hospitable_name].filter(Boolean), guests: [best.guest_name].filter(Boolean), nb_resas: 1 }
+        m._resa = { guest_name: best.guest_name, bien_name: best.bien?.hospitable_name, arrival_date: best.arrival_date, departure_date: best.departure_date, nights: best.nights, platform: best.platform, fin_revenue: best.fin_revenue, agence: best.bien?.agence, biens: [best.bien?.hospitable_name].filter(Boolean), guests: [best.guest_name].filter(Boolean), reservation_ids: [best.id], codes: [best.code], nb_resas: 1 }
       }
     }
   }
@@ -105,8 +110,8 @@ export async function getVirNonRapproches(mois) {
     .from('ventilation')
     .select(`
       id, code, montant_ttc, mouvement_id, mois_comptable,
-      reservation (id, code, platform, guest_name, arrival_date, departure_date,
-        bien (code, hospitable_name))
+      reservation (id, code, platform, guest_name, arrival_date, departure_date, nights, fin_revenue,
+        bien (code, hospitable_name, gestion_loyer, agence))
     `)
     .eq('code', 'VIR')
     .is('mouvement_id', null)
