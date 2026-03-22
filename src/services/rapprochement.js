@@ -52,13 +52,15 @@ export async function getMouvementsMois(mois) {
         if (r.guest_name && !info.guests.includes(r.guest_name)) info.guests.push(r.guest_name)
         if (!info.reservation_ids.includes(r.id)) info.reservation_ids.push(r.id)
         if (!info.codes.includes(r.code)) info.codes.push(r.code)
-        info.fin_revenue += (r.fin_revenue || 0)
+        // fin_revenue = valeur de la résa (pas cumulative — une résa a un seul fin_revenue)
+        if (!info.fin_revenue) info.fin_revenue = r.fin_revenue || 0
         info.nb_resas++
       }
-      // Normaliser
+      // Normaliser + marquer comme enrichi par passe 0
       for (const info of Object.values(infoByMouv)) {
         info.bien_name  = info.biens.join(' | ')
         info.guest_name = info.guests.length === 1 ? info.guests[0] : (info.nb_resas + ' résa(s)')
+        info._fromPasse0 = true  // empêche la passe 1 de réécrire
       }
       // Attacher aux mouvements
       for (const m of rapproches) {
@@ -81,6 +83,7 @@ export async function getMouvementsMois(mois) {
       if (virs) {
         for (const v of virs) {
           if (!v.mouvement_id || !v.reservation) continue
+          if (infoByMouv[v.mouvement_id]?._fromPasse0) continue  // déjà enrichi via reservation_paiement
           if (!infoByMouv[v.mouvement_id]) {
             infoByMouv[v.mouvement_id] = { biens: [], guests: [], reservation_ids: [], codes: [], platform: v.reservation.platform, gestion_loyer: v.reservation.bien?.gestion_loyer, agence: v.reservation.bien?.agence, arrival_date: v.reservation.arrival_date, departure_date: v.reservation.departure_date, nights: v.reservation.nights, fin_revenue: 0, nb_resas: 0 }
           }
