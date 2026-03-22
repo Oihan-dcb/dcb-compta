@@ -33,7 +33,7 @@ export async function getMouvementsMois(mois) {
       const chunk = ids.slice(i, i + BATCH)
       const { data: virs } = await supabase
         .from('ventilation')
-        .select(`mouvement_id, reservation (guest_name, arrival_date, departure_date, platform, fin_revenue, bien (hospitable_name, gestion_loyer, agence))`)
+        .select(`mouvement_id, reservation (id, code, guest_name, arrival_date, departure_date, nights, platform, fin_revenue, bien (hospitable_name, gestion_loyer, agence))`)
         .eq('code', 'VIR')
         .in('mouvement_id', chunk)
       if (virs) {
