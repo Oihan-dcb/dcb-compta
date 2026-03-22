@@ -180,7 +180,7 @@ export default function PagePrestationsAE() {
                     <span style={{ background: '#f3f4f6', borderRadius: 5, padding: '2px 8px', fontSize: 12, color: '#555' }}>
                       🏠 {p.bien?.hospitable_name || p.bien?.code || '—'}
                     </span>
-                    <span style={{ background: '#eff6ff', borderRadius: 5, padding: '2px 8px', fontSize: 12, color: '#2563eb' }}>
+                    <span style={{ background: '#FFF8EC', borderRadius: 5, padding: '2px 8px', fontSize: 12, color: '#CC9933', border: '1px solid #E4A853' }}>
                       🧹 {p.ae?.prenom} {p.ae?.nom}
                     </span>
                     {p.mission?.date_mission && (
