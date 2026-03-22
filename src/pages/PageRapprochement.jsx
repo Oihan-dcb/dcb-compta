@@ -50,6 +50,7 @@ export default function PageRapprochement() {
   const [filtre, setFiltre] = useState('tous')
   const [mouvSelId, setMouvSelId] = useState(null)   // mouvement sélectionné pour matching manuel
   const [virsSel, setVirsSel] = useState([])           // VIR sélectionnés pour matching manuel
+  const [soldeInfo, setSoldeInfo] = useState(null)
   const [saving, setSaving] = useState(false)
   const [alertes, setAlertes] = useState({ virOrphelins: 0, resasNonRapprochees: 0 })
   const [filtreCanal, setFiltreCanal] = useState('tous')
@@ -244,8 +245,48 @@ export default function PageRapprochement() {
   async function confirmerMatchManuel() {
     if (!mouvSelId || virsSel.length === 0) return
     setSaving(true)
+    setSoldeInfo(null)
     try {
-      await matcherManuellement(mouvSelId, virsSel)
+      // Récupérer les infos du virement et des VIR sélectionnés
+      const mvt = mouvements.find(m => m.id === mouvSelId)
+      const virSelData = virs.filter(v => virsSel.includes(v.id))
+      const virTTC = virSelData.reduce((s, v) => s + (v.montant_ttc || 0), 0)
+
+      // Vérifier les paiements déjà reçus pour cette résa
+      const resaIds = [...new Set(virSelData.map(v => v.reservation?.id).filter(Boolean))]
+      let dejaRecu = 0
+      let typePaiement = 'total'
+
+      if (resaIds.length > 0 && mvt) {
+        const { data: existing } = await supabase
+          .from('reservation_paiement')
+          .select('montant, type_paiement')
+          .in('reservation_id', resaIds)
+        dejaRecu = (existing || []).reduce((s, p) => s + (p.montant || 0), 0)
+        const soldeRestant = virTTC - dejaRecu
+        const credit = mvt.credit || 0
+
+        if (dejaRecu > 0) {
+          // Il y a déjà un acompte — vérifier que le montant ne dépasse pas le solde
+          if (credit > soldeRestant + 100) { // tolérance 1€
+            setError(`Montant trop élevé : solde restant est ${(soldeRestant/100).toFixed(2)} €, virement reçu : ${(credit/100).toFixed(2)} €`)
+            setSaving(false)
+            return
+          }
+          typePaiement = credit >= soldeRestant - 100 ? 'solde' : 'acompte'
+        } else {
+          // Premier paiement
+          typePaiement = credit >= virTTC - 100 ? 'total' : 'acompte'
+        }
+
+        setSoldeInfo({
+          virTTC, dejaRecu, credit,
+          soldeRestant: virTTC - dejaRecu - credit,
+          type: typePaiement
+        })
+      }
+
+      await matcherManuellement(mouvSelId, virsSel, typePaiement)
       setMouvSelId(null)
       setVirsSel([])
       await charger()
@@ -575,6 +616,20 @@ export default function PageRapprochement() {
               style={{ width: '100%', background: virsSel.length === 0 ? '#aaa' : '#CC9933', color: '#fff', border: 'none', borderRadius: 8, padding: '10px', fontWeight: 700, cursor: virsSel.length === 0 ? 'not-allowed' : 'pointer', fontSize: 14 }}>
               {saving ? 'Enregistrement...' : `Confirmer (${virsSel.length} VIR)`}
             </button>
+            {/* Indicateur acompte/solde */}
+            {!saving && virsSel.length > 0 && mouvSel && (() => {
+              const virSelData = virs.filter(v => virsSel.includes(v.id))
+              const virTTC = virSelData.reduce((s,v) => s + (v.montant_ttc||0), 0)
+              const credit = mouvSel.credit || 0
+              const diff = virTTC - credit
+              if (diff <= 100) return null // total ou quasi-total
+              return (
+                <div style={{ marginTop:8, padding:'8px 12px', borderRadius:8, background:'#FFFBEB', border:'1px solid #FCD34D', fontSize:12 }}>
+                  <strong>⚠️ Acompte</strong> — Solde restant après ce virement :
+                  <strong style={{color:'#D97706'}}> {((diff)/100).toFixed(2)} €</strong>
+                </div>
+              )
+            })()}
           </div>
         )}
       </div>
