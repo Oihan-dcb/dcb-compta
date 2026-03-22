@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { supabase } from '../lib/supabase'
 import { formatMontant } from '../lib/hospitable'
 import { toggleOwnerStay } from '../hooks/useOwnerStay'
@@ -184,6 +184,14 @@ export default function ModalResa({ resa, onClose, onSaved }) {
   const ventil = resa.ventilation || []
   const isManual = resa.platform === 'manual'
   const [editing, setEditing] = useState(false)
+  const [paiementsInfo, setPaiementsInfo] = useState([])
+  useEffect(() => {
+    if (!resa?.id) return
+    supabase.from('reservation_paiement')
+      .select('montant, type_paiement, description_paiement, date_paiement, mouvement_id')
+      .eq('reservation_id', resa.id)
+      .then(({ data }) => setPaiementsInfo(data || []))
+  }, [resa?.id])
 
   function handleProprio() {
     onClose()
@@ -266,6 +274,26 @@ export default function ModalResa({ resa, onClose, onSaved }) {
                 ))}
               </tbody>
             </table>
+            {paiementsInfo.length > 0 && (
+              <div style={{ marginTop: 12, padding: '10px 12px', background: '#FFFBEB', borderRadius: 8, border: '1px solid #FCD34D', fontSize: '0.85em' }}>
+                <div style={{ fontWeight: 700, color: '#92400E', marginBottom: 6, textTransform: 'uppercase', fontSize: '0.75em', letterSpacing: '0.05em' }}>
+                  💳 Paiements reçus voyageur
+                </div>
+                {paiementsInfo.map((p, i) => (
+                  <div key={i} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '3px 0', borderTop: i > 0 ? '1px solid #FDE68A' : 'none' }}>
+                    <div>
+                      <span style={{ fontWeight: 600, color: '#D97706', marginRight: 8 }}>
+                        {p.type_paiement === 'acompte' ? 'Acompte' : p.type_paiement === 'solde' ? 'Solde' : 'Total'}
+                      </span>
+                      {p.description_paiement && <span style={{ color: '#78350F', fontSize: '0.9em' }}>{p.description_paiement}</span>}
+                    </div>
+                    <strong style={{ color: '#92400E' }}>
+                      {p.date_paiement ? new Date(p.date_paiement).toLocaleDateString('fr-FR') : ''} — {(p.montant/100).toFixed(2)} €
+                    </strong>
+                  </div>
+                ))}
+              </div>
+            )}
           </>
         ) : (
           <div style={{ borderTop: '1px solid #eee', paddingTop: 16 }}>
