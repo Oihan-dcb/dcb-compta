@@ -188,8 +188,20 @@ export async function getMouvementsMois(mois) {
           if (infoStripe[m.id]) {
             const info = infoStripe[m.id]
             info.bien_name  = info.biens.join(' | ')
-            info.guest_name = info.guests.length === 1 ? info.guests[0] : (info.nb_resas + ' r?sa(s)')
+            info.guest_name = info.guests.length === 1 ? info.guests[0] : (info.nb_resas + ' résa(s)')
             m._resa = info
+            // Alimenter reservation_paiement (automatique pour les prochains virements)
+            const mvtObj = m
+            for (const resaId of info.reservation_ids) {
+              const line = stripeLines?.find(l => resaByCode[l.reservation_code]?.id === resaId)
+              const montant = line ? line.montant_net : mvtObj.credit
+              const finRev = stripeLines ? (resaByCode[line?.reservation_code]?.fin_revenue || 0) : 0
+              supabase.from('reservation_paiement').upsert({
+                reservation_id: resaId, mouvement_id: m.id,
+                montant, date_paiement: mvtObj.date_operation,
+                type_paiement: (finRev && montant >= finRev * 0.99) ? 'total' : 'acompte'
+              }, { onConflict: 'reservation_id,mouvement_id', ignoreDuplicates: true }).then(() => {})
+            }
           }
         }
       }
@@ -241,8 +253,20 @@ export async function getMouvementsMois(mois) {
           if (infoBooking[m.id]) {
             const info = infoBooking[m.id]
             info.bien_name  = info.biens.join(' | ')
-            info.guest_name = info.guests.length === 1 ? info.guests[0] : (info.nb_resas + ' r?sa(s)')
+            info.guest_name = info.guests.length === 1 ? info.guests[0] : (info.nb_resas + ' résa(s)')
             m._resa = info
+            // Alimenter reservation_paiement (automatique pour les prochains virements)
+            for (const resaId of info.reservation_ids) {
+              const bRef = Object.keys(resaByRef).find(k => resaByRef[k]?.id === resaId)
+              const line = bookingLines?.find(l => l.booking_ref === bRef)
+              const montant = line ? line.amount_cents : m.credit
+              const finRev = resaByRef[bRef]?.fin_revenue || 0
+              supabase.from('reservation_paiement').upsert({
+                reservation_id: resaId, mouvement_id: m.id,
+                montant, date_paiement: m.date_operation,
+                type_paiement: (finRev && montant >= finRev * 0.99) ? 'total' : 'acompte'
+              }, { onConflict: 'reservation_id,mouvement_id', ignoreDuplicates: true }).then(() => {})
+            }
           }
         }
       }
