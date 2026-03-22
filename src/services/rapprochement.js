@@ -202,8 +202,9 @@ export async function getMouvementsMois(mois) {
               supabase.from('reservation_paiement').upsert({
                 reservation_id: resaId, mouvement_id: m.id,
                 montant, date_paiement: mvtObj.date_operation,
+                description_paiement: line?.description || null,
                 type_paiement: (finRev && montant >= finRev * 0.99) ? 'total' : 'acompte'
-              }, { onConflict: 'reservation_id,mouvement_id', ignoreDuplicates: true }).then(() => {})
+              }, { onConflict: 'reservation_id,mouvement_id', ignoreDuplicates: false }).then(() => {})
             }
           }
         }
