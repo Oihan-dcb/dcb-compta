@@ -183,7 +183,7 @@ export default function PageRapprochement() {
         if (!v) return ['', '', '']
         return [eu(v.montant_ht), eu(v.montant_tva), eu(v.montant_ttc)]
       })
-      const pct = (montantResa && finRev) ? (montantResa/finRev*100).toFixed(1).replace('.',',') + ' %' : ''
+      // Stripe/Booking : pas d'acompte/% (montant détaillé par resa dans Entrée EUR)
       const note = m.statut_matching === 'non_identifie' ? 'Non identifié' : m.statut_matching === 'en_attente' ? 'En attente' : ''
       return [
         q(dt(m.date_operation)), q(m.libelle), q(m.reference || ''),
@@ -194,7 +194,7 @@ export default function PageRapprochement() {
         q(dt(resaData?.arrival_date)), q(dt(resaData?.departure_date)), q(resaData?.nights || ''),
         q(resaData?.code || ''), q(finRev ? eu(finRev) : ''),
         ...ventCols.map(q),
-        q(montantResa ? eu(montantResa) : ''), q(pct), q(typePmt || ''), q(descPmt || ''), q(note),
+        q(''), q(''), q(''), q(descPmt || ''), q(note),
       ].join(';')
     }
 
