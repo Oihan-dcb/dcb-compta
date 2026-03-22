@@ -96,16 +96,18 @@ export async function getMouvementsMois(mois) {
 }
 
 export async function getVirNonRapproches(mois) {
+  // Charge les VIR non rapproch?s de TOUS les mois
+  // (un accompte peut ?tre pay? avant le mois du s?jour)
   const { data, error } = await supabase
     .from('ventilation')
     .select(`
-      id, code, montant_ttc, mouvement_id,
+      id, code, montant_ttc, mouvement_id, mois_comptable,
       reservation (id, code, platform, guest_name, arrival_date, departure_date,
         bien (code, hospitable_name))
     `)
     .eq('code', 'VIR')
-    .eq('mois_comptable', mois)
     .is('mouvement_id', null)
+    .order('mois_comptable', { ascending: false })
   if (error) throw error
   return data || []
 }
