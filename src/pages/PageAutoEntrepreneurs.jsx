@@ -28,7 +28,16 @@ export default function PageAutoEntrepreneurs() {
   const [editingPT, setEditingPT] = useState(null)
   const [formPT, setFormPT] = useState({ nom: '', description: '', taux_defaut: 2500, unite: 'heure' })
 
-  useEffect(() => { charger() }, [])
+  useEffect(() => {
+    charger()
+    // Realtime : rafraîchit si des missions sont ajoutées
+    const channel = supabase.channel('ae-changes')
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'mission_menage' },
+        () => charger()
+      )
+      .subscribe()
+    return () => { supabase.removeChannel(channel) }
+  }, [])
 
   async function charger() {
     setLoading(true)
