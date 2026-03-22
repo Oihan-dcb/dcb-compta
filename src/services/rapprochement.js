@@ -21,9 +21,51 @@ export async function getMouvementsMois(mois) {
   if (error) throw error
   const mouvements = data || []
 
-  // Enrichir les mouvements rapprochés via ventilation → reservation → bien
+  // Enrichir les mouvements rapprochés
   const rapproches = mouvements.filter(m => m.statut_matching === 'rapproche')
   const infoByMouv = {}
+
+  // Passe 0 : reservation_paiement — multi-virements manuels (accomptes, soldes)
+  if (rapproches.length > 0) {
+    const mvtIds = rapproches.map(m => m.id)
+    const { data: paiements } = await supabase
+      .from('reservation_paiement')
+      .select(`mouvement_id, type_paiement, montant,
+        reservation (id, code, platform, guest_name, arrival_date, departure_date, nights, fin_revenue,
+          bien (hospitable_name, agence, gestion_loyer))`)
+      .in('mouvement_id', mvtIds)
+    if (paiements?.length) {
+      for (const p of paiements) {
+        if (!p.mouvement_id || !p.reservation) continue
+        const r = p.reservation
+        if (!infoByMouv[p.mouvement_id]) {
+          infoByMouv[p.mouvement_id] = {
+            biens: [], guests: [], reservation_ids: [], codes: [],
+            platform: r.platform, arrival_date: r.arrival_date,
+            departure_date: r.departure_date, nights: r.nights || 0,
+            fin_revenue: 0, nb_resas: 0, type_paiement: p.type_paiement
+          }
+        }
+        const info = infoByMouv[p.mouvement_id]
+        const bien = r.bien?.hospitable_name
+        if (bien && !info.biens.includes(bien)) info.biens.push(bien)
+        if (r.guest_name && !info.guests.includes(r.guest_name)) info.guests.push(r.guest_name)
+        if (!info.reservation_ids.includes(r.id)) info.reservation_ids.push(r.id)
+        if (!info.codes.includes(r.code)) info.codes.push(r.code)
+        info.fin_revenue += (r.fin_revenue || 0)
+        info.nb_resas++
+      }
+      // Normaliser
+      for (const info of Object.values(infoByMouv)) {
+        info.bien_name  = info.biens.join(' | ')
+        info.guest_name = info.guests.length === 1 ? info.guests[0] : (info.nb_resas + ' résa(s)')
+      }
+      // Attacher aux mouvements
+      for (const m of rapproches) {
+        if (infoByMouv[m.id]) m._resa = infoByMouv[m.id]
+      }
+    }
+  }
 
   if (rapproches.length > 0) {
     const ids = rapproches.map(m => m.id)
@@ -444,13 +486,47 @@ export async function annulerRapprochement(mouvementId) {
 
 // ── HELPERS PRIVÉS ─────────────────────────────────────────────
 
-async function _lier(mouvementId, virIds, statut = 'rapproche') {
+async function _lier(mouvementId, virIds, statut = 'rapproche', typePaiement = null) {
+  // Lier les VIR ? ce mouvement
   await supabase.from('ventilation').update({ mouvement_id: mouvementId }).in('id', virIds)
   await supabase.from('mouvement_bancaire').update({ statut_matching: statut }).eq('id', mouvementId)
-  const { data: v } = await supabase.from('ventilation').select('reservation_id').in('id', virIds)
+
+  // R?cup?rer les r?servations et le mouvement
+  const { data: v } = await supabase.from('ventilation')
+    .select('reservation_id')
+    .in('id', virIds)
+  const { data: mvt } = await supabase.from('mouvement_bancaire')
+    .select('credit, date_operation')
+    .eq('id', mouvementId)
+    .single()
+
   if (v?.length) {
     const ids = [...new Set(v.map(x => x.reservation_id).filter(Boolean))]
-    if (ids.length) await supabase.from('reservation').update({ rapprochee: true }).in('id', ids)
+    if (ids.length) {
+      // Marquer les r?servations comme rapproch?es
+      await supabase.from('reservation').update({ rapprochee: true }).in('id', ids)
+
+      // Enregistrer dans reservation_paiement
+      if (mvt) {
+        // D?terminer le type : si d?j? un paiement existe pour cette resa → acompte/solde
+        const { data: existing } = await supabase
+          .from('reservation_paiement')
+          .select('id')
+          .in('reservation_id', ids)
+        const type = typePaiement || (existing?.length ? 'solde' : 'acompte')
+        const paiements = ids.map(rid => ({
+          reservation_id: rid,
+          mouvement_id: mouvementId,
+          montant: mvt.credit,
+          date_paiement: mvt.date_operation,
+          type_paiement: type,
+        }))
+        await supabase.from('reservation_paiement').upsert(paiements, {
+          onConflict: 'reservation_id,mouvement_id',
+          ignoreDuplicates: true
+        })
+      }
+    }
   }
 }
 
