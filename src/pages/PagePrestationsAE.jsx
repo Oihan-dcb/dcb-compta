@@ -19,7 +19,16 @@ export default function PagePrestationsAE() {
   const [success, setSuccess] = useState(null)
   const [confirmModal, setConfirmModal] = useState(null)
 
-  useEffect(() => { charger() }, [mois, filtre])
+  useEffect(() => {
+    charger()
+    // Realtime : rafraîchit automatiquement quand une prestation est créée/modifiée
+    const channel = supabase.channel('phf-changes')
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'prestation_hors_forfait' },
+        () => charger()
+      )
+      .subscribe()
+    return () => { supabase.removeChannel(channel) }
+  }, [mois, filtre])
 
   async function charger() {
     setLoading(true)
