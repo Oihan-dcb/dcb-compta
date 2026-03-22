@@ -27,6 +27,7 @@ export default function PageFactures() {
   const [generating, setGenerating] = useState(false)
   const [exporting, setExporting] = useState(false)
   const [pushing, setPushing] = useState(false)
+  const [showConfirmEvoliz, setShowConfirmEvoliz] = useState(false)
   const [pushResult, setPushResult] = useState(null)
   const [expanded, setExpanded] = useState(null)
   const [error, setError] = useState(null)
@@ -95,7 +96,7 @@ export default function PageFactures() {
     }
   }
 
-  async function pousserVersEvoliz() {
+  async function executerPousserEvoliz() {
     setPushing(true)
     setPushResult(null)
     setError(null)
@@ -130,7 +131,7 @@ export default function PageFactures() {
           </button>
           <button
             className="btn btn-secondary"
-            onClick={pousserVersEvoliz}
+            onClick={() => setShowConfirmEvoliz(true)}
             disabled={pushing || stats?.valides === 0}
             title={stats?.valides === 0 ? 'Aucune facture validée à envoyer' : `Envoyer ${stats?.valides} facture(s) validée(s) vers Evoliz`}
           >
@@ -353,6 +354,69 @@ export default function PageFactures() {
               </div>
             )
           })}
+        </div>
+      )}
+
+      {/* Modal confirmation Evoliz */}
+      {showConfirmEvoliz && (
+        <div style={{
+          position: 'fixed', inset: 0, background: 'rgba(44,36,22,0.45)',
+          display: 'flex', alignItems: 'center', justifyContent: 'center',
+          zIndex: 1000
+        }}>
+          <div style={{
+            background: 'var(--bg, #F7F3EC)',
+            border: '2px solid var(--brand, #CC9933)',
+            borderRadius: 16,
+            padding: '32px 36px',
+            maxWidth: 440,
+            width: '90%',
+            boxShadow: '0 8px 32px rgba(44,36,22,0.18)'
+          }}>
+            <h3 style={{ margin: '0 0 8px', color: 'var(--text, #2C2416)', fontSize: 18, fontWeight: 700 }}>
+              Pousser vers Evoliz
+            </h3>
+            <p style={{ margin: '0 0 20px', color: 'var(--text-muted, #8C7B65)', lineHeight: 1.5 }}>
+              Tu es sur le point d'envoyer{' '}
+              <strong style={{ color: 'var(--text, #2C2416)' }}>
+                {stats?.valides ?? 0} facture{(stats?.valides ?? 0) > 1 ? 's' : ''} validée{(stats?.valides ?? 0) > 1 ? 's' : ''}
+              </strong>{' '}
+              vers Evoliz pour le mois de <strong style={{ color: 'var(--text, #2C2416)' }}>{mois}</strong>.
+              <br /><br />
+              <span style={{ color: '#B45309', fontWeight: 600 }}>⚠ Cette action est irréversible</span> — les factures seront créées dans Evoliz.
+            </p>
+            <div style={{ display: 'flex', gap: 12, justifyContent: 'flex-end' }}>
+              <button
+                onClick={() => setShowConfirmEvoliz(false)}
+                disabled={pushing}
+                style={{
+                  padding: '10px 20px', borderRadius: 8,
+                  border: '1.5px solid var(--border, #D9CEB8)',
+                  background: 'white', color: 'var(--text, #2C2416)',
+                  cursor: 'pointer', fontWeight: 600, fontSize: 14
+                }}
+              >
+                Annuler
+              </button>
+              <button
+                onClick={async () => {
+                  setShowConfirmEvoliz(false)
+                  await executerPousserEvoliz()
+                }}
+                disabled={pushing}
+                style={{
+                  padding: '10px 20px', borderRadius: 8,
+                  border: 'none',
+                  background: 'var(--brand, #CC9933)',
+                  color: 'white',
+                  cursor: pushing ? 'not-allowed' : 'pointer',
+                  fontWeight: 700, fontSize: 14
+                }}
+              >
+                {pushing ? 'Envoi…' : 'Confirmer l'envoi'}
+              </button>
+            </div>
+          </div>
         </div>
       )}
     </div>
