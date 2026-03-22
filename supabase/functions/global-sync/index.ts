@@ -1184,7 +1184,10 @@ Deno.serve(async (req) => {
 
   supabase = createClient(SUPABASE_URL, SERVICE_KEY)
   const log = { biens: null, resas: null, payouts: null, vent: null, matching: null, errors: [] }
-  const allMois = allMoisDepuis2022()
+  const body = await req.json().catch(() => ({}))
+  const moisDebut = body.mois_debut || '2022-01'
+  const moisFin   = body.mois_fin   || new Date().toISOString().slice(0,7)
+  const allMois = allMoisDepuis2022().filter(m => m >= moisDebut && m <= moisFin)
 
   try {
     // 1. Sync biens ──────────────────────────────────────────────────────────
