@@ -92,11 +92,6 @@ export default function PageBanque() {
     })
   }
 
-
-    try {
-      const { error } = await supabase.from('mouvement_bancaire').delete().eq('id', id)
-  }
-
   async function supprimerMois() {
     if (!suppression) return
     setSupprimant(true)
