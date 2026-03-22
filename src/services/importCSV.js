@@ -101,7 +101,7 @@ export async function importHospitableCSV(rows, moisFiltres = null, onProgress =
         ...base,
         hospitable_id: row.uuid || null,
         bien_id: bienId,
-        platform: row.platform,
+        platform: (row.platform === 'booking.com' ? 'booking' : row.platform),
         arrival_date: row.checkin_date || null,
         departure_date: row.checkout_date || null,
         nights: row.nights ? parseInt(row.nights) : null,
