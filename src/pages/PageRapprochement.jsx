@@ -54,6 +54,7 @@ export default function PageRapprochement() {
   const [alertes, setAlertes] = useState({ virOrphelins: 0, resasNonRapprochees: 0 })
   const [filtreCanal, setFiltreCanal] = useState('tous')
   const [virSearch, setVirSearch] = useState('')
+  const [virMoisFiltre, setVirMoisFiltre] = useState(mois) // filtre mois dans panneau Lier
   const [syncing, setSyncing] = useState(false)
   const [syncLog, setSyncLog] = useState(null)
 
@@ -456,11 +457,41 @@ export default function PageRapprochement() {
               )}
             </div>
 
+            <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', marginBottom:8 }}>
+              <span style={{ fontSize:11, fontWeight:600, color:'var(--text-muted,#8C7B65)', textTransform:'uppercase', letterSpacing:'0.5px' }}>
+                Mois du s?jour
+              </span>
+              <div style={{ display:'flex', alignItems:'center', gap:4 }}>
+                <button onClick={() => {
+                  const [y,m] = virMoisFiltre.split('-').map(Number)
+                  const prev = m === 1 ? `${y-1}-12` : `${y}-${String(m-1).padStart(2,'0')}`
+                  setVirMoisFiltre(prev)
+                }} style={{ border:'1px solid var(--border,#D9CEB8)', borderRadius:5, background:'var(--bg,#F7F3EC)', width:22, height:22, cursor:'pointer', fontSize:13, display:'flex', alignItems:'center', justifyContent:'center' }}>?</button>
+                <span style={{ fontSize:12, fontWeight:600, minWidth:60, textAlign:'center' }}>{virMoisFiltre}</span>
+                <button onClick={() => {
+                  const [y,m] = virMoisFiltre.split('-').map(Number)
+                  const next = m === 12 ? `${y+1}-01` : `${y}-${String(m+1).padStart(2,'0')}`
+                  setVirMoisFiltre(next)
+                }} style={{ border:'1px solid var(--border,#D9CEB8)', borderRadius:5, background:'var(--bg,#F7F3EC)', width:22, height:22, cursor:'pointer', fontSize:13, display:'flex', alignItems:'center', justifyContent:'center' }}>?</button>
+                <button onClick={() => setVirMoisFiltre('tous')} style={{ fontSize:10, border:'1px solid var(--border,#D9CEB8)', borderRadius:5, background: virMoisFiltre==='tous' ? 'var(--brand,#CC9933)' : 'var(--bg,#F7F3EC)', color: virMoisFiltre==='tous' ? 'white' : 'var(--text,#2C2416)', padding:'2px 6px', cursor:'pointer', fontWeight:600 }}>
+                  Tous
+                </button>
+              </div>
+            </div>
+                   <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', marginBottom:8 }}>
+              <span style={{ fontSize:11, fontWeight:600, color:'var(--text-muted,#8C7B65)', textTransform:'uppercase' }}>Séjour</span>
+              <div style={{ display:'flex', alignItems:'center', gap:4 }}>
+                <button onClick={() => { const [y,m] = virMoisFiltre === 'tous' ? [new Date().getFullYear(), new Date().getMonth()+1] : virMoisFiltre.split('-').map(Number); const p = m===1 ? `${y-1}-12` : `${y}-${String(m-1).padStart(2,'0')}`; setVirMoisFiltre(p) }} style={{ border:'1px solid var(--border,#D9CEB8)', borderRadius:5, background:'var(--bg,#F7F3EC)', width:22, height:22, cursor:'pointer', fontSize:13 }}>&#8249;</button>
+                <span style={{ fontSize:12, fontWeight:600, minWidth:60, textAlign:'center' }}>{virMoisFiltre === 'tous' ? 'Tous' : virMoisFiltre}</span>
+                <button onClick={() => { const [y,m] = virMoisFiltre === 'tous' ? [new Date().getFullYear(), new Date().getMonth()+1] : virMoisFiltre.split('-').map(Number); const n = m===12 ? `${y+1}-01` : `${y}-${String(m+1).padStart(2,'0')}`; setVirMoisFiltre(n) }} style={{ border:'1px solid var(--border,#D9CEB8)', borderRadius:5, background:'var(--bg,#F7F3EC)', width:22, height:22, cursor:'pointer', fontSize:13 }}>&#8250;</button>
+                <button onClick={() => setVirMoisFiltre('tous')} style={{ fontSize:10, border:'1px solid var(--border,#D9CEB8)', borderRadius:5, background: virMoisFiltre==='tous' ? 'var(--brand,#CC9933)' : 'var(--bg,#F7F3EC)', color: virMoisFiltre==='tous' ? 'white' : 'var(--text,#2C2416)', padding:'2px 6px', cursor:'pointer', fontWeight:600 }}>Tous</button>
+              </div>
+            </div>
             <input placeholder="Rechercher..." value={virSearch} onChange={e => setVirSearch(e.target.value)} style={{ width:'100%', padding:'7px 10px', borderRadius:8, border:'1px solid #e5e7eb', fontSize:12, marginBottom:10, boxSizing:'border-box' }} />
             <div style={{ maxHeight: 380, overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: 6, marginBottom: 16 }}>
               {virs.length === 0 ? (
                 <div style={{ color: '#aaa', fontSize: 13, textAlign: 'center', padding: 16 }}>Tous les VIR sont déjà rapprochés</div>
-              ) : virs.filter(v => !virSearch || v.reservation?.guest_name?.toLowerCase().includes(virSearch.toLowerCase()) || v.reservation?.bien?.hospitable_name?.toLowerCase().includes(virSearch.toLowerCase()) || v.reservation?.code?.toLowerCase().includes(virSearch.toLowerCase())).map(v => {
+              ) : virs.filter(v => virMoisFiltre === 'tous' || v.mois_comptable === virMoisFiltre).filter(v => !virSearch || v.reservation?.guest_name?.toLowerCase().includes(virSearch.toLowerCase()) || v.reservation?.bien?.hospitable_name?.toLowerCase().includes(virSearch.toLowerCase()) || v.reservation?.code?.toLowerCase().includes(virSearch.toLowerCase())).map(v => {
                 const checked = virsSel.includes(v.id)
                 return (
                   <label key={v.id} style={{ display: 'flex', alignItems: 'flex-start', gap: 8, padding: '8px 10px', borderRadius: 8, border: `1.5px solid ${checked ? '#E4A853' : '#e5e7eb'}`, background: checked ? '#FFF8EC' : '#fff', cursor: 'pointer', fontSize: 12 }}>
