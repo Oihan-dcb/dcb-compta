@@ -99,36 +99,102 @@ export default function PageRapprochement() {
   }, [charger])
 
   
-  function exportCSV() {
-    const q = (v) => v != null ? '"' + String(v).replace(/"/g, '""') + '"' : '""'
-    const euro = (v) => v ? (v / 100).toFixed(2).replace('.', ',') : ''
-    const dt = (v) => v ? String(v).slice(0, 10) : ''
+  async function exportCSV() {
+    // Helpers
+    const q  = (v) => v != null ? '"' + String(v).replace(/"/g, '""') + '"' : '""'
+    const eu = (v) => v != null ? (v / 100).toFixed(2).replace('.', ',') : ''
+    const dt = (v) => {
+      if (!v) return ''
+      const d = new Date(v)
+      if (isNaN(d)) return String(v).slice(0, 10)
+      return String(d.getDate()).padStart(2,'0') + '/' + String(d.getMonth()+1).padStart(2,'0') + '/' + d.getFullYear()
+    }
 
+    // Charger les ventilations pour tous les mouvements rapprochés du mois
+    const resaIds = mouvements
+      .filter(m => m.statut_matching === 'rapproche')
+      .flatMap(m => {
+        const info = m._info || {}
+        return info.reservation_ids || (m._resa?.id ? [m._resa.id] : [])
+      })
+      .filter(Boolean)
+
+    // Charger toutes les ventilations en une requête
+    let ventByResa = {}
+    if (resaIds.length > 0) {
+      const { data: vents } = await supabase
+        .from('ventilation')
+        .select('reservation_id, code, libelle, montant_ht, montant_tva, montant_ttc')
+        .in('reservation_id', [...new Set(resaIds)])
+        .order('code')
+      if (vents) {
+        for (const v of vents) {
+          if (!ventByResa[v.reservation_id]) ventByResa[v.reservation_id] = []
+          ventByResa[v.reservation_id].push(v)
+        }
+      }
+    }
+
+    // Codes comptables dans l'ordre
+    const CODES = ['HON', 'FMEN', 'AUTO', 'LOY', 'VIR', 'TAXE', 'MEN']
+
+    // En-têtes
+    const ventHeaders = CODES.flatMap(c => [c + ' HT', c + ' TVA', c + ' TTC'])
     const header = [
-      'Date', 'Libelle', 'N virement', 'Reference', 'Entree EUR', 'Sortie EUR',
-      'Statut', 'Canal', 'Biens', 'Voyageurs', 'Plateforme',
-      'Arrivee', 'Depart', 'Revenu resa EUR'
+      'Date opération',
+      'Libellé virement',
+      'Référence',
+      'Entrée (EUR)',
+      'Sortie (EUR)',
+      'Statut',
+      'Canal',
+      'Bien(s)',
+      'Voyageur(s)',
+      'Plateforme',
+      'Check-in',
+      'Check-out',
+      'Née résa',
+      'Code résa',
+      'Nuits',
+      'Revenu net (EUR)',
+      ...ventHeaders,
+      'Notes',
     ].map(q).join(';')
 
-    const lines = mouvements.map(m => {
-      // _info = mouvement rapproche via VIR (entrées)
-      // _resa = mouvement rapproche via débit
-      const info = m._info || {}
-      const resa = m._resa || {}
-      const biens   = info.biens?.length ? info.biens.join(' | ') : (resa.bien_name || '')
-      const guests  = info.guests?.length ? info.guests.join(' | ') : (resa.guest_name || '')
-      const platform = info.platform || ''
-      const arrival  = info.arrival_date || resa.arrival_date || ''
-      const depart   = info.departure_date || resa.departure_date || ''
-      const revenu   = info.fin_revenue ? euro(info.fin_revenue) : ''
+    const rows = mouvements.map(m => {
+      const info    = m._info || {}
+      const resa    = m._resa || {}
+      const biens   = info.biens?.length   ? info.biens.join(' | ')   : (resa.bien_name   || '')
+      const guests  = info.guests?.length  ? info.guests.join(' | ')  : (resa.guest_name  || '')
+      const platform = info.platform       || resa.platform           || ''
+      const arrival  = info.arrival_date   || resa.arrival_date       || ''
+      const depart   = info.departure_date || resa.departure_date     || ''
+      const nights   = info.nights         || resa.nights             || ''
+      const resaCode = info.code           || resa.code               || ''
+      const resaId   = info.reservation_id || resa.id                 || null
+      const revenu   = info.fin_revenue    ? eu(info.fin_revenue)     : ''
+
+      // Ventilation — chercher par reservation_id
+      const vents = resaId ? (ventByResa[resaId] || []) : []
+      const ventCols = CODES.flatMap(c => {
+        const line = vents.find(v => v.code === c)
+        return [
+          line ? eu(line.montant_ht)  : '',
+          line ? eu(line.montant_tva) : '',
+          line ? eu(line.montant_ttc) : '',
+        ]
+      })
+
+      // Note auto : alerte si statut non rapproché depuis longtemps
+      const note = m.statut_matching === 'non_identifie' ? 'Non identifié' :
+                   m.statut_matching === 'en_attente' ? 'En attente' : ''
 
       return [
         q(dt(m.date_operation)),
         q(m.libelle),
         q(m.reference || ''),
-        q(m.id?.slice(0, 8) || ''),
-        q((m.credit || 0) > 0 ? euro(m.credit) : ''),
-        q((m.debit || 0) > 0 ? euro(m.debit) : ''),
+        q((m.credit || 0) > 0 ? eu(m.credit)  : ''),
+        q((m.debit  || 0) > 0 ? eu(m.debit)   : ''),
         q(m.statut_matching || ''),
         q(m.canal || ''),
         q(biens),
@@ -136,16 +202,22 @@ export default function PageRapprochement() {
         q(platform),
         q(dt(arrival)),
         q(dt(depart)),
+        q(resaCode ? dt(m.date_operation) : ''),
+        q(resaCode),
+        q(nights),
         q(revenu),
+        ...ventCols.map(q),
+        q(note),
       ].join(';')
     })
 
-    const csv = '\uFEFF' + [header, ...lines].join('\n')
+    const bom  = '﻿'
+    const csv  = bom + header + '\n' + rows.join('\n')
     const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' })
-    const url = URL.createObjectURL(blob)
-    const a = document.createElement('a')
-    a.href = url
-    a.download = 'Rapprochement_' + mois + '.csv'
+    const url  = URL.createObjectURL(blob)
+    const a    = document.createElement('a')
+    a.href     = url
+    a.download = 'Rapprochement_Comptable_' + mois + '.csv'
     a.click()
     URL.revokeObjectURL(url)
   }
