@@ -302,8 +302,8 @@ function MvtCard({ mvt, reservations, selected, selectedResas, onSelect, onToggl
 
   return (
     <div style={{
-      background: selected ? '#EFF6FF' : 'var(--white)',
-      border: `1px solid ${selected ? '#3B82F6' : 'var(--border)'}`,
+      background: selected ? '#FFF8EC' : 'var(--white)',
+      border: `1px solid ${selected ? '#CC9933' : 'var(--border)'}`,
       borderRadius: 'var(--radius)',
       padding: '12px 16px',
       cursor: 'pointer',
@@ -402,8 +402,8 @@ function ResaRow({ r, checked, onToggle, mvtMontant }) {
     <label style={{
       display: 'flex', gap: 10, alignItems: 'center',
       padding: '6px 10px', borderRadius: 6, marginBottom: 4,
-      background: checked ? '#EFF6FF' : '#F9FAFB',
-      border: `1px solid ${checked ? '#3B82F6' : 'var(--border)'}`,
+      background: checked ? '#FFF8EC' : '#F9FAFB',
+      border: `1px solid ${checked ? '#CC9933' : 'var(--border)'}`,
       cursor: 'pointer', fontSize: 13,
     }}>
       <input type="checkbox" checked={checked} onChange={onToggle} />
