@@ -458,8 +458,8 @@ export async function lancerMatchingAuto(mois) {
 
 // ── MATCHING MANUEL ────────────────────────────────────────────
 
-export async function matcherManuellement(mouvementId, virIds) {
-  await _lier(mouvementId, virIds, 'rapproche')
+export async function matcherManuellement(mouvementId, virIds, typePaiement = null) {
+  await _lier(mouvementId, virIds, 'rapproche', typePaiement)
 }
 
 export async function marquerNonIdentifie(mouvementId) {
