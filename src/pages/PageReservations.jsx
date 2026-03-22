@@ -23,7 +23,15 @@ export default function PageReservations() {
   const [onglet, setOnglet] = useState('reservations')
   const [selectedResa, setSelectedResa] = useState(null)
 
-  useEffect(() => { if (HOSP_TOKEN) setToken(HOSP_TOKEN); charger() }, [mois])
+  useEffect(() => {
+    if (HOSP_TOKEN) setToken(HOSP_TOKEN)
+    charger()
+    const channel = supabase.channel('resv-changes')
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'reservation' }, () => charger())
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'ventilation' }, () => charger())
+      .subscribe()
+    return () => { supabase.removeChannel(channel) }
+  }, [mois])
   useEffect(() => { chargerMoisDispos() }, [])
 
   async function chargerMoisDispos() {
