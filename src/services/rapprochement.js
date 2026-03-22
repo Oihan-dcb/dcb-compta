@@ -90,6 +90,64 @@ export async function getMouvementsMois(mois) {
   }
   }
 
+  // Enrichissement tertiaire : Stripe/Booking rapproch?s via payout_hospitable → payout_reservation
+  // Ces mouvements ont statut_matching = 'rapproche' mais pas de VIR li? directement
+  const encoreVides = mouvements.filter(m =>
+    (m.statut_matching === 'rapproche' || m.statut_matching === 'matche_auto' || m.statut_matching === 'matche_manuel') && !m._resa
+  )
+  if (encoreVides.length > 0) {
+    const mvtIds = encoreVides.map(m => m.id)
+    // Trouver les payouts li?s ? ces mouvements
+    const { data: payoutsLies } = await supabase
+      .from('payout_hospitable')
+      .select('id, mouvement_id, platform')
+      .in('mouvement_id', mvtIds)
+    if (payoutsLies?.length > 0) {
+      const payoutIds = payoutsLies.map(p => p.id)
+      // Trouver les r?servations via payout_reservation
+      const { data: prLinks } = await supabase
+        .from('payout_reservation')
+        .select(`payout_id, reservation_id,
+          reservation (id, code, platform, guest_name, arrival_date, departure_date, nights, fin_revenue,
+            bien (hospitable_name, agence, gestion_loyer))`)
+        .in('payout_id', payoutIds)
+      if (prLinks?.length > 0) {
+        // Construire un map mouvement_id → infos resa agr?g?es
+        const payoutToMvt = Object.fromEntries(payoutsLies.map(p => [p.id, p.mouvement_id]))
+        const infoByMouvP = {}
+        for (const link of prLinks) {
+          const mvtId = payoutToMvt[link.payout_id]
+          if (!mvtId || !link.reservation) continue
+          const r = link.reservation
+          if (!infoByMouvP[mvtId]) {
+            infoByMouvP[mvtId] = {
+              biens: [], guests: [], reservation_ids: [], codes: [],
+              platform: r.platform, arrival_date: r.arrival_date,
+              departure_date: r.departure_date, nights: 0, fin_revenue: 0, nb_resas: 0
+            }
+          }
+          const info = infoByMouvP[mvtId]
+          const bien = r.bien?.hospitable_name
+          if (bien && !info.biens.includes(bien)) info.biens.push(bien)
+          if (r.guest_name && !info.guests.includes(r.guest_name)) info.guests.push(r.guest_name)
+          if (r.id && !info.reservation_ids.includes(r.id)) info.reservation_ids.push(r.id)
+          if (r.code && !info.codes.includes(r.code)) info.codes.push(r.code)
+          info.fin_revenue += (r.fin_revenue || 0)
+          info.nights += (r.nights || 0)
+          info.nb_resas++
+        }
+        for (const m of encoreVides) {
+          if (infoByMouvP[m.id]) {
+            const info = infoByMouvP[m.id]
+            info.bien_name = info.biens.join(' | ')
+            info.guest_name = info.guests.length === 1 ? info.guests[0] : (info.nb_resas + ' r?sa(s)')
+            m._resa = info
+          }
+        }
+      }
+    }
+  }
+
   // Marquer les débits seuls comme debit_en_attente
   for (const m of mouvements) {
     if (m.statut_matching === 'en_attente' && !(m.credit > 0) && m.debit > 0) {
