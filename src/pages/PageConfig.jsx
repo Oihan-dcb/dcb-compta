@@ -18,6 +18,8 @@ export default function PageConfig() {
   const [ventRunning, setVentRunning] = useState(false)
   const [ventSteps, setVentSteps] = useState([])
   const [ventDone, setVentDone] = useState(false)
+  const [ventTimer, setVentTimer] = useState(0)
+  const [ventError, setVentError] = useState(null)
 
   const VENT_STEPS = [
     { id: 'vent',     label: 'Ventilation comptable (all-time)' },
@@ -27,13 +29,14 @@ export default function PageConfig() {
   async function lancerVentMatcher() {
     setVentRunning(true)
     setVentDone(false)
+    setVentError(null)
+    setVentTimer(0)
     setVentSteps(VENT_STEPS.map(s => ({ ...s, status: 'pending' })))
 
     const update = (id, status, detail) => setVentSteps(prev =>
       prev.map(s => s.id === id ? { ...s, status, detail } : s)
     )
 
-    // G\u00e9n\u00e9rer tous les mois depuis 2022-01
     const allMois = []
     const now = new Date()
     let y = 2022, m = 1
@@ -41,6 +44,12 @@ export default function PageConfig() {
       allMois.push(`${y}-${String(m).padStart(2,'0')}`)
       m++; if (m > 12) { m = 1; y++ }
     }
+
+    // Timer
+    const startTime = Date.now()
+    const timerInterval = setInterval(() => {
+      setVentTimer(Math.floor((Date.now() - startTime) / 1000))
+    }, 1000)
 
     // 1. Ventilation
     update('vent', 'running')
@@ -51,8 +60,8 @@ export default function PageConfig() {
         total += (v?.total || 0)
         errors += (v?.errors || 0)
       }
-      update('vent', 'ok', `${total} r\u00e9sa(s) ventil\u00e9e(s)${errors ? ` — ${errors} erreur(s)` : ''}`)
-    } catch(e) { update('vent', 'error', e.message) }
+      update('vent', 'ok', `${total} résa(s) ventilée(s)${errors ? ` — ${errors} erreur(s)` : ''}`)
+    } catch(e) { update('vent', 'error', e.message); setVentError(e.message) }
 
     // 2. Matching
     update('matching', 'running')
@@ -62,9 +71,11 @@ export default function PageConfig() {
         const r = await lancerMatching(mois)
         total += (r?.matched || 0)
       }
-      update('matching', 'ok', `${total} virement(s) rapproch\u00e9(s)`)
-    } catch(e) { update('matching', 'error', e.message) }
+      update('matching', 'ok', `${total} virement(s) rapproché(s)`)
+    } catch(e) { update('matching', 'error', e.message); setVentError(e.message) }
 
+    clearInterval(timerInterval)
+    setVentTimer(Math.floor((Date.now() - startTime) / 1000))
     setVentRunning(false)
     setVentDone(true)
   }
@@ -406,7 +417,7 @@ export default function PageConfig() {
 
       {/* Ventiler + Matcher */}
       <div className="card" style={{ marginBottom: 24, border: '2px solid #059669' }}>
-        <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom: 16 }}>
+        <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom: ventSteps.length > 0 ? 16 : 0 }}>
           <div>
             <h2 style={{ fontSize: 16, fontWeight: 700, color: '#059669', margin: 0 }}>
               ⚡ Ventilation + Matching all-time
@@ -415,31 +426,45 @@ export default function PageConfig() {
               Ventile toutes les réservations non ventilées + matching bancaire — all-time
             </p>
           </div>
-          <button onClick={lancerVentMatcher} disabled={ventRunning}
-            style={{ padding: '10px 20px', borderRadius: 8, border: 'none', background: ventRunning ? '#aaa' : '#059669', color: 'white', fontWeight: 700, fontSize: 14, cursor: ventRunning ? 'not-allowed' : 'pointer' }}>
-            {ventRunning ? '⏳ En cours...' : '⚡ Lancer'}
-          </button>
+          <div style={{ display:'flex', alignItems:'center', gap: 12 }}>
+            {ventRunning && (
+              <span style={{ fontSize: 13, color: 'var(--text-muted)', fontVariantNumeric: 'tabular-nums' }}>
+                ⏱ {ventTimer >= 60 ? Math.floor(ventTimer/60) + 'min ' + (ventTimer%60) + 's' : ventTimer + 's'}
+              </span>
+            )}
+            {ventDone && !ventRunning && (
+              <span style={{ fontSize: 12, color: '#059669', fontWeight: 600 }}>
+                ✅ Terminé en {ventTimer >= 60 ? Math.floor(ventTimer/60) + 'min ' + (ventTimer%60) + 's' : ventTimer + 's'}
+              </span>
+            )}
+            <button onClick={lancerVentMatcher} disabled={ventRunning}
+              style={{ padding: '10px 20px', borderRadius: 8, border: 'none', background: ventRunning ? '#aaa' : '#059669', color: 'white', fontWeight: 700, fontSize: 14, cursor: ventRunning ? 'not-allowed' : 'pointer', minWidth: 120 }}>
+              {ventRunning ? '⏳ En cours...' : '⚡ Lancer'}
+            </button>
+          </div>
         </div>
         {ventSteps.length > 0 && (
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
             {ventSteps.map(step => (
-              <div key={step.id} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '8px 12px', borderRadius: 8, background: step.status === 'ok' ? 'var(--success-bg)' : step.status === 'error' ? 'var(--danger-bg)' : step.status === 'running' ? '#ECFDF5' : '#f9f9f9', border: `1px solid ${step.status === 'ok' ? '#bbf7d0' : step.status === 'error' ? '#fca5a5' : step.status === 'running' ? '#059669' : 'var(--border)'}` }}>
-                <span style={{ fontSize: 16, width: 20, textAlign: 'center' }}>
+              <div key={step.id} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '8px 12px', borderRadius: 8, background: step.status === 'ok' ? '#F0FDF4' : step.status === 'error' ? '#FEF2F2' : step.status === 'running' ? '#F0FDF4' : '#F9FAFB', border: `1px solid ${step.status === 'ok' ? '#86EFAC' : step.status === 'error' ? '#FCA5A5' : step.status === 'running' ? '#059669' : '#E5E7EB'}` }}>
+                <span style={{ fontSize: 16, width: 22, textAlign: 'center', flexShrink: 0 }}>
                   {step.status === 'ok' ? '✅' : step.status === 'error' ? '❌' : step.status === 'running' ? '⏳' : '○'}
                 </span>
-                <span style={{ flex: 1, fontWeight: 500, fontSize: 13 }}>{step.label}</span>
-                {step.detail && <span style={{ fontSize: 12, color: 'var(--text-muted)' }}>{step.detail}</span>}
+                <span style={{ flex: 1, fontWeight: step.status === 'running' ? 700 : 500, fontSize: 13, color: step.status === 'running' ? '#059669' : 'inherit' }}>{step.label}</span>
+                {step.detail && <span style={{ fontSize: 12, color: step.status === 'error' ? '#DC2626' : '#6B7280' }}>{step.detail}</span>}
               </div>
             ))}
           </div>
         )}
-        {ventDone && (
-          <div className="alert alert-success" style={{ marginTop: 12 }}>
-            ✅ Ventilation + matching terminés
+        {ventDone && !ventError && (
+          <div style={{ marginTop: 12, padding: '12px 16px', borderRadius: 8, background: '#F0FDF4', border: '1px solid #86EFAC', display: 'flex', alignItems: 'center', gap: 10 }}>
+            <span style={{ fontSize: 20 }}>✅</span>
+            <span style={{ fontWeight: 700, color: '#15803D' }}>Ventilation + matching terminés en {ventTimer >= 60 ? Math.floor(ventTimer/60) + 'min ' + (ventTimer%60) + 's' : ventTimer + 's'}</span>
+          </div>
+        )}
+        {ventError && (
+          <div style={{ marginTop: 12, padding: '10px 14px', borderRadius: 8, background: '#FEF2F2', border: '1px solid #FCA5A5', fontSize: 13, color: '#DC2626' }}>
+            ⚠️ {ventError}
           </div>
         )}
       </div>
-
-    </div>
-  )
-}
