@@ -100,119 +100,104 @@ export default function PageRapprochement() {
 
   
   async function exportCSV() {
-    // Helpers
     const q  = (v) => v != null ? '"' + String(v).replace(/"/g, '""') + '"' : '""'
-    const eu = (v) => v != null ? (v / 100).toFixed(2).replace('.', ',') : ''
+    const eu = (v) => v != null && v !== '' ? (Number(v) / 100).toFixed(2).replace('.', ',') : ''
     const dt = (v) => {
       if (!v) return ''
-      const d = new Date(v)
-      if (isNaN(d)) return String(v).slice(0, 10)
-      return String(d.getDate()).padStart(2,'0') + '/' + String(d.getMonth()+1).padStart(2,'0') + '/' + d.getFullYear()
+      const s = String(v).slice(0, 10)
+      const [y, m, d] = s.split('-')
+      return d && m && y ? d + '/' + m + '/' + y : s
     }
 
-    // Charger les ventilations pour tous les mouvements rapprochés du mois
-    const resaIds = mouvements
-      .filter(m => m.statut_matching === 'rapproche')
-      .flatMap(m => {
-        const info = m._info || {}
-        return info.reservation_ids || (m._resa?.id ? [m._resa.id] : [])
-      })
-      .filter(Boolean)
+    // Collecter tous les reservation_ids des mouvements rapprochés
+    const allResaIds = []
+    for (const m of mouvements) {
+      const r = m._resa || {}
+      const ids = r.reservation_ids || (r.id ? [r.id] : [])
+      for (const id of ids) {
+        if (id && !allResaIds.includes(id)) allResaIds.push(id)
+      }
+    }
 
-    // Charger toutes les ventilations en une requête
+    // Charger toutes les ventilations en une seule requête
     let ventByResa = {}
-    if (resaIds.length > 0) {
+    if (allResaIds.length > 0) {
       const { data: vents } = await supabase
         .from('ventilation')
-        .select('reservation_id, code, libelle, montant_ht, montant_tva, montant_ttc')
-        .in('reservation_id', [...new Set(resaIds)])
-        .order('code')
+        .select('reservation_id, code, montant_ht, montant_tva, montant_ttc')
+        .in('reservation_id', allResaIds)
       if (vents) {
         for (const v of vents) {
-          if (!ventByResa[v.reservation_id]) ventByResa[v.reservation_id] = []
-          ventByResa[v.reservation_id].push(v)
+          if (!ventByResa[v.reservation_id]) ventByResa[v.reservation_id] = {}
+          ventByResa[v.reservation_id][v.code] = v
         }
       }
     }
 
-    // Codes comptables dans l'ordre
-    const CODES = ['HON', 'FMEN', 'AUTO', 'LOY', 'VIR', 'TAXE', 'MEN']
-
-    // En-têtes
+    const CODES = ['HON', 'FMEN', 'AUTO', 'LOY', 'VIR', 'TAXE']
     const ventHeaders = CODES.flatMap(c => [c + ' HT', c + ' TVA', c + ' TTC'])
+
     const header = [
-      'Date opération',
-      'Libellé virement',
-      'Référence',
-      'Entrée (EUR)',
-      'Sortie (EUR)',
-      'Statut',
-      'Canal',
-      'Bien(s)',
-      'Voyageur(s)',
-      'Plateforme',
-      'Check-in',
-      'Check-out',
-      'Née résa',
-      'Code résa',
-      'Nuits',
-      'Revenu net (EUR)',
+      'Date opération', 'Libellé virement', 'Référence',
+      'Entrée EUR', 'Sortie EUR',
+      'Statut', 'Canal',
+      'Bien(s)', 'Voyageur(s)', 'Plateforme',
+      'Check-in', 'Check-out', 'Nuits',
+      'Code résa', 'Revenu net EUR',
       ...ventHeaders,
-      'Notes',
+      'Note'
     ].map(q).join(';')
 
     const rows = mouvements.map(m => {
-      const info    = m._info || {}
-      const resa    = m._resa || {}
-      const biens   = info.biens?.length   ? info.biens.join(' | ')   : (resa.bien_name   || '')
-      const guests  = info.guests?.length  ? info.guests.join(' | ')  : (resa.guest_name  || '')
-      const platform = info.platform       || resa.platform           || ''
-      const arrival  = info.arrival_date   || resa.arrival_date       || ''
-      const depart   = info.departure_date || resa.departure_date     || ''
-      const nights   = info.nights         || resa.nights             || ''
-      const resaCode = info.code           || resa.code               || ''
-      const resaId   = info.reservation_id || resa.id                 || null
-      const revenu   = info.fin_revenue    ? eu(info.fin_revenue)     : ''
+      const r = m._resa || {}
+      const biens   = r.biens?.length  ? r.biens.join(' | ')  : (r.bien_name  || '')
+      const guests  = r.guests?.length ? r.guests.join(' | ') : (r.guest_name || '')
+      const codes   = r.codes?.length  ? r.codes.join(' | ')  : (r.code       || '')
+      const ids     = r.reservation_ids || (r.id ? [r.id] : [])
 
-      // Ventilation — chercher par reservation_id
-      const vents = resaId ? (ventByResa[resaId] || []) : []
+      // Agréger la ventilation de toutes les resas liées
+      const ventAggr = {}
+      for (const id of ids) {
+        const vMap = ventByResa[id] || {}
+        for (const code of CODES) {
+          if (!ventAggr[code]) ventAggr[code] = { ht: 0, tva: 0, ttc: 0 }
+          ventAggr[code].ht  += vMap[code]?.montant_ht  || 0
+          ventAggr[code].tva += vMap[code]?.montant_tva || 0
+          ventAggr[code].ttc += vMap[code]?.montant_ttc || 0
+        }
+      }
+
       const ventCols = CODES.flatMap(c => {
-        const line = vents.find(v => v.code === c)
-        return [
-          line ? eu(line.montant_ht)  : '',
-          line ? eu(line.montant_tva) : '',
-          line ? eu(line.montant_ttc) : '',
-        ]
+        const v = ventAggr[c]
+        if (!v || v.ttc === 0) return ['', '', '']
+        return [eu(v.ht), eu(v.tva), eu(v.ttc)]
       })
 
-      // Note auto : alerte si statut non rapproché depuis longtemps
       const note = m.statut_matching === 'non_identifie' ? 'Non identifié' :
-                   m.statut_matching === 'en_attente' ? 'En attente' : ''
+                   m.statut_matching === 'en_attente'     ? 'En attente'       : ''
 
       return [
         q(dt(m.date_operation)),
         q(m.libelle),
         q(m.reference || ''),
-        q((m.credit || 0) > 0 ? eu(m.credit)  : ''),
-        q((m.debit  || 0) > 0 ? eu(m.debit)   : ''),
+        q((m.credit || 0) > 0 ? eu(m.credit) : ''),
+        q((m.debit  || 0) > 0 ? eu(m.debit)  : ''),
         q(m.statut_matching || ''),
         q(m.canal || ''),
         q(biens),
         q(guests),
-        q(platform),
-        q(dt(arrival)),
-        q(dt(depart)),
-        q(resaCode ? dt(m.date_operation) : ''),
-        q(resaCode),
-        q(nights),
-        q(revenu),
+        q(r.platform || ''),
+        q(dt(r.arrival_date)),
+        q(dt(r.departure_date)),
+        q(r.nights || ''),
+        q(codes),
+        q(r.fin_revenue ? eu(r.fin_revenue) : ''),
         ...ventCols.map(q),
         q(note),
       ].join(';')
     })
 
-    const bom  = '﻿'
-    const csv  = bom + header + '\n' + rows.join('\n')
+    const csv  = '﻿' + header + '\n' + rows.join('\n')
     const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' })
     const url  = URL.createObjectURL(blob)
     const a    = document.createElement('a')
