@@ -73,6 +73,8 @@ export default function PageConfig() {
   const [globalRunning, setGlobalRunning] = useState(false)
   const [globalSteps, setGlobalSteps] = useState([])
   const [globalDone, setGlobalDone] = useState(false)
+  const [globalTimer, setGlobalTimer] = useState(0)
+  const [globalError, setGlobalError] = useState(null)
 
   const GLOBAL_STEPS = [
     { id: 'biens',    label: 'Sync biens Hospitable' },
@@ -85,18 +87,26 @@ export default function PageConfig() {
   async function lancerGlobalUpdate() {
     setGlobalRunning(true)
     setGlobalDone(false)
-    setGlobalSteps(GLOBAL_STEPS.map(s => ({ ...s, status: 'running' === s.id ? 'running' : 'pending' })))
+    setGlobalError(null)
+    setGlobalTimer(0)
+    setGlobalSteps(GLOBAL_STEPS.map(s => ({ ...s, status: 'pending' })))
 
     const update = (id, status, detail) => setGlobalSteps(prev =>
       prev.map(s => s.id === id ? { ...s, status, detail } : s)
     )
 
-    // Marquer toutes les étapes comme "en cours"
-    update('biens',    'running')
-    update('resas',    'pending')
-    update('payouts',  'pending')
-    update('vent',     'pending')
-    update('matching', 'pending')
+    // Lancer le timer
+    const startTime = Date.now()
+    const timerInterval = setInterval(() => {
+      setGlobalTimer(Math.floor((Date.now() - startTime) / 1000))
+    }, 1000)
+
+    // Simuler la progression pendant que la Edge Function tourne
+    // Ordre : biens (2s) -> resas (60s) -> payouts (30s) -> vent (20s) -> matching (10s)
+    const delays = { biens: 0, resas: 2000, payouts: 62000, vent: 95000, matching: 120000 }
+    for (const [id, delay] of Object.entries(delays)) {
+      setTimeout(() => update(id, 'running'), delay)
+    }
 
     try {
       const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL
@@ -111,11 +121,15 @@ export default function PageConfig() {
         body: JSON.stringify({})
       })
 
+      clearInterval(timerInterval)
+      const elapsed = Math.floor((Date.now() - startTime) / 1000)
+      setGlobalTimer(elapsed)
+
       const result = await resp.json()
 
       if (!resp.ok || !result.success) {
-        // Marquer tout en erreur
-        GLOBAL_STEPS.forEach(s => update(s.id, 'error', result.error || 'Edge Function error'))
+        GLOBAL_STEPS.forEach(s => update(s.id, 'error', result.error || 'Erreur Edge Function'))
+        setGlobalError(result.error || 'Erreur inconnue')
       } else {
         const { log } = result
         update('biens',    log.biens    ? 'ok' : 'error', log.biens    || 'Erreur')
@@ -123,12 +137,12 @@ export default function PageConfig() {
         update('payouts',  log.payouts  ? 'ok' : 'error', log.payouts  || 'Erreur')
         update('vent',     log.vent     ? 'ok' : 'error', log.vent     || 'Erreur')
         update('matching', log.matching ? 'ok' : 'error', log.matching || 'Erreur')
-        if (log.errors?.length) {
-          console.warn('Global sync warnings:', log.errors)
-        }
+        if (log.errors?.length) setGlobalError(`${log.errors.length} avertissement(s) — voir console`)
       }
     } catch(e) {
-      GLOBAL_STEPS.forEach(s => update(s.id, 'error', e.message))
+      clearInterval(timerInterval)
+      GLOBAL_STEPS.forEach(s => update(s.id, s.status === 'running' ? 'error' : s.status, s.status === 'running' ? e.message : undefined))
+      setGlobalError(e.message)
     }
 
     setGlobalRunning(false)
@@ -338,36 +352,54 @@ export default function PageConfig() {
       </div>
       {/* Global Update */}
       <div className="card" style={{ marginBottom: 24, border: '2px solid var(--brand)' }}>
-        <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom: 16 }}>
+        <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom: globalSteps.length > 0 ? 16 : 0 }}>
           <div>
             <h2 style={{ fontSize: 16, fontWeight: 700, color: 'var(--brand)', margin: 0 }}>
               ⚡ Mise à jour globale
             </h2>
             <p style={{ margin: '4px 0 0', fontSize: 13, color: 'var(--text-muted)' }}>
-              Sync biens → réservations → payouts → ventilation → matching — all-time (depuis 2022) — tourne côté serveur
+              Sync biens → réservations → payouts → ventilation → matching — all-time (depuis 2022)
             </p>
           </div>
-          <button onClick={lancerGlobalUpdate} disabled={globalRunning}
-            style={{ padding: '10px 20px', borderRadius: 8, border: 'none', background: globalRunning ? '#aaa' : 'var(--brand)', color: 'white', fontWeight: 700, fontSize: 14, cursor: globalRunning ? 'not-allowed' : 'pointer', display: 'flex', alignItems: 'center', gap: 8 }}>
-            {globalRunning ? <><span className="spinner" /> En cours...</> : '⚡ Lancer'}
-          </button>
+          <div style={{ display:'flex', alignItems:'center', gap: 12 }}>
+            {globalRunning && (
+              <span style={{ fontSize: 13, color: 'var(--text-muted)', fontVariantNumeric: 'tabular-nums' }}>
+                ⏱ {globalTimer >= 60 ? Math.floor(globalTimer/60) + 'min ' + (globalTimer%60) + 's' : globalTimer + 's'}
+              </span>
+            )}
+            {globalDone && !globalRunning && (
+              <span style={{ fontSize: 12, color: '#059669', fontWeight: 600 }}>
+                ✅ Terminé en {globalTimer >= 60 ? Math.floor(globalTimer/60) + 'min ' + (globalTimer%60) + 's' : globalTimer + 's'}
+              </span>
+            )}
+            <button onClick={lancerGlobalUpdate} disabled={globalRunning}
+              style={{ padding: '10px 20px', borderRadius: 8, border: 'none', background: globalRunning ? '#aaa' : 'var(--brand)', color: 'white', fontWeight: 700, fontSize: 14, cursor: globalRunning ? 'not-allowed' : 'pointer', display: 'flex', alignItems: 'center', gap: 8, minWidth: 120 }}>
+              {globalRunning ? <>⏳ En cours...</> : '⚡ Lancer'}
+            </button>
+          </div>
         </div>
-        {(globalSteps.length > 0) && (
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+        {globalSteps.length > 0 && (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
             {globalSteps.map(step => (
-              <div key={step.id} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '8px 12px', borderRadius: 8, background: step.status === 'ok' ? 'var(--success-bg)' : step.status === 'error' ? 'var(--danger-bg)' : step.status === 'running' ? 'var(--brand-pale)' : '#f9f9f9', border: `1px solid ${step.status === 'ok' ? '#bbf7d0' : step.status === 'error' ? '#fca5a5' : step.status === 'running' ? 'var(--brand)' : 'var(--border)'}` }}>
-                <span style={{ fontSize: 16, width: 20, textAlign: 'center' }}>
+              <div key={step.id} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '8px 12px', borderRadius: 8, background: step.status === 'ok' ? '#F0FDF4' : step.status === 'error' ? '#FEF2F2' : step.status === 'running' ? '#FFFBEB' : '#F9FAFB', border: `1px solid ${step.status === 'ok' ? '#86EFAC' : step.status === 'error' ? '#FCA5A5' : step.status === 'running' ? 'var(--brand)' : '#E5E7EB'}` }}>
+                <span style={{ fontSize: 16, width: 22, textAlign: 'center', flexShrink: 0 }}>
                   {step.status === 'ok' ? '✅' : step.status === 'error' ? '❌' : step.status === 'running' ? '⏳' : '○'}
                 </span>
-                <span style={{ flex: 1, fontWeight: 500, fontSize: 13 }}>{step.label}</span>
-                {step.detail && <span style={{ fontSize: 12, color: 'var(--text-muted)' }}>{step.detail}</span>}
+                <span style={{ flex: 1, fontWeight: step.status === 'running' ? 700 : 500, fontSize: 13, color: step.status === 'running' ? 'var(--brand)' : 'inherit' }}>{step.label}</span>
+                {step.detail && <span style={{ fontSize: 12, color: step.status === 'error' ? '#DC2626' : '#6B7280' }}>{step.detail}</span>}
               </div>
             ))}
           </div>
         )}
-        {globalDone && (
-          <div className="alert alert-success" style={{ marginTop: 12 }}>
-            ✅ Mise à jour terminée — toutes les données sont à jour pour {new Date().toISOString().slice(0,7)}
+        {globalDone && !globalError && (
+          <div style={{ marginTop: 12, padding: '12px 16px', borderRadius: 8, background: '#F0FDF4', border: '1px solid #86EFAC', display: 'flex', alignItems: 'center', gap: 10 }}>
+            <span style={{ fontSize: 20 }}>✅</span>
+            <span style={{ fontWeight: 700, color: '#15803D' }}>Mise à jour terminée en {globalTimer >= 60 ? Math.floor(globalTimer/60) + 'min ' + (globalTimer%60) + 's' : globalTimer + 's'}</span>
+          </div>
+        )}
+        {globalError && (
+          <div style={{ marginTop: 12, padding: '10px 14px', borderRadius: 8, background: '#FEF2F2', border: '1px solid #FCA5A5', fontSize: 13, color: '#DC2626' }}>
+            ⚠️ {globalError}
           </div>
         )}
       </div>
