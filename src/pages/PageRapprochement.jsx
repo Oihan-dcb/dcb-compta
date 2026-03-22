@@ -92,41 +92,47 @@ export default function PageRapprochement() {
 
   
   function exportCSV() {
-    const fmt = (v) => v != null ? String(v).replace(/"/g, '""') : ''
-    const fmtMontant = (v) => v != null ? (v / 100).toFixed(2).replace('.', ',') : ''
-    const fmtDate = (v) => v ? v.slice(0, 10) : ''
+    const q = (v) => v != null ? '"' + String(v).replace(/"/g, '""') + '"' : '""'
+    const euro = (v) => v ? (v / 100).toFixed(2).replace('.', ',') : ''
+    const dt = (v) => v ? String(v).slice(0, 10) : ''
 
-    const rows = [
-      // En-tête
-      [
-        'Date', 'Libellé', 'N° virement', 'Entrée (€)', 'Sortie (€)',
-        'Statut', 'Canal', 'Bien(s)', 'Voyageur(s)', 'Plateforme',
-        'Arrivée', 'Départ', 'Revenu résa (€)'
-      ]
-    ]
+    const header = [
+      'Date', 'Libelle', 'N virement', 'Reference', 'Entree EUR', 'Sortie EUR',
+      'Statut', 'Canal', 'Biens', 'Voyageurs', 'Plateforme',
+      'Arrivee', 'Depart', 'Revenu resa EUR'
+    ].map(q).join(';')
 
-    for (const m of mouvements) {
+    const lines = mouvements.map(m => {
+      // _info = mouvement rapproche via VIR (entrées)
+      // _resa = mouvement rapproche via débit
       const info = m._info || {}
-      const isEntree = (m.credit || 0) > 0
-      const isSortie = (m.debit || 0) > 0
-      rows.push([
-        fmt(fmtDate(m.date_operation)),
-        fmt(m.libelle),
-        fmt(m.reference || m.id?.slice(0, 8)),
-        isEntree ? fmtMontant(m.credit) : '',
-        isSortie ? fmtMontant(m.debit) : '',
-        fmt(m.statut_matching),
-        fmt(m.canal),
-        fmt((info.biens || []).join(' | ')),
-        fmt((info.guests || []).join(' | ')),
-        fmt(info.platform || ''),
-        fmt(info.arrival_date ? fmtDate(info.arrival_date) : ''),
-        fmt(info.departure_date ? fmtDate(info.departure_date) : ''),
-        info.fin_revenue ? fmtMontant(info.fin_revenue) : '',
-      ])
-    }
+      const resa = m._resa || {}
+      const biens   = info.biens?.length ? info.biens.join(' | ') : (resa.bien_name || '')
+      const guests  = info.guests?.length ? info.guests.join(' | ') : (resa.guest_name || '')
+      const platform = info.platform || ''
+      const arrival  = info.arrival_date || resa.arrival_date || ''
+      const depart   = info.departure_date || resa.departure_date || ''
+      const revenu   = info.fin_revenue ? euro(info.fin_revenue) : ''
 
-    const csv = '\uFEFF' + rows.map(r => r.map(c => '"' + c + '"').join(';')).join('\n')
+      return [
+        q(dt(m.date_operation)),
+        q(m.libelle),
+        q(m.reference || ''),
+        q(m.id?.slice(0, 8) || ''),
+        q((m.credit || 0) > 0 ? euro(m.credit) : ''),
+        q((m.debit || 0) > 0 ? euro(m.debit) : ''),
+        q(m.statut_matching || ''),
+        q(m.canal || ''),
+        q(biens),
+        q(guests),
+        q(platform),
+        q(dt(arrival)),
+        q(dt(depart)),
+        q(revenu),
+      ].join(';')
+    })
+
+    const csv = '\uFEFF' + [header, ...lines].join('\n')
     const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' })
     const url = URL.createObjectURL(blob)
     const a = document.createElement('a')
