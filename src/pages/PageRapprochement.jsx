@@ -199,15 +199,17 @@ export default function PageRapprochement() {
         ...ventCols.map(q),
         // Acompte + % du total
         q((() => {
-          if (!r.type_paiement || r.type_paiement === 'total') return ''
+          // Montant du virement voyageur reçu (toujours affiché si rapproché à une resa)
+          if (!r.reservation_ids?.length && !r.codes?.length) return ''
           const credit = m.credit || 0
-          return eu(credit)
+          return credit ? eu(credit) : ''
         })()),
         q((() => {
           const credit = m.credit || 0
-          const virTTC = ventAggr['VIR']?.ttc || 0
-          if (!virTTC || !credit) return ''
-          return (credit / virTTC * 100).toFixed(1).replace('.', ',') + ' %'
+          // Base = fin_revenue (total encaissé par DCB pour la résa, côté voyageur)
+          const base = r.fin_revenue || 0
+          if (!base || !credit) return ''
+          return (credit / base * 100).toFixed(1).replace('.', ',') + ' %'
         })()),
         q(r.type_paiement || ''),
         q(note),
