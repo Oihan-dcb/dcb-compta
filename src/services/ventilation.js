@@ -476,11 +476,11 @@ export async function getRecapVentilation(mois) {
     p.codes[l.code].ht += l.montant_ht
     p.codes[l.code].ttc += l.montant_ttc
     p.codes[l.code].nb++
-    if (l.code === 'HON') p.total_com += l.montant_ht
-    if (l.code === 'FMEN') p.total_men += l.montant_ht
-    if (l.code === 'LOY') p.total_loy += l.montant_ht
-    if (l.code === 'AUTO') p.total_auto += l.montant_ht
-    if (l.code === 'VIR') p.total_vir += l.montant_ttc
+    if (l.code === 'HON') p.total_com += l.montant_ttc  // TTC (TVA 20% incluse)
+    if (l.code === 'FMEN') p.total_men += l.montant_ttc // TTC (TVA 20% incluse)
+    if (l.code === 'LOY') p.total_loy += l.montant_ht   // HT = TTC (hors TVA)
+    if (l.code === 'AUTO') p.total_auto += l.montant_ht // HT = TTC (hors TVA)
+    if (l.code === 'VIR') p.total_vir += l.montant_ttc  // HT = TTC (hors TVA)
   }
 
   return {
