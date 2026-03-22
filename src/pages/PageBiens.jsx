@@ -105,7 +105,7 @@ export default function PageBiens() {
       }))
       setEditing(e => { const n={...e}; delete n[bienId+'_proprio']; return n })
     } catch (err) {
-      alert('Erreur : ' + err.message)
+      setError('Erreur : ' + err.message)
     }
   } // { [bienId]: { forfait_dcb_ref, provision_ae_ref, has_ae } }
   const [saving, setSaving] = useState({})
@@ -125,7 +125,7 @@ export default function PageBiens() {
       setBiens(prev => prev.map(b => b.id === bienId ? { ...b, [field]: finalVal } : b))
       setEditing(e => { const n = {...e}; delete n[bienId+'_'+field]; delete n[bienId+'_taux_com']; return n })
     } catch (err) {
-      alert('Erreur : ' + err.message)
+      setError('Erreur : ' + err.message)
     } finally {
       setSaving(s => { const n = {...s}; delete n[bienId]; return n })
     }
@@ -137,7 +137,7 @@ export default function PageBiens() {
       await supabase.from('bien').update({ has_ae: !currentVal }).eq('id', bienId)
       setBiens(prev => prev.map(b => b.id === bienId ? { ...b, has_ae: !currentVal } : b))
     } catch (err) {
-      alert('Erreur : ' + err.message)
+      setError('Erreur : ' + err.message)
     }
   }
 
@@ -147,7 +147,7 @@ export default function PageBiens() {
       const newVal = (currentVal === false || currentVal === null) ? true : false
       await supabase.from('bien').update({ gestion_loyer: newVal }).eq('id', bienId)
       setBiens(prev => prev.map(b => b.id === bienId ? { ...b, gestion_loyer: newVal } : b))
-    } catch (err) { alert('Erreur : ' + err.message) }
+    } catch (err) { setError('Erreur : ' + err.message) }
   }
 
   async function toggleAgence(bienId, current) {
@@ -156,7 +156,7 @@ export default function PageBiens() {
       const next = current === 'lauian' ? 'dcb' : 'lauian'
       await supabase.from('bien').update({ agence: next }).eq('id', bienId)
       setBiens(prev => prev.map(b => b.id === bienId ? { ...b, agence: next } : b))
-    } catch (err) { alert('Erreur : ' + err.message) }
+    } catch (err) { setError('Erreur : ' + err.message) }
   }
 
   const biensDCB = biens.filter(b => (b.agence || 'dcb') === 'dcb')
