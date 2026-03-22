@@ -473,6 +473,13 @@ export default function PageRapprochement() {
                         {v.reservation?.bien?.code} · {fmtDate(v.reservation?.arrival_date)} → {fmtDate(v.reservation?.departure_date)}
                       </div>
                       <div style={{ color: '#666', marginTop: 1 }}>{v.reservation?.code}</div>
+                      {v.mois_comptable !== mois && (
+                        <div style={{ marginTop: 3 }}>
+                          <span style={{ fontSize: 10, background: '#FEF3C7', color: '#D97706', borderRadius: 4, padding: '1px 6px', fontWeight: 700 }}>
+                            S?jour {v.mois_comptable}
+                          </span>
+                        </div>
+                      )}
                     </div>
                     <div style={{ textAlign:'right' }}>
                   <div style={{ fontWeight: 700, color: '#CC9933', whiteSpace: 'nowrap' }}>{fmt(v.montant_ttc)}</div>
