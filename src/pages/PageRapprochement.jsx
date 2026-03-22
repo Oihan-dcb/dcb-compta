@@ -145,6 +145,7 @@ export default function PageRapprochement() {
       'Check-in', 'Check-out', 'Nuits',
       'Code résa', 'Revenu net EUR',
       ...ventHeaders,
+      'Type paiement',
       'Note'
     ].map(q).join(';')
 
@@ -193,6 +194,7 @@ export default function PageRapprochement() {
         q(codes),
         q(r.fin_revenue ? eu(r.fin_revenue) : ''),
         ...ventCols.map(q),
+        q(r.type_paiement || ''),
         q(note),
       ].join(';')
     })
