@@ -112,6 +112,26 @@ async function handleReservation(supabase: any, event: string, data: any) {
       }))
     )
   }
+  // Ventilation automatique dès la réception du webhook
+  if (moisComptable && upserted?.id) {
+    try {
+      // Annulée : supprimer la ventilation existante
+      if (finalStatus === 'cancelled' || finalStatus === 'not accepted') {
+        await supabase.from('ventilation').delete().eq('reservation_id', upserted.id)
+        console.log('Ventilation supprimée (annulation):', data.code)
+      } else {
+        // Créée ou modifiée : recalculer via RPC
+        const { error: ventError } = await supabase.rpc('ventiler_toutes_resas', {
+          p_mois_debut: moisComptable,
+          p_mois_fin: moisComptable,
+        })
+        if (ventError) console.error('Ventilation error:', ventError)
+        else console.log('Ventilée:', data.code, moisComptable)
+      }
+    } catch (err) {
+      console.error('Ventilation webhook error:', err)
+    }
+  }
   console.log('Upserted:', data.code, event)
 }
 
