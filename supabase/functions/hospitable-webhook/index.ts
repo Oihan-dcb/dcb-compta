@@ -23,8 +23,9 @@ Deno.serve(async (req) => {
   try {
     if      (event.startsWith('reservation.')) { message = await handleReservation(supabase, event, data) }
     else if (event.startsWith('property.'))    { message = await handleProperty(supabase, event, data) }
-    else if (event.startsWith('task.'))        { message = await handleTask(supabase, event, data) }
-    else { message = 'event not handled' }
+    else if (event.startsWith('message.'))     { message = await handleMessage(supabase, event, data) }
+    else if (event.startsWith('review.'))      { message = await handleReview(supabase, event, data) }
+    else { message = 'event not handled: ' + event }
   } catch (err: any) {
     console.error('Webhook error:', err)
     status  = 'error'
@@ -222,61 +223,46 @@ async function handleProperty(supabase: any, event: string, data: any): Promise<
 }
 
 // ============================================================
-// TASKS (missions m\u00e9nage)
+// MESSAGES
 // ============================================================
-async function handleTask(supabase: any, event: string, data: any): Promise<string> {
-  if (event === 'task.deleted') {
-    if (data.id) {
-      await supabase.from('mission_menage')
-        .update({ statut: 'annulee' })
-        .eq('ical_uid', data.id)
+async function handleMessage(supabase: any, event: string, data: any): Promise<string> {
+  // Tracer les messages voyageur dans webhook_log suffit pour l'instant
+  // Le payload contient : conversation_id, reservation_id, body, sender_type
+  const resaId   = data.reservation_id || data.reservation?.id
+  const convId   = data.conversation_id
+  const body     = data.body || data.message || data.content || ''
+  const senderType = data.sender_type || data.from || 'unknown'
+
+  // Mettre à jour synced_at de la résa si on a un reservation_id
+  if (resaId) {
+    const { data: resa } = await supabase
+      .from('reservation')
+      .select('id, hospitable_id')
+      .eq('hospitable_id', resaId)
+      .single()
+
+    if (resa) {
+      console.log('Message re\u00e7u pour r\u00e9sa:', resa.id, senderType, body.substring(0, 50))
     }
-    return 'task deleted: ' + data.id
   }
 
-  if (!['task.created', 'task.updated', 'task.modified'].includes(event)) {
-    return 'task event skipped: ' + event
-  }
+  return `message ${event} conv:${convId || 'n/a'}`
+}
 
-  const propertyId = data.property_id
-  if (!propertyId) return 'no property_id'
+// ============================================================
+// REVIEWS
+// ============================================================
+async function handleReview(supabase: any, event: string, data: any): Promise<string> {
+  // R\u00e9cup\u00e9rer la r\u00e9sa associ\u00e9e
+  const resaHospId = data.reservation_id || data.reservation?.id
+  if (!resaHospId) return 'no reservation_id'
 
-  // Trouver le bien
-  const { data: bien } = await supabase
-    .from('bien')
-    .select('id, ical_code')
-    .eq('hospitable_id', propertyId)
-    .single()
+  const rating   = data.rating || data.overall_rating || null
+  const comment  = data.comment || data.review || data.body || null
+  const reviewer = data.reviewer_name || data.guest?.name || null
 
-  if (!bien) return 'bien not found: ' + propertyId
+  console.log('Review re\u00e7ue:', resaHospId, 'note:', rating, reviewer)
 
-  // Trouver l'AE associ\u00e9 au bien
-  const { data: ae } = await supabase
-    .from('auto_entrepreneur')
-    .select('id')
-    .contains('biens_ids', [bien.id])
-    .single()
-    .catch(() => ({ data: null }))
-
-  const taskDate  = data.date?.substring(0, 10) || data.scheduled_at?.substring(0, 10)
-  const taskMois  = taskDate?.substring(0, 7)
-  const isCleaning = (data.type || data.task_type || '').toLowerCase().includes('clean') ||
-                     (data.title || '').toLowerCase().includes('clean') ||
-                     (data.title || '').toLowerCase().includes('m\u00e9nage')
-
-  if (!isCleaning) return 'task not cleaning, skipped'
-  if (!taskDate)   return 'no task date'
-
-  await supabase.from('mission_menage').upsert({
-    bien_id:       bien.id,
-    ae_id:         ae?.id || null,
-    date_mission:  taskDate,
-    ical_uid:      data.id || data.uuid,
-    titre_ical:    data.title || ('Cleaning ' + (bien.ical_code || '')),
-    statut:        event === 'task.deleted' ? 'annulee' : 'planifiee',
-    mois:          taskMois,
-    type_mission:  'menage',
-  }, { onConflict: 'ical_uid', ignoreDuplicates: false })
-
-  return 'task upserted: ' + taskDate + ' ' + bien.id
+  // Logger dans webhook_log suffit (pas de table review d\u00e9di\u00e9e pour l'instant)
+  return `review ${event} resa:${resaHospId} note:${rating}`
 }
