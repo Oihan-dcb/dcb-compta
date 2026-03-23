@@ -301,30 +301,31 @@ export default function PageRapprochement() {
       let typePaiement = 'total'
 
       if (resaIds.length > 0 && mvt) {
-        const { data: existing } = await supabase
-          .from('reservation_paiement')
-          .select('montant, type_paiement')
-          .in('reservation_id', resaIds)
+        const [{ data: existing }, { data: resaData }] = await Promise.all([
+          supabase.from('reservation_paiement').select('montant, type_paiement').in('reservation_id', resaIds),
+          supabase.from('reservation').select('fin_revenue').in('id', resaIds),
+        ])
         dejaRecu = (existing || []).reduce((s, p) => s + (p.montant || 0), 0)
-        const soldeRestant = virTTC - dejaRecu
+        // Base = fin_revenue (total voyageur à DCB), pas VIR (loyer proprio)
+        const finRevTotal = (resaData || []).reduce((s, r) => s + (r.fin_revenue || 0), 0)
+        const base = finRevTotal || virTTC
+        const soldeRestant = base - dejaRecu
         const credit = mvt.credit || 0
 
         if (dejaRecu > 0) {
-          // Il y a déjà un acompte — vérifier que le montant ne dépasse pas le solde
-          if (credit > soldeRestant + 100) { // tolérance 1€
+          if (credit > soldeRestant + 100) {
             setError(`Montant trop élevé : solde restant est ${(soldeRestant/100).toFixed(2)} €, virement reçu : ${(credit/100).toFixed(2)} €`)
             setSaving(false)
             return
           }
           typePaiement = credit >= soldeRestant - 100 ? 'solde' : 'acompte'
         } else {
-          // Premier paiement
-          typePaiement = credit >= virTTC - 100 ? 'total' : 'acompte'
+          typePaiement = credit >= base - 100 ? 'total' : 'acompte'
         }
 
         setSoldeInfo({
-          virTTC, dejaRecu, credit,
-          soldeRestant: virTTC - dejaRecu - credit,
+          virTTC: base, dejaRecu, credit,
+          soldeRestant: base - dejaRecu - credit,
           type: typePaiement
         })
       }
