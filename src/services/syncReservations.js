@@ -72,7 +72,11 @@ export async function syncReservations(mois) {
         // Upsert réservation
         const { data: upserted, error } = await supabase
           .from('reservation')
-          .upsert(parsed, { onConflict: 'hospitable_id' })
+          .upsert(
+            // Ne pas écraser guest_name si null (vient toujours du CSV Hospitable)
+            parsed.guest_name ? parsed : { ...parsed, guest_name: undefined },
+            { onConflict: 'hospitable_id' }
+          )
           .select('id')
           .single()
 
