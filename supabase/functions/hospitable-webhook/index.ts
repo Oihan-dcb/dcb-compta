@@ -61,7 +61,12 @@ async function handleReservation(supabase: any, event: string, data: any) {
   const arrival = data.arrival_date?.substring(0, 10)
   const moisComptable = arrival?.substring(0, 7) || null
   const finalStatus = data.reservation_status?.current?.category || data.status || 'accepted'
-  const guestName = data.guests?.[0]?.name || null
+  // Le nom peut être dans différents champs selon l'événement webhook
+  const guestName =
+    data.guest?.name ||                          // champ 'guest' singulier
+    data.guest_name ||                           // champ direct
+    (Array.isArray(data.guests) ? data.guests?.[0]?.name : null) || // ancien format tableau
+    null
 
   const resaRow = {
     hospitable_id: hospId,
@@ -87,9 +92,11 @@ async function handleReservation(supabase: any, event: string, data: any) {
     hospitable_raw: data,
   }
 
+  // Ne pas écraser guest_name si le webhook n'en a pas
+  const upsertRow = resaRow.guest_name ? resaRow : { ...resaRow, guest_name: undefined }
   const { data: upserted, error } = await supabase
     .from('reservation')
-    .upsert(resaRow, { onConflict: 'hospitable_id' })
+    .upsert(upsertRow, { onConflict: 'hospitable_id' })
     .select('id').single()
 
   if (error) { console.error('Upsert error:', error); return }
