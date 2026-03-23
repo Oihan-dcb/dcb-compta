@@ -297,7 +297,7 @@ export async function getVirNonRapproches(mois) {
     .from('ventilation')
     .select(`
       id, code, montant_ttc, mouvement_id, mois_comptable,
-      reservation (id, code, platform, guest_name, arrival_date, departure_date, nights, fin_revenue,
+      reservation (id, code, platform, guest_name, arrival_date, departure_date, nights, fin_revenue, final_status,
         bien (code, hospitable_name, gestion_loyer, agence))
     `)
     .eq('code', 'VIR')
@@ -306,7 +306,11 @@ export async function getVirNonRapproches(mois) {
     .lte('mois_comptable', dateMax)
     .order('mois_comptable', { ascending: false })
   if (error) throw error
-  return data || []
+  // Exclure les réservations annulées
+  return (data || []).filter(v =>
+    v.reservation?.final_status !== 'not accepted' &&
+    v.reservation?.final_status !== 'cancelled'
+  )
 }
 
 export async function getStatsRapprochement(mois) {
