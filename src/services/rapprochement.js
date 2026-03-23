@@ -512,6 +512,8 @@ export async function annulerRapprochement(mouvementId) {
     if (resaIds.length) await supabase.from('reservation').update({ rapprochee: false }).in('id', resaIds)
   }
   await supabase.from('payout_hospitable').update({ mouvement_id: null, statut_matching: 'en_attente' }).eq('mouvement_id', mouvementId)
+  // Supprimer les paiements enregistrés pour ce virement (annulation du rapprochement)
+  await supabase.from('reservation_paiement').delete().eq('mouvement_id', mouvementId)
   await supabase.from('mouvement_bancaire').update({ statut_matching: 'en_attente' }).eq('id', mouvementId)
 }
 
