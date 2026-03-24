@@ -156,16 +156,35 @@ async function handleReservation(supabase: any, event: string, data: any): Promi
     )
   }
 
-  // Ventilation automatique
+  // Ventilation automatique — supprimer l'existante pour éviter les doublons
   if (moisComptable && upserted?.id) {
     if (finalStatus === 'cancelled' || finalStatus === 'not accepted') {
       await supabase.from('ventilation').delete().eq('reservation_id', upserted.id)
+      console.log('Ventilation supprimée (annulation):', data.code)
     } else {
+      // Supprimer avant reventilation pour éviter les doublons (TAXE etc.)
+      await supabase.from('ventilation').delete().eq('reservation_id', upserted.id)
       const { error: ventError } = await supabase.rpc('ventiler_toutes_resas', {
         p_mois_debut: moisComptable,
         p_mois_fin:   moisComptable,
       })
-      if (ventError) console.error('Ventilation error:', ventError)
+      if (ventError) {
+        console.error('Ventilation error:', ventError)
+      } else {
+        // Sync statut_matching des mouvements déjà liés (fixes désynchro)
+        const { data: linkedMouvs } = await supabase
+          .from('ventilation')
+          .select('mouvement_id')
+          .eq('reservation_id', upserted.id)
+          .not('mouvement_id', 'is', null)
+        if (linkedMouvs?.length) {
+          const mouvIds = [...new Set(linkedMouvs.map((v: any) => v.mouvement_id))]
+          await supabase.from('mouvement_bancaire')
+            .update({ statut_matching: 'rapproche' })
+            .in('id', mouvIds)
+            .eq('statut_matching', 'en_attente')
+        }
+      }
     }
   }
 
