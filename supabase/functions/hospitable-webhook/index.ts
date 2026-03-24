@@ -96,11 +96,11 @@ async function handleReservation(supabase: any, event: string, data: any): Promi
   const arrival        = data.arrival_date?.substring(0, 10)
   const moisComptable  = arrival?.substring(0, 7) || null
   const finalStatus    = data.reservation_status?.current?.category || data.status || 'accepted'
-  const guestName      =
-    data.guest?.name ||
-    data.guest_name  ||
-    (Array.isArray(data.guests) ? data.guests?.[0]?.name : null) ||
-    null
+  const guestFirst    = data.guest?.first_name || null
+  const guestLast     = data.guest?.last_name  || null
+  const guestName     =
+    (guestFirst && guestLast ? guestFirst + ' ' + guestLast : guestFirst || guestLast) ||
+    data.guest?.name || data.guest_name || null
 
   const platform = data.platform === 'booking.com' ? 'booking' : (data.platform || 'direct')
 
