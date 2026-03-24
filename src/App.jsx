@@ -12,6 +12,7 @@ import PageConfig from './pages/PageConfig'
 import PageAutoEntrepreneurs from './pages/PageAutoEntrepreneurs'
 import PagePrestationsAE from './pages/PagePrestationsAE'
 import PageImport from './pages/PageImport'
+import PageJournal from './pages/PageJournal'
 import './App.css'
 
 export default function App() {
@@ -59,6 +60,7 @@ export default function App() {
                 </span>
               )}
             </NavLink>
+            <NavLink to="/journal" className={({isActive}) => isActive ? 'nav-link active' : 'nav-link'}>Journal</NavLink>
             <NavLink to="/config" className={({isActive}) => isActive ? 'nav-link active' : 'nav-link'}>Config</NavLink>
           </nav>
         </header>
@@ -74,6 +76,7 @@ export default function App() {
             <Route path="/import" element={<PageImport />} />
             <Route path="/auto-entrepreneurs" element={<PageAutoEntrepreneurs />} />
             <Route path="/prestations-ae" element={<PagePrestationsAE />} />
+            <Route path="/journal" element={<PageJournal />} />
             <Route path="/config" element={<PageConfig />} />
           </Routes>
         </main>
