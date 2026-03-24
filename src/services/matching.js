@@ -485,13 +485,25 @@ async function confirmerMatch(mvt, matchedPayouts, statut, note) {
   const reservationIds = []
 
   // Récupérer toutes les réservations liées à ces payouts
+  // Fallback si payout_reservation vide : matching par montant
   for (const payoutId of payoutIds) {
     const { data: liens } = await supabase
       .from('payout_reservation')
       .select('reservation_id')
       .eq('payout_id', payoutId)
-
-    if (liens) reservationIds.push(...liens.map(l => l.reservation_id))
+    if (liens?.length) {
+      reservationIds.push(...liens.map(l => l.reservation_id))
+    } else {
+      const { data: ph } = await supabase.from('payout_hospitable').select('amount,mois_comptable').eq('id', payoutId).single()
+      if (ph?.amount) {
+        const { data: cands } = await supabase.from('reservation').select('id,fin_revenue').eq('mois_comptable', ph.mois_comptable || mvt.mois_releve).is('rapprochee', false).gt('fin_revenue', 0)
+        const found = (cands || []).find(r => Math.abs(r.fin_revenue - ph.amount) <= 5)
+        if (found) {
+          reservationIds.push(found.id)
+          try { await supabase.from('payout_reservation').upsert({ payout_id: payoutId, reservation_id: found.id }, { onConflict: 'payout_id,reservation_id', ignoreDuplicates: true }) } catch (_) {}
+        }
+      }
+    }
   }
 
   // Mettre à jour le mouvement bancaire
@@ -516,6 +528,15 @@ async function confirmerMatch(mvt, matchedPayouts, statut, note) {
     await supabase.from('ventilation')
       .update({ mouvement_id: mvt.id })
       .in('reservation_id', reservationIds)
+    // Alimenter reservation_paiement
+    for (const resaId of reservationIds) {
+      try {
+        await supabase.from('reservation_paiement').upsert({
+          reservation_id: resaId, mouvement_id: mvt.id,
+          montant: mvt.credit, date_paiement: mvt.date_operation, type_paiement: 'total',
+        }, { onConflict: 'reservation_id,mouvement_id', ignoreDuplicates: true })
+      } catch (_) {}
+    }
   }
 
   return { matched: true, raison: note, payoutIds, reservationIds }
