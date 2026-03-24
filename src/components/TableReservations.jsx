@@ -4,33 +4,44 @@ import { formatMontant } from '../lib/hospitable'
 import { toggleOwnerStay } from '../hooks/useOwnerStay'
 
 function BadgeStatut({ r, onToggle }) {
+  // Séjour proprio
   if (r.owner_stay) return (
     <span className="badge badge-neutral"
-      onClick={r.platform === 'manual' ? e => { e.stopPropagation(); onToggle(r) } : undefined}
+      onClick={r.platform === 'manual' ? (e) => { e.stopPropagation(); onToggle(r) } : undefined}
       style={{ cursor: r.platform === 'manual' ? 'pointer' : 'default' }}
       title={r.platform === 'manual' ? 'Cliquer pour retirer le statut séjour proprio' : ''}>
       🏠 Séjour proprio
     </span>
   )
-  if (r.platform === 'manual' && (!r.ventilation || r.ventilation.length === 0)) return (
+  // Manuel sans statut
+  if (r.platform === 'manual' && !r.owner_stay && !r.ventilation_calculee) return (
     <span className="badge"
-      onClick={e => { e.stopPropagation(); onToggle(r) }}
+      onClick={(e) => { e.stopPropagation(); onToggle(r) }}
       style={{ background: '#fff7ed', color: '#c2410c', border: '1px solid #fed7aa', borderRadius: 4, padding: '2px 6px', fontSize: '0.75em', fontWeight: 600, cursor: 'pointer' }}
       title="Cliquer pour marquer comme séjour propriétaire">
-      ⚠ À saisir
+      🔧 à saisir
     </span>
   )
-  if (r.rapprochee) return <span className="badge badge-success">✓ Rapprochée</span>
+  // Rapprochée (priorité max — état final)
+  if (r.rapprochee) return (
+    <span className="badge badge-success"
+      style={{ display: 'inline-flex', alignItems: 'center', gap: 3 }}>
+      ✅ Rapprochée
+    </span>
+  )
+  // Ventilée mais pas encore rapprochée
   if (r.ventilation_calculee) return (
     <span className="badge badge-warning"
-      onClick={r.platform === 'manual' ? e => { e.stopPropagation(); onToggle(r) } : undefined}
+      onClick={r.platform === 'manual' ? (e) => { e.stopPropagation(); onToggle(r) } : undefined}
       style={{ cursor: r.platform === 'manual' ? 'pointer' : 'default' }}
       title={r.platform === 'manual' ? 'Cliquer pour marquer comme séjour propriétaire' : ''}>
       Ventilée
     </span>
   )
+  // Importée — pas encore traitée
   return <span className="badge badge-info">Importée</span>
 }
+
 
 export default function TableReservations({ reservations, onSelect, onRefresh }) {
   if (reservations.length === 0) return (
@@ -56,7 +67,7 @@ export default function TableReservations({ reservations, onSelect, onRefresh })
           <tr>
             <th>Code</th><th>Plateforme</th><th>Bien</th><th>Voyageur</th>
             <th>Statut</th><th>Check-in</th><th>Nuits</th>
-            <th className="right">Revenue net</th><th className="right" title="AUTO réel vs provision">AUTO</th><th className="right">Taux COM</th><th>Statut</th>
+            <th className="right">Revenue net</th><th className="right" title="AUTO réel vs provision">AUTO</th><th className="right">Taux COM</th><th>Compta</th>
           </tr>
         </thead>
         <tbody>
