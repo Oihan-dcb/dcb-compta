@@ -9,11 +9,15 @@ Deno.serve(async (req) => {
   let payload: any
   try { payload = await req.json() } catch { return new Response('Invalid JSON', { status: 400 }) }
 
-  const event = payload?.event
-  const data  = payload?.data
-  console.log('Webhook received:', event, JSON.stringify(data)?.substring(0, 200))
+  // Hospitable envoie {event,data} OU directement {id,code,guest,...} (Historical Data)
+  let event = payload?.event || payload?.type || null
+  let data   = payload?.data || (payload?.id ? payload : null)
+  if (!data && payload?.code) { data = payload; event = event || 'reservation.updated' }
+  if (!event && data?.id) event = 'reservation.updated'
+  console.log('Webhook received:', event, data?.id, data?.code)
 
-  if (!event || !data) return new Response('OK', { status: 200 })
+
+  if (!data) return new Response('OK', { status: 200 })
 
   const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_KEY)
 
@@ -97,14 +101,14 @@ async function handleReservation(supabase: any, event: string, data: any): Promi
   const moisComptable  = arrival?.substring(0, 7) || null
   const finalStatus    = data.reservation_status?.current?.category || data.status || 'accepted'
   const guestFirst    = data.guest?.first_name || null
-  const guestLast     = data.guest?.last_name  || null
-  const guestName     =
-    (guestFirst && guestLast ? guestFirst + ' ' + guestLast : guestFirst || guestLast) ||
-    data.guest?.name || data.guest_name || null
-
-  const platform = data.platform === 'booking.com' ? 'booking' : (data.platform || 'direct')
-
-  const resaRow: any = {
+  // guest_name : Hospitable webhook inclut guest.first_name + last_name dans les payloads
+  const guestBuilt = [data.guest?.first_name, data.guest?.last_name].filter(Boolean).join(' ') || null
+  const guestName =
+    guestBuilt ||
+    data.guest?.name ||
+    data.guest_name  ||
+    (Array.isArray(data.guests) ? data.guests?.[0]?.name : null) ||
+    null
     hospitable_id:       hospId,
     bien_id:             bien.id,
     code:                data.code,
