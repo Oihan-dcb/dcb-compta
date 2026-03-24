@@ -9,6 +9,7 @@
  * SEPA/Direct : matching manuel — l'utilisateur choisit les VIR à lier
  */
 import { supabase } from '../lib/supabase'
+import { logOp } from './journal'
 
 // ── LECTURE ────────────────────────────────────────────────────
 
@@ -506,6 +507,8 @@ export async function marquerNonIdentifie(mouvementId) {
 }
 
 export async function annulerRapprochement(mouvementId) {
+  // Récupérer le mouvement pour le log
+  const { data: mvtLog } = await supabase.from('mouvement_bancaire').select('credit, date_operation, libelle').eq('id', mouvementId).single()
   const { data: virs } = await supabase
     .from('ventilation')
     .select('id, reservation_id')
@@ -519,6 +522,13 @@ export async function annulerRapprochement(mouvementId) {
   // Supprimer les paiements enregistrés pour ce virement (annulation du rapprochement)
   await supabase.from('reservation_paiement').delete().eq('mouvement_id', mouvementId)
   await supabase.from('mouvement_bancaire').update({ statut_matching: 'en_attente' }).eq('id', mouvementId)
+  // Journal
+  await logOp({
+    categorie: 'rapprochement', action: 'unlink', statut: 'warning', source: 'app',
+    mouvement_id: mouvementId,
+    message: 'Annulation rapprochement : virement ' + (mvtLog ? (mvtLog.credit/100).toFixed(2) + '€ du ' + mvtLog.date_operation : mouvementId),
+    avant: { mouvement_id: mouvementId, libelle: mvtLog?.libelle },
+  }).catch(() => {})
 }
 
 // ── HELPERS PRIVÉS ─────────────────────────────────────────────
