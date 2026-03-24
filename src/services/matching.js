@@ -496,7 +496,7 @@ async function confirmerMatch(mvt, matchedPayouts, statut, note) {
     } else {
       const { data: ph } = await supabase.from('payout_hospitable').select('amount,mois_comptable').eq('id', payoutId).single()
       if (ph?.amount) {
-        const { data: cands } = await supabase.from('reservation').select('id,fin_revenue').eq('mois_comptable', ph.mois_comptable || mvt.mois_releve).is('rapprochee', false).gt('fin_revenue', 0)
+        const { data: cands } = await supabase.from('reservation').select('id,fin_revenue').eq('mois_comptable', ph.mois_comptable || mvt.mois_releve).gt('fin_revenue', 0)
         const found = (cands || []).find(r => Math.abs(r.fin_revenue - ph.amount) <= 5)
         if (found) {
           reservationIds.push(found.id)
