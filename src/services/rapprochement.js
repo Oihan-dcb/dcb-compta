@@ -421,17 +421,8 @@ export async function lancerMatchingAuto(mois) {
             if (matched.length) virIds = matched.map(v => v.id)
           }
 
-          // Fallback VIR : montant exact sur VIR
-          if (virIds.length === 0) {
-            const exact = virCanal.find(v => Math.abs((v.reservation?.fin_revenue ?? v.montant_ttc ?? 0) - mouv.credit) <= 2)
-            if (exact) virIds = [exact.id]
-          }
-
-          // Fallback VIR : subset sum
-          if (virIds.length === 0) {
-            const subset = _subsetSum(virCanal.filter(v => !v.mouvement_id), mouv.credit)
-            if (subset) virIds = subset.map(v => v.id)
-          }
+          // Note : pas de fallback VIR par montant — le VIR (LOY) est un calcul interne
+          // indépendant du montant Airbnb. Le lien se fait uniquement via payout_reservation.
 
           if (virIds.length > 0) {
             await _lier(mouv.id, virIds)
@@ -479,11 +470,7 @@ export async function lancerMatchingAuto(mois) {
             const matched = virCanal.filter(v => !v.mouvement_id && allResaIds.includes(v.reservation?.id))
             if (matched.length) virIds = matched.map(v => v.id)
           }
-          if (virIds.length === 0) {
-            const subset = _subsetSum(virCanal.filter(v => !v.mouvement_id), mouv.credit)
-            if (subset) virIds = subset.map(v => v.id)
-          }
-
+          // Note : pas de fallback VIR par montant — le VIR (LOY) est indépendant du montant Airbnb
           if (virIds.length > 0) {
             await _lier(mouv.id, virIds)
           } else {
