@@ -89,7 +89,6 @@ export async function fetchReservations(propertyIds, opts = {}) {
 }
 
 /**
-/**
  * Récupère les transactions financières
  * @param {Object} opts - Options
  */
