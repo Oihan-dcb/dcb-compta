@@ -121,19 +121,35 @@ export async function getMouvementsMois(mois) {
   const nonEnriches = rapproches.filter(m => !m._resa)
   if (nonEnriches.length > 0) {
     const { data: resasByMois } = await supabase
-      .from('reservation')
+      .select('id, code, guest_name, arrival_date, departure_date, platform, fin_revenue, bien(hospitable_name, agence, airbnb_account)')
       .select('id, code, guest_name, arrival_date, departure_date, platform, fin_revenue, bien(hospitable_name, agence)')
       .eq('mois_comptable', mois)
       .in('platform', ['airbnb', 'booking', 'direct'])
       .gt('fin_revenue', 0)
     const usedResaIds = new Set()
     for (const m of nonEnriches) {
-      const best = (resasByMois || [])
-        .filter(r => !usedResaIds.has(r.id) && Math.abs(r.fin_revenue - m.credit) <= m.credit * 0.05 && (r.bien?.agence || 'dcb') === 'dcb')
-        .sort((a, b) => Math.abs(a.fin_revenue - m.credit) - Math.abs(b.fin_revenue - m.credit))[0]
-      if (best) {
-        usedResaIds.add(best.id)
-        m._resa = { guest_name: best.guest_name, bien_name: best.bien?.hospitable_name, arrival_date: best.arrival_date, departure_date: best.departure_date, nights: best.nights, platform: best.platform, fin_revenue: best.fin_revenue, agence: best.bien?.agence, biens: [best.bien?.hospitable_name].filter(Boolean), guests: [best.guest_name].filter(Boolean), reservation_ids: [best.id], codes: [best.code], nb_resas: 1 }
+      // Pour Airbnb : filtrer par compte + subset sum pour groupés
+      const cands = (resasByMois || []).filter(r => !usedResaIds.has(r.id))
+      // Match exact (±2 centimes)
+      const exact = cands.find(r => Math.abs((r.fin_revenue || 0) - m.credit) <= 2)
+      if (exact) {
+        usedResaIds.add(exact.id)
+        m._resa = { guest_name: exact.guest_name, bien_name: exact.bien?.hospitable_name, arrival_date: exact.arrival_date, departure_date: exact.departure_date, platform: exact.platform, fin_revenue: exact.fin_revenue, agence: exact.bien?.agence, biens: [exact.bien?.hospitable_name].filter(Boolean), guests: [exact.guest_name].filter(Boolean), reservation_ids: [exact.id], codes: [exact.code], nb_resas: 1 }
+      } else if (m.canal === 'airbnb' && cands.length >= 2) {
+        // Subset sum groupés Airbnb — même compte uniquement
+        // Déterminer le compte du virement via les resas liées (reservation_paiement)
+        const compte = cands.find(r => r.bien?.airbnb_account)?.bien?.airbnb_account || null
+        const candsFiltered = compte ? cands.filter(r => r.bien?.airbnb_account === compte) : cands
+        let sum = 0, resas = [], remaining = m.credit
+        const sorted = [...candsFiltered].sort((a,b) => b.fin_revenue - a.fin_revenue)
+        for (const r of sorted) {
+          if (r.fin_revenue <= remaining + 2) { sum += r.fin_revenue; resas.push(r); remaining -= r.fin_revenue }
+          if (Math.abs(remaining) <= 2) break
+        }
+        if (resas.length > 1 && Math.abs(sum - m.credit) <= 2) {
+          resas.forEach(r => usedResaIds.add(r.id))
+          m._resa = { guest_name: resas.length + ' voyageur(s)', bien_name: [...new Set(resas.map(r => r.bien?.hospitable_name).filter(Boolean))].join(' | '), platform: 'airbnb', fin_revenue: sum, nb_resas: resas.length, biens: [...new Set(resas.map(r => r.bien?.hospitable_name).filter(Boolean))], guests: resas.map(r => r.guest_name).filter(Boolean), reservation_ids: resas.map(r => r.id), codes: resas.map(r => r.code) }
+        }
       }
     }
   }
