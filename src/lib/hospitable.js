@@ -111,6 +111,3 @@ export function formatMontant(centimes) {
     currency: 'EUR',
   }).format(centimes / 100)
 }
-
-/**
- * On pagine et on s'arrête dès qu'on passe avant le mois cible.
