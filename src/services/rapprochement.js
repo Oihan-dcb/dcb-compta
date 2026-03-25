@@ -121,8 +121,8 @@ export async function getMouvementsMois(mois) {
   const nonEnriches = rapproches.filter(m => !m._resa)
   if (nonEnriches.length > 0) {
     const { data: resasByMois } = await supabase
+      .from('reservation')
       .select('id, code, guest_name, arrival_date, departure_date, platform, fin_revenue, bien(hospitable_name, agence, airbnb_account)')
-      .select('id, code, guest_name, arrival_date, departure_date, platform, fin_revenue, bien(hospitable_name, agence)')
       .eq('mois_comptable', mois)
       .in('platform', ['airbnb', 'booking', 'direct'])
       .gt('fin_revenue', 0)
