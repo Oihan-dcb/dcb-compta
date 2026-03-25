@@ -392,7 +392,13 @@ export async function lancerMatchingAuto(mois) {
     // ── AIRBNB + BOOKING ───────────────────────────────────────────
     for (const canal of ['airbnb', 'booking']) {
       const mouvCanal = libres.filter(m => m.canal === canal)
-      const payoutsCanal = payoutsAll.filter(p => p.platform === canal)
+      // Pour Airbnb : utiliser uniquement les payouts synthétiques (fin_revenue → lien resa garanti)
+        // Pour Booking : payouts réels (ils ont payout_reservation via booking_payout_line)
+        const payoutsCanal = payoutsAll.filter(p => {
+          if (p.platform !== canal) return false
+          if (canal === 'airbnb') return p.hospitable_id?.endsWith('_airbnb_payout')
+          return true
+        })
       const virCanal = virs.filter(v => v.reservation?.platform === canal)
 
       for (const mouv of mouvCanal) {
