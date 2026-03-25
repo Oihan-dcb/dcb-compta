@@ -637,6 +637,3 @@ function _subsetSum(virs, cible, tol = 2) {
   }
   return null
 }
-  const res = f(0, Math.round(cible), [])
-  return res && res.length > 1 ? res : null
-}
