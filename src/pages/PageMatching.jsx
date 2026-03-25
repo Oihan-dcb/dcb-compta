@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react'
 import { setToken, formatMontant } from '../lib/hospitable'
-import {, lancerMatching, marquerNonRapprochable, getPayoutsMois, getMatchingStats, validerMatchManuelResas } from '../services/matching'
+import { lancerMatching, marquerNonRapprochable, getPayoutsMois, getMatchingStats, validerMatchManuelResas } from '../services/matching'
 import { getMouvementsARapprocher } from '../services/banque'
 import { supabase } from '../lib/supabase'
 import { format } from 'date-fns'
@@ -59,8 +59,7 @@ export default function PageMatching() {
       setReservations((resas || []).map(r => ({
         ...r,
         airbnb_account: r.bien?.airbnb_account || null,
-        bien_code: r.bien?.code || null,
-      })))
+        bien_code: r.bien?.code || null })))
       // Mois dispos pour le sélecteur
       const { data: moisData } = await supabase
         .from('mouvement_bancaire')
@@ -280,14 +279,12 @@ const CANAL_PLATFORM = {
   booking: ['booking'],
   stripe: ['direct', 'manual'],
   sepa_manuel: ['direct', 'manual', 'airbnb', 'booking'],
-  interne: [],
-}
+  interne: [] }
 
 function MvtCard({ mvt, reservations, selected, selectedResas, onSelect, onToggleResa, onValider, onIgnorer }) {
   const canalColors = {
     airbnb: '#FFE8E0', booking: '#E0EEFF', stripe: '#D1FAE5',
-    sepa_manuel: '#FEF3C7', interne: '#F3F4F6',
-  }
+    sepa_manuel: '#FEF3C7', interne: '#F3F4F6' }
   const bg = canalColors[mvt.canal] || '#F9FAFB'
 
   // Filtrer les resas pertinentes selon le canal du virement
@@ -311,8 +308,7 @@ function MvtCard({ mvt, reservations, selected, selectedResas, onSelect, onToggl
       border: `1px solid ${selected ? '#CC9933' : 'var(--border)'}`,
       borderRadius: 'var(--radius)',
       padding: '12px 16px',
-      cursor: 'pointer',
-    }}>
+      cursor: 'pointer' }}>
       {/* Header */}
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}
         onClick={onSelect}>
@@ -409,8 +405,7 @@ function ResaRow({ r, checked, onToggle, mvtMontant }) {
       padding: '6px 10px', borderRadius: 6, marginBottom: 4,
       background: checked ? '#FFF8EC' : '#F9FAFB',
       border: `1px solid ${checked ? '#CC9933' : 'var(--border)'}`,
-      cursor: 'pointer', fontSize: 13,
-    }}>
+      cursor: 'pointer', fontSize: 13 }}>
       <input type="checkbox" checked={checked} onChange={onToggle} />
       <span style={{ fontFamily: 'monospace', fontSize: 12, color: 'var(--text-muted)' }}>{r.code}</span>
       {r.bien_code && <span style={{ fontSize: 11, background: '#F3F4F6', padding: '1px 6px', borderRadius: 8 }}>{r.bien_code}</span>}
