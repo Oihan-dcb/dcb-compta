@@ -128,7 +128,7 @@ export async function syncReservations(mois) {
  */
 function parseReservation(resa, bien, mois) {
   const fin = resa.financials?.host || {}
-  const guest = {} // API v2 : guest_name est directement sur resa
+  const guest = resa.guest || {} // API v2 : disponible avec include=guest
 
   // Extraire le host service fee (commission plateforme)
   const hostServiceFee = (fin.host_fees || []).find(f =>
@@ -154,8 +154,8 @@ function parseReservation(resa, bien, mois) {
     nights: resa.nights,
     checkin_time: resa.check_in,
     checkout_time: resa.check_out,
-    guest_name: resa.guest_name || null,  // API v2 : champ direct
-    guest_count: resa.guest_count || (resa.guests?.total) || null,  // API v2
+    guest_name: [resa.guest?.first_name, resa.guest?.last_name].filter(Boolean).join(' ') || resa.guest_name || null,
+    guest_count: resa.guest_count || resa.guests?.total || null,
     stay_type: resa.stay_type || 'guest',
     owner_stay: resa.owner_stay || false,
     reservation_status: resa.reservation_status,
