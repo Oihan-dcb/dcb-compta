@@ -89,7 +89,6 @@ export async function fetchReservations(propertyIds, opts = {}) {
 }
 
 /**
- * Récupère les payouts (virements) Hospitable
 /**
  * Récupère les transactions financières
  * @param {Object} opts - Options
@@ -115,6 +114,4 @@ export function formatMontant(centimes) {
 }
 
 /**
- * Récupère les payouts d'un mois donné avec early exit.
- * L'API Hospitable /payouts trie par date desc mais ignore les filtres de date.
  * On pagine et on s'arrête dès qu'on passe avant le mois cible.
