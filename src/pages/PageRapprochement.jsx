@@ -10,6 +10,7 @@ import { setToken } from '../lib/hospitable'
 
 const HOSP_TOKEN = import.meta.env.VITE_HOSPITABLE_TOKEN
 import MoisSelector from '../components/MoisSelector'
+import ModalResa from '../components/ModalResa'
 import { format } from 'date-fns'
 import { fr } from 'date-fns/locale'
 
@@ -39,6 +40,7 @@ function fmtDate(d) {
 
 export default function PageRapprochement() {
   const [mois, setMois] = useState(moisCourant)
+  const [selectedResa, setSelectedResa] = useState(null)
   const [moisDispos, setMoisDispos] = useState([moisCourant])
   const [mouvements, setMouvements] = useState([])
   const [virs, setVirs] = useState([])
@@ -58,6 +60,18 @@ export default function PageRapprochement() {
   const [virMoisFiltre, setVirMoisFiltre] = useState(mois) // filtre mois dans panneau Lier
   const [syncing, setSyncing] = useState(false)
   const [syncLog, setSyncLog] = useState(null)
+
+
+  // Ouvrir le modal de détail d'une réservation depuis le rapprochement
+  async function ouvrirResa(code) {
+    if (!code) return
+    const { data } = await supabase
+      .from('reservation')
+      .select('*, ventilation(*), bien(code, hospitable_name, agence, taux_com, provision_ae_ref, forfait_dcb_ref)')
+      .eq('code', code)
+      .single()
+    if (data) setSelectedResa(data)
+  }
 
   const charger = useCallback(async () => {
     setLoading(true)
@@ -548,8 +562,7 @@ export default function PageRapprochement() {
                           <span
                             onClick={() => {
                               const code = m._resa.codes[0]
-                              const moisResa = m._resa.arrival_date?.substring(0, 7) || mois
-                              window.location.href = '/reservations?highlight=' + code + '&mois=' + moisResa
+                              ouvrirResa(code)
                             }}
                             title={'Aller à la réservation ' + (m._resa?.codes?.[0] || '')}
                             style={{ cursor: 'pointer', textDecoration: 'none' }}
@@ -696,6 +709,13 @@ export default function PageRapprochement() {
         )}
       </div>
     </div>
+      {selectedResa && (
+        <ModalResa
+          resa={selectedResa}
+          onClose={() => setSelectedResa(null)}
+          onSaved={() => setSelectedResa(null)}
+        />
+      )}
   )
 }
 // v2
