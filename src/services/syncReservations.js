@@ -87,6 +87,29 @@ export async function syncReservations(mois) {
           await syncReservationFees(upserted.id, resa.financials.host)
         }
 
+        // Airbnb : payout = fin_revenue (financials.host.revenue.amount)
+        // date_payout = arrival_date (Airbnb génère le payout au check-in)
+        if (resa.platform === 'airbnb' && parsed.fin_revenue && parsed.arrival_date) {
+          await supabase.from('payout_hospitable').upsert({
+            hospitable_id: resa.id + '_airbnb_payout',
+            platform: 'airbnb',
+            amount: parsed.fin_revenue,
+            date_payout: parsed.arrival_date,
+            mois_comptable: parsed.mois_comptable,
+            statut_matching: 'en_attente',
+            reservation_id_ref: upserted.id,
+          }, { onConflict: 'hospitable_id', ignoreDuplicates: false })
+          // Créer aussi payout_reservation si pas déjà présent
+          const { data: ph } = await supabase.from('payout_hospitable')
+            .select('id').eq('hospitable_id', resa.id + '_airbnb_payout').single()
+          if (ph?.id) {
+            await supabase.from('payout_reservation').upsert({
+              payout_id: ph.id,
+              reservation_id: upserted.id,
+            }, { onConflict: 'payout_id,reservation_id', ignoreDuplicates: true })
+          }
+        }
+
         if (existingMap.has(resa.id)) {
           log.updated++
         } else {
