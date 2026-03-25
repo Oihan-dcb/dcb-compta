@@ -620,7 +620,7 @@ async function _lier(mouvementId, virIds, statut = 'rapproche', typePaiement = n
 }
 
 function _subsetSum(virs, cible, tol = 2) {
-  const getMontant = (v) => v.reservation?.fin_revenue ?? v.montant_ttc ?? 0
+  const getMontant = (v) => v.amount ?? v.reservation?.fin_revenue ?? v.montant_ttc ?? 0
   // Trier par montant desc et limiter à 12 candidats pour éviter explosion combinatoire
   const s = [...virs].sort((a, b) => getMontant(b) - getMontant(a)).slice(0, 12)
   const cibleArrondie = Math.round(cible)
