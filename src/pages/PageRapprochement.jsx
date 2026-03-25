@@ -560,10 +560,7 @@ export default function PageRapprochement() {
                       <td style={{ padding: '9px 12px' }}>
                         {m.statut_matching === 'rapproche' && m._resa?.codes?.[0] ? (
                           <span
-                            onClick={() => {
-                              const code = m._resa.codes[0]
-                              ouvrirResa(code)
-                            }}
+                            onClick={() => { const rc = m._resa?.codes?.[0]; if (rc) ouvrirResa(rc) }}
                             title={'Aller à la réservation ' + (m._resa?.codes?.[0] || '')}
                             style={{ cursor: 'pointer', textDecoration: 'none' }}
                           ><span style={{ padding: '3px 8px', borderRadius: 12, fontSize: 11, fontWeight: 600,
