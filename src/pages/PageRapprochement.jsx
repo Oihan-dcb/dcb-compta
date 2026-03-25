@@ -8,11 +8,11 @@ import {
 import { syncStripe } from '../services/syncStripe'
 import { setToken } from '../lib/hospitable'
 
-const HOSP_TOKEN = import.meta.env.VITE_HOSPITABLE_TOKEN
 import MoisSelector from '../components/MoisSelector'
 import ModalResa from '../components/ModalResa'
 import { format } from 'date-fns'
 import { fr } from 'date-fns/locale'
+const HOSP_TOKEN = import.meta.env.VITE_HOSPITABLE_TOKEN
 
 const moisCourant = new Date().toISOString().substring(0, 7)
 
