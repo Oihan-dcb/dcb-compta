@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback } from 'react'
+import { useNavigate } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
 import {
   getMouvementsMois, getVirNonRapproches, getStatsRapprochement,
@@ -39,6 +40,7 @@ function fmtDate(d) {
 }
 
 export default function PageRapprochement() {
+  const navigate = useNavigate()
   const [mois, setMois] = useState(moisCourant)
   const [selectedResa, setSelectedResa] = useState(null)
   const [moisDispos, setMoisDispos] = useState([moisCourant])
@@ -63,14 +65,10 @@ export default function PageRapprochement() {
 
 
   // Ouvrir le modal de détail d'une réservation depuis le rapprochement
-  async function ouvrirResa(code) {
-    if (!code) return
-    const { data } = await supabase
-      .from('reservation')
-      .select('*, ventilation(*), bien(code, hospitable_name, agence, taux_com, provision_ae_ref, forfait_dcb_ref)')
-      .eq('code', code)
-      .single()
-    if (data) setSelectedResa(data)
+  function ouvrirResa(resaCode) {
+    if (!resaCode) return
+    // Naviguer vers l'onglet Réservations avec le code pour ouvrir le modal
+    navigate('/reservations?code=' + resaCode)
   }
 
   const charger = useCallback(async () => {
