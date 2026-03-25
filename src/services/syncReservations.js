@@ -97,7 +97,6 @@ export async function syncReservations(mois) {
             date_payout: parsed.arrival_date,
             mois_comptable: parsed.mois_comptable,
             statut_matching: 'en_attente',
-            reservation_id_ref: upserted.id,
           }, { onConflict: 'hospitable_id', ignoreDuplicates: false })
           // Créer aussi payout_reservation si pas déjà présent
           const { data: ph } = await supabase.from('payout_hospitable')
@@ -106,7 +105,7 @@ export async function syncReservations(mois) {
             await supabase.from('payout_reservation').upsert({
               payout_id: ph.id,
               reservation_id: upserted.id,
-            }, { onConflict: 'payout_id,reservation_id', ignoreDuplicates: true })
+            }, { onConflict: 'payout_id', ignoreDuplicates: true })
           }
         }
 
