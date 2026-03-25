@@ -11,16 +11,6 @@
 import { supabase } from '../lib/supabase'
 
 // ============================================================
-// SYNC PAYOUTS HOSPITABLE → SUPABASE
-// ============================================================
-
-/**
- * Synchronise les payouts Hospitable dans la table payout_hospitable
- * @param {string} mois - YYYY-MM
- */
-
-/**
-// ============================================================
 // MOTEUR DE MATCHING BANCAIRE
 // ============================================================
 
