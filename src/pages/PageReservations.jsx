@@ -60,7 +60,16 @@ export default function PageReservations() {
       const codeParam = searchParams.get('code')
       if (codeParam) {
         const found = resas.find(r => r.code === codeParam)
-        if (found) { setSelectedResa(found); setSearchParams({}) }
+        if (found) {
+          setSelectedResa(found)
+          setSearchParams({}) // nettoyer l'URL
+        } else {
+          // La résa n'est pas dans ce mois — chercher son mois_comptable
+          const { data: resaInfo } = await supabase
+            .from('reservation').select('mois_comptable').eq('code', codeParam).single()
+          if (resaInfo?.mois_comptable) setMois(resaInfo.mois_comptable)
+          // charger() sera rappelé par le useEffect([mois]) — il trouvera la résa
+        }
       }
     } catch (err) { setError(err.message) }
     finally { setLoading(false) }
