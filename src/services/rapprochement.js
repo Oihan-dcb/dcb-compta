@@ -619,11 +619,37 @@ async function _lier(mouvementId, virIds, statut = 'rapproche', typePaiement = n
 
 function _subsetSum(virs, cible, tol = 2) {
   const getMontant = (v) => v.reservation?.fin_revenue ?? v.montant_ttc ?? 0
-  const s = [...virs].sort((a, b) => getMontant(b) - getMontant(a)).slice(0, 9)
-    if (Math.abs(r) <= tol) return sel
-    if (i >= s.length || r < -tol || sel.length >= 6) return null
-    return f(i + 1, r - getMontant(s[i]), [...sel, s[i]]) || f(i + 1, r, sel)
+  // Trier par montant desc et limiter à 12 candidats pour éviter explosion combinatoire
+  const s = [...virs].sort((a, b) => getMontant(b) - getMontant(a)).slice(0, 12)
+  const cibleArrondie = Math.round(cible)
+
+  // Tester par taille croissante : 2 par 2, puis 3 par 3, jusqu'à 6
+  // Avantage : préférence aux petits groupes (plus probables) et arrêt dès le premier match
+  function combiner(debut, taille, restant, sel) {
+    if (sel.length === taille) {
+      return Math.abs(restant) <= tol ? sel : null
+    }
+    if (debut >= s.length) return null
+    // Élagage : même si on prend tous les éléments restants, peut-on atteindre la cible ?
+    const maxPossible = s.slice(debut, debut + (taille - sel.length))
+      .reduce((sum, v) => sum + getMontant(v), 0)
+    if (restant - maxPossible > tol) return null  // trop petit même au maximum
+    if (restant < -tol) return null               // déjà dépassé
+
+    // Essayer avec s[debut]
+    const avecDebut = combiner(debut + 1, taille, restant - getMontant(s[debut]), [...sel, s[debut]])
+    if (avecDebut) return avecDebut
+    // Essayer sans s[debut]
+    return combiner(debut + 1, taille, restant, sel)
   }
+
+  for (let taille = 2; taille <= 6; taille++) {
+    if (s.length < taille) break
+    const res = combiner(0, taille, cibleArrondie, [])
+    if (res) return res
+  }
+  return null
+}
   const res = f(0, Math.round(cible), [])
   return res && res.length > 1 ? res : null
 }
