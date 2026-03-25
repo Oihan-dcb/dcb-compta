@@ -530,12 +530,14 @@ async function confirmerMatch(mvt, matchedPayouts, statut, note) {
       .in('reservation_id', reservationIds)
     // Alimenter reservation_paiement
     for (const resaId of reservationIds) {
-      try {
-        await supabase.from('reservation_paiement').upsert({
+      const { data: existRp } = await supabase.from('reservation_paiement')
+        .select('id').eq('reservation_id', resaId).eq('mouvement_id', mvt.id).maybeSingle()
+      if (!existRp) {
+        await supabase.from('reservation_paiement').insert({
           reservation_id: resaId, mouvement_id: mvt.id,
           montant: mvt.credit, date_paiement: mvt.date_operation, type_paiement: 'total',
-        }, { onConflict: 'reservation_id,mouvement_id', ignoreDuplicates: true })
-      } catch (_) {}
+        }).catch(() => {})
+      }
     }
   }
 
@@ -652,6 +654,18 @@ async function confirmerMatchResa(mvt, resas, statut, note) {
     await supabase.from('ventilation')
       .update({ mouvement_id: mvt.id })
       .in('reservation_id', resaIds)
+  }
+
+  // Alimenter reservation_paiement
+  for (const resaId of resaIds) {
+    const { data: existRp } = await supabase.from('reservation_paiement')
+      .select('id').eq('reservation_id', resaId).eq('mouvement_id', mvt.id).maybeSingle()
+    if (!existRp) {
+      await supabase.from('reservation_paiement').insert({
+        reservation_id: resaId, mouvement_id: mvt.id,
+        montant: mvt.credit, date_paiement: mvt.date_operation, type_paiement: 'total',
+      }).catch(() => {})
+    }
   }
 
   return { matched: true, raison: note, reservationIds: resaIds }
