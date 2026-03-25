@@ -410,7 +410,7 @@ export async function lancerMatchingAuto(mois) {
 
           // Fallback VIR : montant exact sur VIR
           if (virIds.length === 0) {
-            const exact = virCanal.find(v => !v.mouvement_id && Math.abs(v.montant_ttc - mouv.credit) <= 2)
+            const exact = virCanal.find(v => Math.abs((v.reservation?.fin_revenue ?? v.montant_ttc ?? 0) - mouv.credit) <= 2)
             if (exact) virIds = [exact.id]
           }
 
@@ -605,11 +605,11 @@ async function _lier(mouvementId, virIds, statut = 'rapproche', typePaiement = n
 }
 
 function _subsetSum(virs, cible, tol = 2) {
-  const s = [...virs].sort((a, b) => b.montant_ttc - a.montant_ttc).slice(0, 9)
-  function f(i, r, sel) {
+  const getMontant = (v) => v.reservation?.fin_revenue ?? v.montant_ttc ?? 0
+  const s = [...virs].sort((a, b) => getMontant(b) - getMontant(a)).slice(0, 9)
     if (Math.abs(r) <= tol) return sel
     if (i >= s.length || r < -tol || sel.length >= 6) return null
-    return f(i + 1, r - s[i].montant_ttc, [...sel, s[i]]) || f(i + 1, r, sel)
+    return f(i + 1, r - getMontant(s[i]), [...sel, s[i]]) || f(i + 1, r, sel)
   }
   const res = f(0, Math.round(cible), [])
   return res && res.length > 1 ? res : null
