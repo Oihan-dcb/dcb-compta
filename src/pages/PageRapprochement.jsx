@@ -707,8 +707,6 @@ export default function PageRapprochement() {
             })()}
           </div>
         )}
-      </div>
-    </div>
       {selectedResa && (
         <ModalResa
           resa={selectedResa}
@@ -716,6 +714,8 @@ export default function PageRapprochement() {
           onSaved={() => setSelectedResa(null)}
         />
       )}
+      </div>
+    </div>
   )
 }
 // v2
