@@ -435,8 +435,19 @@ export async function lancerMatchingAuto(mois) {
           continue
         }
 
-        // Étape 2 : regroupement — N payouts → 1 mouvement (Airbnb groupe par compte)
-        const subsetPay = _subsetSum(payoutsCanal, mouv.credit, 2)
+
+        // Etape 2 : regroupement N payouts -> 1 mouvement (Airbnb groupe par compte)
+        // Fenetres de date croissantes : +/-2j, +/-7j, +/-14j, tout
+        const dateMvt2 = new Date(mouv.date_operation)
+        const FENETRES_AIRBNB = [2, 7, 14, 999]
+        let subsetPay = null
+        for (const fenetre of FENETRES_AIRBNB) {
+          const paysFiltres = fenetre >= 999
+            ? payoutsCanal
+            : payoutsCanal.filter(p => Math.abs((new Date(p.date_payout) - dateMvt2) / 86400000) <= fenetre)
+          subsetPay = _subsetSum(paysFiltres, mouv.credit, 2)
+          if (subsetPay) break
+        }
         if (subsetPay) {
           for (const p of subsetPay) {
             await supabase.from('payout_hospitable')
