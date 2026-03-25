@@ -102,7 +102,7 @@ async function syncPayoutsData(payouts, mois, log) {
     amount: p.amount?.amount ?? 0,
     date_payout: (p.date || p.date_payout || '').substring(0, 10),
     bank_account: p.bank_account || null,
-    mois_comptable: mois,
+    mois_comptable: (p.date || p.date_payout || '').substring(0, 7) || mois,
     statut_matching: 'en_attente',
   }))
 
