@@ -3,7 +3,6 @@ import { pingEvoliz, getPaytermsEvoliz } from '../services/evoliz'
 import { syncProprietairesEvoliz } from '../services/syncProprietaires'
 import { formatMontant, setToken } from '../lib/hospitable'
 import { calculerVentilationMois } from '../services/ventilation'
-import { calculerVentilationMois } from '../services/ventilation'
 import { syncPayouts, lancerMatching } from '../services/matching'
 import { resetEtRematcher } from '../services/rapprochement'
 export default function PageConfig() {
