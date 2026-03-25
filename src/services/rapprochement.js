@@ -637,3 +637,89 @@ function _subsetSum(virs, cible, tol = 2) {
   }
   return null
 }
+
+/**
+ * Reset complet + re-matching d'un mois
+ * - Remet tous les mouvements du mois en en_attente
+ * - Supprime tous les reservation_paiement du mois
+ * - Remet mouvement_id=null sur les ventilations VIR du mois
+ * - Remet rapprochee=false sur les reservations du mois
+ * - Relance le matching auto
+ */
+export async function resetEtRematcher(mois) {
+  const log = { mois, reset: 0, matched: 0, errors: 0 }
+
+  try {
+    // 1. Récupérer les mouvements du mois
+    const { data: mouvements } = await supabase
+      .from('mouvement_bancaire')
+      .select('id')
+      .eq('mois_releve', mois)
+      .in('statut_matching', ['rapproche', 'matche_auto'])
+
+    if (!mouvements?.length) {
+      const result = await lancerMatchingAuto(mois)
+      log.matched = result.matched
+      return log
+    }
+
+    const mouvIds = mouvements.map(m => m.id)
+
+    // 2. Récupérer les reservation_paiement liés
+    const { data: paiements } = await supabase
+      .from('reservation_paiement')
+      .select('id, reservation_id')
+      .in('mouvement_id', mouvIds)
+
+    const resaIds = [...new Set((paiements || []).map(p => p.reservation_id).filter(Boolean))]
+    const paiementIds = (paiements || []).map(p => p.id)
+
+    // 3. Remettre mouvement_id=null sur les ventilations VIR
+    await supabase
+      .from('ventilation')
+      .update({ mouvement_id: null })
+      .in('mouvement_id', mouvIds)
+
+    // 4. Supprimer les reservation_paiement
+    if (paiementIds.length) {
+      await supabase
+        .from('reservation_paiement')
+        .delete()
+        .in('id', paiementIds)
+    }
+
+    // 5. Remettre rapprochee=false sur les réservations
+    if (resaIds.length) {
+      await supabase
+        .from('reservation')
+        .update({ rapprochee: false })
+        .in('id', resaIds)
+    }
+
+    // 6. Remettre mouvement_id=null sur les payouts Hospitable
+    await supabase
+      .from('payout_hospitable')
+      .update({ mouvement_id: null, statut_matching: 'en_attente' })
+      .in('mouvement_id', mouvIds)
+
+    // 7. Remettre les mouvements en en_attente (sauf non_identifie)
+    await supabase
+      .from('mouvement_bancaire')
+      .update({ statut_matching: 'en_attente' })
+      .in('id', mouvIds)
+
+    log.reset = mouvIds.length
+
+    // 8. Relancer le matching auto
+    const result = await lancerMatchingAuto(mois)
+    log.matched = result.matched
+    log.errors = result.errors
+
+  } catch(e) {
+    log.errors++
+    log.errorMsg = e.message
+    console.error('resetEtRematcher error:', e)
+  }
+
+  return log
+}
