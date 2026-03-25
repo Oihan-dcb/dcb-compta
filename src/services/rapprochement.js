@@ -116,63 +116,54 @@ export async function getMouvementsMois(mois) {
       m._resa = infoByMouv[m.id] || null
     }
 
-  // Enrichissement secondaire : mouvements rapprochés sans _resa (Airbnb groupés via payout)
-  // Matcher par montant de réservation dans le mois
-  const nonEnriches = rapproches.filter(m => !m._resa)
+  // Enrichissement secondaire Airbnb : groupement par airbnb_account depuis les resas
+  // Airbnb ne donne pas l'info du compte — on teste chaque compte
+  // et on n'affecte que si UN SEUL compte donne une combinaison exacte
+  const nonEnriches = rapproches.filter(m => !m._resa && m.canal === 'airbnb')
   if (nonEnriches.length > 0) {
     const { data: resasByMois } = await supabase
       .from('reservation')
-      .select('id, code, guest_name, arrival_date, departure_date, platform, fin_revenue, bien(hospitable_name, agence, airbnb_account)')
+      .select('id, code, guest_name, arrival_date, departure_date, fin_revenue, bien(hospitable_name, agence, airbnb_account)')
       .eq('mois_comptable', mois)
-      .in('platform', ['airbnb', 'booking', 'direct'])
+      .eq('platform', 'airbnb')
       .gt('fin_revenue', 0)
+    const parCompte = {}
+    for (const r of (resasByMois || [])) {
+      const cpt = r.bien?.airbnb_account || '__inconnu__'
+      if (!parCompte[cpt]) parCompte[cpt] = []
+      parCompte[cpt].push(r)
+    }
     const usedResaIds = new Set()
-    for (const m of nonEnriches) {
-      // Determiner le compte Airbnb du virement via payout_hospitable
-      // C'est la seule source fiable — le payout est lié à UN compte précis
-      let compteVirement = null
-      if (m.canal === 'airbnb') {
-        // Chercher via les payout_hospitable liés à ce mouvement
-        const { data: phLinks } = await supabase
-          .from('payout_hospitable')
-          .select('id, payout_reservation(reservation_id, reservation(bien(airbnb_account)))')
-          .eq('mouvement_id', m.id)
-          .limit(1)
-        const firstLink = phLinks?.[0]?.payout_reservation?.[0]?.reservation?.bien?.airbnb_account
-        compteVirement = firstLink || null
+    for (const mvt of nonEnriches) {
+      const matches = []
+      for (const [cpt, resas] of Object.entries(parCompte)) {
+        const cands = resas.filter(r => !usedResaIds.has(r.id))
+        if (!cands.length) continue
+        const exact = cands.find(r => Math.abs((r.fin_revenue || 0) - mvt.credit) <= 2)
+        if (exact) { matches.push({ cpt, resas: [exact] }); continue }
+        const sorted = [...cands].sort((a,b) => b.fin_revenue - a.fin_revenue).slice(0, 10)
+        for (let t = 2; t <= 4; t++) {
+          let rem = mvt.credit, sel = []
+          for (const r of sorted) {
+            if (r.fin_revenue <= rem + 2 && sel.length < t) { sel.push(r); rem -= r.fin_revenue }
+            if (Math.abs(rem) <= 2 && sel.length === t) break
+          }
+          if (sel.length === t && Math.abs(rem) <= 2) { matches.push({ cpt, resas: sel }); break }
+        }
       }
-
-      // Filtrer les resas par compte Airbnb si connu
-      const cands = (resasByMois || []).filter(r => {
-        if (usedResaIds.has(r.id)) return false
-        if (compteVirement && m.canal === 'airbnb') {
-          return r.bien?.airbnb_account === compteVirement
-        }
-        return true
-      })
-
-      // Match exact (±2 centimes) dans le bon compte
-      const exact = cands.find(r => Math.abs((r.fin_revenue || 0) - m.credit) <= 2)
-      if (exact) {
-        usedResaIds.add(exact.id)
-        m._resa = { guest_name: exact.guest_name, bien_name: exact.bien?.hospitable_name, arrival_date: exact.arrival_date, departure_date: exact.departure_date, platform: exact.platform, fin_revenue: exact.fin_revenue, agence: exact.bien?.agence, biens: [exact.bien?.hospitable_name].filter(Boolean), guests: [exact.guest_name].filter(Boolean), reservation_ids: [exact.id], codes: [exact.code], nb_resas: 1 }
-      } else if (m.canal === 'airbnb' && cands.length >= 2) {
-        // Subset sum groupes Airbnb — meme compte uniquement (deja filtre)
-        let sum = 0, resas = [], remaining = m.credit
-        const sorted = [...cands].sort((a,b) => b.fin_revenue - a.fin_revenue)
-        for (const r of sorted) {
-          if (r.fin_revenue <= remaining + 2) { sum += r.fin_revenue; resas.push(r); remaining -= r.fin_revenue }
-          if (Math.abs(remaining) <= 2) break
-        }
-        if (resas.length > 1 && Math.abs(sum - m.credit) <= 2) {
-          resas.forEach(r => usedResaIds.add(r.id))
-          m._resa = { guest_name: resas.length + ' voyageur(s)', bien_name: [...new Set(resas.map(r => r.bien?.hospitable_name).filter(Boolean))].join(' | '), platform: 'airbnb', fin_revenue: sum, nb_resas: resas.length, biens: [...new Set(resas.map(r => r.bien?.hospitable_name).filter(Boolean))], guests: resas.map(r => r.guest_name).filter(Boolean), reservation_ids: resas.map(r => r.id), codes: resas.map(r => r.code) }
+      if (matches.length === 1) {
+        const { resas } = matches[0]
+        resas.forEach(r => usedResaIds.add(r.id))
+        if (resas.length === 1) {
+          const r = resas[0]
+          mvt._resa = { guest_name: r.guest_name, bien_name: r.bien?.hospitable_name, arrival_date: r.arrival_date, departure_date: r.departure_date, platform: 'airbnb', fin_revenue: r.fin_revenue, agence: r.bien?.agence, biens: [r.bien?.hospitable_name].filter(Boolean), guests: [r.guest_name].filter(Boolean), reservation_ids: [r.id], codes: [r.code], nb_resas: 1 }
+        } else {
+          mvt._resa = { guest_name: resas.length + ' voyageur(s)', bien_name: [...new Set(resas.map(r => r.bien?.hospitable_name).filter(Boolean))].join(' | '), platform: 'airbnb', fin_revenue: resas.reduce((s,r) => s+r.fin_revenue, 0), nb_resas: resas.length, biens: [...new Set(resas.map(r => r.bien?.hospitable_name).filter(Boolean))], guests: resas.map(r => r.guest_name).filter(Boolean), reservation_ids: resas.map(r => r.id), codes: resas.map(r => r.code) }
         }
       }
     }
   }
-  }
-
+}
   // Enrichissement tertiaire : Stripe via stripe_payout_line, Booking via booking_payout_line
   const encoreVides = mouvements.filter(m =>
     (m.statut_matching === 'rapproche' || m.statut_matching === 'matche_auto' || m.statut_matching === 'matche_manuel') && !m._resa
