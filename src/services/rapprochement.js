@@ -388,8 +388,21 @@ export async function lancerMatchingAuto(mois) {
 
       for (const mouv of mouvCanal) {
 
-        // Étape 1 : montant exact (1 payout = 1 mouvement) — cas principal ~99%
-        const payoutExact = payoutsCanal.find(p => Math.abs(p.amount - mouv.credit) <= 2)
+
+        // Etape 1 : payout exact — fenetres de date croissantes J+0 a J+10 puis fallback
+        const dateMvt1 = new Date(mouv.date_operation)
+        let payoutExact = null
+        for (let j = 0; j <= 10; j++) {
+          payoutExact = payoutsCanal.find(p =>
+            Math.abs(p.amount - mouv.credit) <= 2 &&
+            Math.abs((new Date(p.date_payout) - dateMvt1) / 86400000) <= j
+          )
+          if (payoutExact) break
+        }
+        if (!payoutExact) {
+          // Fallback sans contrainte de date (option 2)
+          payoutExact = payoutsCanal.find(p => Math.abs(p.amount - mouv.credit) <= 2)
+        }
 
         if (payoutExact) {
           await supabase.from('payout_hospitable')
