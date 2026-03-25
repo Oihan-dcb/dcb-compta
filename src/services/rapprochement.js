@@ -128,20 +128,38 @@ export async function getMouvementsMois(mois) {
       .gt('fin_revenue', 0)
     const usedResaIds = new Set()
     for (const m of nonEnriches) {
-      // Pour Airbnb : filtrer par compte + subset sum pour groupés
-      const cands = (resasByMois || []).filter(r => !usedResaIds.has(r.id))
-      // Match exact (±2 centimes)
+      // Determiner le compte Airbnb du virement via payout_hospitable
+      // C'est la seule source fiable — le payout est lié à UN compte précis
+      let compteVirement = null
+      if (m.canal === 'airbnb') {
+        // Chercher via les payout_hospitable liés à ce mouvement
+        const { data: phLinks } = await supabase
+          .from('payout_hospitable')
+          .select('id, payout_reservation(reservation_id, reservation(bien(airbnb_account)))')
+          .eq('mouvement_id', m.id)
+          .limit(1)
+        const firstLink = phLinks?.[0]?.payout_reservation?.[0]?.reservation?.bien?.airbnb_account
+        compteVirement = firstLink || null
+      }
+
+      // Filtrer les resas par compte Airbnb si connu
+      const cands = (resasByMois || []).filter(r => {
+        if (usedResaIds.has(r.id)) return false
+        if (compteVirement && m.canal === 'airbnb') {
+          return r.bien?.airbnb_account === compteVirement
+        }
+        return true
+      })
+
+      // Match exact (±2 centimes) dans le bon compte
       const exact = cands.find(r => Math.abs((r.fin_revenue || 0) - m.credit) <= 2)
       if (exact) {
         usedResaIds.add(exact.id)
         m._resa = { guest_name: exact.guest_name, bien_name: exact.bien?.hospitable_name, arrival_date: exact.arrival_date, departure_date: exact.departure_date, platform: exact.platform, fin_revenue: exact.fin_revenue, agence: exact.bien?.agence, biens: [exact.bien?.hospitable_name].filter(Boolean), guests: [exact.guest_name].filter(Boolean), reservation_ids: [exact.id], codes: [exact.code], nb_resas: 1 }
       } else if (m.canal === 'airbnb' && cands.length >= 2) {
-        // Subset sum groupés Airbnb — même compte uniquement
-        // Déterminer le compte du virement via les resas liées (reservation_paiement)
-        const compte = cands.find(r => r.bien?.airbnb_account)?.bien?.airbnb_account || null
-        const candsFiltered = compte ? cands.filter(r => r.bien?.airbnb_account === compte) : cands
+        // Subset sum groupes Airbnb — meme compte uniquement (deja filtre)
         let sum = 0, resas = [], remaining = m.credit
-        const sorted = [...candsFiltered].sort((a,b) => b.fin_revenue - a.fin_revenue)
+        const sorted = [...cands].sort((a,b) => b.fin_revenue - a.fin_revenue)
         for (const r of sorted) {
           if (r.fin_revenue <= remaining + 2) { sum += r.fin_revenue; resas.push(r); remaining -= r.fin_revenue }
           if (Math.abs(remaining) <= 2) break
