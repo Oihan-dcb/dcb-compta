@@ -90,17 +90,6 @@ export async function fetchReservations(propertyIds, opts = {}) {
 
 /**
  * Récupère les payouts (virements) Hospitable
- * @param {Object} opts - Options (startDate, endDate)
- * @returns {Promise<Array>} Liste des payouts
- */
-export async function fetchPayouts(opts = {}) {
-  const params = { include: 'transactions' }
-  if (opts.startDate) params.start_date = opts.startDate
-  if (opts.endDate) params.end_date = opts.endDate
-
-  return fetchAll('/payouts', params)
-}
-
 /**
  * Récupère les transactions financières
  * @param {Object} opts - Options
@@ -129,37 +118,3 @@ export function formatMontant(centimes) {
  * Récupère les payouts d'un mois donné avec early exit.
  * L'API Hospitable /payouts trie par date desc mais ignore les filtres de date.
  * On pagine et on s'arrête dès qu'on passe avant le mois cible.
- * @param {string} mois - YYYY-MM
- * @returns {Promise<Array>}
- */
-export async function fetchPayoutsForMonth(mois) {
-  const [year, month] = mois.split('-').map(Number)
-  const startTs = new Date(year, month - 1, 1).getTime()
-  const endTs = new Date(year, month, 0, 23, 59, 59).getTime()
-  const result = []
-  let page = 1
-
-  while (true) {
-    const data = await apiFetch('/payouts', { include: 'transactions', limit: 50, page })
-    const items = data.data || []
-    if (items.length === 0) break
-
-    let pastStart = false
-    for (const item of items) {
-      const raw = item.date || item.date_payout || item.created_at || ''
-      const ts = raw ? new Date(raw).getTime() : 0
-      if (ts >= startTs && ts <= endTs) {
-        result.push(item)
-      } else if (ts < startTs) {
-        pastStart = true
-      }
-    }
-    // Payouts triés par date desc → dès qu'on passe avant le début du mois, on s'arrête
-    if (pastStart) break
-
-    const meta = data.meta || {}
-    if (page >= (meta.last_page || 1)) break
-    page++
-  }
-  return result
-}
