@@ -544,9 +544,27 @@ export default function PageRapprochement() {
                         {m.debit > 0 ? '−' + fmt(m.debit) : '—'}
                       </td>
                       <td style={{ padding: '9px 12px' }}>
-                        <span style={{ color: (m._resa?.gestion_loyer === false && m.statut_matching === 'en_attente') ? '#9CA3AF' : STATUT_COLOR[m.statut_matching] || '#888', fontSize: 12, fontWeight: 600 }}>
-                          {(m._resa?.gestion_loyer === false && m.statut_matching === 'en_attente') ? '— Non géré' : (STATUT_LABEL[m.statut_matching] || m.statut_matching)}
-                        </span>
+                        {m.statut_matching === 'rapproche' && m._resa?.codes?.[0] ? (
+                          <span
+                            onClick={() => {
+                              const code = m._resa.codes[0]
+                              const moisResa = m._resa.arrival_date?.substring(0, 7) || mois
+                              window.location.href = '/reservations?highlight=' + code + '&mois=' + moisResa
+                            }}
+                            title={'Aller à la réservation ' + (m._resa?.codes?.[0] || '')}
+                            style={{ cursor: 'pointer', textDecoration: 'none' }}
+                          ><span style={{ padding: '3px 8px', borderRadius: 12, fontSize: 11, fontWeight: 600,
+                              background: '#E8F5E9', color: '#2E7D32', border: '1px solid #A5D6A7' }}>
+                            {STATUT_LABEL[m.statut_matching] || m.statut_matching}
+                          </span></span>
+                        ) : (
+                          <span style={{ padding: '3px 8px', borderRadius: 12, fontSize: 11, fontWeight: 600,
+                            background: m.statut_matching === 'rapproche' ? '#E8F5E9' : m.statut_matching === 'en_attente' ? '#FFF8EC' : '#F5F5F5',
+                            color: m.statut_matching === 'rapproche' ? '#2E7D32' : m.statut_matching === 'en_attente' ? '#CC9933' : '#666',
+                            border: m.statut_matching === 'rapproche' ? '1px solid #A5D6A7' : m.statut_matching === 'en_attente' ? '1px solid #E4A853' : '1px solid #DDD' }}>
+                            {STATUT_LABEL[m.statut_matching] || m.statut_matching}
+                          </span>
+                        )}
                       </td>
                       <td style={{ padding: '9px 12px', whiteSpace: 'nowrap' }}>
                         {m.statut_matching === 'en_attente' && (m.credit || 0) > 0 && (
