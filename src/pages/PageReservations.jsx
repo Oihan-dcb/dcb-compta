@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react'
+import { useSearchParams } from 'react-router-dom'
 import MoisSelector from '../components/MoisSelector'
 import { supabase } from '../lib/supabase'
 import { syncReservations, getReservationsMois } from '../services/syncReservations'
@@ -19,6 +20,7 @@ export default function PageReservations() {
   const [syncing, setSyncing] = useState(false)
   const [calculant, setCalculant] = useState(false)
   const [syncResult, setSyncResult] = useState(null)
+  const [searchParams, setSearchParams] = useSearchParams()
   const [error, setError] = useState(null)
   const [onglet, setOnglet] = useState('reservations')
   const [selectedResa, setSelectedResa] = useState(null)
@@ -54,6 +56,12 @@ export default function PageReservations() {
     try {
       const [resas, recapData] = await Promise.all([getReservationsMois(mois), getRecapVentilation(mois)])
       setReservations(resas); setRecap(recapData)
+      // Ouvrir le modal si ?code= dans l'URL (venant du Rapprochement)
+      const codeParam = searchParams.get('code')
+      if (codeParam) {
+        const found = resas.find(r => r.code === codeParam)
+        if (found) { setSelectedResa(found); setSearchParams({}) }
+      }
     } catch (err) { setError(err.message) }
     finally { setLoading(false) }
   }
