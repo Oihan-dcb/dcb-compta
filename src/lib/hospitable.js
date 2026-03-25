@@ -80,7 +80,7 @@ export async function fetchReservations(propertyIds, opts = {}) {
 
   const params = {
     properties: propertyIds,   // sera transformé en properties[] par apiFetch
-    include: 'financials,guests',
+    include: 'financials,guests,guest',  // guest pour avoir first_name/last_name
   }
   if (opts.startDate) params.start_date = opts.startDate
   if (opts.endDate) params.end_date = opts.endDate
