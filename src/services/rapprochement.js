@@ -380,7 +380,7 @@ export async function lancerMatchingAuto(mois) {
     while (true) {
       const { data: page } = await supabase
         .from('payout_hospitable')
-        .select('id, amount, platform, date_payout, mouvement_id')
+        .select('id, hospitable_id, amount, platform, date_payout, mouvement_id')
         .is('mouvement_id', null)
         .range(from, from + PAGE - 1)
       if (!page || page.length === 0) break
