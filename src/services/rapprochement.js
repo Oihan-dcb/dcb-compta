@@ -730,6 +730,34 @@ export async function resetEtRematcher(mois) {
     log.matched = result.matched
     log.errors = result.errors
 
+    // 9. Backfill reservation_paiement pour les matchs créés
+    //    (confirmerMatch/confirmerMatchResa le fait en temps réel, mais sécurité)
+    const { data: mvtRapproches } = await supabase
+      .from('mouvement_bancaire')
+      .select('id, credit, date_operation')
+      .eq('mois_releve', mois)
+      .eq('statut_matching', 'rapproche')
+      .gt('credit', 0)
+    for (const mvt of mvtRapproches || []) {
+      const { data: liens } = await supabase
+        .from('payout_hospitable')
+        .select('payout_reservation(reservation_id)')
+        .eq('mouvement_id', mvt.id)
+      for (const ph of liens || []) {
+        for (const pr of ph.payout_reservation || []) {
+          const { data: existing } = await supabase
+            .from('reservation_paiement')
+            .select('id').eq('mouvement_id', mvt.id).eq('reservation_id', pr.reservation_id).maybeSingle()
+          if (!existing) {
+            await supabase.from('reservation_paiement').insert({
+              reservation_id: pr.reservation_id, mouvement_id: mvt.id,
+              montant: mvt.credit, date_paiement: mvt.date_operation, type_paiement: 'total',
+            }).catch(() => {})
+          }
+        }
+      }
+    }
+
   } catch(e) {
     log.errors++
     log.errorMsg = e.message
