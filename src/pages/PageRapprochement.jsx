@@ -5,7 +5,6 @@ import {
   getMouvementsMois, getVirNonRapproches, getStatsRapprochement,
   lancerMatchingAuto, matcherManuellement, marquerNonIdentifie, annulerRapprochement
 } from '../services/rapprochement'
-import { syncPayouts } from '../services/matching'
 import { syncStripe } from '../services/syncStripe'
 import { setToken } from '../lib/hospitable'
 
@@ -272,11 +271,11 @@ export default function PageRapprochement() {
     try {
       if (!HOSP_TOKEN) throw new Error('Token Hospitable non configuré (VITE_HOSPITABLE_TOKEN)')
       setToken(HOSP_TOKEN)
-      const [log, stripeLog] = await Promise.all([syncPayouts(mois), syncStripe()])
-      setSyncLog({ ...log, stripe_matched: stripeLog.matched, stripe_frais: stripeLog.updated })
+      const stripeLog = await syncStripe()
+      setSyncLog({ stripe_matched: stripeLog.matched, stripe_frais: stripeLog.updated })
       await charger()
     } catch (err) {
-      setError('Sync payouts: ' + err.message)
+      setError('Erreur sync: ' + err.message)
     } finally {
       setSyncing(false)
     }
