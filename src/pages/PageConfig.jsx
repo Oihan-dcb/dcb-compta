@@ -1,10 +1,11 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { pingEvoliz, getPaytermsEvoliz } from '../services/evoliz'
 import { syncProprietairesEvoliz } from '../services/syncProprietaires'
 import { formatMontant, setToken } from '../lib/hospitable'
 import { calculerVentilationMois } from '../services/ventilation'
+import { calculerVentilationMois } from '../services/ventilation'
 import { syncPayouts, lancerMatching } from '../services/matching'
-
+import { resetEtRematcher } from '../services/rapprochement'
 export default function PageConfig() {
   const [testing, setTesting] = useState(false)
   const [testResult, setTestResult] = useState(null)
@@ -197,6 +198,11 @@ export default function PageConfig() {
 
   const [syncingProprio, setSyncingProprio] = useState(false)
   const [syncProprioResult, setSyncProprioResult] = useState(null)
+  const [rematchRunning, setRematchRunning] = useState(false)
+  const [rematchDone, setRematchDone] = useState(false)
+  const [rematchSteps, setRematchSteps] = useState([])
+  const [rematchTimer, setRematchTimer] = useState(0)
+  const [rematchConfirmed, setRematchConfirmed] = useState(false)
 
   async function syncProprio() {
     setSyncingProprio(true)
@@ -232,6 +238,43 @@ export default function PageConfig() {
     } catch (err) {
       setError(err.message)
     }
+  }
+
+
+  // Re-matching complet all-time (overwrite)
+  async function lancerReMatch() {
+    if (!rematchConfirmed) return
+    setRematchRunning(true)
+    setRematchDone(false)
+    setRematchSteps([])
+    setRematchTimer(0)
+    const startTime = Date.now()
+    const timerInterval = setInterval(() => setRematchTimer(Math.floor((Date.now()-startTime)/1000)), 1000)
+    const now = new Date()
+    let y = 2025, m = 1  // partir de jan 2025
+    const allMois = []
+    while (y < now.getFullYear() || (y === now.getFullYear() && m <= now.getMonth() + 1)) {
+      allMois.push(`${y}-${String(m).padStart(2,'0')}`)
+      m++; if (m > 12) { m = 1; y++ }
+    }
+    let totalReset = 0, totalMatched = 0
+    for (const mois of allMois) {
+      setRematchSteps(prev => [...prev, { mois, status: 'running', reset: 0, matched: 0 }])
+      try {
+        const res = await resetEtRematcher(mois)
+        totalReset += res.reset || 0
+        totalMatched += res.matched || 0
+        setRematchSteps(prev => prev.map(s => s.mois === mois ? { ...s, status: 'ok', reset: res.reset, matched: res.matched } : s))
+      } catch(e) {
+        setRematchSteps(prev => prev.map(s => s.mois === mois ? { ...s, status: 'error', msg: e.message } : s))
+      }
+    }
+    clearInterval(timerInterval)
+    setRematchTimer(Math.floor((Date.now()-startTime)/1000))
+    setRematchRunning(false)
+    setRematchDone(true)
+    setRematchConfirmed(false)
+    window._rematchResult = { totalReset, totalMatched, mois: allMois.length }
   }
 
   return (
@@ -504,6 +547,57 @@ export default function PageConfig() {
         )}
       </div>
 
+
+      {/* Re-matching complet */}
+      <div className="card" style={{ marginBottom: 24, border: '2px solid #DC2626', background: '#FFF5F5' }}>
+        <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom: 16 }}>
+          <div>
+            <h2 style={{ fontSize: 16, fontWeight: 700, color: '#DC2626', margin: 0 }}>
+              ⚠️ Re-matching complet all-time
+            </h2>
+            <p style={{ margin: '4px 0 8px', fontSize: 13, color: '#7F1D1D' }}>
+              Réinitialise et refait tous les rapprochements de jan 2025 à aujourd'hui, du plus ancien au plus récent.<br/>
+              <strong>Overwrite des anciens matchings.</strong> Les rapprochements manuels seront écrasés.
+            </p>
+            <label style={{ display:'flex', alignItems:'center', gap: 8, cursor:'pointer', fontSize: 13, color: '#DC2626', fontWeight: 600 }}>
+              <input type="checkbox" checked={rematchConfirmed} onChange={e => setRematchConfirmed(e.target.checked)} />
+              Je comprends que cette opération est irréversible
+            </label>
+          </div>
+          <div style={{ display:'flex', alignItems:'center', gap: 12 }}>
+            {rematchRunning && (
+              <span style={{ fontSize: 13, color: '#DC2626', fontVariantNumeric: 'tabular-nums' }}>
+                ⏱ {rematchTimer}s
+              </span>
+            )}
+            <button onClick={lancerReMatch} disabled={rematchRunning || !rematchConfirmed}
+              style={{ padding: '10px 20px', borderRadius: 8, border: 'none', background: rematchRunning || !rematchConfirmed ? '#aaa' : '#DC2626', color: 'white', fontWeight: 700, fontSize: 14, cursor: rematchRunning || !rematchConfirmed ? 'not-allowed' : 'pointer', minWidth: 120 }}>
+              {rematchRunning ? '⏳ En cours...' : '⚡ Re-matcher'}
+            </button>
+          </div>
+        </div>
+        {rematchSteps.length > 0 && (
+          <div style={{ maxHeight: 300, overflowY: 'auto', display:'flex', flexDirection:'column', gap: 4 }}>
+            {rematchSteps.map(s => (
+              <div key={s.mois} style={{ display:'flex', alignItems:'center', gap: 10, padding:'6px 10px', borderRadius: 6, fontSize: 12,
+                background: s.status==='ok' ? '#F0FDF4' : s.status==='error' ? '#FEF2F2' : s.status==='running' ? '#FFF5F5' : '#F9FAFB',
+                border: `1px solid ${s.status==='ok'?'#86EFAC':s.status==='error'?'#FCA5A5':s.status==='running'?'#DC2626':'#E5E7EB'}` }}>
+                <span>{s.status==='ok'?'✅':s.status==='error'?'❌':s.status==='running'?'⏳':'⏸'}</span>
+                <span style={{ fontWeight: 600, minWidth: 70 }}>{s.mois}</span>
+                {s.status==='ok' && <span style={{ color:'#15803D' }}>{s.reset} reset → {s.matched} matchés</span>}
+                {s.status==='running' && <span style={{ color:'#DC2626' }}>En cours...</span>}
+                {s.status==='error' && <span style={{ color:'#DC2626' }}>{s.msg}</span>}
+              </div>
+            ))}
+          </div>
+        )}
+        {rematchDone && (
+          <div style={{ marginTop: 12, padding:'12px 16px', borderRadius: 8, background:'#F0FDF4', border:'1px solid #86EFAC', display:'flex', alignItems:'center', gap: 10 }}>
+            <span style={{ fontSize: 20 }}>✅</span>
+            <span style={{ fontWeight: 700, color:'#15803D' }}>Re-matching terminé en {rematchTimer}s</span>
+          </div>
+        )}
+      </div>
     </div>
   )
 }
