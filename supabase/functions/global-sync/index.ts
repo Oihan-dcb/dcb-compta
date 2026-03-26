@@ -1,4 +1,11 @@
 import { createClient } from 'npm:@supabase/supabase-js@2'
+// ⚠️  ABANDONNÉ — CF-C8 (mars 2026)
+// Cette Edge Function contient une copie divergente de calculerVentilationResa (V2)
+// et une copie du moteur de matching. Les deux sont non fiables et non maintenus.
+// Le bouton "Global Update" a été désactivé dans PageConfig.jsx.
+// Ne pas modifier la logique métier ici — toute correction doit aller dans :
+//   - src/services/ventilation.js  (référence V1)
+//   - src/services/rapprochement.js (référence matching)
 
 const SUPABASE_URL = Deno.env.get('SUPABASE_URL') ?? ''
 const SERVICE_KEY  = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? ''
