@@ -443,7 +443,7 @@ export default function PageConfig() {
         <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom: globalSteps.length > 0 ? 16 : 0 }}>
           <div>
             <h2 style={{ fontSize: 16, fontWeight: 700, color: 'var(--brand)', margin: 0 }}>
-              ⚡ Mise à jour globale
+              ⚡ Mise à jour globale{/* CF-C8-DESACTIVE */}
             </h2>
             <p style={{ margin: '4px 0 0', fontSize: 13, color: 'var(--text-muted)' }}>
               Sync biens → réservations → payouts → ventilation → matching — all-time (depuis 2022)
@@ -460,7 +460,10 @@ export default function PageConfig() {
                 ✅ Terminé en {globalTimer >= 60 ? Math.floor(globalTimer/60) + 'min ' + (globalTimer%60) + 's' : globalTimer + 's'}
               </span>
             )}
-            <button onClick={lancerGlobalUpdate} disabled={globalRunning}
+            <button onClick={lancerGlobalUpdate}
+              disabled={true}
+              title="⛔ Désactivé — CF-C8 : logique dupliquée abandonnée. Utiliser Ventilation + Matching."
+              style={{ opacity: 0.4, cursor: 'not-allowed' }} disabled={globalRunning}
               style={{ padding: '10px 20px', borderRadius: 8, border: 'none', background: globalRunning ? '#aaa' : 'var(--brand)', color: 'white', fontWeight: 700, fontSize: 14, cursor: globalRunning ? 'not-allowed' : 'pointer', display: 'flex', alignItems: 'center', gap: 8, minWidth: 120 }}>
               {globalRunning ? <>⏳ En cours...</> : '⚡ Lancer'}
             </button>
