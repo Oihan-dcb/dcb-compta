@@ -167,6 +167,7 @@ async function genererFactureProprietaire(proprio, mois) {
   }
 
   const factureData = {
+    mois,
     proprietaire_id: proprio.id,
     mois,
     total_ht: totalHT,
