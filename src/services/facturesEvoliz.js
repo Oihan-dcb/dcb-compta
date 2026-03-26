@@ -94,16 +94,8 @@ async function genererFactureProprietaire(proprio, mois) {
 
   if (expErr) throw expErr
 
-  // Récupérer les factures AE du mois pour ces biens
-  const { data: facturesAE, error: aeErr } = await supabase
-    .from('facture_ae')
-    .select('bien_id, montant_theorique, montant_reel')
-    .in('bien_id', bienIds)
-    .eq('mois', mois)
-
-  if (aeErr) throw aeErr
-
-  const aeParBien = new Map((facturesAE || []).map(f => [f.bien_id, f]))
+  // CF-FACAE : facture_ae non implémenté — aeParBien = Map vide (table absente en base)
+  const aeParBien = new Map()
 
   // --- Calculer les 3 lignes ---
 
