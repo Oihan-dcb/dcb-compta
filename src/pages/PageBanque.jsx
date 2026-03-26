@@ -2,6 +2,7 @@ import { useState, useEffect, useRef } from 'react'
 import { getMouvementsMois, getMoisDispos } from '../services/banque'
 import { supabase } from '../lib/supabase'
 import { importBookingCSV } from '../services/importBooking'
+import { annulerRapprochement } from '../services/rapprochement'
 import { parserFichierBancaire, importerMouvementsBancaires } from '../services/importBanque'
 import MoisSelector from '../components/MoisSelector'
 import { formatMontant } from '../lib/hospitable'
@@ -83,7 +84,12 @@ export default function PageBanque() {
         setConfirmModal(null)
         setSupprimantId(id)
         try {
-          const { error } = await supabase.from('mouvement_bancaire').delete().eq('id', id)
+          // CF-BQ1 : nettoyer les tables liées si le mouvement est rapproché
+        const { data: mvt } = await supabase.from('mouvement_bancaire').select('statut_matching').eq('id', id).single()
+        if (mvt?.statut_matching === 'rapproche') {
+          await annulerRapprochement(id)
+        }
+        const { error } = await supabase.from('mouvement_bancaire').delete().eq('id', id)
           if (error) throw error
           await charger()
         } catch(e) { setError('Erreur : ' + e.message) }
@@ -96,6 +102,17 @@ export default function PageBanque() {
     if (!suppression) return
     setSupprimant(true)
     try {
+      // CF-BQ2 : nettoyer les tables liées pour les mouvements rapprochés avant suppression
+      const { data: mvtsMois } = await supabase
+        .from('mouvement_bancaire')
+        .select('id, statut_matching')
+        .eq('source', suppression.source)
+        .eq('mois_releve', suppression.mois)
+      for (const m of (mvtsMois || [])) {
+        if (m.statut_matching === 'rapproche') {
+          await annulerRapprochement(m.id)
+        }
+      }
       // Supprimer tous les mouvements du mois sélectionné pour cette source
       const { error } = await supabase
         .from('mouvement_bancaire')
