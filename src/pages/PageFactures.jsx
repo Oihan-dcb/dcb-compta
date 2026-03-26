@@ -36,9 +36,9 @@ export default function PageFactures() {
   useEffect(() => { charger() }, [mois])
   useEffect(() => {
     import('../lib/supabase').then(function(mod) {
-      mod.supabase.from('facture_evoliz').select('mois_facturation').then(function(res) {
+      mod.supabase.from('facture_evoliz').select('mois').then(function(res) {
         if (res.data) {
-          var uniq = [...new Set(res.data.map(function(d) { return d.mois_facturation }).filter(Boolean))].sort(function(a,b) { return b.localeCompare(a) })
+          var uniq = [...new Set(res.data.map(function(d) { return d.mois }).filter(Boolean))].sort(function(a,b) { return b.localeCompare(a) })
           if (uniq.length) setMoisDispos(function(p) { return [...new Set([...p, ...uniq])] })
         }
       })
