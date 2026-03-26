@@ -33,7 +33,7 @@ Deno.serve(async (req) => {
     // Lier l'ae_user_id à la fiche AE
     const { error: updateErr } = await supabaseAdmin
       .from('auto_entrepreneur')
-      .update({ ae_user_id: authData.user.id })
+      .update({ ae_user_id: authData.user.id, mdp_temporaire: password })
       .eq('id', ae_id)
     if (updateErr) throw updateErr
 
