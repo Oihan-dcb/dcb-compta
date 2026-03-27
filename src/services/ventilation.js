@@ -3,32 +3,32 @@
  * Transforme les financials Hospitable en lignes comptables DCB
  *
  * Codes ventilation :
- * COM  — Commission DCB sur les locations directes (Management fee sur CSV HOSP) — TVA 20%
- * MEN  — Forfait ménage Brut collecté auprès du voyageur (Cleaning fee + Community fee + Other fee + pet fee + resort fee) — Hors TVA
- * MGT  — Management fee résa directe — TVA 20%
- * AUTO — Débours auto-entrepreneur — Hors TVA
- * HON  — Honoraires de gestion DCB — TVA 20%
- * FMEN — Forfait ménage DCB (MEN - AUTO provisionnée) — TVA 20%
- * LOY  — Reversement propriétaire — Hors TVA
- * TAXE — Taxe de séjour — Hors TVA
- * DIV  — Frais divers DCB (expenses [DCB]) — TVA 20%
- * TAX  — Taxe de séjour (pass-through) — Hors TVA, tracé uniquement
- * MISC — Autre mouvements non identifiés (extra guest fee) — Hors TVA
+ * COM  â Commission DCB sur les locations directes (Management fee sur CSV HOSP) â TVA 20%
+ * MEN  â Forfait mÃ©nage Brut collectÃ© auprÃ¨s du voyageur (Cleaning fee + Community fee + Other fee + pet fee + resort fee) â Hors TVA
+ * MGT  â Management fee rÃ©sa directe â TVA 20%
+ * AUTO â DÃ©bours auto-entrepreneur â Hors TVA
+ * HON  â Honoraires de gestion DCB â TVA 20%
+ * FMEN â Forfait mÃ©nage DCB (MEN - AUTO provisionnÃ©e) â TVA 20%
+ * LOY  â Reversement propriÃ©taire â Hors TVA
+ * TAXE â Taxe de sÃ©jour â Hors TVA
+ * DIV  â Frais divers DCB (expenses [DCB]) â TVA 20%
+ * TAX  â Taxe de sÃ©jour (pass-through) â Hors TVA, tracÃ© uniquement
+ * MISC â Autre mouvements non identifiÃ©s (extra guest fee) â Hors TVA
  */
 
 import { supabase } from '../lib/supabase'
 
 const TVA_RATE = 0.20
-const AIRBNB_FEES_RATE = 0.1621  // 16.21% retenu par Airbnb sur cleaning + community fees (validé audit mars 2026)
+const AIRBNB_FEES_RATE = 0.1621  // 16.21% retenu par Airbnb sur cleaning + community fees (validÃ© audit mars 2026)
 
 /**
- * Calcule et sauvegarde la ventilation pour toutes les réservations
- * d'un mois donné qui ne sont pas encore ventilées
+ * Calcule et sauvegarde la ventilation pour toutes les rÃ©servations
+ * d'un mois donnÃ© qui ne sont pas encore ventilÃ©es
  *
  * @param {string} mois - YYYY-MM
  */
 export async function calculerVentilationMois(mois) {
-  // Récupérer les réservations non ventilées du mois
+  // RÃ©cupÃ©rer les rÃ©servations non ventilÃ©es du mois
   const { data: reservations, error } = await supabase
     .from('reservation')
     .select(`
@@ -43,10 +43,10 @@ export async function calculerVentilationMois(mois) {
     `)
     .eq('mois_comptable', mois)
     .eq('ventilation_calculee', false)
-    .eq('owner_stay', false)       // Ignorer séjours proprio
-    // NE PAS exclure les annulées ici — certaines ont des valeurs (Airbnb/Booking)
-    // Le filtre revenue=0 dans calculerVentilationResa gère les vraies annulées à zéro
-    // Les directes annulées sont gérées par early return dans calculerVentilationResa
+    .eq('owner_stay', false)       // Ignorer sÃ©jours proprio
+    // NE PAS exclure les annulÃ©es ici â certaines ont des valeurs (Airbnb/Booking)
+    // Le filtre revenue=0 dans calculerVentilationResa gÃ¨re les vraies annulÃ©es Ã  zÃ©ro
+    // Les directes annulÃ©es sont gÃ©rÃ©es par early return dans calculerVentilationResa
 
   if (error) throw error
 
@@ -58,7 +58,7 @@ export async function calculerVentilationMois(mois) {
       await calculerVentilationResa(resa)
       total++
     } catch (err) {
-      console.error(`Erreur ventilation résa ${resa.code}:`, err)
+      console.error(`Erreur ventilation rÃ©sa ${resa.code}:`, err)
       errors++
     }
   }
@@ -67,18 +67,18 @@ export async function calculerVentilationMois(mois) {
 }
 
 /**
- * Agrège les séjours proprio (owner_stay=true) pour affichage séparé
+ * AgrÃ¨ge les sÃ©jours proprio (owner_stay=true) pour affichage sÃ©parÃ©
  */
 export function agregerSejoursProrio(reservations) {
-  // Règle : toute resa owner_stay=true apparaît dans le tableau
-  // FMEN = somme des lignes FMEN si ventilée, sinon 0
+  // RÃ¨gle : toute resa owner_stay=true apparaÃ®t dans le tableau
+  // FMEN = somme des lignes FMEN si ventilÃ©e, sinon 0
   const sejours = {}
   for (const resa of reservations) {
     if (!resa.owner_stay) continue
     const propId = resa.bien?.proprietaire_id || 'sans_proprio'
     const propNom = resa.bien?.proprietaire
       ? `${resa.bien.proprietaire.nom}${resa.bien.proprietaire.prenom ? ' ' + resa.bien.proprietaire.prenom : ''}`
-      : resa.guest_name || 'Sans propriétaire'
+      : resa.guest_name || 'Sans propriÃ©taire'
     if (!sejours[propId]) {
       sejours[propId] = { id: propId, nom: propNom, total_fmen: 0, nb_resas: 0, biens: [] }
     }
@@ -89,27 +89,27 @@ export function agregerSejoursProrio(reservations) {
       if (l.code === 'FMEN') p.total_fmen += l.montant_ttc
     }
   }
-  // Toutes les resas proprio apparaissent, même sans FMEN
+  // Toutes les resas proprio apparaissent, mÃªme sans FMEN
   return Object.values(sejours)
 }
 
 /**
- * Calcule la ventilation d'une réservation individuelle
+ * Calcule la ventilation d'une rÃ©servation individuelle
  */
 export async function calculerVentilationResa(resa) {
   const bien = resa.bien
 
-  if (!bien) throw new Error(`Bien manquant pour résa ${resa.code}`)
+  if (!bien) throw new Error(`Bien manquant pour rÃ©sa ${resa.code}`)
 
   if (bien.gestion_loyer === false) return []  // Proprio gere le loyer
   if ((bien.agence || 'dcb') !== 'dcb') return []  // Bien Lauian - comptabilite separee - pas de ventilation
 
-  // Revenue = montant net reçu en banque (en centimes)
+  // Revenue = montant net reÃ§u en banque (en centimes)
   const revenue = resa.fin_revenue || 0
-  if (revenue === 0) return // Réservation à €0, rien à ventiler
+  if (revenue === 0) return // RÃ©servation Ã  â¬0, rien Ã  ventiler
 
   // --- Extraire les fees ---
-  // Priorité : reservation_fee en base (resas importées CSV)
+  // PrioritÃ© : reservation_fee en base (resas importÃ©es CSV)
   // Fallback : hospitable_raw.financials.host (resas Booking/Airbnb sans CSV)
   let fees = resa.reservation_fee || []
 
@@ -125,15 +125,15 @@ export async function calculerVentilationResa(resa) {
     ]
   }
 
-  // Host fees (Host Service Fee = négatif)
+  // Host fees (Host Service Fee = nÃ©gatif)
   const hostFees = fees.filter(f => f.fee_type === 'host_fee')
   const hostServiceFee = hostFees.reduce((s, f) => s + (f.amount || 0), 0)
 
-  // Guest fees = tout ce que le voyageur paie en plus des nuitées (ménage, community, management, etc.)
+  // Guest fees = tout ce que le voyageur paie en plus des nuitÃ©es (mÃ©nage, community, management, etc.)
   const guestFeesAll = fees.filter(f => f.fee_type === 'guest_fee')
   const totalGuestFees = guestFeesAll.reduce((s, f) => s + (f.amount || 0), 0)
 
-  // Pour compatibilité (AE utilise toujours le community fee comme provision)
+  // Pour compatibilitÃ© (AE utilise toujours le community fee comme provision)
   const communityFee = guestFeesAll.find(f => f.label?.toLowerCase().includes('community'))
 
   // Taxes pass-through
@@ -144,36 +144,36 @@ export async function calculerVentilationResa(resa) {
   const adjustmentsTotal = adjustments.reduce((s, f) => s + (f.amount || 0), 0)
 
   // Remises promotionnelles (Promotion Discount, Last Minute Discount, Ad-hoc fee...)
-  // Tableau séparé dans hospitable_raw.financials.host.discounts (négatifs)
+  // Tableau sÃ©parÃ© dans hospitable_raw.financials.host.discounts (nÃ©gatifs)
   const discountsRaw = resa.hospitable_raw?.financials?.host?.discounts || []
   const discountsTotal = discountsRaw.reduce((s, d) => s + (d.amount || 0), 0)
 
-  // Accommodation de base (nuitées seules, en centimes)
+  // Accommodation de base (nuitÃ©es seules, en centimes)
   const accommodation = resa.fin_accommodation || 0
 
-  // Taux — priorité : override par bien > proprio > défaut 25%
+  // Taux â prioritÃ© : override par bien > proprio > dÃ©faut 25%
   const tauxCom = bien.taux_commission_override
     || (bien.proprietaire?.taux_commission ? bien.proprietaire.taux_commission / 100 : null)
     || 0.25
 
-  const tauxCalcule = tauxCom // taux configuré
-// ─────────────────────────────────────────────────────────────────────────
+  const tauxCalcule = tauxCom // taux configurÃ©
+// âââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââ
   // FORMULE DCB :
   //   Base commissionable = revenue - mgmt_fee_brut - cleaning_fee_brut - taxes
-  //   HON  = base × taux (TVA 20%)
+  //   HON  = base Ã taux (TVA 20%)
   //   LOY  = base - HON
-  //   FMEN = cleaning_fee_corrigé - AUTO  (corrigé = /1,0077 pour directes)
+  //   FMEN = cleaning_fee_corrigÃ© - AUTO  (corrigÃ© = /1,0077 pour directes)
   //   AUTO = provision AE (hors TVA)
-  //   TAXE = taxe de séjour (hors TVA)
+  //   TAXE = taxe de sÃ©jour (hors TVA)
   //
-  //   /1,0077 uniquement sur FMEN pour les réservations DIRECTES
-  //   (Hospitable prend 0,77% sur les fees directs — pas Airbnb, Booking, manual)
-  // ─────────────────────────────────────────────────────────────────────────
+  //   /1,0077 uniquement sur FMEN pour les rÃ©servations DIRECTES
+  //   (Hospitable prend 0,77% sur les fees directs â pas Airbnb, Booking, manual)
+  // âââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââ
 
   const isDirect = resa.platform === 'direct'
   const isCancelled = resa.final_status === 'cancelled'
 
-  // Réservation directe annulée → pas de ventilation (zéro virement)
+  // RÃ©servation directe annulÃ©e â pas de ventilation (zÃ©ro virement)
   if (isDirect && isCancelled) {
     await supabase.from('ventilation').delete().eq('reservation_id', resa.id)
     await supabase.from('reservation').update({ ventilation_calculee: true }).eq('id', resa.id)
@@ -181,23 +181,23 @@ export async function calculerVentilationResa(resa) {
   }
 
   // Fees depuis Hospitable
-  // ─────────────────────────────────────────────────────────────────────────
-  // STRUCTURE RÉELLE DES FEES HOSPITABLE (confirmée sur statement 602 fév 2026) :
+  // âââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââ
+  // STRUCTURE RÃELLE DES FEES HOSPITABLE (confirmÃ©e sur statement 602 fÃ©v 2026) :
   //
   // AIRBNB :
-  //   "Cleaning fee"   = frais ménage facturés au voyageur
-  //   "Community fee"  = commission Airbnb sur l'hébergement (PAS le ménage)
-  //   "Host Service Fee" = déduction (négatif)
-  //   → FMEN basé sur "Cleaning fee" uniquement
-  //   → Airbnb prend 13,95% sur le "Cleaning fee"
+  //   "Cleaning fee"   = frais mÃ©nage facturÃ©s au voyageur
+  //   "Community fee"  = commission Airbnb sur l'hÃ©bergement (PAS le mÃ©nage)
+  //   "Host Service Fee" = dÃ©duction (nÃ©gatif)
+  //   â FMEN basÃ© sur "Cleaning fee" uniquement
+  //   â Airbnb prend 13,95% sur le "Cleaning fee"
   //
   // DIRECT (Hospitable) :
   //   "Management fee" = frais de gestion
-  //   "Community fee"  = frais ménage (convention Hospitable pour les directes)
+  //   "Community fee"  = frais mÃ©nage (convention Hospitable pour les directes)
   //   "Host Service Fee" = -0,77% sur tous les fees (cleaning+mgmt+community)
-  //   → FMEN basé sur "Community fee" (= ménage direct)
-  //   → Hospitable prend 0,77% sur (Community fee + Management fee)
-  // ─────────────────────────────────────────────────────────────────────────
+  //   â FMEN basÃ© sur "Community fee" (= mÃ©nage direct)
+  //   â Hospitable prend 0,77% sur (Community fee + Management fee)
+  // âââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââ
 
   const managementFeeRaw = (guestFeesAll.find(f => f.label?.toLowerCase().includes('management'))?.amount || 0)
 
@@ -205,72 +205,72 @@ export async function calculerVentilationResa(resa) {
   const cleaningFeeAirbnb = (guestFeesAll.find(f => f.label?.toLowerCase() === 'cleaning fee')?.amount || 0)
 
   // Community fee = label "Community fee"
-  // Pour Airbnb : commission hébergement (pas le ménage)
-  // Pour Direct : frais ménage
+  // Pour Airbnb : commission hÃ©bergement (pas le mÃ©nage)
+  // Pour Direct : frais mÃ©nage
   const communityFeeRaw = (guestFeesAll.find(f => f.label?.toLowerCase() === 'community fee')?.amount || 0)
 
-  // Ménage brut selon la plateforme
+  // MÃ©nage brut selon la plateforme
   const menageBrut = resa.platform === 'airbnb' ? cleaningFeeAirbnb : communityFeeRaw
 
   // AUTO = provision AE (hors TVA)
-  // Pour les réservations annulées non-directes (Airbnb/Booking avec frais) : pas de provision AE
+  // Pour les rÃ©servations annulÃ©es non-directes (Airbnb/Booking avec frais) : pas de provision AE
   const aeAmount = isCancelled ? 0 : (bien.provision_ae_ref || 0)
 
   // Taxes pass-through - Airbnb ET Booking reversent certaines taxes directement (Remitted)
   const isRemitted = t => t.label?.toLowerCase().includes('remitted')
   const taxesTotal = (resa.platform === 'airbnb') ? 0 : taxes.filter(t => !isRemitted(t)).reduce((s, t) => s + (t.amount || 0), 0)
 
-  // ── Taux commission plateforme sur les fees ───────────────────────────────
+  // ââ Taux commission plateforme sur les fees âââââââââââââââââââââââââââââââ
   // Airbnb  : 16,21% sur (cleaning fee + community fee / host service fee)
-  //           Vérifié sur statement 602 Horizonte fév 2026 ligne par ligne
-  // Booking : à vérifier sur statement réel
+  //           VÃ©rifiÃ© sur statement 602 Horizonte fÃ©v 2026 ligne par ligne
+  // Booking : Ã  vÃ©rifier sur statement rÃ©el
   // Direct  : 0,77% sur (cleaning + management) via /1.0077
-  const PLATFORM_CLEANING_RATES = { airbnb: 0.1621, booking: 0.1517 }  // Booking ~15,17% mesuré statement Chambre Txomin fév 2026
+  const PLATFORM_CLEANING_RATES = { airbnb: 0.1621, booking: 0.1517 }  // Booking ~15,17% mesurÃ© statement Chambre Txomin fÃ©v 2026
 
   let commissionableBase, loyAmount, cleaningFeeNet, platformRateOnCleaning
 
   if (isDirect) {
-    // ── DIRECTE ──────────────────────────────────────────────────────────
-    // communityFeeRaw = ménage pour les directes (label "Community fee" Hospitable)
+    // ââ DIRECTE ââââââââââââââââââââââââââââââââââââââââââââââââââââââââââ
+    // communityFeeRaw = mÃ©nage pour les directes (label "Community fee" Hospitable)
     // managementFeeRaw = frais gestion
     // Hospitable prend 0,77% sur (communityFeeRaw + managementFeeRaw)
-    // Base = revenue - TOUS les fees ménage (cleaning + community + management) - taxes
+    // Base = revenue - TOUS les fees mÃ©nage (cleaning + community + management) - taxes
     commissionableBase = revenue - cleaningFeeAirbnb - communityFeeRaw - managementFeeRaw - taxesTotal - adjustmentsTotal + discountsTotal
     const feesDirectBruts = cleaningFeeAirbnb + communityFeeRaw + managementFeeRaw
-    // Math.floor pour platformRemb exact (arrondi supérieur sur la retenue)
+    // Math.floor pour platformRemb exact (arrondi supÃ©rieur sur la retenue)
     const feesDirectNets = feesDirectBruts > 0 ? Math.floor(feesDirectBruts / 1.0077) : 0
-    // Ménage net = total net - management = part ménage après déduction commission Hospitable
+    // MÃ©nage net = total net - management = part mÃ©nage aprÃ¨s dÃ©duction commission Hospitable
     cleaningFeeNet = bien.forfait_dcb_ref || Math.max(0, feesDirectNets - managementFeeRaw)
     platformRateOnCleaning = 0
   } else {
-    // ── AIRBNB / BOOKING / AUTRES ─────────────────────────────────────────
+    // ââ AIRBNB / BOOKING / AUTRES âââââââââââââââââââââââââââââââââââââââââ
     // Pour Airbnb : menageBrut = cleaningFeeAirbnb (label "Cleaning fee")
-    // communityFeeRaw = commission Airbnb sur hébergement (pas utilisé pour FMEN)
+    // communityFeeRaw = commission Airbnb sur hÃ©bergement (pas utilisÃ© pour FMEN)
     commissionableBase = accommodation + hostServiceFee + discountsTotal
-    // FMEN basé sur le ménage réel (cleaningFeeAirbnb pour Airbnb)
+    // FMEN basÃ© sur le mÃ©nage rÃ©el (cleaningFeeAirbnb pour Airbnb)
     cleaningFeeNet = bien.forfait_dcb_ref || menageBrut
     platformRateOnCleaning = PLATFORM_CLEANING_RATES[resa.platform] || PLATFORM_CLEANING_RATES.airbnb
   }
 
-  // HON = base × taux (TVA 20%)
+  // HON = base Ã taux (TVA 20%)
   // Direct : Math.floor pour correspondre exactement au statement Hospitable
   const honTTC = isDirect ? Math.floor(commissionableBase * tauxCom) : Math.round(commissionableBase * tauxCom)
   const honHT  = Math.round(honTTC / (1 + TVA_RATE))
 
-  // Part plateforme retenue sur les fees (écriture comptable côté owner dans statement)
-  // Airbnb : 16,21% × (cleaning fee + community fee) — vérifié sur statement réel
-  // Booking : taux × ménage brut
-  // Direct : 0,77% × (cleaning + mgmt) — même logique, remboursé au proprio via LOY
+  // Part plateforme retenue sur les fees (Ã©criture comptable cÃ´tÃ© owner dans statement)
+  // Airbnb : 16,21% Ã (cleaning fee + community fee) â vÃ©rifiÃ© sur statement rÃ©el
+  // Booking : taux Ã mÃ©nage brut
+  // Direct : 0,77% Ã (cleaning + mgmt) â mÃªme logique, remboursÃ© au proprio via LOY
   let platformRembourseMenage
   if (isDirect) {
     // Pour les directes : le remboursement 0,77% s'applique sur TOUS les fees
-    // (cleaning + community + management) — vérifié sur statement HOST-3QKPIK
+    // (cleaning + community + management) â vÃ©rifiÃ© sur statement HOST-3QKPIK
     const feesDirectBruts2 = cleaningFeeAirbnb + communityFeeRaw + managementFeeRaw
     const feesDirectNets2 = feesDirectBruts2 > 0 ? Math.round(feesDirectBruts2 / 1.0077) : 0
     platformRembourseMenage = feesDirectBruts2 - feesDirectNets2
   } else {
-    // Airbnb : 13,95% sur (cleaning + community) — même taux que dueToOwner
-    // Booking et autres : taux spécifique plateforme sur ménage brut
+    // Airbnb : 13,95% sur (cleaning + community) â mÃªme taux que dueToOwner
+    // Booking et autres : taux spÃ©cifique plateforme sur mÃ©nage brut
     const feesBaseForPlatform = (resa.platform === 'airbnb')
       ? (cleaningFeeAirbnb + communityFeeRaw)
       : menageBrut
@@ -280,16 +280,16 @@ export async function calculerVentilationResa(resa) {
       : Math.round(rateForPlatform * feesBaseForPlatform)
   }
 
-  // LOY = base - HON + remboursement plateforme (même logique direct et plateforme)
+  // LOY = base - HON + remboursement plateforme (mÃªme logique direct et plateforme)
   loyAmount = commissionableBase - honTTC + platformRembourseMenage
 
-  // FMEN = fees_ménage_brut - AUTO (TVA 20%)
-  // RÈGLE : platform_remb est une écriture comptable côté owner → LOY uniquement, PAS dans FMEN
-  // Airbnb  : fees_ménage = cleaning_fee + community_fee (host service fee)
-  // Direct  : fees_ménage = cleaning_fee + community_fee (management_fee = expense séparé → AUTO)
-  // Vérifié ligne par ligne sur statement 602 "Horizonte" fév 2026
-  const fmenBase = cleaningFeeAirbnb + communityFeeRaw  // = MEN brut (fees ménage voyageur)
-  // dueToOwner : part plateforme sur fees ménage (Airbnb 13,95%, Booking 15,17%)
+  // FMEN = fees_mÃ©nage_brut - AUTO (TVA 20%)
+  // RÃGLE : platform_remb est une Ã©criture comptable cÃ´tÃ© owner â LOY uniquement, PAS dans FMEN
+  // Airbnb  : fees_mÃ©nage = cleaning_fee + community_fee (host service fee)
+  // Direct  : fees_mÃ©nage = cleaning_fee + community_fee (management_fee = expense sÃ©parÃ© â AUTO)
+  // VÃ©rifiÃ© ligne par ligne sur statement 602 "Horizonte" fÃ©v 2026
+  const fmenBase = cleaningFeeAirbnb + communityFeeRaw  // = MEN brut (fees mÃ©nage voyageur)
+  // dueToOwner : part plateforme sur fees mÃ©nage (Airbnb 13,95%, Booking 15,17%)
   const dueToOwner = (resa.platform === 'airbnb')
     ? Math.round(fmenBase * AIRBNB_FEES_RATE)
     : (resa.platform === 'booking')
@@ -298,18 +298,18 @@ export async function calculerVentilationResa(resa) {
   const fmenTTC = Math.max(0, fmenBase - dueToOwner - aeAmount)
   const fmenHT  = fmenTTC > 0 ? Math.round(fmenTTC / (1 + TVA_RATE)) : 0
 
-  // ── MEN : ménage brut collecté voyageur (toutes guest fees sauf management) — Hors TVA
+  // ââ MEN : mÃ©nage brut collectÃ© voyageur (toutes guest fees sauf management) â Hors TVA
   const menLabelsToExclude = ['management fee', 'host service fee']
   const menFees = guestFeesAll.filter(f => !menLabelsToExclude.includes(f.label?.toLowerCase()))
   const menAmount = menFees.reduce((s, f) => s + (f.amount || 0), 0)
 
-  // ── COM : commission DCB sur locations directes (Management fee brut) — TVA 20%
+  // ââ COM : commission DCB sur locations directes (Management fee brut) â TVA 20%
   const comAmount = isDirect ? managementFeeRaw : 0
   const comHT = comAmount > 0 ? Math.round(comAmount / (1 + TVA_RATE)) : 0
 
   // LOY Booking : recalcul depuis fin_revenue (taux Booking variable sur cleaning)
   if (resa.platform === 'booking') {
-    // fin_revenue Hospitable inclut les Remitted taxes → déduire pour avoir le net statement
+    // fin_revenue Hospitable inclut les Remitted taxes â dÃ©duire pour avoir le net statement
     const remittedTotal = taxes.filter(t => isRemitted(t)).reduce((s,t) => s + (t.amount||0), 0)
     const finRevenueNet = (resa.fin_revenue || 0) - remittedTotal
     loyAmount = finRevenueNet - honTTC - fmenTTC - aeAmount - taxesTotal
@@ -318,80 +318,95 @@ export async function calculerVentilationResa(resa) {
   // --- Lignes de ventilation ---
   const lignes = []
 
-  // MEN — ménage brut collecté voyageur (Hors TVA)
+  // MEN â mÃ©nage brut collectÃ© voyageur (Hors TVA)
   if (menAmount > 0) {
-    lignes.push(ligneHorsTVA('MEN', 'Ménage brut voyageur', menAmount, bien, resa))
+    lignes.push(ligneHorsTVA('MEN', 'MÃ©nage brut voyageur', menAmount, bien, resa))
   }
 
-  // COM — commission DCB sur locations directes (Management fee, TVA 20%)
+  // COM â commission DCB sur locations directes (Management fee, TVA 20%)
   if (comHT > 0) {
     lignes.push(ligneTVA('COM', 'Commission DCB', comHT, bien, resa, null, comAmount))
   }
 
-  // HON — honoraires de gestion (TVA 20%)
+  // HON â honoraires de gestion (TVA 20%)
   if (honHT > 0) {
     lignes.push(ligneTVA('HON', 'Honoraires de gestion', honHT, bien, resa, tauxCalcule, honTTC))
   }
 
-  // FMEN — forfait ménage DCB = cleaning fee - AUTO (TVA 20%)
+  // FMEN â forfait mÃ©nage DCB = cleaning fee - AUTO (TVA 20%)
   if (fmenHT > 0) {
-    lignes.push(ligneTVA('FMEN', 'Forfait ménage', fmenHT, bien, resa, null, fmenTTC))
+    lignes.push(ligneTVA('FMEN', 'Forfait mÃ©nage', fmenHT, bien, resa, null, fmenTTC))
   }
 
-  // AUTO — débours auto-entrepreneur (hors TVA)
+  // AUTO â dÃ©bours auto-entrepreneur (hors TVA)
   if (aeAmount > 0) {
-    lignes.push(ligneHorsTVA('AUTO', 'Débours auto-entrepreneur', aeAmount, bien, resa))
+    lignes.push(ligneHorsTVA('AUTO', 'DÃ©bours auto-entrepreneur', aeAmount, bien, resa))
   }
 
 
-  // LOY — reversement propriétaire (hors TVA)
+  // LOY â reversement propriÃ©taire (hors TVA)
   if (loyAmount > 0) {
-    lignes.push(ligneHorsTVA('LOY', 'Reversement propriétaire', loyAmount, bien, resa))
+    lignes.push(ligneHorsTVA('LOY', 'Reversement propriÃ©taire', loyAmount, bien, resa))
   }
 
-  // VIR — virement propriétaire
-  // Direct  : LOY + TAXE + 0,77% × (mgmt_fee + cleaning_fee) [Hospitable rembourse sa commission]
+  // VIR â virement propriÃ©taire
+  // Direct  : LOY + TAXE + 0,77% Ã (mgmt_fee + cleaning_fee) [Hospitable rembourse sa commission]
   // Airbnb  : LOY + TAXE  [pas de remboursement]
-  // Pour les directes : Hospitable prend 0,77% sur (management + community/ménage)
-  // VIR direct = LOY + taxes (remboursement 0,77% Hospitable déjà dans platformRemb → LOY)
+  // Pour les directes : Hospitable prend 0,77% sur (management + community/mÃ©nage)
+  // VIR direct = LOY + taxes (remboursement 0,77% Hospitable dÃ©jÃ  dans platformRemb â LOY)
   const virAmount = loyAmount + taxesTotal
   if (virAmount > 0) {
-    lignes.push(ligneHorsTVA('VIR', 'Virement propriétaire', virAmount, bien, resa))
+    lignes.push(ligneHorsTVA('VIR', 'Virement propriÃ©taire', virAmount, bien, resa))
   }
 
-  // TAXE — Airbnb: exclue. Booking: pass-through seulement. Direct: toutes.
+  // TAXE â Airbnb: exclue. Booking: pass-through seulement. Direct: toutes.
   if (resa.platform !== 'airbnb') {
     for (const tax of taxes) {
       if (tax.amount > 0 && !isRemitted(tax)) {
-        lignes.push(ligneHorsTVA('TAXE', tax.label || 'Taxe séjour', tax.amount, bien, resa))
+        lignes.push(ligneHorsTVA('TAXE', tax.label || 'Taxe sÃ©jour', tax.amount, bien, resa))
       }
     }
   }
 
-  // Supprimer les ventilations existantes pour cette résa
+  // Supprimer les ventilations existantes pour cette rÃ©sa
   await supabase.from('ventilation').delete().eq('reservation_id', resa.id)
 
-  // Insérer les nouvelles lignes
+  // InsÃ©rer les nouvelles lignes
   if (lignes.length > 0) {
     const { error } = await supabase.from('ventilation').insert(lignes)
     if (error) throw error
   }
 
-  // Marquer la résa comme ventilée
+  // Marquer la rÃ©sa comme ventilÃ©e
   await supabase
     .from('reservation')
     .update({ ventilation_calculee: true })
     .eq('id', resa.id)
+
+  // CF-PAE3 : relier mission_menage.ventilation_auto_id à la ligne AUTO
+  const { data: ligneAuto } = await supabase
+    .from('ventilation')
+    .select('id')
+    .eq('reservation_id', resa.id)
+    .eq('code', 'AUTO')
+    .single()
+  if (ligneAuto?.id) {
+    await supabase
+      .from('mission_menage')
+      .update({ ventilation_auto_id: ligneAuto.id })
+      .eq('reservation_id', resa.id)
+      .is('ventilation_auto_id', null)
+  }
 }
 
 // --- Helpers ---
 
 function ligneTVA(code, libelle, montantHT, bien, resa, tauxCalcule, montantTTC) {
   // CONTRAT STRICT :
-  // montantHT  = montant HORS TAXE (ex: 226,04 € = comTTC/1.20)
-  // montantTTC = montant TTC (ex: 271,25 € = base × taux)
-  // TVA        = montantTTC - montantHT (ex: 45,21 €)
-  // Ne JAMAIS passer comTTC comme montantHT — c'est l'erreur historique corrigée
+  // montantHT  = montant HORS TAXE (ex: 226,04 â¬ = comTTC/1.20)
+  // montantTTC = montant TTC (ex: 271,25 â¬ = base Ã taux)
+  // TVA        = montantTTC - montantHT (ex: 45,21 â¬)
+  // Ne JAMAIS passer comTTC comme montantHT â c'est l'erreur historique corrigÃ©e
   const ttc = montantTTC || Math.round(montantHT * (1 + TVA_RATE))
   const tva = ttc - montantHT
   return {
@@ -427,7 +442,7 @@ function ligneHorsTVA(code, libelle, montant, bien, resa) {
 }
 
 /**
- * Récupère la ventilation d'un mois, groupée par propriétaire
+ * RÃ©cupÃ¨re la ventilation d'un mois, groupÃ©e par propriÃ©taire
  */
 export async function getVentilationMois(mois) {
   const { data, error } = await supabase
@@ -446,12 +461,12 @@ export async function getVentilationMois(mois) {
 }
 
 /**
- * Récapitulatif de ventilation par code pour un mois
+ * RÃ©capitulatif de ventilation par code pour un mois
  */
 export async function getRecapVentilation(mois) {
   const lignes = await getVentilationMois(mois)
 
-  // Récap global par code
+  // RÃ©cap global par code
   const recap = {}
   for (const l of lignes) {
     if (!recap[l.code]) {
@@ -463,11 +478,11 @@ export async function getRecapVentilation(mois) {
     recap[l.code].nb++
   }
 
-  // Récap par propriétaire
+  // RÃ©cap par propriÃ©taire
   const parProprio = {}
   for (const l of lignes) {
     const propId = l.proprietaire_id || 'sans_proprio'
-    const propNom = l.proprietaire ? `${l.proprietaire.prenom || ''} ${l.proprietaire.nom || ''}`.trim() : 'Sans propriétaire'
+    const propNom = l.proprietaire ? `${l.proprietaire.prenom || ''} ${l.proprietaire.nom || ''}`.trim() : 'Sans propriÃ©taire'
     if (!parProprio[propId]) {
       parProprio[propId] = { id: propId, nom: propNom, codes: {}, total_com: 0, total_men: 0, total_loy: 0, total_auto: 0, total_vir: 0 }
     }
