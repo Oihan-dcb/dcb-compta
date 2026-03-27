@@ -1,32 +1,32 @@
 /**
- * Service de gÃ©nÃ©ration des factures Evoliz DCB â PropriÃ©taire
+ * Service de gÃÂ©nÃÂ©ration des factures Evoliz DCB Ã¢ÂÂ PropriÃÂ©taire
  *
  * Workflow :
- * 1. En dÃ©but de mois : gÃ©nÃ©rer les brouillons pour tous les proprios actifs
- * 2. VÃ©rification : statements finalisÃ©s, montants AE validÃ©s (non bloquant)
+ * 1. En dÃÂ©but de mois : gÃÂ©nÃÂ©rer les brouillons pour tous les proprios actifs
+ * 2. VÃÂ©rification : statements finalisÃÂ©s, montants AE validÃÂ©s (non bloquant)
  * 3. Validation manuelle par Oihan
  * 4. Push vers Evoliz via API
  * 5. Tracking statut paiement
  *
  * Structure facture :
- * - Ligne COM : Î£ reservation_commissions Ã taux â TVA 20%
- * - Ligne MEN : Î£ (guest_fees - provision AE) + management_fees â TVA 20%
- * - Ligne DIV : Î£ expenses [DCB] â TVA 20%
- * - Mention : "ConformÃ©ment au mandat de gestion..."
+ * - Ligne COM : ÃÂ£ reservation_commissions ÃÂ taux Ã¢ÂÂ TVA 20%
+ * - Ligne MEN : ÃÂ£ (guest_fees - provision AE) + management_fees Ã¢ÂÂ TVA 20%
+ * - Ligne DIV : ÃÂ£ expenses [DCB] Ã¢ÂÂ TVA 20%
+ * - Mention : "ConformÃÂ©ment au mandat de gestion..."
  */
 
 import { supabase } from '../lib/supabase'
 
-const MENTION_MANDAT = "ConformÃ©ment au mandat de gestion, les honoraires de gestion sont directement prÃ©levÃ©s sur le loyer encaissÃ© avant reversement au propriÃ©taire."
+const MENTION_MANDAT = "ConformÃÂ©ment au mandat de gestion, les honoraires de gestion sont directement prÃÂ©levÃÂ©s sur le loyer encaissÃÂ© avant reversement au propriÃÂ©taire."
 
 /**
- * GÃ©nÃ¨re les brouillons de factures pour tous les propriÃ©taires actifs d'un mois
+ * GÃÂ©nÃÂ¨re les brouillons de factures pour tous les propriÃÂ©taires actifs d'un mois
  * @param {string} mois - YYYY-MM
  */
 export async function genererFacturesMois(mois) {
-  const log = { created: 0, updated: 0, errors: 0 }
+  const log = { created: 0, updated: 0, errors: 0, resteAPayer: 0 }
 
-  // RÃ©cupÃ©rer tous les propriÃ©taires avec des biens actifs
+  // RÃÂ©cupÃÂ©rer tous les propriÃÂ©taires avec des biens actifs
   const { data: proprietaires, error: propErr } = await supabase
     .from('proprietaire')
     .select(`
@@ -41,7 +41,7 @@ export async function genererFacturesMois(mois) {
 
   if (propErr) throw propErr
 
-  // DÃ©dupliquer (un proprio peut avoir plusieurs biens)
+  // DÃÂ©dupliquer (un proprio peut avoir plusieurs biens)
   const propMap = new Map()
   for (const p of (proprietaires || [])) {
     if (!propMap.has(p.id)) propMap.set(p.id, { ...p, biens: [] })
@@ -53,6 +53,7 @@ export async function genererFacturesMois(mois) {
       const facture = await genererFactureProprietaire(proprio, mois)
       if (facture.created) log.created++
       else log.updated++
+      if ((facture.resteAPayer || 0) > 0) log.resteAPayer += facture.resteAPayer
     } catch (err) {
       console.error(`Erreur facture ${proprio.nom}:`, err)
       log.errors++
@@ -63,12 +64,12 @@ export async function genererFacturesMois(mois) {
 }
 
 /**
- * GÃ©nÃ¨re ou met Ã  jour la facture mensuelle d'un propriÃ©taire
+ * GÃÂ©nÃÂ¨re ou met ÃÂ  jour la facture mensuelle d'un propriÃÂ©taire
  */
 async function genererFactureProprietaire(proprio, mois) {
   const bienIds = proprio.biens.map(b => b.id)
 
-  // RÃ©cupÃ©rer les rÃ©servations du mois pour ces biens
+  // RÃÂ©cupÃÂ©rer les rÃÂ©servations du mois pour ces biens
   const { data: reservations, error: resaErr } = await supabase
     .from('reservation')
     .select(`
@@ -83,7 +84,7 @@ async function genererFactureProprietaire(proprio, mois) {
 
   if (resaErr) throw resaErr
 
-  // RÃ©cupÃ©rer les expenses [DCB] du mois pour ces biens
+  // RÃÂ©cupÃÂ©rer les expenses [DCB] du mois pour ces biens
   const { data: expenses, error: expErr } = await supabase
     .from('expense')
     .select('amount, description, type_expense')
@@ -94,12 +95,12 @@ async function genererFactureProprietaire(proprio, mois) {
 
   if (expErr) throw expErr
 
-  // CF-FACAE : facture_ae non implÃ©mentÃ© â aeParBien = Map vide (table absente en base)
+  // CF-FACAE : facture_ae non implÃÂ©mentÃÂ© Ã¢ÂÂ aeParBien = Map vide (table absente en base)
   const aeParBien = new Map()
 
   // --- Calculer les 3 lignes ---
 
-  // COM : Î£ ventilation COM du mois
+  // COM : ÃÂ£ ventilation COM du mois
   const { data: lignesVentil } = await supabase
     .from('ventilation')
     .select('code, montant_ht, montant_tva, montant_ttc, bien_id')
@@ -137,7 +138,7 @@ async function genererFactureProprietaire(proprio, mois) {
   const divTVA = Math.round(divHT * 0.20)
   const div = { ht: divHT, tva: divTVA, ttc: divHT + divTVA }
 
-  // MEN consolidÃ© = MEN + MGT
+  // MEN consolidÃÂ© = MEN + MGT
   const menConsolide = {
     ht: men.ht + mgt.ht,
     tva: men.tva + mgt.tva,
@@ -152,10 +153,10 @@ async function genererFactureProprietaire(proprio, mois) {
   // Reversement proprio = LOY total
   const montantReversement = loy.ht - totalPrestations
 
-  // Cas solde nÃ©gatif : uniquement des expenses, pas de rÃ©servations
+  // Cas solde nÃÂ©gatif : uniquement des expenses, pas de rÃÂ©servations
   const soldeNegatif = totalHT === 0 && div.ht > 0
 
-  // VÃ©rifier si facture existante
+  // VÃÂ©rifier si facture existante
   const { data: existingFacture } = await supabase
     .from('facture_evoliz')
     .select('id, statut')
@@ -163,9 +164,9 @@ async function genererFactureProprietaire(proprio, mois) {
     .eq('mois', mois)
     .single()
 
-  // Ne pas Ã©craser une facture dÃ©jÃ  envoyÃ©e ou payÃ©e
+  // Ne pas ÃÂ©craser une facture dÃÂ©jÃÂ  envoyÃÂ©e ou payÃÂ©e
   if (existingFacture && ['envoye_evoliz', 'payee'].includes(existingFacture.statut)) {
-    return { created: false, skipped: true, raison: 'Facture dÃ©jÃ  envoyÃ©e' }
+    return { created: false, skipped: true, raison: 'Facture dÃÂ©jÃÂ  envoyÃÂ©e' }
   }
 
   const factureData = {
@@ -200,7 +201,7 @@ async function genererFactureProprietaire(proprio, mois) {
     created = true
   }
 
-  // Supprimer et recrÃ©er les lignes
+  // Supprimer et recrÃÂ©er les lignes
   await supabase.from('facture_evoliz_ligne').delete().eq('facture_id', factureId)
 
   const lignes = []
@@ -211,7 +212,7 @@ async function genererFactureProprietaire(proprio, mois) {
       facture_id: factureId,
       code: 'HON',
       libelle: 'Honoraires de gestion',
-      description: `${reservations?.length || 0} rÃ©servation(s) â ${mois}`,
+      description: `${reservations?.length || 0} rÃÂ©servation(s) Ã¢ÂÂ ${mois}`,
       montant_ht: com.ht,
       taux_tva: 20,
       montant_tva: com.tva,
@@ -224,7 +225,7 @@ async function genererFactureProprietaire(proprio, mois) {
     lignes.push({
       facture_id: factureId,
       code: 'FMEN',
-      libelle: 'Forfait mÃ©nage, linge et frais de service',
+      libelle: 'Forfait mÃÂ©nage, linge et frais de service',
       description: MENTION_MANDAT,
       montant_ht: menConsolide.ht,
       taux_tva: 20,
@@ -238,7 +239,7 @@ async function genererFactureProprietaire(proprio, mois) {
     lignes.push({
       facture_id: factureId,
       code: 'DIV',
-      libelle: soldeNegatif ? 'Frais avancÃ©s â remboursement demandÃ©' : 'Frais divers avancÃ©s',
+      libelle: soldeNegatif ? 'Frais avancÃÂ©s Ã¢ÂÂ remboursement demandÃÂ©' : 'Frais divers avancÃÂ©s',
       description: (expenses || []).map(e => e.description).join(', ') || 'Frais divers',
       montant_ht: div.ht,
       taux_tva: 20,
@@ -266,11 +267,12 @@ async function genererFactureProprietaire(proprio, mois) {
     await supabase.from('facture_evoliz_ligne').insert(lignes)
   }
 
-  return { created, factureId, totalHT, totalTTC, soldeNegatif }
+  const resteAPayer = Math.max(0, (totalPrestations + haownerTTC) - loy.ht)
+  return { created, factureId, totalHT, totalTTC, soldeNegatif, resteAPayer }
 }
 
 /**
- * RÃ©cupÃ¨re toutes les factures d'un mois avec les dÃ©tails
+ * RÃÂ©cupÃÂ¨re toutes les factures d'un mois avec les dÃÂ©tails
  */
 export async function getFacturesMois(mois) {
   const { data, error } = await supabase
@@ -288,7 +290,7 @@ export async function getFacturesMois(mois) {
 }
 
 /**
- * Valide une facture (passage brouillon â validÃ©)
+ * Valide une facture (passage brouillon Ã¢ÂÂ validÃÂ©)
  */
 export async function validerFacture(factureId) {
   const { error } = await supabase
@@ -301,9 +303,9 @@ export async function validerFacture(factureId) {
 }
 
 /**
- * Marque une facture comme envoyÃ©e dans Evoliz
+ * Marque une facture comme envoyÃÂ©e dans Evoliz
  * @param {string} factureId
- * @param {string} idEvoliz - ID attribuÃ© par Evoliz
+ * @param {string} idEvoliz - ID attribuÃÂ© par Evoliz
  * @param {string} numeroFacture
  */
 export async function marquerEnvoyeeEvoliz(factureId, idEvoliz, numeroFacture) {
@@ -321,8 +323,8 @@ export async function marquerEnvoyeeEvoliz(factureId, idEvoliz, numeroFacture) {
 }
 
 /**
- * GÃ©nÃ¨re l'export CSV pour l'expert-comptable
- * Une ligne par code ventilation par rÃ©servation
+ * GÃÂ©nÃÂ¨re l'export CSV pour l'expert-comptable
+ * Une ligne par code ventilation par rÃÂ©servation
  */
 export async function exportCSVComptable(mois) {
   const { data: ventilation, error } = await supabase
@@ -339,10 +341,10 @@ export async function exportCSVComptable(mois) {
   if (error) throw error
 
   const lignes = [
-    // En-tÃªte
-    ['Mois', 'Code comptable', 'LibellÃ©', 'Bien', 'PropriÃ©taire', 'Plateforme',
-     'RÃ©fÃ©rence rÃ©sa', 'Check-in', 'Check-out', 'HT (â¬)', 'TVA %', 'TVA (â¬)', 'TTC (â¬)'],
-    // DonnÃ©es
+    // En-tÃÂªte
+    ['Mois', 'Code comptable', 'LibellÃÂ©', 'Bien', 'PropriÃÂ©taire', 'Plateforme',
+     'RÃÂ©fÃÂ©rence rÃÂ©sa', 'Check-in', 'Check-out', 'HT (Ã¢ÂÂ¬)', 'TVA %', 'TVA (Ã¢ÂÂ¬)', 'TTC (Ã¢ÂÂ¬)'],
+    // DonnÃÂ©es
     ...(ventilation || []).map(l => [
       l.mois_comptable,
       l.code,
@@ -370,7 +372,7 @@ export async function exportCSVComptable(mois) {
 }
 
 /**
- * TÃ©lÃ©charge le CSV dans le navigateur
+ * TÃÂ©lÃÂ©charge le CSV dans le navigateur
  */
 export function telechargerCSV(contenu, nomFichier) {
   const blob = new Blob([contenu], { type: 'text/csv;charset=utf-8;' })
