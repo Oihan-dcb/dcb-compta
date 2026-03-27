@@ -1,7 +1,7 @@
 import { supabase } from '../lib/supabase'
 
 /**
- * Analyse le CSV Hospitable sans importer — retourne les mois disponibles
+ * Analyse le CSV Hospitable sans importer â retourne les mois disponibles
  */
 export async function analyseCSV(file) {
   const text = await file.text()
@@ -24,7 +24,7 @@ export async function analyseCSV(file) {
 }
 
 /**
- * Import bulk — 1 upsert par batch de 500, ~5 secondes pour 6000 resas
+ * Import bulk â 1 upsert par batch de 500, ~5 secondes pour 6000 resas
  */
 export async function importHospitableCSV(rows, moisFiltres = null, onProgress = null) {
   const filtered = moisFiltres
@@ -34,10 +34,10 @@ export async function importHospitableCSV(rows, moisFiltres = null, onProgress =
   const log = { total: filtered.length, updated: 0, created: 0, errors: 0, skipped: 0 }
   const PAGE_SIZE = 1000
 
-  // ── Étape 1 : charger tous les biens (map par nom ET par hospitable_id) ──
+  // ââ Ãtape 1 : charger tous les biens (map par nom ET par hospitable_id) ââ
   // Le CSV utilise property_name (ex: '416 "Harea"') qui = hospitable_name en base
-  const bienByName = {}   // hospitable_name → bien_id
-  const bienById = {}     // hospitable_id UUID → bien_id
+  const bienByName = {}   // hospitable_name â bien_id
+  const bienById = {}     // hospitable_id UUID â bien_id
   let bienPage = 0
   while (true) {
     const { data: bienData } = await supabase
@@ -53,7 +53,7 @@ export async function importHospitableCSV(rows, moisFiltres = null, onProgress =
     bienPage++
   }
 
-  // ── Étape 2 : charger TOUTES les réservations existantes avec pagination ──
+  // ââ Ãtape 2 : charger TOUTES les rÃ©servations existantes avec pagination ââ
   const resaMap = {}
   let page = 0
   while (true) {
@@ -69,7 +69,7 @@ export async function importHospitableCSV(rows, moisFiltres = null, onProgress =
 
   onProgress?.({ step: 'prepare', pct: 10 })
 
-  // ── Étape 3 : préparer toutes les lignes reservation ──
+  // ââ Ãtape 3 : prÃ©parer toutes les lignes reservation ââ
   const toUpsert = []
   const toInsert = []
 
@@ -77,7 +77,7 @@ export async function importHospitableCSV(rows, moisFiltres = null, onProgress =
     const code = row.code?.trim()
     if (!code) { log.skipped++; continue }
 
-    // Chercher le bien par nom (source CSV) — plus fiable que l'ID numérique
+    // Chercher le bien par nom (source CSV) â plus fiable que l'ID numÃ©rique
     const bienId = bienByName[row.property_name?.trim()] || bienById[row.property_id]
     if (!bienId && !resaMap[code]) { log.skipped++; continue }
 
@@ -93,10 +93,10 @@ export async function importHospitableCSV(rows, moisFiltres = null, onProgress =
     }
 
     if (resaMap[code]) {
-      // Existe → update ciblé par id (pas d'upsert pour éviter les contraintes NOT NULL)
+      // Existe â update ciblÃ© par id (pas d'upsert pour Ã©viter les contraintes NOT NULL)
       toUpsert.push({ id: resaMap[code], ...base })
     } else {
-      // Nouvelle → insert complet avec hospitable_id depuis le champ uuid du CSV
+      // Nouvelle â insert complet avec hospitable_id depuis le champ uuid du CSV
       toInsert.push({
         ...base,
         hospitable_id: row.uuid || null,
@@ -113,7 +113,7 @@ export async function importHospitableCSV(rows, moisFiltres = null, onProgress =
 
   onProgress?.({ step: 'upsert', pct: 20 })
 
-  // ── Étape 4 : updates individuels en parallèle (batch de 50) ──
+  // ââ Ãtape 4 : updates individuels en parallÃ¨le (batch de 50) ââ
   const BULK = 500
   const UPDATE_BATCH = 50
   for (let i = 0; i < toUpsert.length; i += UPDATE_BATCH) {
@@ -135,7 +135,7 @@ export async function importHospitableCSV(rows, moisFiltres = null, onProgress =
     if (error) { log.errors += batch.length; console.error('insert error:', error) }
     else {
       log.created += batch.length
-      // Mettre à jour resaMap avec les nouveaux IDs
+      // Mettre Ã  jour resaMap avec les nouveaux IDs
       for (const r of inserted || []) resaMap[r.code] = r.id
     }
     onProgress?.({ step: 'insert', pct: 50 + Math.round((i / Math.max(toInsert.length, 1)) * 10) })
@@ -143,7 +143,7 @@ export async function importHospitableCSV(rows, moisFiltres = null, onProgress =
 
   onProgress?.({ step: 'fees', pct: 60 })
 
-  // ── Étape 5 : préparer toutes les fees en bulk ──
+  // ââ Ãtape 5 : prÃ©parer toutes les fees en bulk ââ
   const allFees = []
   const resaIdsToClean = []
 
@@ -163,7 +163,7 @@ export async function importHospitableCSV(rows, moisFiltres = null, onProgress =
     }
   }
 
-  // ── Étape 6 : supprimer les anciennes fees en bulk par batch ──
+  // ââ Ãtape 6 : supprimer les anciennes fees en bulk par batch ââ
   const CLEAN_BATCH = 200
   for (let i = 0; i < resaIdsToClean.length; i += CLEAN_BATCH) {
     const ids = resaIdsToClean.slice(i, i + CLEAN_BATCH)
@@ -171,7 +171,7 @@ export async function importHospitableCSV(rows, moisFiltres = null, onProgress =
     onProgress?.({ step: 'clean_fees', pct: 60 + Math.round((i / resaIdsToClean.length) * 15) })
   }
 
-  // ── Étape 7 : insérer les nouvelles fees en bulk ──
+  // ââ Ãtape 7 : insÃ©rer les nouvelles fees en bulk ââ
   for (let i = 0; i < allFees.length; i += BULK) {
     const batch = allFees.slice(i, i + BULK)
     const { error } = await supabase.from('reservation_fee').insert(batch)
@@ -181,7 +181,7 @@ export async function importHospitableCSV(rows, moisFiltres = null, onProgress =
 
   onProgress?.({ step: 'dedup', pct: 90 })
 
-  // ── Étape 8 : fusion doublons ──
+  // ââ Ãtape 8 : fusion doublons ââ
   const fusion = await fusionnerDoublons(resaMap)
   log.fusion = fusion
 
@@ -243,10 +243,25 @@ export async function fusionnerDoublons(resaMapHint = null) {
       }
 
       for (const slave of slaves) {
-        // Migrer fees et ventilations vers le master
-        await supabase.from('reservation_fee').update({ reservation_id: master.id }).eq('reservation_id', slave.id)
-        await supabase.from('ventilation').update({ reservation_id: master.id }).eq('reservation_id', slave.id)
-        await supabase.from('reservation').delete().eq('id', slave.id)
+        // CF-I1 : migrations sequentielles — aucun DELETE si une migration echoue
+        const { error: e1 } = await supabase.from('reservation_fee').update({ reservation_id: master.id }).eq('reservation_id', slave.id)
+        if (e1) throw new Error(`CF-I1 : migration reservation_fee echouee (slave=${slave.id}) : ${e1.message}`)
+
+        const { error: e2 } = await supabase.from('ventilation').update({ reservation_id: master.id }).eq('reservation_id', slave.id)
+        if (e2) throw new Error(`CF-I1 : migration ventilation echouee (slave=${slave.id}) : ${e2.message}`)
+
+        const { error: e3 } = await supabase.from('reservation_paiement').update({ reservation_id: master.id }).eq('reservation_id', slave.id)
+        if (e3) throw new Error(`CF-I1 : migration reservation_paiement echouee (slave=${slave.id}) : ${e3.message}`)
+
+        const { error: e4 } = await supabase.from('payout_reservation').update({ reservation_id: master.id }).eq('reservation_id', slave.id)
+        if (e4) throw new Error(`CF-I1 : migration payout_reservation echouee (slave=${slave.id}) : ${e4.message}`)
+
+        const { error: e5 } = await supabase.from('mission_menage').update({ reservation_id: master.id }).eq('reservation_id', slave.id)
+        if (e5) throw new Error(`CF-I1 : migration mission_menage echouee (slave=${slave.id}) : ${e5.message}`)
+
+        // Toutes les migrations ont reussi — suppression du slave
+        const { error: eDel } = await supabase.from('reservation').delete().eq('id', slave.id)
+        if (eDel) throw new Error(`CF-I1 : DELETE slave echoue apres migrations reussies (slave=${slave.id}) : ${eDel.message}`)
       }
       log.fusions++
     } catch (err) {
