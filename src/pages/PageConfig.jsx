@@ -60,7 +60,7 @@ export default function PageConfig() {
         total += (v?.total || 0)
         errors += (v?.errors || 0)
       }
-      update('vent', 'ok', `${total} résa(s) ventilée(s)${errors ? ` — ${errors} erreur(s)` : ''}`)
+      update('vent', 'ok', `${total} rÃ©sa(s) ventilÃ©e(s)${errors ? ` â ${errors} erreur(s)` : ''}`)
     } catch(e) { update('vent', 'error', e.message); setVentError(e.message) }
 
     // 2. Matching
@@ -71,7 +71,7 @@ export default function PageConfig() {
         const r = await lancerMatching(mois)
         total += (r?.matched || 0)
       }
-      update('matching', 'ok', `${total} virement(s) rapproché(s)`)
+      update('matching', 'ok', `${total} virement(s) rapprochÃ©(s)`)
     } catch(e) { update('matching', 'error', e.message); setVentError(e.message) }
 
     clearInterval(timerInterval)
@@ -89,7 +89,7 @@ export default function PageConfig() {
 
   const GLOBAL_STEPS = [
     { id: 'biens',    label: 'Sync biens Hospitable' },
-    { id: 'resas',    label: 'Sync réservations Hospitable' },
+    { id: 'resas',    label: 'Sync rÃ©servations Hospitable' },
     { id: 'payouts',  label: 'Sync payouts (Airbnb / Stripe)' },
     { id: 'vent',     label: 'Ventilation comptable' },
     { id: 'matching', label: 'Matching bancaire automatique' },
@@ -106,7 +106,7 @@ export default function PageConfig() {
       prev.map(s => s.id === id ? { ...s, status, detail } : s)
     )
 
-    // Générer tous les mois depuis 2022-01
+    // GÃ©nÃ©rer tous les mois depuis 2022-01
     const allMois = []
     const now = new Date()
     let y = 2022, m = 1
@@ -136,7 +136,7 @@ export default function PageConfig() {
     }
     const total = chunks.length
 
-    // Étape 1-3 : sync via Edge Function par chunk
+    // Ãtape 1-3 : sync via Edge Function par chunk
     update('biens', 'running', 'Sync en cours...')
     update('resas', 'running', 'Sync en cours...')
     update('payouts', 'running', 'Sync en cours...')
@@ -177,18 +177,18 @@ export default function PageConfig() {
     setGlobalTimer(Math.floor((Date.now() - startTime) / 1000))
 
     if (!hasError) {
-      update('biens',    'ok', `${totals.biens} biens vérifiés`)
-      update('resas',    'ok', `${totals.resas} réservations syncées`)
-      update('payouts',  'ok', `${totals.payouts} payouts syncés`)
-      update('vent',     totals.vent > 0 ? 'ok' : 'ok', `${totals.vent} résa(s) ventilées`)
-      update('matching', 'ok', `${totals.matching} virement(s) rapprochés`)
+      update('biens',    'ok', `${totals.biens} biens vÃ©rifiÃ©s`)
+      update('resas',    'ok', `${totals.resas} rÃ©servations syncÃ©es`)
+      update('payouts',  'ok', `${totals.payouts} payouts syncÃ©s`)
+      update('vent',     totals.vent > 0 ? 'ok' : 'ok', `${totals.vent} rÃ©sa(s) ventilÃ©es`)
+      update('matching', 'ok', `${totals.matching} virement(s) rapprochÃ©s`)
     } else {
-      // Mettre à jour ce qu'on a réussi
+      // Mettre Ã  jour ce qu'on a rÃ©ussi
       update('biens',   totals.biens > 0   ? 'ok' : 'error', `${totals.biens} biens`)
-      update('resas',   totals.resas > 0   ? 'ok' : 'error', `${totals.resas} résas`)
+      update('resas',   totals.resas > 0   ? 'ok' : 'error', `${totals.resas} rÃ©sas`)
       update('payouts', totals.payouts > 0 ? 'ok' : 'error', `${totals.payouts} payouts`)
-      update('vent',    totals.vent > 0    ? 'ok' : 'error', `${totals.vent} ventilées`)
-      update('matching','ok', `${totals.matching} rapprochés`)
+      update('vent',    totals.vent > 0    ? 'ok' : 'error', `${totals.vent} ventilÃ©es`)
+      update('matching','ok', `${totals.matching} rapprochÃ©s`)
     }
 
     setGlobalRunning(false)
@@ -281,11 +281,11 @@ export default function PageConfig() {
       <div className="page-header">
         <div>
           <h1 className="page-title">Configuration</h1>
-          <p className="page-subtitle">Paramètres de connexion et tests d'intégration</p>
+          <p className="page-subtitle">ParamÃ¨tres de connexion et tests d'intÃ©gration</p>
         </div>
       </div>
 
-      {error && <div className="alert alert-error">✕ {error}</div>}
+      {error && <div className="alert alert-error">â {error}</div>}
 
       {/* Statut des variables d'env */}
       <div className="card" style={{ marginBottom: 20 }}>
@@ -307,12 +307,12 @@ export default function PageConfig() {
                 <td style={{ fontFamily: 'monospace', fontSize: 12 }}>{key}</td>
                 <td>
                   {val
-                    ? <span className="badge badge-success">✓ Configuré</span>
-                    : <span className="badge badge-danger">✕ Manquant</span>
+                    ? <span className="badge badge-success">â ConfigurÃ©</span>
+                    : <span className="badge badge-danger">â Manquant</span>
                   }
                 </td>
                 <td style={{ fontSize: 12, color: 'var(--text-muted)', fontFamily: 'monospace' }}>
-                  {val ? val.substring(0, 30) + (val.length > 30 ? '…' : '') : '—'}
+                  {val ? val.substring(0, 30) + (val.length > 30 ? 'â¦' : '') : 'â'}
                 </td>
               </tr>
             ))}
@@ -320,30 +320,30 @@ export default function PageConfig() {
         </table>
       </div>
 
-      {/* Sync Propriétaires Evoliz */}
+      {/* Sync PropriÃ©taires Evoliz */}
       <div className="card" style={{marginBottom: 24}}>
         <div className="card-header" style={{display:'flex', justifyContent:'space-between', alignItems:'center'}}>
           <div>
-            <h3 style={{margin:0}}>Propriétaires Evoliz</h3>
+            <h3 style={{margin:0}}>PropriÃ©taires Evoliz</h3>
             <p style={{margin:'4px 0 0', color:'var(--text-muted)', fontSize:'0.9em'}}>
-              Synchronise automatiquement les clients Evoliz → table propriétaires
+              Synchronise automatiquement les clients Evoliz â table propriÃ©taires
             </p>
           </div>
           <button
             className="btn btn-primary"
             onClick={syncProprio}
             disabled={syncingProprio}>
-            {syncingProprio ? '⏳ Sync…' : '⟳ Sync depuis Evoliz'}
+            {syncingProprio ? 'â³ Syncâ¦' : 'â³ Sync depuis Evoliz'}
           </button>
         </div>
         {syncProprioResult && (
           <div style={{padding:'12px 16px'}}>
             {syncProprioResult.ok ? (
               <div className="alert alert-success">
-                ✓ {syncProprioResult.synced} propriétaires synchronisés depuis Evoliz ({syncProprioResult.total_evoliz} clients au total)
+                â {syncProprioResult.synced} propriÃ©taires synchronisÃ©s depuis Evoliz ({syncProprioResult.total_evoliz} clients au total)
               </div>
             ) : (
-              <div className="alert alert-error">✕ {syncProprioResult.error}</div>
+              <div className="alert alert-error">â {syncProprioResult.error}</div>
             )}
           </div>
         )}
@@ -355,17 +355,17 @@ export default function PageConfig() {
           Comment trouver ton Company ID Evoliz
         </h2>
         <p style={{ marginBottom: 12, lineHeight: 1.6 }}>
-          Le Company ID est un entier numérique visible dans Evoliz en bas à gauche de l'écran,
-          sous ton nom. Il s'affiche comme <strong>"114158-144311"</strong> — le premier nombre
-          (ici <code>114158</code>) est ton Company ID à renseigner dans{' '}
+          Le Company ID est un entier numÃ©rique visible dans Evoliz en bas Ã  gauche de l'Ã©cran,
+          sous ton nom. Il s'affiche comme <strong>"114158-144311"</strong> â le premier nombre
+          (ici <code>114158</code>) est ton Company ID Ã  renseigner dans{' '}
           <code>VITE_EVOLIZ_COMPANY_ID</code>.
         </p>
         <div style={{ background: '#F5F5F5', padding: '10px 14px', borderRadius: 6, fontFamily: 'monospace', fontSize: 13 }}>
           VITE_EVOLIZ_COMPANY_ID=114158
         </div>
         <p style={{ marginTop: 12, fontSize: 13, color: 'var(--text-muted)' }}>
-          Les clés API publique et secrète Evoliz sont stockées dans les secrets Supabase
-          (EVOLIZ_PUBLIC_KEY et EVOLIZ_SECRET_KEY), jamais exposées côté client.
+          Les clÃ©s API publique et secrÃ¨te Evoliz sont stockÃ©es dans les secrets Supabase
+          (EVOLIZ_PUBLIC_KEY et EVOLIZ_SECRET_KEY), jamais exposÃ©es cÃ´tÃ© client.
         </p>
       </div>
 
@@ -380,21 +380,21 @@ export default function PageConfig() {
               Voir conditions de paiement
             </button>
             <button className="btn btn-primary btn-sm" onClick={testerEvoliz} disabled={testing || !companyId}>
-              {testing ? <><span className="spinner" style={{ width: 14, height: 14 }} /> Test…</> : '⚡ Tester la connexion'}
+              {testing ? <><span className="spinner" style={{ width: 14, height: 14 }} /> Testâ¦</> : 'â¡ Tester la connexion'}
             </button>
           </div>
         </div>
 
         {!companyId && (
           <div className="alert alert-warning">
-            ⚠ VITE_EVOLIZ_COMPANY_ID n'est pas configuré dans .env.local
+            â  VITE_EVOLIZ_COMPANY_ID n'est pas configurÃ© dans .env.local
           </div>
         )}
 
         {testResult && (
           <div>
             <div className="alert alert-success" style={{ marginBottom: 12 }}>
-              ✓ Connexion Evoliz réussie
+              â Connexion Evoliz rÃ©ussie
             </div>
             <div style={{ background: '#F5F5F5', padding: 12, borderRadius: 6, fontSize: 12, fontFamily: 'monospace', maxHeight: 200, overflowY: 'auto' }}>
               {JSON.stringify(testResult, null, 2)}
@@ -406,7 +406,7 @@ export default function PageConfig() {
           <div style={{ marginTop: 16 }}>
             <div style={{ fontWeight: 500, marginBottom: 8 }}>Conditions de paiement disponibles :</div>
             <table>
-              <thead><tr><th>ID</th><th>Libellé</th></tr></thead>
+              <thead><tr><th>ID</th><th>LibellÃ©</th></tr></thead>
               <tbody>
                 {payterms.map(p => (
                   <tr key={p.paytermid}>
@@ -420,22 +420,22 @@ export default function PageConfig() {
         )}
       </div>
 
-      {/* Secrets Supabase à configurer */}
+      {/* Secrets Supabase Ã  configurer */}
       <div className="card">
         <h2 style={{ fontSize: 16, fontWeight: 600, marginBottom: 12, color: 'var(--brand)' }}>
-          Secrets Supabase à configurer (Edge Function)
+          Secrets Supabase Ã  configurer (Edge Function)
         </h2>
         <p style={{ marginBottom: 12, fontSize: 13, color: 'var(--text-muted)', lineHeight: 1.6 }}>
-          Ces secrets doivent être configurés dans Supabase Dashboard → Edge Functions → Secrets,
+          Ces secrets doivent Ãªtre configurÃ©s dans Supabase Dashboard â Edge Functions â Secrets,
           ou via <code>supabase secrets set</code> :
         </p>
         <div style={{ background: '#F5F5F5', padding: '10px 14px', borderRadius: 6, fontFamily: 'monospace', fontSize: 12, lineHeight: 2 }}>
-          EVOLIZ_PUBLIC_KEY=69b5a37e65e3c834574294RouQHO6sIJ<br/>
-          EVOLIZ_SECRET_KEY=f8ddf69f0e28adb267e449ece5b1ad724d2cb42eUpYoKZ01gz4WjQikyO<br/>
+          EVOLIZ_PUBLIC_KEY=&lt;votre_clé_publique&gt;<br/>
+          EVOLIZ_SECRET_KEY=&lt;votre_clé_secrète&gt;<br/>
           EVOLIZ_COMPANY_ID=114158 <span style={{ color: '#999' }}># ou le bon ID</span>
         </div>
         <p style={{ marginTop: 12, fontSize: 13, color: 'var(--text-muted)' }}>
-          La clé secrète n'est jamais envoyée au browser — elle reste côté serveur dans la Edge Function.
+          La clÃ© secrÃ¨te n'est jamais envoyÃ©e au browser â elle reste cÃ´tÃ© serveur dans la Edge Function.
         </p>
       </div>
       {/* Global Update */}
@@ -443,29 +443,29 @@ export default function PageConfig() {
         <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom: globalSteps.length > 0 ? 16 : 0 }}>
           <div>
             <h2 style={{ fontSize: 16, fontWeight: 700, color: 'var(--brand)', margin: 0 }}>
-              ⚡ Mise à jour globale{/* CF-C8-DESACTIVE */}
+              â¡ Mise Ã  jour globale{/* CF-C8-DESACTIVE */}
             </h2>
             <p style={{ margin: '4px 0 0', fontSize: 13, color: 'var(--text-muted)' }}>
-              Sync biens → réservations → payouts → ventilation → matching — all-time (depuis 2022)
+              Sync biens â rÃ©servations â payouts â ventilation â matching â all-time (depuis 2022)
             </p>
           </div>
           <div style={{ display:'flex', alignItems:'center', gap: 12 }}>
             {globalRunning && (
               <span style={{ fontSize: 13, color: 'var(--text-muted)', fontVariantNumeric: 'tabular-nums' }}>
-                ⏱ {globalTimer >= 60 ? Math.floor(globalTimer/60) + 'min ' + (globalTimer%60) + 's' : globalTimer + 's'}
+                â± {globalTimer >= 60 ? Math.floor(globalTimer/60) + 'min ' + (globalTimer%60) + 's' : globalTimer + 's'}
               </span>
             )}
             {globalDone && !globalRunning && (
               <span style={{ fontSize: 12, color: '#059669', fontWeight: 600 }}>
-                ✅ Terminé en {globalTimer >= 60 ? Math.floor(globalTimer/60) + 'min ' + (globalTimer%60) + 's' : globalTimer + 's'}
+                â TerminÃ© en {globalTimer >= 60 ? Math.floor(globalTimer/60) + 'min ' + (globalTimer%60) + 's' : globalTimer + 's'}
               </span>
             )}
             <button onClick={lancerGlobalUpdate}
               disabled={true}
-              title="⛔ Désactivé — CF-C8 : logique dupliquée abandonnée. Utiliser Ventilation + Matching."
+              title="â DÃ©sactivÃ© â CF-C8 : logique dupliquÃ©e abandonnÃ©e. Utiliser Ventilation + Matching."
               style={{ opacity: 0.4, cursor: 'not-allowed' }} disabled={globalRunning}
               style={{ padding: '10px 20px', borderRadius: 8, border: 'none', background: globalRunning ? '#aaa' : 'var(--brand)', color: 'white', fontWeight: 700, fontSize: 14, cursor: globalRunning ? 'not-allowed' : 'pointer', display: 'flex', alignItems: 'center', gap: 8, minWidth: 120 }}>
-              {globalRunning ? <>⏳ En cours...</> : '⚡ Lancer'}
+              {globalRunning ? <>â³ En cours...</> : 'â¡ Lancer'}
             </button>
           </div>
         </div>
@@ -474,7 +474,7 @@ export default function PageConfig() {
             {globalSteps.map(step => (
               <div key={step.id} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '8px 12px', borderRadius: 8, background: step.status === 'ok' ? '#F0FDF4' : step.status === 'error' ? '#FEF2F2' : step.status === 'running' ? '#FFFBEB' : '#F9FAFB', border: `1px solid ${step.status === 'ok' ? '#86EFAC' : step.status === 'error' ? '#FCA5A5' : step.status === 'running' ? 'var(--brand)' : '#E5E7EB'}` }}>
                 <span style={{ fontSize: 16, width: 22, textAlign: 'center', flexShrink: 0 }}>
-                  {step.status === 'ok' ? '✅' : step.status === 'error' ? '❌' : step.status === 'running' ? '⏳' : '○'}
+                  {step.status === 'ok' ? 'â' : step.status === 'error' ? 'â' : step.status === 'running' ? 'â³' : 'â'}
                 </span>
                 <span style={{ flex: 1, fontWeight: step.status === 'running' ? 700 : 500, fontSize: 13, color: step.status === 'running' ? 'var(--brand)' : 'inherit' }}>{step.label}</span>
                 {step.detail && <span style={{ fontSize: 12, color: step.status === 'error' ? '#DC2626' : '#6B7280' }}>{step.detail}</span>}
@@ -484,13 +484,13 @@ export default function PageConfig() {
         )}
         {globalDone && !globalError && (
           <div style={{ marginTop: 12, padding: '12px 16px', borderRadius: 8, background: '#F0FDF4', border: '1px solid #86EFAC', display: 'flex', alignItems: 'center', gap: 10 }}>
-            <span style={{ fontSize: 20 }}>✅</span>
-            <span style={{ fontWeight: 700, color: '#15803D' }}>Mise à jour terminée en {globalTimer >= 60 ? Math.floor(globalTimer/60) + 'min ' + (globalTimer%60) + 's' : globalTimer + 's'}</span>
+            <span style={{ fontSize: 20 }}>â</span>
+            <span style={{ fontWeight: 700, color: '#15803D' }}>Mise Ã  jour terminÃ©e en {globalTimer >= 60 ? Math.floor(globalTimer/60) + 'min ' + (globalTimer%60) + 's' : globalTimer + 's'}</span>
           </div>
         )}
         {globalError && (
           <div style={{ marginTop: 12, padding: '10px 14px', borderRadius: 8, background: '#FEF2F2', border: '1px solid #FCA5A5', fontSize: 13, color: '#DC2626' }}>
-            ⚠️ {globalError}
+            â ï¸ {globalError}
           </div>
         )}
       </div>
@@ -500,26 +500,26 @@ export default function PageConfig() {
         <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom: ventSteps.length > 0 ? 16 : 0 }}>
           <div>
             <h2 style={{ fontSize: 16, fontWeight: 700, color: '#059669', margin: 0 }}>
-              ⚡ Ventilation + Matching all-time
+              â¡ Ventilation + Matching all-time
             </h2>
             <p style={{ margin: '4px 0 0', fontSize: 13, color: 'var(--text-muted)' }}>
-              Ventile toutes les réservations non ventilées + matching bancaire — all-time
+              Ventile toutes les rÃ©servations non ventilÃ©es + matching bancaire â all-time
             </p>
           </div>
           <div style={{ display:'flex', alignItems:'center', gap: 12 }}>
             {ventRunning && (
               <span style={{ fontSize: 13, color: 'var(--text-muted)', fontVariantNumeric: 'tabular-nums' }}>
-                ⏱ {ventTimer >= 60 ? Math.floor(ventTimer/60) + 'min ' + (ventTimer%60) + 's' : ventTimer + 's'}
+                â± {ventTimer >= 60 ? Math.floor(ventTimer/60) + 'min ' + (ventTimer%60) + 's' : ventTimer + 's'}
               </span>
             )}
             {ventDone && !ventRunning && (
               <span style={{ fontSize: 12, color: '#059669', fontWeight: 600 }}>
-                ✅ Terminé en {ventTimer >= 60 ? Math.floor(ventTimer/60) + 'min ' + (ventTimer%60) + 's' : ventTimer + 's'}
+                â TerminÃ© en {ventTimer >= 60 ? Math.floor(ventTimer/60) + 'min ' + (ventTimer%60) + 's' : ventTimer + 's'}
               </span>
             )}
             <button onClick={lancerVentMatcher} disabled={ventRunning}
               style={{ padding: '10px 20px', borderRadius: 8, border: 'none', background: ventRunning ? '#aaa' : '#059669', color: 'white', fontWeight: 700, fontSize: 14, cursor: ventRunning ? 'not-allowed' : 'pointer', minWidth: 120 }}>
-              {ventRunning ? '⏳ En cours...' : '⚡ Lancer'}
+              {ventRunning ? 'â³ En cours...' : 'â¡ Lancer'}
             </button>
           </div>
         </div>
@@ -528,7 +528,7 @@ export default function PageConfig() {
             {ventSteps.map(step => (
               <div key={step.id} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '8px 12px', borderRadius: 8, background: step.status === 'ok' ? '#F0FDF4' : step.status === 'error' ? '#FEF2F2' : step.status === 'running' ? '#F0FDF4' : '#F9FAFB', border: `1px solid ${step.status === 'ok' ? '#86EFAC' : step.status === 'error' ? '#FCA5A5' : step.status === 'running' ? '#059669' : '#E5E7EB'}` }}>
                 <span style={{ fontSize: 16, width: 22, textAlign: 'center', flexShrink: 0 }}>
-                  {step.status === 'ok' ? '✅' : step.status === 'error' ? '❌' : step.status === 'running' ? '⏳' : '○'}
+                  {step.status === 'ok' ? 'â' : step.status === 'error' ? 'â' : step.status === 'running' ? 'â³' : 'â'}
                 </span>
                 <span style={{ flex: 1, fontWeight: step.status === 'running' ? 700 : 500, fontSize: 13, color: step.status === 'running' ? '#059669' : 'inherit' }}>{step.label}</span>
                 {step.detail && <span style={{ fontSize: 12, color: step.status === 'error' ? '#DC2626' : '#6B7280' }}>{step.detail}</span>}
@@ -538,13 +538,13 @@ export default function PageConfig() {
         )}
         {ventDone && !ventError && (
           <div style={{ marginTop: 12, padding: '12px 16px', borderRadius: 8, background: '#F0FDF4', border: '1px solid #86EFAC', display: 'flex', alignItems: 'center', gap: 10 }}>
-            <span style={{ fontSize: 20 }}>✅</span>
-            <span style={{ fontWeight: 700, color: '#15803D' }}>Ventilation + matching terminés en {ventTimer >= 60 ? Math.floor(ventTimer/60) + 'min ' + (ventTimer%60) + 's' : ventTimer + 's'}</span>
+            <span style={{ fontSize: 20 }}>â</span>
+            <span style={{ fontWeight: 700, color: '#15803D' }}>Ventilation + matching terminÃ©s en {ventTimer >= 60 ? Math.floor(ventTimer/60) + 'min ' + (ventTimer%60) + 's' : ventTimer + 's'}</span>
           </div>
         )}
         {ventError && (
           <div style={{ marginTop: 12, padding: '10px 14px', borderRadius: 8, background: '#FEF2F2', border: '1px solid #FCA5A5', fontSize: 13, color: '#DC2626' }}>
-            ⚠️ {ventError}
+            â ï¸ {ventError}
           </div>
         )}
       </div>
@@ -555,26 +555,26 @@ export default function PageConfig() {
         <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom: 16 }}>
           <div>
             <h2 style={{ fontSize: 16, fontWeight: 700, color: '#DC2626', margin: 0 }}>
-              ⚠️ Re-matching complet all-time
+              â ï¸ Re-matching complet all-time
             </h2>
             <p style={{ margin: '4px 0 8px', fontSize: 13, color: '#7F1D1D' }}>
-              Réinitialise et refait tous les rapprochements de jan 2025 à aujourd'hui, du plus ancien au plus récent.<br/>
-              <strong>Overwrite des anciens matchings.</strong> Les rapprochements manuels seront écrasés.
+              RÃ©initialise et refait tous les rapprochements de jan 2025 Ã  aujourd'hui, du plus ancien au plus rÃ©cent.<br/>
+              <strong>Overwrite des anciens matchings.</strong> Les rapprochements manuels seront Ã©crasÃ©s.
             </p>
             <label style={{ display:'flex', alignItems:'center', gap: 8, cursor:'pointer', fontSize: 13, color: '#DC2626', fontWeight: 600 }}>
               <input type="checkbox" checked={rematchConfirmed} onChange={e => setRematchConfirmed(e.target.checked)} />
-              Je comprends que cette opération est irréversible
+              Je comprends que cette opÃ©ration est irrÃ©versible
             </label>
           </div>
           <div style={{ display:'flex', alignItems:'center', gap: 12 }}>
             {rematchRunning && (
               <span style={{ fontSize: 13, color: '#DC2626', fontVariantNumeric: 'tabular-nums' }}>
-                ⏱ {rematchTimer}s
+                â± {rematchTimer}s
               </span>
             )}
             <button onClick={lancerReMatch} disabled={rematchRunning || !rematchConfirmed}
               style={{ padding: '10px 20px', borderRadius: 8, border: 'none', background: rematchRunning || !rematchConfirmed ? '#aaa' : '#DC2626', color: 'white', fontWeight: 700, fontSize: 14, cursor: rematchRunning || !rematchConfirmed ? 'not-allowed' : 'pointer', minWidth: 120 }}>
-              {rematchRunning ? '⏳ En cours...' : '⚡ Re-matcher'}
+              {rematchRunning ? 'â³ En cours...' : 'â¡ Re-matcher'}
             </button>
           </div>
         </div>
@@ -584,9 +584,9 @@ export default function PageConfig() {
               <div key={s.mois} style={{ display:'flex', alignItems:'center', gap: 10, padding:'6px 10px', borderRadius: 6, fontSize: 12,
                 background: s.status==='ok' ? '#F0FDF4' : s.status==='error' ? '#FEF2F2' : s.status==='running' ? '#FFF5F5' : '#F9FAFB',
                 border: `1px solid ${s.status==='ok'?'#86EFAC':s.status==='error'?'#FCA5A5':s.status==='running'?'#DC2626':'#E5E7EB'}` }}>
-                <span>{s.status==='ok'?'✅':s.status==='error'?'❌':s.status==='running'?'⏳':'⏸'}</span>
+                <span>{s.status==='ok'?'â':s.status==='error'?'â':s.status==='running'?'â³':'â¸'}</span>
                 <span style={{ fontWeight: 600, minWidth: 70 }}>{s.mois}</span>
-                {s.status==='ok' && <span style={{ color:'#15803D' }}>{s.reset} reset → {s.matched} matchés</span>}
+                {s.status==='ok' && <span style={{ color:'#15803D' }}>{s.reset} reset â {s.matched} matchÃ©s</span>}
                 {s.status==='running' && <span style={{ color:'#DC2626' }}>En cours...</span>}
                 {s.status==='error' && <span style={{ color:'#DC2626' }}>{s.msg}</span>}
               </div>
@@ -595,8 +595,8 @@ export default function PageConfig() {
         )}
         {rematchDone && (
           <div style={{ marginTop: 12, padding:'12px 16px', borderRadius: 8, background:'#F0FDF4', border:'1px solid #86EFAC', display:'flex', alignItems:'center', gap: 10 }}>
-            <span style={{ fontSize: 20 }}>✅</span>
-            <span style={{ fontWeight: 700, color:'#15803D' }}>Re-matching terminé en {rematchTimer}s</span>
+            <span style={{ fontSize: 20 }}>â</span>
+            <span style={{ fontWeight: 700, color:'#15803D' }}>Re-matching terminÃ© en {rematchTimer}s</span>
           </div>
         )}
       </div>
