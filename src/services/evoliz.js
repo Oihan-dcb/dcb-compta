@@ -1,14 +1,14 @@
 /**
- * Service Evoliz — côté React
- * Toutes les opérations passent par la Supabase Edge Function 'evoliz-proxy'
- * Base URL réelle : https://www.evoliz.io/
- * Auth : POST /api/login avec public_key + secret_key → token 20 min
+ * Service Evoliz â cÃ´tÃ© React
+ * Toutes les opÃ©rations passent par la Supabase Edge Function 'evoliz-proxy'
+ * Base URL rÃ©elle : https://www.evoliz.io/
+ * Auth : POST /api/login avec public_key + secret_key â token 20 min
  *
  * IMPORTANT : les montants sont en centimes dans Supabase, en euros dans Evoliz.
- * La conversion centimes → euros se fait ici avant l'appel Edge Function.
+ * La conversion centimes â euros se fait ici avant l'appel Edge Function.
  *
- * Le companyId Evoliz est un entier numérique (pas le slug "destinationcotebasque1").
- * Il est visible dans Evoliz > Paramètres > Informations société (coin bas gauche).
+ * Le companyId Evoliz est un entier numÃ©rique (pas le slug "destinationcotebasque1").
+ * Il est visible dans Evoliz > ParamÃ¨tres > Informations sociÃ©tÃ© (coin bas gauche).
  */
 
 import { supabase } from '../lib/supabase'
@@ -16,7 +16,7 @@ import { supabase } from '../lib/supabase'
 const COMPANY_ID = import.meta.env.VITE_EVOLIZ_COMPANY_ID // ex: "12345"
 
 // ============================================================
-// APPEL GÉNÉRIQUE
+// APPEL GÃNÃRIQUE
 // ============================================================
 
 async function evolizCall(action, payload = {}) {
@@ -28,7 +28,7 @@ async function evolizCall(action, payload = {}) {
   if (data?.error) throw new Error(`Evoliz API: ${data.error}`)
   if (data?.data?.error) throw new Error(`Evoliz: ${JSON.stringify(data.data.error)}`)
 
-  // Vérifier le status HTTP retourné par la Edge Function
+  // VÃ©rifier le status HTTP retournÃ© par la Edge Function
   if (data?.status && data.status >= 400) {
     const msg = data.data?.message || data.data?.error || `HTTP ${data.status}`
     throw new Error(`Evoliz ${data.status}: ${typeof msg === 'object' ? JSON.stringify(msg) : msg}`)
@@ -46,19 +46,19 @@ export async function pingEvoliz() {
 }
 
 // ============================================================
-// CLIENTS (Propriétaires)
+// CLIENTS (PropriÃ©taires)
 // ============================================================
 
 /**
- * Récupère le companyid Evoliz numérique depuis l'URL du compte.
- * Note : à configurer manuellement dans VITE_EVOLIZ_COMPANY_ID.
- * Visible dans Evoliz : bas gauche → "114158-144311" → le premier chiffre est le companyid.
+ * RÃ©cupÃ¨re le companyid Evoliz numÃ©rique depuis l'URL du compte.
+ * Note : Ã  configurer manuellement dans VITE_EVOLIZ_COMPANY_ID.
+ * Visible dans Evoliz : bas gauche â "114158-144311" â le premier chiffre est le companyid.
  */
 
 /**
- * Crée ou récupère un client Evoliz pour un propriétaire
+ * CrÃ©e ou rÃ©cupÃ¨re un client Evoliz pour un propriÃ©taire
  * @param {Object} proprietaire - Objet depuis Supabase
- * @returns {string} ID client Evoliz (numérique)
+ * @returns {string} ID client Evoliz (numÃ©rique)
  */
 export async function getOuCreerClientEvoliz(proprietaire) {
   if (proprietaire.id_evoliz) return proprietaire.id_evoliz
@@ -67,14 +67,14 @@ export async function getOuCreerClientEvoliz(proprietaire) {
 }
 
 /**
- * Crée un client Evoliz depuis un propriétaire Supabase
+ * CrÃ©e un client Evoliz depuis un propriÃ©taire Supabase
  */
 export async function creerClientEvoliz(proprietaire) {
   const nomComplet = [proprietaire.nom, proprietaire.prenom].filter(Boolean).join(' ')
 
   const result = await evolizCall('createClient', {
     name: nomComplet,
-    type: 'Particulier', // Les propriétaires sont des particuliers
+    type: 'Particulier', // Les propriÃ©taires sont des particuliers
     address: proprietaire.adresse || '',
     postcode: proprietaire.code_postal || '64200',
     town: proprietaire.ville || 'Biarritz',
@@ -82,11 +82,11 @@ export async function creerClientEvoliz(proprietaire) {
     phone: proprietaire.telephone || undefined,
   })
 
-  // L'API retourne l'objet client — extraire le clientid
+  // L'API retourne l'objet client â extraire le clientid
   const clientId = result?.clientid
   if (!clientId) {
-    console.warn('Structure réponse client Evoliz:', JSON.stringify(result).substring(0, 200))
-    throw new Error('clientid non retourné par Evoliz')
+    console.warn('Structure rÃ©ponse client Evoliz:', JSON.stringify(result).substring(0, 200))
+    throw new Error('clientid non retournÃ© par Evoliz')
   }
 
   // Sauvegarder l'ID dans Supabase
@@ -104,21 +104,28 @@ export async function creerClientEvoliz(proprietaire) {
 
 /**
  * Workflow complet pour envoyer une facture vers Evoliz :
- * 1. Créer le client Evoliz si nécessaire
- * 2. Créer la facture (statut "filled" = brouillon)
- * 3. Sauvegarder (statut "create" = numéro définitif attribué)
- * 4. Mettre à jour Supabase avec l'ID et le numéro Evoliz
+ * 1. CrÃ©er le client Evoliz si nÃ©cessaire
+ * 2. CrÃ©er la facture (statut "filled" = brouillon)
+ * 3. Sauvegarder (statut "create" = numÃ©ro dÃ©finitif attribuÃ©)
+ * 4. Mettre Ã  jour Supabase avec l'ID et le numÃ©ro Evoliz
  *
- * @param {Object} facture - Objet facture_evoliz avec lignes et propriétaire
+ * @param {Object} facture - Objet facture_evoliz avec lignes et propriÃ©taire
  */
 export async function creerFactureEvoliz(facture) {
+  // CF-F2 niveau 1 - guard idempotence : ne pas recreer si deja envoye vers Evoliz
+  if (facture.id_evoliz) {
+    throw new Error(
+      `CF-F2 : facture deja envoyee dans Evoliz - push ignore.\n` +
+      `  facture.id=${facture.id} | proprietaire_id=${facture.proprietaire_id} | mois=${facture.mois} | id_evoliz=${facture.id_evoliz}`
+    )
+  }
   const proprio = facture.proprietaire
-  if (!proprio) throw new Error('Propriétaire manquant dans la facture')
+  if (!proprio) throw new Error('PropriÃ©taire manquant dans la facture')
 
   // 1. S'assurer que le client existe dans Evoliz
   const clientId = await getOuCreerClientEvoliz(proprio)
 
-  // 2. Date d'émission
+  // 2. Date d'Ã©mission
   const dateEmission = facture.date_emission || new Date().toISOString().substring(0, 10)
 
   // 3. Construire les lignes de facture
@@ -129,7 +136,7 @@ export async function creerFactureEvoliz(facture) {
     .map(l => ({
       designation: l.libelle,
       quantity: 1,
-      unitPrice: l.montant_ht / 100,   // centimes → euros
+      unitPrice: l.montant_ht / 100,   // centimes â euros
       vatRate: l.taux_tva || 20,
     }))
 
@@ -137,41 +144,59 @@ export async function creerFactureEvoliz(facture) {
 
   // 4. Note de bas de facture
   const comment = facture.solde_negatif
-    ? `Remboursement de frais avancés — mois ${facture.mois}`
-    : `Honoraires de gestion locative — ${facture.mois}\n\nConformément au mandat de gestion, les honoraires de gestion sont directement prélevés sur le loyer encaissé avant reversement au propriétaire.`
+    ? `Remboursement de frais avancÃ©s â mois ${facture.mois}`
+    : `Honoraires de gestion locative â ${facture.mois}\n\nConformÃ©ment au mandat de gestion, les honoraires de gestion sont directement prÃ©levÃ©s sur le loyer encaissÃ© avant reversement au propriÃ©taire.`
 
-  // 5. Créer la facture (brouillon)
+  // 5. CrÃ©er la facture (brouillon)
   const createdInvoice = await evolizCall('createInvoice', {
     clientId: parseInt(clientId),
     documentdate: dateEmission,
-    paytermid: 1,  // Comptant — à ajuster si besoin
+    paytermid: 1,  // Comptant â Ã  ajuster si besoin
     comment,
     items: lignes,
   })
 
   const invoiceId = createdInvoice?.invoiceid
-  if (!invoiceId) throw new Error('invoiceid non retourné après création')
+  if (!invoiceId) throw new Error('invoiceid non retournÃ© aprÃ¨s crÃ©ation')
 
-  // 6. Sauvegarder (passe de filled → create, numéro définitif)
+  // 6. Sauvegarder (passe de filled â create, numÃ©ro dÃ©finitif)
   const savedInvoice = await evolizCall('saveInvoice', { invoiceId })
   const invoiceNumber = savedInvoice?.document_number
 
-  // 7. Mettre à jour Supabase
-  await supabase
-    .from('facture_evoliz')
-    .update({
-      id_evoliz: String(invoiceId),
-      numero_facture: invoiceNumber || null,
-      statut: 'envoye_evoliz',
-      date_emission: dateEmission,
-    })
-    .eq('id', facture.id)
+  // 7. Mettre a jour Supabase - avec retry (CF-F2 niveau 2)
+  let updateError = null
+  for (let attempt = 0; attempt < 3; attempt++) {
+    const { error } = await supabase
+      .from('facture_evoliz')
+      .update({
+        id_evoliz: String(invoiceId),
+        numero_facture: invoiceNumber || null,
+        statut: 'envoye_evoliz',
+        date_emission: dateEmission,
+      })
+      .eq('id', facture.id)
+    if (!error) { updateError = null; break }
+    updateError = error
+    await new Promise(resolve => setTimeout(resolve, 500 * (attempt + 1)))
+  }
+  if (updateError) {
+    throw new Error(
+      `CF-F2 : UPDATE Supabase echoue apres 3 tentatives - facture orpheline cote Evoliz.\n` +
+      `  RECONCILIATION MANUELLE REQUISE :\n` +
+      `  invoiceId Evoliz    = ${invoiceId}\n` +
+      `  document_number     = ${invoiceNumber || 'non disponible'}\n` +
+      `  facture.id (DCB)    = ${facture.id}\n` +
+      `  proprietaire_id     = ${facture.proprietaire_id}\n` +
+      `  mois                = ${facture.mois}\n` +
+      `  Action : UPDATE facture_evoliz SET id_evoliz='${invoiceId}', statut='envoye_evoliz' WHERE id='${facture.id}'`
+    )
+  }
 
   return { invoiceId, invoiceNumber }
 }
 
 /**
- * Envoie toutes les factures validées d'un mois vers Evoliz
+ * Envoie toutes les factures validÃ©es d'un mois vers Evoliz
  * @param {string} mois - YYYY-MM
  */
 export async function pousserFacturesMoisVersEvoliz(mois) {
@@ -190,6 +215,11 @@ export async function pousserFacturesMoisVersEvoliz(mois) {
   const results = { pushed: 0, errors: [] }
 
   for (const facture of (factures || [])) {
+    // CF-F2 niveau 1 - skip si deja envoye (guard redondant avec creerFactureEvoliz)
+    if (facture.id_evoliz) {
+      results.skipped = (results.skipped || 0) + 1
+      continue
+    }
     try {
       await creerFactureEvoliz(facture)
       results.pushed++
@@ -203,14 +233,14 @@ export async function pousserFacturesMoisVersEvoliz(mois) {
 }
 
 /**
- * Récupère les factures d'un client depuis Evoliz
+ * RÃ©cupÃ¨re les factures d'un client depuis Evoliz
  */
 export async function getFacturesClientEvoliz(clientId, opts = {}) {
   return evolizCall('listInvoices', { clientId, ...opts })
 }
 
 /**
- * Récupère les conditions de paiement disponibles dans Evoliz
+ * RÃ©cupÃ¨re les conditions de paiement disponibles dans Evoliz
  * (utile pour configurer paytermid)
  */
 export async function getPaytermsEvoliz() {
