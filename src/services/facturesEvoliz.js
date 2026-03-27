@@ -1,32 +1,32 @@
 /**
- * Service de génération des factures Evoliz DCB → Propriétaire
+ * Service de gÃ©nÃ©ration des factures Evoliz DCB â PropriÃ©taire
  *
  * Workflow :
- * 1. En début de mois : générer les brouillons pour tous les proprios actifs
- * 2. Vérification : statements finalisés, montants AE validés (non bloquant)
+ * 1. En dÃ©but de mois : gÃ©nÃ©rer les brouillons pour tous les proprios actifs
+ * 2. VÃ©rification : statements finalisÃ©s, montants AE validÃ©s (non bloquant)
  * 3. Validation manuelle par Oihan
  * 4. Push vers Evoliz via API
  * 5. Tracking statut paiement
  *
  * Structure facture :
- * - Ligne COM : Σ reservation_commissions × taux — TVA 20%
- * - Ligne MEN : Σ (guest_fees - provision AE) + management_fees — TVA 20%
- * - Ligne DIV : Σ expenses [DCB] — TVA 20%
- * - Mention : "Conformément au mandat de gestion..."
+ * - Ligne COM : Î£ reservation_commissions Ã taux â TVA 20%
+ * - Ligne MEN : Î£ (guest_fees - provision AE) + management_fees â TVA 20%
+ * - Ligne DIV : Î£ expenses [DCB] â TVA 20%
+ * - Mention : "ConformÃ©ment au mandat de gestion..."
  */
 
 import { supabase } from '../lib/supabase'
 
-const MENTION_MANDAT = "Conformément au mandat de gestion, les honoraires de gestion sont directement prélevés sur le loyer encaissé avant reversement au propriétaire."
+const MENTION_MANDAT = "ConformÃ©ment au mandat de gestion, les honoraires de gestion sont directement prÃ©levÃ©s sur le loyer encaissÃ© avant reversement au propriÃ©taire."
 
 /**
- * Génère les brouillons de factures pour tous les propriétaires actifs d'un mois
+ * GÃ©nÃ¨re les brouillons de factures pour tous les propriÃ©taires actifs d'un mois
  * @param {string} mois - YYYY-MM
  */
 export async function genererFacturesMois(mois) {
   const log = { created: 0, updated: 0, errors: 0 }
 
-  // Récupérer tous les propriétaires avec des biens actifs
+  // RÃ©cupÃ©rer tous les propriÃ©taires avec des biens actifs
   const { data: proprietaires, error: propErr } = await supabase
     .from('proprietaire')
     .select(`
@@ -41,7 +41,7 @@ export async function genererFacturesMois(mois) {
 
   if (propErr) throw propErr
 
-  // Dédupliquer (un proprio peut avoir plusieurs biens)
+  // DÃ©dupliquer (un proprio peut avoir plusieurs biens)
   const propMap = new Map()
   for (const p of (proprietaires || [])) {
     if (!propMap.has(p.id)) propMap.set(p.id, { ...p, biens: [] })
@@ -63,12 +63,12 @@ export async function genererFacturesMois(mois) {
 }
 
 /**
- * Génère ou met à jour la facture mensuelle d'un propriétaire
+ * GÃ©nÃ¨re ou met Ã  jour la facture mensuelle d'un propriÃ©taire
  */
 async function genererFactureProprietaire(proprio, mois) {
   const bienIds = proprio.biens.map(b => b.id)
 
-  // Récupérer les réservations du mois pour ces biens
+  // RÃ©cupÃ©rer les rÃ©servations du mois pour ces biens
   const { data: reservations, error: resaErr } = await supabase
     .from('reservation')
     .select(`
@@ -83,7 +83,7 @@ async function genererFactureProprietaire(proprio, mois) {
 
   if (resaErr) throw resaErr
 
-  // Récupérer les expenses [DCB] du mois pour ces biens
+  // RÃ©cupÃ©rer les expenses [DCB] du mois pour ces biens
   const { data: expenses, error: expErr } = await supabase
     .from('expense')
     .select('amount, description, type_expense')
@@ -94,12 +94,12 @@ async function genererFactureProprietaire(proprio, mois) {
 
   if (expErr) throw expErr
 
-  // CF-FACAE : facture_ae non implémenté — aeParBien = Map vide (table absente en base)
+  // CF-FACAE : facture_ae non implÃ©mentÃ© â aeParBien = Map vide (table absente en base)
   const aeParBien = new Map()
 
   // --- Calculer les 3 lignes ---
 
-  // COM : Σ ventilation COM du mois
+  // COM : Î£ ventilation COM du mois
   const { data: lignesVentil } = await supabase
     .from('ventilation')
     .select('code, montant_ht, montant_tva, montant_ttc, bien_id')
@@ -122,12 +122,22 @@ async function genererFactureProprietaire(proprio, mois) {
   const ae  = sumByCode('AE')
   const loy = sumByCode('LOY')
 
+  // CF-P1 : prestations hors forfait deduction_loy validees -- deduction directe sur reversement
+  const { data: prestationsDeduction } = await supabase
+    .from('prestation_hors_forfait')
+    .select('montant')
+    .in('bien_id', bienIds)
+    .eq('mois', mois)
+    .eq('statut', 'valide')
+    .eq('type_imputation', 'deduction_loy')
+  const totalPrestations = (prestationsDeduction || []).reduce((s, p) => s + (p.montant || 0), 0)
+
   // DIV : expenses [DCB]
   const divHT = (expenses || []).reduce((s, e) => s + (e.amount || 0), 0)
   const divTVA = Math.round(divHT * 0.20)
   const div = { ht: divHT, tva: divTVA, ttc: divHT + divTVA }
 
-  // MEN consolidé = MEN + MGT
+  // MEN consolidÃ© = MEN + MGT
   const menConsolide = {
     ht: men.ht + mgt.ht,
     tva: men.tva + mgt.tva,
@@ -140,12 +150,12 @@ async function genererFactureProprietaire(proprio, mois) {
   const totalTTC = totalHT + totalTVA
 
   // Reversement proprio = LOY total
-  const montantReversement = loy.ht
+  const montantReversement = loy.ht - totalPrestations
 
-  // Cas solde négatif : uniquement des expenses, pas de réservations
+  // Cas solde nÃ©gatif : uniquement des expenses, pas de rÃ©servations
   const soldeNegatif = totalHT === 0 && div.ht > 0
 
-  // Vérifier si facture existante
+  // VÃ©rifier si facture existante
   const { data: existingFacture } = await supabase
     .from('facture_evoliz')
     .select('id, statut')
@@ -153,9 +163,9 @@ async function genererFactureProprietaire(proprio, mois) {
     .eq('mois', mois)
     .single()
 
-  // Ne pas écraser une facture déjà envoyée ou payée
+  // Ne pas Ã©craser une facture dÃ©jÃ  envoyÃ©e ou payÃ©e
   if (existingFacture && ['envoye_evoliz', 'payee'].includes(existingFacture.statut)) {
-    return { created: false, skipped: true, raison: 'Facture déjà envoyée' }
+    return { created: false, skipped: true, raison: 'Facture dÃ©jÃ  envoyÃ©e' }
   }
 
   const factureData = {
@@ -190,7 +200,7 @@ async function genererFactureProprietaire(proprio, mois) {
     created = true
   }
 
-  // Supprimer et recréer les lignes
+  // Supprimer et recrÃ©er les lignes
   await supabase.from('facture_evoliz_ligne').delete().eq('facture_id', factureId)
 
   const lignes = []
@@ -201,7 +211,7 @@ async function genererFactureProprietaire(proprio, mois) {
       facture_id: factureId,
       code: 'HON',
       libelle: 'Honoraires de gestion',
-      description: `${reservations?.length || 0} réservation(s) — ${mois}`,
+      description: `${reservations?.length || 0} rÃ©servation(s) â ${mois}`,
       montant_ht: com.ht,
       taux_tva: 20,
       montant_tva: com.tva,
@@ -214,7 +224,7 @@ async function genererFactureProprietaire(proprio, mois) {
     lignes.push({
       facture_id: factureId,
       code: 'FMEN',
-      libelle: 'Forfait ménage, linge et frais de service',
+      libelle: 'Forfait mÃ©nage, linge et frais de service',
       description: MENTION_MANDAT,
       montant_ht: menConsolide.ht,
       taux_tva: 20,
@@ -228,13 +238,27 @@ async function genererFactureProprietaire(proprio, mois) {
     lignes.push({
       facture_id: factureId,
       code: 'DIV',
-      libelle: soldeNegatif ? 'Frais avancés — remboursement demandé' : 'Frais divers avancés',
+      libelle: soldeNegatif ? 'Frais avancÃ©s â remboursement demandÃ©' : 'Frais divers avancÃ©s',
       description: (expenses || []).map(e => e.description).join(', ') || 'Frais divers',
       montant_ht: div.ht,
       taux_tva: 20,
       montant_tva: div.tva,
       montant_ttc: div.ttc,
       ordre: ordre++,
+    })
+  }
+
+  // CF-P1 : ligne PREST si des prestations ont ete deduites
+  if (totalPrestations > 0) {
+    lignes.push({
+      facture_evoliz_id: null,
+      code: 'PREST',
+      libelle: `Prestations hors forfait deduites (${(prestationsDeduction || []).length} elements)`,
+      montant_ht: -totalPrestations,
+      taux_tva: 0,
+      montant_tva: 0,
+      montant_ttc: -totalPrestations,
+      ordre: lignes.length + 1,
     })
   }
 
@@ -246,7 +270,7 @@ async function genererFactureProprietaire(proprio, mois) {
 }
 
 /**
- * Récupère toutes les factures d'un mois avec les détails
+ * RÃ©cupÃ¨re toutes les factures d'un mois avec les dÃ©tails
  */
 export async function getFacturesMois(mois) {
   const { data, error } = await supabase
@@ -264,7 +288,7 @@ export async function getFacturesMois(mois) {
 }
 
 /**
- * Valide une facture (passage brouillon → validé)
+ * Valide une facture (passage brouillon â validÃ©)
  */
 export async function validerFacture(factureId) {
   const { error } = await supabase
@@ -277,9 +301,9 @@ export async function validerFacture(factureId) {
 }
 
 /**
- * Marque une facture comme envoyée dans Evoliz
+ * Marque une facture comme envoyÃ©e dans Evoliz
  * @param {string} factureId
- * @param {string} idEvoliz - ID attribué par Evoliz
+ * @param {string} idEvoliz - ID attribuÃ© par Evoliz
  * @param {string} numeroFacture
  */
 export async function marquerEnvoyeeEvoliz(factureId, idEvoliz, numeroFacture) {
@@ -297,8 +321,8 @@ export async function marquerEnvoyeeEvoliz(factureId, idEvoliz, numeroFacture) {
 }
 
 /**
- * Génère l'export CSV pour l'expert-comptable
- * Une ligne par code ventilation par réservation
+ * GÃ©nÃ¨re l'export CSV pour l'expert-comptable
+ * Une ligne par code ventilation par rÃ©servation
  */
 export async function exportCSVComptable(mois) {
   const { data: ventilation, error } = await supabase
@@ -315,10 +339,10 @@ export async function exportCSVComptable(mois) {
   if (error) throw error
 
   const lignes = [
-    // En-tête
-    ['Mois', 'Code comptable', 'Libellé', 'Bien', 'Propriétaire', 'Plateforme',
-     'Référence résa', 'Check-in', 'Check-out', 'HT (€)', 'TVA %', 'TVA (€)', 'TTC (€)'],
-    // Données
+    // En-tÃªte
+    ['Mois', 'Code comptable', 'LibellÃ©', 'Bien', 'PropriÃ©taire', 'Plateforme',
+     'RÃ©fÃ©rence rÃ©sa', 'Check-in', 'Check-out', 'HT (â¬)', 'TVA %', 'TVA (â¬)', 'TTC (â¬)'],
+    // DonnÃ©es
     ...(ventilation || []).map(l => [
       l.mois_comptable,
       l.code,
@@ -346,7 +370,7 @@ export async function exportCSVComptable(mois) {
 }
 
 /**
- * Télécharge le CSV dans le navigateur
+ * TÃ©lÃ©charge le CSV dans le navigateur
  */
 export function telechargerCSV(contenu, nomFichier) {
   const blob = new Blob([contenu], { type: 'text/csv;charset=utf-8;' })
