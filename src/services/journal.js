@@ -60,7 +60,36 @@ export async function getJournal({
 
   const { data, error } = await query
   if (error) throw error
-  return data || []
+  let entries = data || []
+
+  // Merger import_log si catégorie = '' ou 'import'
+  if (!categorie || categorie === 'import') {
+    let ilQuery = supabase
+      .from('import_log')
+      .select('*')
+      .order('created_at', { ascending: false })
+      .range(0, limit - 1)
+    if (mois) ilQuery = ilQuery.eq('mois_concerne', mois)
+    const { data: importLogs } = await ilQuery
+    const importEntries = (importLogs || []).map(r => ({
+      id: 'il-' + r.id,
+      created_at: r.created_at,
+      categorie: 'import',
+      action: r.type || 'import',
+      statut: r.statut === 'error' ? 'error' : r.statut === 'partial' ? 'warning' : 'ok',
+      source: 'import',
+      message: r.message || r.type,
+      mois_comptable: r.mois_concerne,
+      meta: r,
+      reservation: null,
+      bien: null,
+    }))
+    entries = [...entries, ...importEntries]
+      .sort((a, b) => b.created_at.localeCompare(a.created_at))
+      .slice(0, limit)
+  }
+
+  return entries
 }
 
 /**
