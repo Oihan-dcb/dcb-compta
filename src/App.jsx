@@ -11,6 +11,7 @@ import PageFactures from './pages/PageFactures'
 import PageConfig from './pages/PageConfig'
 import PageAutoEntrepreneurs from './pages/PageAutoEntrepreneurs'
 import PagePrestationsAE from './pages/PagePrestationsAE'
+import PageFraisProprietaire from './pages/PageFraisProprietaire'
 import PageImport from './pages/PageImport'
 import PageJournal from './pages/PageJournal'
 import './App.css'
@@ -60,6 +61,7 @@ export default function App() {
                 </span>
               )}
             </NavLink>
+            <NavLink to="/frais-proprietaire" className={({isActive}) => isActive ? 'nav-link active' : 'nav-link'}>Frais</NavLink>
             <NavLink to="/journal" className={({isActive}) => isActive ? 'nav-link active' : 'nav-link'}>Journal</NavLink>
             <NavLink to="/config" className={({isActive}) => isActive ? 'nav-link active' : 'nav-link'}>Config</NavLink>
           </nav>
@@ -76,6 +78,7 @@ export default function App() {
             <Route path="/import" element={<PageImport />} />
             <Route path="/auto-entrepreneurs" element={<PageAutoEntrepreneurs />} />
             <Route path="/prestations-ae" element={<PagePrestationsAE />} />
+            <Route path="/frais-proprietaire" element={<PageFraisProprietaire />} />
             <Route path="/journal" element={<PageJournal />} />
             <Route path="/config" element={<PageConfig />} />
           </Routes>

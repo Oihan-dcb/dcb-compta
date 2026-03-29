@@ -151,6 +151,17 @@ async function genererFactureProprietaire(proprio, mois) {
   const haownerTVA = Math.round(haownerHT * 0.20)
   const haownerTTC = haownerHT + haownerTVA
 
+  // Frais propriétaire à déduire du loyer (mode_traitement = 'deduire_loyer')
+  const { data: fraisDeduire } = await supabase
+    .from('frais_proprietaire')
+    .select('id, montant_ttc, bien_id')
+    .in('bien_id', bienIds)
+    .eq('mois_facturation', mois)
+    .eq('mode_traitement', 'deduire_loyer')
+    .eq('mode_encaissement', 'dcb')
+    .eq('statut', 'a_facturer')
+  const fraisDeduireTTC = (fraisDeduire || []).reduce((s, f) => s + (f.montant_ttc || 0), 0)
+
   // DIV : expenses [DCB]
   const divHT = (expenses || []).reduce((s, e) => s + (e.amount || 0), 0)
   const divTVA = Math.round(divHT * 0.20)
@@ -191,14 +202,18 @@ async function genererFactureProprietaire(proprio, mois) {
       .reduce((s, p) => s + (p.montant || 0), 0)
     const haownerBienTTC = haownerBienHT + Math.round(haownerBienHT * 0.20)
 
+    // Frais propriétaire à déduire du loyer de ce bien
+    const fraisDeduireBien = (fraisDeduire || [])
+      .filter(f => f.bien_id === bien.id)
+      .reduce((s, f) => s + (f.montant_ttc || 0), 0)
+
     // AUTO depuis ventilation deja chargee en memoire
     const autoBien = ventilation
       .filter(function(l) { return l.bien_id === bien.id && l.code === 'AUTO' })
       .reduce(function(s, l) { return s + (l.montant_reel !== null ? l.montant_reel : (l.montant_ht || 0)) }, 0)
 
-    // LOY disponible aprÃÂ¨s dÃÂ©ductions de ce bien
-    const loyBienDisponible = Math.max(0, loyBien - prestBien - haownerBienTTC)
-
+    // LOY disponible après déductions de ce bien
+    const loyBienDisponible = Math.max(0, loyBien - prestBien - haownerBienTTC - fraisDeduireBien)
     // Absorption et surplus bien par bien
     const autoAbsorbableBien = Math.min(autoBien, loyBienDisponible)
     const autoSurplusBien    = Math.max(0, autoBien - autoAbsorbableBien)
@@ -213,7 +228,7 @@ async function genererFactureProprietaire(proprio, mois) {
     autoSurplusTotal    += autoSurplusBien
   }
 
-  const montantReversement = Math.max(0, loy.ht - totalPrestations - haownerTTC - autoAbsorbableTotal)
+  const montantReversement = Math.max(0, loy.ht - totalPrestations - haownerTTC - fraisDeduireTTC - autoAbsorbableTotal)
 
   // Cas solde nÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂ©gatif : uniquement des expenses, pas de rÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂ©servations
   const soldeNegatif = totalHT === 0 && div.ht > 0
@@ -344,6 +359,13 @@ async function genererFactureProprietaire(proprio, mois) {
     await supabase.from('facture_evoliz_ligne').insert(lignes)
   }
 
+  // Passer les frais à déduire en statut 'facture' (chemin non-skipped uniquement)
+  if (fraisDeduire?.length > 0) {
+    await supabase.from('frais_proprietaire')
+      .update({ statut: 'facture' })
+      .in('id', fraisDeduire.map(f => f.id))
+  }
+
   const resteAPayer = Math.max(0, (totalPrestations + haownerTTC) - loy.ht) + autoSurplusTotal
   return { created, factureId, totalHT, totalTTC, soldeNegatif, resteAPayer }
 }
@@ -377,6 +399,22 @@ async function genererFactureDebours(proprio, mois) {
   ;(prestationsAll || []).forEach(function(p) {
     if (!prestByBien.has(p.bien_id)) prestByBien.set(p.bien_id, [])
     prestByBien.get(p.bien_id).push(p)
+  })
+
+  // Batch 3 : frais_propriétaire à facturer directement
+  const { data: fraisDirectsAll } = await supabase
+    .from('frais_proprietaire')
+    .select('bien_id, id, montant_ttc, libelle')
+    .in('bien_id', bienIds)
+    .eq('mois_facturation', mois)
+    .eq('mode_traitement', 'facturer_direct')
+    .eq('mode_encaissement', 'dcb')
+    .eq('statut', 'a_facturer')
+
+  const fraisDirectsByBien = new Map()
+  ;(fraisDirectsAll || []).forEach(function(f) {
+    if (!fraisDirectsByBien.has(f.bien_id)) fraisDirectsByBien.set(f.bien_id, [])
+    fraisDirectsByBien.get(f.bien_id).push(f)
   })
 
   for (const bien of proprio.biens) {
@@ -426,6 +464,20 @@ async function genererFactureDebours(proprio, mois) {
       montant_ttc: montantAFacturer,
       ordre:       ordre++,
     })
+
+    // Frais proprietaire a facturer directement -- lignes separees, hors montantAFacturer
+    const fraisDirectsBien = fraisDirectsByBien.get(bien.id) || []
+    for (const frais of fraisDirectsBien) {
+      lignes.push({
+        code:        'FRAIS',
+        libelle:     frais.libelle,
+        montant_ht:  frais.montant_ttc,
+        taux_tva:    0,
+        montant_tva: 0,
+        montant_ttc: frais.montant_ttc,
+        ordre:       ordre++,
+      })
+    }
   }
 
   if (lignes.length === 0) return null
@@ -480,6 +532,13 @@ async function genererFactureDebours(proprio, mois) {
     await supabase.from('facture_evoliz_ligne').insert(
       lignes.map(l => ({ ...l, facture_id: factureId }))
     )
+    // Passer les frais directs en statut 'facture' -- uniquement dans le chemin non-skipped
+    const fraisDirectsIds = (fraisDirectsAll || []).map(f => f.id)
+    if (fraisDirectsIds.length > 0) {
+      await supabase.from('frais_proprietaire')
+        .update({ statut: 'facture' })
+        .in('id', fraisDirectsIds)
+    }
   }
 
   return { created, factureId, totalHT, totalTTC: totalHT }
