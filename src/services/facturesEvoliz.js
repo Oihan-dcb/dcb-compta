@@ -330,28 +330,28 @@ async function genererFactureProprietaire(proprio, mois) {
   // CF-P1 : ligne PREST si des prestations ont ete deduites
   if (totalPrestations > 0) {
     lignes.push({
-      facture_evoliz_id: null,
+      facture_id: factureId,
       code: 'PREST',
       libelle: `Prestations hors forfait deduites (${(prestationsDeduction || []).length} elements)`,
       montant_ht: -totalPrestations,
       taux_tva: 0,
       montant_tva: 0,
       montant_ttc: -totalPrestations,
-      ordre: lignes.length + 1,
+      ordre: ordre++,
     })
   }
 
   // CF-P1 HAOWNER : ligne facturable proprietaire (TVA 20%, incluse dans push Evoliz)
   if (haownerHT > 0) {
     lignes.push({
-      facture_evoliz_id: null,
+      facture_id: factureId,
       code: 'HAOWNER',
       libelle: `Frais avances a rembourser (${(prestationsHaowner || []).length} elements)`,
       montant_ht: haownerHT,
       taux_tva: 20,
       montant_tva: haownerTVA,
       montant_ttc: haownerTTC,
-      ordre: lignes.length + 1,
+      ordre: ordre++,
     })
   }
 
