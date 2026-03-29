@@ -16,6 +16,7 @@
  */
 
 import { supabase } from '../lib/supabase'
+import { logOp } from './journal'
 
 const MENTION_MANDAT = "Conformément au mandat de gestion, les honoraires de gestion sont directement prélevés sur le loyer encaissé avant reversement au propriétaire."
 
@@ -66,6 +67,12 @@ export async function genererFacturesMois(mois) {
     }
   }
 
+  logOp({
+    categorie: 'facture', action: 'generate', mois_comptable: mois,
+    statut: log.errors > 0 ? 'warning' : 'ok', source: 'app',
+    message: `Factures ${mois} : ${log.created} créée(s), ${log.updated} mise(s) à jour, ${log.deboursCreated + log.deboursUpdated} débours${log.errors > 0 ? ', ' + log.errors + ' erreur(s)' : ''}`,
+    meta: log,
+  }).catch(() => {})
   return log
 }
 

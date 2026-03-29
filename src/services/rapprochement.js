@@ -568,6 +568,7 @@ export async function annulerRapprochement(mouvementId) {
   await logOp({
     categorie: 'rapprochement', action: 'unlink', statut: 'warning', source: 'app',
     mouvement_id: mouvementId,
+    mois_comptable: mvtLog?.date_operation?.substring(0, 7),
     message: 'Annulation rapprochement : virement ' + (mvtLog ? (mvtLog.credit/100).toFixed(2) + '€ du ' + mvtLog.date_operation : mouvementId),
     avant: { mouvement_id: mouvementId, libelle: mvtLog?.libelle },
   }).catch(() => {})

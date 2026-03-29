@@ -17,6 +17,7 @@
  */
 
 import { supabase } from '../lib/supabase'
+import { logOp } from './journal'
 
 const TVA_RATE = 0.20
 const AIRBNB_FEES_RATE = 0.1621  // 16.21% retenu par Airbnb sur cleaning + community fees (validé audit mars 2026)
@@ -63,6 +64,12 @@ export async function calculerVentilationMois(mois) {
     }
   }
 
+  logOp({
+    categorie: 'ventilation', action: 'compute', mois_comptable: mois,
+    statut: errors > 0 ? 'warning' : 'ok', source: 'app',
+    message: `Ventilation ${mois} : ${total} résa(s) calculée(s)${errors > 0 ? ', ' + errors + ' erreur(s)' : ''}`,
+    meta: { total, errors },
+  }).catch(() => {})
   return { total, errors }
 }
 
