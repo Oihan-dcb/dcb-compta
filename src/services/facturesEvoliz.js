@@ -132,12 +132,15 @@ async function genererFactureProprietaire(proprio, mois) {
   // CF-P1 : prestations hors forfait deduction_loy validees -- deduction directe sur reversement
   const { data: prestationsDeduction } = await supabase
     .from('prestation_hors_forfait')
-    .select('montant, bien_id, description, prestation_type:prestation_type_id(nom)')
+    .select('montant, bien_id, description, prestation_type:prestation_type_id(nom), ae:ae_id(type)')
     .in('bien_id', bienIds)
     .eq('mois', mois)
     .eq('statut', 'valide')
     .eq('type_imputation', 'deduction_loy')
-  const totalPrestations = (prestationsDeduction || []).reduce((s, p) => s + (p.montant || 0), 0)
+  const totalPrestations = (prestationsDeduction || []).reduce((s, p) => {
+    const isStaff = p.ae?.type === 'staff'
+    return s + (isStaff ? Math.round((p.montant || 0) * 1.20) : (p.montant || 0))
+  }, 0)
 
   // CF-P1 HAOWNER : frais avances DCB refactures au proprietaire (TVA 20%)
   const { data: prestationsHaowner } = await supabase
@@ -194,7 +197,10 @@ async function genererFactureProprietaire(proprio, mois) {
     // DÃÂ©ductions deduction_loy de ce bien
     const prestBien = (prestationsDeduction || [])
       .filter(p => p.bien_id === bien.id)
-      .reduce((s, p) => s + (p.montant || 0), 0)
+      .reduce((s, p) => {
+        const isStaff = p.ae?.type === 'staff'
+        return s + (isStaff ? Math.round((p.montant || 0) * 1.20) : (p.montant || 0))
+      }, 0)
 
     // HAOWNER TTC de ce bien
     const haownerBienHT  = (prestationsHaowner || [])
@@ -327,19 +333,22 @@ async function genererFactureProprietaire(proprio, mois) {
     })
   }
 
-  // CF-P1 : ligne PREST si des prestations ont ete deduites
-  if (totalPrestations > 0) {
+  // CF-P1 : une ligne PREST par prestation deduite (TVA 20% si staff, 0% si AE)
+  for (const p of (prestationsDeduction || [])) {
+    if (!(p.montant > 0)) continue
+    const isStaff = p.ae?.type === 'staff'
+    const ht  = p.montant
+    const tva = isStaff ? Math.round(ht * 0.20) : 0
+    const ttc = ht + tva
     lignes.push({
-      facture_id: factureId,
-      code: 'PREST',
-      libelle: prestationsDeduction && prestationsDeduction.length === 1
-        ? `Prestation deduite : ${prestationsDeduction[0].description || prestationsDeduction[0].prestation_type?.nom || 'Prestation hors forfait'}`
-        : `Prestations deduites : ${(prestationsDeduction || []).map(p => p.description || p.prestation_type?.nom || 'Prestation').join(', ')}`,
-      montant_ht: -totalPrestations,
-      taux_tva: 0,
-      montant_tva: 0,
-      montant_ttc: -totalPrestations,
-      ordre: ordre++,
+      facture_id:  factureId,
+      code:        'PREST',
+      libelle:     `Prestation deduite : ${p.description || p.prestation_type?.nom || 'Prestation hors forfait'}`,
+      montant_ht:  -ht,
+      taux_tva:    isStaff ? 20 : 0,
+      montant_tva: -tva,
+      montant_ttc: -ttc,
+      ordre:       ordre++,
     })
   }
 
