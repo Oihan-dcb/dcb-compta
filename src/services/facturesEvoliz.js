@@ -109,7 +109,7 @@ async function genererFactureProprietaire(proprio, mois) {
   // COM : ÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂ£ ventilation COM du mois
   const { data: lignesVentil } = await supabase
     .from('ventilation')
-    .select('code, montant_ht, montant_tva, montant_ttc, bien_id')
+    .select('code, montant_ht, montant_tva, montant_ttc, montant_reel, bien_id')
     .in('bien_id', bienIds)
     .eq('mois_comptable', mois)
 
@@ -191,15 +191,10 @@ async function genererFactureProprietaire(proprio, mois) {
       .reduce((s, p) => s + (p.montant || 0), 0)
     const haownerBienTTC = haownerBienHT + Math.round(haownerBienHT * 0.20)
 
-    // AUTO de ce bien : COALESCE(montant_reel, montant_ht)
-    const { data: autoLines } = await supabase
-      .from('ventilation')
-      .select('montant_ht, montant_reel')
-      .eq('bien_id', bien.id)
-      .eq('mois_comptable', mois)
-      .eq('code', 'AUTO')
-    const autoBien = (autoLines || [])
-      .reduce((s, l) => s + (l.montant_reel !== null ? l.montant_reel : (l.montant_ht || 0)), 0)
+    // AUTO depuis ventilation deja chargee en memoire
+    const autoBien = ventilation
+      .filter(function(l) { return l.bien_id === bien.id && l.code === 'AUTO' })
+      .reduce(function(s, l) { return s + (l.montant_reel !== null ? l.montant_reel : (l.montant_ht || 0)) }, 0)
 
     // LOY disponible aprÃÂ¨s dÃÂ©ductions de ce bien
     const loyBienDisponible = Math.max(0, loyBien - prestBien - haownerBienTTC)
@@ -207,6 +202,12 @@ async function genererFactureProprietaire(proprio, mois) {
     // Absorption et surplus bien par bien
     const autoAbsorbableBien = Math.min(autoBien, loyBienDisponible)
     const autoSurplusBien    = Math.max(0, autoBien - autoAbsorbableBien)
+
+    if (autoBien > 0) {
+      console.log('[AUTO-PROPRIO]', { proprio: proprio.id, mois, bien: bien.id,
+        name: bien.hospitable_name, mode: bien.mode_encaissement, autoBien,
+        loyBienDisponible, autoAbsorbableBien, autoSurplusBien })
+    }
 
     autoAbsorbableTotal += autoAbsorbableBien
     autoSurplusTotal    += autoSurplusBien
@@ -354,15 +355,35 @@ async function genererFactureDebours(proprio, mois) {
   const lignes = []
   let ordre = 1
 
+  const bienIds = proprio.biens.map(function(b) { return b.id })
+
+  // Batch 1 : ventilation AUTO + LOY
+  const { data: ventilAuto } = await supabase
+    .from('ventilation').select('bien_id, code, montant_ht, montant_reel')
+    .in('bien_id', bienIds).eq('mois_comptable', mois).in('code', ['AUTO', 'LOY'])
+
+  // Batch 2 : prestations deduction_loy + haowner
+  const { data: prestationsAll } = await supabase
+    .from('prestation_hors_forfait').select('bien_id, montant, type_imputation')
+    .in('bien_id', bienIds).eq('mois', mois).eq('statut', 'valide')
+    .in('type_imputation', ['deduction_loy', 'haowner'])
+
+  const ventilByBien = new Map()
+  const prestByBien  = new Map()
+  ;(ventilAuto || []).forEach(function(l) {
+    if (!ventilByBien.has(l.bien_id)) ventilByBien.set(l.bien_id, [])
+    ventilByBien.get(l.bien_id).push(l)
+  })
+  ;(prestationsAll || []).forEach(function(p) {
+    if (!prestByBien.has(p.bien_id)) prestByBien.set(p.bien_id, [])
+    prestByBien.get(p.bien_id).push(p)
+  })
+
   for (const bien of proprio.biens) {
-    const { data: autoLines } = await supabase
-      .from('ventilation')
-      .select('montant_ht, montant_reel')
-      .eq('bien_id', bien.id)
-      .eq('mois_comptable', mois)
-      .eq('code', 'AUTO')
-    const autoBien = (autoLines || [])
-      .reduce((s, l) => s + (l.montant_reel !== null ? l.montant_reel : (l.montant_ht || 0)), 0)
+    const bienVentil = ventilByBien.get(bien.id) || []
+    const autoBien = bienVentil
+      .filter(function(l) { return l.code === 'AUTO' })
+      .reduce(function(s, l) { return s + (l.montant_reel !== null ? l.montant_reel : (l.montant_ht || 0)) }, 0)
 
     if (autoBien === 0) continue
 
@@ -371,31 +392,27 @@ async function genererFactureDebours(proprio, mois) {
     if (bien.mode_encaissement === 'proprio') {
       montantAFacturer = autoBien
     } else {
-      const { data: lignesVentil } = await supabase
-        .from('ventilation')
-        .select('code, montant_ht')
-        .eq('bien_id', bien.id)
-        .eq('mois_comptable', mois)
-      const loyBien = (lignesVentil || [])
-        .filter(l => l.code === 'LOY')
-        .reduce((s, l) => s + l.montant_ht, 0)
+      const loyBien = bienVentil
+        .filter(function(l) { return l.code === 'LOY' })
+        .reduce(function(s, l) { return s + l.montant_ht }, 0)
 
-      const { data: prestDed } = await supabase
-        .from('prestation_hors_forfait')
-        .select('montant')
-        .eq('bien_id', bien.id).eq('mois', mois).eq('statut', 'valide').eq('type_imputation', 'deduction_loy')
-      const prestBien = (prestDed || []).reduce((s, p) => s + (p.montant || 0), 0)
-
-      const { data: prestHao } = await supabase
-        .from('prestation_hors_forfait')
-        .select('montant')
-        .eq('bien_id', bien.id).eq('mois', mois).eq('statut', 'valide').eq('type_imputation', 'haowner')
-      const haownerBienHT  = (prestHao || []).reduce((s, p) => s + (p.montant || 0), 0)
+      const bienPrest     = prestByBien.get(bien.id) || []
+      const prestBien     = bienPrest
+        .filter(function(p) { return p.type_imputation === 'deduction_loy' })
+        .reduce(function(s, p) { return s + (p.montant || 0) }, 0)
+      const haownerBienHT = bienPrest
+        .filter(function(p) { return p.type_imputation === 'haowner' })
+        .reduce(function(s, p) { return s + (p.montant || 0) }, 0)
       const haownerBienTTC = haownerBienHT + Math.round(haownerBienHT * 0.20)
-
       const loyBienDisponible = Math.max(0, loyBien - prestBien - haownerBienTTC)
       const autoAbsorbable    = Math.min(autoBien, loyBienDisponible)
       montantAFacturer        = Math.max(0, autoBien - autoAbsorbable)
+    }
+
+    if (autoBien > 0) {
+      console.log('[AUTO-DEBOURS]', { proprio: proprio.id, mois, bien: bien.id,
+        name: bien.hospitable_name, mode: bien.mode_encaissement,
+        autoBien, montantAFacturer })
     }
 
     if (montantAFacturer === 0) continue
