@@ -128,8 +128,8 @@ Ces invariants ont la priorité absolue. Leur violation peut entraîner une fact
 | I-24 | Matching non déterministe selon déclencheur | CF-C3 |
 | I-40 | facture envoyée sans evoliz_id | CF-F2 (résidu) |
 | I-42 | Push Evoliz non idempotent | CF-F2 (partiellement corrigé) |
-| I-50 | AE avec ae_user_id ne peut pas se connecter | CF-PAE1/PAE2 (à confirmer) |
-| I-53 | mdp_temporaire désynchronisé | CF-PAE1 (à confirmer) |
+| I-50 | AE avec ae_user_id ne peut pas se connecter | CF-PAE1/PAE2 — code path ✅ (Edge Functions sauvegardent mdp_temporaire), confirmation DB en attente |
+| I-53 | mdp_temporaire désynchronisé | CF-PAE1 — code path ✅, confirmation DB en attente |
 | I-60 | Opérations non tracées dans journal | CF-J2 |
 | I-61 | Filtre mois journal inopérant | CF-J1 |
 | I-62 | import_log / webhook_log invisibles | CF-J3 |
@@ -152,6 +152,7 @@ Ces invariants ont la priorité absolue. Leur violation peut entraîner une fact
 | I-07 | Absorption AUTO bien-par-bien — cloisonnement strict | ✅ Implémenté |
 | I-08 | Coexistence factures honoraires / débours par mois | ✅ Implémenté |
 | I-56 | Frais propriétaire marqué `facture` uniquement si facture Evoliz effectivement traitée | ✅ Implémenté (commit `360b959`) |
+| I-57 | Ligne PREST TVA 20% pour prestation staff DCB, TVA 0% pour AE | ✅ Implémenté (commit `654d102`) |
 
 **Détail I-56** : `genererFactureDebours` ne marque pas les frais directs `statut='facture'` dans le chemin skipped (aucune donnée à facturer). Le `UPDATE` est placé exclusivement dans le bloc `if (factureId)` — après insertion des lignes Evoliz confirmée. Idem pour `deduire_loyer` dans `genererFactureProprietaire`.
 
@@ -163,7 +164,7 @@ Ces invariants ont la priorité absolue. Leur violation peut entraîner une fact
 | I-54 | Prestation validée doit produire une écriture EXTRA dans la ventilation |
 | I-73 | Modification après clôture doit être explicite et documentée |
 
-**Total actuel** : 12 invariants violés actifs, 6 corrigés, 3 nouveaux, sur 41 documentés.
+**Total actuel** : 12 invariants violés actifs (dont 2 partiellement confirmés), 6 corrigés, 4 nouveaux, sur 42 documentés.
 
 ---
 

@@ -382,3 +382,13 @@ Le module Prestations existe dans l'UI, la validation fonctionne, mais les prest
 - `27afd2dd` : batch N+1 genererFactureDebours, filtre mémoire AUTO, logs AUTO-PROPRIO/DEBOURS
 - Restauration accents UI dans tous les fichiers JSX/JS
 - `360b959` : module frais_proprietaire — table SQL, service CRUD, intégration `genererFactureProprietaire` (mode `deduire_loyer` : réduit reversement + marque facturé) + `genererFactureDebours` (mode `facturer_direct` : ligne FRAIS TVA 0% dans facture débours, marque facturé uniquement si facture créée/mise à jour), page UI `/frais-proprietaire`
+
+## Fixes session 30 mars 2026
+
+- `2dbb762` : fix `facture_id` (était `facture_evoliz_id: null`) dans lignes PREST et HAOWNER — la batch insert échouait silencieusement quand ces lignes étaient présentes → 0 lignes en base
+- `75e8d2f` : ligne FRAIS de transparence par frais `deduire_loyer` dans la facture honoraires (montant négatif, TVA 20%, libellé = frais.libelle)
+- `f28fa79` : TVA 20% sur lignes FRAIS `deduire_loyer` (HT recalculé depuis TTC)
+- `62e5ee2` : libellés descriptifs PREST/HAOWNER — liste des descriptions au lieu du comptage
+- `d9896d8` : fallback `prestation_type.nom` pour PREST et HAOWNER si description null
+- `654d102` : TVA 20% pour prestations staff DCB (type='staff') — une ligne PREST par prestation, `totalPrestations` et `prestBien` utilisent TTC pour staff
+- Audit CF-PAE1/CF-PAE2 : Edge Functions `create-ae-user` et `reset-ae-password` sauvegardent bien `mdp_temporaire` — code path ✅, confirmation DB en attente

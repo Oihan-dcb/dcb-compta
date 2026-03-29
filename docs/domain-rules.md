@@ -298,7 +298,7 @@ Les achats réalisés par DCB pour le compte d'un propriétaire (fournitures, in
 > ✅ Commit `214872e` : `type_facture: 'honoraires'` explicite dans `factureData` + filtre lookup.
 
 
-Produite par `genererFactureProprietaire`. Lignes : HON, FMEN, DIV, HAOWNER (si présent), PREST (mémo, montant négatif, non poussé Evoliz).
+Produite par `genererFactureProprietaire`. Lignes : HON, FMEN, DIV, HAOWNER (si présent), FRAIS (frais deduire_loyer, transparent), PREST (une ligne par prestation, montant négatif).
 
 ```
 montantReversement = max(0, LOY_global − totalPrestations − haownerTTC − fraisDeduireTTC − autoAbsorbableTotal)
@@ -306,6 +306,15 @@ resteAPayer = max(0, (totalPrestations + haownerTTC) − LOY_global) + autoSurpl
 ```
 
 `fraisDeduireTTC` = somme des `frais_proprietaire.montant_ttc` avec `mode_traitement='deduire_loyer'`, `mode_encaissement='dcb'`, `statut='a_facturer'` sur le mois. Ces frais sont marqués `statut='facture'` après insertion des lignes dans Evoliz.
+
+**Ligne PREST — TVA selon type AE (commit `654d102`) :**
+
+```
+ae.type = 'ae'    → taux_tva=0,  montant_ht=montant,  montant_ttc=montant
+ae.type = 'staff' → taux_tva=20, montant_ht=montant,  montant_ttc=round(montant*1.20)
+```
+
+`totalPrestations` et `prestBien` utilisent le TTC (staff : ×1.20, AE : inchangé). Une ligne PREST par prestation — libellé = `p.description || p.prestation_type.nom || fallback`. Le SELECT `prestationsDeduction` joint `ae:ae_id(type)` et `prestation_type:prestation_type_id(nom)`.
 
 `resteAPayer` est calculé à la volée, accumulé dans `log.resteAPayer`, affiché comme alerte warning non bloquante dans PageFactures. **Non stocké. Non comptable. UI uniquement. Ne pas utiliser comme base de rapprochement ou d'écriture comptable.**
 
