@@ -365,9 +365,9 @@ async function genererFactureProprietaire(proprio, mois) {
       facture_id:  factureId,
       code:        'FRAIS',
       libelle:     frais.libelle || 'Frais proprietaire',
-      montant_ht:  -frais.montant_ttc,
-      taux_tva:    0,
-      montant_tva: 0,
+      montant_ht:  -Math.round(frais.montant_ttc / 1.20),
+      taux_tva:    20,
+      montant_tva: -(frais.montant_ttc - Math.round(frais.montant_ttc / 1.20)),
       montant_ttc: -frais.montant_ttc,
       ordre:       ordre++,
     })
