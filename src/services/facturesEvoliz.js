@@ -223,6 +223,7 @@ async function genererFactureProprietaire(proprio, mois) {
     .select('id, statut')
     .eq('proprietaire_id', proprio.id)
     .eq('mois', mois)
+    .eq('type_facture', 'honoraires')
     .single()
 
   // Ne pas ÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂ©craser une facture dÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂ©jÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂ  envoyÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂ©e ou payÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂ©e
@@ -233,7 +234,7 @@ async function genererFactureProprietaire(proprio, mois) {
   const factureData = {
     mois,
     proprietaire_id: proprio.id,
-    mois,
+    type_facture: 'honoraires',
     total_ht: totalHT,
     total_tva: totalTVA,
     total_ttc: totalTTC,
