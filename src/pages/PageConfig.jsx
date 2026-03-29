@@ -106,7 +106,7 @@ export default function PageConfig() {
       prev.map(s => s.id === id ? { ...s, status, detail } : s)
     )
 
-    // GÃ©nÃ©rer tous les mois depuis 2022-01
+    // Générer tous les mois depuis 2022-01
     const allMois = []
     const now = new Date()
     let y = 2022, m = 1
@@ -183,7 +183,7 @@ export default function PageConfig() {
       update('vent',     totals.vent > 0 ? 'ok' : 'ok', `${totals.vent} résa(s) ventilées`)
       update('matching', 'ok', `${totals.matching} virement(s) rapprochés`)
     } else {
-      // Mettre Ã  jour ce qu'on a rÃ©ussi
+      // Mettre à jour ce qu'on a réussi
       update('biens',   totals.biens > 0   ? 'ok' : 'error', `${totals.biens} biens`)
       update('resas',   totals.resas > 0   ? 'ok' : 'error', `${totals.resas} résas`)
       update('payouts', totals.payouts > 0 ? 'ok' : 'error', `${totals.payouts} payouts`)
@@ -320,7 +320,7 @@ export default function PageConfig() {
         </table>
       </div>
 
-      {/* Sync PropriÃ©taires Evoliz */}
+      {/* Sync Propriétaires Evoliz */}
       <div className="card" style={{marginBottom: 24}}>
         <div className="card-header" style={{display:'flex', justifyContent:'space-between', alignItems:'center'}}>
           <div>
@@ -420,7 +420,7 @@ export default function PageConfig() {
         )}
       </div>
 
-      {/* Secrets Supabase Ã  configurer */}
+      {/* Secrets Supabase à configurer */}
       <div className="card">
         <h2 style={{ fontSize: 16, fontWeight: 600, marginBottom: 12, color: 'var(--brand)' }}>
           Secrets Supabase à configurer (Edge Function)
