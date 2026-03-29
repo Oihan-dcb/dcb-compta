@@ -381,3 +381,4 @@ Le module Prestations existe dans l'UI, la validation fonctionne, mais les prest
 - `214872e` : type_facture honoraires explicite + filtre lookup + clé mois dupliquée supprimée
 - `27afd2dd` : batch N+1 genererFactureDebours, filtre mémoire AUTO, logs AUTO-PROPRIO/DEBOURS
 - Restauration accents UI dans tous les fichiers JSX/JS
+- `360b959` : module frais_proprietaire — table SQL, service CRUD, intégration `genererFactureProprietaire` (mode `deduire_loyer` : réduit reversement + marque facturé) + `genererFactureDebours` (mode `facturer_direct` : ligne FRAIS TVA 0% dans facture débours, marque facturé uniquement si facture créée/mise à jour), page UI `/frais-proprietaire`

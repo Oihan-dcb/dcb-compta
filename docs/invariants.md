@@ -151,6 +151,9 @@ Ces invariants ont la priorité absolue. Leur violation peut entraîner une fact
 |---|---|---|
 | I-07 | Absorption AUTO bien-par-bien — cloisonnement strict | ✅ Implémenté |
 | I-08 | Coexistence factures honoraires / débours par mois | ✅ Implémenté |
+| I-56 | Frais propriétaire marqué `facture` uniquement si facture Evoliz effectivement traitée | ✅ Implémenté (commit `360b959`) |
+
+**Détail I-56** : `genererFactureDebours` ne marque pas les frais directs `statut='facture'` dans le chemin skipped (aucune donnée à facturer). Le `UPDATE` est placé exclusivement dans le bloc `if (factureId)` — après insertion des lignes Evoliz confirmée. Idem pour `deduire_loyer` dans `genererFactureProprietaire`.
 
 ### Invariants métier à formaliser (non encore implémentés dans V1)
 
@@ -160,10 +163,9 @@ Ces invariants ont la priorité absolue. Leur violation peut entraîner une fact
 | I-54 | Prestation validée doit produire une écriture EXTRA dans la ventilation |
 | I-73 | Modification après clôture doit être explicite et documentée |
 
-**Total actuel** : 12 invariants violés actifs, 6 corrigés, 2 nouveaux, sur 40 documentés.
+**Total actuel** : 12 invariants violés actifs, 6 corrigés, 3 nouveaux, sur 41 documentés.
 
 ---
 
 *Fichier généré dans le cadre de l'audit structurel DCB Compta — mars 2026.*
 *Ne pas modifier sans relecture du code source et de `domain-rules.md`.*
->>>>>>> 2e1ab89 (docs: documentation projet + CLAUDE.md)

@@ -179,7 +179,7 @@ Pour chaque bien du propriétaire :
   autoBien = COALESCE(montant_reel, montant_ht) des lignes ventilation code='AUTO' du bien
 
   si bien.mode_encaissement = 'dcb' :
-    loyBienDisponible = max(0, LOY_bien − prest_bien − haownerBienTTC)
+    loyBienDisponible = max(0, LOY_bien − prest_bien − haownerBienTTC − fraisDeduireBien)
     autoAbsorbableBien = min(autoBien, loyBienDisponible)
     autoSurplusBien    = max(0, autoBien − autoAbsorbableBien)
     → autoAbsorbableBien déduit du reversement global (genererFactureProprietaire)
@@ -301,38 +301,86 @@ Les achats réalisés par DCB pour le compte d'un propriétaire (fournitures, in
 Produite par `genererFactureProprietaire`. Lignes : HON, FMEN, DIV, HAOWNER (si présent), PREST (mémo, montant négatif, non poussé Evoliz).
 
 ```
-montantReversement = max(0, LOY_global − totalPrestations − haownerTTC − autoAbsorbableTotal)
+montantReversement = max(0, LOY_global − totalPrestations − haownerTTC − fraisDeduireTTC − autoAbsorbableTotal)
 resteAPayer = max(0, (totalPrestations + haownerTTC) − LOY_global) + autoSurplusTotal
 ```
+
+`fraisDeduireTTC` = somme des `frais_proprietaire.montant_ttc` avec `mode_traitement='deduire_loyer'`, `mode_encaissement='dcb'`, `statut='a_facturer'` sur le mois. Ces frais sont marqués `statut='facture'` après insertion des lignes dans Evoliz.
 
 `resteAPayer` est calculé à la volée, accumulé dans `log.resteAPayer`, affiché comme alerte warning non bloquante dans PageFactures. **Non stocké. Non comptable. UI uniquement. Ne pas utiliser comme base de rapprochement ou d'écriture comptable.**
 
 ### 13.2 Facture débours AE (`type_facture = 'debours'`)
 
-Produite par `genererFactureDebours` si au moins un bien du propriétaire a de l'AUTO à facturer séparément. Une ligne `code='DEB_AE'` par bien concerné.
+Produite par `genererFactureDebours` si au moins un bien du propriétaire a de l'AUTO à facturer séparément, ou des frais `facturer_direct`. Lignes : `DEB_AE` par bien concerné + `FRAIS` par frais direct.
 
 ```
-code:        'DEB_AE'
+code:        'DEB_AE'          (ménage AE)
 taux_tva:    0
-montant_tva: 0
 montant_reversement: null  ← non applicable à une créance
+
+code:        'FRAIS'           (frais propriétaire facturer_direct)
+taux_tva:    0
+libelle:     frais.libelle
 ```
 
-Déclenchement :
+Déclenchement AUTO :
 - Bien `mode_encaissement = 'proprio'` : `montantAFacturer = autoBien` (totalité)
 - Bien `mode_encaissement = 'dcb'` avec surplus : `montantAFacturer = max(0, autoBien − autoAbsorbableBien)`
 
-`vatRate` dans le push Evoliz : `l.taux_tva ?? 20` — respecte `taux_tva = 0` pour DEB_AE.
+Déclenchement FRAIS : `frais_proprietaire` avec `mode_traitement='facturer_direct'`, `mode_encaissement='dcb'`, `statut='a_facturer'`. Ajoutés comme lignes séparées — **ne modifient pas `montantAFacturer`** (réservé à AUTO). Marqués `statut='facture'` uniquement si la facture est effectivement créée ou mise à jour (jamais dans le chemin skipped).
+
+`vatRate` dans le push Evoliz : `l.taux_tva ?? 20` — respecte `taux_tva = 0` pour DEB_AE et FRAIS.
 
 ### 13.3 Coexistence HAOWNER dans la facture principale
 
 HAOWNER peut coexister avec HON et FMEN. Ce n'est pas un débours — c'est une ligne de facturation TVA 20%. Il réduit le reversement sur une base TTC :
 
 ```
-loyBienDisponible = max(0, LOY_bien − prest_bien − haownerBienTTC)
+loyBienDisponible = max(0, LOY_bien − prest_bien − haownerBienTTC − fraisDeduireBien)
 ```
 
 Si `haownerTTC > LOY_bien_disponible` : `montantReversement = 0`. La ligne HAOWNER reste dans la facture — le propriétaire règle le solde directement. Comportement non bloquant.
+
+---
+
+## 14. Règles des frais propriétaire (implémentées mars 2026)
+
+> ✅ Commit `360b959` : table `frais_proprietaire`, service CRUD, intégration facturation.
+
+### 14.1 Saisie et statuts
+
+Les frais sont saisis manuellement dans l'UI `/frais-proprietaire`. Workflow :
+
+```
+brouillon  →  a_facturer  →  facture
+  (saisie)    (UI action)    (auto — lors génération facture)
+```
+
+Seuls les frais `statut='a_facturer'` participent à la facturation. La transition `a_facturer → facture` est irréversible via l'UI — elle est effectuée automatiquement par `genererFactureProprietaire` ou `genererFactureDebours`.
+
+### 14.2 Mode `deduire_loyer` + `mode_encaissement='dcb'`
+
+Le frais a été avancé par DCB. Il est récupéré en réduisant le reversement au propriétaire.
+
+- Réduit `loyBienDisponible` bien par bien (symétrique avec HAOWNER et prestations)
+- Réduit `montantReversement` global via `fraisDeduireTTC`
+- Produit **aucune ligne** dans la facture Evoliz (c'est une déduction silencieuse du reversement)
+- Marqué `statut='facture'` après insertion des lignes Evoliz
+
+### 14.3 Mode `facturer_direct` + `mode_encaissement='dcb'`
+
+Le frais a été avancé par DCB. Il est refacturé au propriétaire via la facture débours.
+
+- Produit une ligne `code='FRAIS'`, TVA 0%, libellé = `frais.libelle`, dans `genererFactureDebours`
+- **N'impacte pas `montantAFacturer`** — réservé exclusivement au calcul AUTO/DEB_AE
+- Marqué `statut='facture'` uniquement si la facture débours est effectivement créée ou mise à jour (jamais dans le chemin skipped)
+
+### 14.4 Cas non encore intégrés
+
+| Mode | Encaissement | Statut |
+|---|---|---|
+| `deduire_loyer` | `proprio` | ⚠ Non intégré — le proprio a déjà payé, pas de déduction à calculer |
+| `facturer_direct` | `proprio` | ⚠ Non intégré — le proprio a déjà payé, pas de refacturation à émettre |
 
 ---
 

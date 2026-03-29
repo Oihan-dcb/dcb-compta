@@ -461,6 +461,31 @@ Prestations extras soumises par les AEs via le portail. Validées dans DCB Compt
 
 ---
 
+### `frais_proprietaire`
+
+Frais engagés pour le compte d'un propriétaire : réparations, fournitures, interventions. Deux modes de traitement comptable selon que la charge est absorbée via le loyer ou refacturée directement.
+
+| Champ | Type | Description | Notes |
+|---|---|---|---|
+| `id` | uuid PK | | |
+| `bien_id` | uuid FK → bien | Bien concerné | |
+| `proprietaire_id` | uuid FK → proprietaire | Propriétaire du bien | Dénormalisé pour requêtes rapides |
+| `date` | date | Date du frais | |
+| `libelle` | text | Description du frais | Ex: 'Réparation chauffe-eau' |
+| `montant_ttc` | integer | Montant TTC en centimes | |
+| `mode_traitement` | text | `deduire_loyer` ou `facturer_direct` | Cf. règles §14 |
+| `mode_encaissement` | text | `dcb` ou `proprio` | Seul `dcb` a un effet comptable actuellement |
+| `statut` | text | `brouillon`, `a_facturer`, `facture` | Transition : brouillon → a_facturer → facture |
+| `mois_facturation` | text | Format YYYY-MM | Mois de rattachement comptable |
+| `source` | text | `manuel` | Saisi manuellement via UI |
+| `created_at` | timestamptz | | |
+
+**Transitions de statut** : `brouillon → a_facturer` (action manuelle UI). `a_facturer → facture` uniquement via `genererFactureProprietaire` / `genererFactureDebours` après création ou mise à jour effective d'une facture Evoliz. La fonction `changerStatut` refuse le passage en `facture` si le statut courant n'est pas `a_facturer`.
+
+**Filtres actifs** : seuls les frais `statut='a_facturer'` ET `mode_encaissement='dcb'` participent au calcul de facturation. Les frais `mode_encaissement='proprio'` ne sont pas encore intégrés.
+
+---
+
 ### `prestation_type`
 
 Catalogue des types de prestations hors forfait.
@@ -482,7 +507,7 @@ Catalogue des types de prestations hors forfait.
 
 **Comportement implémenté** : lu par `genererFactureProprietaire` — produit une ligne `code='HAOWNER'`, TVA 20%, dans la facture honoraires. Réduit le reversement sur une base TTC. Si `haownerTTC > LOY_bien_disponible`, `montantReversement = 0` — la ligne reste dans la facture, le propriétaire règle le solde directement. Pas de code HAOWNER dans `ventilation.js`.
 >
-> Ce concept n'a pas encore de table dédiée ni de code comptable dans la ventilation. Son implémentation est un besoin métier identifié mais non couvert dans le modèle actuel.
+> ✅ **Mis à jour mars 2026** : une table dédiée `frais_proprietaire` a été créée (commit `360b959`). Les frais `mode_traitement='haowner'` restent modélisés dans `prestation_hors_forfait`. `frais_proprietaire` couvre les cas `deduire_loyer` et `facturer_direct`. Pas encore de code HAOWNER/FRAIS dans `ventilation.js`.
 
 ---
 
