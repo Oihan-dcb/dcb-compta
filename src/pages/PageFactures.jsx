@@ -69,7 +69,7 @@ export default function PageFactures() {
       const result = await genererFacturesMois(mois)
       setSuccess(`${result.created} factures créées, ${result.updated} mises à jour${result.errors > 0 ? `, ${result.errors} erreurs` : ''}`)
       if ((result.resteAPayer || 0) > 0) {
-        setWarning(`â  Reversement entierement absorbe sur certaines factures. Reste total a payer : ${(result.resteAPayer / 100).toFixed(2)} â¬`)
+        setWarning(`⚠ Reversement entierement absorbe sur certaines factures. Reste total a payer : ${(result.resteAPayer / 100).toFixed(2)} €`)
       }
       await charger()
     } catch (err) {
@@ -217,11 +217,11 @@ export default function PageFactures() {
       )}
 
       {loading ? (
-        <div className="loading-state"><span className="spinner" /> ChargementÃ¢ÂÂ¦</div>
+        <div className="loading-state"><span className="spinner" /> Chargement…</div>
       ) : factures.length === 0 ? (
         <div className="empty-state">
           <div className="empty-state-title">Aucune facture pour ce mois</div>
-          <p>Lance la gÃÂ©nÃÂ©ration aprÃÂ¨s avoir synchronisÃÂ© les rÃÂ©servations et calculÃÂ© la ventilation.</p>
+          <p>Lance la génération après avoir synchronisé les réservations et calculé la ventilation.</p>
         </div>
       ) : (
         <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
