@@ -1,4 +1,3 @@
-{f.montant_reversement !== null && (
 import { useState, useEffect } from 'react'
 import MoisSelector from '../components/MoisSelector'
 import {
@@ -129,7 +128,6 @@ export default function PageFactures() {
             Factures DCB Ã¢ÂÂ PropriÃÂ©taires Ã¢ÂÂ {factures.length} factures ÃÂ· {formatMontant(totalTTC)} TTC
           </p>
         </div>
-)}
         <div style={{ display: 'flex', gap: 10, alignItems: 'center' }}>
           <MoisSelector mois={mois} setMois={setMois} moisDispos={moisDispos} />
           <button className="btn btn-secondary" onClick={charger} disabled={loading}>Ã¢ÂÂº</button>

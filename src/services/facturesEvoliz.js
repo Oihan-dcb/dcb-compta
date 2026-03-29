@@ -1,32 +1,32 @@
 /**
- * Service de gÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂ©nÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂ©ration des factures Evoliz DCB ÃÂÃÂÃÂÃÂ¢ÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂ PropriÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂ©taire
+ * Service de gÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂ©nÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂ©ration des factures Evoliz DCB ÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂ¢ÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂ PropriÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂ©taire
  *
  * Workflow :
- * 1. En dÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂ©but de mois : gÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂ©nÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂ©rer les brouillons pour tous les proprios actifs
- * 2. VÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂ©rification : statements finalisÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂ©s, montants AE validÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂ©s (non bloquant)
+ * 1. En dÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂ©but de mois : gÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂ©nÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂ©rer les brouillons pour tous les proprios actifs
+ * 2. VÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂ©rification : statements finalisÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂ©s, montants AE validÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂ©s (non bloquant)
  * 3. Validation manuelle par Oihan
  * 4. Push vers Evoliz via API
  * 5. Tracking statut paiement
  *
  * Structure facture :
- * - Ligne COM : ÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂ£ reservation_commissions ÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂ taux ÃÂÃÂÃÂÃÂ¢ÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂ TVA 20%
- * - Ligne MEN : ÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂ£ (guest_fees - provision AE) + management_fees ÃÂÃÂÃÂÃÂ¢ÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂ TVA 20%
- * - Ligne DIV : ÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂ£ expenses [DCB] ÃÂÃÂÃÂÃÂ¢ÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂ TVA 20%
- * - Mention : "ConformÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂ©ment au mandat de gestion..."
+ * - Ligne COM : ÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂ£ reservation_commissions ÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂ taux ÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂ¢ÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂ TVA 20%
+ * - Ligne MEN : ÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂ£ (guest_fees - provision AE) + management_fees ÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂ¢ÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂ TVA 20%
+ * - Ligne DIV : ÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂ£ expenses [DCB] ÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂ¢ÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂ TVA 20%
+ * - Mention : "ConformÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂ©ment au mandat de gestion..."
  */
 
 import { supabase } from '../lib/supabase'
 
-const MENTION_MANDAT = "ConformÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂ©ment au mandat de gestion, les honoraires de gestion sont directement prÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂ©levÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂ©s sur le loyer encaissÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂ© avant reversement au propriÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂ©taire."
+const MENTION_MANDAT = "ConformÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂ©ment au mandat de gestion, les honoraires de gestion sont directement prÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂ©levÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂ©s sur le loyer encaissÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂ© avant reversement au propriÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂ©taire."
 
 /**
- * GÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂ©nÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂ¨re les brouillons de factures pour tous les propriÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂ©taires actifs d'un mois
+ * GÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂ©nÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂ¨re les brouillons de factures pour tous les propriÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂ©taires actifs d'un mois
  * @param {string} mois - YYYY-MM
  */
 export async function genererFacturesMois(mois) {
   const log = { created: 0, updated: 0, errors: 0, resteAPayer: 0, deboursCreated: 0, deboursUpdated: 0 }
 
-  // RÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂ©cupÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂ©rer tous les propriÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂ©taires avec des biens actifs
+  // RÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂ©cupÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂ©rer tous les propriÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂ©taires avec des biens actifs
   const { data: proprietaires, error: propErr } = await supabase
     .from('proprietaire')
     .select(`
@@ -41,7 +41,7 @@ export async function genererFacturesMois(mois) {
 
   if (propErr) throw propErr
 
-  // DÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂ©dupliquer (un proprio peut avoir plusieurs biens)
+  // DÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂ©dupliquer (un proprio peut avoir plusieurs biens)
   const propMap = new Map()
   for (const p of (proprietaires || [])) {
     if (!propMap.has(p.id)) propMap.set(p.id, { ...p, biens: [] })
@@ -70,12 +70,12 @@ export async function genererFacturesMois(mois) {
 }
 
 /**
- * GÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂ©nÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂ¨re ou met ÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂ  jour la facture mensuelle d'un propriÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂ©taire
+ * GÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂ©nÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂ¨re ou met ÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂ  jour la facture mensuelle d'un propriÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂ©taire
  */
 async function genererFactureProprietaire(proprio, mois) {
   const bienIds = proprio.biens.map(b => b.id)
 
-  // RÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂ©cupÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂ©rer les rÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂ©servations du mois pour ces biens
+  // RÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂ©cupÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂ©rer les rÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂ©servations du mois pour ces biens
   const { data: reservations, error: resaErr } = await supabase
     .from('reservation')
     .select(`
@@ -90,7 +90,7 @@ async function genererFactureProprietaire(proprio, mois) {
 
   if (resaErr) throw resaErr
 
-  // RÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂ©cupÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂ©rer les expenses [DCB] du mois pour ces biens
+  // RÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂ©cupÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂ©rer les expenses [DCB] du mois pour ces biens
   const { data: expenses, error: expErr } = await supabase
     .from('expense')
     .select('amount, description, type_expense')
@@ -101,12 +101,12 @@ async function genererFactureProprietaire(proprio, mois) {
 
   if (expErr) throw expErr
 
-  // CF-FACAE : facture_ae non implÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂ©mentÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂ© ÃÂÃÂÃÂÃÂ¢ÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂ aeParBien = Map vide (table absente en base)
+  // CF-FACAE : facture_ae non implÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂ©mentÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂ© ÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂ¢ÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂ aeParBien = Map vide (table absente en base)
   const aeParBien = new Map()
 
   // --- Calculer les 3 lignes ---
 
-  // COM : ÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂ£ ventilation COM du mois
+  // COM : ÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂ£ ventilation COM du mois
   const { data: lignesVentil } = await supabase
     .from('ventilation')
     .select('code, montant_ht, montant_tva, montant_ttc, bien_id')
@@ -156,7 +156,7 @@ async function genererFactureProprietaire(proprio, mois) {
   const divTVA = Math.round(divHT * 0.20)
   const div = { ht: divHT, tva: divTVA, ttc: divHT + divTVA }
 
-  // MEN consolidÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂ© = MEN + MGT
+  // MEN consolidÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂ© = MEN + MGT
   const menConsolide = {
     ht: men.ht + mgt.ht,
     tva: men.tva + mgt.tva,
@@ -168,19 +168,19 @@ async function genererFactureProprietaire(proprio, mois) {
   const totalTVA = com.tva + menConsolide.tva + div.tva + haownerTVA
   const totalTTC = totalHT + totalTVA
 
-  // AUTO Ã©tape 1 : absorption bien par bien -- mode_encaissement = 'dcb' uniquement
+  // AUTO ÃÂ©tape 1 : absorption bien par bien -- mode_encaissement = 'dcb' uniquement
   let autoAbsorbableTotal = 0
   let autoSurplusTotal = 0
 
   for (const bien of proprio.biens) {
     if (bien.mode_encaissement !== 'dcb') continue
 
-    // LOY de ce bien depuis ventilation dÃ©jÃ  chargÃ©e
+    // LOY de ce bien depuis ventilation dÃÂ©jÃÂ  chargÃÂ©e
     const loyBien = ventilation
       .filter(l => l.bien_id === bien.id && l.code === 'LOY')
       .reduce((s, l) => s + l.montant_ht, 0)
 
-    // DÃ©ductions deduction_loy de ce bien
+    // DÃÂ©ductions deduction_loy de ce bien
     const prestBien = (prestationsDeduction || [])
       .filter(p => p.bien_id === bien.id)
       .reduce((s, p) => s + (p.montant || 0), 0)
@@ -201,7 +201,7 @@ async function genererFactureProprietaire(proprio, mois) {
     const autoBien = (autoLines || [])
       .reduce((s, l) => s + (l.montant_reel !== null ? l.montant_reel : (l.montant_ht || 0)), 0)
 
-    // LOY disponible aprÃ¨s dÃ©ductions de ce bien
+    // LOY disponible aprÃÂ¨s dÃÂ©ductions de ce bien
     const loyBienDisponible = Math.max(0, loyBien - prestBien - haownerBienTTC)
 
     // Absorption et surplus bien par bien
@@ -214,10 +214,10 @@ async function genererFactureProprietaire(proprio, mois) {
 
   const montantReversement = Math.max(0, loy.ht - totalPrestations - haownerTTC - autoAbsorbableTotal)
 
-  // Cas solde nÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂ©gatif : uniquement des expenses, pas de rÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂ©servations
+  // Cas solde nÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂ©gatif : uniquement des expenses, pas de rÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂ©servations
   const soldeNegatif = totalHT === 0 && div.ht > 0
 
-  // VÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂ©rifier si facture existante
+  // VÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂ©rifier si facture existante
   const { data: existingFacture } = await supabase
     .from('facture_evoliz')
     .select('id, statut')
@@ -225,9 +225,9 @@ async function genererFactureProprietaire(proprio, mois) {
     .eq('mois', mois)
     .single()
 
-  // Ne pas ÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂ©craser une facture dÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂ©jÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂ  envoyÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂ©e ou payÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂ©e
+  // Ne pas ÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂ©craser une facture dÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂ©jÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂ  envoyÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂ©e ou payÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂ©e
   if (existingFacture && ['envoye_evoliz', 'payee'].includes(existingFacture.statut)) {
-    return { created: false, skipped: true, raison: 'Facture dÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂ©jÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂ  envoyÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂ©e' }
+    return { created: false, skipped: true, raison: 'Facture dÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂ©jÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂ  envoyÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂ©e' }
   }
 
   const factureData = {
@@ -262,7 +262,7 @@ async function genererFactureProprietaire(proprio, mois) {
     created = true
   }
 
-  // Supprimer et recrÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂ©er les lignes
+  // Supprimer et recrÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂ©er les lignes
   await supabase.from('facture_evoliz_ligne').delete().eq('facture_id', factureId)
 
   const lignes = []
@@ -273,7 +273,7 @@ async function genererFactureProprietaire(proprio, mois) {
       facture_id: factureId,
       code: 'HON',
       libelle: 'Honoraires de gestion',
-      description: `${reservations?.length || 0} rÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂ©servation(s) ÃÂÃÂÃÂÃÂ¢ÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂ ${mois}`,
+      description: `${reservations?.length || 0} rÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂ©servation(s) ÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂ¢ÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂ ${mois}`,
       montant_ht: com.ht,
       taux_tva: 20,
       montant_tva: com.tva,
@@ -286,7 +286,7 @@ async function genererFactureProprietaire(proprio, mois) {
     lignes.push({
       facture_id: factureId,
       code: 'FMEN',
-      libelle: 'Forfait mÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂ©nage, linge et frais de service',
+      libelle: 'Forfait mÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂ©nage, linge et frais de service',
       description: MENTION_MANDAT,
       montant_ht: menConsolide.ht,
       taux_tva: 20,
@@ -300,7 +300,7 @@ async function genererFactureProprietaire(proprio, mois) {
     lignes.push({
       facture_id: factureId,
       code: 'DIV',
-      libelle: soldeNegatif ? 'Frais avancÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂ©s ÃÂÃÂÃÂÃÂ¢ÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂ remboursement demandÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂ©' : 'Frais divers avancÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂ©s',
+      libelle: soldeNegatif ? 'Frais avancÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂ©s ÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂ¢ÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂ remboursement demandÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂ©' : 'Frais divers avancÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂ©s',
       description: (expenses || []).map(e => e.description).join(', ') || 'Frais divers',
       montant_ht: div.ht,
       taux_tva: 20,
@@ -347,7 +347,7 @@ async function genererFactureProprietaire(proprio, mois) {
 }
 
 /**
- * RÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂ©cupÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂ¨re toutes les factures d'un mois avec les dÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂ©tails
+ * RÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂ©cupÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂ¨re toutes les factures d'un mois avec les dÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂ©tails
  */
 async function genererFactureDebours(proprio, mois) {
   const lignes = []
@@ -447,6 +447,12 @@ async function genererFactureDebours(proprio, mois) {
   } else {
     const { data: newFacture } = await supabase
       .from('facture_evoliz').insert(factureData).select('id').single()
+    if (!newFacture?.id) {
+      throw new Error(
+        'genererFactureDebours: INSERT facture_evoliz n\'a pas retourne d\'id' +
+        ` — proprio=${proprio.id} mois=${mois} totalHT=${totalHT}`
+      )
+    }
     factureId = newFacture?.id
     created = true
   }
@@ -477,7 +483,7 @@ export async function getFacturesMois(mois) {
 }
 
 /**
- * Valide une facture (passage brouillon ÃÂÃÂÃÂÃÂ¢ÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂ validÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂ©)
+ * Valide une facture (passage brouillon ÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂ¢ÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂ validÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂ©)
  */
 export async function validerFacture(factureId) {
   const { error } = await supabase
@@ -490,9 +496,9 @@ export async function validerFacture(factureId) {
 }
 
 /**
- * Marque une facture comme envoyÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂ©e dans Evoliz
+ * Marque une facture comme envoyÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂ©e dans Evoliz
  * @param {string} factureId
- * @param {string} idEvoliz - ID attribuÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂ© par Evoliz
+ * @param {string} idEvoliz - ID attribuÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂ© par Evoliz
  * @param {string} numeroFacture
  */
 export async function marquerEnvoyeeEvoliz(factureId, idEvoliz, numeroFacture) {
@@ -510,8 +516,8 @@ export async function marquerEnvoyeeEvoliz(factureId, idEvoliz, numeroFacture) {
 }
 
 /**
- * GÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂ©nÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂ¨re l'export CSV pour l'expert-comptable
- * Une ligne par code ventilation par rÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂ©servation
+ * GÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂ©nÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂ¨re l'export CSV pour l'expert-comptable
+ * Une ligne par code ventilation par rÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂ©servation
  */
 export async function exportCSVComptable(mois) {
   const { data: ventilation, error } = await supabase
@@ -528,10 +534,10 @@ export async function exportCSVComptable(mois) {
   if (error) throw error
 
   const lignes = [
-    // En-tÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂªte
-    ['Mois', 'Code comptable', 'LibellÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂ©', 'Bien', 'PropriÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂ©taire', 'Plateforme',
-     'RÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂ©fÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂ©rence rÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂ©sa', 'Check-in', 'Check-out', 'HT (ÃÂÃÂÃÂÃÂ¢ÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂ¬)', 'TVA %', 'TVA (ÃÂÃÂÃÂÃÂ¢ÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂ¬)', 'TTC (ÃÂÃÂÃÂÃÂ¢ÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂ¬)'],
-    // DonnÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂ©es
+    // En-tÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂªte
+    ['Mois', 'Code comptable', 'LibellÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂ©', 'Bien', 'PropriÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂ©taire', 'Plateforme',
+     'RÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂ©fÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂ©rence rÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂ©sa', 'Check-in', 'Check-out', 'HT (ÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂ¢ÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂ¬)', 'TVA %', 'TVA (ÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂ¢ÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂ¬)', 'TTC (ÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂ¢ÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂ¬)'],
+    // DonnÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂ©es
     ...(ventilation || []).map(l => [
       l.mois_comptable,
       l.code,
@@ -559,7 +565,7 @@ export async function exportCSVComptable(mois) {
 }
 
 /**
- * TÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂ©lÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂ©charge le CSV dans le navigateur
+ * TÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂ©lÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂ©charge le CSV dans le navigateur
  */
 export function telechargerCSV(contenu, nomFichier) {
   const blob = new Blob([contenu], { type: 'text/csv;charset=utf-8;' })
