@@ -132,7 +132,7 @@ async function genererFactureProprietaire(proprio, mois) {
   // CF-P1 : prestations hors forfait deduction_loy validees -- deduction directe sur reversement
   const { data: prestationsDeduction } = await supabase
     .from('prestation_hors_forfait')
-    .select('montant, bien_id')
+    .select('montant, bien_id, description')
     .in('bien_id', bienIds)
     .eq('mois', mois)
     .eq('statut', 'valide')
@@ -142,7 +142,7 @@ async function genererFactureProprietaire(proprio, mois) {
   // CF-P1 HAOWNER : frais avances DCB refactures au proprietaire (TVA 20%)
   const { data: prestationsHaowner } = await supabase
     .from('prestation_hors_forfait')
-    .select('montant, bien_id')
+    .select('montant, bien_id, description')
     .in('bien_id', bienIds)
     .eq('mois', mois)
     .eq('statut', 'valide')
@@ -332,7 +332,9 @@ async function genererFactureProprietaire(proprio, mois) {
     lignes.push({
       facture_id: factureId,
       code: 'PREST',
-      libelle: `Prestations hors forfait deduites (${(prestationsDeduction || []).length} elements)`,
+      libelle: prestationsDeduction && prestationsDeduction.length === 1
+        ? `Prestation deduite : ${prestationsDeduction[0].description || 'Prestation hors forfait'}`
+        : `Prestations deduites : ${(prestationsDeduction || []).map(p => p.description || 'Prestation').join(', ')}`,
       montant_ht: -totalPrestations,
       taux_tva: 0,
       montant_tva: 0,
@@ -346,7 +348,9 @@ async function genererFactureProprietaire(proprio, mois) {
     lignes.push({
       facture_id: factureId,
       code: 'HAOWNER',
-      libelle: `Frais avances a rembourser (${(prestationsHaowner || []).length} elements)`,
+      libelle: prestationsHaowner && prestationsHaowner.length === 1
+        ? `Achat avance : ${prestationsHaowner[0].description || 'Frais proprietaire'}`
+        : `Achats avances : ${(prestationsHaowner || []).map(p => p.description || 'Frais').join(', ')}`,
       montant_ht: haownerHT,
       taux_tva: 20,
       montant_tva: haownerTVA,
