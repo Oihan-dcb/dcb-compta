@@ -10,19 +10,19 @@ Les fichiers dans `docs/` sont la source de verite du projet. Lis-les avec `/ini
 | Fichier | Contenu |
 |||
 | `docs/project-overview.md` | Vue d'ensemble, stack, bugs connus, historique fixes |
-| src/docs/architecture-map.md` | Carte des modules, flux de donnees, dependances |
-| src/docs/data-model.md` | Schema Supabase complet, champs, contraintes |
-| src/docs/domain-rules.md` | Regles metier : ventilation, facturation, AUTO, HAOWNER |
-| src/docs/invariants.md` | Invariants systeme avec statut ✅/⚠/◌ |
-| src/docs/source-of-truth.md` | Sources de donnees, priorites, comportements |
+| `docs/architecture-map.md` | Carte des modules, flux de donnees, dependances |
+| `docs/data-model.md` | Schema Supabase complet, champs, contraintes |
+| `docs/domain-rules.md` | Regles metier : ventilation, facturation, AUTO, HAOWNER |
+| `docs/invariants.md` | Invariants systeme avec statut ✅/⚠/❌ |
+| `docs/source-of-truth.md` | Sources de donnees, priorites, comportements |
 
 ## Regle obligatoire — Mise a jour docs/
 Apres chaque fix ou feature significatif, mets a jour le(s) fichier(s) docs/ concerne(s) :
-- Bug corrige : passer ✌ → ✅ dans `invariants.md`
+- Bug corrige : passer ❌ → ✅ dans `invariants.md`
 - Nouveau comportement : documenter dans `domain-rules.md`
 - Schema modifie : mettre a jour `data-model.md`
 - Architecture changee : mettre a jour `architecture-map.md`
-- Fix important : ajouter dans la section 'Fixes appliques' de `project-overview.md`
+- Fix important : ajouter dans la section "Fixes" de `project-overview.md`
 
 ## Regles techniques
 - Toujours `npm run build` avant de pousser
@@ -39,7 +39,7 @@ Apres chaque fix ou feature significatif, mets a jour le(s) fichier(s) docs/ con
 
 ## Codes comptables
 HON (honoraires DCB), FMEN (forfait menage), AUTO (debours AE), LOY (reversement proprietaire),
-VIR (virement reel), TAXE (taxe de sejour), DEB_AE (debours facture separee)
+VIR (virement reel), TAXE (taxe de sejour), DEB_AE (debours facture separee), HAOWNER (achat DCB pour proprio), PREST (memo prestation)
 
 ## Charte graphique (zero bleu)
 - `--brand #CC9933` or, `--bg #F7F3EC` creme, `--border #D9CEB8`, `--text #2C2416` brun
