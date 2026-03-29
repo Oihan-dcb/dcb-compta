@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react'
 import { setToken, formatMontant } from '../lib/hospitable'
-import { lancerMatching, marquerNonRapprochable, getPayoutsMois, getMatchingStats, validerMatchManuelResas } from '../services/matching'
+import { marquerNonRapprochable, getPayoutsMois, getMatchingStats, validerMatchManuelResas } from '../services/matching'
+import { lancerMatchingAuto as lancerMatchingAutoRapp } from '../services/rapprochement'
 import { getMouvementsARapprocher } from '../services/banque'
 import { supabase } from '../lib/supabase'
 import { format } from 'date-fns'
@@ -93,7 +94,7 @@ export default function PageMatching() {
     setMatchResult(null)
     setError(null)
     try {
-      const result = await lancerMatching(mois)
+      const result = await lancerMatchingAutoRapp(mois)
       setMatchResult(result)
       await charger()
     } catch (err) {

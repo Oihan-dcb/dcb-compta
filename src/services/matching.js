@@ -21,6 +21,8 @@ import { supabase } from '../lib/supabase'
  * @param {string} mois - YYYY-MM
  * @returns {Promise<{matched, unmatched, errors}>}
  */
+// DEPRECATED — remplacé par lancerMatchingAuto dans rapprochement.js
+// Conserver le fichier pour marquerNonRapprochable, getPayoutsMois, getMatchingStats, validerMatchManuelResas
 export async function lancerMatching(mois) {
   const result = { matched: 0, unmatched: 0, errors: 0 }
 

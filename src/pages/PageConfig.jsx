@@ -3,7 +3,7 @@ import { pingEvoliz, getPaytermsEvoliz } from '../services/evoliz'
 import { syncProprietairesEvoliz } from '../services/syncProprietaires'
 import { formatMontant, setToken } from '../lib/hospitable'
 import { calculerVentilationMois } from '../services/ventilation'
-import { lancerMatching } from '../services/matching'
+import { lancerMatchingAuto } from '../services/rapprochement'
 import { resetEtRematcher } from '../services/rapprochement'
 export default function PageConfig() {
   const [testing, setTesting] = useState(false)
@@ -68,7 +68,7 @@ export default function PageConfig() {
     try {
       let total = 0
       for (const mois of allMois) {
-        const r = await lancerMatching(mois)
+        const r = await lancerMatchingAuto(mois)
         total += (r?.matched || 0)
       }
       update('matching', 'ok', `${total} virement(s) rapproché(s)`)
