@@ -12,10 +12,10 @@ const moisCourant = new Date().toISOString().substring(0, 7)
 const STATUTS = {
   calcul_en_cours: { label: 'Calcul en cours', color: 'var(--text-muted)', bg: '#F3F4F6' },
   brouillon: { label: 'Brouillon', color: '#D97706', bg: '#FEF3C7' },
-  valide: { label: 'ValidÃÂ©e', color: '#059669', bg: '#D1FAE5' },
-  envoye_evoliz: { label: 'EnvoyÃÂ©e Evoliz', color: '#EA580C', bg: '#FFF7ED' },
-  payee: { label: 'PayÃÂ©e', color: '#059669', bg: '#D1FAE5' },
-  solde_negatif: { label: 'Solde nÃÂ©gatif', color: '#DC2626', bg: '#FEE2E2' },
+  valide: { label: 'Validée', color: '#059669', bg: '#D1FAE5' },
+  envoye_evoliz: { label: 'Envoyée Evoliz', color: '#EA580C', bg: '#FFF7ED' },
+  payee: { label: 'Payée', color: '#059669', bg: '#D1FAE5' },
+  solde_negatif: { label: 'Solde négatif', color: '#DC2626', bg: '#FEE2E2' },
 }
 
 export default function PageFactures() {
@@ -67,7 +67,7 @@ export default function PageFactures() {
     setWarning(null)
     try {
       const result = await genererFacturesMois(mois)
-      setSuccess(`${result.created} factures crÃÂ©ÃÂ©es, ${result.updated} mises ÃÂ  jour${result.errors > 0 ? `, ${result.errors} erreurs` : ''}`)
+      setSuccess(`${result.created} factures créées, ${result.updated} mises à jour${result.errors > 0 ? `, ${result.errors} erreurs` : ''}`)
       if ((result.resteAPayer || 0) > 0) {
         setWarning(`â  Reversement entierement absorbe sur certaines factures. Reste total a payer : ${(result.resteAPayer / 100).toFixed(2)} â¬`)
       }
@@ -82,7 +82,7 @@ export default function PageFactures() {
   async function valider(factureId) {
     try {
       await validerFacture(factureId)
-      setSuccess('Facture validÃÂ©e Ã¢ÂÂ prÃÂªte pour envoi dans Evoliz')
+      setSuccess('Facture validée — prête pour envoi dans Evoliz')
       await charger()
     } catch (err) {
       setError(err.message)
@@ -125,25 +125,25 @@ export default function PageFactures() {
         <div>
           <h1 className="page-title">Factures</h1>
           <p className="page-subtitle">
-            Factures DCB Ã¢ÂÂ PropriÃÂ©taires Ã¢ÂÂ {factures.length} factures ÃÂ· {formatMontant(totalTTC)} TTC
+            Factures DCB — Propriétaires — {factures.length} factures · {formatMontant(totalTTC)} TTC
           </p>
         </div>
         <div style={{ display: 'flex', gap: 10, alignItems: 'center' }}>
           <MoisSelector mois={mois} setMois={setMois} moisDispos={moisDispos} />
-          <button className="btn btn-secondary" onClick={charger} disabled={loading}>Ã¢ÂÂº</button>
+          <button className="btn btn-secondary" onClick={charger} disabled={loading}>↺</button>
           <button className="btn btn-secondary" onClick={exporterCSV} disabled={exporting || factures.length === 0}>
-            {exporting ? <><span className="spinner" /> ExportÃ¢ÂÂ¦</> : 'Ã¢ÂÂ Export comptable'}
+            {exporting ? <><span className="spinner" /> Export…</> : '— Export comptable'}
           </button>
           <button
             className="btn btn-secondary"
             onClick={() => setShowConfirmEvoliz(true)}
             disabled={pushing || stats?.valides === 0}
-            title={stats?.valides === 0 ? 'Aucune facture validÃÂ©e ÃÂ  envoyer' : `Envoyer ${stats?.valides} facture(s) validÃÂ©e(s) vers Evoliz`}
+            title={stats?.valides === 0 ? 'Aucune facture validée à envoyer' : `Envoyer ${stats?.valides} facture(s) validée(s) vers Evoliz`}
           >
-            {pushing ? <><span className="spinner" /> EvolizÃ¢ÂÂ¦</> : 'Ã¢ÂÂ Pousser vers Evoliz'}
+            {pushing ? <><span className="spinner" /> Evoliz…</> : '— Pousser vers Evoliz'}
           </button>
           <button className="btn btn-primary" onClick={generer} disabled={generating}>
-            {generating ? <><span className="spinner" /> GÃÂ©nÃÂ©rationÃ¢ÂÂ¦</> : 'Ã¢ÂÂ¡ GÃÂ©nÃÂ©rer factures'}
+            {generating ? <><span className="spinner" /> Génération…</> : '⚡ Générer factures'}
           </button>
         </div>
       </div>
@@ -154,58 +154,58 @@ export default function PageFactures() {
           <div className="stat-card">
             <div className="stat-label">Factures</div>
             <div className="stat-value">{stats.total}</div>
-            <div className="stat-sub">propriÃÂ©taires facturÃÂ©s</div>
+            <div className="stat-sub">propriétaires facturés</div>
           </div>
           <div className="stat-card">
             <div className="stat-label">Brouillons</div>
             <div className="stat-value" style={{ color: stats.brouillons > 0 ? 'var(--warning)' : 'var(--text-muted)' }}>
               {stats.brouillons}
             </div>
-            <div className="stat-sub">ÃÂ  valider avant envoi</div>
+            <div className="stat-sub">à valider avant envoi</div>
           </div>
           <div className="stat-card">
-            <div className="stat-label">ValidÃÂ©es / EnvoyÃÂ©es</div>
+            <div className="stat-label">Validées / Envoyées</div>
             <div className="stat-value" style={{ color: 'var(--success)' }}>
               {stats.valides + stats.envoyes + stats.payes}
             </div>
-            <div className="stat-sub">traitÃÂ©es</div>
+            <div className="stat-sub">traitées</div>
           </div>
           <div className="stat-card">
-            <div className="stat-label">Total TTC facturÃÂ©</div>
+            <div className="stat-label">Total TTC facturé</div>
             <div className="stat-value" style={{ fontSize: 18 }}>{formatMontant(stats.total_ttc)}</div>
             <div className="stat-sub">revenus DCB du mois</div>
           </div>
           <div className="stat-card">
-            <div className="stat-label">Total ÃÂ  reverser</div>
+            <div className="stat-label">Total à reverser</div>
             <div className="stat-value" style={{ fontSize: 18, color: 'var(--brand)' }}>
               {formatMontant(totalReversement)}
             </div>
-            <div className="stat-sub">aux propriÃÂ©taires</div>
+            <div className="stat-sub">aux propriétaires</div>
           </div>
           {stats.soldes_negatifs > 0 && (
             <div className="stat-card">
-              <div className="stat-label">Soldes nÃÂ©gatifs</div>
+              <div className="stat-label">Soldes négatifs</div>
               <div className="stat-value" style={{ color: 'var(--danger)' }}>{stats.soldes_negatifs}</div>
-              <div className="stat-sub">ÃÂ  rÃÂ©clamer au proprio</div>
+              <div className="stat-sub">à réclamer au proprio</div>
             </div>
           )}
         </div>
       )}
 
       {/* Alertes */}
-      {error && <div className="alert alert-error">Ã¢ÂÂ {error}</div>}
+      {error && <div className="alert alert-error">✗ {error}</div>}
       {pushResult && (
         <div className={`alert ${pushResult.errors.length > 0 ? 'alert-warning' : 'alert-success'}`}>
           {pushResult.errors.length === 0
-            ? `Ã¢ÂÂ ${pushResult.pushed} facture(s) envoyÃÂ©e(s) dans Evoliz`
-            : `Ã¢ÂÂ  ${pushResult.pushed} envoyÃÂ©e(s), ${pushResult.errors.length} erreur(s) : ${pushResult.errors.map(e => `${e.proprio}: ${e.error}`).join(' | ')}`
+            ? `✓ ${pushResult.pushed} facture(s) envoyée(s) dans Evoliz`
+            : `⚠ ${pushResult.pushed} envoyée(s), ${pushResult.errors.length} erreur(s) : ${pushResult.errors.map(e => `${e.proprio}: ${e.error}`).join(' | ')}`
           }
         </div>
       )}
-      {success && <div className="alert alert-success">Ã¢ÂÂ {success}</div>}
+      {success && <div className="alert alert-success">✓ {success}</div>}
       {stats?.brouillons > 0 && (
         <div className="alert alert-warning">
-          Ã¢ÂÂ  {stats.brouillons} facture(s) en brouillon Ã¢ÂÂ ÃÂ  valider avant envoi dans Evoliz.
+          ⚠ {stats.brouillons} facture(s) en brouillon — à valider avant envoi dans Evoliz.
           Assure-toi que la ventilation et les factures AE sont correctes avant de valider.
         </div>
       )}
@@ -248,8 +248,8 @@ export default function PageFactures() {
                         {proprio?.nom} {proprio?.prenom || ''}
                       </div>
                       <div style={{ fontSize: 12, color: 'var(--text-muted)' }}>
-                        {f.numero_facture || `Brouillon Ã¢ÂÂ ${mois}`}
-                        {proprio?.iban && <span> ÃÂ· IBAN : {proprio.iban.substring(0, 12)}Ã¢ÂÂ¦</span>}
+                        {f.numero_facture || `Brouillon — ${mois}`}
+                        {proprio?.iban && <span> · IBAN : {proprio.iban.substring(0, 12)}…</span>}
           {f.type_facture === 'debours' && (
             <span style={{ fontSize: 10, fontWeight: 700, background: '#e8f4f8',
                            color: '#2c7da0', borderRadius: 4, padding: '2px 6px',
@@ -279,7 +279,7 @@ export default function PageFactures() {
                     )}
                     {f.solde_negatif && (
                       <div style={{ textAlign: 'right' }}>
-                        <div style={{ fontSize: 11, color: 'var(--danger)', textTransform: 'uppercase' }}>ÃÂ rÃÂ©clamer</div>
+                        <div style={{ fontSize: 11, color: 'var(--danger)', textTransform: 'uppercase' }}>À réclamer</div>
                         <div style={{ fontWeight: 700, color: 'var(--danger)' }}>{formatMontant(f.montant_reclame)}</div>
                       </div>
                     )}
@@ -299,11 +299,11 @@ export default function PageFactures() {
                         className="btn btn-primary btn-sm"
                         onClick={e => { e.stopPropagation(); valider(f.id) }}
                       >
-                        Ã¢ÂÂ Valider
+                        ✓ Valider
                       </button>
                     )}
 
-                    <span style={{ color: 'var(--text-muted)' }}>{isExpanded ? 'Ã¢ÂÂ²' : 'Ã¢ÂÂ¼'}</span>
+                    <span style={{ color: 'var(--text-muted)' }}>{isExpanded ? '▲' : '▼'}</span>
                   </div>
                 </div>
 
@@ -318,7 +318,7 @@ export default function PageFactures() {
                         <thead>
                           <tr>
                             <th>Code</th>
-                            <th>LibellÃÂ©</th>
+                            <th>Libellé</th>
                             <th>Description</th>
                             <th className="right">HT</th>
                             <th className="right">TVA 20%</th>
@@ -333,11 +333,11 @@ export default function PageFactures() {
                                 <td><span className={`code-${l.code}`}>{l.code}</span></td>
                                 <td style={{ fontWeight: 500 }}>{l.libelle}</td>
                                 <td style={{ fontSize: 12, color: 'var(--text-muted)', maxWidth: 300 }}>
-                                  {l.description?.substring(0, 80)}{l.description?.length > 80 ? 'Ã¢ÂÂ¦' : ''}
+                                  {l.description?.substring(0, 80)}{l.description?.length > 80 ? '…' : ''}
                                 </td>
                                 <td className="right montant">{formatMontant(l.montant_ht)}</td>
                                 <td className="right montant" style={{ color: 'var(--text-muted)' }}>
-                                  {l.taux_tva > 0 ? formatMontant(l.montant_tva) : 'Ã¢ÂÂ'}
+                                  {l.taux_tva > 0 ? formatMontant(l.montant_tva) : '—'}
                                 </td>
                                 <td className="right montant" style={{ fontWeight: 600 }}>
                                   {formatMontant(l.montant_ttc)}
@@ -357,14 +357,14 @@ export default function PageFactures() {
                     {/* Info reversement et IBAN */}
                     {f.montant_reversement > 0 && (
                       <div style={{ marginTop: 12, padding: '10px 14px', background: 'var(--bg, #F7F3EC)', borderRadius: 6, fontSize: 13, border: '1px solid var(--border, #D9CEB8)' }}>
-                        <strong>Ordre de virement ÃÂ  prÃÂ©parer :</strong> {formatMontant(f.montant_reversement)} vers{' '}
-                        {proprio?.iban || <span style={{ color: 'var(--warning)' }}>Ã¢ÂÂ  IBAN non renseignÃÂ©</span>}
+                        <strong>Ordre de virement à préparer :</strong> {formatMontant(f.montant_reversement)} vers{' '}
+                        {proprio?.iban || <span style={{ color: 'var(--warning)' }}>⚠ IBAN non renseigné</span>}
                       </div>
                     )}
                     {f.solde_negatif && (
                       <div style={{ marginTop: 12, padding: '10px 14px', background: '#FEF2F2', borderRadius: 6, fontSize: 13 }}>
-                        <strong style={{ color: 'var(--danger)' }}>Solde nÃÂ©gatif :</strong>{' '}
-                        {formatMontant(f.montant_reclame)} ÃÂ  rÃÂ©clamer au propriÃÂ©taire Ã¢ÂÂ envoyer cette facture pour remboursement.
+                        <strong style={{ color: 'var(--danger)' }}>Solde négatif :</strong>{' '}
+                        {formatMontant(f.montant_reclame)} à réclamer au propriétaire — envoyer cette facture pour remboursement.
                       </div>
                     )}
                   </div>
@@ -397,11 +397,11 @@ export default function PageFactures() {
             <p style={{ margin: '0 0 20px', color: 'var(--text-muted, #8C7B65)', lineHeight: 1.5 }}>
               Tu es sur le point d'envoyer{' '}
               <strong style={{ color: 'var(--text, #2C2416)' }}>
-                {stats?.valides ?? 0} facture{(stats?.valides ?? 0) > 1 ? 's' : ''} validÃÂ©e{(stats?.valides ?? 0) > 1 ? 's' : ''}
+                {stats?.valides ?? 0} facture{(stats?.valides ?? 0) > 1 ? 's' : ''} validée{(stats?.valides ?? 0) > 1 ? 's' : ''}
               </strong>{' '}
               vers Evoliz pour le mois de <strong style={{ color: 'var(--text, #2C2416)' }}>{mois}</strong>.
               <br /><br />
-              <span style={{ color: '#B45309', fontWeight: 600 }}>Ã¢ÂÂ  Cette action est irrÃÂ©versible</span> Ã¢ÂÂ les factures seront crÃÂ©ÃÂ©es dans Evoliz.
+              <span style={{ color: '#B45309', fontWeight: 600 }}>⚠ Cette action est irréversible</span> — les factures seront créées dans Evoliz.
             </p>
             <div style={{ display: 'flex', gap: 12, justifyContent: 'flex-end' }}>
               <button
@@ -431,7 +431,7 @@ export default function PageFactures() {
                   fontWeight: 700, fontSize: 14
                 }}
               >
-                {pushing ? 'EnvoiÃ¢ÂÂ¦' : "Confirmer l'envoi"}
+                {pushing ? 'Envoi…' : "Confirmer l'envoi"}
               </button>
             </div>
           </div>
