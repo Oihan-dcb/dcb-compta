@@ -154,7 +154,7 @@ async function genererFactureProprietaire(proprio, mois) {
   // Frais propriétaire à déduire du loyer (mode_traitement = 'deduire_loyer')
   const { data: fraisDeduire } = await supabase
     .from('frais_proprietaire')
-    .select('id, montant_ttc, bien_id')
+    .select('id, montant_ttc, bien_id, libelle')
     .in('bien_id', bienIds)
     .eq('mois_facturation', mois)
     .eq('mode_traitement', 'deduire_loyer')
