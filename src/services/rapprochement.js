@@ -551,15 +551,27 @@ export async function marquerNonIdentifie(mouvementId) {
 export async function annulerRapprochement(mouvementId) {
   // Récupérer le mouvement pour le log
   const { data: mvtLog } = await supabase.from('mouvement_bancaire').select('credit, date_operation, libelle').eq('id', mouvementId).single()
-  const { data: virs } = await supabase
+  const { data: virs, error: virsError } = await supabase
     .from('ventilation')
     .select('id, reservation_id')
     .eq('mouvement_id', mouvementId)
+  if (virsError) throw new Error('annulerRapprochement: erreur lecture ventilation — ' + virsError.message)
   if (virs?.length) {
     await supabase.from('ventilation').update({ mouvement_id: null }).in('id', virs.map(v => v.id))
-    const resaIds = [...new Set(virs.map(v => v.reservation_id).filter(Boolean))]
-    if (resaIds.length) await supabase.from('reservation').update({ rapprochee: false }).in('id', resaIds)
   }
+  // Réservations liées via VIR ventilation
+  const resaIds = [...new Set((virs || []).map(v => v.reservation_id).filter(Boolean))]
+  // Réservations liées via payout_hospitable (cas Airbnb sans VIR)
+  const { data: payoutResas } = await supabase
+    .from('payout_hospitable')
+    .select('payout_reservation(reservation_id)')
+    .eq('mouvement_id', mouvementId)
+  const payoutResaIds = (payoutResas || [])
+    .flatMap(p => p.payout_reservation || [])
+    .map(r => r.reservation_id)
+    .filter(Boolean)
+  const allResaIds = [...new Set([...resaIds, ...payoutResaIds])]
+  if (allResaIds.length) await supabase.from('reservation').update({ rapprochee: false }).in('id', allResaIds)
   await supabase.from('payout_hospitable').update({ mouvement_id: null, statut_matching: 'en_attente' }).eq('mouvement_id', mouvementId)
   // Supprimer les paiements enregistrés pour ce virement (annulation du rapprochement)
   await supabase.from('reservation_paiement').delete().eq('mouvement_id', mouvementId)
