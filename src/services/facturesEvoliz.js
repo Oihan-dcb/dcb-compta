@@ -355,6 +355,20 @@ async function genererFactureProprietaire(proprio, mois) {
     })
   }
 
+  // Frais proprietaire deduits du loyer (ligne de transparence)
+  for (const frais of (fraisDeduire || [])) {
+    lignes.push({
+      facture_id:  factureId,
+      code:        'FRAIS',
+      libelle:     frais.libelle || 'Frais proprietaire',
+      montant_ht:  -frais.montant_ttc,
+      taux_tva:    0,
+      montant_tva: 0,
+      montant_ttc: -frais.montant_ttc,
+      ordre:       ordre++,
+    })
+  }
+
   if (lignes.length > 0) {
     await supabase.from('facture_evoliz_ligne').insert(lignes)
   }
