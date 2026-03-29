@@ -58,7 +58,7 @@ export async function calculerVentilationMois(mois) {
       await calculerVentilationResa(resa)
       total++
     } catch (err) {
-      console.error(`Erreur ventilation rÃÂ©sa ${resa.code}:`, err)
+      console.error(`Erreur ventilation résa ${resa.code}:`, err)
       errors++
     }
   }
@@ -78,7 +78,7 @@ export function agregerSejoursProrio(reservations) {
     const propId = resa.bien?.proprietaire_id || 'sans_proprio'
     const propNom = resa.bien?.proprietaire
       ? `${resa.bien.proprietaire.nom}${resa.bien.proprietaire.prenom ? ' ' + resa.bien.proprietaire.prenom : ''}`
-      : resa.guest_name || 'Sans propriÃÂ©taire'
+      : resa.guest_name || 'Sans propriétaire'
     if (!sejours[propId]) {
       sejours[propId] = { id: propId, nom: propNom, total_fmen: 0, nb_resas: 0, biens: [] }
     }
@@ -99,7 +99,7 @@ export function agregerSejoursProrio(reservations) {
 export async function calculerVentilationResa(resa) {
   const bien = resa.bien
 
-  if (!bien) throw new Error(`Bien manquant pour rÃÂ©sa ${resa.code}`)
+  if (!bien) throw new Error(`Bien manquant pour résa ${resa.code}`)
 
   if (bien.gestion_loyer === false) return []  // Proprio gere le loyer
   if ((bien.agence || 'dcb') !== 'dcb') return []  // Bien Lauian - comptabilite separee - pas de ventilation
@@ -320,7 +320,7 @@ export async function calculerVentilationResa(resa) {
 
   // MEN Ã¢ÂÂ mÃÂ©nage brut collectÃÂ© voyageur (Hors TVA)
   if (menAmount > 0) {
-    lignes.push(ligneHorsTVA('MEN', 'MÃÂ©nage brut voyageur', menAmount, bien, resa))
+    lignes.push(ligneHorsTVA('MEN', 'Ménage brut voyageur', menAmount, bien, resa))
   }
 
   // COM Ã¢ÂÂ commission DCB sur locations directes (Management fee, TVA 20%)
@@ -335,18 +335,18 @@ export async function calculerVentilationResa(resa) {
 
   // FMEN Ã¢ÂÂ forfait mÃÂ©nage DCB = cleaning fee - AUTO (TVA 20%)
   if (fmenHT > 0) {
-    lignes.push(ligneTVA('FMEN', 'Forfait mÃÂ©nage', fmenHT, bien, resa, null, fmenTTC))
+    lignes.push(ligneTVA('FMEN', 'Forfait ménage', fmenHT, bien, resa, null, fmenTTC))
   }
 
   // AUTO Ã¢ÂÂ dÃÂ©bours auto-entrepreneur (hors TVA)
   if (aeAmount > 0) {
-    lignes.push(ligneHorsTVA('AUTO', 'DÃÂ©bours auto-entrepreneur', aeAmount, bien, resa))
+    lignes.push(ligneHorsTVA('AUTO', 'Débours auto-entrepreneur', aeAmount, bien, resa))
   }
 
 
   // LOY Ã¢ÂÂ reversement propriÃÂ©taire (hors TVA)
   if (loyAmount > 0) {
-    lignes.push(ligneHorsTVA('LOY', 'Reversement propriÃÂ©taire', loyAmount, bien, resa))
+    lignes.push(ligneHorsTVA('LOY', 'Reversement propriétaire', loyAmount, bien, resa))
   }
 
   // VIR Ã¢ÂÂ virement propriÃÂ©taire
@@ -356,14 +356,14 @@ export async function calculerVentilationResa(resa) {
   // VIR direct = LOY + taxes (remboursement 0,77% Hospitable dÃÂ©jÃÂ  dans platformRemb Ã¢ÂÂ LOY)
   const virAmount = loyAmount + taxesTotal
   if (virAmount > 0) {
-    lignes.push(ligneHorsTVA('VIR', 'Virement propriÃÂ©taire', virAmount, bien, resa))
+    lignes.push(ligneHorsTVA('VIR', 'Virement propriétaire', virAmount, bien, resa))
   }
 
   // TAXE Ã¢ÂÂ Airbnb: exclue. Booking: pass-through seulement. Direct: toutes.
   if (resa.platform !== 'airbnb') {
     for (const tax of taxes) {
       if (tax.amount > 0 && !isRemitted(tax)) {
-        lignes.push(ligneHorsTVA('TAXE', tax.label || 'Taxe sÃÂ©jour', tax.amount, bien, resa))
+        lignes.push(ligneHorsTVA('TAXE', tax.label || 'Taxe séjour', tax.amount, bien, resa))
       }
     }
   }
@@ -482,7 +482,7 @@ export async function getRecapVentilation(mois) {
   const parProprio = {}
   for (const l of lignes) {
     const propId = l.proprietaire_id || 'sans_proprio'
-    const propNom = l.proprietaire ? `${l.proprietaire.prenom || ''} ${l.proprietaire.nom || ''}`.trim() : 'Sans propriÃÂ©taire'
+    const propNom = l.proprietaire ? `${l.proprietaire.prenom || ''} ${l.proprietaire.nom || ''}`.trim() : 'Sans propriétaire'
     if (!parProprio[propId]) {
       parProprio[propId] = { id: propId, nom: propNom, codes: {}, total_com: 0, total_men: 0, total_loy: 0, total_auto: 0, total_vir: 0 }
     }
