@@ -41,21 +41,22 @@ export function parseBookingCSV(text) {
   const sep = lines[0].includes(';') ? ';' : ','
   const headers = lines[0].split(sep).map(h => h.replace(/^"|"$/g, '').trim())
 
-  const col = (name) => headers.findIndex(h => h.toLowerCase().includes(name.toLowerCase()))
+  const colIdx = (name) => headers.findIndex(h => h.toLowerCase().includes(name.toLowerCase()))
+  const col = (fr, en) => { const i = colIdx(fr); return i >= 0 ? i : colIdx(en) }
 
-  const iPayoutDate = col('Payout date')
-  const iRef        = col('Reference number')
-  const iCheckin    = col('Check-in date')
-  const iCheckout   = col('Check-out date')
-  const iProp       = col('Property name')
-  const iPropId     = col('Property ID')
-  const iAmount     = col('Payable amount')
-  const iGross      = col('Gross amount')
-  const iComm       = col('Commission')
-  const iStatus     = col('Reservation status')
+  const iPayoutDate = col('Date du versement',              'Payout date')
+  const iRef        = col('Numéro de référence',            'Reference number')
+  const iCheckin    = col("Date d'arrivée",                 'Check-in date')
+  const iCheckout   = col('Date de départ',                 'Check-out date')
+  const iProp       = col("Nom de l'établissement",         'Property name')
+  const iPropId     = col("Identifiant de l'établissement", 'Property ID')
+  const iAmount     = col('Montant du versement',           'Payable amount')
+  const iGross      = col('Montant brut',                   'Gross amount')
+  const iComm       = col('Commission',                     'Commission')
+  const iStatus     = col('Statut de la réservation',       'Reservation status')
 
-  if (iPayoutDate < 0) throw new Error('Colonne "Payout date" introuvable')
-  if (iAmount < 0)     throw new Error('Colonne "Payable amount" introuvable')
+  if (iPayoutDate < 0) throw new Error('Colonne "Payout date" / "Date du versement" introuvable')
+  if (iAmount < 0)     throw new Error('Colonne "Payable amount" / "Montant du versement" introuvable')
 
   const rowsByPayoutDate = {}
   for (let i = 1; i < lines.length; i++) {
