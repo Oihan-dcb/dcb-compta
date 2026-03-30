@@ -116,6 +116,59 @@ export async function getMouvementsMois(mois) {
       m._resa = infoByMouv[m.id] || null
     }
 
+    // Passe 2 : payout_hospitable → payout_reservation → reservation
+    // Couvre les virements Airbnb rapprochés via payout mais sans VIR lié ni reservation_paiement
+    const sansResaPasse2 = rapproches.filter(m => !m._resa)
+    if (sansResaPasse2.length > 0) {
+      const mvtIds2 = sansResaPasse2.map(m => m.id)
+      const { data: payouts2 } = await supabase
+        .from('payout_hospitable')
+        .select(`mouvement_id,
+          payout_reservation (
+            reservation (id, code, platform, guest_name, arrival_date, departure_date, nights, fin_revenue,
+              bien (hospitable_name, code, agence))
+          )`)
+        .in('mouvement_id', mvtIds2)
+      if (payouts2?.length) {
+        const infoByMouv2 = {}
+        for (const ph of payouts2) {
+          if (!ph.mouvement_id) continue
+          for (const pr of (ph.payout_reservation || [])) {
+            const r = pr.reservation
+            if (!r) continue
+            if (!infoByMouv2[ph.mouvement_id]) {
+              infoByMouv2[ph.mouvement_id] = {
+                biens: [], guests: [], reservation_ids: [], codes: [],
+                platform: r.platform, arrival_date: r.arrival_date,
+                departure_date: r.departure_date, nights: 0, fin_revenue: 0, nb_resas: 0
+              }
+            }
+            const info = infoByMouv2[ph.mouvement_id]
+            const bien = r.bien?.hospitable_name
+            if (bien && !info.biens.includes(bien)) info.biens.push(bien)
+            if (r.guest_name && !info.guests.includes(r.guest_name)) info.guests.push(r.guest_name)
+            if (!info.reservation_ids.includes(r.id)) {
+              info.reservation_ids.push(r.id)
+              info.codes.push(r.code)
+              info.fin_revenue += (r.fin_revenue || 0)
+              info.nights += (r.nights || 0)
+              if (!info.arrival_date || r.arrival_date < info.arrival_date) info.arrival_date = r.arrival_date
+              if (!info.departure_date || r.departure_date > info.departure_date) info.departure_date = r.departure_date
+              info.nb_resas++
+            }
+          }
+        }
+        for (const m of sansResaPasse2) {
+          const info = infoByMouv2[m.id]
+          if (info) {
+            info.bien_name = info.biens.join(' | ')
+            info.guest_name = info.guests.length === 1 ? info.guests[0] : (info.nb_resas + ' résa(s)')
+            m._resa = info
+          }
+        }
+      }
+    }
+
   // Enrichissement secondaire Airbnb : groupement par airbnb_account depuis les resas
   // Airbnb ne donne pas l'info du compte — on teste chaque compte
   // et on n'affecte que si UN SEUL compte donne une combinaison exacte
