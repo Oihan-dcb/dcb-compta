@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react'
 import { supabase } from '../lib/supabase'
 import { formatMontant } from '../lib/hospitable'
 import { toggleOwnerStay } from '../hooks/useOwnerStay'
+import { calculerVentilationResa } from '../services/ventilation'
 import { format } from 'date-fns'
 import { fr } from 'date-fns/locale'
 
@@ -184,6 +185,8 @@ export default function ModalResa({ resa, onClose, onSaved }) {
   const ventil = resa.ventilation || []
   const isManual = resa.platform === 'manual'
   const [editing, setEditing] = useState(false)
+  const [modeVentil, setModeVentil] = useState('normal')
+  const [ventilating, setVentilating] = useState(false)
   const [paiementsInfo, setPaiementsInfo] = useState([])
   useEffect(() => {
     if (!resa?.id) return
@@ -297,17 +300,47 @@ export default function ModalResa({ resa, onClose, onSaved }) {
           </>
         ) : (
           <div style={{ borderTop: '1px solid #eee', paddingTop: 16 }}>
-            <div style={{ color: '#999', fontSize: '0.9em', fontStyle: 'italic', marginBottom: isManual ? 12 : 0 }}>
-              {isManual ? 'Réservation manuelle — saisie libre de la ventilation.' : 'Pas encore ventilée.'}
-            </div>
-            {isManual && (
-              <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-                <button onClick={() => setEditing(true)}
-                  style={{ fontSize: '0.85em', padding: '6px 16px', background: 'var(--brand)', color: 'white', border: 'none', borderRadius: 6, cursor: 'pointer', fontWeight: 600 }}>
-                  ✏️ Saisir la ventilation
+            {isManual ? (
+              <div>
+                <div style={{ fontWeight: 600, fontSize: '0.8em', color: '#888', textTransform: 'uppercase', letterSpacing: '0.08em', marginBottom: 10 }}>
+                  Mode de ventilation
+                </div>
+                {[
+                  { val: 'normal', label: 'Ventilation normale', desc: 'HON + FMEN + AUTO + LOY calculés automatiquement' },
+                  { val: 'proprio', label: 'Séjour propriétaire', desc: 'FMEN + AUTO uniquement, owner_stay = true' },
+                  { val: 'manuel', label: 'Manuel', desc: 'Saisie libre des montants' },
+                ].map(opt => (
+                  <label key={opt.val} style={{ display: 'flex', alignItems: 'flex-start', gap: 8, marginBottom: 8, cursor: 'pointer' }}>
+                    <input type="radio" name="modeVentil" value={opt.val}
+                      checked={modeVentil === opt.val} onChange={() => setModeVentil(opt.val)}
+                      style={{ marginTop: 3 }} />
+                    <span>
+                      <span style={{ fontWeight: 600, fontSize: '0.9em' }}>{opt.label}</span>
+                      <span style={{ display: 'block', fontSize: '0.8em', color: '#888' }}>{opt.desc}</span>
+                    </span>
+                  </label>
+                ))}
+                <button
+                  disabled={ventilating}
+                  onClick={async () => {
+                    if (modeVentil === 'manuel') { setEditing(true); return }
+                    setVentilating(true)
+                    try {
+                      if (modeVentil === 'proprio') await supabase.from('reservation').update({ owner_stay: true }).eq('id', resa.id)
+                      await calculerVentilationResa({ ...resa, owner_stay: modeVentil === 'proprio' ? true : resa.owner_stay })
+                      if (onSaved) onSaved()
+                    } catch (e) {
+                      alert('Erreur : ' + e.message)
+                    } finally {
+                      setVentilating(false)
+                    }
+                  }}
+                  style={{ marginTop: 6, fontSize: '0.85em', padding: '6px 18px', background: 'var(--brand)', color: 'white', border: 'none', borderRadius: 6, cursor: 'pointer', fontWeight: 600 }}>
+                  {ventilating ? 'Calcul…' : '⚡ Appliquer'}
                 </button>
-                <BoutonProprio resa={resa} onDone={handleProprio} />
               </div>
+            ) : (
+              <div style={{ color: '#999', fontSize: '0.9em', fontStyle: 'italic' }}>Pas encore ventilée.</div>
             )}
           </div>
         )}

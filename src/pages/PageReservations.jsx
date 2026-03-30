@@ -3,7 +3,7 @@ import { useSearchParams } from 'react-router-dom'
 import MoisSelector from '../components/MoisSelector'
 import { supabase } from '../lib/supabase'
 import { syncReservations, getReservationsMois } from '../services/syncReservations'
-import { calculerVentilationMois, getRecapVentilation } from '../services/ventilation'
+import { calculerVentilationMois, getRecapVentilation, calculerVentilationResa } from '../services/ventilation'
 import { setToken, formatMontant } from '../lib/hospitable'
 import ModalResa from '../components/ModalResa'
 import TableReservations from '../components/TableReservations'
@@ -24,6 +24,9 @@ export default function PageReservations() {
   const [error, setError] = useState(null)
   const [onglet, setOnglet] = useState('reservations')
   const [selectedResa, setSelectedResa] = useState(null)
+  const [modalManuelles, setModalManuelles] = useState(false)
+  const [modeManuelles, setModeManuelles] = useState('normal')
+  const [ventilantManuelles, setVentilantManuelles] = useState(false)
 
   useEffect(() => {
     if (HOSP_TOKEN) setToken(HOSP_TOKEN)
@@ -82,6 +85,27 @@ export default function PageReservations() {
     finally { setSyncing(false) }
   }
 
+  async function ventilerToutesManuelles() {
+    const cibles = reservations.filter(r => r.platform === 'manual' && (!r.ventilation || r.ventilation.length === 0))
+    setVentilantManuelles(true)
+    try {
+      for (const r of cibles) {
+        if (modeManuelles === 'proprio') {
+          await supabase.from('reservation').update({ owner_stay: true }).eq('id', r.id)
+          await calculerVentilationResa({ ...r, owner_stay: true })
+        } else {
+          await calculerVentilationResa(r)
+        }
+      }
+      setModalManuelles(false)
+      await charger()
+    } catch (e) {
+      setError(e.message)
+    } finally {
+      setVentilantManuelles(false)
+    }
+  }
+
   async function lancerVentilation() {
     setCalculant(true); setError(null)
     try { await calculerVentilationMois(mois); await charger() }
@@ -111,6 +135,38 @@ export default function PageReservations() {
   })()
   return (
     <div>
+      {modalManuelles && (
+        <div style={{ position:'fixed', inset:0, background:'rgba(0,0,0,0.5)', zIndex:9999, display:'flex', alignItems:'center', justifyContent:'center' }}
+          onClick={() => setModalManuelles(false)}>
+          <div style={{ background:'#fff', borderRadius:12, padding:28, minWidth:400, maxWidth:500 }} onClick={e => e.stopPropagation()}>
+            <h3 style={{ margin:'0 0 16px' }}>Ventiler {nbManuellesNonVentilees} réservation{nbManuellesNonVentilees > 1 ? 's' : ''} manuelle{nbManuellesNonVentilees > 1 ? 's' : ''}</h3>
+            {[
+              { val: 'normal', label: 'Ventilation normale', desc: 'HON + FMEN + AUTO + LOY calculés automatiquement' },
+              { val: 'proprio', label: 'Séjour propriétaire', desc: 'FMEN + AUTO uniquement, owner_stay = true' },
+            ].map(opt => (
+              <label key={opt.val} style={{ display:'flex', alignItems:'flex-start', gap:8, marginBottom:10, cursor:'pointer' }}>
+                <input type="radio" name="modeManuelles" value={opt.val}
+                  checked={modeManuelles === opt.val} onChange={() => setModeManuelles(opt.val)}
+                  style={{ marginTop:3 }} />
+                <span>
+                  <span style={{ fontWeight:600, fontSize:'0.9em' }}>{opt.label}</span>
+                  <span style={{ display:'block', fontSize:'0.8em', color:'#888' }}>{opt.desc}</span>
+                </span>
+              </label>
+            ))}
+            <div style={{ display:'flex', gap:8, marginTop:16 }}>
+              <button onClick={ventilerToutesManuelles} disabled={ventilantManuelles}
+                style={{ padding:'7px 20px', background:'var(--brand)', color:'white', border:'none', borderRadius:6, cursor:'pointer', fontWeight:600 }}>
+                {ventilantManuelles ? 'Calcul…' : `⚡ Appliquer à ${nbManuellesNonVentilees}`}
+              </button>
+              <button onClick={() => setModalManuelles(false)}
+                style={{ padding:'7px 16px', background:'#f5f5f5', border:'1px solid #ddd', borderRadius:6, cursor:'pointer' }}>
+                Annuler
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
       {selectedResa && (
         <ModalResa
           resa={selectedResa}
@@ -165,12 +221,8 @@ export default function PageReservations() {
         </div>
         {nbManuellesNonVentilees > 0 && (
           <div className="stat-card" style={{ borderLeft: '3px solid #f59e0b', background: '#fffbeb', cursor: 'pointer' }}
-            onClick={() => {
-              setOnglet('reservations')
-              const premiere = reservations.find(r => r.platform === 'manual' && (!r.ventilation || r.ventilation.length === 0))
-              if (premiere) setSelectedResa(premiere)
-            }}
-            title="Cliquer pour saisir la ventilation">
+            onClick={() => setModalManuelles(true)}
+            title="Cliquer pour ventiler les réservations manuelles">
             <div className="stat-label" style={{ color: '#92400e' }}>⚠ MANUELLES</div>
             <div className="stat-value" style={{ color: '#d97706' }}>{nbManuellesNonVentilees}</div>
             <div className="stat-sub" style={{ color: '#b45309' }}>à saisir manuellement →</div>
