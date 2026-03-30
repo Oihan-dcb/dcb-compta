@@ -55,70 +55,70 @@ Deno.serve(async (req) => {
 
   const sb = createClient(SUPABASE_URL, SERVICE_KEY)
 
-  // Récupérer les hospitable_id de tous nos biens actifs
+  // Récupérer tous nos biens avec leur hospitable_id (UUID propriété)
   const { data: biens } = await sb
     .from('bien')
-    .select('hospitable_id')
+    .select('id, hospitable_id, hospitable_name')
     .not('hospitable_id', 'is', null)
 
-  const propertyIds = (biens || []).map((b: any) => b.hospitable_id).filter(Boolean)
-  if (!propertyIds.length) return json({ ok: true, total: 0, synced: 0 })
+  if (!biens?.length) return json({ ok: true, total: 0, synced: 0 })
 
-  // Paramètres de la requête /reservations
-  const params: Record<string, any> = {
-    properties: propertyIds,
-    include: 'reviews',
-  }
-  if (mois) {
-    const [y, m] = mois.split('-').map(Number)
-    params.start_date = `${mois}-01`
-    params.end_date   = m === 12
-      ? `${y + 1}-01-01`
-      : `${y}-${String(m + 1).padStart(2, '0')}-01`
-  }
-
-  let reservations: any[]
-  try {
-    reservations = await fetchAll('/reservations', params)
-  } catch (e: any) {
-    console.error('Hospitable /reservations error:', e.message)
-    return json({ error: e.message }, 500)
-  }
-
-  // Filtrer les réservations qui ont des reviews
-  const resasWithReviews = reservations.filter((r: any) => r.reviews?.length)
-  if (!resasWithReviews.length) return json({ ok: true, total: 0, synced: 0 })
-
-  // Résoudre hospitable_id → reservation.id interne
-  const hospIds = resasWithReviews.map((r: any) => r.id)
+  // Pré-charger toutes nos réservations pour le mapping (code + hospitable_id → id interne)
   const { data: resas } = await sb
     .from('reservation')
-    .select('id, hospitable_id')
-    .in('hospitable_id', hospIds)
+    .select('id, hospitable_id, code')
 
-  const resaMap = new Map((resas || []).map((r: any) => [r.hospitable_id, r.id]))
+  const resaByHospId  = new Map((resas || []).map((r: any) => [r.hospitable_id, r.id]))
+  const resaByCode    = new Map((resas || []).map((r: any) => [r.code, r.id]))
 
   let total = 0, synced = 0, errors = 0
 
-  for (const resa of resasWithReviews) {
-    for (const review of (resa.reviews || [])) {
+  for (const bien of biens) {
+    let reviews: any[]
+    try {
+      reviews = await fetchAll(`/properties/${bien.hospitable_id}/reviews`)
+    } catch (e: any) {
+      console.error(`Skipping ${bien.hospitable_name}: ${e.message}`)
+      errors++
+      continue
+    }
+
+    for (const review of reviews) {
+      // Filtrer par mois si fourni (submitted_at ou created_at)
+      if (mois) {
+        const ts = review.submitted_at || review.created_at || ''
+        if (!ts.startsWith(mois)) continue
+      }
+
       total++
+
+      // Identifier la réservation — l'API peut retourner reservation_id (UUID) ou reservation_code
+      const hospResaId   = review.reservation_id ?? review.reservation?.id ?? null
+      const resaCode     = review.reservation_code ?? review.reservation?.code ?? null
+      const internalId   = (hospResaId && resaByHospId.get(hospResaId))
+                        ?? (resaCode   && resaByCode.get(resaCode))
+                        ?? null
+
       const row = {
-        reservation_id:            resaMap.get(resa.id) ?? null,
-        hospitable_reservation_id: resa.id,
-        reviewer_name:             review.reviewer_name ?? review.guest?.name ?? null,
+        reservation_id:            internalId,
+        hospitable_reservation_id: hospResaId ?? resaCode ?? `${bien.hospitable_id}_${total}`,
+        reviewer_name:             review.guest?.name ?? review.reviewer_name ?? null,
         rating:                    review.rating ?? review.overall_rating ?? null,
-        comment:                   review.comment ?? review.body ?? null,
+        comment:                   review.comment ?? review.review ?? review.body ?? null,
         submitted_at:              review.submitted_at ?? review.created_at ?? null,
       }
+
       const { error } = await sb
         .from('reservation_review')
         .upsert(row, { onConflict: 'hospitable_reservation_id' })
-      if (error) { console.error('upsert error:', error.message); errors++ }
+
+      if (error) { console.error('upsert:', error.message); errors++ }
       else synced++
     }
+
+    await new Promise(r => setTimeout(r, 100))  // pause entre propriétés
   }
 
-  console.log(`sync-reviews: ${synced} ok, ${errors} errors, total ${total} reviews in ${resasWithReviews.length} resas`)
-  return json({ ok: true, total, synced, errors })
+  console.log(`sync-reviews: ${synced} ok, ${errors} errors / ${total} reviews, ${biens.length} properties`)
+  return json({ ok: true, total, synced, errors, properties: biens.length })
 })
