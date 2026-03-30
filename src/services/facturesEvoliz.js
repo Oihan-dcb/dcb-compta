@@ -25,7 +25,7 @@ const MENTION_MANDAT = "Conformément au mandat de gestion, les honoraires de ge
  * @param {string} mois - YYYY-MM
  */
 export async function genererFacturesMois(mois) {
-  const log = { created: 0, updated: 0, errors: 0, resteAPayer: 0, deboursCreated: 0, deboursUpdated: 0 }
+  const log = { created: 0, updated: 0, skipped: 0, errors: 0, resteAPayer: 0, deboursCreated: 0, deboursUpdated: 0 }
 
   // RÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂ©cupÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂ©rer tous les propriÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂ©taires avec des biens actifs
   const { data: proprietaires, error: propErr } = await supabase
@@ -52,7 +52,8 @@ export async function genererFacturesMois(mois) {
   for (const [propId, proprio] of propMap) {
     try {
       const facture = await genererFactureProprietaire(proprio, mois)
-      if (facture.created) log.created++
+      if (facture.skipped) log.skipped++
+      else if (facture.created) log.created++
       else log.updated++
       if ((facture.resteAPayer || 0) > 0) log.resteAPayer += facture.resteAPayer
 
@@ -82,7 +83,7 @@ export async function genererFacturesMois(mois) {
   logOp({
     categorie: 'facture', action: 'generate', mois_comptable: mois,
     statut: log.errors > 0 ? 'warning' : 'ok', source: 'app',
-    message: `Factures ${mois} : ${log.created} créée(s), ${log.updated} mise(s) à jour, ${log.deboursCreated + log.deboursUpdated} débours${log.errors > 0 ? ', ' + log.errors + ' erreur(s)' : ''}`,
+    message: `Factures ${mois} : ${log.created} créée(s), ${log.updated} mise(s) à jour${log.skipped > 0 ? ', ' + log.skipped + ' ignorée(s) (déjà envoyée(s))' : ''}, ${log.deboursCreated + log.deboursUpdated} débours${log.errors > 0 ? ', ' + log.errors + ' erreur(s)' : ''}`,
     meta: log,
   }).catch(() => {})
   return log

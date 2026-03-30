@@ -68,7 +68,7 @@ export default function PageFactures() {
     setWarning(null)
     try {
       const result = await genererFacturesMois(mois)
-      setSuccess(`${result.created} factures créées, ${result.updated} mises à jour${result.errors > 0 ? `, ${result.errors} erreurs` : ''}`)
+      setSuccess(`${result.created} factures créées, ${result.updated} mises à jour${result.skipped > 0 ? `, ${result.skipped} ignorée(s) (déjà envoyée(s))` : ''}${result.errors > 0 ? `, ${result.errors} erreurs` : ''}`)
       if ((result.resteAPayer || 0) > 0) {
         setWarning(`⚠ Reversement entierement absorbe sur certaines factures. Reste total a payer : ${(result.resteAPayer / 100).toFixed(2)} €`)
       }
