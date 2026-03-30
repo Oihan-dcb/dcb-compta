@@ -54,13 +54,23 @@ export function parseBookingCSV(text) {
   const iGross      = col('Montant brut',                   'Gross amount')
   const iComm       = col('Commission',                     'Commission')
   const iStatus     = col('Statut de la réservation',       'Reservation status')
+  const iType       = col('Type de versement',               'Payout type')
 
   if (iPayoutDate < 0) throw new Error('Colonne "Payout date" / "Date du versement" introuvable')
   if (iAmount < 0)     throw new Error('Colonne "Payable amount" / "Montant du versement" introuvable')
 
+  const isPayoutRow = (type) =>
+    type?.toLowerCase().includes('payout') || type === '(Payout)'
+
+  const isReservationRow = (type) =>
+    type?.toLowerCase().includes('reservation') ||
+    type?.toLowerCase().includes('réservation')
+
   const rowsByPayoutDate = {}
   for (let i = 1; i < lines.length; i++) {
     const cols = lines[i].split(sep).map(c => c.replace(/^"|"$/g, '').trim())
+    const rowType = iType >= 0 ? (cols[iType] || '') : null
+    if (rowType !== null && !isPayoutRow(rowType)) continue
     const pdate = parseDate(cols[iPayoutDate])
     if (!pdate) continue
 
