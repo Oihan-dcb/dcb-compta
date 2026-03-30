@@ -15,6 +15,25 @@
  */
 import { supabase } from '../lib/supabase'
 
+function parseCSVLine(line, sep = ',') {
+  const result = []
+  let current = ''
+  let inQuotes = false
+  for (let i = 0; i < line.length; i++) {
+    const ch = line[i]
+    if (ch === '"') {
+      inQuotes = !inQuotes
+    } else if (ch === sep && !inQuotes) {
+      result.push(current.trim())
+      current = ''
+    } else {
+      current += ch
+    }
+  }
+  result.push(current.trim())
+  return result
+}
+
 function parseFloat2(s) {
   if (!s || s === '-') return 0
   return parseFloat(String(s).replace(',', '.').replace(' ', '')) || 0
@@ -39,7 +58,7 @@ export function parseBookingCSV(text) {
   if (!lines.length) throw new Error('Fichier vide')
 
   const sep = lines[0].includes(';') ? ';' : ','
-  const headers = lines[0].split(sep).map(h => h.replace(/^"|"$/g, '').trim())
+  const headers = parseCSVLine(lines[0], sep)
 
   const colIdx = (name) => headers.findIndex(h => h.toLowerCase().includes(name.toLowerCase()))
   const col = (fr, en) => { const i = colIdx(fr); return i >= 0 ? i : colIdx(en) }
@@ -68,7 +87,7 @@ export function parseBookingCSV(text) {
 
   const rowsByPayoutDate = {}
   for (let i = 1; i < lines.length; i++) {
-    const cols = lines[i].split(sep).map(c => c.replace(/^"|"$/g, '').trim())
+    const cols = parseCSVLine(lines[i], sep)
     const rowType = iType >= 0 ? (cols[iType] || '') : null
     if (rowType !== null && !isPayoutRow(rowType)) continue
     const pdate = parseDate(cols[iPayoutDate])
