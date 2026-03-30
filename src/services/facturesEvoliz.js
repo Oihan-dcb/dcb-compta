@@ -67,6 +67,18 @@ export async function genererFacturesMois(mois) {
     }
   }
 
+  // CF-P1 dcb_direct : récap interne uniquement (pas de facturation propriétaire)
+  const allBienIds = [...propMap.values()].flatMap(function(p){ return p.biens.map(function(b){ return b.id }) })
+  const { data: dcbDirectItems } = await supabase
+    .from('prestation_hors_forfait')
+    .select('montant')
+    .in('bien_id', allBienIds)
+    .eq('mois', mois)
+    .eq('statut', 'valide')
+    .eq('type_imputation', 'dcb_direct')
+  log.dcbDirectTotal = (dcbDirectItems || []).reduce(function(s,p){ return s + (p.montant || 0) }, 0)
+  log.dcbDirectCount = (dcbDirectItems || []).length
+
   logOp({
     categorie: 'facture', action: 'generate', mois_comptable: mois,
     statut: log.errors > 0 ? 'warning' : 'ok', source: 'app',
