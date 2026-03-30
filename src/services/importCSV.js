@@ -46,7 +46,7 @@ export async function importHospitableCSV(rows, moisFiltres = null, onProgress =
       .range(bienPage * PAGE_SIZE, (bienPage + 1) * PAGE_SIZE - 1)
     if (!bienData || bienData.length === 0) break
     for (const b of bienData) {
-      if (b.hospitable_name) bienByName[b.hospitable_name.trim()] = b.id
+      if (b.hospitable_name) bienByName[b.hospitable_name.trim().toLowerCase()] = b.id
       if (b.hospitable_id) bienById[b.hospitable_id] = b.id
     }
     if (bienData.length < PAGE_SIZE) break
@@ -78,7 +78,7 @@ export async function importHospitableCSV(rows, moisFiltres = null, onProgress =
     if (!code) { log.skipped++; continue }
 
     // Chercher le bien par nom (source CSV) Ã¢ÂÂ plus fiable que l'ID numÃÂ©rique
-    const bienId = bienByName[row.property_name?.trim()] || bienById[row.property_id]
+    const bienId = bienByName[row.property_name?.trim()?.toLowerCase()] || bienById[row.property_id]
     if (!bienId && !resaMap[code]) { log.skipped++; continue }
 
     const guestName = [row.guest_first_name, row.guest_last_name].filter(Boolean).join(' ') || null
