@@ -197,6 +197,8 @@ export default function PageConfig() {
 
   const [syncingProprio, setSyncingProprio] = useState(false)
   const [syncProprioResult, setSyncProprioResult] = useState(null)
+  const [syncingReviews, setSyncingReviews] = useState(false)
+  const [reviewsResult, setReviewsResult] = useState(null)
   const [rematchRunning, setRematchRunning] = useState(false)
   const [rematchDone, setRematchDone] = useState(false)
   const [rematchSteps, setRematchSteps] = useState([])
@@ -213,6 +215,20 @@ export default function PageConfig() {
       setSyncProprioResult({ ok: false, error: err.message })
     } finally {
       setSyncingProprio(false)
+    }
+  }
+
+  async function syncReviews() {
+    setSyncingReviews(true)
+    setReviewsResult(null)
+    try {
+      const { data, error } = await supabase.functions.invoke('sync-reviews', { body: {} })
+      if (error) throw error
+      setReviewsResult({ ok: true, ...data })
+    } catch (err) {
+      setReviewsResult({ ok: false, error: err.message })
+    } finally {
+      setSyncingReviews(false)
     }
   }
 
@@ -344,6 +360,36 @@ export default function PageConfig() {
               </div>
             ) : (
               <div className="alert alert-error">✗ {syncProprioResult.error}</div>
+            )}
+          </div>
+        )}
+      </div>
+
+      {/* Sync avis Hospitable */}
+      <div className="card" style={{ marginBottom: 24 }}>
+        <div className="card-header" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+          <div>
+            <h3 style={{ margin: 0 }}>Sync avis Hospitable</h3>
+            <p style={{ margin: '4px 0 0', color: 'var(--text-muted)', fontSize: '0.9em' }}>
+              Importe tous les avis voyageurs depuis l'API Hospitable vers reservation_review
+            </p>
+          </div>
+          <button
+            className="btn btn-primary"
+            onClick={syncReviews}
+            disabled={syncingReviews}
+            style={{ minWidth: 160 }}>
+            {syncingReviews ? '⏳ Sync…' : '⭐ Sync avis'}
+          </button>
+        </div>
+        {reviewsResult && (
+          <div style={{ padding: '12px 16px' }}>
+            {reviewsResult.ok ? (
+              <div className="alert alert-success">
+                ✓ {reviewsResult.synced} avis synchronisés (total Hospitable : {reviewsResult.total})
+              </div>
+            ) : (
+              <div className="alert alert-error">✗ {reviewsResult.error}</div>
             )}
           </div>
         )}
