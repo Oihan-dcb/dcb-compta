@@ -23,6 +23,7 @@ export default function PageRapports() {
   const [notes, setNotes]    = useState({})
   const [kpis, setKpis]      = useState({})
   const [statuts, setStatuts] = useState({})
+  const [emails, setEmails] = useState({})
   const [previewProp, setPreviewProp] = useState(null)
   const [loading, setLoading] = useState(false)
   const [error, setError]    = useState(null)
@@ -46,6 +47,9 @@ export default function PageRapports() {
         .eq('actif', true)
         .order('nom')
       setProprietaires(props || [])
+      const emailMap = {}
+      for (const p of props || []) emailMap[p.id] = p.email || ''
+      setEmails(emailMap)
 
       const kpisMap = {}
       await Promise.all((props || []).map(async p => {
@@ -83,6 +87,13 @@ export default function PageRapports() {
     try { await saveBienNote(bienId, mois, notes[bienId] || '') } catch (e) { console.error(e) }
   }
 
+  async function handleEmailBlur(proprioId) {
+    const val = (emails[proprioId] || '').trim()
+    try {
+      await supabase.from('proprietaire').update({ email: val || null }).eq('id', proprioId)
+    } catch (e) { console.error('saveEmail:', e) }
+  }
+
   function buildRapportData(proprio) {
     const propReviews = reviews.filter(r => r.reservation?.bien?.proprietaire_id === proprio.id)
     const propNotes   = (proprio.bien || []).map(b => ({ bienName: b.hospitable_name, note: notes[b.id] || '' }))
@@ -101,7 +112,7 @@ export default function PageRapports() {
         .in('bien_id', (proprio.bien || []).map(b => b.id))
       data.resas = resas || []
       const html = genererRapportHTML(proprio, mois, data)
-      await envoyerRapportEmail(proprio, mois, html)
+      await envoyerRapportEmail({ ...proprio, email: emails[proprio.id] }, mois, html)
       setStatuts(s => ({ ...s, [proprio.id]: 'sent' }))
     } catch (e) {
       console.error(e)
@@ -110,7 +121,7 @@ export default function PageRapports() {
   }
 
   async function envoyerATous() {
-    const cibles = proprietaires.filter(p => p.email && (kpis[p.id]?.nbResas || 0) > 0)
+    const cibles = proprietaires.filter(p => emails[p.id] && (kpis[p.id]?.nbResas || 0) > 0)
     if (!cibles.length) return
     if (!confirm(`Envoyer le rapport à ${cibles.length} propriétaire(s) pour ${mois} ?`)) return
     for (const p of cibles) await envoyer(p)
@@ -146,9 +157,25 @@ export default function PageRapports() {
           return (
             <div key={proprio.id} style={{ background: '#fff', border: '1px solid var(--border)', borderRadius: 12, overflow: 'hidden' }}>
               <div style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '14px 20px', background: '#EAE3D4', borderBottom: '2px solid var(--brand)', flexWrap: 'wrap' }}>
-                <div style={{ flex: 1 }}>
+                <div style={{ flex: 1, display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
                   <span style={{ fontWeight: 700, color: 'var(--text)', fontSize: '1.05em' }}>{proprio.nom}</span>
-                  {proprio.email && <span style={{ color: '#9C8E7D', fontSize: '0.85em', marginLeft: 10 }}>{proprio.email}</span>}
+                  <input
+                    type="email"
+                    value={emails[proprio.id] ?? ''}
+                    onChange={e => setEmails(em => ({ ...em, [proprio.id]: e.target.value }))}
+                    onBlur={() => handleEmailBlur(proprio.id)}
+                    placeholder="Email (pour les rapports)"
+                    style={{
+                      fontSize: '0.83em', padding: '3px 8px',
+                      border: `1px solid ${emails[proprio.id] ? '#059669' : '#D97706'}`,
+                      borderRadius: 6,
+                      background: emails[proprio.id] ? '#F0FDF4' : '#FFFBEB',
+                      color: 'var(--text)', width: 220, outline: 'none',
+                    }}
+                  />
+                  <span style={{ fontSize: '0.9em', color: emails[proprio.id] ? '#059669' : '#D97706' }}>
+                    {emails[proprio.id] ? '✓' : '⚠'}
+                  </span>
                 </div>
                 <div style={{ display: 'flex', gap: 16, fontSize: '0.85em', color: '#4A3728' }}>
                   <span><strong>{k.nbResas || 0}</strong> rés.</span>
@@ -163,7 +190,7 @@ export default function PageRapports() {
                   {previewProp?.id === proprio.id ? 'Fermer' : 'Aperçu'}
                 </button>
                 <button className="btn btn-primary" style={{ fontSize: '0.85em', padding: '4px 12px', background: 'var(--brand)', color: '#fff', border: 'none', opacity: statut === 'sending' ? 0.6 : 1 }}
-                  onClick={() => envoyer(proprio)} disabled={statut === 'sending' || !proprio.email}>
+                  onClick={() => envoyer(proprio)} disabled={statut === 'sending' || !emails[proprio.id]}>
                   {statut === 'sending' ? '…' : 'Envoyer'}
                 </button>
               </div>
