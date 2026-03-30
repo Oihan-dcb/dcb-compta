@@ -62,6 +62,35 @@ export async function calculerVentilationMois(mois) {
     }
   }
 
+  // FMEN séjours propriétaire
+  const { data: ownerStays } = await supabase
+    .from('reservation')
+    .select('id, bien:bien_id(id, forfait_menage_ht, taux_tva_menage, agence)')
+    .eq('mois_comptable', mois)
+    .eq('owner_stay', true)
+    .eq('ventilation_calculee', false)
+
+  for (const resa of ownerStays || []) {
+    if (resa.bien?.agence === 'lauian') continue
+    const ht = resa.bien?.forfait_menage_ht || 0
+    if (ht === 0) continue
+    const tva = Math.round(ht * (resa.bien?.taux_tva_menage || 10) / 100)
+    await supabase.from('ventilation').insert({
+      reservation_id: resa.id,
+      mois_comptable: mois,
+      code: 'FMEN',
+      libelle: 'Forfait ménage séjour propriétaire',
+      montant_ht: ht,
+      taux_tva: resa.bien?.taux_tva_menage || 10,
+      montant_tva: tva,
+      montant_ttc: ht + tva
+    })
+    await supabase.from('reservation')
+      .update({ ventilation_calculee: true })
+      .eq('id', resa.id)
+    total++
+  }
+
   logOp({
     categorie: 'ventilation', action: 'compute', mois_comptable: mois,
     statut: errors > 0 ? 'warning' : 'ok', source: 'app',
@@ -376,6 +405,15 @@ export async function calculerVentilationResa(resa) {
     }
   }
 
+  // Sauvegarder les montant_reel saisis manuellement avant suppression
+  const { data: existingLines } = await supabase
+    .from('ventilation')
+    .select('code, montant_reel')
+    .eq('reservation_id', resa.id)
+    .not('montant_reel', 'is', null)
+  const existingReels = {}
+  for (const l of existingLines || []) existingReels[l.code] = l.montant_reel
+
   // Supprimer les ventilations existantes pour cette résa
   await supabase.from('ventilation').delete().eq('reservation_id', resa.id)
 
@@ -383,6 +421,14 @@ export async function calculerVentilationResa(resa) {
   if (lignes.length > 0) {
     const { error } = await supabase.from('ventilation').insert(lignes)
     if (error) throw error
+  }
+
+  // Restaurer les montant_reel saisis manuellement
+  for (const [code, reel] of Object.entries(existingReels)) {
+    await supabase.from('ventilation')
+      .update({ montant_reel: reel })
+      .eq('reservation_id', resa.id)
+      .eq('code', code)
   }
 
   // Marquer la résa comme ventilée
