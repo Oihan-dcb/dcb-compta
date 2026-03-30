@@ -44,7 +44,7 @@ export async function calculerVentilationMois(mois) {
     `)
     .eq('mois_comptable', mois)
     .eq('ventilation_calculee', false)
-    .neq('final_status', 'cancelled')
+    .not('final_status', 'in', '("cancelled","not_accepted","not accepted","declined","expired")')
     .eq('owner_stay', false)
 
   if (error) throw error
@@ -179,10 +179,11 @@ export async function calculerVentilationResa(resa) {
   // ─────────────────────────────────────────────────────────────────────────
 
   const isDirect = resa.platform === 'direct'
-  const isCancelled = resa.final_status === 'cancelled'
+  const STATUTS_NON_VENTILABLES = ['cancelled', 'not_accepted', 'not accepted', 'declined', 'expired']
+  const isCancelled = STATUTS_NON_VENTILABLES.includes(resa.final_status)
 
-  // Réservation directe annulée → pas de ventilation (zéro virement)
-  if (isDirect && isCancelled) {
+  // Réservation annulée/refusée → pas de ventilation
+  if (isCancelled) {
     await supabase.from('ventilation').delete().eq('reservation_id', resa.id)
     await supabase.from('reservation').update({ ventilation_calculee: true }).eq('id', resa.id)
     return []
