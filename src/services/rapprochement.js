@@ -629,8 +629,32 @@ async function _lier(mouvementId, virIds, statut = 'rapproche', typePaiement = n
   if (v?.length) {
     const ids = [...new Set(v.map(x => x.reservation_id).filter(Boolean))]
     if (ids.length) {
-      // Marquer les r?servations comme rapproch?es
-      await supabase.from('reservation').update({ rapprochee: true }).in('id', ids)
+      // Pour chaque resa : vérifier le solde restant et créer un VIR si paiement partiel
+      for (const resaId of ids) {
+        const { data: resaD } = await supabase.from('reservation').select('fin_revenue').eq('id', resaId).single()
+        const finRevenue = resaD?.fin_revenue || 0
+        const { data: linked } = await supabase
+          .from('ventilation').select('mouvement_bancaire(credit)')
+          .eq('reservation_id', resaId).eq('code', 'VIR').not('mouvement_id', 'is', null)
+        const totalLie = (linked || []).reduce((s, v) => s + (v.mouvement_bancaire?.credit || 0), 0)
+        const solde = finRevenue - totalLie
+        if (solde > 100) {
+          await supabase.from('reservation').update({ rapprochee: false }).eq('id', resaId)
+          const { data: origVir } = await supabase
+            .from('ventilation').select('mois_comptable, bien_id')
+            .eq('reservation_id', resaId).eq('code', 'VIR')
+            .not('mouvement_id', 'is', null).limit(1).single()
+          await supabase.from('ventilation').insert({
+            reservation_id: resaId, code: 'VIR',
+            libelle: 'Virement propriétaire',
+            montant_ttc: solde, montant_ht: solde,
+            mois_comptable: origVir?.mois_comptable,
+            bien_id: origVir?.bien_id,
+          })
+        } else {
+          await supabase.from('reservation').update({ rapprochee: true }).eq('id', resaId)
+        }
+      }
 
       // Enregistrer dans reservation_paiement
       if (mvt) {
