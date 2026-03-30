@@ -26,7 +26,7 @@ export default function PageAutoEntrepreneurs() {
   const [confirmModal, setConfirmModal] = useState(null)
   // Prestation type form
   const [editingPT, setEditingPT] = useState(null)
-  const [formPT, setFormPT] = useState({ nom: '', description: '', taux_defaut: 2500, unite: 'heure' })
+  const [formPT, setFormPT] = useState({ nom: '', description: '', taux_defaut: 25, unite: 'heure' })
 
   useEffect(() => {
     charger()
@@ -199,7 +199,7 @@ export default function PageAutoEntrepreneurs() {
         </div>
         <div style={{ display: 'flex', gap: 8 }}>
           {tab === 'aes' && <button onClick={() => ouvrir(null)} style={{ background: '#1a3a6e', color: '#fff', border: 'none', borderRadius: 8, padding: '9px 18px', fontSize: 13, fontWeight: 600, cursor: 'pointer' }}>+ Ajouter AE</button>}
-          {tab === 'prestations' && <button onClick={() => { setFormPT({ nom: '', description: '', taux_defaut: 2500, unite: 'heure' }); setEditingPT('new') }} style={{ background: '#1a3a6e', color: '#fff', border: 'none', borderRadius: 8, padding: '9px 18px', fontSize: 13, fontWeight: 600, cursor: 'pointer' }}>+ Ajouter prestation</button>}
+          {tab === 'prestations' && <button onClick={() => { setFormPT({ nom: '', description: '', taux_defaut: 25, unite: 'heure' }); setEditingPT('new') }} style={{ background: '#1a3a6e', color: '#fff', border: 'none', borderRadius: 8, padding: '9px 18px', fontSize: 13, fontWeight: 600, cursor: 'pointer' }}>+ Ajouter prestation</button>}
         </div>
       </div>
 
