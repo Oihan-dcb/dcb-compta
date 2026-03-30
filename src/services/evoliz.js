@@ -119,6 +119,15 @@ export async function creerFactureEvoliz(facture) {
       `  facture.id=${facture.id} | proprietaire_id=${facture.proprietaire_id} | mois=${facture.mois} | id_evoliz=${facture.id_evoliz}`
     )
   }
+
+  // CF-F2 verrou pre-envoi : statut → 'envoi_en_cours' avant tout appel Evoliz
+  // Si saveInvoice réussit mais UPDATE final échoue, la facture reste 'envoi_en_cours'
+  // et n'est plus repêchée par pousserFacturesMoisVersEvoliz (query statut='valide').
+  await supabase.from('facture_evoliz')
+    .update({ statut: 'envoi_en_cours' })
+    .eq('id', facture.id)
+    .eq('statut', 'valide')
+
   const proprio = facture.proprietaire
   if (!proprio) throw new Error('PropriÃÂ©taire manquant dans la facture')
 
@@ -147,21 +156,30 @@ export async function creerFactureEvoliz(facture) {
     ? `Remboursement de frais avancÃÂ©s Ã¢ÂÂ mois ${facture.mois}`
     : `Honoraires de gestion locative Ã¢ÂÂ ${facture.mois}\n\nConformÃÂ©ment au mandat de gestion, les honoraires de gestion sont directement prÃÂ©levÃÂ©s sur le loyer encaissÃÂ© avant reversement au propriÃÂ©taire.`
 
-  // 5. CrÃÂ©er la facture (brouillon)
-  const createdInvoice = await evolizCall('createInvoice', {
-    clientId: parseInt(clientId),
-    documentdate: dateEmission,
-    paytermid: 1,  // Comptant Ã¢ÂÂ ÃÂ  ajuster si besoin
-    comment,
-    items: lignes,
-  })
+  // 5 & 6. Créer et sauvegarder la facture dans Evoliz
+  // Si Evoliz échoue ici : reset à 'valide' — relance possible sans doublon.
+  let invoiceId, invoiceNumber
+  try {
+    const createdInvoice = await evolizCall('createInvoice', {
+      clientId: parseInt(clientId),
+      documentdate: dateEmission,
+      paytermid: 1,
+      comment,
+      items: lignes,
+    })
+    invoiceId = createdInvoice?.invoiceid
+    if (!invoiceId) throw new Error('invoiceid non retourné après création')
 
-  const invoiceId = createdInvoice?.invoiceid
-  if (!invoiceId) throw new Error('invoiceid non retournÃÂ© aprÃÂ¨s crÃÂ©ation')
-
-  // 6. Sauvegarder (passe de filled Ã¢ÂÂ create, numÃÂ©ro dÃÂ©finitif)
-  const savedInvoice = await evolizCall('saveInvoice', { invoiceId })
-  const invoiceNumber = savedInvoice?.document_number
+    // saveInvoice : passe de filled → create, numéro définitif attribué
+    const savedInvoice = await evolizCall('saveInvoice', { invoiceId })
+    invoiceNumber = savedInvoice?.document_number
+  } catch (evolizErr) {
+    // Evoliz a échoué — aucune facture finalisée côté Evoliz : reset à 'valide'
+    await supabase.from('facture_evoliz')
+      .update({ statut: 'valide' })
+      .eq('id', facture.id)
+    throw evolizErr
+  }
 
   // 7. Mettre a jour Supabase - avec retry (CF-F2 niveau 2)
   let updateError = null

@@ -13,6 +13,7 @@ const STATUTS = {
   calcul_en_cours: { label: 'Calcul en cours', color: 'var(--text-muted)', bg: '#F3F4F6' },
   brouillon: { label: 'Brouillon', color: '#D97706', bg: '#FEF3C7' },
   valide: { label: 'Validée', color: '#059669', bg: '#D1FAE5' },
+  envoi_en_cours: { label: 'Envoi en cours…', color: '#D97706', bg: '#FEF3C7' },
   envoye_evoliz: { label: 'Envoyée Evoliz', color: '#EA580C', bg: '#FFF7ED' },
   payee: { label: 'Payée', color: '#059669', bg: '#D1FAE5' },
   solde_negatif: { label: 'Solde négatif', color: '#DC2626', bg: '#FEE2E2' },
@@ -89,6 +90,25 @@ export default function PageFactures() {
     }
   }
 
+  async function validerTout() {
+    const brouillons = factures.filter(f => f.statut === 'brouillon' && f.total_ttc > 0)
+    if (brouillons.length === 0) return
+    if (!confirm(`Valider ${brouillons.length} facture(s) pour ${mois} ?`)) return
+    setError(null)
+    setSuccess(null)
+    let ok = 0, ko = 0
+    for (const f of brouillons) {
+      try {
+        await validerFacture(f.id)
+        ok++
+      } catch {
+        ko++
+      }
+    }
+    setSuccess(`${ok} facture(s) validée(s)${ko > 0 ? `, ${ko} erreur(s)` : ''}`)
+    await charger()
+  }
+
   async function exporterCSV() {
     setExporting(true)
     try {
@@ -133,6 +153,14 @@ export default function PageFactures() {
           <button className="btn btn-secondary" onClick={charger} disabled={loading}>↺</button>
           <button className="btn btn-secondary" onClick={exporterCSV} disabled={exporting || factures.length === 0}>
             {exporting ? <><span className="spinner" /> Export…</> : '— Export comptable'}
+          </button>
+          <button
+            className="btn btn-secondary"
+            onClick={validerTout}
+            disabled={generating || pushing || !stats?.brouillons}
+            title={!stats?.brouillons ? 'Aucun brouillon à valider' : `Valider ${stats?.brouillons} brouillon(s)`}
+          >
+            ✓ Tout valider
           </button>
           <button
             className="btn btn-secondary"
