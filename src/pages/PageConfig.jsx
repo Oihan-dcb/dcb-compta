@@ -222,8 +222,16 @@ export default function PageConfig() {
     setSyncingReviews(true)
     setReviewsResult(null)
     try {
-      const { data, error } = await supabase.functions.invoke('sync-reviews', { body: {} })
-      if (error) throw error
+      const res = await fetch(`${supabaseUrl}/functions/v1/sync-reviews`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${import.meta.env.VITE_SUPABASE_ANON_KEY}`,
+        },
+        body: JSON.stringify({}),
+      })
+      const data = await res.json()
+      if (!res.ok) throw new Error(data.error || `HTTP ${res.status}`)
       setReviewsResult({ ok: true, ...data })
     } catch (err) {
       setReviewsResult({ ok: false, error: err.message })
