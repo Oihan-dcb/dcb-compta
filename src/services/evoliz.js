@@ -252,6 +252,26 @@ export async function pousserFacturesMoisVersEvoliz(mois) {
 
 
 /**
+ * Récupère les factures d'un client depuis Evoliz
+ * Utilisé pour joindre le PDF de la facture dans les rapports propriétaires
+ * @param {string|number} clientId - ID client Evoliz
+ * @param {Object} opts - Options supplémentaires (ex: { status: 'create' })
+ */
+export async function getFacturesClientEvoliz(clientId, opts = {}) {
+  return evolizCall('listInvoices', { clientId, ...opts })
+}
+
+/**
+ * Télécharge le PDF d'une facture Evoliz et retourne son contenu en base64
+ * @param {string|number} invoiceId - ID de la facture dans Evoliz
+ * @returns {string|null} Contenu PDF en base64, ou null si non disponible
+ */
+export async function getInvoicePDFBase64(invoiceId) {
+  const result = await evolizCall('getInvoicePDF', { invoiceId })
+  return result?.pdf_base64 || null
+}
+
+/**
  * RÃÂ©cupÃÂ¨re les conditions de paiement disponibles dans Evoliz
  * (utile pour configurer paytermid)
  */

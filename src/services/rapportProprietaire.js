@@ -1,4 +1,5 @@
 import { supabase } from '../lib/supabase'
+import { getInvoicePDFBase64 } from './evoliz'
 
 const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL
 
@@ -215,6 +216,31 @@ export async function envoyerRapportEmail(proprio, mois, htmlBody) {
 
   if (!proprio.email) throw new Error(`Pas d'email pour ${proprio.nom}`)
 
+  // Récupérer le PDF de la facture honoraires si disponible
+  let attachments = []
+  try {
+    const { data: facture } = await supabase
+      .from('facture_evoliz')
+      .select('id_evoliz')
+      .eq('proprietaire_id', proprio.id)
+      .eq('mois', mois)
+      .eq('type_facture', 'honoraires')
+      .not('id_evoliz', 'is', null)
+      .maybeSingle()
+
+    if (facture?.id_evoliz) {
+      const pdfBase64 = await getInvoicePDFBase64(facture.id_evoliz)
+      if (pdfBase64) {
+        attachments = [{
+          filename: `Facture_${moisLabel.replace(' ', '_')}_${proprio.nom}.pdf`,
+          content_base64: pdfBase64,
+        }]
+      }
+    }
+  } catch (e) {
+    console.warn('PDF Evoliz non disponible, envoi sans pièce jointe:', e.message)
+  }
+
   const { data: { session } } = await supabase.auth.getSession()
   const res = await fetch(`${SUPABASE_URL}/functions/v1/smtp-send`, {
     method: 'POST',
@@ -227,6 +253,7 @@ export async function envoyerRapportEmail(proprio, mois, htmlBody) {
       cc: 'oihan@destinationcotebasque.com',
       subject: `Rapport mensuel ${moisLabel} — Destination Côte Basque`,
       html: htmlBody,
+      attachments: attachments.length ? attachments : undefined,
     }),
   })
 

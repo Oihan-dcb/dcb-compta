@@ -213,6 +213,27 @@ serve(async (req) => {
         break
       }
 
+      // ── PDF ──────────────────────────────────────────────
+      case 'getInvoicePDF': {
+        // Télécharge le PDF d'une facture et retourne son contenu en base64
+        const token = await getToken()
+        const url = `${EVOLIZ_BASE}/api/v1/companies/${company}/invoices/${payload.invoiceId}/pdf`
+        const pdfRes = await fetch(url, {
+          method: 'GET',
+          headers: { 'Authorization': `Bearer ${token}`, 'Accept': 'application/pdf' },
+        })
+        if (!pdfRes.ok) {
+          result = { status: pdfRes.status, data: { error: `PDF ${pdfRes.status}` } }
+          break
+        }
+        const ab = await pdfRes.arrayBuffer()
+        const u8 = new Uint8Array(ab)
+        let b64 = ''
+        for (let i = 0; i < u8.length; i += 3072) b64 += btoa(String.fromCharCode(...u8.slice(i, i + 3072)))
+        result = { status: 200, data: { pdf_base64: b64 } }
+        break
+      }
+
       // ── UTILITAIRES ───────────────────────────────────────
       case 'getPayterms': {
         result = await evolizReq('GET', '/payterms', company)
