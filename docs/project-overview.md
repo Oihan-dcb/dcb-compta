@@ -12,7 +12,7 @@ DCB Compta est une application comptable mensuelle pour une conciergerie de loca
 
 **Architecture CSV-first** : l'export CSV Hospitable est la source principale de données pour la comptabilité mensuelle. L'API Hospitable et les webhooks sont des sources secondaires d'enrichissement — utiles mais non indispensables à la cohérence comptable.
 
-**Le système est séquentiel et fragile** : une erreur en amont (mauvaise ventilation, mauvais matching) se propage silencieusement jusqu'aux factures et aux virements. Il présentait trois critiques structurels actifs : ventilation dupliquée en 3 versions dont une cassée (V2 désactivée ✅), double moteur de matching aux logiques divergentes, prestations hors forfait partiellement intégrées (`deduction_loy`, `haowner`, AUTO ✅ — `dcb_direct` et `debours_proprio` restent sans effet).
+**Le système est séquentiel et fragile** : une erreur en amont (mauvaise ventilation, mauvais matching) se propage silencieusement jusqu'aux factures et aux virements. Il présentait trois critiques structurels actifs : ventilation dupliquée en 3 versions dont une cassée (V2 désactivée ✅), double moteur de matching aux logiques divergentes, prestations hors forfait intégrées (`deduction_loy`, `haowner`, `debours_proprio` ✅ — `dcb_direct` : log interne par conception ✅). Module rapport mensuel propriétaires ajouté (mars 2026).
 
 **Certaines opérations ne sont pas idempotentes** : relancer global-sync, le matching ou pousser vers Evoliz une deuxième fois peut produire des données en double ou des écrasements incorrects.
 
@@ -104,8 +104,8 @@ Les deux applications partagent la **même base Supabase**. Aucune des deux n'a 
 **Dépendances entrantes** : Portail AE (soumission AE), validation manuelle DCB
 **Dépendances sortantes** : `genererFactureProprietaire` lit `deduction_loy` ✅, `haowner` ✅, `debours_proprio` (absorption LOY + ligne DEBP ✅). `dcb_direct` : log interne `genererFacturesMois` uniquement (pas de facturation propriétaire, par conception). Aucune écriture dans `ventilation.js` (code EXTRA non implémenté).
 
-### Module 9 — Config
-**Rôle réel** : Interface d'administration et de déclenchement des opérations en masse (sync all-time, matching, reventilation).
+### Module 9 — Config (dropdown nav)
+**Rôle réel** : Interface d'administration et de déclenchement des opérations en masse. Le menu "Config" est un dropdown dans la nav (Import CSV, Journal, AEs, Paramètres).
 **Données** : Variables d'environnement, déclencheurs d'Edge Functions
 **Dépendances entrantes** : Aucune (interface déclencheuse)
 **Dépendances sortantes** : `global-sync` Edge Function, `syncProprietairesEvoliz`, `lancerMatching` (ancien), `resetEtRematcher`
@@ -116,7 +116,14 @@ Les deux applications partagent la **même base Supabase**. Aucune des deux n'a 
 **Données** : lit `mission_menage`, écrit `ventilation.montant_reel` (heures), insère `prestation_hors_forfait`
 **Dépendances entrantes** : `mission_menage` (sync iCal), auth Supabase (ae_user_id)
 **Dépendances sortantes** : `ventilation.montant_reel` (heures réelles → impact AUTO/FMEN), `prestation_hors_forfait` (prestations extras)
-**Avertissement** : Chaîne d'accès brisée sur deux points (mdp_temporaire non sauvegardé, reset inexistant) → portail inutilisable sans intervention Supabase Dashboard (✅ CF-PAE1/PAE2). `montant_reel` UPDATE sur ligne inexistante si ventilation non calculée → heures silencieusement perdues (🔶 CF-PAE3).
+**Note** : Chaîne d'accès corrigée — `create-ae-user` et `reset-ae-password` sauvegardent `mdp_temporaire` (code path ✅, audit 30 mars — CF-PAE1/PAE2). `montant_reel` UPDATE sur ligne inexistante si ventilation non calculée → heures silencieusement perdues (🔶 CF-PAE3).
+
+### Module 11 — Rapports propriétaires
+**Rôle réel** : Génération et envoi par email des rapports mensuels propriétaires. KPIs, liste des réservations, avis voyageurs, notes de marché.
+**Données** : lit `reservation`, `ventilation` (LOY), `bien_notes`, `reservation_review` ; écrit `bien_notes`
+**Dépendances entrantes** : Données du mois (réservations, ventilation calculée), avis webhook (`reservation_review`), notes DCB (`bien_notes`)
+**Dépendances sortantes** : Email HTML via `smtp-send` Edge Function (OVH SMTP) avec CC oihan@destinationcotebasque.com
+**Services** : `rapportProprietaire.js` (getBienNote, saveBienNote, getReviewsMois, getKPIsMois, genererRapportHTML, envoyerRapportEmail)
 
 ---
 
@@ -403,3 +410,17 @@ La logique de ventilation comptable (transformation `fin_revenue` → HON/FMEN/A
 - `60ca3ec` CF-I5 : normalisation `toLowerCase()` sur `hospitable_name` et `property_name` dans `importCSV.js` — matching insensible à la casse
 - `167c096` CF-AE5 : `taux_defaut` initialisé à 25 (euros) au lieu de 2500 dans `formPT`
 - CF-BQ1/BQ2 : ✅ confirmés couverts par CF-RAPP-4 (`55ad751`) — audit confirmé, pas de code supplémentaire nécessaire
+
+## Fixes session 30 mars 2026 (final)
+
+- `efc33afb` AUTO-étape2 : `genererFactureDebours` — facture débours AE séparée (DEB_AE, TVA 0%, maybeSingle)
+- `b17af1e` UI : badge Débours AE + masquer reversement null dans PageFactures
+- `65c84a4` fix : guard explicite si INSERT ne retourne pas d'id dans `genererFactureDebours`
+- RLS activé sur 5 tables publiques sans politique : `bien_notes`, `reservation_review`, `frais_proprietaire`, `prestation_type`, `import_log` — politique permissive (app interne, anon key)
+- Module rapport mensuel propriétaires : tables `bien_notes` + `reservation_review` (SQL), Edge Function `smtp-send` (OVH SMTP via denomailer@1.6.0), service `rapportProprietaire.js` (KPIs, HTML, email avec CC), `PageRapports.jsx`, route `/rapports` dans App.jsx
+- Nav "Config" transformée en dropdown (ConfigDropdown) : Import CSV, Journal, AEs, Paramètres
+- `PageMatching.jsx` supprimé (page cachée sans lien nav, dead code)
+- `updateBienMenage` supprimé de `syncBiens.js` (0 usages)
+- `getFacturesClientEvoliz` supprimé de `evoliz.js` (0 usages)
+- `console.log` AUTO-PROPRIO et AUTO-DEBOURS supprimés de `facturesEvoliz.js`
+- CF-PAE1/PAE2 confirmés : audit `create-ae-user` et `reset-ae-password` — sauvegardent `mdp_temporaire`, code path ✅

@@ -349,7 +349,7 @@ Lignes de détail des factures propriétaires.
 |---|---|---|---|
 | `id` | uuid PK | | |
 | `facture_id` | uuid FK → facture_evoliz | | ON DELETE CASCADE |
-| `code` | text | HON, FMEN, DIV, HAOWNER, PREST, DEB_AE | Codes présents dans les factures. `DEB_AE` : débours AE TVA 0%, uniquement dans `type_facture='debours'` — **poussé dans Evoliz**. `HAOWNER` : frais avancés refacturés TVA 20%, dans la facture honoraires — **poussé dans Evoliz**. `PREST` : mémo déduction_loy (montant négatif) — **local uniquement, non poussé dans Evoliz** (filtré par `montant_ht > 0` dans `evoliz.js`). |
+| `code` | text | HON, FMEN, DIV, HAOWNER, PREST, DEB_AE, DEBP, FRAIS | Codes présents dans les factures. `DEB_AE` : débours AE TVA 0%, uniquement dans `type_facture='debours'` — **poussé dans Evoliz**. `HAOWNER` : frais avancés refacturés TVA 20%, dans la facture honoraires — **poussé dans Evoliz**. `PREST` : mémo déduction_loy (montant négatif) — **local uniquement, non poussé** (filtré par `montant_ht > 0` dans `evoliz.js`). `DEBP` : débours `debours_proprio`, TVA selon `ae.type` (0% AE / 20% staff), dans `type_facture='debours'` — **poussé dans Evoliz**. `FRAIS` : frais propriétaire `mode_traitement='deduire_loyer'` (montant négatif TVA 20%) dans la facture honoraires — **local uniquement, non poussé**. |
 | `libelle` | text | Description | |
 | `quantite` | integer | Toujours 1 | |
 | `montant_ht` | integer | en centimes | |
@@ -449,13 +449,13 @@ Prestations extras soumises par les AEs via le portail. Validées dans DCB Compt
 | `duree_minutes` | integer | Durée en minutes | |
 | `montant` | integer | Montant en centimes | |
 | `description` | text | Description détaillée de la prestation | |
-| `type_imputation` | text | `'deduction_loy'`, `'haowner'`, `'debours_proprio'`, `'dcb_direct'` | `deduction_loy` : lu par `genererFactureProprietaire` — déduit du reversement ✅. `haowner` : lu par `genererFactureProprietaire` — ligne TVA 20% dans la facture principale ✅. `debours_proprio` et `dcb_direct` : toujours sans impact comptable ⚠. |
+| `type_imputation` | text | `'deduction_loy'`, `'haowner'`, `'debours_proprio'`, `'dcb_direct'` | `deduction_loy` : déduit du reversement ✅. `haowner` : ligne HAOWNER TVA 20% dans la facture honoraires ✅. `debours_proprio` : absorption LOY bien-par-bien après AUTO + ligne DEBP avec TVA selon `ae.type` ✅ (CF-P1-BC, commit `b7bedc1`). `dcb_direct` : log interne `genererFacturesMois` uniquement — pas de facturation propriétaire, par conception ✅. |
 | `statut` | text | 'en_attente', 'valide', 'annule' | |
 | `valide_par` | text | 'DCB' | |
 | `valide_at` | timestamptz | Date de validation | |
 | `created_at` | timestamptz | | |
 
-⚠ **Module partiellement intégré** : `deduction_loy` et `haowner` ont un effet sur la facturation ✅. `debours_proprio` et `dcb_direct` restent sans effet comptable ⚠. Aucune écriture dans `ventilation.js` (code EXTRA absent).
+✅ **Module intégré (mars 2026)** : `deduction_loy`, `haowner`, `debours_proprio` ont un effet sur la facturation ✅. `dcb_direct` : log interne uniquement par conception ✅. Aucune écriture dans `ventilation.js` (code EXTRA absent — non implémenté).
 
 > **État cible** : les prestations validées doivent produire une écriture dans la ventilation (code **EXTRA**) et impacter la facturation et/ou le LOY selon le `type_imputation`. Ce code n'existe pas encore dans la ventilation — son absence est le bug CF-P1.
 
@@ -548,7 +548,43 @@ Tables de log non exposées dans l'UI.
 | `message` | text | |
 | `created_at` | timestamptz | |
 
-⚠ Ces tables contiennent des informations opérationnelles utiles (syncs, webhooks) mais ne sont jamais lues par PageJournal.
+✅ **Mis à jour mars 2026** : `import_log` est désormais lue par `getJournal` (CF-J3) — visible dans PageJournal. `webhook_log` n'est toujours pas exposée.
+
+---
+
+### `bien_notes`
+
+Notes de marché rédigées par DCB pour chaque bien, par mois. Utilisées dans les rapports propriétaires.
+
+| Champ | Type | Description | Notes |
+|---|---|---|---|
+| `id` | uuid PK | | |
+| `bien_id` | uuid FK → bien | Bien concerné | |
+| `mois` | text | Format YYYY-MM | |
+| `note_marche` | text | Note rédigée par DCB | Texte libre |
+| `updated_at` | timestamptz | | |
+
+**Contrainte UNIQUE** : `(bien_id, mois)` — upsert via `onConflict: 'bien_id,mois'`.
+**Créée par** : `rapportProprietaire.js` → `saveBienNote`. Lue par : `rapportProprietaire.js` → `getBienNote`, `PageRapports`.
+
+---
+
+### `reservation_review`
+
+Avis voyageurs reçus via Hospitable webhook. Associés à une réservation.
+
+| Champ | Type | Description | Notes |
+|---|---|---|---|
+| `id` | uuid PK | | |
+| `reservation_id` | uuid FK → reservation | Lien avec réservation interne | Null si `hospitable_reservation_id` inconnu en base au moment du webhook |
+| `hospitable_reservation_id` | text UNIQUE | ID réservation Hospitable | Clé de déduplication — upsert `onConflict: 'hospitable_reservation_id'` |
+| `reviewer_name` | text | Nom du voyageur | |
+| `rating` | numeric | Note (1–5) | |
+| `comment` | text | Commentaire | |
+| `submitted_at` | timestamptz | Date de soumission | |
+| `created_at` | timestamptz | | |
+
+**Créée par** : `hospitable-webhook` (handleReview — upsert). Lue par : `rapportProprietaire.js` → `getReviewsMois`, `PageRapports`.
 
 ---
 

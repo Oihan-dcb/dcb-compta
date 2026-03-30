@@ -39,7 +39,7 @@ Deux applications React (DCB Compta + Portail AE) partagent une base Supabase co
 │    create-ae-user       sync-ical-ae                           │
 │    sync-ical-cron       hospitable-webhook                     │
 │    global-sync          evoliz-proxy                           │
-│    [reset-ae-password → MANQUANTE]                             │
+│    smtp-send            [reset-ae-password]                    │
 └────────────────────────┬────────────────────────────────────────┘
                          │ API HTTPS
 ┌────────────────────────▼────────────────────────────────────────┐
@@ -198,12 +198,32 @@ PagePrestationsAE.jsx
   → table: auto_entrepreneur (SELECT référentiel)
   → table: bien (SELECT référentiel)
   [validation = UPDATE statut uniquement dans cette page]
-  [type_imputation 'deduction_loy' et 'haowner' lus par facturesEvoliz.js ✅]
-  [type_imputation 'dcb_direct' et 'debours_proprio' : toujours sans impact comptable ⚠]
+  [type_imputation 'deduction_loy' : déduit du reversement ✅]
+  [type_imputation 'haowner' : ligne HAOWNER TVA 20% dans facture honoraires ✅]
+  [type_imputation 'debours_proprio' : absorption LOY + ligne DEBP ✅ (CF-P1-BC)]
+  [type_imputation 'dcb_direct' : log interne uniquement, pas de facturation propriétaire — par conception ✅]
 ```
 
-### Module Config
+### Module Rapports
 ```
+PageRapports.jsx
+  → rapportProprietaire.js
+    getBienNote / saveBienNote → table: bien_notes (upsert onConflict bien_id,mois)
+    getReviewsMois             → table: reservation_review (SELECT + join reservation/bien)
+    getKPIsMois                → table: reservation (SELECT fin_revenue, nights par proprio)
+                               → table: ventilation (SELECT LOY)
+                               → table: bien (SELECT count actif dcb)
+    genererRapportHTML         → (local, pas de DB) — génère HTML avec template DCB
+    envoyerRapportEmail        → smtp-send (Edge Function) via fetch SUPABASE_URL
+  [rapports envoyés par email avec CC oihan@destinationcotebasque.com]
+  [aperçu modal HTML via iframe srcDoc]
+```
+
+### Module Config (dropdown dans la nav)
+```
+Nav "Config" → dropdown avec 4 entrées : Import CSV, Journal, AEs, Paramètres
+  (implémenté via ConfigDropdown dans App.jsx — useLocation pour active state)
+
 PageConfig.jsx
   → ventilation.js (V1)   calculerVentilationMois — all-time depuis 2022
   → matching.js (ANCIEN)  lancerMatching — [⚠ moteur différent de PageRapprochement]
@@ -235,13 +255,14 @@ dcb-portail-ae (React, repo privé)
 
 | Edge Function | Appelée depuis | Rôle | État |
 |---|---|---|---|
-| `create-ae-user` | PageAEs (via resetMdp) + api/ae-action.js | Crée compte Auth Supabase | ✅ Existe — ne sauvegarde pas `mdp_temporaire` |
-| `reset-ae-password` | api/ae-action.js (action=reset) | Reset mot de passe AE | ❌ **MANQUANTE** |
+| `create-ae-user` | PageAEs (via resetMdp) + api/ae-action.js | Crée compte Auth Supabase | ✅ Existe — sauvegarde `mdp_temporaire` (code path ✅, audit 30 mars) |
+| `reset-ae-password` | api/ae-action.js (action=reset) | Reset mot de passe AE | ✅ Existe — sauvegarde `mdp_temporaire` (code path ✅, audit 30 mars) |
 | `sync-ical-ae` | api/ae-action.js (action=sync) + sync-ical-cron | Parse iCal → mission_menage | ✅ Existe — pas de protection multi-match |
 | `sync-ical-cron` | Cron Supabase | Sync iCal automatique tous les AEs | ✅ Existe — sans filtre actif=true |
 | `global-sync` | PageConfig (lancerGlobalUpdate) | Sync totale all-time | ✅ Existe — **produit des NaN** (CF-C2) |
 | `evoliz-proxy` | syncProprietaires.js + evoliz.js | Proxy vers API Evoliz | ✅ Existe |
-| `hospitable-webhook` | Hospitable (événements temps réel) | Upsert réservations + ventilation | ✅ Existe — appelle RPC probablement inexistante. [✅ Confirmé fournisseur : les webhooks Hospitable peuvent inclure les données financières. Si les données financières d'une réservation changent (ajustement tarifaire), Hospitable déclenche un webhook réservation — le flux de re-sync via webhook reste donc pertinent pour maintenir `fin_revenue` et `reservation_fee` à jour.] |
+| `hospitable-webhook` | Hospitable (événements temps réel) | Upsert réservations + avis | ✅ Existe — `handleReview` upsert dans `reservation_review` (30 mars). Appelle RPC `ventiler_toutes_resas` probablement inexistante. [✅ Confirmé fournisseur : si les financials changent, Hospitable déclenche un webhook réservation.] |
+| `smtp-send` | rapportProprietaire.js | Envoi email SMTP OVH | ✅ Existe — denomailer@1.6.0. Supporte to/cc/subject/html/attachments. CC oihan@destinationcotebasque.com. |
 | `ventiler_toutes_resas` | hospitable-webhook (RPC Postgres) | Ventilation post-webhook | 🔶 **Probablement inexistante** en base |
 
 ---
@@ -268,9 +289,11 @@ dcb-portail-ae (React, repo privé)
 | `mission_menage` | sync-ical-ae / sync-ical-cron | (aucune mise à jour — upsert seul) | Portail AE, PageBiens (codes iCal — non utilisé) |
 | `prestation_hors_forfait` | Portail AE | PagePrestations (statut) | PagePrestations, App.jsx (badge count) |
 | `prestation_type` | PageAEs (inline) | PageAEs (inline) | Portail AE (catalogue), PagePrestations |
-| `journal_ops` | journal.js (logOp) — 1 seul appel dans tout le projet | (jamais modifiée) | PageJournal (getJournal) |
-| `import_log` | banque.js, syncBiens, syncReservations, global-sync | (jamais modifiée) | **Jamais lue par PageJournal** |
-| `webhook_log` | hospitable-webhook | (jamais modifiée) | **Jamais lue par PageJournal** |
+| `bien_notes` | rapportProprietaire.js (saveBienNote) | rapportProprietaire.js (saveBienNote — upsert) | PageRapports, rapportProprietaire.js (getBienNote) |
+| `reservation_review` | hospitable-webhook (handleReview — upsert) | hospitable-webhook (upsert) | PageRapports, rapportProprietaire.js (getReviewsMois) |
+| `journal_ops` | journal.js (logOp) — quelques appels clés | (jamais modifiée) | PageJournal (getJournal — inclut import_log) |
+| `import_log` | banque.js, syncBiens, syncReservations, global-sync | (jamais modifiée) | ✅ lue par `getJournal` (CF-J3) via merge avec journal_ops |
+| `webhook_log` | hospitable-webhook | (jamais modifiée) | **Toujours non exposée dans PageJournal** |
 | `expense` | (❓ non localisé dans le code audité) | (❓) | facturesEvoliz.js (SELECT type_expense=DCB) |
 
 ---
@@ -376,8 +399,9 @@ Chaque action utilisateur déclenche une chaîne précise de fonctions et d'effe
 | ⚡ Global Update | PageConfig | `global-sync` Edge Function (chunks 3 mois) | `bien`, `reservation`, `reservation_fee`, `payout_hospitable`, `ventilation` | ⚠ Produit des NaN (CF-C2) — schéma payout divergent (CF-C4) — non idempotent |
 | ⚡ Ventilation+Matching all-time | PageConfig | `ventilation.js` V1 + `matching.js` (ANCIEN) | `ventilation`, `mouvement_bancaire`, `reservation` | Moteur matching différent de PageRapprochement (⚠ CF-C3) |
 | ⚡ Re-matching complet | PageConfig | `rapprochement.js` → `resetEtRematcher` | `ventilation`, `reservation`, `payout_hospitable`, `mouvement_bancaire` | Depuis 2025 seulement — écrase les rapprochements manuels |
-| + Créer accès AE | PageAEs | `create-ae-user` Edge Function | `auto_entrepreneur` (ae_user_id) | ⚠ mdp_temporaire NON sauvegardé (CF-PAE1) |
-| 🔑 Reset mdp | PageAEs | `reset-ae-password` Edge Function | — | ⚠ Edge Function MANQUANTE — erreur 404 garantie (CF-PAE2) |
+| + Créer accès AE | PageAEs | `create-ae-user` Edge Function | `auto_entrepreneur` (ae_user_id, mdp_temporaire) | ✅ mdp_temporaire sauvegardé (code path ✅, audit 30 mars) |
+| 🔑 Reset mdp | PageAEs | `reset-ae-password` Edge Function | `auto_entrepreneur` (mdp_temporaire) | ✅ Edge Function existe — sauvegarde mdp_temporaire (code path ✅, audit 30 mars) |
+| 📧 Envoyer rapport | PageRapports | `rapportProprietaire.js` → `smtp-send` | `bien_notes` (SELECT), `reservation_review` (SELECT) | Email HTML avec CC oihan@. Aperçu modal avant envoi. |
 | Sync iCal (AE) | PageAEs / Portail | `sync-ical-ae` Edge Function | `mission_menage` | Pas de protection contre les correspondances ical_code multiples |
 | ✓ Valider prestation | PagePrestations | UPDATE inline Supabase | `prestation_hors_forfait` (statut=valide) | Impact sur factures pour types deduction_loy et haowner ✅. Aucun impact pour dcb_direct et debours_proprio ⚠. Aucun impact sur ventilation (code EXTRA absent). |
 | Importer CSV Hospitable | PageImport | `importCSV.js` → `importHospitableCSV` | `reservation`, `reservation_fee` (DELETE+INSERT sans transaction ⚠) | `fusionnerDoublons` ne migre pas `reservation_paiement` ni `payout_reservation` |

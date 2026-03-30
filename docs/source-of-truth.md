@@ -281,17 +281,19 @@ En amont du flux pour la correction : `CSV Hospitable (référence clôture) > H
 
 | `type_facture` | Contenu | `montant_reversement` | Déclencheur |
 |---|---|---|---|
-| `'honoraires'` | HON, FMEN, DIV, HAOWNER (si présent), PREST (mémo local, non poussé Evoliz) | Non null — calculé à la génération | Toujours généré si réservations du mois |
-| `'debours'` | DEB_AE (TVA 0%) — une ligne par bien avec AUTO à facturer | `null` — non applicable à une créance | Généré si surplus AUTO ou bien `mode_encaissement='proprio'` avec AUTO |
+| `'honoraires'` | HON, FMEN, DIV, HAOWNER (si présent), PREST (mémo local, non poussé Evoliz), FRAIS (déduction loyer, montant négatif, non poussé) | Non null — calculé à la génération | Toujours généré si réservations du mois |
+| `'debours'` | DEB_AE (TVA 0%) + DEBP (debours_proprio, TVA selon ae.type) — une ligne par bien avec AUTO/debours à facturer | `null` — non applicable à une créance | Généré si surplus AUTO ou bien `mode_encaissement='proprio'` avec AUTO, ou debours_proprio |
 
-> La facture `'debours'` couvre uniquement AUTO dans l'implémentation actuelle. Elle est conçue pour être extensible à d'autres types de débours.
+> La facture `'debours'` couvre AUTO (DEB_AE) et `debours_proprio` (DEBP). Extensible à d'autres types de débours.
 
 **Contrainte UNIQUE** : `(proprietaire_id, mois, type_facture)` — au plus une facture de chaque type par propriétaire par mois.
 
 **Calcul `montantReversement` (facture honoraires)** :
 ```
-montantReversement = max(0, LOY_global − deduction_loy − haownerTTC − autoAbsorbableTotal)
-autoAbsorbableTotal = Σ biens dcb : min(AUTO_bien, max(0, LOY_bien − prest_bien − haownerBienTTC))
+montantReversement = max(0, LOY_global − deduction_loy − haownerTTC − autoAbsorbableTotal − deboursPropAbsorbTotal − deboursPropSurplusTotal)
+autoAbsorbableTotal    = Σ biens dcb : min(AUTO_bien, max(0, LOY_bien − prest_bien − haownerBienTTC))
+deboursPropAbsorbTotal = Σ biens : min(DEBP_bien, max(0, LOY_restant_bien))  [après absorption AUTO]
+deboursPropSurplusTotal = DEBP non absorbé → facturé dans facture débours (code DEBP)
 ```
 
 **`resteAPayer`** : calculé à la volée dans `genererFacturesMois`, accumulé dans `log.resteAPayer`, affiché comme alerte warning dans PageFactures. **Non stocké en base. Non comptable. UI uniquement. Il ne doit jamais être utilisé comme base de rapprochement bancaire ou d'écriture comptable.**
@@ -300,7 +302,35 @@ autoAbsorbableTotal = Σ biens dcb : min(AUTO_bien, max(0, LOY_bien − prest_bi
 
 ---
 
-## 14. Configuration du mode d'encaissement (`bien.mode_encaissement`)
+## 14. Notes de marché (`bien_notes`)
+
+**Donnée** : notes rédigées par DCB pour chaque bien, par mois. Intégrées dans les rapports propriétaires.
+
+| Étape | Source | Mécanisme |
+|---|---|---|
+| Création / mise à jour | `rapportProprietaire.js` → `saveBienNote` | Upsert `onConflict: 'bien_id,mois'` |
+| Lecture | `rapportProprietaire.js` → `getBienNote` | SELECT `maybeSingle` |
+
+**Source de vérité finale** : `bien_notes` en base. Mise à jour manuelle via `PageRapports` (auto-save on blur).
+
+---
+
+## 15. Avis voyageurs (`reservation_review`)
+
+**Donnée** : avis reçus via webhook Hospitable. Associés à une réservation interne.
+
+| Étape | Source | Mécanisme |
+|---|---|---|
+| Création / mise à jour | `hospitable-webhook` → `handleReview` | Upsert `onConflict: 'hospitable_reservation_id'` |
+| Lecture | `rapportProprietaire.js` → `getReviewsMois` | SELECT + join reservation/bien, filtre par mois |
+
+**Source de vérité finale** : `reservation_review` en base. `reservation_id` peut être null si la réservation n'est pas encore importée au moment du webhook.
+
+**Conflit potentiel** : si une réservation est importée après le webhook, `reservation_id` reste null — la jointure `reservation/bien` ne remontera pas le bien. Impact : rapport propriétaire sans attribution de bien pour cet avis.
+
+---
+
+## 16. Configuration du mode d'encaissement (`bien.mode_encaissement`)
 
 **Donnée** : champ `text NOT NULL DEFAULT 'dcb'` sur la table `bien`, avec contrainte `CHECK IN ('dcb', 'proprio')`.
 
@@ -329,7 +359,9 @@ autoAbsorbableTotal = Σ biens dcb : min(AUTO_bien, max(0, LOY_bien − prest_bi
 | Facturation | Reversement propriétaire | — | — | — | `facture_evoliz.montant_reversement` (gelé à la génération) | ⚠ Périmé si reventilation sans régénération |
 | Facturation | Facture officielle | — | — | — | Evoliz (après push) | ⚠ Doublon possible, irréversible |
 | Auth AE | Identifiants portail | — | — | — | Supabase Auth Dashboard | ⚠ mdp_temporaire null, reset inexistant (à confirmer) |
-| Facturation | `type_facture` / `mode_encaissement` | — | — | `genererFacturesMois` (`facturesEvoliz.js`) | `facture_evoliz` (gelé à génération), puis Evoliz | ⚠ Cas 2 pur (biens `proprio` avec AUTO) non encore validé sur données réelles |
+| Facturation | `type_facture` / `mode_encaissement` | — | — | `genererFacturesMois` (`facturesEvoliz.js`) | `facture_evoliz` (gelé à génération), puis Evoliz | ✅ `debours_proprio` intégré (CF-P1-BC). `dcb_direct` : log interne par conception. |
+| Rapports | Notes de marché | `bien_notes` | — | `rapportProprietaire.js` | — | Auto-save on blur dans PageRapports |
+| Rapports | Avis voyageurs | `reservation_review` | webhook Hospitable (handleReview) | `rapportProprietaire.js` | — | `reservation_id` peut être null si resa pas encore importée |
 
 ---
 

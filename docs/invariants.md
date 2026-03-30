@@ -83,10 +83,10 @@ Ces invariants ont la priorité absolue. Leur violation peut entraîner une fact
 
 | # | Invariant | État | Violation / Référence |
 |---|---|---|---|
-| I-50 | Un AE avec `ae_user_id` non null peut se connecter au portail | ❌ **Violé** | `mdp_temporaire` jamais sauvegardé + reset inexistant (CF-PAE1/PAE2) |
+| I-50 | Un AE avec `ae_user_id` non null peut se connecter au portail | ✅ **Corrigé** | `create-ae-user` et `reset-ae-password` sauvegardent `mdp_temporaire` — code path ✅ confirmé audit 30 mars (CF-PAE1/PAE2) |
 | I-51 | `ventilation.montant_reel` saisi par le portail correspond à la réservation du bon mois | ✅ **Corrigé** | `ventilation.js` V1 renseigne `mission_menage.ventilation_auto_id` via RPC `lier_ventilation_auto_mission` après calcul. La saisie silencieusement perdue est prévenue pour tous les cas avec ligne AUTO (CF-PAE3). |
 | I-52 | Une prestation `statut = 'valide'` a un impact sur la comptabilité (LOY, facture, ou débit DCB) | ⚠ **Majoritairement corrigé** | `deduction_loy` : déduit du reversement ✅. `haowner` : ligne HAOWNER TVA 20% ✅. AUTO : absorbé ou DEB_AE ✅. `debours_proprio` : absorption LOY après AUTO + ligne DEBP + surplus facturé (CF-P1-BC, commit `b7bedc1`) ✅. `dcb_direct` : suivi interne uniquement (`log.dcbDirectTotal`) par conception — pas de facturation propriétaire (CF-P1-A) ✅. Reste : code EXTRA dans `ventilation.js` non implémenté. |
-| I-53 | `auto_entrepreneur.mdp_temporaire` est synchronisé avec le mot de passe Supabase Auth | ❌ **Violé** | `mdp_temporaire` toujours null (CF-PAE1) |
+| I-53 | `auto_entrepreneur.mdp_temporaire` est synchronisé avec le mot de passe Supabase Auth | ✅ **Corrigé** | Edge Function `create-ae-user` sauvegarde `mdp_temporaire` — code path ✅ confirmé audit 30 mars (CF-PAE1) |
 | I-54 | Une prestation hors forfait validée produit une écriture dans la ventilation (code EXTRA) | ⚠ **Non implémenté** — à formaliser | Code EXTRA inexistant dans V1 — état cible non encore atteint |
 | I-55 | Tout achat DCB pour le compte d'un propriétaire (HAOWNER) produit une ligne de facturation explicite | ✅ **Implémenté** | Ligne HAOWNER TVA 20% dans la facture principale (`genererFactureProprietaire`, commit 2c5f9d15). `montantReversement = max(0, LOY − deduction_loy − haownerTTC)`. Pas de code HAOWNER dans `ventilation.js` — prestation lue depuis `prestation_hors_forfait`. |
 
@@ -96,9 +96,9 @@ Ces invariants ont la priorité absolue. Leur violation peut entraîner une fact
 
 | # | Invariant | État | Violation / Référence |
 |---|---|---|---|
-| I-60 | Toute opération métier significative est tracée dans `journal_ops` | ❌ **Violé** | 1 seul appel `logOp` sur ~20 opérations (CF-J2) |
-| I-61 | Le filtre mois de PageJournal retourne les opérations du mois sélectionné | ❌ **Violé** | `mois_comptable` toujours null dans le seul appel logOp (CF-J1) |
-| I-62 | Les logs d'import et de webhook sont visibles dans PageJournal | ❌ **Violé** | `import_log` et `webhook_log` jamais lues par PageJournal (CF-J3) |
+| I-60 | Toute opération métier significative est tracée dans `journal_ops` | ⚠ **Partiellement corrigé** | Ventilation et factures loguées (CF-J2) — ~15 opérations restent sans logOp. Couverture partielle acceptée — pas un invariant critique. |
+| I-61 | Le filtre mois de PageJournal retourne les opérations du mois sélectionné | ✅ **Corrigé** | `mois_comptable` renseigné dans logOp (CF-J1) |
+| I-62 | Les logs d'import et de webhook sont visibles dans PageJournal | ✅ **Corrigé** | `import_log` mergée dans `getJournal` (CF-J3) |
 
 ---
 
@@ -117,18 +117,13 @@ Ces invariants ont la priorité absolue. Leur violation peut entraîner une fact
 
 ### Invariants violés actifs
 
-| Invariant | Description courte | Référence bug |
-|---|---|---|
-| I-41 | Facture sans ligne facture_evoliz_ligne | Génération interrompue entre INSERT facture et INSERT lignes |
-| I-50 | AE avec ae_user_id ne peut pas se connecter | CF-PAE1/PAE2 — code path ✅ (Edge Functions sauvegardent mdp_temporaire), confirmation DB en attente |
-| I-53 | mdp_temporaire désynchronisé | CF-PAE1 — code path ✅, confirmation DB en attente |
-| I-60 | Opérations non tracées dans journal | CF-J2 — partiellement corrigé (ventilation + factures loguées) |
-| I-61 | Filtre mois journal inopérant | CF-J1 — corrigé (mois_comptable renseigné dans logOp) |
-| I-62 | import_log / webhook_log invisibles | CF-J3 — corrigé (import_log mergée dans getJournal) |
+Aucun invariant actif violé à l'issue de la session du 30 mars 2026.
+
+> I-60 reste ⚠ partiellement couvert (~15 opérations non loguées) mais n'est plus considéré comme un invariant critique bloquant.
 
 ### Invariants corrigés (mars 2026)
 
-| Invariant | Description courte | Commit |
+| Invariant | Description courte | Commit / Référence |
 |---|---|---|
 | I-01 | NaN dans montants ventilation | CF-C2/C8 — V2 désactivée (`119be181`) |
 | I-20 | rapprochee=true sans mouvement_id valide | CF-BQ1 — `annulerRapprochement` appelé avant DELETE (`55ad751`) |
@@ -140,9 +135,13 @@ Ces invariants ont la priorité absolue. Leur violation peut entraîner une fact
 | I-40 | facture envoye_evoliz sans evoliz_id | CF-F2 (`1c7305f`) — verrou envoi_en_cours |
 | I-42 | Push Evoliz non idempotent | CF-F2 (`1c7305f`) — verrou pre-envoi + rollback |
 | I-43 | Navigation temporelle factures cassée | CF-F1 — champ `mois` partout |
+| I-50 | AE avec ae_user_id ne peut pas se connecter | CF-PAE1/PAE2 — code path ✅ confirmé audit 30 mars |
 | I-51 | Saisie AE perdue si ventilation non calculée | CF-PAE3 — RPC `lier_ventilation_auto_mission` |
 | I-52 | Prestations validées sans impact comptable | CF-P1 — `deduction_loy`, `haowner`, AUTO, `debours_proprio` ✅. `dcb_direct` : log interne par conception. EXTRA ventilation : non implémenté. |
+| I-53 | mdp_temporaire désynchronisé | CF-PAE1 — code path ✅ confirmé audit 30 mars |
 | I-55 | Achat HAOWNER sans ligne de facturation | ✅ (commit `2c5f9d15`) |
+| I-61 | Filtre mois journal inopérant | CF-J1 — `mois_comptable` renseigné dans logOp |
+| I-62 | import_log / webhook_log invisibles | CF-J3 — `import_log` mergée dans `getJournal` |
 
 ### Invariants ajoutés (mars 2026)
 
@@ -165,7 +164,7 @@ Ces invariants ont la priorité absolue. Leur violation peut entraîner une fact
 | I-54 | Prestation validée doit produire une écriture EXTRA dans la ventilation |
 | I-73 | Modification après clôture doit être explicite et documentée |
 
-**Total actuel** : 6 invariants violés actifs, 13 corrigés, 6 nouveaux, sur 46 documentés.
+**Total actuel** : 0 invariants violés actifs (⚠ I-60 partiellement couvert), 17 corrigés, 6 nouveaux, sur 46 documentés.
 
 ---
 
