@@ -30,7 +30,8 @@ function BadgeStatut({ r, onToggle }) {
     </span>
   )
   // Ventilée mais pas encore rapprochée
-  if (r.ventilation_calculee) return (
+  const STATUTS_NON_VENTILABLES = ['cancelled', 'not_accepted', 'not accepted', 'declined', 'expired']
+  if (r.ventilation_calculee && !STATUTS_NON_VENTILABLES.includes(r.final_status)) return (
     <span className="badge badge-warning"
       onClick={r.platform === 'manual' ? (e) => { e.stopPropagation(); onToggle(r) } : undefined}
       style={{ cursor: r.platform === 'manual' ? 'pointer' : 'default' }}
