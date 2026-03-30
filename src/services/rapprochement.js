@@ -693,16 +693,28 @@ async function _lier(mouvementId, virIds, statut = 'rapproche', typePaiement = n
         const solde = finRevenue - totalLie
         if (solde > 100) {
           await supabase.from('reservation').update({ rapprochee: false }).eq('id', resaId)
-          const { data: origVir } = await supabase
-            .from('ventilation').select('mois_comptable, bien_id')
+          const { data: virExistants } = await supabase
+            .from('ventilation')
+            .select('mois_comptable, bien_id, proprietaire_id')
             .eq('reservation_id', resaId).eq('code', 'VIR')
-            .not('mouvement_id', 'is', null).limit(1).single()
+            .limit(1).single()
+          const nbVir = await supabase
+            .from('ventilation')
+            .select('id', { count: 'exact', head: true })
+            .eq('reservation_id', resaId).eq('code', 'VIR')
+          const virNum = (nbVir.count || 0) + 1
           await supabase.from('ventilation').insert({
-            reservation_id: resaId, code: 'VIR',
-            libelle: 'Virement propriétaire',
-            montant_ttc: solde, montant_ht: solde,
-            mois_comptable: origVir?.mois_comptable,
-            bien_id: origVir?.bien_id,
+            reservation_id: resaId,
+            bien_id: virExistants?.bien_id,
+            proprietaire_id: virExistants?.proprietaire_id,
+            code: 'VIR',
+            libelle: virNum > 1 ? `Virement propriétaire (${virNum})` : 'Virement propriétaire',
+            montant_ttc: solde,
+            montant_ht: solde,
+            taux_tva: 0,
+            montant_tva: 0,
+            mois_comptable: virExistants?.mois_comptable,
+            calcul_source: 'auto',
           })
         } else {
           await supabase.from('reservation').update({ rapprochee: true }).eq('id', resaId)
