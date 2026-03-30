@@ -173,6 +173,15 @@ async function genererFactureProprietaire(proprio, mois) {
   const haownerTVA = Math.round(haownerHT * 0.20)
   const haownerTTC = haownerHT + haownerTVA
 
+  // CF-P1 debours_proprio : absorption LOY (après AUTO), surplus → facture DEBP
+  const { data: prestationsDeboursProprio } = await supabase
+    .from('prestation_hors_forfait')
+    .select('montant, bien_id, description, prestation_type:prestation_type_id(nom), ae:ae_id(type)')
+    .in('bien_id', bienIds)
+    .eq('mois', mois)
+    .eq('statut', 'valide')
+    .eq('type_imputation', 'debours_proprio')
+
   // Frais propriétaire à déduire du loyer (mode_traitement = 'deduire_loyer')
   const { data: fraisDeduire } = await supabase
     .from('frais_proprietaire')
@@ -203,7 +212,9 @@ async function genererFactureProprietaire(proprio, mois) {
 
   // AUTO ÃÂ©tape 1 : absorption bien par bien -- mode_encaissement = 'dcb' uniquement
   let autoAbsorbableTotal = 0
-  let autoSurplusTotal = 0
+  let autoSurplusTotal    = 0
+  let deboursPropAbsorbTotal  = 0
+  let deboursPropSurplusTotal = 0
 
   for (const bien of proprio.biens) {
     if (bien.mode_encaissement !== 'dcb') continue
@@ -243,6 +254,14 @@ async function genererFactureProprietaire(proprio, mois) {
     const autoAbsorbableBien = Math.min(autoBien, loyBienDisponible)
     const autoSurplusBien    = Math.max(0, autoBien - autoAbsorbableBien)
 
+    // debours_proprio : absorbe le LOY résiduel après AUTO
+    const deboursPropBien = (prestationsDeboursProprio || [])
+      .filter(function(p){ return p.bien_id === bien.id })
+      .reduce(function(s,p){ return s + (p.montant || 0) }, 0)
+    const loyApresAuto       = Math.max(0, loyBienDisponible - autoAbsorbableBien)
+    const deboursPropAbsorb  = Math.min(deboursPropBien, loyApresAuto)
+    const deboursPropSurplus = Math.max(0, deboursPropBien - deboursPropAbsorb)
+
     if (autoBien > 0) {
       console.log('[AUTO-PROPRIO]', { proprio: proprio.id, mois, bien: bien.id,
         name: bien.hospitable_name, mode: bien.mode_encaissement, autoBien,
@@ -251,9 +270,11 @@ async function genererFactureProprietaire(proprio, mois) {
 
     autoAbsorbableTotal += autoAbsorbableBien
     autoSurplusTotal    += autoSurplusBien
+    deboursPropAbsorbTotal  += deboursPropAbsorb
+    deboursPropSurplusTotal += deboursPropSurplus
   }
 
-  const montantReversement = Math.max(0, loy.ht - totalPrestations - haownerTTC - fraisDeduireTTC - autoAbsorbableTotal)
+  const montantReversement = Math.max(0, loy.ht - totalPrestations - haownerTTC - fraisDeduireTTC - autoAbsorbableTotal - deboursPropAbsorbTotal)
 
   // Cas solde nÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂ©gatif : uniquement des expenses, pas de rÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂ©servations
   const soldeNegatif = totalHT === 0 && div.ht > 0
@@ -401,6 +422,27 @@ async function genererFactureProprietaire(proprio, mois) {
     })
   }
 
+  // CF-P1 debours_proprio : lignes DEBP pour la portion absorbée sur LOY
+  for (const p of (prestationsDeboursProprio || [])) {
+    if (!(p.montant > 0)) continue
+    const bienProp = proprio.biens.find(function(b){ return b.id === p.bien_id })
+    if (bienProp?.mode_encaissement !== 'dcb') continue
+    const isStaff = p.ae?.type === 'staff'
+    const ht  = p.montant
+    const tva = isStaff ? Math.round(ht * 0.20) : 0
+    const ttc = ht + tva
+    lignes.push({
+      facture_id:  factureId,
+      code:        'DEBP',
+      libelle:     `Débours proprio : ${p.description || p.prestation_type?.nom || 'Débours propriétaire'}`,
+      montant_ht:  -ht,
+      taux_tva:    isStaff ? 20 : 0,
+      montant_tva: -tva,
+      montant_ttc: -ttc,
+      ordre:       ordre++,
+    })
+  }
+
   if (lignes.length > 0) {
     await supabase.from('facture_evoliz_ligne').insert(lignes)
   }
@@ -412,7 +454,7 @@ async function genererFactureProprietaire(proprio, mois) {
       .in('id', fraisDeduire.map(f => f.id))
   }
 
-  const resteAPayer = Math.max(0, (totalPrestations + haownerTTC) - loy.ht) + autoSurplusTotal
+  const resteAPayer = Math.max(0, (totalPrestations + haownerTTC) - loy.ht) + autoSurplusTotal + deboursPropSurplusTotal
   return { created, factureId, totalHT, totalTTC, soldeNegatif, resteAPayer }
 }
 
@@ -430,11 +472,11 @@ async function genererFactureDebours(proprio, mois) {
     .from('ventilation').select('bien_id, code, montant_ht, montant_reel')
     .in('bien_id', bienIds).eq('mois_comptable', mois).in('code', ['AUTO', 'LOY'])
 
-  // Batch 2 : prestations deduction_loy + haowner
+  // Batch 2 : prestations deduction_loy + haowner + debours_proprio
   const { data: prestationsAll } = await supabase
-    .from('prestation_hors_forfait').select('bien_id, montant, type_imputation')
+    .from('prestation_hors_forfait').select('bien_id, montant, type_imputation, ae:ae_id(type)')
     .in('bien_id', bienIds).eq('mois', mois).eq('statut', 'valide')
-    .in('type_imputation', ['deduction_loy', 'haowner'])
+    .in('type_imputation', ['deduction_loy', 'haowner', 'debours_proprio'])
 
   const ventilByBien = new Map()
   const prestByBien  = new Map()
@@ -472,6 +514,8 @@ async function genererFactureDebours(proprio, mois) {
     if (autoBien === 0) continue
 
     let montantAFacturer = 0
+    let debPropSurplus   = 0
+    let debPropItems     = []
 
     if (bien.mode_encaissement === 'proprio') {
       montantAFacturer = autoBien
@@ -491,6 +535,14 @@ async function genererFactureDebours(proprio, mois) {
       const loyBienDisponible = Math.max(0, loyBien - prestBien - haownerBienTTC)
       const autoAbsorbable    = Math.min(autoBien, loyBienDisponible)
       montantAFacturer        = Math.max(0, autoBien - autoAbsorbable)
+
+      // debours_proprio : absorbe le LOY résiduel après AUTO
+      debPropItems = bienPrest.filter(function(p){ return p.type_imputation === 'debours_proprio' })
+      const deboursPropBien = debPropItems.reduce(function(s,p){ return s + (p.montant || 0) }, 0)
+      const loyApresAuto    = Math.max(0, loyBienDisponible - autoAbsorbable)
+      const debPropAbsorb   = Math.min(deboursPropBien, loyApresAuto)
+      debPropSurplus        = Math.max(0, deboursPropBien - debPropAbsorb)
+      montantAFacturer     += debPropSurplus
     }
 
     if (autoBien > 0) {
@@ -501,15 +553,34 @@ async function genererFactureDebours(proprio, mois) {
 
     if (montantAFacturer === 0) continue
 
-    lignes.push({
-      code:        'DEB_AE',
-      libelle:     'Debours AE - ' + bien.hospitable_name,
-      montant_ht:  montantAFacturer,
-      taux_tva:    0,
-      montant_tva: 0,
-      montant_ttc: montantAFacturer,
-      ordre:       ordre++,
-    })
+    const autoSurplusBienDebours = Math.max(0, montantAFacturer - debPropSurplus)
+    if (autoSurplusBienDebours > 0) {
+      lignes.push({
+        code:        'DEB_AE',
+        libelle:     'Debours AE - ' + bien.hospitable_name,
+        montant_ht:  autoSurplusBienDebours,
+        taux_tva:    0,
+        montant_tva: 0,
+        montant_ttc: autoSurplusBienDebours,
+        ordre:       ordre++,
+      })
+    }
+
+    // CF-P1 debours_proprio : ligne DEBP pour le surplus non absorbé par LOY
+    if (debPropSurplus > 0) {
+      const allStaff = debPropItems.every(function(p){ return p.ae?.type === 'staff' })
+      const taux     = allStaff ? 20 : 0
+      const tva      = Math.round(debPropSurplus * taux / 100)
+      lignes.push({
+        code:        'DEBP',
+        libelle:     'Débours proprio - ' + bien.hospitable_name,
+        montant_ht:  debPropSurplus,
+        taux_tva:    taux,
+        montant_tva: tva,
+        montant_ttc: debPropSurplus + tva,
+        ordre:       ordre++,
+      })
+    }
 
     // Frais proprietaire a facturer directement -- lignes separees, hors montantAFacturer
     const fraisDirectsBien = fraisDirectsByBien.get(bien.id) || []
