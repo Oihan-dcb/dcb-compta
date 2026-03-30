@@ -44,10 +44,8 @@ export async function calculerVentilationMois(mois) {
     `)
     .eq('mois_comptable', mois)
     .eq('ventilation_calculee', false)
-    .eq('owner_stay', false)       // Ignorer séjours proprio
-    // NE PAS exclure les annulées ici — certaines ont des valeurs (Airbnb/Booking)
-    // Le filtre revenue=0 dans calculerVentilationResa gère les vraies annulées à zéro
-    // Les directes annulées sont gérées par early return dans calculerVentilationResa
+    .neq('final_status', 'cancelled')
+    .eq('owner_stay', false)
 
   if (error) throw error
 
@@ -59,7 +57,7 @@ export async function calculerVentilationMois(mois) {
       await calculerVentilationResa(resa)
       total++
     } catch (err) {
-      console.error(`Erreur ventilation résa ${resa.code}:`, err)
+      console.error('[VENTIL ERROR]', resa.code, resa.hospitable_id, err.message)
       errors++
     }
   }
@@ -113,7 +111,10 @@ export async function calculerVentilationResa(resa) {
 
   // Revenue = montant net reçu en banque (en centimes)
   const revenue = resa.fin_revenue || 0
-  if (revenue === 0) return // Réservation à €0, rien à ventiler
+  if (revenue === 0) {
+    await supabase.from('reservation').update({ ventilation_calculee: true }).eq('id', resa.id)
+    return
+  }
 
   // --- Extraire les fees ---
   // Priorité : reservation_fee en base (resas importées CSV)
