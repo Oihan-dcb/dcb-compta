@@ -224,6 +224,7 @@ export async function envoyerRapportEmail(proprio, mois, htmlBody) {
     },
     body: JSON.stringify({
       to: proprio.email,
+      cc: 'oihan@destinationcotebasque.com',
       subject: `Rapport mensuel ${moisLabel} — Destination Côte Basque`,
       html: htmlBody,
     }),

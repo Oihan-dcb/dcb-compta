@@ -18,7 +18,7 @@ Deno.serve(async (req) => {
   let body: any
   try { body = await req.json() } catch { return new Response('Invalid JSON', { status: 400 }) }
 
-  const { to, subject, html, attachments } = body
+  const { to, cc, subject, html, attachments } = body
   if (!to || !subject || !html) return new Response('Missing to/subject/html', { status: 400 })
   if (!SMTP_HOST || !SMTP_USER || !SMTP_PASS) return new Response('SMTP not configured', { status: 500 })
 
@@ -41,6 +41,7 @@ Deno.serve(async (req) => {
     await client.send({
       from: SMTP_FROM,
       to,
+      cc: cc || undefined,
       subject,
       html,
       attachments: attachList.length ? attachList : undefined,
