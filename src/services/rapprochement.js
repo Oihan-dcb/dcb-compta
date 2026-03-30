@@ -506,24 +506,26 @@ export async function lancerMatchingAuto(mois) {
     }
 
     // ── STRIPE ─────────────────────────────────────────────────────
+    // Les virements Stripe correspondent à des réservations directes (platform='direct')
+    // On identifie les VIR via stripe_payout_line.reservation_code
     const mouvStripe = libres.filter(m => m.canal === 'stripe')
-    const virStripe = virs.filter(v => v.reservation?.platform === 'stripe' && !v.mouvement_id)
     for (const mouv of mouvStripe) {
-      const exact = virStripe.find(v => Math.abs(v.montant_ttc - mouv.credit) <= 2)
-      if (exact) {
-        await _lier(mouv.id, [exact.id])
-        log.matched++
-        log.details.push({ type: 'stripe_exact', montant: mouv.credit / 100 })
-        continue
-      }
-      const total = virStripe.reduce((s, v) => s + v.montant_ttc, 0)
-      if (total > 0 && Math.abs(total - mouv.credit) / mouv.credit < 0.05) {
-        await _lier(mouv.id, virStripe.map(v => v.id))
-        log.matched++
-        log.details.push({ type: 'stripe_total', montant: mouv.credit / 100, nb_virs: virStripe.length })
-        continue
-      }
-      log.skipped++
+      const { data: stripeLines } = await supabase
+        .from('stripe_payout_line')
+        .select('reservation_code')
+        .eq('mouvement_id', mouv.id)
+        .not('reservation_code', 'is', null)
+      const codes = (stripeLines || []).map(l => l.reservation_code)
+      if (!codes.length) { log.skipped++; continue }
+
+      const virsDuMouv = virs.filter(v =>
+        codes.includes(v.reservation?.code) && !v.mouvement_id
+      )
+      if (!virsDuMouv.length) { log.skipped++; continue }
+
+      await _lier(mouv.id, virsDuMouv.map(v => v.id))
+      log.matched++
+      log.details.push({ type: 'stripe_payout', montant: mouv.credit / 100, nb_virs: virsDuMouv.length })
     }
 
   } catch (err) {
