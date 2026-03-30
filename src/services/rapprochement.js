@@ -324,7 +324,8 @@ export async function getVirNonRapproches(mois) {
     .select(`
       id, code, montant_ttc, mouvement_id, mois_comptable,
       reservation (id, code, platform, guest_name, arrival_date, departure_date, nights, fin_revenue, final_status,
-        bien (code, hospitable_name, gestion_loyer, agence))
+        bien (code, hospitable_name, gestion_loyer, agence),
+        ventilation (montant_ttc, mouvement_id))
     `)
     .eq('code', 'VIR')
     .is('mouvement_id', null)
@@ -539,6 +540,27 @@ export async function lancerMatchingAuto(mois) {
 // ── MATCHING MANUEL ────────────────────────────────────────────
 
 export async function matcherManuellement(mouvementId, virIds, typePaiement = null) {
+  // Garde-fou : vérifier le solde restant avant de lier
+  const { data: virData } = await supabase
+    .from('ventilation')
+    .select('reservation_id, reservation(fin_revenue)')
+    .in('id', virIds)
+  const resaIds = [...new Set((virData || []).map(v => v.reservation_id).filter(Boolean))]
+  for (const resaId of resaIds) {
+    const finRevenue = virData.find(v => v.reservation_id === resaId)?.reservation?.fin_revenue || 0
+    const { data: ventsLiees } = await supabase
+      .from('ventilation')
+      .select('montant_ttc')
+      .eq('reservation_id', resaId)
+      .not('mouvement_id', 'is', null)
+    const dejaLie = (ventsLiees || []).reduce((s, v) => s + v.montant_ttc, 0)
+    const solde = finRevenue - dejaLie
+    if (solde <= 0) throw new Error('Réservation déjà couverte à 100% — solde restant nul')
+    const { data: mvt } = await supabase.from('mouvement_bancaire').select('credit').eq('id', mouvementId).single()
+    if (mvt && mvt.credit > solde + 200) {
+      throw new Error(`Virement (${(mvt.credit/100).toFixed(2)}€) dépasse le solde restant (${(solde/100).toFixed(2)}€)`)
+    }
+  }
   await _lier(mouvementId, virIds, 'rapproche', typePaiement)
 }
 
