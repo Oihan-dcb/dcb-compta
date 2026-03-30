@@ -621,7 +621,7 @@ export default function PageRapprochement() {
               VIR disponibles ({virs.length})
               {virsSel.length > 0 && (
                 <span style={{ marginLeft: 8, color: '#CC9933' }}>
-                  — sélection : {fmt(virs.filter(v => virsSel.includes(v.id)).reduce((s, v) => s + v.montant_ttc, 0))}
+                  — sélection : {fmt(virs.filter(v => virsSel.includes(v.id)).reduce((s, v) => s + (v.reservation?.fin_revenue || 0), 0))}
                 </span>
               )}
             </div>
@@ -655,7 +655,7 @@ export default function PageRapprochement() {
                 const soldeRestant = (resa) => {
                   const dejaLie = (resa?.ventilation || [])
                     .filter(v => v.mouvement_id && v.code === 'VIR')
-                    .reduce((s, v) => s + (v.montant_ttc || 0), 0)
+                    .reduce((s, v) => s + (v.mouvement_bancaire?.credit || 0), 0)
                   return Math.max(0, (resa?.fin_revenue || 0) - dejaLie)
                 }
                 return virs.filter(v => virMoisFiltre === 'tous' || v.mois_comptable === virMoisFiltre).filter(v => !virSearch || v.reservation?.guest_name?.toLowerCase().includes(virSearch.toLowerCase()) || v.reservation?.bien?.hospitable_name?.toLowerCase().includes(virSearch.toLowerCase()) || v.reservation?.code?.toLowerCase().includes(virSearch.toLowerCase()) || v.reservation?.platform?.toLowerCase().includes(virSearch.toLowerCase())).map(v => {
@@ -680,14 +680,11 @@ export default function PageRapprochement() {
                       )}
                     </div>
                     <div style={{ textAlign:'right' }}>
-                  <div style={{ fontWeight: 700, color: '#CC9933', whiteSpace: 'nowrap' }}>{fmt(v.montant_ttc)}</div>
+                  <div style={{ fontWeight: 700, color: '#CC9933', whiteSpace: 'nowrap' }}>{fmt(v.reservation?.fin_revenue)}</div>
                   {v.reservation?.fin_revenue > 0 && (() => {
                     const solde = soldeRestant(v.reservation)
                     const partiel = solde < (v.reservation.fin_revenue || 0)
-                    return <>
-                      <div style={{fontSize:10,color:'#888'}}>rev: {fmt(v.reservation.fin_revenue)}</div>
-                      {partiel && <div style={{fontSize:10,color:'#D97706',fontWeight:700}}>Reste {fmt(solde)}</div>}
-                    </>
+                    return partiel ? <div style={{fontSize:10,color:'#D97706',fontWeight:700}}>Reste {fmt(solde)}</div> : null
                   })()}
                 </div>
                   </label>

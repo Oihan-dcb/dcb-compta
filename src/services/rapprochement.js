@@ -325,7 +325,7 @@ export async function getVirNonRapproches(mois) {
       id, code, montant_ttc, mouvement_id, mois_comptable,
       reservation (id, code, platform, guest_name, arrival_date, departure_date, nights, fin_revenue, final_status,
         bien (code, hospitable_name, gestion_loyer, agence),
-        ventilation (montant_ttc, mouvement_id, code))
+        ventilation (montant_ttc, mouvement_id, code, mouvement_bancaire(credit)))
     `)
     .eq('code', 'VIR')
     .is('mouvement_id', null)
@@ -550,10 +550,10 @@ export async function matcherManuellement(mouvementId, virIds, typePaiement = nu
     const finRevenue = virData.find(v => v.reservation_id === resaId)?.reservation?.fin_revenue || 0
     const { data: ventsLiees } = await supabase
       .from('ventilation')
-      .select('montant_ttc')
+      .select('mouvement_bancaire(credit)')
       .eq('reservation_id', resaId)
       .not('mouvement_id', 'is', null)
-    const dejaLie = (ventsLiees || []).reduce((s, v) => s + v.montant_ttc, 0)
+    const dejaLie = (ventsLiees || []).reduce((s, v) => s + (v.mouvement_bancaire?.credit || 0), 0)
     const solde = finRevenue - dejaLie
     if (solde <= 0) throw new Error('Réservation déjà couverte à 100% — solde restant nul')
     const { data: mvt } = await supabase.from('mouvement_bancaire').select('credit').eq('id', mouvementId).single()
