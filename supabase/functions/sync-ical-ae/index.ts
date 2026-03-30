@@ -80,7 +80,8 @@ Deno.serve(async (req) => {
         ical_uid: evt.uid || null,
         mois,
         statut: 'planifie',
-        type_mission: titre.toLowerCase().includes('cleaning') ? 'cleaning' : 'checkin',
+        type_mission: 'checkout',
+        imputation: 'ventilation_dcb',
       }
 
       const { error: upsertErr } = await sb.from('mission_menage')
