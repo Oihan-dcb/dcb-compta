@@ -720,10 +720,11 @@ export async function exportCSVComptable(mois) {
     .select(`
       code, libelle, montant_ht, taux_tva, montant_tva, montant_ttc, mois_comptable,
       reservation (code, platform, arrival_date, departure_date),
-      bien (hospitable_name, code),
+      bien!inner (hospitable_name, code, agence),
       proprietaire (nom)
     `)
     .eq('mois_comptable', mois)
+    .eq('bien.agence', 'dcb')
     .order('code')
 
   if (error) throw error
