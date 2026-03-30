@@ -90,6 +90,20 @@ Deno.serve(async (req) => {
       created++
     }
 
+    // Réconciliation : missions en DB non présentes dans le feed → cancelled
+    const feedUids = new Set(eventsDuMois.map(e => e.uid).filter(Boolean))
+    const { data: dbMissions } = await sb.from('mission_menage')
+      .select('id, ical_uid')
+      .eq('ae_id', ae.id)
+      .eq('mois', mois)
+      .neq('statut', 'cancelled')
+      .not('ical_uid', 'is', null)
+    for (const m of dbMissions || []) {
+      if (!feedUids.has(m.ical_uid)) {
+        await sb.from('mission_menage').update({ statut: 'cancelled' }).eq('id', m.id)
+      }
+    }
+
     return new Response(JSON.stringify({ created, updated, skipped, total: eventsDuMois.length }), {
       headers: { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' }
     })
