@@ -35,7 +35,7 @@ Ces invariants ont la priorité absolue. Leur violation peut entraîner une fact
 
 | # | Invariant | État | Violation / Référence |
 |---|---|---|---|
-| I-10 | Une réservation avec `ventilation_calculee = true` a des lignes dans `ventilation` | ✅ Respecté normalement | ⚠ Violable si suppression manuelle des lignes sans reset du flag |
+| I-10 | Une réservation avec `ventilation_calculee = true` a des lignes dans `ventilation` — **exception** : les réservations `STATUTS_NON_VENTILABLES` (cancelled, not_accepted, declined, expired) ont `ventilation_calculee=true` sans lignes ventilation (comportement attendu) | ✅ Respecté | Nettoyage explicite dans `calculerVentilationResa` pour STATUTS_NON_VENTILABLES (commit `349ba88`) |
 | I-11 | Une réservation ventilée a au minimum les codes HON et LOY | ✅ Respecté si `fin_revenue > 0` | ⚠ Peut être violé si ventilation interrompue à mi-calcul |
 | I-12 | `fin_revenue = 0` → aucune ligne de ventilation | ✅ Respecté | Règle explicite dans V1 (early return) |
 | I-13 | Réservation `owner_stay = true` → aucune ligne de ventilation | ✅ Respecté | Filtre explicite dans `calculerVentilationMois` |
@@ -50,6 +50,7 @@ Ces invariants ont la priorité absolue. Leur violation peut entraîner une fact
 | # | Invariant | État | Violation / Référence |
 |---|---|---|---|
 | I-20 | `reservation.rapprochee = true` implique l'existence d'au moins un `ventilation.mouvement_id` valide | ✅ **Corrigé** | `supprimerMouvement` et `supprimerMois` appellent `annulerRapprochement` avant DELETE — nettoyage complet (CF-BQ1, confirmé audit 30 mars) |
+| I-20b | `reservation.rapprochee = true` implique que `fin_revenue` est intégralement couvert par des virements bancaires liés (`Σ mouvement_bancaire.credit ≥ fin_revenue − 200`) | ✅ **Implémenté** | `_lier` vérifie le solde après chaque lien — si solde > 100 centimes : `rapprochee=false` + nouvelle ligne VIR résiduelle créée automatiquement (commit `2b1df6e`) |
 | I-21 | `ventilation.mouvement_id` renseigné implique que le mouvement existe en base | ✅ **Corrigé** | `annulerRapprochement` remet `mouvement_id=null` sur toutes les lignes ventilation liées (CF-BQ1/BQ2) |
 | I-22 | `payout_hospitable.mouvement_id` renseigné implique que le mouvement existe en base | ✅ **Corrigé** | `annulerRapprochement` remet `mouvement_id=null` sur `payout_hospitable` (CF-BQ1) |
 | I-23 | Un mouvement `statut = 'rapproche'` a au moins une réservation liée via `ventilation.mouvement_id` | ✅ **Corrigé** | `annulerRapprochement` couvre VIR + payout sans VIR via `payout_reservation` join (CF-RAPP-4, commit `55ad751`) |
@@ -153,6 +154,8 @@ Aucun invariant actif violé à l'issue de la session du 30 mars 2026.
 | I-57 | Ligne PREST TVA 20% pour prestation staff DCB, TVA 0% pour AE | ✅ Implémenté (commit `654d102`) |
 | I-58 | `debours_proprio` absorbé sur LOY bien-par-bien après AUTO ; surplus → ligne DEBP avec TVA selon ae.type | ✅ Implémenté (CF-P1-BC, commit `b7bedc1`) |
 | I-59 | genererFacturesMois ne facture que les propriétaires `actif=true` avec des biens `listed=true, agence='dcb'` | ✅ Implémenté (CF-F8, commit `cd8c20a`) |
+| I-60b | Réservation `STATUTS_NON_VENTILABLES` → `fin_revenue=0`, ventilation supprimée, `ventilation_calculee=true`. Badge "Ventilée" masqué dans UI. | ✅ Implémenté (commit `349ba88`, `9233c59`) |
+| I-61b | Le montant de référence pour le rapprochement bancaire est `fin_revenue` (pas `VIR.montant_ttc` = LOY). `soldeRestant` = `fin_revenue − Σ(bank_credits)`. | ✅ Implémenté (commits `f730a90`, `2b1df6e`) |
 
 **Détail I-56** : `genererFactureDebours` ne marque pas les frais directs `statut='facture'` dans le chemin skipped (aucune donnée à facturer). Le `UPDATE` est placé exclusivement dans le bloc `if (factureId)` — après insertion des lignes Evoliz confirmée. Idem pour `deduire_loyer` dans `genererFactureProprietaire`.
 
@@ -164,7 +167,7 @@ Aucun invariant actif violé à l'issue de la session du 30 mars 2026.
 | I-54 | Prestation validée doit produire une écriture EXTRA dans la ventilation |
 | I-73 | Modification après clôture doit être explicite et documentée |
 
-**Total actuel** : 0 invariants violés actifs (⚠ I-60 partiellement couvert), 17 corrigés, 6 nouveaux, sur 46 documentés.
+**Total actuel** : 0 invariants violés actifs (⚠ I-60 partiellement couvert), 17 corrigés, 9 nouveaux, sur 50 documentés.
 
 ---
 

@@ -424,3 +424,30 @@ La logique de ventilation comptable (transformation `fin_revenue` → HON/FMEN/A
 - `getFacturesClientEvoliz` supprimé de `evoliz.js` (0 usages)
 - `console.log` AUTO-PROPRIO et AUTO-DEBOURS supprimés de `facturesEvoliz.js`
 - CF-PAE1/PAE2 confirmés : audit `create-ae-user` et `reset-ae-password` — sauvegardent `mdp_temporaire`, code path ✅
+
+## Fixes session 30 mars 2026 (suite — sync iCal, portail AE, rapprochement, ventilation)
+
+### sync-ical-ae (Edge Function)
+- `5f8f811` : 3 bugs silencieux corrigés dans `sync-ical-ae` — `imputation: 'ventilation_dcb'` (colonne NOT NULL manquante), `type_mission: 'checkout'` (CHECK constraint ne permettait pas `'cleaning'`/`'checkin'`), UNIQUE constraint sur `ical_uid` via Management API (PostgREST `onConflict` ignoré sans contrainte DB). Sync opérationnelle : missions Esteban créées.
+
+### Portail AE — exportCSV
+- `0c7dc49` (repo dcb-portail-ae) : `exportCSV()` restructuré — extras soumises comme lignes séparées (` → type_extra`) après chaque mission ; sous-total et total incluent `(sousMontant + sousExtras) / 100`.
+
+### Modal réservation — mode ventilation
+- `54c194a` : `ModalResa.jsx` remplace le bouton "Saisir ventilation" par 3 radios : **Normal** (ventilation calculée), **Proprio** (`owner_stay=true` + ventilation forfait), **Manuel** (saisie directe). Import `calculerVentilationResa` ajouté.
+- `54c194a` : `PageReservations.jsx` — modal "MANUELLES" pour ventiler en masse les réservations manuelles non ventilées. Radios Normal / Proprio. Card MANUELLES cliquable → déclenche le modal.
+
+### Rapprochement — Stripe, plateforme, multi-virements
+- `999c9d0` : Matching auto Stripe corrigé — `platform='stripe'` n'existe pas. Les virements Stripe correspondent à des réservations `platform='direct'`, identifiées via `stripe_payout_line.reservation_code`.
+- `54c194a` : Recherche dans le panneau Lier étendue à `reservation.platform` (en plus de guest, bien, code).
+- `aef15f8` : Multi-virements — `soldeRestant` (fin_revenue − virements déjà liés en banque) calculé côté UI, affiché "Reste X€" si paiement partiel. Garde-fou dans `matcherManuellement` : bloque si virement > solde restant.
+
+### Ventilation — statuts non ventilables
+- `349ba88` : `calculerVentilationMois` et `calculerVentilationResa` excluent désormais `not_accepted`, `not accepted`, `declined`, `expired` (en plus de `cancelled`). Pour ces statuts : ventilation supprimée + `ventilation_calculee=true`. `fin_revenue` remis à 0 sur les réservations rejetées déjà ventilées (patch DB).
+- `9233c59` : Badge "Ventilée" masqué dans `TableReservations` pour les `STATUTS_NON_VENTILABLES`.
+- DB : 164 lignes ventilation orphelines `code='MEN'` supprimées (créées par bug `owner_stay` antérieur).
+
+### Rapprochement — correction montant VIR et solde (session 30 mars soir)
+- `1893d52` : `soldeRestant` filtre `v.code === 'VIR'` uniquement ; `code` ajouté au sub-select `reservation.ventilation` dans `getVirNonRapproches`.
+- `f730a90` : Le montant de référence dans le panneau Lier est désormais `fin_revenue` (pas `VIR.montant_ttc` qui = LOY/reversement). Sélection et `soldeRestant` calculés via `mouvement_bancaire.credit` (virements bancaires réels). `mouvement_bancaire(credit)` ajouté au sub-select ventilation.
+- `2b1df6e` : `_lier` crée automatiquement une nouvelle ligne VIR si `fin_revenue > sum(bank_credits)` après un lien partiel, et maintient `rapprochee=false` jusqu'à couverture complète. Patch DB HM8C9CM5YZ : `rapprochee=false` + ligne VIR résiduelle 112,33€.

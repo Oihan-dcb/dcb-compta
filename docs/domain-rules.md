@@ -56,9 +56,10 @@ Ces réservations sont explicitement exclues ou court-circuitées :
 | `reservation.owner_stay === true` | Exclue — séjour propriétaire | ✅ |
 | `fin_revenue === 0` | Court-circuit — early return sans écriture | ✅ |
 | `isDirect && isCancelled` | Suppression de la ventilation existante + `ventilation_calculee=true` — pas de nouvelles lignes | ✅ |
+| `final_status IN STATUTS_NON_VENTILABLES` | Suppression de la ventilation + `ventilation_calculee=true` + `fin_revenue=0`. STATUTS_NON_VENTILABLES = `['cancelled','not_accepted','not accepted','declined','expired']` (commit `349ba88`) | ✅ Mars 2026 |
 | `ventilation_calculee === true` | Non retraitée — ignorée par `calculerVentilationMois` | ✅ |
 
-**Note** : les réservations annulées non-directes (Airbnb/Booking avec pénalités) ne sont **pas** exclues si `fin_revenue > 0`.
+**Note** : depuis `349ba88`, toutes les réservations avec `final_status` dans `STATUTS_NON_VENTILABLES` sont exclues — y compris les réservations Airbnb/Booking annulées avec pénalités (`fin_revenue > 0`).
 
 ---
 
@@ -259,6 +260,52 @@ Ces règles ne sont pas documentées explicitement mais sont observées dans le 
 | `forfait_dcb_ref` écrase le fee réel | Un forfait mal configuré peut déformer FMEN sans avertissement | FMEN faux |
 | `provision_ae_ref = null` → AUTO = 0 | Bien sans provision configurée → AUTO non ventilé | Balance AE faussée |
 | Booking : LOY = `fin_revenue_net − honTTC − fmenTTC − AUTO − taxes` | Si `fin_revenue` incorrect (CSV mal parsé), LOY est faux par propagation | Reversement faux |
+
+---
+
+## 11bis. Règles de rapprochement (implémentées mars 2026)
+
+### 11bis.1 Montant de référence — panneau Lier
+
+Le montant de référence pour le rapprochement est **`reservation.fin_revenue`** (ce qu'Airbnb/la plateforme verse réellement à DCB), pas `ventilation.montant_ttc` du code VIR (qui correspond au LOY = reversement propriétaire).
+
+- Montant affiché en jaune dans la liste VIR disponibles = `fin_revenue`
+- Somme de sélection = `Σ fin_revenue` des VIR sélectionnés
+- `soldeRestant = fin_revenue − Σ(mouvement_bancaire.credit des VIR déjà liés)`
+
+### 11bis.2 Multi-virements — lignes VIR dynamiques
+
+Un propriétaire peut payer en plusieurs virements (acompte + solde). La règle est gérée dans `_lier` (appelée par `matcherManuellement` et le matching auto) :
+
+```
+Après chaque lien :
+  totalLie = Σ(mouvement_bancaire.credit des VIR liés à cette résa)
+  solde    = fin_revenue − totalLie
+
+  si solde > 100 (centimes) :
+    → reservation.rapprochee = false  (pas encore couvert)
+    → INSERT ventilation: code='VIR', montant_ttc=solde, montant_ht=solde,
+        libelle='Virement propriétaire', mois_comptable et bien_id copiés du VIR original
+  sinon :
+    → reservation.rapprochee = true   (couverture complète)
+```
+
+**Invariant** : une réservation ne passe à `rapprochee=true` que lorsque `fin_revenue` est intégralement couvert par des virements bancaires liés.
+
+### 11bis.3 Garde-fou `matcherManuellement`
+
+Avant de lier un virement, `matcherManuellement` vérifie que le virement bancaire ne dépasse pas le solde restant :
+
+```
+solde = fin_revenue − Σ(mouvement_bancaire.credit des VIR déjà liés)
+si mouv.credit > solde + 200 (centimes) → throw Error
+```
+
+Marge de 2€ pour les arrondis bancaires.
+
+### 11bis.4 Matching Stripe
+
+Les virements Stripe (`mouvement_bancaire.canal='stripe'`) correspondent à des réservations `platform='direct'`. L'identification se fait via `stripe_payout_line.reservation_code` (pas via `reservation.platform='stripe'` qui n'existe pas en base).
 
 ---
 
