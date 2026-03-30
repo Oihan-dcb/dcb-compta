@@ -447,38 +447,42 @@ export default function PageAutoEntrepreneurs() {
           </div>
         </div>
       )}
-    </div>
-  )
 
-    {balance && (() => {
-      const ecartAuto = balance.auto_saisis > 0 ? balance.auto_reel - balance.auto_provision : null
-      const ecartFmen = balance.auto_saisis > 0 ? balance.fmen_reel - balance.fmen_provision : null
-      const fmt = v => (v / 100).toFixed(2) + ' €'
-      const fmtEcart = v => (v >= 0 ? '+' : '') + (v / 100).toFixed(2) + ' €'
-      return (
-        <div style={{ display:'flex', gap:12, marginBottom:20, flexWrap:'wrap', alignItems:'center' }}>
-          <input type="month" value={moisBalance}
-            onChange={e => { setMoisBalance(e.target.value); chargerBalance(e.target.value) }}
-            style={{ fontSize:13, padding:'3px 8px', borderRadius:6, border:'1px solid var(--border)', background:'var(--bg-input)' }}
-          />
-          <span style={{ fontSize:12, color:'var(--text-muted)' }}>{balance.auto_saisis}/{balance.nb_auto} missions saisies</span>
-          {[
-            { label: 'AUTO provision', val: fmt(balance.auto_provision), color: '#888', flag: null },
-            { label: 'AUTO réel', val: ecartAuto != null ? fmt(balance.auto_reel) : '—',
-              color: ecartAuto != null ? (ecartAuto > 0 ? '#dc2626' : '#16a34a') : '#888',
-              flag: ecartAuto != null ? (ecartAuto > 0 ? '🔴 ' : '🟢 ') + fmtEcart(ecartAuto) : null },
-            { label: 'FMEN provision', val: fmt(balance.fmen_provision), color: '#888', flag: null },
-            { label: 'FMEN réel', val: ecartFmen != null ? fmt(balance.fmen_reel) : '—',
-              color: ecartFmen != null ? (ecartFmen < 0 ? '#16a34a' : '#dc2626') : '#888',
-              flag: ecartFmen != null ? (ecartFmen < 0 ? '🟢 ' : '🔴 ') + fmtEcart(ecartFmen) : null },
-          ].map(item => (
-            <div key={item.label} style={{ background:'var(--bg-card,#fff)', border:'1px solid var(--border,#e5e7eb)', borderRadius:10, padding:'10px 16px', minWidth:150 }}>
-              <div style={{ fontSize:11, color:'var(--text-muted,#888)', marginBottom:4 }}>{item.label}</div>
-              <div style={{ fontSize:18, fontWeight:600, color: item.color }}>{item.val}</div>
-              {item.flag && <div style={{ fontSize:11, color: item.color, marginTop:2 }}>{item.flag}</div>}
-            </div>
-          ))}
-              {confirmModal && (
+      {/* Balance AUTO/FMEN */}
+      {balance && (() => {
+        const ecartAuto = balance.auto_saisis > 0 ? balance.auto_reel - balance.auto_provision : null
+        const ecartFmen = balance.auto_saisis > 0 ? balance.fmen_reel - balance.fmen_provision : null
+        const fmt = v => (v / 100).toFixed(2) + ' €'
+        const fmtEcart = v => (v >= 0 ? '+' : '') + (v / 100).toFixed(2) + ' €'
+        return (
+          <div style={{ display:'flex', gap:12, marginBottom:20, flexWrap:'wrap', alignItems:'center' }}>
+            <input type="month" value={moisBalance}
+              onChange={e => { setMoisBalance(e.target.value); chargerBalance(e.target.value) }}
+              style={{ fontSize:13, padding:'3px 8px', borderRadius:6, border:'1px solid var(--border)', background:'var(--bg-input)' }}
+            />
+            <span style={{ fontSize:12, color:'var(--text-muted)' }}>{balance.auto_saisis}/{balance.nb_auto} missions saisies</span>
+            {[
+              { label: 'AUTO provision', val: fmt(balance.auto_provision), color: '#888', flag: null },
+              { label: 'AUTO réel', val: ecartAuto != null ? fmt(balance.auto_reel) : '—',
+                color: ecartAuto != null ? (ecartAuto > 0 ? '#dc2626' : '#16a34a') : '#888',
+                flag: ecartAuto != null ? (ecartAuto > 0 ? '🔴 ' : '🟢 ') + fmtEcart(ecartAuto) : null },
+              { label: 'FMEN provision', val: fmt(balance.fmen_provision), color: '#888', flag: null },
+              { label: 'FMEN réel', val: ecartFmen != null ? fmt(balance.fmen_reel) : '—',
+                color: ecartFmen != null ? (ecartFmen < 0 ? '#16a34a' : '#dc2626') : '#888',
+                flag: ecartFmen != null ? (ecartFmen < 0 ? '🟢 ' : '🔴 ') + fmtEcart(ecartFmen) : null },
+            ].map(item => (
+              <div key={item.label} style={{ background:'var(--bg-card,#fff)', border:'1px solid var(--border,#e5e7eb)', borderRadius:10, padding:'10px 16px', minWidth:150 }}>
+                <div style={{ fontSize:11, color:'var(--text-muted,#888)', marginBottom:4 }}>{item.label}</div>
+                <div style={{ fontSize:18, fontWeight:600, color: item.color }}>{item.val}</div>
+                {item.flag && <div style={{ fontSize:11, color: item.color, marginTop:2 }}>{item.flag}</div>}
+              </div>
+            ))}
+          </div>
+        )
+      })()}
+
+      {/* Modal confirmation suppression — indépendant de balance */}
+      {confirmModal && (
         <div style={{ position:'fixed',inset:0,background:'rgba(44,36,22,0.45)',display:'flex',alignItems:'center',justifyContent:'center',zIndex:1000 }}>
           <div style={{ background:'var(--bg,#F7F3EC)',border:'2px solid var(--brand,#CC9933)',borderRadius:16,padding:'28px 32px',maxWidth:400,width:'90%',boxShadow:'0 8px 32px rgba(44,36,22,0.18)' }}>
             <p style={{ margin:'0 0 24px',color:'var(--text,#2C2416)',fontSize:14,lineHeight:1.6,whiteSpace:'pre-line' }}>{confirmModal.message}</p>
@@ -495,7 +499,6 @@ export default function PageAutoEntrepreneurs() {
           </div>
         </div>
       )}
-</div>
-      )
-    })()}
+    </div>
+  )
 }
