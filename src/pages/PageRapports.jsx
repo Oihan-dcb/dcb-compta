@@ -254,16 +254,12 @@ export default function PageRapports() {
 - Avis : ${data.reviews.length} ce mois, note moyenne ${noteMoy}/5
 Fournis une analyse concise (5-8 lignes) : performance du mois, comparatif N-1, points forts/faibles, 2-3 recommandations actionnables.`
     try {
-      const res = await Promise.race([
-        fetch('https://api.anthropic.com/v1/messages', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json', 'x-api-key': '', 'anthropic-version': '2023-06-01' },
-          body: JSON.stringify({ model: 'claude-haiku-4-5-20251001', max_tokens: 512, messages: [{ role: 'user', content: prompt }] }),
-        }),
-        new Promise((_, reject) => setTimeout(() => reject(new Error('timeout')), 8000)),
+      const { data: llmData, error: llmErr } = await Promise.race([
+        supabase.functions.invoke('llm-analyse', { body: { prompt } }),
+        new Promise((_, reject) => setTimeout(() => reject(new Error('timeout')), 15000)),
       ])
-      const json = await res.json()
-      const txt = json?.content?.[0]?.text || ''
+      if (llmErr) throw llmErr
+      const txt = llmData?.text || ''
       if (txt) {
         setLlmAnalyse(txt)
         await supabase.from('bien_notes').upsert(
