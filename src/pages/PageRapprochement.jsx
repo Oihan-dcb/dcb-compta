@@ -654,7 +654,7 @@ export default function PageRapprochement() {
               ) : (() => {
                 const soldeRestant = (resa) => {
                   const dejaLie = (resa?.ventilation || [])
-                    .filter(v => v.mouvement_id)
+                    .filter(v => v.mouvement_id && v.code === 'VIR')
                     .reduce((s, v) => s + (v.montant_ttc || 0), 0)
                   return Math.max(0, (resa?.fin_revenue || 0) - dejaLie)
                 }

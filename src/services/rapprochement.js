@@ -325,7 +325,7 @@ export async function getVirNonRapproches(mois) {
       id, code, montant_ttc, mouvement_id, mois_comptable,
       reservation (id, code, platform, guest_name, arrival_date, departure_date, nights, fin_revenue, final_status,
         bien (code, hospitable_name, gestion_loyer, agence),
-        ventilation (montant_ttc, mouvement_id))
+        ventilation (montant_ttc, mouvement_id, code))
     `)
     .eq('code', 'VIR')
     .is('mouvement_id', null)
