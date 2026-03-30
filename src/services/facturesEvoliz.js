@@ -39,6 +39,7 @@ export async function genererFacturesMois(mois) {
     `)
     .eq('bien.listed', true)
     .eq('bien.agence', 'dcb')
+    .eq('actif', true)
 
   if (propErr) throw propErr
 
