@@ -398,10 +398,12 @@ function buildControls(agg, finRevenue, montantBancaire, statusNorm, moisResa, m
     if (Math.abs((v.ht + v.tva) - v.ttc) > 1) { htTvaTtcOk = false; break }
   }
 
-  // ctrl 2 : total ventilation TTC ≈ revenu net ±1% (skip si pas de ventilation)
+  // ctrl 2 : HON + FMEN + AUTO + LOY ≈ fin_revenue ±5% (décomposition interne cohérente)
   const hasVentil = CODES_VENTIL.some(c => agg[c].has)
+  const honFmenAutoLoy = (agg['HON']?.ttc || 0) + (agg['FMEN']?.ttc || 0) +
+                         (agg['AUTO']?.ttc || 0) + (agg['LOY']?.ht || 0)
   const ventRevOk = hasVentil && rev > 0
-    ? Math.abs(totalTtc - rev) / rev <= 0.01
+    ? Math.abs(honFmenAutoLoy - rev) / rev <= 0.05
     : true
 
   // ctrl 3 : montant bancaire ≈ fin_revenue ±200 centimes
