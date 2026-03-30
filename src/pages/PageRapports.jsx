@@ -30,7 +30,7 @@ export default function PageRapports() {
   useEffect(() => {
     supabase
       .from('proprietaire')
-      .select('id, nom, email, bien(id, hospitable_name, actif, agence)')
+      .select('id, nom, email, bien(id, hospitable_name, listed, agence)')
       .eq('actif', true)
       .order('nom')
       .then(({ data: props }) => {
@@ -50,7 +50,7 @@ export default function PageRapports() {
   useEffect(() => {
     if (!selectedPropId) return
     const proprio = proprietaires.find(p => p.id === selectedPropId)
-    const biens = (proprio?.bien || []).filter(b => b.actif && b.agence === 'dcb')
+    const biens = (proprio?.bien || []).filter(b => b.listed && b.agence === 'dcb')
     if (biens.length === 1) {
       setSelectedBienId(biens[0].id)
     } else {
@@ -185,7 +185,7 @@ export default function PageRapports() {
   }
 
   const proprio = proprietaires.find(p => p.id === selectedPropId)
-  const biensActifs = (proprio?.bien || []).filter(b => b.actif && b.agence === 'dcb')
+  const biensActifs = (proprio?.bien || []).filter(b => b.listed && b.agence === 'dcb')
   const [year, monthIdx] = mois.split('-')
   const moisLabel = MOIS_FR[parseInt(monthIdx) - 1] + ' ' + year
 
