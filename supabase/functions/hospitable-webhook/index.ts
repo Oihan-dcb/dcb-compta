@@ -109,6 +109,9 @@ async function handleReservation(supabase: any, event: string, data: any): Promi
     data.guest_name  ||
     (Array.isArray(data.guests) ? data.guests?.[0]?.name : null) ||
     null
+
+  const platform = data.platform === 'booking.com' ? 'booking' : (data.platform || 'direct')
+  const resaRow: any = {
     hospitable_id:       hospId,
     bien_id:             bien.id,
     code:                data.code,
@@ -276,16 +279,33 @@ async function handleMessage(supabase: any, event: string, data: any): Promise<s
 // REVIEWS
 // ============================================================
 async function handleReview(supabase: any, event: string, data: any): Promise<string> {
-  // R\u00e9cup\u00e9rer la r\u00e9sa associ\u00e9e
   const resaHospId = data.reservation_id || data.reservation?.id
   if (!resaHospId) return 'no reservation_id'
 
   const rating   = data.rating || data.overall_rating || null
   const comment  = data.comment || data.review || data.body || null
   const reviewer = data.reviewer_name || data.guest?.name || null
+  const submittedAt = data.submitted_at || data.created_at || null
 
-  console.log('Review re\u00e7ue:', resaHospId, 'note:', rating, reviewer)
+  console.log('Review reçue:', resaHospId, 'note:', rating, reviewer)
 
-  // Logger dans webhook_log suffit (pas de table review d\u00e9di\u00e9e pour l'instant)
+  // Résoudre reservation_id interne depuis hospitable_id
+  const { data: resa } = await supabase
+    .from('reservation')
+    .select('id')
+    .eq('hospitable_id', resaHospId)
+    .maybeSingle()
+
+  const { error } = await supabase.from('reservation_review').upsert({
+    reservation_id:              resa?.id || null,
+    hospitable_reservation_id:   resaHospId,
+    reviewer_name:               reviewer,
+    rating,
+    comment,
+    submitted_at:                submittedAt,
+  }, { onConflict: 'hospitable_reservation_id' })
+
+  if (error) throw new Error('INSERT reservation_review failed: ' + error.message)
+
   return `review ${event} resa:${resaHospId} note:${rating}`
 }
