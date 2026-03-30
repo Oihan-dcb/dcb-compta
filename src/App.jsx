@@ -1,6 +1,6 @@
 // v2
-import { BrowserRouter, Routes, Route, NavLink } from 'react-router-dom'
-import { useState, useEffect } from 'react'
+import { BrowserRouter, Routes, Route, NavLink, useLocation } from 'react-router-dom'
+import { useState, useEffect, useRef } from 'react'
 import { supabase } from './lib/supabase'
 import PageBiens from './pages/PageBiens'
 import PageReservations from './pages/PageReservations'
@@ -14,21 +14,62 @@ import PagePrestationsAE from './pages/PagePrestationsAE'
 import PageFraisProprietaire from './pages/PageFraisProprietaire'
 import PageImport from './pages/PageImport'
 import PageJournal from './pages/PageJournal'
+import PageRapports from './pages/PageRapports'
 import './App.css'
+
+function ConfigDropdown() {
+  const [open, setOpen] = useState(false)
+  const ref = useRef(null)
+  const location = useLocation()
+  const configPaths = ['/import', '/journal', '/auto-entrepreneurs', '/config']
+  const isActive = configPaths.some(p => location.pathname === p)
+
+  useEffect(() => {
+    function handleClick(e) { if (ref.current && !ref.current.contains(e.target)) setOpen(false) }
+    document.addEventListener('mousedown', handleClick)
+    return () => document.removeEventListener('mousedown', handleClick)
+  }, [])
+
+  return (
+    <div ref={ref} style={{ position: 'relative' }}>
+      <button
+        onClick={() => setOpen(o => !o)}
+        className={isActive ? 'nav-link active' : 'nav-link'}
+        style={{ background: 'none', border: 'none', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 4 }}>
+        Config <span style={{ fontSize: 9, opacity: 0.6 }}>▼</span>
+      </button>
+      {open && (
+        <div style={{ position: 'absolute', top: '110%', right: 0, zIndex: 200, background: 'var(--bg-card)', border: '1px solid var(--border)', borderRadius: 10, boxShadow: '0 8px 24px rgba(0,0,0,0.15)', minWidth: 150, padding: '6px 0' }}
+          onMouseLeave={() => setOpen(false)}>
+          {[
+            { to: '/import', label: 'Import CSV' },
+            { to: '/journal', label: 'Journal' },
+            { to: '/auto-entrepreneurs', label: 'AEs' },
+            { to: '/config', label: 'Paramètres' },
+          ].map(({ to, label }) => (
+            <NavLink key={to} to={to} onClick={() => setOpen(false)}
+              className={({ isActive }) => isActive ? 'nav-link active' : 'nav-link'}
+              style={{ display: 'block', padding: '7px 16px', borderRadius: 0 }}>
+              {label}
+            </NavLink>
+          ))}
+        </div>
+      )}
+    </div>
+  )
+}
 
 export default function App() {
   const [nbEnAttente, setNbEnAttente] = useState(0)
 
   useEffect(() => {
     const mois = new Date().toISOString().slice(0, 7)
-    // Fonction de chargement du badge
     const chargerBadge = () => {
       supabase.from('prestation_hors_forfait').select('id', { count: 'exact' })
         .eq('statut', 'en_attente').eq('mois', mois)
         .then(({ count }) => setNbEnAttente(count || 0))
     }
     chargerBadge()
-    // Realtime : badge se met à jour dès qu'une prestation est créée ou validée
     const channel = supabase.channel('badge-prestations')
       .on('postgres_changes', { event: '*', schema: 'public', table: 'prestation_hors_forfait' },
         () => chargerBadge()
@@ -50,9 +91,7 @@ export default function App() {
             <NavLink to="/reservations" className={({isActive}) => isActive ? 'nav-link active' : 'nav-link'}>Réservations</NavLink>
             <NavLink to="/banque" className={({isActive}) => isActive ? 'nav-link active' : 'nav-link'}>Banque</NavLink>
             <NavLink to="/rapprochement" className={({isActive}) => isActive ? 'nav-link active' : 'nav-link'}>Rapprochement</NavLink>
-            <NavLink to="/factures" className={({isActive}) => isActive ? 'nav-link active' : 'nav-link'}>Factures</NavLink>
-            <NavLink to="/import" className={({isActive}) => isActive ? 'nav-link active' : 'nav-link'}>Import</NavLink>
-            <NavLink to="/auto-entrepreneurs" className={({isActive}) => isActive ? 'nav-link active' : 'nav-link'}>AEs</NavLink>
+            <NavLink to="/frais-proprietaire" className={({isActive}) => isActive ? 'nav-link active' : 'nav-link'}>Frais</NavLink>
             <NavLink to="/prestations-ae" className={({isActive}) => isActive ? 'nav-link active' : 'nav-link'} style={{ position: 'relative' }}>
               Prestations
               {nbEnAttente > 0 && (
@@ -61,9 +100,9 @@ export default function App() {
                 </span>
               )}
             </NavLink>
-            <NavLink to="/frais-proprietaire" className={({isActive}) => isActive ? 'nav-link active' : 'nav-link'}>Frais</NavLink>
-            <NavLink to="/journal" className={({isActive}) => isActive ? 'nav-link active' : 'nav-link'}>Journal</NavLink>
-            <NavLink to="/config" className={({isActive}) => isActive ? 'nav-link active' : 'nav-link'}>Config</NavLink>
+            <NavLink to="/factures" className={({isActive}) => isActive ? 'nav-link active' : 'nav-link'}>Facturation</NavLink>
+            <NavLink to="/rapports" className={({isActive}) => isActive ? 'nav-link active' : 'nav-link'}>Rapports</NavLink>
+            <ConfigDropdown />
           </nav>
         </header>
         <main className="app-main">
@@ -74,11 +113,12 @@ export default function App() {
             <Route path="/banque" element={<PageBanque />} />
             <Route path="/matching" element={<PageMatching />} />
             <Route path="/rapprochement" element={<PageRapprochement />} />
+            <Route path="/frais-proprietaire" element={<PageFraisProprietaire />} />
+            <Route path="/prestations-ae" element={<PagePrestationsAE />} />
             <Route path="/factures" element={<PageFactures />} />
+            <Route path="/rapports" element={<PageRapports />} />
             <Route path="/import" element={<PageImport />} />
             <Route path="/auto-entrepreneurs" element={<PageAutoEntrepreneurs />} />
-            <Route path="/prestations-ae" element={<PagePrestationsAE />} />
-            <Route path="/frais-proprietaire" element={<PageFraisProprietaire />} />
             <Route path="/journal" element={<PageJournal />} />
             <Route path="/config" element={<PageConfig />} />
           </Routes>
