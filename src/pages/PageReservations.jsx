@@ -89,7 +89,11 @@ export default function PageReservations() {
     finally { setCalculant(false) }
   }
 
-  const nbVentilees = reservations.filter(r => r.ventilation_calculee).length
+  const nbVentilees   = reservations.filter(r => r.ventilation_calculee).length
+  const nbVentilables = reservations.filter(r =>
+    r.final_status !== 'cancelled' &&
+    r.owner_stay === false
+  ).length
   const nbDirectes = reservations.filter(r => r.platform === 'direct' || r.platform === 'manual').length
   const nbRapprochees = reservations.filter(r => r.rapprochee).length
   const nbManuellesNonVentilees = reservations.filter(r => r.platform === 'manual' && (!r.ventilation || r.ventilation.length === 0)).length
@@ -149,8 +153,8 @@ export default function PageReservations() {
         </div>
         <div className="stat-card">
           <div className="stat-label">Ventilées</div>
-          <div className="stat-value" style={{ color: nbVentilees === reservations.length && reservations.length > 0 ? 'var(--success)' : 'var(--warning)' }}>
-            {nbVentilees}/{reservations.length}
+          <div className="stat-value" style={{ color: nbVentilees === nbVentilables && nbVentilables > 0 ? 'var(--success)' : 'var(--warning)' }}>
+            {nbVentilees}/{nbVentilables}
           </div>
           <div className="stat-sub">calcul effectué</div>
         </div>
