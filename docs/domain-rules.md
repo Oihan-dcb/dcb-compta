@@ -281,7 +281,7 @@ En l'absence de règle définie, l'écart ne doit pas être absorbé silencieuse
 
 Les prestations validées (`prestation_hors_forfait.statut = 'valide'`) doivent produire une écriture dans la ventilation sous le code **EXTRA**. Selon le `type_imputation`, elles doivent impacter le LOY, la facture propriétaire, ou constituer un débit DCB.
 
-**État actuel** : ⚠ Partiellement implémenté. `deduction_loy` : déduit du reversement ✅. `haowner` : ligne TVA 20% dans la facture principale ✅. Restent non implémentés : `dcb_direct`, `debours_proprio`, code EXTRA dans `ventilation.js`.
+**État actuel** : ✅ Largement implémenté. `deduction_loy` : déduit du reversement ✅. `haowner` : ligne TVA 20% dans la facture principale ✅. `debours_proprio` : absorption sur LOY (après AUTO) + ligne DEBP négative dans la facture honoraires + ligne DEBP positive dans la facture débours si surplus ✅ (session 30 mars 2026). `dcb_direct` : log interne uniquement (`log.dcbDirectTotal/Count`), non facturé au propriétaire ✅. Reste non implémenté : code EXTRA dans `ventilation.js`.
 
 ### 12.3 Achats DCB pour compte propriétaire (HAOWNER)
 
@@ -301,8 +301,8 @@ Les achats réalisés par DCB pour le compte d'un propriétaire (fournitures, in
 Produite par `genererFactureProprietaire`. Lignes : HON, FMEN, DIV, HAOWNER (si présent), FRAIS (frais deduire_loyer, transparent), PREST (une ligne par prestation, montant négatif).
 
 ```
-montantReversement = max(0, LOY_global − totalPrestations − haownerTTC − fraisDeduireTTC − autoAbsorbableTotal)
-resteAPayer = max(0, (totalPrestations + haownerTTC) − LOY_global) + autoSurplusTotal
+montantReversement = max(0, LOY_global − totalPrestations − haownerTTC − fraisDeduireTTC − autoAbsorbableTotal − deboursPropAbsorbTotal)
+resteAPayer = max(0, (totalPrestations + haownerTTC) − LOY_global) + autoSurplusTotal + deboursPropSurplusTotal
 ```
 
 `fraisDeduireTTC` = somme des `frais_proprietaire.montant_ttc` avec `mode_traitement='deduire_loyer'`, `mode_encaissement='dcb'`, `statut='a_facturer'` sur le mois. Ces frais sont marqués `statut='facture'` après insertion des lignes dans Evoliz.
@@ -316,16 +316,32 @@ ae.type = 'staff' → taux_tva=20, montant_ht=montant,  montant_ttc=round(montan
 
 `totalPrestations` et `prestBien` utilisent le TTC (staff : ×1.20, AE : inchangé). Une ligne PREST par prestation — libellé = `p.description || p.prestation_type.nom || fallback`. Le SELECT `prestationsDeduction` joint `ae:ae_id(type)` et `prestation_type:prestation_type_id(nom)`.
 
+**Ligne DEBP — débours proprio absorbés sur LOY (session 30 mars 2026) :**
+
+Requête séparée `prestationsDeboursProprio` (`type_imputation='debours_proprio'`). Pour chaque bien `mode_encaissement='dcb'` :
+
+```
+loyApresAuto       = max(0, loyBienDisponible − autoAbsorbableBien)
+deboursPropAbsorb  = min(deboursPropBien, loyApresAuto)
+deboursPropSurplus = max(0, deboursPropBien − deboursPropAbsorb)
+```
+
+Ligne DEBP dans la facture honoraires = `−deboursPropBien` (TVA 0% si `ae.type='ae'`, 20% si `ae.type='staff'`). `deboursPropAbsorbTotal` réduit `montantReversement`. `deboursPropSurplusTotal` augmente `resteAPayer` et produit une ligne DEBP positive dans la facture débours.
+
 `resteAPayer` est calculé à la volée, accumulé dans `log.resteAPayer`, affiché comme alerte warning non bloquante dans PageFactures. **Non stocké. Non comptable. UI uniquement. Ne pas utiliser comme base de rapprochement ou d'écriture comptable.**
 
 ### 13.2 Facture débours AE (`type_facture = 'debours'`)
 
-Produite par `genererFactureDebours` si au moins un bien du propriétaire a de l'AUTO à facturer séparément, ou des frais `facturer_direct`. Lignes : `DEB_AE` par bien concerné + `FRAIS` par frais direct.
+Produite par `genererFactureDebours` si au moins un bien du propriétaire a de l'AUTO ou du `debours_proprio` à facturer séparément, ou des frais `facturer_direct`. Lignes : `DEB_AE` + `DEBP` par bien concerné + `FRAIS` par frais direct.
 
 ```
-code:        'DEB_AE'          (ménage AE)
+code:        'DEB_AE'          (ménage AE — surplus AUTO non absorbable sur LOY)
 taux_tva:    0
 montant_reversement: null  ← non applicable à une créance
+
+code:        'DEBP'            (débours proprio — surplus non absorbable sur LOY après AUTO)
+taux_tva:    0 si ae.type='ae', 20 si ae.type='staff'
+montant:     debPropSurplus (TTC)
 
 code:        'FRAIS'           (frais propriétaire facturer_direct)
 taux_tva:    0
@@ -335,6 +351,8 @@ libelle:     frais.libelle
 Déclenchement AUTO :
 - Bien `mode_encaissement = 'proprio'` : `montantAFacturer = autoBien` (totalité)
 - Bien `mode_encaissement = 'dcb'` avec surplus : `montantAFacturer = max(0, autoBien − autoAbsorbableBien)`
+
+Déclenchement DEBP : bien `mode_encaissement = 'dcb'` uniquement, quand `debPropSurplus > 0`. Si toutes les prestations debours_proprio du bien ont `ae.type='staff'` → TVA 20%, sinon 0%.
 
 Déclenchement FRAIS : `frais_proprietaire` avec `mode_traitement='facturer_direct'`, `mode_encaissement='dcb'`, `statut='a_facturer'`. Ajoutés comme lignes séparées — **ne modifient pas `montantAFacturer`** (réservé à AUTO). Marqués `statut='facture'` uniquement si la facture est effectivement créée ou mise à jour (jamais dans le chemin skipped).
 

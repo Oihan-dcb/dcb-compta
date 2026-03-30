@@ -13,8 +13,6 @@ Un invariant est une règle qui doit **toujours être vraie** dans le système, 
 Les invariants sont organisés par domaine. Pour chaque invariant : état attendu, état actuel, et référence au bug si violé.
 
 ---
-<<<<<<< HEAD
-=======
 
 ## Domaine 1 — Intégrité financière globale
 
@@ -51,11 +49,11 @@ Ces invariants ont la priorité absolue. Leur violation peut entraîner une fact
 
 | # | Invariant | État | Violation / Référence |
 |---|---|---|---|
-| I-20 | `reservation.rapprochee = true` implique l'existence d'au moins un `ventilation.mouvement_id` valide | ❌ **Violé** | Suppression de mouvement sans nettoyage laisse `rapprochee = true` avec `mouvement_id` orphelin (CF-BQ1) |
-| I-21 | `ventilation.mouvement_id` renseigné implique que le mouvement existe en base | ❌ **Violé** | Même cause : CF-BQ1/BQ2 |
-| I-22 | `payout_hospitable.mouvement_id` renseigné implique que le mouvement existe en base | ❌ **Violé** | Même cause : CF-BQ1 |
-| I-23 | Un mouvement `statut = 'rapproche'` a au moins une réservation liée via `ventilation.mouvement_id` | ⚠ Probablement violé | Annulation de rapprochement partielle possible (CF-RAPP-4) |
-| I-24 | Le résultat du matching est identique quel que soit le bouton utilisé (Config ou PageRapprochement) | ❌ **Violé** | Deux moteurs avec logiques différentes (CF-C3) |
+| I-20 | `reservation.rapprochee = true` implique l'existence d'au moins un `ventilation.mouvement_id` valide | ✅ **Corrigé** | `supprimerMouvement` et `supprimerMois` appellent `annulerRapprochement` avant DELETE — nettoyage complet (CF-BQ1, confirmé audit 30 mars) |
+| I-21 | `ventilation.mouvement_id` renseigné implique que le mouvement existe en base | ✅ **Corrigé** | `annulerRapprochement` remet `mouvement_id=null` sur toutes les lignes ventilation liées (CF-BQ1/BQ2) |
+| I-22 | `payout_hospitable.mouvement_id` renseigné implique que le mouvement existe en base | ✅ **Corrigé** | `annulerRapprochement` remet `mouvement_id=null` sur `payout_hospitable` (CF-BQ1) |
+| I-23 | Un mouvement `statut = 'rapproche'` a au moins une réservation liée via `ventilation.mouvement_id` | ✅ **Corrigé** | `annulerRapprochement` couvre VIR + payout sans VIR via `payout_reservation` join (CF-RAPP-4, commit `55ad751`) |
+| I-24 | Le résultat du matching est identique quel que soit le bouton utilisé (Config ou PageRapprochement) | ✅ **Corrigé** | Unified sur `lancerMatchingAuto` de `rapprochement.js` — PageConfig et PageMatching utilisent le même moteur (CF-C3) |
 
 ---
 
@@ -74,9 +72,9 @@ Ces invariants ont la priorité absolue. Leur violation peut entraîner une fact
 
 | # | Invariant | État | Violation / Référence |
 |---|---|---|---|
-| I-40 | Une facture `statut = 'envoye_evoliz'` a un `evoliz_id` non null | ⚠ Violable | Si update Supabase échoue après création Evoliz (CF-F2) |
+| I-40 | Une facture `statut = 'envoye_evoliz'` a un `evoliz_id` non null | ✅ **Corrigé** | Les deux champs sont mis à jour dans le même UPDATE — si ce dernier échoue, la facture reste `envoi_en_cours` (jamais `envoye_evoliz` sans `id_evoliz`). Verrou pre-envoi CF-F2 (commit `1c7305f`) |
 | I-41 | Une facture a au moins une ligne dans `facture_evoliz_ligne` | ⚠ Violable | Si génération interrompue entre INSERT facture et INSERT lignes |
-| I-42 | Une facture ne peut être poussée vers Evoliz qu'une seule fois | ⚠ **Partiellement corrigé** | Guard `if (facture.id_evoliz) throw` + skip dans `pousserFacturesMoisVersEvoliz` (CF-F2, commit e228e0b0). Résidu : si l'UPDATE Supabase échoue après création Evoliz, `id_evoliz` reste null et un second push reste possible. |
+| I-42 | Une facture ne peut être poussée vers Evoliz qu'une seule fois | ✅ **Corrigé** | Verrou `statut='envoi_en_cours'` avant appel Evoliz — si UPDATE final échoue, la facture reste `envoi_en_cours` et n'est plus repêchée par `pousserFacturesMoisVersEvoliz` (query `statut='valide'`). Rollback `statut='valide'` si Evoliz échoue avant `saveInvoice`. CF-F2 (commit `1c7305f`) |
 | I-43 | Les factures d'un mois sont navigables depuis le MoisSelector | ✅ **Corrigé** | Champ `mois` utilisé partout dans `facturesEvoliz.js` — `mois_facturation` absent du code actuel (CF-F1) |
 
 ---
@@ -87,7 +85,7 @@ Ces invariants ont la priorité absolue. Leur violation peut entraîner une fact
 |---|---|---|---|
 | I-50 | Un AE avec `ae_user_id` non null peut se connecter au portail | ❌ **Violé** | `mdp_temporaire` jamais sauvegardé + reset inexistant (CF-PAE1/PAE2) |
 | I-51 | `ventilation.montant_reel` saisi par le portail correspond à la réservation du bon mois | ✅ **Corrigé** | `ventilation.js` V1 renseigne `mission_menage.ventilation_auto_id` via RPC `lier_ventilation_auto_mission` après calcul. La saisie silencieusement perdue est prévenue pour tous les cas avec ligne AUTO (CF-PAE3). |
-| I-52 | Une prestation `statut = 'valide'` a un impact sur la comptabilité (LOY, facture, ou débit DCB) | ⚠ **Partiellement corrigé** | `deduction_loy` : déduit du reversement ✅. `haowner` : ligne de facturation TVA 20% dans la facture principale ✅. AUTO : absorbé ou facturé séparément selon `mode_encaissement` ✅. Restent sans effet : `dcb_direct`, `debours_proprio`, code EXTRA dans `ventilation.js`. |
+| I-52 | Une prestation `statut = 'valide'` a un impact sur la comptabilité (LOY, facture, ou débit DCB) | ⚠ **Majoritairement corrigé** | `deduction_loy` : déduit du reversement ✅. `haowner` : ligne HAOWNER TVA 20% ✅. AUTO : absorbé ou DEB_AE ✅. `debours_proprio` : absorption LOY après AUTO + ligne DEBP + surplus facturé (CF-P1-BC, commit `b7bedc1`) ✅. `dcb_direct` : suivi interne uniquement (`log.dcbDirectTotal`) par conception — pas de facturation propriétaire (CF-P1-A) ✅. Reste : code EXTRA dans `ventilation.js` non implémenté. |
 | I-53 | `auto_entrepreneur.mdp_temporaire` est synchronisé avec le mot de passe Supabase Auth | ❌ **Violé** | `mdp_temporaire` toujours null (CF-PAE1) |
 | I-54 | Une prestation hors forfait validée produit une écriture dans la ventilation (code EXTRA) | ⚠ **Non implémenté** — à formaliser | Code EXTRA inexistant dans V1 — état cible non encore atteint |
 | I-55 | Tout achat DCB pour le compte d'un propriétaire (HAOWNER) produit une ligne de facturation explicite | ✅ **Implémenté** | Ligne HAOWNER TVA 20% dans la facture principale (`genererFactureProprietaire`, commit 2c5f9d15). `montantReversement = max(0, LOY − deduction_loy − haownerTTC)`. Pas de code HAOWNER dans `ventilation.js` — prestation lue depuis `prestation_hors_forfait`. |
@@ -121,29 +119,30 @@ Ces invariants ont la priorité absolue. Leur violation peut entraîner une fact
 
 | Invariant | Description courte | Référence bug |
 |---|---|---|
-| I-20 | rapprochee=true sans mouvement_id valide | CF-BQ1 |
-| I-21 | ventilation.mouvement_id orphelin | CF-BQ1/BQ2 |
-| I-22 | payout.mouvement_id orphelin | CF-BQ1 |
-| I-23 | Rapprochement partiel possible à l'annulation | CF-RAPP-4 |
-| I-24 | Matching non déterministe selon déclencheur | CF-C3 |
-| I-40 | facture envoyée sans evoliz_id | CF-F2 (résidu) |
-| I-42 | Push Evoliz non idempotent | CF-F2 (partiellement corrigé) |
+| I-41 | Facture sans ligne facture_evoliz_ligne | Génération interrompue entre INSERT facture et INSERT lignes |
 | I-50 | AE avec ae_user_id ne peut pas se connecter | CF-PAE1/PAE2 — code path ✅ (Edge Functions sauvegardent mdp_temporaire), confirmation DB en attente |
 | I-53 | mdp_temporaire désynchronisé | CF-PAE1 — code path ✅, confirmation DB en attente |
-| I-60 | Opérations non tracées dans journal | CF-J2 |
-| I-61 | Filtre mois journal inopérant | CF-J1 |
-| I-62 | import_log / webhook_log invisibles | CF-J3 |
+| I-60 | Opérations non tracées dans journal | CF-J2 — partiellement corrigé (ventilation + factures loguées) |
+| I-61 | Filtre mois journal inopérant | CF-J1 — corrigé (mois_comptable renseigné dans logOp) |
+| I-62 | import_log / webhook_log invisibles | CF-J3 — corrigé (import_log mergée dans getJournal) |
 
 ### Invariants corrigés (mars 2026)
 
 | Invariant | Description courte | Commit |
 |---|---|---|
-| I-01 | NaN dans montants ventilation | CF-C2/C8 — V2 désactivée (119be181) |
-| I-32 | fusionnerDoublons supprime sans vérifier migration | CF-I1 (d8fedd9b) |
+| I-01 | NaN dans montants ventilation | CF-C2/C8 — V2 désactivée (`119be181`) |
+| I-20 | rapprochee=true sans mouvement_id valide | CF-BQ1 — `annulerRapprochement` appelé avant DELETE (`55ad751`) |
+| I-21 | ventilation.mouvement_id orphelin | CF-BQ1/BQ2 — nettoyage complet dans `annulerRapprochement` |
+| I-22 | payout.mouvement_id orphelin | CF-BQ1 — idem |
+| I-23 | Rapprochement partiel à l'annulation | CF-RAPP-4 (`55ad751`) — VIR + payout couverts |
+| I-24 | Matching non déterministe selon déclencheur | CF-C3 — moteur unifié `lancerMatchingAuto` |
+| I-32 | fusionnerDoublons supprime sans vérifier migration | CF-I1 (`d8fedd9b`) |
+| I-40 | facture envoye_evoliz sans evoliz_id | CF-F2 (`1c7305f`) — verrou envoi_en_cours |
+| I-42 | Push Evoliz non idempotent | CF-F2 (`1c7305f`) — verrou pre-envoi + rollback |
 | I-43 | Navigation temporelle factures cassée | CF-F1 — champ `mois` partout |
 | I-51 | Saisie AE perdue si ventilation non calculée | CF-PAE3 — RPC `lier_ventilation_auto_mission` |
-| I-52 | Prestations validées sans impact comptable | CF-P1 — partiellement (deduction_loy, haowner, AUTO) |
-| I-55 | Achat HAOWNER sans ligne de facturation | ✅ (commit 2c5f9d15) |
+| I-52 | Prestations validées sans impact comptable | CF-P1 — `deduction_loy`, `haowner`, AUTO, `debours_proprio` ✅. `dcb_direct` : log interne par conception. EXTRA ventilation : non implémenté. |
+| I-55 | Achat HAOWNER sans ligne de facturation | ✅ (commit `2c5f9d15`) |
 
 ### Invariants ajoutés (mars 2026)
 
@@ -153,6 +152,8 @@ Ces invariants ont la priorité absolue. Leur violation peut entraîner une fact
 | I-08 | Coexistence factures honoraires / débours par mois | ✅ Implémenté |
 | I-56 | Frais propriétaire marqué `facture` uniquement si facture Evoliz effectivement traitée | ✅ Implémenté (commit `360b959`) |
 | I-57 | Ligne PREST TVA 20% pour prestation staff DCB, TVA 0% pour AE | ✅ Implémenté (commit `654d102`) |
+| I-58 | `debours_proprio` absorbé sur LOY bien-par-bien après AUTO ; surplus → ligne DEBP avec TVA selon ae.type | ✅ Implémenté (CF-P1-BC, commit `b7bedc1`) |
+| I-59 | genererFacturesMois ne facture que les propriétaires `actif=true` avec des biens `listed=true, agence='dcb'` | ✅ Implémenté (CF-F8, commit `cd8c20a`) |
 
 **Détail I-56** : `genererFactureDebours` ne marque pas les frais directs `statut='facture'` dans le chemin skipped (aucune donnée à facturer). Le `UPDATE` est placé exclusivement dans le bloc `if (factureId)` — après insertion des lignes Evoliz confirmée. Idem pour `deduire_loyer` dans `genererFactureProprietaire`.
 
@@ -164,7 +165,7 @@ Ces invariants ont la priorité absolue. Leur violation peut entraîner une fact
 | I-54 | Prestation validée doit produire une écriture EXTRA dans la ventilation |
 | I-73 | Modification après clôture doit être explicite et documentée |
 
-**Total actuel** : 12 invariants violés actifs (dont 2 partiellement confirmés), 6 corrigés, 4 nouveaux, sur 42 documentés.
+**Total actuel** : 6 invariants violés actifs, 13 corrigés, 6 nouveaux, sur 46 documentés.
 
 ---
 

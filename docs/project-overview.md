@@ -68,21 +68,21 @@ Les deux applications partagent la **même base Supabase**. Aucune des deux n'a 
 **Données** : `mouvement_bancaire` (libelle, credit, debit, canal, statut_matching, date_operation, mois_releve)
 **Dépendances entrantes** : CSV Caisse d'Épargne (import manuel), CSV Booking (import payout_line)
 **Dépendances sortantes** : Rapprochement (mouvements à associer), `booking_payout_line`, `stripe_payout_line`
-**Avertissement** : La suppression d'un mouvement (individuelle ou en masse) ne nettoie pas les tables liées — génère des orphelins en base (✅ CF-BQ1/BQ2).
+**Note** : La suppression d'un mouvement appelle `annulerRapprochement` avant DELETE — nettoyage complet des tables liées (✅ CF-BQ1/BQ2 clos).
 
 ### Module 4 — Rapprochement
 **Rôle réel** : Association mouvements bancaires ↔ réservations via les payouts Hospitable. Met à jour `ventilation.mouvement_id` et `reservation.rapprochee`.
 **Données** : `payout_hospitable`, `payout_reservation`, `reservation_paiement`, liens `ventilation.mouvement_id`
 **Dépendances entrantes** : Mouvements bancaires (Module 3), Payouts Hospitable/Stripe (sync), VIR ventilés (Module 2)
 **Dépendances sortantes** : `reservation.rapprochee`, `ventilation.mouvement_id`, `payout_hospitable.mouvement_id`
-**Avertissement** : Deux moteurs de matching coexistent avec des logiques différentes — résultats inconsistants selon le déclencheur (✅ CF-C3, critique majeur).
+**Note** : Moteur unifié depuis CF-C3 — PageConfig et PageMatching utilisent `lancerMatchingAuto` de `rapprochement.js` (✅ CF-C3 clos).
 
 ### Module 5 — Factures
 **Rôle réel** : Génération des factures DCB → Propriétaires à partir de la ventilation calculée. Envoi vers Evoliz.
-**Données** : `facture_evoliz` (type_facture: 'honoraires' | 'debours'), `facture_evoliz_ligne` (HON, FMEN, DIV, HAOWNER, PREST, DEB_AE)
-**Dépendances entrantes** : Ventilation (HON, FMEN, LOY, AUTO par bien), Expenses DCB, Propriétaires (Evoliz), `prestation_hors_forfait` (deduction_loy ✅, haowner ✅), `bien.mode_encaissement`
-**Dépendances sortantes** : Evoliz (API), export CSV comptable
-**Avertissement** : CF-P1 partiellement corrigé — `deduction_loy` et `haowner` intégrés, AUTO routé bien-par-bien. `dcb_direct` et `debours_proprio` encore sans effet. Navigation temporelle : ✅ corrigée (CF-F1).
+**Données** : `facture_evoliz` (type_facture: 'honoraires' | 'debours'), `facture_evoliz_ligne` (HON, FMEN, DIV, HAOWNER, PREST, DEBP, DEB_AE, FRAIS)
+**Dépendances entrantes** : Ventilation (HON, FMEN, LOY, AUTO par bien), Expenses DCB, Propriétaires actifs `actif=true` (Evoliz), `prestation_hors_forfait` (deduction_loy ✅, haowner ✅, debours_proprio ✅), `bien.mode_encaissement`, `bien.agence='dcb'`
+**Dépendances sortantes** : Evoliz (API), export CSV comptable (biens `agence='dcb'` uniquement)
+**Note** : CF-P1 complet — `debours_proprio` : absorption LOY après AUTO + ligne DEBP + surplus facturé ✅. `dcb_direct` : log interne uniquement (pas de facturation propriétaire, par conception). CF-F2 : verrou `envoi_en_cours` — push idempotent ✅. CF-F3/F4/F8 corrigés.
 
 ### Module 6 — Import CSV
 **Rôle réel** : Chargement en masse de l'historique des réservations depuis Hospitable CSV. Alternative à la sync API.
@@ -96,14 +96,13 @@ Les deux applications partagent la **même base Supabase**. Aucune des deux n'a 
 **Données** : `auto_entrepreneur` (email, ical_url, taux_horaire, ae_user_id, mdp_temporaire), `prestation_type`, `mission_menage`
 **Dépendances entrantes** : iCal Hospitable (sync missions), saisie manuelle (fiches AE)
 **Dépendances sortantes** : Portail AE (accès auth), `mission_menage` (missions du mois), `prestation_hors_forfait` (catalogue types)
-**Avertissement** : `confirmModal` et balance AUTO/FMEN hors du `return()` JSX → jamais rendus (✅ CF-AE1). Suppression AE impossible via l'UI. `mdp_temporaire` jamais sauvegardé (✅ CF-AE3). `reset-ae-password` Edge Function inexistante (✅ CF-PAE2).
+**Note** : `confirmModal` et balance AUTO/FMEN maintenant dans le `return()` — suppression et balance visibles (✅ CF-AE1 clos). `taux_defaut` initialisé à 25 € (✅ CF-AE5). `mdp_temporaire` : code path ✅, confirmation DB en attente.
 
 ### Module 8 — Prestations hors forfait
 **Rôle réel** : Réception et validation des prestations extras soumises par les AEs. Partiellement intégré dans la facturation depuis mars 2026.
 **Données** : `prestation_hors_forfait` (statut, montant, type_imputation, bien_id, ae_id, mission_id)
 **Dépendances entrantes** : Portail AE (soumission AE), validation manuelle DCB
-**Dépendances sortantes** : `genererFactureProprietaire` lit `deduction_loy` (déduction reversement ✅) et `haowner` (ligne TVA 20% facture principale ✅). `debours_proprio` et `dcb_direct` : toujours sans effet comptable ⚠. Aucune écriture dans `ventilation.js` (code EXTRA absent).
-**Avertissement** : CF-P1 partiellement corrigé. Les types `dcb_direct` et `debours_proprio` sont stockés mais toujours sans impact comptable.
+**Dépendances sortantes** : `genererFactureProprietaire` lit `deduction_loy` ✅, `haowner` ✅, `debours_proprio` (absorption LOY + ligne DEBP ✅). `dcb_direct` : log interne `genererFacturesMois` uniquement (pas de facturation propriétaire, par conception). Aucune écriture dans `ventilation.js` (code EXTRA non implémenté).
 
 ### Module 9 — Config
 **Rôle réel** : Interface d'administration et de déclenchement des opérations en masse (sync all-time, matching, reventilation).
@@ -330,7 +329,7 @@ Certaines opérations **ne peuvent pas être relancées en toute sécurité** sa
 |---|---|
 | **global-sync** | Réinsère des payouts avec un schéma divergent, recalcule la ventilation avec NaN, peut écraser des rapprochements existants |
 | **Matching auto** (Config, ancien moteur) | Peut créer des doublons de `reservation_paiement`, résultats différents du matching PageRapprochement |
-| **Push vers Evoliz** | Si l'update Supabase échoue après création Evoliz, le second push crée une facture en doublon dans Evoliz (✅ CF-F2) |
+| **Push vers Evoliz** | Verrou `envoi_en_cours` avant appel Evoliz — si UPDATE final échoue, pas de doublon au retry. Rollback `valide` si Evoliz échoue avant `saveInvoice`. (✅ CF-F2 clos, commit `1c7305f`) |
 | **Import CSV bancaire** | Réimporte tous les mois du fichier sans filtre si `moisSelectionnes` non passé (✅ CF-BQ6) |
 | **fusionnerDoublons** | Supprime les slaves sans transaction — perte définitive si crash (✅ CF-I2) |
 
@@ -346,14 +345,13 @@ La logique de ventilation comptable (transformation `fin_revenue` → HON/FMEN/A
 - V2 `supabase/functions/global-sync/index.ts` — constantes manquantes → **produit des NaN en base**
 - V3 `supabase/functions/hospitable-webhook/index.ts` — appelle `ventiler_toutes_resas` RPC (probablement inexistante)
 
-### [CRITIQUE 2] Matching doublé — 2 moteurs avec logiques différentes
-- `src/services/matching.js` (ancien) — utilisé par PageConfig
-- `src/services/rapprochement.js` (nouveau) — utilisé par PageRapprochement
-- `global-sync` — contient sa propre copie inline
-Un même mois peut produire des résultats de rapprochement différents selon le bouton utilisé.
+### [CRITIQUE 2] ✅ Matching unifié (CF-C3)
+- `src/services/matching.js` — conservé pour les exports non-matching (`marquerNonRapprochable`, etc.)
+- `src/services/rapprochement.js` — moteur de référence, utilisé par PageConfig et PageMatching depuis CF-C3
+- `global-sync` — contient toujours sa copie inline (non corrigée)
 
-### [CRITIQUE 3] Prestations hors forfait non intégrées
-Le module Prestations existe dans l'UI, la validation fonctionne, mais les prestations validées n'ont **aucun effet** sur la ventilation ni sur les factures. La logique d'imputation (`type_imputation`) est définie mais jamais exécutée.
+### [CRITIQUE 3] Prestations hors forfait — partiellement intégrées
+`deduction_loy`, `haowner`, `debours_proprio` : intégrés dans la facturation ✅. `dcb_direct` : log interne par conception ✅. **Reste** : code EXTRA dans `ventilation.js` non implémenté — les prestations validées ne produisent pas d'écriture dans la ventilation.
 
 ---
 
@@ -392,3 +390,16 @@ Le module Prestations existe dans l'UI, la validation fonctionne, mais les prest
 - `d9896d8` : fallback `prestation_type.nom` pour PREST et HAOWNER si description null
 - `654d102` : TVA 20% pour prestations staff DCB (type='staff') — une ligne PREST par prestation, `totalPrestations` et `prestBien` utilisent TTC pour staff
 - Audit CF-PAE1/CF-PAE2 : Edge Functions `create-ae-user` et `reset-ae-password` sauvegardent bien `mdp_temporaire` — code path ✅, confirmation DB en attente
+
+## Fixes session 30 mars 2026 (suite)
+
+- `5f9298d` CF-P1-A : `dcb_direct` — récap interne dans `genererFacturesMois` (`log.dcbDirectTotal`, `log.dcbDirectCount`). Pas de facturation propriétaire — suivi interne uniquement.
+- `b7bedc1` CF-P1-BC : `debours_proprio` — absorption LOY bien-par-bien après AUTO ; surplus → ligne DEBP avec TVA selon `ae.type` (0% AE, 20% staff). `genererFactureDebours` étendu : Batch 2 inclut `debours_proprio` + `ae:ae_id(type)`.
+- `1c7305f` CF-F2 : verrou `envoi_en_cours` avant appel Evoliz + rollback `valide` si Evoliz échoue + bouton "✓ Tout valider" bulk + statut `envoi_en_cours` dans STATUTS UI (PageFactures)
+- `fb1a5e8` CF-AE1 : `confirmModal` et `balance` déplacés dans le `return()` — modal suppression et balance AUTO/FMEN maintenant visibles. `confirmModal` extrait du bloc `balance` (indépendant).
+- `e21cfa5` CF-F3 : `log.skipped` distingué de `log.updated` dans `genererFacturesMois` — message UI exact
+- `f3ed579` CF-F4 : `bien!inner + .eq('bien.agence', 'dcb')` dans `exportCSVComptable` — biens Lauian exclus
+- `cd8c20a` CF-F8 : `.eq('actif', true)` dans la requête propriétaires de `genererFacturesMois`
+- `60ca3ec` CF-I5 : normalisation `toLowerCase()` sur `hospitable_name` et `property_name` dans `importCSV.js` — matching insensible à la casse
+- `167c096` CF-AE5 : `taux_defaut` initialisé à 25 (euros) au lieu de 2500 dans `formPT`
+- CF-BQ1/BQ2 : ✅ confirmés couverts par CF-RAPP-4 (`55ad751`) — audit confirmé, pas de code supplémentaire nécessaire
