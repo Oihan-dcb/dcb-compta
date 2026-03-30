@@ -265,9 +265,6 @@ async function genererFactureProprietaire(proprio, mois) {
     const deboursPropSurplus = Math.max(0, deboursPropBien - deboursPropAbsorb)
 
     if (autoBien > 0) {
-      console.log('[AUTO-PROPRIO]', { proprio: proprio.id, mois, bien: bien.id,
-        name: bien.hospitable_name, mode: bien.mode_encaissement, autoBien,
-        loyBienDisponible, autoAbsorbableBien, autoSurplusBien })
     }
 
     autoAbsorbableTotal += autoAbsorbableBien
@@ -548,9 +545,6 @@ async function genererFactureDebours(proprio, mois) {
     }
 
     if (autoBien > 0) {
-      console.log('[AUTO-DEBOURS]', { proprio: proprio.id, mois, bien: bien.id,
-        name: bien.hospitable_name, mode: bien.mode_encaissement,
-        autoBien, montantAFacturer })
     }
 
     if (montantAFacturer === 0) continue

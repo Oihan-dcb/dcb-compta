@@ -5,7 +5,6 @@ import { supabase } from './lib/supabase'
 import PageBiens from './pages/PageBiens'
 import PageReservations from './pages/PageReservations'
 import PageBanque from './pages/PageBanque'
-import PageMatching from './pages/PageMatching'
 import PageRapprochement from './pages/PageRapprochement'
 import PageFactures from './pages/PageFactures'
 import PageConfig from './pages/PageConfig'
@@ -111,7 +110,6 @@ export default function App() {
             <Route path="/biens" element={<PageBiens />} />
             <Route path="/reservations" element={<PageReservations />} />
             <Route path="/banque" element={<PageBanque />} />
-            <Route path="/matching" element={<PageMatching />} />
             <Route path="/rapprochement" element={<PageRapprochement />} />
             <Route path="/frais-proprietaire" element={<PageFraisProprietaire />} />
             <Route path="/prestations-ae" element={<PagePrestationsAE />} />

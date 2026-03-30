@@ -250,12 +250,6 @@ export async function pousserFacturesMoisVersEvoliz(mois) {
   return results
 }
 
-/**
- * RÃÂ©cupÃÂ¨re les factures d'un client depuis Evoliz
- */
-export async function getFacturesClientEvoliz(clientId, opts = {}) {
-  return evolizCall('listInvoices', { clientId, ...opts })
-}
 
 /**
  * RÃÂ©cupÃÂ¨re les conditions de paiement disponibles dans Evoliz

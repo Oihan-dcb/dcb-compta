@@ -134,18 +134,3 @@ export async function getBiens() {
   return data || []
 }
 
-/**
- * Met à jour les paramètres ménage d'un bien
- */
-export async function updateBienMenage(bienId, { hasAe, provisionAeRef, forfaitDcbRef }) {
-  const { error } = await supabase
-    .from('bien')
-    .update({
-      has_ae: hasAe,
-      provision_ae_ref: provisionAeRef,
-      forfait_dcb_ref: forfaitDcbRef,
-    })
-    .eq('id', bienId)
-
-  if (error) throw error
-}
