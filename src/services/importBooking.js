@@ -73,7 +73,7 @@ export function parseBookingCSV(text) {
   const iGross      = col('Montant brut',                   'Gross amount')
   const iComm       = col('Commission',                     'Commission')
   const iStatus     = col('Statut de la réservation',       'Reservation status')
-  const iType       = col('Type de versement',               'Payout type')
+  const iType       = col('Type/Type de transaction',        'Type')
 
   if (iPayoutDate < 0) throw new Error('Colonne "Payout date" / "Date du versement" introuvable')
   if (iAmount < 0)     throw new Error('Colonne "Payable amount" / "Montant du versement" introuvable')
