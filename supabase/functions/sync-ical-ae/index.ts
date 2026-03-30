@@ -59,6 +59,19 @@ Deno.serve(async (req) => {
       if (!dateMission) { skipped++; continue }
       const dateStr = dateMission.toISOString().substring(0, 10)
 
+      const isCancelled = evt.status?.toUpperCase() === 'CANCELLED'
+
+      // Événement annulé : marquer cancelled si la mission existe déjà
+      if (isCancelled) {
+        if (evt.uid) {
+          await sb.from('mission_menage')
+            .update({ statut: 'cancelled' })
+            .eq('ical_uid', evt.uid)
+        }
+        skipped++
+        continue
+      }
+
       const row = {
         ae_id: ae.id,
         bien_id: bien?.id || null,
@@ -101,6 +114,7 @@ function parseIcal(text) {
       if (key === 'dtstart') current.dtstart = val
       else if (key === 'summary') current.summary = val
       else if (key === 'uid') current.uid = val
+      else if (key === 'status') current.status = val
     }
   }
   return events
