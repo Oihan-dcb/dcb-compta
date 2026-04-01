@@ -123,7 +123,7 @@ export default function PageRapports() {
           .neq('final_status', 'cancelled'),
         supabase
           .from('frais_proprietaire')
-          .select('id, libelle, montant_ttc, statut')
+          .select('id, libelle, montant_ttc, statut, reservation_id')
           .eq('bien_id', selectedBienId)
           .eq('mois_facturation', mois),
         supabase.from('bien_notes').select('note_marche')
@@ -163,6 +163,13 @@ export default function PageRapports() {
         loyTotal = (vents || []).filter(v => v.code === 'LOY').reduce((s, v) => s + (v.montant_ht || 0), 0)
       }
 
+      const fraisByResa = {}
+      for (const f of fraisData || []) {
+        if (!f.reservation_id) continue
+        if (!fraisByResa[f.reservation_id]) fraisByResa[f.reservation_id] = 0
+        fraisByResa[f.reservation_id] += f.montant_ttc || 0
+      }
+
       let reviews = []
       if (resaIds.length) {
         const { data: revData } = await supabase
@@ -196,7 +203,7 @@ export default function PageRapports() {
       setData({
         proprio,
         bien: (proprio?.bien || []).find(b => b.id === selectedBienId),
-        resas: resasValides.map(r => ({ ...r, vent: ventByResa[r.id] || {} })),
+        resas: resasValides.map(r => ({ ...r, vent: ventByResa[r.id] || {}, extra: fraisByResa[r.id] || 0 })),
         reviews,
         facture,
         frais: fraisData || [],
@@ -450,7 +457,7 @@ Fournis une analyse concise (5-8 lignes) : performance du mois, comparatif N-1, 
                             <td style={{ padding: '6px 8px', textAlign: 'right', color: '#D97706' }}>{v.HON  ? fmt(v.HON.montant_ttc)  : '—'}</td>
                             <td style={{ padding: '6px 8px', textAlign: 'right', color: '#059669', fontWeight: 600 }}>{v.LOY  ? fmt(v.LOY.montant_ht)   : '—'}</td>
                             <td style={{ padding: '6px 8px', textAlign: 'right', color: '#4A3728' }}>{v.VIR  ? fmt(v.VIR.montant_ht)   : '—'}</td>
-                            <td style={{ padding: '6px 8px', textAlign: 'right', color: '#9C8E7D' }}>{v.FMEN ? fmt(v.FMEN.montant_ttc) : '—'}</td>
+                            <td style={{ padding: '6px 8px', textAlign: 'right', color: r.extra > 0 ? '#DC2626' : '#9C8E7D' }}>{r.extra > 0 ? fmt(r.extra) : '—'}</td>
                           </tr>
                         )
                       })}
