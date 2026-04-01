@@ -80,6 +80,7 @@ export default function PageRapports() {
   const [previewOpen, setPreviewOpen] = useState(false)
   const [bienIdsActifs, setBienIdsActifs] = useState(null)
   const [biensEnvoyes, setBiensEnvoyes] = useState(new Set())
+  const [generatingPDF, setGeneratingPDF] = useState(false)
   const [notePerso, setNotePerso] = useState('')
   const [modeMaite, setModeMaite] = useState('chambre')
 
@@ -625,30 +626,33 @@ FORMAT :
 
   async function telechargerPDF() {
     if (!data) return
-
-    const html = genererRapportHTML(data.proprio, mois, buildRapportData())
-
-    const blob = new Blob([html], { type: 'text/html;charset=utf-8' })
-    const url = URL.createObjectURL(blob)
-    const iframe = document.createElement('iframe')
-    iframe.style.cssText = 'position:fixed;right:0;bottom:0;width:0;height:0;border:none;'
-    document.body.appendChild(iframe)
-    iframe.src = url
-    iframe.onload = async () => {
-      const doc = iframe.contentDocument
-      const win = iframe.contentWindow
-      const imgs = Array.from(doc.querySelectorAll('img'))
-      await Promise.all(imgs.map(img => {
-        if (img.complete && img.naturalWidth > 0) return Promise.resolve()
-        return new Promise(resolve => { img.onload = resolve; img.onerror = resolve })
-      }))
-      await new Promise(r => win.requestAnimationFrame(() => win.requestAnimationFrame(r)))
-      console.log('Images avant print:', imgs.map(i => ({
-        src: i.src.substring(0, 30), complete: i.complete, naturalWidth: i.naturalWidth
-      })))
-      win.focus()
-      win.print()
-      setTimeout(() => { document.body.removeChild(iframe); URL.revokeObjectURL(url) }, 3000)
+    setGeneratingPDF(true)
+    try {
+      const html = genererRapportHTML(data.proprio, mois, buildRapportData())
+      const response = await fetch('/api/generate-pdf', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ html }),
+      })
+      if (!response.ok) {
+        const err = await response.json()
+        throw new Error(err.error || 'Erreur génération PDF')
+      }
+      const blob = await response.blob()
+      const url = URL.createObjectURL(blob)
+      const a = document.createElement('a')
+      const bienNom = data.bien?.hospitable_name || data.proprio?.nom || 'rapport'
+      a.href = url
+      a.download = `Rapport_${bienNom.replace(/[^a-zA-Z0-9]/g, '_')}_${mois}.pdf`
+      document.body.appendChild(a)
+      a.click()
+      document.body.removeChild(a)
+      URL.revokeObjectURL(url)
+    } catch (error) {
+      console.error('Erreur PDF:', error)
+      alert('Erreur lors de la génération du PDF : ' + error.message)
+    } finally {
+      setGeneratingPDF(false)
     }
   }
 
@@ -1040,8 +1044,8 @@ FORMAT :
               />
               <button className="btn btn-secondary" style={{ fontSize: '0.85em', padding: '8px 14px' }}
                 onClick={() => setPreviewOpen(true)}>Aperçu</button>
-              <button onClick={telechargerPDF} disabled={!data} className="btn btn-secondary"
-                style={{ fontSize: '0.85em', padding: '8px 14px' }}>⬇ PDF</button>
+              <button onClick={telechargerPDF} disabled={!data || generatingPDF} className="btn btn-secondary"
+                style={{ fontSize: '0.85em', padding: '8px 14px' }}>{generatingPDF ? '⏳ Génération...' : '⬇ PDF'}</button>
               <button className="btn btn-primary"
                 style={{ fontSize: '0.85em', padding: '8px 14px', background: 'var(--brand)', color: '#fff', border: 'none', opacity: statut === 'sending' ? 0.6 : 1 }}
                 onClick={envoyer} disabled={statut === 'sending' || !email}>
