@@ -615,33 +615,7 @@ FORMAT :
   async function telechargerPDF() {
     if (!data) return
 
-    async function imgToBase64(url) {
-      try {
-        const res = await fetch(url, { credentials: 'omit' })
-        if (!res.ok) throw new Error('status ' + res.status)
-        const blob = await res.blob()
-        return new Promise((resolve, reject) => {
-          const reader = new FileReader()
-          reader.onloadend = () => resolve(reader.result)
-          reader.onerror = reject
-          reader.readAsDataURL(blob)
-        })
-      } catch (e) {
-        console.warn('imgToBase64 failed:', e.message)
-        return url
-      }
-    }
-
-    const HERO_URL = 'https://omuncchvypbtxkpalwcr.supabase.co/storage/v1/object/public/rapport-assets/hero.jpg'
-    const LOGO_URL = 'https://omuncchvypbtxkpalwcr.supabase.co/storage/v1/object/public/rapport-assets/logo.png'
-
-    const [heroB64, logoB64] = await Promise.all([
-      imgToBase64(HERO_URL),
-      imgToBase64(LOGO_URL),
-    ])
-
-    let html = genererRapportHTML(data.proprio, mois, buildRapportData())
-    html = html.replace(HERO_URL, heroB64).replace(LOGO_URL, logoB64)
+    const html = genererRapportHTML(data.proprio, mois, buildRapportData())
 
     const blob = new Blob([html], { type: 'text/html;charset=utf-8' })
     const url = URL.createObjectURL(blob)
