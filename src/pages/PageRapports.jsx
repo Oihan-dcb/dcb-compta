@@ -617,20 +617,23 @@ FORMAT :
 
     async function imgToBase64(url) {
       try {
-        const res = await fetch(url)
+        const res = await fetch(url, { credentials: 'omit' })
+        if (!res.ok) throw new Error('status ' + res.status)
         const blob = await res.blob()
-        return new Promise((resolve) => {
+        return new Promise((resolve, reject) => {
           const reader = new FileReader()
           reader.onloadend = () => resolve(reader.result)
+          reader.onerror = reject
           reader.readAsDataURL(blob)
         })
-      } catch {
+      } catch (e) {
+        console.warn('imgToBase64 failed:', e.message)
         return url
       }
     }
 
-    const HERO_URL = 'https://destinationcotebasque.com/wp-content/uploads/2026/03/MG_2831-copie-6-1-e1773996205308.jpg'
-    const LOGO_URL = 'https://destinationcotebasque.com/wp-content/uploads/2019/08/cropped-cropped-GoDaddyStudioPage-0-2-2-700x363.png'
+    const HERO_URL = 'https://omuncchvypbtxkpalwcr.supabase.co/storage/v1/object/public/rapport-assets/hero.jpg'
+    const LOGO_URL = 'https://omuncchvypbtxkpalwcr.supabase.co/storage/v1/object/public/rapport-assets/logo.png'
 
     const [heroB64, logoB64] = await Promise.all([
       imgToBase64(HERO_URL),

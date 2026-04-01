@@ -219,12 +219,12 @@ export function genererRapportHTML(proprio, mois, data) {
 
   <!-- HERO + KPIs financiers intégrés -->
   <div style="position:relative;height:230px;overflow:hidden;">
-    <img src="https://destinationcotebasque.com/wp-content/uploads/2026/03/MG_2831-copie-6-1-e1773996205308.jpg"
+    <img src="https://omuncchvypbtxkpalwcr.supabase.co/storage/v1/object/public/rapport-assets/hero.jpg"
       style="width:100%;height:100%;object-fit:cover;object-position:center 35%;display:block;"/>
     <div style="position:absolute;inset:0;background:linear-gradient(to bottom,rgba(237,235,229,0.12) 0%,rgba(44,36,22,0.45) 45%,rgba(20,14,8,0.90) 100%);"></div>
     <!-- Logo + titre -->
     <div style="position:absolute;top:0;left:0;right:0;padding:14px 24px;text-align:center;">
-      <img src="https://destinationcotebasque.com/wp-content/uploads/2019/08/cropped-cropped-GoDaddyStudioPage-0-2-2-700x363.png"
+      <img src="https://omuncchvypbtxkpalwcr.supabase.co/storage/v1/object/public/rapport-assets/logo.png"
         style="height:34px;display:block;margin:0 auto 6px;" onerror="this.style.display='none'"/>
       <div style="font-size:9px;letter-spacing:0.22em;text-transform:uppercase;color:rgba(212,196,176,0.9);margin-bottom:2px;">Rapport mensuel · ${moisLabel}</div>
       <div style="font-size:14px;font-weight:300;color:#fff;letter-spacing:0.04em;">${proprio?.nom || ''} — ${bienName}</div>
