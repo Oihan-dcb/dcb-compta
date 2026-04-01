@@ -490,15 +490,23 @@ export async function lancerMatchingAuto(mois) {
             if (matched.length) virIds = matched.map(v => v.id)
           }
 
-          // Note : pas de fallback VIR par montant — le VIR (LOY) est un calcul interne
-          // indépendant du montant Airbnb. Le lien se fait uniquement via payout_reservation.
-
           if (virIds.length > 0) {
             await _lier(mouv.id, virIds)
           } else {
-            await supabase.from('mouvement_bancaire')
-              .update({ statut_matching: 'rapproche' })
-              .eq('id', mouv.id)
+            // Fallback : VIR non rapproché avec montant ≈ crédit (VIR résiduel créé par _lier)
+            const fallbackVir = virs.find(v =>
+              !v.mouvement_id &&
+              Math.abs(v.montant_ttc - mouv.credit) <= 200 &&
+              v.mois_comptable === mois
+            )
+            if (fallbackVir) {
+              await _lier(mouv.id, [fallbackVir.id])
+              log.details.push({ type: canal + '_fallback_montant', montant: mouv.credit / 100 })
+            } else {
+              await supabase.from('mouvement_bancaire')
+                .update({ statut_matching: 'rapproche' })
+                .eq('id', mouv.id)
+            }
           }
 
           payoutsCanal.splice(payoutsCanal.indexOf(payoutExact), 1)
@@ -539,13 +547,23 @@ export async function lancerMatchingAuto(mois) {
             const matched = virCanal.filter(v => !v.mouvement_id && allResaIds.includes(v.reservation?.id))
             if (matched.length) virIds = matched.map(v => v.id)
           }
-          // Note : pas de fallback VIR par montant — le VIR (LOY) est indépendant du montant Airbnb
           if (virIds.length > 0) {
             await _lier(mouv.id, virIds)
           } else {
-            await supabase.from('mouvement_bancaire')
-              .update({ statut_matching: 'rapproche' })
-              .eq('id', mouv.id)
+            // Fallback : VIR non rapproché avec montant ≈ crédit (VIR résiduel créé par _lier)
+            const fallbackVir = virs.find(v =>
+              !v.mouvement_id &&
+              Math.abs(v.montant_ttc - mouv.credit) <= 200 &&
+              v.mois_comptable === mois
+            )
+            if (fallbackVir) {
+              await _lier(mouv.id, [fallbackVir.id])
+              log.details.push({ type: canal + '_fallback_montant', montant: mouv.credit / 100 })
+            } else {
+              await supabase.from('mouvement_bancaire')
+                .update({ statut_matching: 'rapproche' })
+                .eq('id', mouv.id)
+            }
           }
 
           for (const p of subsetPay) payoutsCanal.splice(payoutsCanal.indexOf(p), 1)
