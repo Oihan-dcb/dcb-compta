@@ -635,10 +635,26 @@ FORMAT :
     document.body.appendChild(iframe)
     iframe.src = url
     iframe.onload = () => {
-      setTimeout(() => {
+      const imgs = Array.from(iframe.contentDocument.querySelectorAll('img'))
+      if (imgs.length === 0) {
         iframe.contentWindow.print()
         setTimeout(() => { document.body.removeChild(iframe); URL.revokeObjectURL(url) }, 2000)
-      }, 800)
+        return
+      }
+      let loaded = 0
+      const checkAndPrint = () => {
+        loaded++
+        if (loaded >= imgs.length) {
+          setTimeout(() => {
+            iframe.contentWindow.print()
+            setTimeout(() => { document.body.removeChild(iframe); URL.revokeObjectURL(url) }, 2000)
+          }, 300)
+        }
+      }
+      imgs.forEach(img => {
+        if (img.complete) { checkAndPrint() }
+        else { img.onload = checkAndPrint; img.onerror = checkAndPrint }
+      })
     }
   }
 
