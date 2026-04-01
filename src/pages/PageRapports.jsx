@@ -444,17 +444,43 @@ ${notePerso ? 'NOTE PERSONNELLE OÏHAN (à intégrer naturellement) :\n' + noteP
     } catch (e) { console.warn('LLM analyse failed:', e.message) }
   }
 
+  function buildRapportData() {
+    return {
+      kpis: data.kpis, resas: data.resas, reviews: data.reviews,
+      bien: data.bien, llmAnalyse, kpisN1: data.kpisN1,
+      noteMoisMoy: data.noteMoisMoy, noteGlobaleMoy: data.noteGlobaleMoy,
+      nbReviewsGlobal: data.nbReviewsGlobal,
+      notes: [{ bienName: data.bien?.hospitable_name, note }],
+    }
+  }
+
+  async function telechargerPDF() {
+    if (!data) return
+    const html = genererRapportHTML(data.proprio, mois, buildRapportData())
+    const htmlWithPrint = html.replace('</head>', `
+    <style>
+      @media print {
+        body { margin: 0; padding: 0; }
+        * { -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important; }
+      }
+    </style>
+  </head>`)
+    const iframe = document.createElement('iframe')
+    iframe.style.cssText = 'position:fixed;right:0;bottom:0;width:0;height:0;border:none;'
+    document.body.appendChild(iframe)
+    iframe.contentDocument.open()
+    iframe.contentDocument.write(htmlWithPrint)
+    iframe.contentDocument.close()
+    await new Promise(r => setTimeout(r, 1500))
+    iframe.contentWindow.print()
+    setTimeout(() => document.body.removeChild(iframe), 2000)
+  }
+
   async function envoyer() {
     if (!data) return
     setStatut('sending')
     try {
-      const html = genererRapportHTML(data.proprio, mois, {
-        kpis: data.kpis, resas: data.resas, reviews: data.reviews,
-        bien: data.bien, llmAnalyse, kpisN1: data.kpisN1,
-        noteMoisMoy: data.noteMoisMoy, noteGlobaleMoy: data.noteGlobaleMoy,
-        nbReviewsGlobal: data.nbReviewsGlobal,
-        notes: [{ bienName: data.bien?.hospitable_name, note }],
-      })
+      const html = genererRapportHTML(data.proprio, mois, buildRapportData())
       await envoyerRapportEmail({ ...data.proprio, email }, mois, html)
       await supabase.from('bien_notes').upsert(
         { bien_id: selectedBienId, mois, rapport_envoye_at: new Date().toISOString() },
@@ -762,6 +788,8 @@ ${notePerso ? 'NOTE PERSONNELLE OÏHAN (à intégrer naturellement) :\n' + noteP
               />
               <button className="btn btn-secondary" style={{ fontSize: '0.85em', padding: '8px 14px' }}
                 onClick={() => setPreviewOpen(true)}>Aperçu</button>
+              <button onClick={telechargerPDF} disabled={!data} className="btn btn-secondary"
+                style={{ fontSize: '0.85em', padding: '8px 14px' }}>⬇ PDF</button>
               <button className="btn btn-primary"
                 style={{ fontSize: '0.85em', padding: '8px 14px', background: 'var(--brand)', color: '#fff', border: 'none', opacity: statut === 'sending' ? 0.6 : 1 }}
                 onClick={envoyer} disabled={statut === 'sending' || !email}>
