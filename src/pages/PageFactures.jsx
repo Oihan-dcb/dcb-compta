@@ -21,7 +21,10 @@ const STATUTS = {
 
 export default function PageFactures() {
   const [mois, setMois] = useState(moisCourant)
-  const [moisDispos, setMoisDispos] = useState([moisCourant])
+  const [moisDispos, setMoisDispos] = useState(() => {
+    const [cy, cm] = moisCourant.split('-').map(Number)
+    return Array.from({ length: cm }, (_, i) => `${cy}-${String(i + 1).padStart(2, '0')}`)
+  })
   const [factures, setFactures] = useState([])
   const [stats, setStats] = useState(null)
   const [loading, setLoading] = useState(false)
