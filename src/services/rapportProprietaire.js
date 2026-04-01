@@ -271,7 +271,7 @@ export function genererRapportHTML(proprio, mois, data) {
       style="position:absolute;top:0;left:0;width:100%;height:230px;object-fit:cover;object-position:center 35%;display:block;-webkit-print-color-adjust:exact !important;print-color-adjust:exact !important;"/>
     <div style="position:absolute;inset:0;background:linear-gradient(to bottom,rgba(20,14,8,0.15) 0%,rgba(20,14,8,0.72) 100%);-webkit-print-color-adjust:exact !important;print-color-adjust:exact !important;"></div>
     <!-- Logo + Titre centrés + KPIs financiers -->
-    <div style="position:absolute;top:0;left:0;right:0;bottom:70px;display:flex;flex-direction:column;align-items:center;justify-content:center;">
+    <div style="position:absolute;top:0;left:0;right:0;bottom:90px;display:flex;flex-direction:column;align-items:center;justify-content:center;">
       <img src="${logoSrc}"
         style="height:100px;display:block;margin-bottom:10px;-webkit-print-color-adjust:exact;print-color-adjust:exact;" onerror="this.style.display='none'"/>
       <div style="font-size:9px;letter-spacing:0.05em;text-transform:uppercase;color:rgba(212,196,176,0.85);margin-bottom:4px;white-space:nowrap;">Rapport mensuel · ${moisLabel}</div>
