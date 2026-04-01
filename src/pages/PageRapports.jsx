@@ -68,6 +68,10 @@ export default function PageRapports() {
   const [note, setNote] = useState('')
   const [noteReco, setNoteReco] = useState('')
   const [llmAnalyse, setLlmAnalyse] = useState('')
+  const [llmContexte, setLlmContexte] = useState('')
+  const [llmTendances, setLlmTendances] = useState('')
+  const [editingBloc, setEditingBloc] = useState({ analyse: false, contexte: false, tendances: false })
+  const [generatingBloc, setGeneratingBloc] = useState(null)
   const [vueSynthese, setVueSynthese] = useState(false)
   const [email, setEmail] = useState('')
   const [loading, setLoading] = useState(false)
@@ -76,7 +80,6 @@ export default function PageRapports() {
   const [previewOpen, setPreviewOpen] = useState(false)
   const [bienIdsActifs, setBienIdsActifs] = useState(null)
   const [biensEnvoyes, setBiensEnvoyes] = useState(new Set())
-  const [editingLlm, setEditingLlm] = useState(false)
   const [notePerso, setNotePerso] = useState('')
   const [modeMaite, setModeMaite] = useState('chambre')
 
@@ -110,6 +113,9 @@ export default function PageRapports() {
     setNote('')
     setNoteReco('')
     setLlmAnalyse('')
+    setLlmContexte('')
+    setLlmTendances('')
+    setEditingBloc({ analyse: false, contexte: false, tendances: false })
     setStatut('idle')
     setPreviewOpen(false)
   }, [selectedPropId, proprietaires])
@@ -153,6 +159,8 @@ export default function PageRapports() {
         noteMarche,
         noteRecoVal,
         noteLlmVal,
+        noteContexteVal,
+        noteTendancesVal,
         notePersoVal,
         { data: facture },
         tauxCommission,
@@ -178,6 +186,12 @@ export default function PageRapports() {
         supabase.from('bien_notes').select('note_analyse_llm')
           .eq('bien_id', selectedBienId).eq('mois', mois).maybeSingle()
           .then(r => r.data?.note_analyse_llm || ''),
+        supabase.from('bien_notes').select('note_contexte')
+          .eq('bien_id', selectedBienId).eq('mois', mois).maybeSingle()
+          .then(r => r.data?.note_contexte || ''),
+        supabase.from('bien_notes').select('note_tendances')
+          .eq('bien_id', selectedBienId).eq('mois', mois).maybeSingle()
+          .then(r => r.data?.note_tendances || ''),
         supabase.from('bien_notes').select('note_personnalisation')
           .eq('bien_id', selectedBienId).eq('mois', mois).maybeSingle()
           .then(r => r.data?.note_personnalisation || ''),
@@ -193,6 +207,8 @@ export default function PageRapports() {
       setNote(noteMarche)
       setNoteReco(noteRecoVal)
       setLlmAnalyse(noteLlmVal)
+      setLlmContexte(noteContexteVal)
+      setLlmTendances(noteTendancesVal)
       setNotePerso(notePersoVal)
 
       const resasValides = (resas || []).filter(r => !STATUTS_NON_VENTILABLES.includes(r.final_status))
@@ -309,6 +325,24 @@ export default function PageRapports() {
     } catch (e) { console.error(e) }
   }
 
+  async function handleContexteBlur() {
+    try {
+      await supabase.from('bien_notes').upsert(
+        { bien_id: selectedBienId, mois, note_contexte: llmContexte, updated_at: new Date().toISOString() },
+        { onConflict: 'bien_id,mois' }
+      )
+    } catch (e) { console.error(e) }
+  }
+
+  async function handleTendancesBlur() {
+    try {
+      await supabase.from('bien_notes').upsert(
+        { bien_id: selectedBienId, mois, note_tendances: llmTendances, updated_at: new Date().toISOString() },
+        { onConflict: 'bien_id,mois' }
+      )
+    } catch (e) { console.error(e) }
+  }
+
   async function handleNotePersoBlur() {
     try {
       await supabase.from('bien_notes').upsert(
@@ -325,18 +359,19 @@ export default function PageRapports() {
     } catch (e) { console.error('saveEmail:', e) }
   }
 
-  async function lancerAnalyseLLM() {
+  async function genererBloc(which) {
     if (!data) return
+    setGeneratingBloc(which)
+
     const [yr, mo] = mois.split('-').map(Number)
     const moisLabel = MOIS_FR[mo - 1] + ' ' + yr
     const m1 = nextMoisStr(mois)
     const m2 = nextMoisStr(m1)
     const prixMoyenNuit = data.kpis.nuitsOccupees > 0
-      ? Math.round((data.kpis.caHeb / data.kpis.nuitsOccupees) / 100)
-      : 0
+      ? Math.round((data.kpis.caHeb / data.kpis.nuitsOccupees) / 100) : 0
 
-    // Météo Open-Meteo
     let meteoResume = 'Données météo non disponibles.'
+    let meteoFutur = ''
     try {
       const meteoRes = await fetch(
         `https://api.open-meteo.com/v1/forecast?latitude=43.48&longitude=-1.56&daily=temperature_2m_max,temperature_2m_min,precipitation_sum,sunshine_duration&timezone=Europe%2FParis&past_days=31&forecast_days=14`
@@ -344,19 +379,23 @@ export default function PageRapports() {
       const meteo = await meteoRes.json()
       const days = (meteo.daily?.time || [])
       const moisPad = String(mo).padStart(2, '0')
+      const avg = arr => arr.length ? (arr.reduce((s, v) => s + v, 0) / arr.length).toFixed(1) : '?'
+      const sum = arr => arr.reduce((s, v) => s + v, 0).toFixed(0)
       const idx = days.reduce((acc, d, i) => d.startsWith(`${yr}-${moisPad}`) ? [...acc, i] : acc, [])
       if (idx.length > 0) {
         const tMax = idx.map(i => meteo.daily.temperature_2m_max[i]).filter(v => v != null)
         const tMin = idx.map(i => meteo.daily.temperature_2m_min[i]).filter(v => v != null)
         const pluie = idx.map(i => meteo.daily.precipitation_sum[i] || 0)
         const soleil = idx.map(i => (meteo.daily.sunshine_duration[i] || 0) / 3600)
-        const avg = arr => arr.length ? (arr.reduce((s, v) => s + v, 0) / arr.length).toFixed(1) : '?'
-        const sum = arr => arr.reduce((s, v) => s + v, 0).toFixed(0)
         meteoResume = `Tmax moy. ${avg(tMax)}°C, Tmin moy. ${avg(tMin)}°C, précipitations ${sum(pluie)}mm, ensoleillement moy. ${avg(soleil)}h/j`
+      }
+      const idxFut = days.reduce((acc, d, i) => d.startsWith(m1) ? [...acc, i] : acc, [])
+      if (idxFut.length > 0) {
+        const tMaxF = idxFut.map(i => meteo.daily.temperature_2m_max[i]).filter(v => v != null)
+        meteoFutur = `Tmax moy. prévue ${avg(tMaxF)}°C sur les prochaines semaines`
       }
     } catch (e) { console.warn('Météo non disponible:', e.message) }
 
-    // Réservations M+1 et M+2
     const { data: resasFutures } = await supabase
       .from('reservation')
       .select('code, arrival_date, departure_date, nights, fin_revenue, final_status, platform')
@@ -365,25 +404,15 @@ export default function PageRapports() {
       .not('final_status', 'in', '("cancelled","not_accepted","declined","expired")')
       .order('arrival_date')
 
-    // Taux de commission
-    const { data: bienData } = await supabase
-      .from('bien')
-      .select('taux_commission_override, proprietaire:proprietaire_id(taux_commission)')
-      .eq('id', selectedBienId)
-      .single()
-    const tauxCommission = bienData?.taux_commission_override
-      || bienData?.proprietaire?.taux_commission
-      || 25
-
-    const systemPrompt = `Tu es Oïhan, gérant de Destination Côte Basque. Tu rédiges un compte-rendu mensuel court et personnalisé pour le propriétaire du bien que tu gères à Biarritz. Ton ton est professionnel, humain et direct. Tu interprètes les chiffres, tu ne les listes pas. 3 à 4 paragraphes fluides, sans titres, sans bullet points, sans jargon comptable. Si les résultats sont en retrait, tu l'expliques sobrement sans alarmer. Tu écris comme une vraie personne qui connaît le bien et son propriétaire.`
-
-    const userPrompt = `Bien : "${data.bien?.hospitable_name}"
+    async function _genererAnalyse() {
+      const sys = `Tu es Oïhan, gérant de Destination Côte Basque. Tu rédiges un compte-rendu mensuel court et personnalisé pour le propriétaire du bien que tu gères à Biarritz. Ton ton est professionnel, humain et direct. Tu interprètes les chiffres, tu ne les listes pas. 3 à 4 paragraphes fluides, sans titres, sans bullet points, sans jargon comptable. Si les résultats sont en retrait, tu l'expliques sobrement sans alarmer. Tu écris comme une vraie personne qui connaît le bien et son propriétaire.`
+      const prompt = `Bien : "${data.bien?.hospitable_name}"
 Propriétaire : ${data.proprio?.nom}
 Mois : ${moisLabel}
 
 PERFORMANCE DU MOIS :
 - Base commissionnable : ${fmt(data.kpis.caHeb)}
-- Taux de commission : ${tauxCommission}%
+- Taux de commission : ${data.tauxCommission}%
 - Reversement net : ${fmt(data.kpis.loyTotal)}
 - Réservations : ${data.kpis.nbResas} (N-1 : ${data.kpisN1?.nbResas ?? '?'})
 - Taux occupation : ${data.kpis.tauxOcc}% (N-1 : ${data.kpisN1?.tauxOcc ?? '?'}%)
@@ -393,19 +422,9 @@ PERFORMANCE DU MOIS :
 AVIS VOYAGEURS :
 ${data.reviews.slice(0, 5).map(r => `- ${r.rating}/5 : "${r.comment?.substring(0, 150)}"`).join('\n') || 'Aucun avis ce mois'}
 
-MÉTÉO BIARRITZ (${moisLabel}) :
-${meteoResume}
-
-RÉSERVATIONS À VENIR (M+1/M+2) :
-${resasFutures?.length > 0
-  ? resasFutures.map(r => `- ${r.arrival_date} → ${r.departure_date} (${r.nights}n, ${((r.fin_revenue || 0) / 100).toFixed(0)}€, ${r.platform})`).join('\n')
-  : 'Aucune réservation enregistrée pour les 2 prochains mois'}
-
-${notePerso ? 'NOTE PERSONNELLE OÏHAN (à intégrer naturellement) :\n' + notePerso : ''}`
-
-    try {
+${notePerso ? 'NOTE PERSONNELLE OÏHAN :\n' + notePerso : ''}`
       const { data: llmData, error: llmErr } = await Promise.race([
-        supabase.functions.invoke('llm-analyse', { body: { prompt: userPrompt, system: systemPrompt } }),
+        supabase.functions.invoke('llm-analyse', { body: { prompt, system: sys } }),
         new Promise((_, reject) => setTimeout(() => reject(new Error('timeout')), 30000)),
       ])
       if (llmErr) throw llmErr
@@ -417,13 +436,75 @@ ${notePerso ? 'NOTE PERSONNELLE OÏHAN (à intégrer naturellement) :\n' + noteP
           { onConflict: 'bien_id,mois' }
         )
       }
-    } catch (e) { console.warn('LLM analyse failed:', e.message) }
+    }
+
+    async function _genererContexte() {
+      const sys = `Tu es Oïhan, gérant de Destination Côte Basque. Tu rédiges une note de contexte marché concise pour le propriétaire d'un bien à Biarritz. Ton professionnel et direct. 2 à 3 paragraphes fluides. Tu décris la météo du mois passé et son impact sur la location, le contexte saisonnier, sans inventer de chiffres.`
+      const prompt = `Bien : "${data.bien?.hospitable_name}"
+Mois : ${moisLabel}
+
+MÉTÉO BIARRITZ (${moisLabel}) :
+${meteoResume}
+
+TAUX D'OCCUPATION : ${data.kpis.tauxOcc}% (N-1 : ${data.kpisN1?.tauxOcc ?? '?'}%)
+RÉSERVATIONS : ${data.kpis.nbResas} (N-1 : ${data.kpisN1?.nbResas ?? '?'})
+
+${notePerso ? 'CONTEXTE PARTICULIER :\n' + notePerso : ''}`
+      const { data: llmData, error: llmErr } = await Promise.race([
+        supabase.functions.invoke('llm-analyse', { body: { prompt, system: sys } }),
+        new Promise((_, reject) => setTimeout(() => reject(new Error('timeout')), 30000)),
+      ])
+      if (llmErr) throw llmErr
+      const txt = llmData?.text || ''
+      if (txt) {
+        setLlmContexte(txt)
+        await supabase.from('bien_notes').upsert(
+          { bien_id: selectedBienId, mois, note_contexte: txt, updated_at: new Date().toISOString() },
+          { onConflict: 'bien_id,mois' }
+        )
+      }
+    }
+
+    async function _genererTendances() {
+      const sys = `Tu es Oïhan, gérant de Destination Côte Basque. Tu rédiges une note de perspectives pour M+1 et M+2 pour le propriétaire d'un bien à Biarritz. Ton professionnel, concret et rassurant. 2 paragraphes max. Tu commentes les réservations à venir et les prévisions météo disponibles.`
+      const prompt = `Bien : "${data.bien?.hospitable_name}"
+Mois de référence : ${moisLabel}
+
+RÉSERVATIONS À VENIR (M+1/M+2) :
+${resasFutures?.length > 0
+  ? resasFutures.map(r => `- ${r.arrival_date} → ${r.departure_date} (${r.nights}n, ${((r.fin_revenue || 0) / 100).toFixed(0)}€, ${r.platform})`).join('\n')
+  : 'Aucune réservation enregistrée pour les 2 prochains mois'}
+
+${meteoFutur ? 'MÉTÉO PRÉVISIONNEL :\n' + meteoFutur : ''}
+${notePerso ? '\nCONTEXTE PARTICULIER :\n' + notePerso : ''}`
+      const { data: llmData, error: llmErr } = await Promise.race([
+        supabase.functions.invoke('llm-analyse', { body: { prompt, system: sys } }),
+        new Promise((_, reject) => setTimeout(() => reject(new Error('timeout')), 30000)),
+      ])
+      if (llmErr) throw llmErr
+      const txt = llmData?.text || ''
+      if (txt) {
+        setLlmTendances(txt)
+        await supabase.from('bien_notes').upsert(
+          { bien_id: selectedBienId, mois, note_tendances: txt, updated_at: new Date().toISOString() },
+          { onConflict: 'bien_id,mois' }
+        )
+      }
+    }
+
+    try {
+      if (which === 'all') await Promise.all([_genererAnalyse(), _genererContexte(), _genererTendances()])
+      else if (which === 'analyse') await _genererAnalyse()
+      else if (which === 'contexte') await _genererContexte()
+      else if (which === 'tendances') await _genererTendances()
+    } catch (e) { console.warn('LLM génération failed:', e.message) }
+    finally { setGeneratingBloc(null) }
   }
 
   function buildRapportData() {
     return {
       kpis: data.kpis, resas: data.resas, reviews: data.reviews,
-      bien: data.bien, llmAnalyse, kpisN1: data.kpisN1,
+      bien: data.bien, llmAnalyse, llmContexte, llmTendances, kpisN1: data.kpisN1,
       noteMoisMoy: data.noteMoisMoy, noteGlobaleMoy: data.noteGlobaleMoy,
       nbReviewsGlobal: data.nbReviewsGlobal,
       notes: [{ bienName: data.bien?.hospitable_name, note }],
@@ -732,26 +813,88 @@ ${notePerso ? 'NOTE PERSONNELLE OÏHAN (à intégrer naturellement) :\n' + noteP
               <div style={{ fontSize: '0.7em', color: '#9C8E7D', marginTop: 3 }}>Invisible dans le rapport PDF — utilisé uniquement par l'analyse IA.</div>
             </div>
 
-            {/* BLOC 6 — Analyse LLM */}
+            {/* BLOC 6 — Analyse IA 3 blocs */}
             <div style={{ marginBottom: 20 }}>
-              <label style={{ fontSize: '0.82em', fontWeight: 600, color: 'var(--brand)', display: 'block', marginBottom: 6 }}>Analyse intelligente</label>
-              {llmAnalyse && !editingLlm ? (
-                <div style={{ fontSize: '0.85em', lineHeight: 1.7, color: 'var(--text)', padding: '10px 12px', background: 'var(--bg)', border: '1px solid var(--border)', borderRadius: 6, minHeight: 80 }}
-                  dangerouslySetInnerHTML={{ __html: renderMarkdown(llmAnalyse) }} />
-              ) : (
-                <textarea value={llmAnalyse} onChange={e => setLlmAnalyse(e.target.value)}
-                  onBlur={() => { handleLlmBlur(); setEditingLlm(false) }}
-                  placeholder="Cliquer sur Générer…" rows={4}
-                  style={{ width: '100%', border: '1px solid var(--border)', borderRadius: 6, padding: '8px 10px', fontSize: '0.85em', background: 'var(--bg)', color: 'var(--text)', resize: 'vertical', fontFamily: 'inherit' }} />
-              )}
-              <div style={{ display: 'flex', gap: 8, marginTop: 6 }}>
-                <button onClick={lancerAnalyseLLM} style={{ padding: '3px 10px', border: '1px solid var(--brand)', borderRadius: 10, background: 'none', color: 'var(--brand)', fontSize: '0.78em', cursor: 'pointer', fontWeight: 600 }}>
-                  ✨ Générer
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 10 }}>
+                <span style={{ fontSize: '0.82em', fontWeight: 700, color: 'var(--brand)', textTransform: 'uppercase', letterSpacing: 0.5 }}>Analyse IA</span>
+                <button onClick={() => genererBloc('all')} disabled={generatingBloc !== null}
+                  style={{ padding: '4px 12px', border: '1px solid var(--brand)', borderRadius: 10, background: generatingBloc === 'all' ? 'var(--brand)' : 'none', color: generatingBloc === 'all' ? '#fff' : 'var(--brand)', fontSize: '0.78em', cursor: 'pointer', fontWeight: 600, opacity: generatingBloc !== null ? 0.6 : 1 }}>
+                  {generatingBloc === 'all' ? 'Génération…' : '✨ Tout générer'}
                 </button>
-                {llmAnalyse && !editingLlm && (
-                  <button onClick={() => setEditingLlm(true)} style={{ padding: '3px 10px', border: '1px solid var(--border)', borderRadius: 10, background: 'none', fontSize: '0.78em', cursor: 'pointer' }}>
-                    ✏️ Modifier
-                  </button>
+              </div>
+              {/* Analyse du mois */}
+              <div style={{ marginBottom: 10, padding: '10px 12px', border: '1px solid var(--border)', borderRadius: 8, background: '#fff' }}>
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 6 }}>
+                  <span style={{ fontSize: '0.78em', fontWeight: 600, color: 'var(--brand)' }}>Analyse du mois</span>
+                  <div style={{ display: 'flex', gap: 6 }}>
+                    <button onClick={() => genererBloc('analyse')} disabled={generatingBloc !== null}
+                      style={{ padding: '2px 8px', border: '1px solid var(--brand)', borderRadius: 10, background: 'none', color: 'var(--brand)', fontSize: '0.75em', cursor: 'pointer', fontWeight: 600, opacity: generatingBloc !== null ? 0.6 : 1 }}>
+                      {generatingBloc === 'analyse' ? '…' : '✨ Générer'}
+                    </button>
+                    {llmAnalyse && !editingBloc.analyse && (
+                      <button onClick={() => setEditingBloc(b => ({ ...b, analyse: true }))}
+                        style={{ padding: '2px 8px', border: '1px solid var(--border)', borderRadius: 10, background: 'none', fontSize: '0.75em', cursor: 'pointer' }}>✏️</button>
+                    )}
+                  </div>
+                </div>
+                {llmAnalyse && !editingBloc.analyse ? (
+                  <div style={{ fontSize: '0.85em', lineHeight: 1.7, color: 'var(--text)', borderLeft: '3px solid var(--brand)', paddingLeft: 12 }}
+                    dangerouslySetInnerHTML={{ __html: renderMarkdown(llmAnalyse) }} />
+                ) : (
+                  <textarea value={llmAnalyse} onChange={e => setLlmAnalyse(e.target.value)}
+                    onBlur={() => { handleLlmBlur(); setEditingBloc(b => ({ ...b, analyse: false })) }}
+                    placeholder="Cliquer sur ✨ Générer…" rows={4}
+                    style={{ width: '100%', border: '1px solid var(--border)', borderRadius: 6, padding: '8px 10px', fontSize: '0.85em', background: 'var(--bg)', color: 'var(--text)', resize: 'vertical', fontFamily: 'inherit' }} />
+                )}
+              </div>
+              {/* Contexte marché */}
+              <div style={{ marginBottom: 10, padding: '10px 12px', border: '1px solid var(--border)', borderRadius: 8, background: '#F7F4EF' }}>
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 6 }}>
+                  <span style={{ fontSize: '0.78em', fontWeight: 600, color: 'var(--brand)' }}>Contexte marché</span>
+                  <div style={{ display: 'flex', gap: 6 }}>
+                    <button onClick={() => genererBloc('contexte')} disabled={generatingBloc !== null}
+                      style={{ padding: '2px 8px', border: '1px solid var(--brand)', borderRadius: 10, background: 'none', color: 'var(--brand)', fontSize: '0.75em', cursor: 'pointer', fontWeight: 600, opacity: generatingBloc !== null ? 0.6 : 1 }}>
+                      {generatingBloc === 'contexte' ? '…' : '✨ Générer'}
+                    </button>
+                    {llmContexte && !editingBloc.contexte && (
+                      <button onClick={() => setEditingBloc(b => ({ ...b, contexte: true }))}
+                        style={{ padding: '2px 8px', border: '1px solid var(--border)', borderRadius: 10, background: 'none', fontSize: '0.75em', cursor: 'pointer' }}>✏️</button>
+                    )}
+                  </div>
+                </div>
+                {llmContexte && !editingBloc.contexte ? (
+                  <div style={{ fontSize: '0.85em', lineHeight: 1.7, color: 'var(--text)' }}
+                    dangerouslySetInnerHTML={{ __html: renderMarkdown(llmContexte) }} />
+                ) : (
+                  <textarea value={llmContexte} onChange={e => setLlmContexte(e.target.value)}
+                    onBlur={() => { handleContexteBlur(); setEditingBloc(b => ({ ...b, contexte: false })) }}
+                    placeholder="Cliquer sur ✨ Générer…" rows={3}
+                    style={{ width: '100%', border: '1px solid var(--border)', borderRadius: 6, padding: '8px 10px', fontSize: '0.85em', background: 'var(--bg)', color: 'var(--text)', resize: 'vertical', fontFamily: 'inherit' }} />
+                )}
+              </div>
+              {/* Perspectives M+1/M+2 */}
+              <div style={{ padding: '10px 12px', border: '1px solid var(--border)', borderRadius: 8, background: '#fff' }}>
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 6 }}>
+                  <span style={{ fontSize: '0.78em', fontWeight: 600, color: 'var(--brand)' }}>Perspectives M+1/M+2</span>
+                  <div style={{ display: 'flex', gap: 6 }}>
+                    <button onClick={() => genererBloc('tendances')} disabled={generatingBloc !== null}
+                      style={{ padding: '2px 8px', border: '1px solid var(--brand)', borderRadius: 10, background: 'none', color: 'var(--brand)', fontSize: '0.75em', cursor: 'pointer', fontWeight: 600, opacity: generatingBloc !== null ? 0.6 : 1 }}>
+                      {generatingBloc === 'tendances' ? '…' : '✨ Générer'}
+                    </button>
+                    {llmTendances && !editingBloc.tendances && (
+                      <button onClick={() => setEditingBloc(b => ({ ...b, tendances: true }))}
+                        style={{ padding: '2px 8px', border: '1px solid var(--border)', borderRadius: 10, background: 'none', fontSize: '0.75em', cursor: 'pointer' }}>✏️</button>
+                    )}
+                  </div>
+                </div>
+                {llmTendances && !editingBloc.tendances ? (
+                  <div style={{ fontSize: '0.85em', lineHeight: 1.7, color: 'var(--text)', borderLeft: '3px solid var(--brand)', paddingLeft: 12 }}
+                    dangerouslySetInnerHTML={{ __html: renderMarkdown(llmTendances) }} />
+                ) : (
+                  <textarea value={llmTendances} onChange={e => setLlmTendances(e.target.value)}
+                    onBlur={() => { handleTendancesBlur(); setEditingBloc(b => ({ ...b, tendances: false })) }}
+                    placeholder="Cliquer sur ✨ Générer…" rows={3}
+                    style={{ width: '100%', border: '1px solid var(--border)', borderRadius: 6, padding: '8px 10px', fontSize: '0.85em', background: 'var(--bg)', color: 'var(--text)', resize: 'vertical', fontFamily: 'inherit' }} />
                 )}
               </div>
             </div>

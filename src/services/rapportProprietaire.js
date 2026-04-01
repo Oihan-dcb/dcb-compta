@@ -95,7 +95,7 @@ export async function getKPIsMois(proprietaireId, mois) {
 // ─────────────────────────────────────────
 
 export function genererRapportHTML(proprio, mois, data) {
-  const { kpis, resas, reviews, notes, bien, llmAnalyse, kpisN1, noteMoisMoy, noteGlobaleMoy, nbReviewsGlobal, noteContexte, noteReco, tauxCommission } = data
+  const { kpis, resas, reviews, notes, bien, llmAnalyse, llmContexte, llmTendances, kpisN1, noteMoisMoy, noteGlobaleMoy, nbReviewsGlobal, noteContexte, noteReco, tauxCommission } = data
   const [year, monthIdx] = mois.split('-')
   const MOIS_FR = ['janvier','février','mars','avril','mai','juin','juillet','août','septembre','octobre','novembre','décembre']
   const moisLabel = MOIS_FR[parseInt(monthIdx) - 1] + ' ' + year
@@ -258,8 +258,8 @@ export function genererRapportHTML(proprio, mois, data) {
   </div>
 
   ${llmHTML ? `
-  <!-- ANALYSE -->
-  <div class="section" style="background:#FDFAF7;">
+  <!-- ANALYSE DU MOIS -->
+  <div class="section">
     <div class="section-title">Analyse du mois</div>
     <div style="border-left:3px solid #CC9933;padding-left:18px;">
       ${llmHTML}
@@ -279,8 +279,13 @@ export function genererRapportHTML(proprio, mois, data) {
     ${reviewsHTML}
   </div>` : ''}
 
-  ${noteContexte ? `
-  <!-- CONTEXTE & TENDANCES -->
+  ${llmContexte ? `
+  <!-- CONTEXTE MARCHÉ -->
+  <div class="section" style="background:#F7F4EF;">
+    <div class="section-title">Contexte marché</div>
+    <p style="margin:0;color:#2C2416;line-height:1.7;font-size:0.95em;">${llmContexte.split('\n\n').map(p => p.trim()).filter(Boolean).map(p => `<p style="margin:0 0 12px;color:#2C2416;line-height:1.75;font-size:0.95em;">${p.replace(/\n/g, '<br/>')}</p>`).join('')}</p>
+  </div>` : noteContexte ? `
+  <!-- CONTEXTE -->
   <div class="section">
     <div class="section-title">Contexte & tendances</div>
     <p style="margin:0;color:#2C2416;line-height:1.7;font-size:0.95em;">${noteContexte.replace(/\n/g, '<br/>')}</p>
@@ -289,6 +294,15 @@ export function genererRapportHTML(proprio, mois, data) {
   <div class="section">
     <div class="section-title">Note de marché</div>
     ${noteHTML}
+  </div>` : ''}
+
+  ${llmTendances ? `
+  <!-- PERSPECTIVES -->
+  <div class="section">
+    <div class="section-title">Perspectives M+1/M+2</div>
+    <div style="border-left:3px solid #CC9933;padding-left:18px;">
+      ${llmTendances.split('\n\n').map(p => p.trim()).filter(Boolean).map(p => `<p style="margin:0 0 12px;color:#2C2416;line-height:1.75;font-size:0.95em;">${p.replace(/\n/g, '<br/>')}</p>`).join('')}
+    </div>
   </div>` : ''}
 
   ${noteReco ? `
