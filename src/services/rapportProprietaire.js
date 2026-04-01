@@ -205,12 +205,13 @@ export function genererRapportHTML(proprio, mois, data) {
   .kpi-lbl { font-size:8px; color:#9C8E7D; margin-top:3px; text-transform:uppercase; letter-spacing:0.5px; }
   .kpi-delta { font-size:0.7em; margin-top:2px; }
   .footer { text-align:center; padding:12px 24px; font-size:0.75em; color:#9C8E7D; background:#F7F4EF; border-top:2px solid #CC9933; }
+  img { -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important; }
   @page { size: A4 portrait; margin: 8mm 6mm; }
   @media print {
     * { -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important; }
     body { margin: 0; padding: 0; }
     .container { max-width:100% !important; }
-    img { max-width:100% !important; }
+    img { max-width:100% !important; -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important; }
     .section-kpis,
     .section-synthese,
     .section-analyse,
@@ -244,12 +245,12 @@ export function genererRapportHTML(proprio, mois, data) {
   <!-- HERO + KPIs financiers intégrés -->
   <div class="section-synthese" style="position:relative;height:230px;overflow:hidden;">
     <img src="${HERO_B64}"
-      style="width:100%;height:100%;object-fit:cover;object-position:center 35%;display:block;"/>
+      style="width:100%;height:100%;object-fit:cover;object-position:center 35%;display:block;-webkit-print-color-adjust:exact;print-color-adjust:exact;"/>
     <div style="position:absolute;inset:0;background:linear-gradient(to bottom,rgba(237,235,229,0.12) 0%,rgba(44,36,22,0.45) 45%,rgba(20,14,8,0.90) 100%);"></div>
     <!-- Logo + titre -->
     <div style="position:absolute;top:0;left:0;right:0;padding:14px 24px;text-align:center;">
       <img src="${LOGO_B64}"
-        style="height:34px;display:block;margin:0 auto 6px;" onerror="this.style.display='none'"/>
+        style="height:40px;display:block;margin:0 auto 8px;-webkit-print-color-adjust:exact;print-color-adjust:exact;" onerror="this.style.display='none'"/>
       <div style="font-size:9px;letter-spacing:0.22em;text-transform:uppercase;color:rgba(212,196,176,0.9);margin-bottom:2px;">Rapport mensuel · ${moisLabel}</div>
       <div style="font-size:14px;font-weight:300;color:#fff;letter-spacing:0.04em;">${proprio?.nom || ''} — ${bienName}</div>
     </div>
