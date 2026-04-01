@@ -107,16 +107,25 @@ export function genererRapportHTML(proprio, mois, data) {
   const PLATFORM_COLORS = { airbnb: '#FF5A5F', booking: '#003580', stripe: '#059669', direct: '#059669' }
 
   const resasHTML = (resas || []).length
-    ? `<table style="width:100%;border-collapse:collapse;font-size:0.88em;margin-top:8px;">
+    ? `<table style="width:100%;border-collapse:collapse;font-size:12px;table-layout:fixed;margin-top:8px;">
+        <colgroup>
+          <col style="width:9%">
+          <col style="width:9%">
+          <col style="width:22%">
+          <col style="width:6%">
+          <col style="width:12%">
+          <col style="width:21%">
+          <col style="width:21%">
+        </colgroup>
         <thead>
           <tr style="background:#EDEBE5;">
-            <th style="padding:8px 10px;text-align:left;border-bottom:2px solid #CC9933;color:#2C2416;font-weight:600;">Arrivée</th>
-            <th style="padding:8px 10px;text-align:left;border-bottom:2px solid #CC9933;color:#2C2416;font-weight:600;">Départ</th>
-            <th style="padding:8px 10px;text-align:left;border-bottom:2px solid #CC9933;color:#2C2416;font-weight:600;">Voyageur</th>
-            <th style="padding:8px 10px;text-align:center;border-bottom:2px solid #CC9933;color:#2C2416;font-weight:600;">Nuits</th>
-            <th style="padding:8px 10px;text-align:center;border-bottom:2px solid #CC9933;color:#2C2416;font-weight:600;">Canal</th>
-            <th style="padding:8px 10px;text-align:right;border-bottom:2px solid #CC9933;color:#2C2416;font-weight:600;">Base comm.</th>
-            <th style="padding:8px 10px;text-align:right;border-bottom:2px solid #CC9933;color:#2C2416;font-weight:600;">Reversement</th>
+            <th style="padding:7px 6px;text-align:left;border-bottom:2px solid #CC9933;color:#2C2416;font-weight:600;">Arrivée</th>
+            <th style="padding:7px 6px;text-align:left;border-bottom:2px solid #CC9933;color:#2C2416;font-weight:600;">Départ</th>
+            <th style="padding:7px 6px;text-align:left;border-bottom:2px solid #CC9933;color:#2C2416;font-weight:600;">Voyageur</th>
+            <th style="padding:7px 4px;text-align:center;border-bottom:2px solid #CC9933;color:#2C2416;font-weight:600;">Nuits</th>
+            <th style="padding:7px 4px;text-align:center;border-bottom:2px solid #CC9933;color:#2C2416;font-weight:600;">Canal</th>
+            <th style="padding:7px 4px;text-align:right;border-bottom:2px solid #CC9933;color:#2C2416;font-weight:600;">Base comm.</th>
+            <th style="padding:7px 4px;text-align:right;border-bottom:2px solid #CC9933;color:#2C2416;font-weight:600;">Reversement</th>
           </tr>
         </thead>
         <tbody>
@@ -128,16 +137,16 @@ export function genererRapportHTML(proprio, mois, data) {
             const arrFR = r.arrival_date ? r.arrival_date.split('-').reverse().join('/') : '—'
             const depFR = r.departure_date ? r.departure_date.split('-').reverse().join('/') : '—'
             return `<tr style="background:${i % 2 === 0 ? '#F7F4EF' : '#fff'};">
-              <td style="padding:7px 10px;color:#2C2416;">${arrFR}</td>
-              <td style="padding:7px 10px;color:#4A3728;">${depFR}</td>
-              <td style="padding:7px 10px;color:#2C2416;">${r.guest_name || '—'}</td>
-              <td style="padding:7px 10px;text-align:center;color:#4A3728;">${r.nights || '—'}</td>
-              <td style="padding:7px 10px;text-align:center;">
-                <span style="display:inline-block;width:8px;height:8px;border-radius:50%;background:${platColor};margin-right:4px;vertical-align:middle;"></span>
-                <span style="font-size:0.85em;color:#4A3728;">${platLabel}</span>
+              <td style="padding:6px 6px;color:#2C2416;white-space:nowrap;">${arrFR}</td>
+              <td style="padding:6px 6px;color:#4A3728;white-space:nowrap;">${depFR}</td>
+              <td style="padding:6px 6px;color:#2C2416;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${r.guest_name || '—'}</td>
+              <td style="padding:6px 4px;text-align:center;color:#4A3728;">${r.nights || '—'}</td>
+              <td style="padding:6px 4px;text-align:center;">
+                <span style="display:inline-block;width:7px;height:7px;border-radius:50%;background:${platColor};margin-right:3px;vertical-align:middle;"></span>
+                <span style="color:#4A3728;">${platLabel}</span>
               </td>
-              <td style="padding:7px 10px;text-align:right;color:#2C2416;">${fmt(r.fin_revenue)}</td>
-              <td style="padding:7px 10px;text-align:right;font-weight:600;color:#059669;">${v.LOY ? fmt(v.LOY.montant_ht) : '—'}</td>
+              <td style="padding:6px 4px;text-align:right;color:#2C2416;white-space:nowrap;">${fmt(r.fin_revenue)}</td>
+              <td style="padding:6px 4px;text-align:right;font-weight:600;color:#059669;white-space:nowrap;">${v.LOY ? fmt(v.LOY.montant_ht) : '—'}</td>
             </tr>`}).join('')}
         </tbody>
       </table>`
@@ -183,6 +192,11 @@ export function genererRapportHTML(proprio, mois, data) {
   .kpi-lbl { font-size:0.68em; color:#9C8E7D; margin-top:3px; text-transform:uppercase; letter-spacing:0.5px; }
   .kpi-delta { font-size:0.72em; margin-top:2px; }
   .footer { text-align:center; padding:20px 32px; font-size:0.76em; color:#9C8E7D; background:#F7F4EF; border-top:2px solid #CC9933; }
+  @page { size: A4 portrait; margin: 10mm 8mm; }
+  @media print {
+    body { -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important; zoom: 0.85; }
+    .container { max-width:100% !important; width:100% !important; }
+  }
 </style>
 </head>
 <body>
