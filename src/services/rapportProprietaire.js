@@ -237,6 +237,12 @@ export function genererRapportHTML(proprio, mois, data) {
       orphans: 3;
       widows: 3;
     }
+    img { max-width:100% !important; page-break-inside:avoid; }
+    img[src^="data:"] {
+      display: block !important;
+      visibility: visible !important;
+      opacity: 1 !important;
+    }
   }
 </style>
 </head>
@@ -244,14 +250,14 @@ export function genererRapportHTML(proprio, mois, data) {
 <div class="container">
 
   <!-- HERO + KPIs financiers intégrés -->
-  <div class="section-synthese" style="position:relative;height:230px;overflow:hidden;-webkit-print-color-adjust:exact;print-color-adjust:exact;">
+  <div class="section-synthese" style="position:relative;height:230px;display:block;-webkit-print-color-adjust:exact !important;print-color-adjust:exact !important;">
     <img src="${heroSrc}"
-      style="position:absolute;top:0;left:0;width:100%;height:100%;object-fit:cover;object-position:center 35%;display:block;-webkit-print-color-adjust:exact;print-color-adjust:exact;"/>
-    <div style="position:absolute;inset:0;background:linear-gradient(to bottom,rgba(237,235,229,0.12) 0%,rgba(44,36,22,0.45) 45%,rgba(20,14,8,0.90) 100%);"></div>
+      style="position:absolute;top:0;left:0;width:100%;height:230px;object-fit:cover;object-position:center 35%;display:block;-webkit-print-color-adjust:exact !important;print-color-adjust:exact !important;"/>
+    <div style="position:absolute;inset:0;background:linear-gradient(to bottom,rgba(20,14,8,0.15) 0%,rgba(20,14,8,0.72) 100%);-webkit-print-color-adjust:exact !important;print-color-adjust:exact !important;"></div>
     <!-- Logo + titre -->
     <div style="position:absolute;top:0;left:0;right:0;padding:14px 24px;text-align:center;">
       <img src="${logoSrc}"
-        style="height:40px;display:block;margin:0 auto 8px;-webkit-print-color-adjust:exact;print-color-adjust:exact;" onerror="this.style.display='none'"/>
+        style="height:40px;display:block;margin-left:auto;margin-right:auto;margin-bottom:8px;-webkit-print-color-adjust:exact !important;print-color-adjust:exact !important;" onerror="this.style.display='none'"/>
       <div style="font-size:9px;letter-spacing:0.22em;text-transform:uppercase;color:rgba(212,196,176,0.9);margin-bottom:2px;">Rapport mensuel · ${moisLabel}</div>
       <div style="font-size:14px;font-weight:300;color:#fff;letter-spacing:0.04em;">${proprio?.nom || ''} — ${bienName}</div>
     </div>

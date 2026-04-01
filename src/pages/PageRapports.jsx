@@ -634,27 +634,21 @@ FORMAT :
     iframe.style.cssText = 'position:fixed;right:0;bottom:0;width:0;height:0;border:none;'
     document.body.appendChild(iframe)
     iframe.src = url
-    iframe.onload = () => {
-      const imgs = Array.from(iframe.contentDocument.querySelectorAll('img'))
-      if (imgs.length === 0) {
-        iframe.contentWindow.print()
-        setTimeout(() => { document.body.removeChild(iframe); URL.revokeObjectURL(url) }, 2000)
-        return
-      }
-      let loaded = 0
-      const checkAndPrint = () => {
-        loaded++
-        if (loaded >= imgs.length) {
-          setTimeout(() => {
-            iframe.contentWindow.print()
-            setTimeout(() => { document.body.removeChild(iframe); URL.revokeObjectURL(url) }, 2000)
-          }, 300)
-        }
-      }
-      imgs.forEach(img => {
-        if (img.complete) { checkAndPrint() }
-        else { img.onload = checkAndPrint; img.onerror = checkAndPrint }
-      })
+    iframe.onload = async () => {
+      const doc = iframe.contentDocument
+      const win = iframe.contentWindow
+      const imgs = Array.from(doc.querySelectorAll('img'))
+      await Promise.all(imgs.map(img => {
+        if (img.complete && img.naturalWidth > 0) return Promise.resolve()
+        return new Promise(resolve => { img.onload = resolve; img.onerror = resolve })
+      }))
+      await new Promise(r => win.requestAnimationFrame(() => win.requestAnimationFrame(r)))
+      console.log('Images avant print:', imgs.map(i => ({
+        src: i.src.substring(0, 30), complete: i.complete, naturalWidth: i.naturalWidth
+      })))
+      win.focus()
+      win.print()
+      setTimeout(() => { document.body.removeChild(iframe); URL.revokeObjectURL(url) }, 3000)
     }
   }
 
