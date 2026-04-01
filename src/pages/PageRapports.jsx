@@ -407,6 +407,13 @@ export default function PageRapports() {
     const bienNom = data.bien?.hospitable_name || ''
     const tauxCommission = data.tauxCommission
 
+    const [m1yr, m1mo] = m1.split('-').map(Number)
+    const [m2yr, m2mo] = m2.split('-').map(Number)
+    const nextMoisLabel = MOIS_FR[m1mo - 1] + ' ' + m1yr
+    const nextNextMoisLabel = MOIS_FR[m2mo - 1] + ' ' + m2yr
+    const totalNuitsFutures = (resasFutures || []).reduce((s, r) => s + (r.nights || 0), 0)
+    const meteoPrevisions = meteoFutur || 'Données météo non disponibles pour les prochaines semaines.'
+
     const SYSTEM_PROMPT = `Tu es Oïhan, gérant de Destination Côte Basque.
 Tu rédiges des analyses mensuelles internes sur les biens gérés, destinées à être partagées avec les propriétaires.
 Ton rôle n'est pas de décrire des chiffres mais d'en donner une lecture claire, professionnelle et maîtrisée.
@@ -591,7 +598,11 @@ FORMAT :
       .trim()
 
     try {
-      if (which === 'all') await Promise.all([_genererAnalyse(), _genererContexte(), _genererTendances()])
+      if (which === 'all') {
+        await _genererAnalyse()
+        await _genererContexte()
+        await _genererTendances()
+      }
       else if (which === 'analyse') await _genererAnalyse()
       else if (which === 'contexte') await _genererContexte()
       else if (which === 'tendances') await _genererTendances()
