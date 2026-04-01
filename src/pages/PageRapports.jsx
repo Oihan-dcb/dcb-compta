@@ -31,6 +31,16 @@ function prevYear(mois) {
   return `${parseInt(y) - 1}-${m}`
 }
 
+function renderMarkdown(text) {
+  if (!text) return ''
+  return text
+    .replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>')
+    .replace(/^#{1,3}\s+(.+)$/gm, '<strong style="font-size:1.05em;color:var(--brand)">$1</strong>')
+    .replace(/^\*\s+(.+)$/gm, '• $1')
+    .replace(/^(\d+)\.\s+(.+)$/gm, '$1. $2')
+    .replace(/\n/g, '<br/>')
+}
+
 export default function PageRapports() {
   const [mois, setMois] = useState(moisCourant)
   const [moisDispos, setMoisDispos] = useState([moisCourant])
@@ -47,6 +57,9 @@ export default function PageRapports() {
   const [error, setError] = useState(null)
   const [statut, setStatut] = useState('idle')
   const [previewOpen, setPreviewOpen] = useState(false)
+  const [bienIdsActifs, setBienIdsActifs] = useState(null)
+  const [biensEnvoyes, setBiensEnvoyes] = useState(new Set())
+  const [editingLlm, setEditingLlm] = useState(false)
 
   useEffect(() => {
     supabase
@@ -86,6 +99,18 @@ export default function PageRapports() {
     setData(null)
     setStatut('idle')
     setPreviewOpen(false)
+    Promise.all([
+      supabase.from('reservation').select('bien_id').eq('mois_comptable', mois)
+        .not('final_status', 'in', '("cancelled","not_accepted","declined","expired")'),
+      supabase.from('frais_proprietaire').select('bien_id').eq('mois_facturation', mois),
+      supabase.from('bien_notes').select('bien_id').eq('mois', mois).not('rapport_envoye_at', 'is', null),
+    ]).then(([{ data: resasBiens }, { data: fraisBiens }, { data: rapports }]) => {
+      setBienIdsActifs(new Set([
+        ...(resasBiens || []).map(r => r.bien_id),
+        ...(fraisBiens || []).map(f => f.bien_id),
+      ]))
+      setBiensEnvoyes(new Set((rapports || []).map(r => r.bien_id)))
+    })
   }, [mois])
 
   const charger = useCallback(async () => {
@@ -123,7 +148,7 @@ export default function PageRapports() {
           .neq('final_status', 'cancelled'),
         supabase
           .from('frais_proprietaire')
-          .select('id, libelle, montant_ttc, statut, reservation_id')
+          .select('id, libelle, montant_ttc, statut')
           .eq('bien_id', selectedBienId)
           .eq('mois_facturation', mois),
         supabase.from('bien_notes').select('note_marche')
@@ -164,11 +189,6 @@ export default function PageRapports() {
       }
 
       const fraisByResa = {}
-      for (const f of fraisData || []) {
-        if (!f.reservation_id) continue
-        if (!fraisByResa[f.reservation_id]) fraisByResa[f.reservation_id] = 0
-        fraisByResa[f.reservation_id] += f.montant_ttc || 0
-      }
 
       let reviews = []
       {
@@ -183,6 +203,15 @@ export default function PageRapports() {
           .order('submitted_at', { ascending: false })
         reviews = revData || []
       }
+
+      const { data: allReviewsData } = await supabase
+        .from('reservation_review').select('rating')
+        .eq('bien_id', selectedBienId).not('rating', 'is', null)
+
+      const noteMoisMoy = reviews.length > 0
+        ? (reviews.reduce((s, r) => s + (r.rating || 0), 0) / reviews.length).toFixed(1) : null
+      const noteGlobaleMoy = allReviewsData?.length > 0
+        ? (allReviewsData.reduce((s, r) => s + (r.rating || 0), 0) / allReviewsData.length).toFixed(1) : null
 
       const nbResas = resasValides.length
       const caHeb = resasValides.reduce((s, r) => s + (r.fin_revenue || 0), 0)
@@ -214,6 +243,9 @@ export default function PageRapports() {
         kpis: { nbResas, caHeb, nuitsOccupees, nuitsDispos, tauxOcc, dureeMoy, loyTotal },
         kpisN1,
         alertes,
+        noteMoisMoy,
+        noteGlobaleMoy,
+        nbReviewsGlobal: allReviewsData?.length || 0,
       })
     } catch (err) {
       setError(err.message)
@@ -265,12 +297,23 @@ export default function PageRapports() {
     const noteMoy = data.reviews.length
       ? (data.reviews.reduce((s, r) => s + (r.rating || 0), 0) / data.reviews.length).toFixed(1)
       : 'N/A'
-    const prompt = `Tu es consultant en location saisonnière haut de gamme. Analyse ces données pour "${data.bien?.hospitable_name}" (${moisLabel}) :
+    const prompt = `Tu es consultant en gestion locative haut de gamme à Biarritz pour Destination Côte Basque.
+Tu rédiges une analyse mensuelle DESTINÉE AU PROPRIÉTAIRE du bien "${data.bien?.hospitable_name}".
+
+RÈGLES :
+- Parle au propriétaire directement ("votre bien", "vos voyageurs")
+- Une note élevée = preuve de la qualité du bien lui-même (emplacement, décoration, équipements)
+- Ne mentionne pas les actions internes DCB (photos, gestion des avis, Airbnb)
+- Les recommandations concernent le BIEN : travaux, équipements, positionnement tarifaire
+- Ton rassurant, valorisant, professionnel
+- 5-6 lignes maximum, pas de bullet points excessifs
+
+Données ${moisLabel} :
 - Réservations : ${data.kpis.nbResas} (N-1 : ${data.kpisN1?.nbResas ?? '?'})
-- CA hébergement : ${fmt(data.kpis.caHeb)} (N-1 : ${fmt(data.kpisN1?.caHeb ?? 0)})
+- CA : ${fmt(data.kpis.caHeb)} (N-1 : ${fmt(data.kpisN1?.caHeb ?? 0)})
 - Taux occupation : ${data.kpis.tauxOcc}% (N-1 : ${data.kpisN1?.tauxOcc ?? '?'}%)
-- Avis : ${data.reviews.length} ce mois, note moyenne ${noteMoy}/5
-Fournis une analyse concise (5-8 lignes) : performance du mois, comparatif N-1, points forts/faibles, 2-3 recommandations actionnables.`
+- Note voyageurs : ${data.noteMoisMoy ? data.noteMoisMoy + '/5' : 'non disponible'}
+- Reversement net : ${fmt(data.kpis.loyTotal)}`
     try {
       const { data: llmData, error: llmErr } = await Promise.race([
         supabase.functions.invoke('llm-analyse', { body: { prompt } }),
@@ -297,12 +340,20 @@ Fournis une analyse concise (5-8 lignes) : performance du mois, comparatif N-1, 
         notes: [{ bienName: data.bien?.hospitable_name, note }],
       })
       await envoyerRapportEmail({ ...data.proprio, email }, mois, html)
+      await supabase.from('bien_notes').upsert(
+        { bien_id: selectedBienId, mois, rapport_envoye_at: new Date().toISOString() },
+        { onConflict: 'bien_id,mois' }
+      )
+      setBiensEnvoyes(prev => new Set([...prev, selectedBienId]))
       setStatut('sent')
     } catch (e) { console.error(e); setStatut('error') }
   }
 
   const proprio = proprietaires.find(p => p.id === selectedPropId)
   const biensActifs = (proprio?.bien || []).filter(b => b.listed && b.agence === 'dcb')
+  const propsFiltres = bienIdsActifs === null
+    ? proprietaires
+    : proprietaires.filter(p => (p.bien || []).some(b => bienIdsActifs.has(b.id)))
   const [year, monthIdx] = mois.split('-')
   const moisLabel = MOIS_FR[parseInt(monthIdx) - 1] + ' ' + year
 
@@ -332,6 +383,8 @@ Fournis une analyse concise (5-8 lignes) : performance du mois, comparatif N-1, 
     { val: `${data.kpis.nuitsOccupees}/${data.kpis.nuitsDispos}`, lbl: 'Nuits occ./dispo.', rawN: data.kpis.nuitsOccupees, rawN1: data.kpisN1.nuitsOccupees, dispN1: data.kpisN1.nuitsOccupees },
     { val: `${data.kpis.tauxOcc} %`,      lbl: "Taux d'occupation", rawN: data.kpis.tauxOcc,       rawN1: data.kpisN1.tauxOcc,      dispN1: `${data.kpisN1.tauxOcc} %` },
     { val: `${data.kpis.dureeMoy} nuits`, lbl: 'Durée moyenne',     rawN: null,                    rawN1: null,                     dispN1: null },
+    { val: data.noteMoisMoy ? `★ ${data.noteMoisMoy}` : '—', lbl: 'Avis du mois',  rawN: null, rawN1: null, dispN1: `${data.reviews?.length || 0} avis` },
+    { val: data.noteGlobaleMoy ? `★ ${data.noteGlobaleMoy}` : '—', lbl: 'Note globale', rawN: null, rawN1: null, dispN1: `${data.nbReviewsGlobal || 0} avis` },
   ]
 
   return (
@@ -357,7 +410,14 @@ Fournis une analyse concise (5-8 lignes) : performance du mois, comparatif N-1, 
       <div style={{ display: 'flex', gap: 12, marginBottom: 20, flexWrap: 'wrap', alignItems: 'center' }}>
         <select value={selectedPropId} onChange={e => setSelectedPropId(e.target.value)}
           style={{ padding: '8px 12px', border: '1px solid var(--border)', borderRadius: 8, fontSize: '0.95em', background: '#fff', color: 'var(--text)', minWidth: 200 }}>
-          {proprietaires.map(p => <option key={p.id} value={p.id}>{p.nom}</option>)}
+          {propsFiltres.map(p => {
+            const bienEnvoye = (p.bien || []).some(b => biensEnvoyes.has(b.id))
+            return (
+              <option key={p.id} value={p.id} style={{ color: bienEnvoye ? '#9C8E7D' : 'inherit' }}>
+                {bienEnvoye ? '✓ ' : ''}{p.nom}
+              </option>
+            )
+          })}
         </select>
         {biensActifs.length > 1 && (
           <select value={selectedBienId} onChange={e => setSelectedBienId(e.target.value)}
@@ -454,7 +514,7 @@ Fournis une analyse concise (5-8 lignes) : performance du mois, comparatif N-1, 
                           <tr key={r.id} style={{ background: i % 2 === 0 ? '#FDFAF4' : '#F7F3EC' }}>
                             <td style={{ padding: '6px 8px', color: '#9C8E7D', fontFamily: 'monospace' }}>{r.code}</td>
                             <td style={{ padding: '6px 8px', color: 'var(--text)' }}>{r.guest_name || '—'}</td>
-                            <td style={{ padding: '6px 8px', color: '#4A3728', whiteSpace: 'nowrap' }}>{r.arrival_date || '—'}</td>
+                            <td style={{ padding: '6px 8px', color: '#4A3728', whiteSpace: 'nowrap' }}>{r.arrival_date ? r.arrival_date.split('-').reverse().join('/') : '—'}</td>
                             <td style={{ padding: '6px 8px' }}><PlatformBadge platform={r.platform} /></td>
                             <td style={{ padding: '6px 8px', textAlign: 'right', color: '#4A3728' }}>{r.nights || '—'}</td>
                             <td style={{ padding: '6px 8px', textAlign: 'right', color: 'var(--text)' }}>{fmt(r.fin_revenue)}</td>
@@ -526,17 +586,26 @@ Fournis une analyse concise (5-8 lignes) : performance du mois, comparatif N-1, 
 
             {/* BLOC 6 — Analyse LLM */}
             <div style={{ marginBottom: 20 }}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 6 }}>
-                <label style={{ fontSize: '0.82em', fontWeight: 600, color: 'var(--brand)' }}>Analyse intelligente</label>
-                <button onClick={lancerAnalyseLLM} style={{
-                  padding: '3px 10px', border: '1px solid var(--brand)', borderRadius: 10,
-                  background: 'none', color: 'var(--brand)', fontSize: '0.78em', cursor: 'pointer', fontWeight: 600,
-                }}>Générer</button>
+              <label style={{ fontSize: '0.82em', fontWeight: 600, color: 'var(--brand)', display: 'block', marginBottom: 6 }}>Analyse intelligente</label>
+              {llmAnalyse && !editingLlm ? (
+                <div style={{ fontSize: '0.85em', lineHeight: 1.7, color: 'var(--text)', padding: '10px 12px', background: 'var(--bg)', border: '1px solid var(--border)', borderRadius: 6, minHeight: 80 }}
+                  dangerouslySetInnerHTML={{ __html: renderMarkdown(llmAnalyse) }} />
+              ) : (
+                <textarea value={llmAnalyse} onChange={e => setLlmAnalyse(e.target.value)}
+                  onBlur={() => { handleLlmBlur(); setEditingLlm(false) }}
+                  placeholder="Cliquer sur Générer…" rows={4}
+                  style={{ width: '100%', border: '1px solid var(--border)', borderRadius: 6, padding: '8px 10px', fontSize: '0.85em', background: 'var(--bg)', color: 'var(--text)', resize: 'vertical', fontFamily: 'inherit' }} />
+              )}
+              <div style={{ display: 'flex', gap: 8, marginTop: 6 }}>
+                <button onClick={lancerAnalyseLLM} style={{ padding: '3px 10px', border: '1px solid var(--brand)', borderRadius: 10, background: 'none', color: 'var(--brand)', fontSize: '0.78em', cursor: 'pointer', fontWeight: 600 }}>
+                  ✨ Générer
+                </button>
+                {llmAnalyse && !editingLlm && (
+                  <button onClick={() => setEditingLlm(true)} style={{ padding: '3px 10px', border: '1px solid var(--border)', borderRadius: 10, background: 'none', fontSize: '0.78em', cursor: 'pointer' }}>
+                    ✏️ Modifier
+                  </button>
+                )}
               </div>
-              <textarea value={llmAnalyse} onChange={e => setLlmAnalyse(e.target.value)} onBlur={handleLlmBlur}
-                placeholder="Cliquer sur Générer pour lancer l'analyse…" rows={4}
-                style={{ width: '100%', border: '1px solid var(--border)', borderRadius: 6, padding: '8px 10px', fontSize: '0.85em', background: 'var(--bg)', color: 'var(--text)', resize: 'vertical', fontFamily: 'inherit' }}
-              />
             </div>
 
             {/* BLOC 7 — Notes duales */}
