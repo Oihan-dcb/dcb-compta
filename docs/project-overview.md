@@ -458,3 +458,10 @@ La logique de ventilation comptable (transformation `fin_revenue` → HON/FMEN/A
 - `550f0f7` fix(pdf): images hero/logo via `import heroSrc from '../assets/rapport-hero.jpg?inline'` (Vite) — supprime `rapportAssets.js`, `imgToBase64`, fetch runtime. `rapport-hero.jpg` (255KB) et `rapport-logo.png` (52KB) dans `src/assets/`.
 - `18437ff` fix(pdf): Safari print — `overflow:hidden` retiré du hero, `height:230px` explicite sur img, `img[src^="data:"]` forcé visible dans `@media print`, `requestAnimationFrame` × 2 avant `print()`.
 - `9ca97a8` feat(pdf): Puppeteer Vercel Function `api/generate-pdf.js` — `puppeteer-core` + `@sparticuz/chromium-min`. Plus de `window.print()`. HTML POST → PDF téléchargé directement. `vercel.json` : 1024MB/30s. Bouton PDF avec état `⏳ Génération...`.
+
+## Fixes session 1 avril 2026 (suite — header PDF, glyphes, avis)
+
+- `b3a50a2` fix(pdf): tous les glyphes Unicode remplacés par SVG inline — objet `SVG` avec `starFull`, `starEmpty`, `arrowUp`, `arrowDown`, `stars(rating)`
+- `944aadc` fix(pdf): `@sparticuz/chromium` complet + `setBypassCSP` + `emulateMediaType('print')` + letter-spacing réduit
+- `f902350` fix(pdf): tous les avis sans limite de slice/substring — texte complet dans PDF et prompt LLM
+- `d0e05a8`→`b933fd5` fix(pdf): header hero refonte — logo (200px, bottom:-2px) et titres (`white-space:nowrap`, bottom:175px) en blocs indépendants

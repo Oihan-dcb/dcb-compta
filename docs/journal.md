@@ -95,3 +95,47 @@ meteoPrevisions = meteoFutur || 'Données météo non disponibles...'
 - Tester la Vercel Function `generate-pdf` en production (cold start ~15-20s au premier appel)
 - Favicons Option A Northwell (re-uploader .ttf)
 - Supprimer AE TEST id: 19a27f7a-4ab2-4b80-a96a-9179a0fb011f
+
+# DCB Compta — Journal session 1 avril 2026 (suite — PDF header & glyphes)
+
+## Bugs résolus / Améliorations
+
+### Glyphes Puppeteer
+- Tous les Unicode remplacés par SVG inline dans `rapportProprietaire.js` :
+  - `★`/`☆` → `SVG.starFull()` / `SVG.starEmpty()` (polygon SVG)
+  - `↑`/`↓` → `SVG.arrowUp()` / `SVG.arrowDown()` (polygon SVG)
+  - Objet `SVG` avec helpers `starFull`, `starEmpty`, `arrowUp`, `arrowDown`, `stars(rating, size)`
+
+### Chromium Puppeteer
+- `@sparticuz/chromium-min` remplacé par `@sparticuz/chromium` (complet)
+- `page.setBypassCSP(true)` + `page.emulateMediaType('print')`
+- Fallback `setTimeout(resolve, 3000)` sur les images
+
+### Avis voyageurs
+- Limite `slice(0,3)` / `slice(0,5)` supprimée → tous les avis dans le PDF et le prompt LLM
+- Troncature `substring(0,150/180)` supprimée → texte complet des commentaires
+
+### Header hero — refonte itérative
+- Logo et titre séparés en deux blocs `position:absolute` indépendants
+- Titres centrés verticalement dans la zone haute (`bottom:175px`)
+- `white-space:nowrap` sur les deux lignes de texte (fix retour à la ligne lettre par lettre)
+- Logo : 200px, `bottom:-2px` (déborde légèrement sous l'image hero, au-dessus des KPIs)
+- `letter-spacing` réduit sur tous les éléments (compatibilité Puppeteer)
+
+## État final du header hero
+```
+┌──────────────────────────────────────┐  ← hero 230px
+│  [photo + gradient overlay]          │
+│                                      │
+│    RAPPORT MENSUEL · MARS 2026       │  ← bottom:175px, nowrap
+│    BURGY — 602 "Horizonte"           │
+│                                      │
+│         [Logo DCB 200px]             │  ← bottom:-2px, centré
+├──────── Base ── Honoraires ── Rev. ──┤  ← bande KPIs
+└──────────────────────────────────────┘
+```
+
+## Pending
+- Tester génération PDF Puppeteer en prod (cold start ~15-20s)
+- Favicons Northwell
+- Supprimer AE TEST id: 19a27f7a-4ab2-4b80-a96a-9179a0fb011f
