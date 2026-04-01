@@ -171,11 +171,15 @@ export default function PageRapports() {
       }
 
       let reviews = []
-      if (resaIds.length) {
+      {
+        const [yr, mo] = mois.split('-').map(Number)
+        const nextMois = mo === 12 ? `${yr+1}-01` : `${yr}-${String(mo+1).padStart(2,'0')}`
         const { data: revData } = await supabase
           .from('reservation_review')
           .select('id, reviewer_name, rating, comment, submitted_at')
-          .in('reservation_id', resaIds)
+          .eq('bien_id', selectedBienId)
+          .gte('submitted_at', `${mois}-01`)
+          .lt('submitted_at', `${nextMois}-01`)
           .order('submitted_at', { ascending: false })
         reviews = revData || []
       }

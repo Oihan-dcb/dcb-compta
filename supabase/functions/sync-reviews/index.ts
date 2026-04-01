@@ -87,6 +87,7 @@ Deno.serve(async (req) => {
 
       const row = {
         reservation_id:            null,
+        bien_id:                   bien.id,
         hospitable_reservation_id: review.id,
         reviewer_name:             null,
         rating:                    review.public?.rating ?? null,
