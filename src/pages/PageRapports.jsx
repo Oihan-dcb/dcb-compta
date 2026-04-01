@@ -614,26 +614,43 @@ FORMAT :
 
   async function telechargerPDF() {
     if (!data) return
-    const html = genererRapportHTML(data.proprio, mois, buildRapportData())
-    const htmlWithPrint = html.replace('</head>', `
-    <style>
-      @media print {
-        body { margin: 0; padding: 0; }
-        * { -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important; }
+
+    async function imgToBase64(url) {
+      try {
+        const res = await fetch(url)
+        const blob = await res.blob()
+        return new Promise((resolve) => {
+          const reader = new FileReader()
+          reader.onloadend = () => resolve(reader.result)
+          reader.readAsDataURL(blob)
+        })
+      } catch {
+        return url
       }
-    </style>
-  </head>`)
-    const blob = new Blob([htmlWithPrint], { type: 'text/html;charset=utf-8' })
+    }
+
+    const HERO_URL = 'https://destinationcotebasque.com/wp-content/uploads/2026/03/MG_2831-copie-6-1-e1773996205308.jpg'
+    const LOGO_URL = 'https://destinationcotebasque.com/wp-content/uploads/2019/08/cropped-cropped-GoDaddyStudioPage-0-2-2-700x363.png'
+
+    const [heroB64, logoB64] = await Promise.all([
+      imgToBase64(HERO_URL),
+      imgToBase64(LOGO_URL),
+    ])
+
+    let html = genererRapportHTML(data.proprio, mois, buildRapportData())
+    html = html.replace(HERO_URL, heroB64).replace(LOGO_URL, logoB64)
+
+    const blob = new Blob([html], { type: 'text/html;charset=utf-8' })
     const url = URL.createObjectURL(blob)
     const iframe = document.createElement('iframe')
     iframe.style.cssText = 'position:fixed;right:0;bottom:0;width:0;height:0;border:none;'
-    iframe.src = url
     document.body.appendChild(iframe)
+    iframe.src = url
     iframe.onload = () => {
       setTimeout(() => {
         iframe.contentWindow.print()
         setTimeout(() => { document.body.removeChild(iframe); URL.revokeObjectURL(url) }, 2000)
-      }, 500)
+      }, 800)
     }
   }
 
