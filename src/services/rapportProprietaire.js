@@ -107,7 +107,7 @@ export function genererRapportHTML(proprio, mois, data) {
   const PLATFORM_COLORS = { airbnb: '#FF5A5F', booking: '#003580', stripe: '#059669', direct: '#059669' }
 
   const resasHTML = (resas || []).length
-    ? `<table style="width:100%;border-collapse:collapse;font-size:12px;table-layout:fixed;margin-top:8px;">
+    ? `<table style="width:100%;border-collapse:collapse;font-size:11px;table-layout:fixed;margin-top:6px;">
         <colgroup>
           <col style="width:9%">
           <col style="width:9%">
@@ -119,13 +119,13 @@ export function genererRapportHTML(proprio, mois, data) {
         </colgroup>
         <thead>
           <tr style="background:#EDEBE5;">
-            <th style="padding:7px 6px;text-align:left;border-bottom:2px solid #CC9933;color:#2C2416;font-weight:600;">Arrivée</th>
-            <th style="padding:7px 6px;text-align:left;border-bottom:2px solid #CC9933;color:#2C2416;font-weight:600;">Départ</th>
-            <th style="padding:7px 6px;text-align:left;border-bottom:2px solid #CC9933;color:#2C2416;font-weight:600;">Voyageur</th>
-            <th style="padding:7px 4px;text-align:center;border-bottom:2px solid #CC9933;color:#2C2416;font-weight:600;">Nuits</th>
-            <th style="padding:7px 4px;text-align:center;border-bottom:2px solid #CC9933;color:#2C2416;font-weight:600;">Canal</th>
-            <th style="padding:7px 4px;text-align:right;border-bottom:2px solid #CC9933;color:#2C2416;font-weight:600;">Base comm.</th>
-            <th style="padding:7px 4px;text-align:right;border-bottom:2px solid #CC9933;color:#2C2416;font-weight:600;">Reversement</th>
+            <th style="padding:5px 5px;text-align:left;border-bottom:2px solid #CC9933;color:#2C2416;font-weight:600;">Arrivée</th>
+            <th style="padding:5px 5px;text-align:left;border-bottom:2px solid #CC9933;color:#2C2416;font-weight:600;">Départ</th>
+            <th style="padding:5px 5px;text-align:left;border-bottom:2px solid #CC9933;color:#2C2416;font-weight:600;">Voyageur</th>
+            <th style="padding:5px 4px;text-align:center;border-bottom:2px solid #CC9933;color:#2C2416;font-weight:600;">Nuits</th>
+            <th style="padding:5px 4px;text-align:center;border-bottom:2px solid #CC9933;color:#2C2416;font-weight:600;">Canal</th>
+            <th style="padding:5px 4px;text-align:right;border-bottom:2px solid #CC9933;color:#2C2416;font-weight:600;">Base comm.</th>
+            <th style="padding:5px 4px;text-align:right;border-bottom:2px solid #CC9933;color:#2C2416;font-weight:600;">Reversement</th>
           </tr>
         </thead>
         <tbody>
@@ -134,44 +134,47 @@ export function genererRapportHTML(proprio, mois, data) {
             const platLabel = PLATFORM_LABELS[plat] || r.platform || '—'
             const platColor = PLATFORM_COLORS[plat] || '#9C8E7D'
             const v = r.vent || {}
-            const arrFR = r.arrival_date ? r.arrival_date.split('-').reverse().join('/') : '—'
-            const depFR = r.departure_date ? r.departure_date.split('-').reverse().join('/') : '—'
+            const arrFR = r.arrival_date ? r.arrival_date.substring(5).split('-').reverse().join('/') : '—'
+            const depFR = r.departure_date ? r.departure_date.substring(5).split('-').reverse().join('/') : '—'
             return `<tr style="background:${i % 2 === 0 ? '#F7F4EF' : '#fff'};">
-              <td style="padding:6px 6px;color:#2C2416;white-space:nowrap;">${arrFR}</td>
-              <td style="padding:6px 6px;color:#4A3728;white-space:nowrap;">${depFR}</td>
-              <td style="padding:6px 6px;color:#2C2416;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${r.guest_name || '—'}</td>
-              <td style="padding:6px 4px;text-align:center;color:#4A3728;">${r.nights || '—'}</td>
-              <td style="padding:6px 4px;text-align:center;">
+              <td style="padding:5px 5px;color:#2C2416;white-space:nowrap;">${arrFR}</td>
+              <td style="padding:5px 5px;color:#4A3728;white-space:nowrap;">${depFR}</td>
+              <td style="padding:5px 5px;color:#2C2416;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${r.guest_name || '—'}</td>
+              <td style="padding:5px 4px;text-align:center;color:#4A3728;">${r.nights || '—'}</td>
+              <td style="padding:5px 4px;text-align:center;">
                 <span style="display:inline-block;width:7px;height:7px;border-radius:50%;background:${platColor};margin-right:3px;vertical-align:middle;"></span>
                 <span style="color:#4A3728;">${platLabel}</span>
               </td>
-              <td style="padding:6px 4px;text-align:right;color:#2C2416;white-space:nowrap;">${fmt(r.fin_revenue)}</td>
-              <td style="padding:6px 4px;text-align:right;font-weight:600;color:#059669;white-space:nowrap;">${v.LOY ? fmt(v.LOY.montant_ht) : '—'}</td>
+              <td style="padding:5px 4px;text-align:right;color:#2C2416;white-space:nowrap;">${fmt(r.fin_revenue)}</td>
+              <td style="padding:5px 4px;text-align:right;font-weight:600;color:#059669;white-space:nowrap;">${v.LOY ? fmt(v.LOY.montant_ht) : '—'}</td>
             </tr>`}).join('')}
         </tbody>
       </table>`
     : '<p style="color:#9C8E7D;font-style:italic;font-size:0.9em;margin:8px 0 0;">Aucune réservation ce mois.</p>'
 
   const reviewsHTML = reviews.length
-    ? reviews.slice(0, 5).map(r => `
-      <div style="border-left:3px solid #CC9933;padding:10px 16px;margin-bottom:12px;background:#F7F4EF;border-radius:0 6px 6px 0;">
-        <div style="color:#CC9933;font-size:1.1em;margin-bottom:4px;">${'★'.repeat(Math.round(r.rating || 0))}${'☆'.repeat(5 - Math.round(r.rating || 0))}</div>
-        <p style="margin:0;color:#2C2416;font-style:italic;line-height:1.6;">«&nbsp;${r.comment?.substring(0, 200) || ''}${(r.comment?.length || 0) > 200 ? '…' : ''}&nbsp;»</p>
+    ? reviews.slice(0, 3).map(r => `
+      <div class="avis-block" style="border-left:3px solid #CC9933;padding:8px 14px;margin-bottom:8px;background:#F7F4EF;border-radius:0 6px 6px 0;">
+        <div style="color:#CC9933;font-size:1em;margin-bottom:3px;">${'★'.repeat(Math.round(r.rating || 0))}${'☆'.repeat(5 - Math.round(r.rating || 0))}</div>
+        <p style="margin:0;color:#2C2416;font-style:italic;line-height:1.5;font-size:13px;">«&nbsp;${r.comment?.substring(0, 180) || ''}${(r.comment?.length || 0) > 180 ? '…' : ''}&nbsp;»</p>
       </div>`).join('')
     : '<p style="color:#9C8E7D;font-style:italic;font-size:0.9em;">Aucun avis reçu ce mois.</p>'
 
-  const renderMd = (text) => {
+  const cleanForPdf = (text) => {
     if (!text) return ''
     return text
-      .replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>')
       .replace(/^#+\s+.+\n?/gm, '')
-      .replace(/^---+\n?/gm, '')
-      .replace(/\n\n/g, '</p><p style="margin:0 0 12px;line-height:1.8;color:#2C2416;">')
+      .replace(/^-{3,}\n?/gm, '')
+      .replace(/^\*\*[A-Z][^*\n]{0,40}\*\*\s*[-:]\s*\n?/gm, '')
+      .replace(/^\*\*[A-Z][^*\n]{0,40}\*\*\s*\n/gm, '')
+      .replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>')
+      .replace(/\n\n+/g, '</p><p style="margin:0 0 10px;line-height:1.7;font-size:13px;color:#2C2416;">')
       .replace(/\n/g, '<br/>')
+      .trim()
   }
 
   const llmHTML = llmAnalyse
-    ? `<p style="margin:0 0 12px;line-height:1.8;color:#2C2416;">${renderMd(llmAnalyse)}</p>`
+    ? `<p style="margin:0 0 10px;line-height:1.7;font-size:13px;color:#2C2416;">${cleanForPdf(llmAnalyse)}</p>`
     : ''
 
   const noteMarche = (notes || []).find(n => n.note)?.note || ''
@@ -193,58 +196,54 @@ export function genererRapportHTML(proprio, mois, data) {
   * { box-sizing:border-box; margin:0; padding:0; }
   body { font-family:'DM Sans',Arial,sans-serif; background:#F7F4EF; color:#2C2416; -webkit-font-smoothing:antialiased; }
   .container { max-width:680px; margin:0 auto; background:#fff; }
-  .section { padding:28px 36px; border-bottom:1px solid #EDEBE5; }
-  .section-title { font-size:0.7em; font-weight:700; letter-spacing:2px; text-transform:uppercase; color:#CC9933; margin-bottom:16px; }
-  .kpi-grid { display:grid; grid-template-columns:repeat(3,1fr); gap:10px; }
-  .kpi { background:#F7F4EF; border:1px solid #EDEBE5; border-radius:8px; padding:14px 12px; text-align:center; }
-  .kpi-val { font-size:1.25em; font-weight:700; color:#2C2416; }
-  .kpi-lbl { font-size:0.68em; color:#9C8E7D; margin-top:3px; text-transform:uppercase; letter-spacing:0.5px; }
-  .kpi-delta { font-size:0.72em; margin-top:2px; }
-  .footer { text-align:center; padding:20px 32px; font-size:0.76em; color:#9C8E7D; background:#F7F4EF; border-top:2px solid #CC9933; }
-  @page { size: A4 portrait; margin: 10mm 8mm; }
+  .section { padding:14px 24px; border-bottom:1px solid #EDEBE5; }
+  .section-title { font-size:0.68em; font-weight:700; letter-spacing:2px; text-transform:uppercase; color:#CC9933; margin-bottom:10px; }
+  .kpi-grid { display:grid; grid-template-columns:repeat(3,1fr); gap:8px; }
+  .kpi { background:#F7F4EF; border:1px solid #EDEBE5; border-radius:8px; padding:10px 8px; text-align:center; }
+  .kpi-val { font-size:18px; font-weight:700; color:#2C2416; }
+  .kpi-lbl { font-size:8px; color:#9C8E7D; margin-top:3px; text-transform:uppercase; letter-spacing:0.5px; }
+  .kpi-delta { font-size:0.7em; margin-top:2px; }
+  .footer { text-align:center; padding:12px 24px; font-size:0.75em; color:#9C8E7D; background:#F7F4EF; border-top:2px solid #CC9933; }
+  @page { size: A4 portrait; margin: 8mm 6mm; }
   @media print {
-    body { -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important; zoom: 0.85; }
-    .container { max-width:100% !important; width:100% !important; }
+    * { -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important; }
+    body { margin: 0; padding: 0; font-size: 12px; }
+    .container { max-width:100% !important; }
+    img { max-width:100% !important; }
+    .kpi-grid, table, .avis-block { page-break-inside: avoid; }
   }
 </style>
 </head>
 <body>
 <div class="container">
 
-  <!-- HERO -->
-  <div style="position:relative;height:200px;overflow:hidden;">
+  <!-- HERO + KPIs financiers intégrés -->
+  <div style="position:relative;height:230px;overflow:hidden;">
     <img src="https://destinationcotebasque.com/wp-content/uploads/2026/03/MG_2831-copie-6-1-e1773996205308.jpg"
       style="width:100%;height:100%;object-fit:cover;object-position:center 35%;display:block;"/>
-    <div style="position:absolute;inset:0;background:linear-gradient(to bottom,rgba(237,235,229,0.15) 0%,rgba(44,36,22,0.55) 60%,rgba(44,36,22,0.80) 100%);"></div>
-    <div style="position:absolute;bottom:0;left:0;right:0;padding:20px 32px;text-align:center;">
+    <div style="position:absolute;inset:0;background:linear-gradient(to bottom,rgba(237,235,229,0.12) 0%,rgba(44,36,22,0.45) 45%,rgba(20,14,8,0.90) 100%);"></div>
+    <!-- Logo + titre -->
+    <div style="position:absolute;top:0;left:0;right:0;padding:14px 24px;text-align:center;">
       <img src="https://destinationcotebasque.com/wp-content/uploads/2019/08/cropped-cropped-GoDaddyStudioPage-0-2-2-700x363.png"
-        style="height:40px;margin-bottom:8px;display:block;margin-left:auto;margin-right:auto;" onerror="this.style.display='none'"/>
-      <div style="font-size:9px;letter-spacing:0.22em;text-transform:uppercase;color:rgba(212,196,176,0.9);margin-bottom:4px;">
-        Rapport mensuel propriétaire · ${moisLabel}
-      </div>
-      <div style="font-size:15px;font-weight:300;color:#fff;letter-spacing:0.04em;">
-        ${proprio?.nom || ''} — ${bienName}
-      </div>
+        style="height:34px;display:block;margin:0 auto 6px;" onerror="this.style.display='none'"/>
+      <div style="font-size:9px;letter-spacing:0.22em;text-transform:uppercase;color:rgba(212,196,176,0.9);margin-bottom:2px;">Rapport mensuel · ${moisLabel}</div>
+      <div style="font-size:14px;font-weight:300;color:#fff;letter-spacing:0.04em;">${proprio?.nom || ''} — ${bienName}</div>
     </div>
-  </div>
-
-  <!-- SYNTHÈSE FINANCIÈRE -->
-  <div class="section" style="background:#2C2416;">
-    <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:1px;background:#3D3020;">
-      <div style="background:#2C2416;padding:18px 16px;text-align:center;">
-        <div style="font-size:0.65em;color:#9C8E7D;letter-spacing:1.5px;text-transform:uppercase;margin-bottom:6px;">Base commissionnable</div>
-        <div style="font-size:1.3em;font-weight:700;color:#D9CEB8;">${fmt(kpis.caHeb)}</div>
-        ${deltaCA !== null ? `<div style="font-size:0.72em;margin-top:3px;color:${deltaCA >= 0 ? '#4ADE80' : '#F87171'};">${deltaCA >= 0 ? '▲' : '▼'} vs N-1</div>` : ''}
+    <!-- KPIs financiers -->
+    <div style="position:absolute;bottom:0;left:0;right:0;display:flex;justify-content:space-around;background:linear-gradient(to top,rgba(20,14,8,0.85) 0%,transparent 100%);padding:16px 24px 14px;">
+      <div style="text-align:center;">
+        <div style="font-size:8px;letter-spacing:0.15em;text-transform:uppercase;color:rgba(212,196,176,0.8);margin-bottom:3px;">Base commissionnable</div>
+        <div style="font-size:18px;font-weight:400;color:#fff;">${fmt(kpis.caHeb)}</div>
+        ${deltaCA !== null ? `<div style="font-size:9px;color:${deltaCA >= 0 ? '#4ADE80' : '#F87171'};">${deltaCA >= 0 ? '▲' : '▼'} vs N-1</div>` : ''}
       </div>
-      <div style="background:#2C2416;padding:18px 16px;text-align:center;border-left:1px solid #3D3020;border-right:1px solid #3D3020;">
-        <div style="font-size:0.65em;color:#9C8E7D;letter-spacing:1.5px;text-transform:uppercase;margin-bottom:6px;">Honoraires DCB</div>
-        <div style="font-size:1.3em;font-weight:700;color:#CC9933;">${fmt(kpis.caHeb - kpis.loyTotal)}</div>
-        <div style="font-size:0.7em;color:#6B5E4A;margin-top:3px;">${tauxCommission ? tauxCommission + '% TTC' : 'gestion & services'}</div>
+      <div style="text-align:center;border-left:1px solid rgba(204,153,51,0.4);border-right:1px solid rgba(204,153,51,0.4);padding:0 20px;">
+        <div style="font-size:8px;letter-spacing:0.15em;text-transform:uppercase;color:#CC9933;margin-bottom:3px;">Honoraires DCB</div>
+        <div style="font-size:18px;font-weight:400;color:#CC9933;">${fmt(kpis.caHeb - kpis.loyTotal)}</div>
+        <div style="font-size:9px;color:rgba(204,153,51,0.7);">${tauxCommission ? tauxCommission + '% TTC' : 'gestion & services'}</div>
       </div>
-      <div style="background:#2C2416;padding:18px 16px;text-align:center;">
-        <div style="font-size:0.65em;color:#9C8E7D;letter-spacing:1.5px;text-transform:uppercase;margin-bottom:6px;">Reversement net</div>
-        <div style="font-size:1.3em;font-weight:700;color:#fff;">${fmt(kpis.loyTotal)}</div>
-        <div style="font-size:0.7em;color:#6B5E4A;margin-top:3px;">virement propriétaire</div>
+      <div style="text-align:center;">
+        <div style="font-size:8px;letter-spacing:0.15em;text-transform:uppercase;color:rgba(212,196,176,0.8);margin-bottom:3px;">Reversement net</div>
+        <div style="font-size:18px;font-weight:400;color:#fff;">${fmt(kpis.loyTotal)}</div>
       </div>
     </div>
   </div>
@@ -309,7 +308,7 @@ export function genererRapportHTML(proprio, mois, data) {
   <!-- CONTEXTE MARCHÉ -->
   <div class="section" style="background:#F7F4EF;">
     <div class="section-title">Contexte marché</div>
-    <p style="margin:0 0 12px;line-height:1.8;color:#2C2416;">${renderMd(llmContexte)}</p>
+    <p style="margin:0 0 10px;line-height:1.7;font-size:13px;color:#2C2416;">${cleanForPdf(llmContexte)}</p>
   </div>` : noteContexte ? `
   <!-- CONTEXTE -->
   <div class="section">
@@ -327,7 +326,7 @@ export function genererRapportHTML(proprio, mois, data) {
   <div class="section">
     <div class="section-title">Perspectives M+1/M+2</div>
     <div style="border-left:3px solid #CC9933;padding-left:18px;">
-      <p style="margin:0 0 12px;line-height:1.8;color:#2C2416;">${renderMd(llmTendances)}</p>
+      <p style="margin:0 0 10px;line-height:1.7;font-size:13px;color:#2C2416;">${cleanForPdf(llmTendances)}</p>
     </div>
   </div>` : ''}
 
