@@ -405,7 +405,14 @@ export default function PageRapports() {
       .order('arrival_date')
 
     async function _genererAnalyse() {
-      const sys = `Tu es Oïhan, gérant de Destination Côte Basque. Tu rédiges un compte-rendu mensuel court et personnalisé pour le propriétaire du bien que tu gères à Biarritz. Ton ton est professionnel, humain et direct. Tu interprètes les chiffres, tu ne les listes pas. 3 à 4 paragraphes fluides, sans titres, sans bullet points, sans jargon comptable. Si les résultats sont en retrait, tu l'expliques sobrement sans alarmer. Tu écris comme une vraie personne qui connaît le bien et son propriétaire.`
+      const sys = `Tu es Oïhan, gérant de Destination Côte Basque. Tu rédiges un compte-rendu mensuel court et personnalisé pour le propriétaire du bien que tu gères à Biarritz. Ton ton est professionnel, humain et direct. Tu interprètes les chiffres, tu ne les listes pas. 3 à 4 paragraphes fluides, sans titres, sans bullet points, sans jargon comptable. Si les résultats sont en retrait, tu l'expliques sobrement sans alarmer. Tu écris comme une vraie personne qui connaît le bien et son propriétaire.
+
+FORMAT STRICT :
+- Paragraphes simples séparés par une ligne vide
+- Pas de # ni de titres markdown
+- Pas de --- séparateurs
+- Le gras **mot** est autorisé uniquement pour mettre en valeur un mot dans un paragraphe, jamais comme titre
+- Pas de signe : après du gras en début de phrase`
       const prompt = `Bien : "${data.bien?.hospitable_name}"
 Propriétaire : ${data.proprio?.nom}
 Mois : ${moisLabel}
@@ -422,7 +429,9 @@ PERFORMANCE DU MOIS :
 AVIS VOYAGEURS :
 ${data.reviews.slice(0, 5).map(r => `- ${r.rating}/5 : "${r.comment?.substring(0, 150)}"`).join('\n') || 'Aucun avis ce mois'}
 
-${notePerso ? 'NOTE PERSONNELLE OÏHAN :\n' + notePerso : ''}`
+${notePerso ? 'NOTE PERSONNELLE OÏHAN :\n' + notePerso : ''}
+
+IMPORTANT : Ne pas mettre de titres, de # ni de --- dans le texte. Pas de ligne du type '# Titre', '## Sous-titre', '---' ou '**Titre :**' en début de paragraphe. Le texte doit être des paragraphes purs sans structure markdown apparente.`
       const { data: llmData, error: llmErr } = await Promise.race([
         supabase.functions.invoke('llm-analyse', { body: { prompt, system: sys } }),
         new Promise((_, reject) => setTimeout(() => reject(new Error('timeout')), 30000)),
@@ -430,7 +439,7 @@ ${notePerso ? 'NOTE PERSONNELLE OÏHAN :\n' + notePerso : ''}`
       if (llmErr) throw llmErr
       const txt = llmData?.text || ''
       if (txt) {
-        setLlmAnalyse(txt)
+        setLlmAnalyse(cleanLlmText(txt))
         await supabase.from('bien_notes').upsert(
           { bien_id: selectedBienId, mois, note_analyse_llm: txt, updated_at: new Date().toISOString() },
           { onConflict: 'bien_id,mois' }
@@ -439,7 +448,14 @@ ${notePerso ? 'NOTE PERSONNELLE OÏHAN :\n' + notePerso : ''}`
     }
 
     async function _genererContexte() {
-      const sys = `Tu es Oïhan, gérant de Destination Côte Basque. Tu rédiges une note de contexte marché concise pour le propriétaire d'un bien à Biarritz. Ton professionnel et direct. 2 à 3 paragraphes fluides. Tu décris la météo du mois passé et son impact sur la location, le contexte saisonnier, sans inventer de chiffres.`
+      const sys = `Tu es Oïhan, gérant de Destination Côte Basque. Tu rédiges une note de contexte marché concise pour le propriétaire d'un bien à Biarritz. Ton professionnel et direct. 2 à 3 paragraphes fluides. Tu décris la météo du mois passé et son impact sur la location, le contexte saisonnier, sans inventer de chiffres.
+
+FORMAT STRICT :
+- Paragraphes simples séparés par une ligne vide
+- Pas de # ni de titres markdown
+- Pas de --- séparateurs
+- Le gras **mot** est autorisé uniquement pour mettre en valeur un mot dans un paragraphe, jamais comme titre
+- Pas de signe : après du gras en début de phrase`
       const prompt = `Bien : "${data.bien?.hospitable_name}"
 Mois : ${moisLabel}
 
@@ -449,7 +465,9 @@ ${meteoResume}
 TAUX D'OCCUPATION : ${data.kpis.tauxOcc}% (N-1 : ${data.kpisN1?.tauxOcc ?? '?'}%)
 RÉSERVATIONS : ${data.kpis.nbResas} (N-1 : ${data.kpisN1?.nbResas ?? '?'})
 
-${notePerso ? 'CONTEXTE PARTICULIER :\n' + notePerso : ''}`
+${notePerso ? 'CONTEXTE PARTICULIER :\n' + notePerso : ''}
+
+IMPORTANT : Ne pas mettre de titres, de # ni de --- dans le texte. Pas de ligne du type '# Titre', '## Sous-titre', '---' ou '**Titre :**' en début de paragraphe. Le texte doit être des paragraphes purs sans structure markdown apparente.`
       const { data: llmData, error: llmErr } = await Promise.race([
         supabase.functions.invoke('llm-analyse', { body: { prompt, system: sys } }),
         new Promise((_, reject) => setTimeout(() => reject(new Error('timeout')), 30000)),
@@ -457,7 +475,7 @@ ${notePerso ? 'CONTEXTE PARTICULIER :\n' + notePerso : ''}`
       if (llmErr) throw llmErr
       const txt = llmData?.text || ''
       if (txt) {
-        setLlmContexte(txt)
+        setLlmContexte(cleanLlmText(txt))
         await supabase.from('bien_notes').upsert(
           { bien_id: selectedBienId, mois, note_contexte: txt, updated_at: new Date().toISOString() },
           { onConflict: 'bien_id,mois' }
@@ -466,7 +484,14 @@ ${notePerso ? 'CONTEXTE PARTICULIER :\n' + notePerso : ''}`
     }
 
     async function _genererTendances() {
-      const sys = `Tu es Oïhan, gérant de Destination Côte Basque. Tu rédiges une note de perspectives pour M+1 et M+2 pour le propriétaire d'un bien à Biarritz. Ton professionnel, concret et rassurant. 2 paragraphes max. Tu commentes les réservations à venir et les prévisions météo disponibles.`
+      const sys = `Tu es Oïhan, gérant de Destination Côte Basque. Tu rédiges une note de perspectives pour M+1 et M+2 pour le propriétaire d'un bien à Biarritz. Ton professionnel, concret et rassurant. 2 paragraphes max. Tu commentes les réservations à venir et les prévisions météo disponibles.
+
+FORMAT STRICT :
+- Paragraphes simples séparés par une ligne vide
+- Pas de # ni de titres markdown
+- Pas de --- séparateurs
+- Le gras **mot** est autorisé uniquement pour mettre en valeur un mot dans un paragraphe, jamais comme titre
+- Pas de signe : après du gras en début de phrase`
       const prompt = `Bien : "${data.bien?.hospitable_name}"
 Mois de référence : ${moisLabel}
 
@@ -476,7 +501,9 @@ ${resasFutures?.length > 0
   : 'Aucune réservation enregistrée pour les 2 prochains mois'}
 
 ${meteoFutur ? 'MÉTÉO PRÉVISIONNEL :\n' + meteoFutur : ''}
-${notePerso ? '\nCONTEXTE PARTICULIER :\n' + notePerso : ''}`
+${notePerso ? '\nCONTEXTE PARTICULIER :\n' + notePerso : ''}
+
+IMPORTANT : Ne pas mettre de titres, de # ni de --- dans le texte. Pas de ligne du type '# Titre', '## Sous-titre', '---' ou '**Titre :**' en début de paragraphe. Le texte doit être des paragraphes purs sans structure markdown apparente.`
       const { data: llmData, error: llmErr } = await Promise.race([
         supabase.functions.invoke('llm-analyse', { body: { prompt, system: sys } }),
         new Promise((_, reject) => setTimeout(() => reject(new Error('timeout')), 30000)),
@@ -484,13 +511,20 @@ ${notePerso ? '\nCONTEXTE PARTICULIER :\n' + notePerso : ''}`
       if (llmErr) throw llmErr
       const txt = llmData?.text || ''
       if (txt) {
-        setLlmTendances(txt)
+        setLlmTendances(cleanLlmText(txt))
         await supabase.from('bien_notes').upsert(
           { bien_id: selectedBienId, mois, note_tendances: txt, updated_at: new Date().toISOString() },
           { onConflict: 'bien_id,mois' }
         )
       }
     }
+
+    const cleanLlmText = (text) => text
+      .replace(/^#+\s+.+$/gm, '')
+      .replace(/^---+$/gm, '')
+      .replace(/^\*\*[^*]+\*\*\s*$/gm, '')
+      .replace(/\n{3,}/g, '\n\n')
+      .trim()
 
     try {
       if (which === 'all') await Promise.all([_genererAnalyse(), _genererContexte(), _genererTendances()])

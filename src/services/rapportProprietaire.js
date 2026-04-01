@@ -160,9 +160,18 @@ export function genererRapportHTML(proprio, mois, data) {
       </div>`).join('')
     : '<p style="color:#9C8E7D;font-style:italic;font-size:0.9em;">Aucun avis reçu ce mois.</p>'
 
+  const renderMd = (text) => {
+    if (!text) return ''
+    return text
+      .replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>')
+      .replace(/^#+\s+.+\n?/gm, '')
+      .replace(/^---+\n?/gm, '')
+      .replace(/\n\n/g, '</p><p style="margin:0 0 12px;line-height:1.8;color:#2C2416;">')
+      .replace(/\n/g, '<br/>')
+  }
+
   const llmHTML = llmAnalyse
-    ? llmAnalyse.split('\n\n').map(p => p.trim()).filter(Boolean)
-        .map(p => `<p style="margin:0 0 14px;color:#2C2416;line-height:1.75;font-size:0.95em;">${p.replace(/\n/g, '<br/>')}</p>`).join('')
+    ? `<p style="margin:0 0 12px;line-height:1.8;color:#2C2416;">${renderMd(llmAnalyse)}</p>`
     : ''
 
   const noteMarche = (notes || []).find(n => n.note)?.note || ''
@@ -203,16 +212,19 @@ export function genererRapportHTML(proprio, mois, data) {
 <div class="container">
 
   <!-- HERO -->
-  <div style="position:relative;height:220px;overflow:hidden;">
+  <div style="position:relative;height:200px;overflow:hidden;">
     <img src="https://destinationcotebasque.com/wp-content/uploads/2026/03/MG_2831-copie-6-1-e1773996205308.jpg"
-      style="width:100%;height:100%;object-fit:cover;object-position:center 30%;" onerror="this.style.display='none'"/>
-    <div style="position:absolute;inset:0;background:linear-gradient(to bottom,rgba(20,14,8,0.45),rgba(20,14,8,0.78));"></div>
-    <div style="position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;text-align:center;padding:0 24px;">
+      style="width:100%;height:100%;object-fit:cover;object-position:center 35%;display:block;"/>
+    <div style="position:absolute;inset:0;background:linear-gradient(to bottom,rgba(237,235,229,0.15) 0%,rgba(44,36,22,0.55) 60%,rgba(44,36,22,0.80) 100%);"></div>
+    <div style="position:absolute;bottom:0;left:0;right:0;padding:20px 32px;text-align:center;">
       <img src="https://destinationcotebasque.com/wp-content/uploads/2019/08/cropped-cropped-GoDaddyStudioPage-0-2-2-700x363.png"
-        style="height:44px;margin-bottom:12px;opacity:0.95;" onerror="this.style.display='none'"/>
-      <div style="font-family:'PT Serif',Georgia,serif;color:#CC9933;font-size:0.75em;letter-spacing:3px;text-transform:uppercase;margin-bottom:6px;">Rapport mensuel propriétaire</div>
-      <div style="font-family:'DM Sans',Arial,sans-serif;color:#fff;font-size:1.4em;font-weight:700;">${bienName}</div>
-      <div style="color:#D9CEB8;font-size:0.95em;margin-top:4px;">${moisLabel} · ${proprio?.nom || ''}</div>
+        style="height:40px;margin-bottom:8px;display:block;margin-left:auto;margin-right:auto;" onerror="this.style.display='none'"/>
+      <div style="font-size:9px;letter-spacing:0.22em;text-transform:uppercase;color:rgba(212,196,176,0.9);margin-bottom:4px;">
+        Rapport mensuel propriétaire · ${moisLabel}
+      </div>
+      <div style="font-size:15px;font-weight:300;color:#fff;letter-spacing:0.04em;">
+        ${proprio?.nom || ''} — ${bienName}
+      </div>
     </div>
   </div>
 
@@ -297,7 +309,7 @@ export function genererRapportHTML(proprio, mois, data) {
   <!-- CONTEXTE MARCHÉ -->
   <div class="section" style="background:#F7F4EF;">
     <div class="section-title">Contexte marché</div>
-    <p style="margin:0;color:#2C2416;line-height:1.7;font-size:0.95em;">${llmContexte.split('\n\n').map(p => p.trim()).filter(Boolean).map(p => `<p style="margin:0 0 12px;color:#2C2416;line-height:1.75;font-size:0.95em;">${p.replace(/\n/g, '<br/>')}</p>`).join('')}</p>
+    <p style="margin:0 0 12px;line-height:1.8;color:#2C2416;">${renderMd(llmContexte)}</p>
   </div>` : noteContexte ? `
   <!-- CONTEXTE -->
   <div class="section">
@@ -315,7 +327,7 @@ export function genererRapportHTML(proprio, mois, data) {
   <div class="section">
     <div class="section-title">Perspectives M+1/M+2</div>
     <div style="border-left:3px solid #CC9933;padding-left:18px;">
-      ${llmTendances.split('\n\n').map(p => p.trim()).filter(Boolean).map(p => `<p style="margin:0 0 12px;color:#2C2416;line-height:1.75;font-size:0.95em;">${p.replace(/\n/g, '<br/>')}</p>`).join('')}
+      <p style="margin:0 0 12px;line-height:1.8;color:#2C2416;">${renderMd(llmTendances)}</p>
     </div>
   </div>` : ''}
 
