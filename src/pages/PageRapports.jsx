@@ -111,7 +111,7 @@ export default function PageRapports() {
       ] = await Promise.all([
         supabase
           .from('reservation')
-          .select('id, code, fin_revenue, nights, arrival_date, departure_date, final_status, platform, guest_name, bien:bien_id(hospitable_name, code)')
+          .select('id, code, fin_revenue, fin_accommodation, nights, arrival_date, departure_date, final_status, platform, guest_name, bien:bien_id(hospitable_name, code)')
           .eq('bien_id', selectedBienId)
           .eq('mois_comptable', mois)
           .order('arrival_date'),
@@ -149,13 +149,18 @@ export default function PageRapports() {
       const resaIds = resasValides.map(r => r.id)
 
       let loyTotal = 0
+      let ventByResa = {}
       if (resaIds.length) {
         const { data: vents } = await supabase
           .from('ventilation')
-          .select('montant_ht')
+          .select('reservation_id, code, montant_ht, montant_ttc')
           .in('reservation_id', resaIds)
-          .eq('code', 'LOY')
-        loyTotal = (vents || []).reduce((s, v) => s + (v.montant_ht || 0), 0)
+          .in('code', ['HON', 'LOY', 'VIR', 'FMEN'])
+        for (const v of vents || []) {
+          if (!ventByResa[v.reservation_id]) ventByResa[v.reservation_id] = {}
+          ventByResa[v.reservation_id][v.code] = v
+        }
+        loyTotal = (vents || []).filter(v => v.code === 'LOY').reduce((s, v) => s + (v.montant_ht || 0), 0)
       }
 
       let reviews = []
@@ -191,7 +196,7 @@ export default function PageRapports() {
       setData({
         proprio,
         bien: (proprio?.bien || []).find(b => b.id === selectedBienId),
-        resas: resasValides,
+        resas: resasValides.map(r => ({ ...r, vent: ventByResa[r.id] || {} })),
         reviews,
         facture,
         frais: fraisData || [],
@@ -412,25 +417,43 @@ Fournis une analyse concise (5-8 lignes) : performance du mois, comparatif N-1, 
                   Réservations ({data.resas.length})
                 </div>
                 {data.resas.length > 0 ? (
-                  <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.88em' }}>
+                  <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.82em' }}>
                     <thead>
                       <tr style={{ background: '#EAE3D4', color: 'var(--text)' }}>
-                        {['Code', 'Voyageur', 'Arrivée', 'Plateforme', 'Nuits', 'CA HEB'].map((h, i) => (
-                          <th key={h} style={{ padding: '8px 10px', textAlign: i >= 4 ? 'right' : 'left', borderBottom: '2px solid var(--brand)' }}>{h}</th>
+                        {[
+                          { h: 'Code',       right: false },
+                          { h: 'Voyageur',   right: false },
+                          { h: 'Arrivée',    right: false },
+                          { h: 'Plateforme', right: false },
+                          { h: 'Nuits',      right: true  },
+                          { h: 'Base comm.', right: true  },
+                          { h: 'HON',        right: true  },
+                          { h: 'LOY',        right: true  },
+                          { h: 'VIR',        right: true  },
+                          { h: 'EXTRA',      right: true  },
+                        ].map(({ h, right }) => (
+                          <th key={h} style={{ padding: '7px 8px', textAlign: right ? 'right' : 'left', borderBottom: '2px solid var(--brand)', whiteSpace: 'nowrap' }}>{h}</th>
                         ))}
                       </tr>
                     </thead>
                     <tbody>
-                      {data.resas.map((r, i) => (
-                        <tr key={r.id} style={{ background: i % 2 === 0 ? '#FDFAF4' : '#F7F3EC' }}>
-                          <td style={{ padding: '7px 10px', color: '#9C8E7D', fontFamily: 'monospace' }}>{r.code}</td>
-                          <td style={{ padding: '7px 10px', color: 'var(--text)' }}>{r.guest_name || '—'}</td>
-                          <td style={{ padding: '7px 10px', color: '#4A3728' }}>{r.arrival_date || '—'}</td>
-                          <td style={{ padding: '7px 10px' }}><PlatformBadge platform={r.platform} /></td>
-                          <td style={{ padding: '7px 10px', textAlign: 'right', color: '#4A3728' }}>{r.nights || '—'}</td>
-                          <td style={{ padding: '7px 10px', textAlign: 'right', fontWeight: 600, color: 'var(--text)' }}>{fmt(r.fin_revenue)}</td>
-                        </tr>
-                      ))}
+                      {data.resas.map((r, i) => {
+                        const v = r.vent
+                        return (
+                          <tr key={r.id} style={{ background: i % 2 === 0 ? '#FDFAF4' : '#F7F3EC' }}>
+                            <td style={{ padding: '6px 8px', color: '#9C8E7D', fontFamily: 'monospace' }}>{r.code}</td>
+                            <td style={{ padding: '6px 8px', color: 'var(--text)' }}>{r.guest_name || '—'}</td>
+                            <td style={{ padding: '6px 8px', color: '#4A3728', whiteSpace: 'nowrap' }}>{r.arrival_date || '—'}</td>
+                            <td style={{ padding: '6px 8px' }}><PlatformBadge platform={r.platform} /></td>
+                            <td style={{ padding: '6px 8px', textAlign: 'right', color: '#4A3728' }}>{r.nights || '—'}</td>
+                            <td style={{ padding: '6px 8px', textAlign: 'right', color: 'var(--text)' }}>{fmt(r.fin_revenue)}</td>
+                            <td style={{ padding: '6px 8px', textAlign: 'right', color: '#D97706' }}>{v.HON  ? fmt(v.HON.montant_ttc)  : '—'}</td>
+                            <td style={{ padding: '6px 8px', textAlign: 'right', color: '#059669', fontWeight: 600 }}>{v.LOY  ? fmt(v.LOY.montant_ht)   : '—'}</td>
+                            <td style={{ padding: '6px 8px', textAlign: 'right', color: '#4A3728' }}>{v.VIR  ? fmt(v.VIR.montant_ht)   : '—'}</td>
+                            <td style={{ padding: '6px 8px', textAlign: 'right', color: '#9C8E7D' }}>{v.FMEN ? fmt(v.FMEN.montant_ttc) : '—'}</td>
+                          </tr>
+                        )
+                      })}
                     </tbody>
                   </table>
                 ) : (
