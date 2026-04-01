@@ -214,7 +214,22 @@ PageRapports.jsx
                                → table: ventilation (SELECT LOY)
                                → table: bien (SELECT count actif dcb)
     genererRapportHTML         → (local, pas de DB) — génère HTML avec template DCB
+                                 images hero/logo : import ?inline Vite (base64 au build)
+                                 heroSrc ← src/assets/rapport-hero.jpg?inline
+                                 logoSrc ← src/assets/rapport-logo.png?inline
     envoyerRapportEmail        → smtp-send (Edge Function) via fetch SUPABASE_URL
+  → /api/generate-pdf (Vercel Function Node.js)
+      puppeteer-core + @sparticuz/chromium-min
+      POST { html } → PDF A4 binaire (printBackground:true)
+      Téléchargé directement : Rapport_NomBien_YYYY-MM.pdf
+      1024MB RAM, 30s maxDuration (vercel.json)
+  → llm-analyse (Supabase Edge Function)
+      genererBloc(which) : 'analyse' | 'contexte' | 'tendances' | 'all'
+      _genererAnalyse()   → SYSTEM_PROMPT + prompt performance mois + notePerso
+      _genererContexte()  → SYSTEM_PROMPT + prompt météo/marché (sans notePerso)
+      _genererTendances() → SYSTEM_PROMPT + prompt M+1/M+2 + resasFutures + meteoPrevisions
+      'all' : séquentiel (analyse → contexte → tendances)
+      Résultats sauvés dans bien_notes (note_analyse_llm, note_contexte, note_tendances)
   [rapports envoyés par email avec CC oihan@destinationcotebasque.com]
   [aperçu modal HTML via iframe srcDoc]
 ```

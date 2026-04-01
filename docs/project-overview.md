@@ -451,3 +451,10 @@ La logique de ventilation comptable (transformation `fin_revenue` → HON/FMEN/A
 - `1893d52` : `soldeRestant` filtre `v.code === 'VIR'` uniquement ; `code` ajouté au sub-select `reservation.ventilation` dans `getVirNonRapproches`.
 - `f730a90` : Le montant de référence dans le panneau Lier est désormais `fin_revenue` (pas `VIR.montant_ttc` qui = LOY/reversement). Sélection et `soldeRestant` calculés via `mouvement_bancaire.credit` (virements bancaires réels). `mouvement_bancaire(credit)` ajouté au sub-select ventilation.
 - `2b1df6e` : `_lier` crée automatiquement une nouvelle ligne VIR si `fin_revenue > sum(bank_credits)` après un lien partiel, et maintient `rapprochee=false` jusqu'à couverture complète. Patch DB HM8C9CM5YZ : `rapprochee=false` + ligne VIR résiduelle 112,33€.
+## Fixes session 1 avril 2026 — Module Rapport PDF + LLM
+
+- `d9b05ac` fix(llm): `_genererTendances` — `nextMoisLabel`, `nextNextMoisLabel`, `totalNuitsFutures`, `meteoPrevisions` non définis dans `genererBloc` → texte vide silencieux. Variables calculées depuis `m1`/`m2`. `which==='all'` passe de `Promise.all` à séquentiel.
+- `90fdafd` fix(pdf): `page-break-inside:avoid` + `break-inside:avoid` sur toutes les sections du rapport — classes `.section-kpis`, `.section-synthese`, `.section-analyse`, `.section-sejours`, `.section-avis`, `.section-contexte`, `.section-perspectives` ajoutées.
+- `550f0f7` fix(pdf): images hero/logo via `import heroSrc from '../assets/rapport-hero.jpg?inline'` (Vite) — supprime `rapportAssets.js`, `imgToBase64`, fetch runtime. `rapport-hero.jpg` (255KB) et `rapport-logo.png` (52KB) dans `src/assets/`.
+- `18437ff` fix(pdf): Safari print — `overflow:hidden` retiré du hero, `height:230px` explicite sur img, `img[src^="data:"]` forcé visible dans `@media print`, `requestAnimationFrame` × 2 avant `print()`.
+- `9ca97a8` feat(pdf): Puppeteer Vercel Function `api/generate-pdf.js` — `puppeteer-core` + `@sparticuz/chromium-min`. Plus de `window.print()`. HTML POST → PDF téléchargé directement. `vercel.json` : 1024MB/30s. Bouton PDF avec état `⏳ Génération...`.
