@@ -272,7 +272,7 @@ export function genererRapportHTML(proprio, mois, data) {
     <div style="position:absolute;inset:0;background:linear-gradient(to bottom,rgba(20,14,8,0.15) 0%,rgba(20,14,8,0.72) 100%);-webkit-print-color-adjust:exact !important;print-color-adjust:exact !important;"></div>
     <!-- Logo + Titre centrés + KPIs financiers -->
     <!-- Titres centrés en haut du hero -->
-    <div style="position:absolute;top:0;left:0;right:0;bottom:165px;display:flex;flex-direction:column;align-items:center;justify-content:center;">
+    <div style="position:absolute;top:0;left:0;right:0;bottom:175px;display:flex;flex-direction:column;align-items:center;justify-content:center;">
       <div style="font-size:9px;letter-spacing:0.05em;text-transform:uppercase;color:rgba(212,196,176,0.85);margin-bottom:4px;white-space:nowrap;">Rapport mensuel · ${moisLabel}</div>
       <div style="font-size:16px;font-weight:400;color:#fff;letter-spacing:0.02em;white-space:nowrap;">${proprio?.nom || ''} — ${bienName}</div>
     </div>
