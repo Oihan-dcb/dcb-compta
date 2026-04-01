@@ -244,9 +244,9 @@ export function genererRapportHTML(proprio, mois, data) {
 <div class="container">
 
   <!-- HERO + KPIs financiers intégrés -->
-  <div class="section-synthese" style="position:relative;height:230px;overflow:hidden;">
+  <div class="section-synthese" style="position:relative;height:230px;overflow:hidden;-webkit-print-color-adjust:exact;print-color-adjust:exact;">
     <img src="${HERO_B64}"
-      style="width:100%;height:100%;object-fit:cover;object-position:center 35%;display:block;-webkit-print-color-adjust:exact;print-color-adjust:exact;"/>
+      style="position:absolute;top:0;left:0;width:100%;height:100%;object-fit:cover;object-position:center 35%;display:block;-webkit-print-color-adjust:exact;print-color-adjust:exact;"/>
     <div style="position:absolute;inset:0;background:linear-gradient(to bottom,rgba(237,235,229,0.12) 0%,rgba(44,36,22,0.45) 45%,rgba(20,14,8,0.90) 100%);"></div>
     <!-- Logo + titre -->
     <div style="position:absolute;top:0;left:0;right:0;padding:14px 24px;text-align:center;">
