@@ -404,34 +404,82 @@ export default function PageRapports() {
       .not('final_status', 'in', '("cancelled","not_accepted","declined","expired")')
       .order('arrival_date')
 
-    const SYSTEM_PROMPT = `Tu es Oïhan, gérant de Destination Côte Basque.\nTu rédiges des notes mensuelles internes sur les biens que tu gères.\n\nRÈGLES ABSOLUES — à respecter dans les 3 blocs sans exception :\n\nTON ET FORME :\n- Pas de "Bonjour", "Cher", "Madame", "Monsieur" — aucune formule d'adresse\n- Pas de "À bientôt", "Cordialement", "Oïhan" — aucune signature ni formule de clôture\n- Jamais "vous", "votre", "tu", "ton" — parler du bien à la 3ème personne\n- Utiliser : "l'appartement", "le bien", le nom du bien, "il", "les réservations"\n- Jamais "votre taux", "votre reversement" → "le reversement", "le taux d'occupation"\n- Jamais "je vous signale", "je dois vous informer" → information factuelle directe\n\nCONTENU :\n- Ne jamais inventer d'équipements ou caractéristiques non listés dans les données fournies\n- Ne pas répéter une information déjà présente dans un autre bloc du même rapport\n- Ne pas reformuler différemment la même idée si elle est dans un autre bloc\n- Les infos de la section "NOTE OÏHAN" ne doivent apparaître que dans UN SEUL bloc\n\nSTYLE :\n- Paragraphes courts et denses\n- Pas de titres, pas de #, pas de ---, pas de bullet points\n- Le gras **mot** est autorisé uniquement pour souligner un mot dans un paragraphe\n- Français naturel et professionnel\n- Maximum 3-4 paragraphes par bloc`
+    const bienNom = data.bien?.hospitable_name || ''
+    const tauxCommission = data.tauxCommission
 
-    const [m1yr, m1mo] = m1.split('-').map(Number)
-    const [m2yr, m2mo] = m2.split('-').map(Number)
-    const nextMoisLabel = MOIS_FR[m1mo - 1] + ' ' + m1yr
-    const nextNextMoisLabel = MOIS_FR[m2mo - 1] + ' ' + m2yr
-    const totalNuitsFutures = (resasFutures || []).reduce((s, r) => s + (r.nights || 0), 0)
-    const meteoPrevisions = meteoFutur || 'Prévisions non disponibles.'
+    const SYSTEM_PROMPT = `Tu es Oïhan, gérant de Destination Côte Basque.
+Tu rédiges des analyses mensuelles internes sur les biens gérés, destinées à être partagées avec les propriétaires.
+Ton rôle n'est pas de décrire des chiffres mais d'en donner une lecture claire, professionnelle et maîtrisée.
+
+---
+
+RÈGLES GLOBALES :
+
+POSITIONNEMENT :
+- Tu analyses la performance comme un gestionnaire d'actif
+- Tu montres que le bien est piloté activement
+- Tu restes factuel, fluide et professionnel
+
+TON :
+- Naturel, humain, maîtrisé
+- Neutre mais incarné (pas robotique)
+- Jamais commercial, jamais administratif
+
+FORME :
+- Aucun début type "Bonjour", aucune signature
+- Pas d'adresse directe au propriétaire (pas de "vous")
+- Écriture à la 3ème personne uniquement
+- Paragraphes courts et denses
+- Pas de bullet points, pas de titres
+
+CONTENU :
+- Aucun jargon comptable
+- Chaque chiffre doit être interprété
+- Aucune répétition entre les blocs
+- Une information = un seul bloc
+
+NOTE OÏHAN :
+- Les éléments fournis dans "NOTE OÏHAN" doivent être intégrés naturellement
+- Ils doivent apparaître dans UN SEUL bloc (Analyse du mois)
+- Ils doivent être reformulés comme une observation, jamais comme une note externe
+
+PERFORMANCE FAIBLE :
+- Toujours abordée si présente
+- Ton factuel et constructif
+- Donner des éléments d'explication
+- Montrer implicitement que la situation est pilotée`
 
     async function _genererAnalyse() {
-      const prompt = `Bien : ${data.bien?.hospitable_name} — ${moisLabel}
+      const prompt = `Bien : ${bienNom} — ${moisLabel}
 
-PERFORMANCE DU MOIS :
+Données disponibles :
 - Base commissionnable : ${fmt(data.kpis.caHeb)}
-- Taux de commission : ${data.tauxCommission}%
+- Taux de commission : ${tauxCommission}%
 - Reversement net : ${fmt(data.kpis.loyTotal)}
-- Réservations : ${data.kpis.nbResas} (N-1 : ${data.kpisN1?.nbResas ?? '?'})
-- Taux occupation : ${data.kpis.tauxOcc}% (N-1 : ${data.kpisN1?.tauxOcc ?? '?'}%)
+- Réservations : ${data.kpis.nbResas} (N-1 : ${data.kpisN1?.nbResas > 0 ? data.kpisN1.nbResas : 'N/A'})
+- Taux occupation : ${data.kpis.tauxOcc}% (N-1 : ${data.kpisN1?.tauxOcc > 0 ? data.kpisN1.tauxOcc + '%' : 'N/A'})
 - Prix moyen/nuit : ${prixMoyenNuit}€
 - Note voyageurs : ${data.noteMoisMoy ? data.noteMoisMoy + '/5 (' + data.reviews.length + ' avis)' : 'aucun avis ce mois'}
 
-AVIS VOYAGEURS :
-${data.reviews.slice(0, 5).map(r => `- ${r.rating}/5 : "${r.comment?.substring(0, 150)}"`).join('\n') || 'Aucun avis ce mois'}
+Avis voyageurs :
+${data.reviews.slice(0, 5).map(r => '- ' + r.rating + '/5 : "' + r.comment?.substring(0, 150) + '"').join('\n') || 'Aucun avis ce mois'}
 
-${notePerso ? 'NOTE OÏHAN (à intégrer dans ce bloc uniquement — ne pas répéter dans les autres blocs) :\n' + notePerso : ''}
+${notePerso ? 'NOTE OÏHAN :\n' + notePerso : ''}
 
-FORMAT : Pas de formule d'introduction ni de conclusion.
-Commencer directement par l'analyse. Ne pas terminer par une phrase de transition vers les mois suivants (ce sera dans le bloc Perspectives).`
+OBJECTIF :
+Donner une lecture claire de la performance du mois.
+
+CONTENU ATTENDU :
+- Positionner le mois (bon / correct / en retrait)
+- Expliquer les variations vs N-1
+- Interpréter le niveau de revenu et d'occupation
+- Intégrer intelligemment les retours voyageurs
+- Ajouter la NOTE OÏHAN de manière fluide si présente
+
+FORMAT :
+- Démarrer directement sans introduction
+- 3 à 4 paragraphes maximum
+- Pas de transition vers les mois suivants`
       const { data: llmData, error: llmErr } = await Promise.race([
         supabase.functions.invoke('llm-analyse', { body: { prompt, system: SYSTEM_PROMPT } }),
         new Promise((_, reject) => setTimeout(() => reject(new Error('timeout')), 30000)),
@@ -448,18 +496,29 @@ Commencer directement par l'analyse. Ne pas terminer par une phrase de transitio
     }
 
     async function _genererContexte() {
-      const prompt = `Bien : ${data.bien?.hospitable_name} — ${moisLabel}
+      const prompt = `Bien : ${bienNom} — ${moisLabel}
 
-MÉTÉO BIARRITZ (${moisLabel}) :
-${meteoResume}
+Données disponibles :
+- Météo : ${meteoResume}
+- Taux d'occupation : ${data.kpis.tauxOcc}% (N-1 : ${data.kpisN1?.tauxOcc > 0 ? data.kpisN1.tauxOcc + '%' : 'N/A'})
+- Réservations : ${data.kpis.nbResas} (N-1 : ${data.kpisN1?.nbResas > 0 ? data.kpisN1.nbResas : 'N/A'})
 
-TAUX D'OCCUPATION : ${data.kpis.tauxOcc}% (N-1 : ${data.kpisN1?.tauxOcc ?? '?'}%)
-RÉSERVATIONS : ${data.kpis.nbResas} (N-1 : ${data.kpisN1?.nbResas ?? '?'})
+OBJECTIF :
+Apporter un éclairage extérieur sur la performance.
 
-FORMAT : Pas de formule d'introduction ni de conclusion.
-Commencer directement par le contexte météo/marché.
-NE PAS reprendre les infos de la note Oïhan — elles ont déjà été intégrées dans le bloc Analyse.
-NE PAS répéter les chiffres de performance déjà dans le bloc Analyse.`
+CONTENU ATTENDU :
+- Impact de la météo ou de la saisonnalité sur la demande
+- Lecture du niveau de demande locative à Biarritz ce mois
+- Mise en perspective du marché local (événements, vacances, dynamique côtière)
+
+CONTRAINTES :
+- Ne pas répéter les données du bloc Analyse
+- Ne pas reprendre la NOTE OÏHAN
+- Ne pas mentionner le reversement ou les honoraires
+
+FORMAT :
+- Démarrer directement par le contexte météo ou marché
+- 2 à 3 paragraphes maximum`
       const { data: llmData, error: llmErr } = await Promise.race([
         supabase.functions.invoke('llm-analyse', { body: { prompt, system: SYSTEM_PROMPT } }),
         new Promise((_, reject) => setTimeout(() => reject(new Error('timeout')), 30000)),
@@ -476,27 +535,40 @@ NE PAS répéter les chiffres de performance déjà dans le bloc Analyse.`
     }
 
     async function _genererTendances() {
-      const prompt = `Bien : ${data.bien?.hospitable_name} — Perspectives ${nextMoisLabel} / ${nextNextMoisLabel}
+      const prompt = `Bien : ${bienNom} — Perspectives ${nextMoisLabel} / ${nextNextMoisLabel}
 
-RÉSERVATIONS EN PORTEFEUILLE (M+1/M+2) :
+Données disponibles :
+Réservations en portefeuille (M+1/M+2) :
 ${resasFutures?.length > 0
   ? resasFutures.map(r => '- ' + r.arrival_date + ' → ' + r.departure_date + ' (' + r.nights + 'n, ' + r.platform + ')').join('\n')
   : 'Aucune réservation enregistrée pour les 2 prochains mois'}
 Total : ${resasFutures?.length || 0} réservation(s), ${totalNuitsFutures} nuits couvertes
 
-PRÉVISIONS MÉTÉO PROCHAINES SEMAINES :
+Prévisions météo :
 ${meteoPrevisions}
 
-CE QUI A DÉJÀ ÉTÉ DIT dans les blocs précédents (NE PAS répéter) :
+CE QUI A DÉJÀ ÉTÉ DIT dans les blocs précédents (ne pas répéter) :
 - Analyse : "${llmAnalyse?.substring(0, 250) || 'non généré'}"
 - Contexte : "${llmContexte?.substring(0, 250) || 'non généré'}"
 
-FORMAT STRICT :
-- Parler des réservations à la 3ème personne : "les réservations sont en portefeuille", "le carnet se remplit"
-- Jamais "vous avez", "vous pouvez compter" → "le bien affiche", "le portefeuille compte"
-- Factuel et rassurant, sans redire ce qui est déjà dans les blocs précédents
-- 2-3 paragraphes max
-- Pas de formule d'introduction ni de signature finale`
+OBJECTIF :
+Donner de la visibilité sur les prochains mois et rassurer.
+
+CONTENU ATTENDU :
+- Lecture du niveau de remplissage futur (avance / normal / retard par rapport à la saison)
+- Interprétation de la dynamique du carnet de réservations
+- Mise en perspective avec les prévisions météo si pertinent
+- Ton rassurant et maîtrisé
+
+CONTRAINTES :
+- Ne pas utiliser "vous", "votre"
+- Parler du bien à la 3ème personne
+- "les réservations sont en portefeuille", "le carnet compte X réservations"
+- Ne pas répéter les données de performance du mois écoulé
+
+FORMAT :
+- 2 à 3 paragraphes maximum
+- Pas de conclusion formelle ni de signature`
       const { data: llmData, error: llmErr } = await Promise.race([
         supabase.functions.invoke('llm-analyse', { body: { prompt, system: SYSTEM_PROMPT } }),
         new Promise((_, reject) => setTimeout(() => reject(new Error('timeout')), 30000)),
