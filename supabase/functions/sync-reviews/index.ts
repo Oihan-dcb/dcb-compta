@@ -63,14 +63,6 @@ Deno.serve(async (req) => {
 
   if (!biens?.length) return json({ ok: true, total: 0, synced: 0 })
 
-  // Pré-charger toutes nos réservations pour le mapping (code + hospitable_id → id interne)
-  const { data: resas } = await sb
-    .from('reservation')
-    .select('id, hospitable_id, code')
-
-  const resaByHospId  = new Map((resas || []).map((r: any) => [r.hospitable_id, r.id]))
-  const resaByCode    = new Map((resas || []).map((r: any) => [r.code, r.id]))
-
   let total = 0, synced = 0, errors = 0
 
   for (const bien of biens) {
@@ -84,28 +76,22 @@ Deno.serve(async (req) => {
     }
 
     for (const review of reviews) {
-      // Filtrer par mois si fourni (submitted_at ou created_at)
+
+      // Filtrer par mois si fourni
       if (mois) {
-        const ts = review.submitted_at || review.created_at || ''
+        const ts = review.reviewed_at || ''
         if (!ts.startsWith(mois)) continue
       }
 
       total++
 
-      // Identifier la réservation — l'API peut retourner reservation_id (UUID) ou reservation_code
-      const hospResaId   = review.reservation_id ?? review.reservation?.id ?? null
-      const resaCode     = review.reservation_code ?? review.reservation?.code ?? null
-      const internalId   = (hospResaId && resaByHospId.get(hospResaId))
-                        ?? (resaCode   && resaByCode.get(resaCode))
-                        ?? null
-
       const row = {
-        reservation_id:            internalId,
-        hospitable_reservation_id: hospResaId ?? resaCode ?? `${bien.hospitable_id}_${total}`,
-        reviewer_name:             review.guest?.name ?? review.reviewer_name ?? null,
-        rating:                    review.rating ?? review.overall_rating ?? null,
-        comment:                   review.comment ?? review.review ?? review.body ?? null,
-        submitted_at:              review.submitted_at ?? review.created_at ?? null,
+        reservation_id:            null,
+        hospitable_reservation_id: review.id,
+        reviewer_name:             null,
+        rating:                    review.public?.rating ?? null,
+        comment:                   review.public?.review ?? null,
+        submitted_at:              review.reviewed_at ?? null,
       }
 
       const { error } = await sb
