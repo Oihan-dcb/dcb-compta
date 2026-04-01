@@ -271,11 +271,15 @@ export function genererRapportHTML(proprio, mois, data) {
       style="position:absolute;top:0;left:0;width:100%;height:230px;object-fit:cover;object-position:center 35%;display:block;-webkit-print-color-adjust:exact !important;print-color-adjust:exact !important;"/>
     <div style="position:absolute;inset:0;background:linear-gradient(to bottom,rgba(20,14,8,0.15) 0%,rgba(20,14,8,0.72) 100%);-webkit-print-color-adjust:exact !important;print-color-adjust:exact !important;"></div>
     <!-- Logo + Titre centrés + KPIs financiers -->
-    <div style="position:absolute;top:0;left:0;right:0;bottom:90px;display:flex;flex-direction:column;align-items:center;justify-content:center;">
-      <img src="${logoSrc}"
-        style="height:100px;display:block;margin-bottom:10px;-webkit-print-color-adjust:exact;print-color-adjust:exact;" onerror="this.style.display='none'"/>
+    <!-- Titres centrés en haut du hero -->
+    <div style="position:absolute;top:0;left:0;right:0;bottom:110px;display:flex;flex-direction:column;align-items:center;justify-content:center;">
       <div style="font-size:9px;letter-spacing:0.05em;text-transform:uppercase;color:rgba(212,196,176,0.85);margin-bottom:4px;white-space:nowrap;">Rapport mensuel · ${moisLabel}</div>
       <div style="font-size:16px;font-weight:400;color:#fff;letter-spacing:0.02em;white-space:nowrap;">${proprio?.nom || ''} — ${bienName}</div>
+    </div>
+    <!-- Logo plus bas et plus grand -->
+    <div style="position:absolute;bottom:68px;left:0;right:0;text-align:center;">
+      <img src="${logoSrc}"
+        style="height:120px;display:block;margin:0 auto;-webkit-print-color-adjust:exact;print-color-adjust:exact;" onerror="this.style.display='none'"/>
     </div>
     <div style="position:absolute;bottom:0;left:0;right:0;background:linear-gradient(to top,rgba(20,14,8,0.88) 0%,transparent 100%);">
       <div style="display:flex;justify-content:space-around;padding:10px 24px 14px;">
