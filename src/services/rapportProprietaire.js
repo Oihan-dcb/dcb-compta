@@ -157,7 +157,7 @@ export function genererRapportHTML(proprio, mois, data) {
   const reviewsHTML = reviews.length
     ? reviews.slice(0, 3).map(r => `
       <div class="avis-block" style="border-left:3px solid #CC9933;padding:8px 14px;margin-bottom:8px;background:#F7F4EF;border-radius:0 6px 6px 0;">
-        <div style="color:#CC9933;font-size:1em;margin-bottom:3px;">${'★'.repeat(Math.round(r.rating || 0))}${'☆'.repeat(5 - Math.round(r.rating || 0))}</div>
+        <div style="color:#CC9933;font-size:1em;margin-bottom:3px;">${'&#9733;'.repeat(Math.round(r.rating || 0))}${'&#9734;'.repeat(5 - Math.round(r.rating || 0))}</div>
         <p style="margin:0;color:#2C2416;font-style:italic;line-height:1.5;font-size:13px;">«&nbsp;${r.comment?.substring(0, 180) || ''}${(r.comment?.length || 0) > 180 ? '…' : ''}&nbsp;»</p>
       </div>`).join('')
     : '<p style="color:#9C8E7D;font-style:italic;font-size:0.9em;">Aucun avis reçu ce mois.</p>'
@@ -199,7 +199,7 @@ export function genererRapportHTML(proprio, mois, data) {
   body { font-family:'DM Sans',Arial,sans-serif; background:#F7F4EF; color:#2C2416; -webkit-font-smoothing:antialiased; }
   .container { max-width:680px; margin:0 auto; background:#fff; }
   .section { padding:14px 24px; border-bottom:1px solid #EDEBE5; }
-  .section-title { font-size:0.68em; font-weight:700; letter-spacing:2px; text-transform:uppercase; color:#CC9933; margin-bottom:10px; }
+  .section-title { font-size:0.68em; font-weight:700; letter-spacing:1px; text-transform:uppercase; color:#CC9933; margin-bottom:10px; }
   .kpi-grid { display:grid; grid-template-columns:repeat(3,1fr); gap:8px; }
   .kpi { background:#F7F4EF; border:1px solid #EDEBE5; border-radius:8px; padding:10px 8px; text-align:center; }
   .kpi-val { font-size:18px; font-weight:700; color:#2C2416; }
@@ -258,23 +258,23 @@ export function genererRapportHTML(proprio, mois, data) {
     <div style="position:absolute;top:0;left:0;right:0;padding:14px 24px;text-align:center;">
       <img src="${logoSrc}"
         style="height:40px;display:block;margin-left:auto;margin-right:auto;margin-bottom:8px;-webkit-print-color-adjust:exact !important;print-color-adjust:exact !important;" onerror="this.style.display='none'"/>
-      <div style="font-size:9px;letter-spacing:0.22em;text-transform:uppercase;color:rgba(212,196,176,0.9);margin-bottom:2px;">Rapport mensuel · ${moisLabel}</div>
+      <div style="font-size:9px;letter-spacing:0.05em;text-transform:uppercase;color:rgba(212,196,176,0.9);margin-bottom:2px;">Rapport mensuel · ${moisLabel}</div>
       <div style="font-size:14px;font-weight:300;color:#fff;letter-spacing:0.04em;">${proprio?.nom || ''} — ${bienName}</div>
     </div>
     <!-- KPIs financiers -->
     <div style="position:absolute;bottom:0;left:0;right:0;display:flex;justify-content:space-around;background:linear-gradient(to top,rgba(20,14,8,0.85) 0%,transparent 100%);padding:16px 24px 14px;">
       <div style="text-align:center;">
-        <div style="font-size:8px;letter-spacing:0.15em;text-transform:uppercase;color:rgba(212,196,176,0.8);margin-bottom:3px;">Base commissionnable</div>
+        <div style="font-size:8px;letter-spacing:0.04em;text-transform:uppercase;color:rgba(212,196,176,0.8);margin-bottom:3px;">Base commissionnable</div>
         <div style="font-size:18px;font-weight:400;color:#fff;">${fmt(kpis.caHeb)}</div>
-        ${deltaCA !== null ? `<div style="font-size:9px;color:${deltaCA >= 0 ? '#4ADE80' : '#F87171'};">${deltaCA >= 0 ? '▲' : '▼'} vs N-1</div>` : ''}
+        ${deltaCA !== null ? `<div style="font-size:9px;color:${deltaCA >= 0 ? '#4ADE80' : '#F87171'};">${deltaCA >= 0 ? '↑' : '↓'} vs N-1</div>` : ''}
       </div>
       <div style="text-align:center;border-left:1px solid rgba(204,153,51,0.4);border-right:1px solid rgba(204,153,51,0.4);padding:0 20px;">
-        <div style="font-size:8px;letter-spacing:0.15em;text-transform:uppercase;color:#CC9933;margin-bottom:3px;">Honoraires DCB</div>
+        <div style="font-size:8px;letter-spacing:0.04em;text-transform:uppercase;color:#CC9933;margin-bottom:3px;">Honoraires DCB</div>
         <div style="font-size:18px;font-weight:400;color:#CC9933;">${fmt(kpis.caHeb - kpis.loyTotal)}</div>
         <div style="font-size:9px;color:rgba(204,153,51,0.7);">${tauxCommission ? tauxCommission + '% TTC' : 'gestion & services'}</div>
       </div>
       <div style="text-align:center;">
-        <div style="font-size:8px;letter-spacing:0.15em;text-transform:uppercase;color:rgba(212,196,176,0.8);margin-bottom:3px;">Reversement net</div>
+        <div style="font-size:8px;letter-spacing:0.04em;text-transform:uppercase;color:rgba(212,196,176,0.8);margin-bottom:3px;">Reversement net</div>
         <div style="font-size:18px;font-weight:400;color:#fff;">${fmt(kpis.loyTotal)}</div>
       </div>
     </div>
@@ -287,12 +287,12 @@ export function genererRapportHTML(proprio, mois, data) {
       <div class="kpi">
         <div class="kpi-val">${kpis.nbResas}</div>
         <div class="kpi-lbl">Réservations</div>
-        ${kpisN1?.nbResas != null ? `<div class="kpi-delta" style="color:${kpis.nbResas >= kpisN1.nbResas ? '#059669' : '#DC2626'};">${kpis.nbResas >= kpisN1.nbResas ? '▲' : '▼'} N-1 : ${kpisN1.nbResas}</div>` : ''}
+        ${kpisN1?.nbResas != null ? `<div class="kpi-delta" style="color:${kpis.nbResas >= kpisN1.nbResas ? '#059669' : '#DC2626'};">${kpis.nbResas >= kpisN1.nbResas ? '↑' : '↓'} N-1 : ${kpisN1.nbResas}</div>` : ''}
       </div>
       <div class="kpi">
         <div class="kpi-val">${kpis.tauxOcc}%</div>
         <div class="kpi-lbl">Taux d'occupation</div>
-        ${deltaOcc !== null ? `<div class="kpi-delta" style="color:${deltaOcc >= 0 ? '#059669' : '#DC2626'};">${deltaOcc >= 0 ? '▲' : '▼'} ${Math.abs(deltaOcc)} pts</div>` : ''}
+        ${deltaOcc !== null ? `<div class="kpi-delta" style="color:${deltaOcc >= 0 ? '#059669' : '#DC2626'};">${deltaOcc >= 0 ? '↑' : '↓'} ${Math.abs(deltaOcc)} pts</div>` : ''}
       </div>
       <div class="kpi">
         <div class="kpi-val">${kpis.nuitsOccupees}/${kpis.nuitsDispos}</div>
@@ -307,9 +307,9 @@ export function genererRapportHTML(proprio, mois, data) {
         <div class="kpi-lbl">Durée moyenne</div>
       </div>
       <div class="kpi">
-        <div class="kpi-val">${noteMoisMoy ? '★ ' + noteMoisMoy : '—'}</div>
+        <div class="kpi-val">${noteMoisMoy ? '&#9733; ' + noteMoisMoy : '—'}</div>
         <div class="kpi-lbl">Note voyageurs</div>
-        ${nbReviewsGlobal > 0 ? `<div class="kpi-delta" style="color:#9C8E7D;">★ ${noteGlobaleMoy} global (${nbReviewsGlobal})</div>` : ''}
+        ${nbReviewsGlobal > 0 ? `<div class="kpi-delta" style="color:#9C8E7D;">&#9733; ${noteGlobaleMoy} global (${nbReviewsGlobal})</div>` : ''}
       </div>
     </div>
   </div>
@@ -332,7 +332,7 @@ export function genererRapportHTML(proprio, mois, data) {
   ${reviews.length ? `
   <!-- AVIS -->
   <div class="section section-avis">
-    <div class="section-title">Avis voyageurs (${reviews.length}${noteMoisMoy ? ' · ★ ' + noteMoisMoy + '/5' : ''})</div>
+    <div class="section-title">Avis voyageurs (${reviews.length}${noteMoisMoy ? ' · &#9733; ' + noteMoisMoy + '/5' : ''})</div>
     ${reviewsHTML}
   </div>` : ''}
 
