@@ -3,6 +3,22 @@ import { getInvoicePDFBase64 } from './evoliz'
 import heroSrc from '../assets/rapport-hero.jpg?inline'
 import logoSrc from '../assets/rapport-logo.png?inline'
 
+const SVG = {
+  starFull: (size=13, color='#CC9933') =>
+    `<svg width="${size}" height="${size}" viewBox="0 0 24 24" style="display:inline-block;vertical-align:middle;margin-bottom:1px" fill="${color}"><polygon points="12,2 15.09,8.26 22,9.27 17,14.14 18.18,21.02 12,17.77 5.82,21.02 7,14.14 2,9.27 8.91,8.26"/></svg>`,
+  starEmpty: (size=13, color='#CC9933') =>
+    `<svg width="${size}" height="${size}" viewBox="0 0 24 24" style="display:inline-block;vertical-align:middle;margin-bottom:1px" fill="none" stroke="${color}" stroke-width="2"><polygon points="12,2 15.09,8.26 22,9.27 17,14.14 18.18,21.02 12,17.77 5.82,21.02 7,14.14 2,9.27 8.91,8.26"/></svg>`,
+  arrowUp: (color='#2d7a50') =>
+    `<svg width="10" height="10" viewBox="0 0 24 24" style="display:inline-block;vertical-align:middle" fill="${color}"><polygon points="12,4 20,18 4,18"/></svg>`,
+  arrowDown: (color='#c0392b') =>
+    `<svg width="10" height="10" viewBox="0 0 24 24" style="display:inline-block;vertical-align:middle" fill="${color}"><polygon points="12,20 20,6 4,6"/></svg>`,
+  stars: (rating, size=13) => {
+    let s = ''
+    for (let i=1; i<=5; i++) s += i <= Math.round(rating) ? SVG.starFull(size) : SVG.starEmpty(size)
+    return s
+  }
+}
+
 const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL
 
 // ─────────────────────────────────────────
@@ -157,7 +173,7 @@ export function genererRapportHTML(proprio, mois, data) {
   const reviewsHTML = reviews.length
     ? reviews.map(r => `
       <div class="avis-block" style="border-left:3px solid #CC9933;padding:8px 14px;margin-bottom:8px;background:#F7F4EF;border-radius:0 6px 6px 0;">
-        <div style="color:#CC9933;font-size:1em;margin-bottom:3px;">${'&#9733;'.repeat(Math.round(r.rating || 0))}${'&#9734;'.repeat(5 - Math.round(r.rating || 0))}</div>
+        <div style="color:#CC9933;font-size:1em;margin-bottom:3px;">${SVG.stars(r.rating || 0, 13)}</div>
         <p style="margin:0;color:#2C2416;font-style:italic;line-height:1.5;font-size:13px;">«&nbsp;${r.comment || ''}&nbsp;»</p>
       </div>`).join('')
     : '<p style="color:#9C8E7D;font-style:italic;font-size:0.9em;">Aucun avis reçu ce mois.</p>'
@@ -266,7 +282,7 @@ export function genererRapportHTML(proprio, mois, data) {
       <div style="text-align:center;">
         <div style="font-size:8px;letter-spacing:0.04em;text-transform:uppercase;color:rgba(212,196,176,0.8);margin-bottom:3px;">Base commissionnable</div>
         <div style="font-size:18px;font-weight:400;color:#fff;">${fmt(kpis.caHeb)}</div>
-        ${deltaCA !== null ? `<div style="font-size:9px;color:${deltaCA >= 0 ? '#4ADE80' : '#F87171'};">${deltaCA >= 0 ? '↑' : '↓'} vs N-1</div>` : ''}
+        ${deltaCA !== null ? `<div style="font-size:9px;color:${deltaCA >= 0 ? '#4ADE80' : '#F87171'};">${deltaCA >= 0 ? SVG.arrowUp('#4ADE80') : SVG.arrowDown('#F87171')} vs N-1</div>` : ''}
       </div>
       <div style="text-align:center;border-left:1px solid rgba(204,153,51,0.4);border-right:1px solid rgba(204,153,51,0.4);padding:0 20px;">
         <div style="font-size:8px;letter-spacing:0.04em;text-transform:uppercase;color:#CC9933;margin-bottom:3px;">Honoraires DCB</div>
@@ -287,12 +303,12 @@ export function genererRapportHTML(proprio, mois, data) {
       <div class="kpi">
         <div class="kpi-val">${kpis.nbResas}</div>
         <div class="kpi-lbl">Réservations</div>
-        ${kpisN1?.nbResas != null ? `<div class="kpi-delta" style="color:${kpis.nbResas >= kpisN1.nbResas ? '#059669' : '#DC2626'};">${kpis.nbResas >= kpisN1.nbResas ? '↑' : '↓'} N-1 : ${kpisN1.nbResas}</div>` : ''}
+        ${kpisN1?.nbResas != null ? `<div class="kpi-delta" style="color:${kpis.nbResas >= kpisN1.nbResas ? '#059669' : '#DC2626'};">${kpis.nbResas >= kpisN1.nbResas ? SVG.arrowUp('#059669') : SVG.arrowDown('#DC2626')} N-1 : ${kpisN1.nbResas}</div>` : ''}
       </div>
       <div class="kpi">
         <div class="kpi-val">${kpis.tauxOcc}%</div>
         <div class="kpi-lbl">Taux d'occupation</div>
-        ${deltaOcc !== null ? `<div class="kpi-delta" style="color:${deltaOcc >= 0 ? '#059669' : '#DC2626'};">${deltaOcc >= 0 ? '↑' : '↓'} ${Math.abs(deltaOcc)} pts</div>` : ''}
+        ${deltaOcc !== null ? `<div class="kpi-delta" style="color:${deltaOcc >= 0 ? '#059669' : '#DC2626'};">${deltaOcc >= 0 ? SVG.arrowUp('#059669') : SVG.arrowDown('#DC2626')} ${Math.abs(deltaOcc)} pts</div>` : ''}
       </div>
       <div class="kpi">
         <div class="kpi-val">${kpis.nuitsOccupees}/${kpis.nuitsDispos}</div>
@@ -307,9 +323,9 @@ export function genererRapportHTML(proprio, mois, data) {
         <div class="kpi-lbl">Durée moyenne</div>
       </div>
       <div class="kpi">
-        <div class="kpi-val">${noteMoisMoy ? '&#9733; ' + noteMoisMoy : '—'}</div>
+        <div class="kpi-val">${noteMoisMoy ? SVG.starFull(14) + ' ' + noteMoisMoy : '—'}</div>
         <div class="kpi-lbl">Note voyageurs</div>
-        ${nbReviewsGlobal > 0 ? `<div class="kpi-delta" style="color:#9C8E7D;">&#9733; ${noteGlobaleMoy} global (${nbReviewsGlobal})</div>` : ''}
+        ${nbReviewsGlobal > 0 ? `<div class="kpi-delta" style="color:#9C8E7D;">${SVG.starFull(11,'#9C8E7D')} ${noteGlobaleMoy} global (${nbReviewsGlobal})</div>` : ''}
       </div>
     </div>
   </div>
@@ -332,7 +348,7 @@ export function genererRapportHTML(proprio, mois, data) {
   ${reviews.length ? `
   <!-- AVIS -->
   <div class="section section-avis">
-    <div class="section-title">Avis voyageurs (${reviews.length}${noteMoisMoy ? ' · &#9733; ' + noteMoisMoy + '/5' : ''})</div>
+    <div class="section-title">Avis voyageurs (${reviews.length}${noteMoisMoy ? ' · ' + SVG.starFull(12) + ' ' + noteMoisMoy + '/5' : ''})</div>
     ${reviewsHTML}
   </div>` : ''}
 
