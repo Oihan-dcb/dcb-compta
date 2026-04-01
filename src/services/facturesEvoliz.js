@@ -34,7 +34,7 @@ export async function genererFacturesMois(mois) {
       id, nom, prenom, id_evoliz, iban,
       bien!inner (
         id, hospitable_name, code, listed, agence,
-        provision_ae_ref, forfait_dcb_ref, has_ae, mode_encaissement
+        provision_ae_ref, forfait_dcb_ref, has_ae, mode_encaissement, groupe_facturation
       )
     `)
     .eq('bien.listed', true)
@@ -51,21 +51,30 @@ export async function genererFacturesMois(mois) {
   }
 
   for (const [propId, proprio] of propMap) {
-    try {
-      const facture = await genererFactureProprietaire(proprio, mois)
-      if (facture.skipped) log.skipped++
-      else if (facture.created) log.created++
-      else log.updated++
-      if ((facture.resteAPayer || 0) > 0) log.resteAPayer += facture.resteAPayer
+    // Grouper les biens : groupe_facturation non null → 1 facture par groupe, null → 1 facture par bien
+    const groupes = {}
+    for (const bien of proprio.biens) {
+      const key = bien.groupe_facturation ? `groupe_${bien.groupe_facturation}` : `bien_${bien.id}`
+      if (!groupes[key]) groupes[key] = []
+      groupes[key].push(bien)
+    }
+    for (const [key, biens] of Object.entries(groupes)) {
+      try {
+        const facture = await genererFactureGroupe(proprio, biens, mois)
+        if (facture.skipped) log.skipped++
+        else if (facture.created) log.created++
+        else log.updated++
+        if ((facture.resteAPayer || 0) > 0) log.resteAPayer += facture.resteAPayer
 
-      const debours = await genererFactureDebours(proprio, mois)
-      if (debours && !debours.skipped) {
-        if (debours.created) log.deboursCreated++
-        else log.deboursUpdated++
+        const debours = await genererFactureDebours(proprio, biens, mois)
+        if (debours && !debours.skipped) {
+          if (debours.created) log.deboursCreated++
+          else log.deboursUpdated++
+        }
+      } catch (err) {
+        console.error(`Erreur facture ${proprio.nom} [${key}]:`, err)
+        log.errors++
       }
-    } catch (err) {
-      console.error(`Erreur facture ${proprio.nom}:`, err)
-      log.errors++
     }
   }
 
@@ -93,8 +102,12 @@ export async function genererFacturesMois(mois) {
 /**
  * GÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂ©nÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂ¨re ou met ÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂ  jour la facture mensuelle d'un propriÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂ©taire
  */
-async function genererFactureProprietaire(proprio, mois) {
-  const bienIds = proprio.biens.map(b => b.id)
+async function genererFactureGroupe(proprio, biens, mois) {
+  const bienIds = biens.map(b => b.id)
+  const bienId = biens.length === 1 ? biens[0].id : null
+  const libelleGroupe = biens.length === 1
+    ? biens[0].hospitable_name
+    : (biens[0].groupe_facturation === 'MAITE' ? 'Maison Maïté' : biens.map(b => b.code).join(', '))
 
   // RÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂ©cupÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂ©rer les rÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂ©servations du mois pour ces biens
   const { data: reservations, error: resaErr } = await supabase
@@ -218,7 +231,7 @@ async function genererFactureProprietaire(proprio, mois) {
   let deboursPropAbsorbTotal  = 0
   let deboursPropSurplusTotal = 0
 
-  for (const bien of proprio.biens) {
+  for (const bien of biens) {
     if (bien.mode_encaissement !== 'dcb') continue
 
     // LOY de ce bien depuis ventilation dÃÂ©jÃÂ  chargÃÂ©e
@@ -279,13 +292,15 @@ async function genererFactureProprietaire(proprio, mois) {
   const soldeNegatif = totalHT === 0 && div.ht > 0
 
   // VÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂ©rifier si facture existante
-  const { data: existingFacture } = await supabase
+  let existingFactureQuery = supabase
     .from('facture_evoliz')
     .select('id, statut')
     .eq('proprietaire_id', proprio.id)
     .eq('mois', mois)
     .eq('type_facture', 'honoraires')
-    .single()
+  if (bienId) existingFactureQuery = existingFactureQuery.eq('bien_id', bienId)
+  else existingFactureQuery = existingFactureQuery.is('bien_id', null)
+  const { data: existingFacture } = await existingFactureQuery.maybeSingle()
 
   // Ne pas ÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂ©craser une facture dÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂ©jÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂ  envoyÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂ©e ou payÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂ©e
   if (existingFacture && ['envoye_evoliz', 'payee'].includes(existingFacture.statut)) {
@@ -295,6 +310,7 @@ async function genererFactureProprietaire(proprio, mois) {
   const factureData = {
     mois,
     proprietaire_id: proprio.id,
+    bien_id: bienId,
     type_facture: 'honoraires',
     total_ht: totalHT,
     total_tva: totalTVA,
@@ -335,7 +351,7 @@ async function genererFactureProprietaire(proprio, mois) {
       facture_id: factureId,
       code: 'HON',
       libelle: 'Honoraires de gestion',
-      description: `${reservations?.length || 0} réservation(s) — ${mois}`,
+      description: `${libelleGroupe} — ${reservations?.length || 0} réservation(s) — ${mois}`,
       montant_ht: com.ht,
       taux_tva: 20,
       montant_tva: com.tva,
@@ -460,11 +476,12 @@ async function genererFactureProprietaire(proprio, mois) {
 /**
  * RÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂ©cupÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂ¨re toutes les factures d'un mois avec les dÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂ©tails
  */
-async function genererFactureDebours(proprio, mois) {
+async function genererFactureDebours(proprio, biens, mois) {
   const lignes = []
   let ordre = 1
 
-  const bienIds = proprio.biens.map(function(b) { return b.id })
+  const bienIds = biens.map(function(b) { return b.id })
+  const bienId = biens.length === 1 ? biens[0].id : null
 
   // Batch 1 : ventilation AUTO + LOY
   const { data: ventilAuto } = await supabase
@@ -504,7 +521,7 @@ async function genererFactureDebours(proprio, mois) {
     fraisDirectsByBien.get(f.bien_id).push(f)
   })
 
-  for (const bien of proprio.biens) {
+  for (const bien of biens) {
     const bienVentil = ventilByBien.get(bien.id) || []
     const autoBien = bienVentil
       .filter(function(l) { return l.code === 'AUTO' })
@@ -597,13 +614,15 @@ async function genererFactureDebours(proprio, mois) {
 
   const totalHT = lignes.reduce((s, l) => s + l.montant_ht, 0)
 
-  const { data: existing } = await supabase
+  let existingDebQuery = supabase
     .from('facture_evoliz')
     .select('id, statut')
     .eq('proprietaire_id', proprio.id)
     .eq('mois', mois)
     .eq('type_facture', 'debours')
-    .maybeSingle()
+  if (bienId) existingDebQuery = existingDebQuery.eq('bien_id', bienId)
+  else existingDebQuery = existingDebQuery.is('bien_id', null)
+  const { data: existing } = await existingDebQuery.maybeSingle()
 
   if (existing && ['envoye_evoliz', 'payee'].includes(existing.statut)) {
     return { created: false, skipped: true }
@@ -612,6 +631,7 @@ async function genererFactureDebours(proprio, mois) {
   const factureData = {
     proprietaire_id:     proprio.id,
     mois,
+    bien_id:             bienId,
     type_facture:        'debours',
     total_ht:            totalHT,
     total_tva:           0,
