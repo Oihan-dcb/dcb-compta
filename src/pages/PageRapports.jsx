@@ -26,6 +26,18 @@ function PlatformBadge({ platform }) {
   )
 }
 
+function getCanal(platform, ownerStay) {
+  if (ownerStay) return <span style={{ fontSize: '0.75em', color: '#9C8E7D', fontStyle: 'italic' }}>Propriétaire</span>
+  const p = (platform || '').toLowerCase()
+  const cfg = PLATFORM_COLORS[p] || { bg: '#F0EBE1', color: '#9C8E7D', label: platform || '—' }
+  return (
+    <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
+      <span style={{ display: 'inline-block', width: 8, height: 8, borderRadius: '50%', background: cfg.color }} />
+      <span style={{ fontSize: '0.78em', color: cfg.color, fontWeight: 600 }}>{cfg.label}</span>
+    </span>
+  )
+}
+
 function prevYear(mois) {
   const [y, m] = mois.split('-')
   return `${parseInt(y) - 1}-${m}`
@@ -66,11 +78,12 @@ export default function PageRapports() {
   const [biensEnvoyes, setBiensEnvoyes] = useState(new Set())
   const [editingLlm, setEditingLlm] = useState(false)
   const [notePerso, setNotePerso] = useState('')
+  const [modeMaite, setModeMaite] = useState('chambre')
 
   useEffect(() => {
     supabase
       .from('proprietaire')
-      .select('id, nom, email, bien(id, hospitable_name, listed, agence)')
+      .select('id, nom, email, bien(id, hospitable_name, listed, agence, groupe_facturation)')
       .eq('actif', true)
       .order('nom')
       .then(({ data: props }) => {
@@ -126,6 +139,8 @@ export default function PageRapports() {
     try {
       const proprio = proprietaires.find(p => p.id === selectedPropId)
       setEmail(proprio?.email || '')
+      const maiteIdsLocal = (proprio?.bien || []).filter(b => b.groupe_facturation === 'MAITE').map(b => b.id)
+      const isGlobal = modeMaite === 'global' && maiteIdsLocal.length > 0
 
       const moisN1 = prevYear(mois)
       const [y, m] = mois.split('-').map(Number)
@@ -140,24 +155,20 @@ export default function PageRapports() {
         noteLlmVal,
         notePersoVal,
         { data: facture },
+        tauxCommission,
       ] = await Promise.all([
-        supabase
-          .from('reservation')
-          .select('id, code, fin_revenue, fin_accommodation, nights, arrival_date, departure_date, final_status, platform, guest_name, bien:bien_id(hospitable_name, code)')
-          .eq('bien_id', selectedBienId)
-          .eq('mois_comptable', mois)
-          .order('arrival_date'),
-        supabase
-          .from('reservation')
-          .select('id, fin_revenue, nights, final_status')
-          .eq('bien_id', selectedBienId)
-          .eq('mois_comptable', moisN1)
-          .neq('final_status', 'cancelled'),
-        supabase
-          .from('frais_proprietaire')
-          .select('id, libelle, montant_ttc, statut')
-          .eq('bien_id', selectedBienId)
-          .eq('mois_facturation', mois),
+        (() => {
+          let q = supabase.from('reservation').select('id, code, fin_revenue, fin_accommodation, nights, arrival_date, departure_date, final_status, platform, owner_stay, guest_name, bien:bien_id(hospitable_name, code)').eq('mois_comptable', mois).order('arrival_date')
+          return isGlobal ? q.in('bien_id', maiteIdsLocal) : q.eq('bien_id', selectedBienId)
+        })(),
+        (() => {
+          let q = supabase.from('reservation').select('id, fin_revenue, nights, final_status').eq('mois_comptable', moisN1).neq('final_status', 'cancelled')
+          return isGlobal ? q.in('bien_id', maiteIdsLocal) : q.eq('bien_id', selectedBienId)
+        })(),
+        (() => {
+          let q = supabase.from('frais_proprietaire').select('id, libelle, montant_ttc, statut').eq('mois_facturation', mois)
+          return isGlobal ? q.in('bien_id', maiteIdsLocal) : q.eq('bien_id', selectedBienId)
+        })(),
         supabase.from('bien_notes').select('note_marche')
           .eq('bien_id', selectedBienId).eq('mois', mois).maybeSingle()
           .then(r => r.data?.note_marche || ''),
@@ -172,6 +183,9 @@ export default function PageRapports() {
           .then(r => r.data?.note_personnalisation || ''),
         supabase.from('facture_evoliz').select('id, id_evoliz, statut')
           .eq('proprietaire_id', selectedPropId).eq('mois', mois).eq('type_facture', 'honoraires').maybeSingle(),
+        supabase.from('bien').select('taux_commission_override, proprietaire:proprietaire_id(taux_commission)')
+          .eq('id', selectedBienId).maybeSingle()
+          .then(r => r.data?.taux_commission_override || r.data?.proprietaire?.taux_commission || 25),
       ])
 
       if (resasErr) throw new Error(resasErr.message)
@@ -247,6 +261,7 @@ export default function PageRapports() {
       setData({
         proprio,
         bien: (proprio?.bien || []).find(b => b.id === selectedBienId),
+        tauxCommission,
         resas: resasValides.map(r => ({ ...r, vent: ventByResa[r.id] || {}, extra: fraisByResa[r.id] || 0 })),
         reviews,
         facture,
@@ -263,7 +278,7 @@ export default function PageRapports() {
     } finally {
       setLoading(false)
     }
-  }, [selectedBienId, selectedPropId, mois, proprietaires])
+  }, [selectedBienId, selectedPropId, mois, proprietaires, modeMaite])
 
   useEffect(() => { charger() }, [charger])
 
@@ -360,46 +375,7 @@ export default function PageRapports() {
       || bienData?.proprietaire?.taux_commission
       || 25
 
-    const systemPrompt = `Tu es Oïhan, gérant de Destination Côte Basque, spécialiste de la location saisonnière haut de gamme.
-Tu écris des comptes-rendus mensuels destinés aux propriétaires de biens immobiliers que tu gères.
-
-TON POSITIONNEMENT :
-Tu es un expert de confiance qui pilote activement la performance du bien.
-Tu maîtrises toute la chaîne : revenus, réservations, gestion opérationnelle, expérience client et optimisation.
-Tu ne fais pas que rapporter des chiffres, tu les interprètes.
-
-TON TON :
-- Professionnel mais humain
-- Direct, fluide, naturel
-- Jamais froid ni administratif
-- Jamais commercial forcé
-- Tu inspires confiance, maîtrise et honnêteté
-
-RÈGLES ABSOLUES :
-- Aucun jargon comptable (ne jamais utiliser HON, LOY, FMEN, etc.)
-- Aucun chiffre sans interprétation
-- Pas de liste brute de données
-- Pas de bullet points
-- Paragraphes courts, français fluide et élégant
-- Chaque information doit apporter une lecture claire
-- Tu écris comme si tu connaissais parfaitement le bien et le propriétaire
-- Tu ne fais jamais référence à "des données", "un logiciel" ou "un système"
-- Tu incarnes une vraie personne
-
-GESTION DES PERFORMANCES FAIBLES :
-- Ne jamais éviter le sujet si les résultats sont en retrait
-- Toujours expliquer simplement les raisons possibles
-- Ton bienveillant et constructif, jamais alarmiste
-- Donner le sentiment que la situation est pilotée et sous contrôle
-
-STRUCTURE ATTENDUE (7 parties, sans titres dans le texte) :
-1. Introduction personnalisée + vision globale du mois en 1-2 phrases
-2. Performance du mois : lecture du revenu, mise en perspective, explication si nécessaire
-3. Analyse qualitative : occupation, dynamique des réservations, analyse des avis voyageurs
-4. Contexte marché & local : météo, saisonnalité, événements locaux Biarritz
-5. Tendance à venir : réservations déjà enregistrées M+1/M+2, niveau d'anticipation, lecture rassurante
-6. Pilotage & actions : ce qui est fait ou ajusté (pricing, stratégie, gestion)
-7. Conclusion synthèse, ton rassurant et maîtrisé`
+    const systemPrompt = `Tu es Oïhan, gérant de Destination Côte Basque. Tu rédiges un compte-rendu mensuel court et personnalisé pour le propriétaire du bien que tu gères à Biarritz. Ton ton est professionnel, humain et direct. Tu interprètes les chiffres, tu ne les listes pas. 3 à 4 paragraphes fluides, sans titres, sans bullet points, sans jargon comptable. Si les résultats sont en retrait, tu l'expliques sobrement sans alarmer. Tu écris comme une vraie personne qui connaît le bien et son propriétaire.`
 
     const userPrompt = `Bien : "${data.bien?.hospitable_name}"
 Propriétaire : ${data.proprio?.nom}
@@ -451,6 +427,9 @@ ${notePerso ? 'NOTE PERSONNELLE OÏHAN (à intégrer naturellement) :\n' + noteP
       noteMoisMoy: data.noteMoisMoy, noteGlobaleMoy: data.noteGlobaleMoy,
       nbReviewsGlobal: data.nbReviewsGlobal,
       notes: [{ bienName: data.bien?.hospitable_name, note }],
+      noteContexte: note,
+      noteReco,
+      tauxCommission: data.tauxCommission,
     }
   }
 
@@ -465,15 +444,18 @@ ${notePerso ? 'NOTE PERSONNELLE OÏHAN (à intégrer naturellement) :\n' + noteP
       }
     </style>
   </head>`)
+    const blob = new Blob([htmlWithPrint], { type: 'text/html;charset=utf-8' })
+    const url = URL.createObjectURL(blob)
     const iframe = document.createElement('iframe')
     iframe.style.cssText = 'position:fixed;right:0;bottom:0;width:0;height:0;border:none;'
+    iframe.src = url
     document.body.appendChild(iframe)
-    iframe.contentDocument.open()
-    iframe.contentDocument.write(htmlWithPrint)
-    iframe.contentDocument.close()
-    await new Promise(r => setTimeout(r, 1500))
-    iframe.contentWindow.print()
-    setTimeout(() => document.body.removeChild(iframe), 2000)
+    iframe.onload = () => {
+      setTimeout(() => {
+        iframe.contentWindow.print()
+        setTimeout(() => { document.body.removeChild(iframe); URL.revokeObjectURL(url) }, 2000)
+      }, 500)
+    }
   }
 
   async function envoyer() {
@@ -493,6 +475,9 @@ ${notePerso ? 'NOTE PERSONNELLE OÏHAN (à intégrer naturellement) :\n' + noteP
 
   const proprio = proprietaires.find(p => p.id === selectedPropId)
   const biensActifs = (proprio?.bien || []).filter(b => b.listed && b.agence === 'dcb')
+  const isMaite = (proprio?.bien || []).some(b => b.groupe_facturation === 'MAITE')
+  const maiteIds = (proprio?.bien || []).filter(b => b.groupe_facturation === 'MAITE').map(b => b.id)
+  const biensActifsMaite = biensActifs.filter(b => b.groupe_facturation === 'MAITE')
   const propsFiltres = bienIdsActifs === null
     ? proprietaires
     : proprietaires.filter(p => (p.bien || []).some(b => bienIdsActifs.has(b.id)))
@@ -508,8 +493,9 @@ ${notePerso ? 'NOTE PERSONNELLE OÏHAN (à intégrer naturellement) :\n' + noteP
   const st = STATUT_STYLES[statut]
 
   function DeltaBadge({ rawN, rawN1 }) {
-    if (rawN1 === undefined || rawN1 === null) return null
-    const delta = Math.round(((rawN - rawN1) / (rawN1 || 1)) * 100)
+    if (rawN1 === undefined || rawN1 === null || rawN1 === 0)
+      return <span style={{ fontSize: '0.68em', marginLeft: 4, color: '#9C8E7D' }}>N/A</span>
+    const delta = Math.round(((rawN - rawN1) / rawN1) * 100)
     const pos = delta >= 0
     return (
       <span style={{ fontSize: '0.68em', marginLeft: 4, color: pos ? '#059669' : '#DC2626', fontWeight: 600 }}>
@@ -519,11 +505,11 @@ ${notePerso ? 'NOTE PERSONNELLE OÏHAN (à intégrer naturellement) :\n' + noteP
   }
 
   const kpiCards = !data ? [] : [
-    { val: data.kpis.nbResas,             lbl: 'Réservations',      rawN: data.kpis.nbResas,       rawN1: data.kpisN1.nbResas,      dispN1: data.kpisN1.nbResas },
-    { val: fmt(data.kpis.caHeb),          lbl: 'CA Hébergement',    rawN: data.kpis.caHeb,         rawN1: data.kpisN1.caHeb,        dispN1: fmt(data.kpisN1.caHeb) },
+    { val: data.kpis.nbResas,             lbl: 'Réservations',      rawN: data.kpis.nbResas,       rawN1: data.kpisN1.nbResas || 0, dispN1: data.kpisN1.nbResas > 0 ? data.kpisN1.nbResas : null },
+    { val: fmt(data.kpis.caHeb),          lbl: 'CA Hébergement',    rawN: data.kpis.caHeb,         rawN1: data.kpisN1.caHeb || 0,   dispN1: data.kpisN1.caHeb > 0 ? fmt(data.kpisN1.caHeb) : null },
     { val: fmt(data.kpis.loyTotal),       lbl: 'Reversement',       rawN: null,                    rawN1: null,                     dispN1: null },
-    { val: `${data.kpis.nuitsOccupees}/${data.kpis.nuitsDispos}`, lbl: 'Nuits occ./dispo.', rawN: data.kpis.nuitsOccupees, rawN1: data.kpisN1.nuitsOccupees, dispN1: data.kpisN1.nuitsOccupees },
-    { val: `${data.kpis.tauxOcc} %`,      lbl: "Taux d'occupation", rawN: data.kpis.tauxOcc,       rawN1: data.kpisN1.tauxOcc,      dispN1: `${data.kpisN1.tauxOcc} %` },
+    { val: `${data.kpis.nuitsOccupees}/${data.kpis.nuitsDispos}`, lbl: 'Nuits occ./dispo.', rawN: data.kpis.nuitsOccupees, rawN1: data.kpisN1.nuitsOccupees || 0, dispN1: data.kpisN1.nuitsOccupees > 0 ? data.kpisN1.nuitsOccupees : null },
+    { val: `${data.kpis.tauxOcc} %`,      lbl: "Taux d'occupation", rawN: data.kpis.tauxOcc,       rawN1: data.kpisN1.tauxOcc || 0, dispN1: data.kpisN1.tauxOcc > 0 ? `${data.kpisN1.tauxOcc} %` : null },
     { val: `${data.kpis.dureeMoy} nuits`, lbl: 'Durée moyenne',     rawN: null,                    rawN1: null,                     dispN1: null },
     { val: data.noteMoisMoy ? `★ ${data.noteMoisMoy}` : '—', lbl: 'Avis du mois',  rawN: null, rawN1: null, dispN1: `${data.reviews?.length || 0} avis` },
     { val: data.noteGlobaleMoy ? `★ ${data.noteGlobaleMoy}` : '—', lbl: 'Note globale', rawN: null, rawN1: null, dispN1: `${data.nbReviewsGlobal || 0} avis` },
@@ -561,10 +547,20 @@ ${notePerso ? 'NOTE PERSONNELLE OÏHAN (à intégrer naturellement) :\n' + noteP
             )
           })}
         </select>
-        {biensActifs.length > 1 && (
+        {isMaite && (
+          <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+            {[['chambre', 'Par chambre'], ['maison', 'Maison entière'], ['global', 'Global']].map(([val, lbl]) => (
+              <label key={val} style={{ display: 'flex', alignItems: 'center', gap: 4, cursor: 'pointer', fontSize: '0.85em', fontWeight: modeMaite === val ? 700 : 400, color: modeMaite === val ? 'var(--brand)' : 'var(--text)' }}>
+                <input type="radio" name="modeMaite" value={val} checked={modeMaite === val} onChange={() => setModeMaite(val)} style={{ accentColor: 'var(--brand)' }} />
+                {lbl}
+              </label>
+            ))}
+          </div>
+        )}
+        {modeMaite !== 'global' && biensActifs.length > 1 && (
           <select value={selectedBienId} onChange={e => setSelectedBienId(e.target.value)}
             style={{ padding: '8px 12px', border: '1px solid var(--border)', borderRadius: 8, fontSize: '0.95em', background: '#fff', color: 'var(--text)', minWidth: 200 }}>
-            {biensActifs.map(b => <option key={b.id} value={b.id}>{b.hospitable_name}</option>)}
+            {(isMaite && modeMaite !== 'global' ? biensActifsMaite : biensActifs).map(b => <option key={b.id} value={b.id}>{b.hospitable_name}</option>)}
           </select>
         )}
       </div>
@@ -657,7 +653,7 @@ ${notePerso ? 'NOTE PERSONNELLE OÏHAN (à intégrer naturellement) :\n' + noteP
                             <td style={{ padding: '6px 8px', color: '#9C8E7D', fontFamily: 'monospace' }}>{r.code}</td>
                             <td style={{ padding: '6px 8px', color: 'var(--text)' }}>{r.guest_name || '—'}</td>
                             <td style={{ padding: '6px 8px', color: '#4A3728', whiteSpace: 'nowrap' }}>{r.arrival_date ? r.arrival_date.split('-').reverse().join('/') : '—'}</td>
-                            <td style={{ padding: '6px 8px' }}><PlatformBadge platform={r.platform} /></td>
+                            <td style={{ padding: '6px 8px' }}>{getCanal(r.platform, r.owner_stay)}</td>
                             <td style={{ padding: '6px 8px', textAlign: 'right', color: '#4A3728' }}>{r.nights || '—'}</td>
                             <td style={{ padding: '6px 8px', textAlign: 'right', color: 'var(--text)' }}>{fmt(r.fin_revenue)}</td>
                             <td style={{ padding: '6px 8px', textAlign: 'right', color: '#D97706' }}>{v.HON  ? fmt(v.HON.montant_ttc)  : '—'}</td>
@@ -802,10 +798,7 @@ ${notePerso ? 'NOTE PERSONNELLE OÏHAN (à intégrer naturellement) :\n' + noteP
 
       {/* Modal aperçu */}
       {previewOpen && data && (() => {
-        const html = genererRapportHTML(data.proprio, mois, {
-          kpis: data.kpis, resas: data.resas, reviews: data.reviews,
-          notes: [{ bienName: data.bien?.hospitable_name, note }],
-        })
+        const html = genererRapportHTML(data.proprio, mois, buildRapportData())
         return (
           <div style={{ position: 'fixed', inset: 0, background: 'rgba(44,36,22,0.6)', zIndex: 1000, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 20 }}
             onClick={() => setPreviewOpen(false)}>

@@ -95,7 +95,7 @@ export async function getKPIsMois(proprietaireId, mois) {
 // ─────────────────────────────────────────
 
 export function genererRapportHTML(proprio, mois, data) {
-  const { kpis, resas, reviews, notes, bien, llmAnalyse, kpisN1, noteMoisMoy, noteGlobaleMoy, nbReviewsGlobal } = data
+  const { kpis, resas, reviews, notes, bien, llmAnalyse, kpisN1, noteMoisMoy, noteGlobaleMoy, nbReviewsGlobal, noteContexte, noteReco, tauxCommission } = data
   const [year, monthIdx] = mois.split('-')
   const MOIS_FR = ['janvier','février','mars','avril','mai','juin','juillet','août','septembre','octobre','novembre','décembre']
   const moisLabel = MOIS_FR[parseInt(monthIdx) - 1] + ' ' + year
@@ -213,7 +213,7 @@ export function genererRapportHTML(proprio, mois, data) {
       <div style="background:#2C2416;padding:18px 16px;text-align:center;border-left:1px solid #3D3020;border-right:1px solid #3D3020;">
         <div style="font-size:0.65em;color:#9C8E7D;letter-spacing:1.5px;text-transform:uppercase;margin-bottom:6px;">Honoraires DCB</div>
         <div style="font-size:1.3em;font-weight:700;color:#CC9933;">${fmt(kpis.caHeb - kpis.loyTotal)}</div>
-        <div style="font-size:0.7em;color:#6B5E4A;margin-top:3px;">gestion & services</div>
+        <div style="font-size:0.7em;color:#6B5E4A;margin-top:3px;">${tauxCommission ? tauxCommission + '% TTC' : 'gestion & services'}</div>
       </div>
       <div style="background:#2C2416;padding:18px 16px;text-align:center;">
         <div style="font-size:0.65em;color:#9C8E7D;letter-spacing:1.5px;text-transform:uppercase;margin-bottom:6px;">Reversement net</div>
@@ -279,11 +279,23 @@ export function genererRapportHTML(proprio, mois, data) {
     ${reviewsHTML}
   </div>` : ''}
 
-  ${noteHTML ? `
+  ${noteContexte ? `
+  <!-- CONTEXTE & TENDANCES -->
+  <div class="section">
+    <div class="section-title">Contexte & tendances</div>
+    <p style="margin:0;color:#2C2416;line-height:1.7;font-size:0.95em;">${noteContexte.replace(/\n/g, '<br/>')}</p>
+  </div>` : noteHTML ? `
   <!-- NOTE MARCHÉ -->
   <div class="section">
     <div class="section-title">Note de marché</div>
     ${noteHTML}
+  </div>` : ''}
+
+  ${noteReco ? `
+  <!-- RECOMMANDATIONS -->
+  <div class="section" style="background:#FDFAF7;">
+    <div class="section-title">Recommandations DCB</div>
+    <p style="margin:0;color:#2C2416;line-height:1.7;font-size:0.95em;">${noteReco.replace(/\n/g, '<br/>')}</p>
   </div>` : ''}
 
   <div class="footer">
