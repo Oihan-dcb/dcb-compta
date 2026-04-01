@@ -447,7 +447,7 @@ PERFORMANCE FAIBLE :
 - Toujours abordée si présente
 - Ton factuel et constructif
 - Donner des éléments d'explication
-- Montrer implicitement que la situation est pilotée`
+- Montrer implicitement que la situation est pilotée\n\nSTYLE RÉDACTIONNEL (TRÈS IMPORTANT) :\n- Utiliser un vocabulaire professionnel et légèrement éditorial\n  (ex : "stabilité de bon aloi", "dynamique maîtrisée", "phase de transition", "trajectoire solide")\n- Varier les formulations pour éviter un style répétitif ou mécanique\n- Donner une sensation de lecture fluide et qualitative,\n  proche d'un rapport de gestion patrimoniale\n- Éviter les phrases plates ou trop simples\n- Préférer les constructions subtiles aux évidences`
 
     async function _genererAnalyse() {
       const prompt = `Bien : ${bienNom} — ${moisLabel}
