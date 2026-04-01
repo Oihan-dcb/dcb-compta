@@ -270,15 +270,21 @@ export function genererRapportHTML(proprio, mois, data) {
     <img src="${heroSrc}"
       style="position:absolute;top:0;left:0;width:100%;height:230px;object-fit:cover;object-position:center 35%;display:block;-webkit-print-color-adjust:exact !important;print-color-adjust:exact !important;"/>
     <div style="position:absolute;inset:0;background:linear-gradient(to bottom,rgba(20,14,8,0.15) 0%,rgba(20,14,8,0.72) 100%);-webkit-print-color-adjust:exact !important;print-color-adjust:exact !important;"></div>
-    <!-- Logo + titre -->
-    <div style="position:absolute;top:0;left:0;right:0;padding:14px 24px;text-align:center;">
-      <img src="${logoSrc}"
-        style="height:90px;display:block;margin-left:auto;margin-right:auto;margin-bottom:8px;-webkit-print-color-adjust:exact !important;print-color-adjust:exact !important;" onerror="this.style.display='none'"/>
-      <div style="font-size:9px;letter-spacing:0.05em;text-transform:uppercase;color:rgba(212,196,176,0.9);margin-bottom:2px;">Rapport mensuel · ${moisLabel}</div>
-      <div style="font-size:14px;font-weight:300;color:#fff;letter-spacing:0.04em;">${proprio?.nom || ''} — ${bienName}</div>
-    </div>
-    <!-- KPIs financiers -->
-    <div style="position:absolute;bottom:0;left:0;right:0;display:flex;justify-content:space-around;background:linear-gradient(to top,rgba(20,14,8,0.85) 0%,transparent 100%);padding:16px 24px 14px;">
+    <!-- Logo gauche + Titre droite + KPIs financiers -->
+    <div style="position:absolute;bottom:0;left:0;right:0;background:linear-gradient(to top,rgba(20,14,8,0.88) 0%,transparent 100%);">
+      <div style="display:flex;align-items:center;justify-content:space-between;padding:18px 28px 14px;">
+        <!-- GAUCHE : Logo -->
+        <div style="flex:0 0 auto;">
+          <img src="${logoSrc}"
+            style="height:80px;display:block;-webkit-print-color-adjust:exact;print-color-adjust:exact;" onerror="this.style.display='none'"/>
+        </div>
+        <!-- DROITE : Titre + identité -->
+        <div style="flex:1;text-align:right;padding-left:20px;">
+          <div style="font-size:9px;letter-spacing:0.05em;text-transform:uppercase;color:rgba(212,196,176,0.85);margin-bottom:4px;">Rapport mensuel · ${moisLabel}</div>
+          <div style="font-size:15px;font-weight:400;color:#fff;letter-spacing:0.02em;">${proprio?.nom || ''} — ${bienName}</div>
+        </div>
+      </div>
+      <div style="display:flex;justify-content:space-around;padding:0 24px 14px;">
       <div style="text-align:center;">
         <div style="font-size:8px;letter-spacing:0.04em;text-transform:uppercase;color:rgba(212,196,176,0.8);margin-bottom:3px;">Base commissionnable</div>
         <div style="font-size:18px;font-weight:400;color:#fff;">${fmt(kpis.caHeb)}</div>
@@ -292,6 +298,7 @@ export function genererRapportHTML(proprio, mois, data) {
       <div style="text-align:center;">
         <div style="font-size:8px;letter-spacing:0.04em;text-transform:uppercase;color:rgba(212,196,176,0.8);margin-bottom:3px;">Reversement net</div>
         <div style="font-size:18px;font-weight:400;color:#fff;">${fmt(kpis.loyTotal)}</div>
+      </div>
       </div>
     </div>
   </div>
