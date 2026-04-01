@@ -470,7 +470,7 @@ Données disponibles :
 - Note voyageurs : ${data.noteMoisMoy ? data.noteMoisMoy + '/5 (' + data.reviews.length + ' avis)' : 'aucun avis ce mois'}
 
 Avis voyageurs :
-${data.reviews.slice(0, 5).map(r => '- ' + r.rating + '/5 : "' + r.comment?.substring(0, 150) + '"').join('\n') || 'Aucun avis ce mois'}
+${data.reviews.map(r => '- ' + r.rating + '/5 : "' + (r.comment || '') + '"').join('\n') || 'Aucun avis ce mois'}
 
 ${notePerso ? 'NOTE OÏHAN :\n' + notePerso : ''}
 
@@ -875,11 +875,11 @@ FORMAT :
                 <div style={{ fontSize: '0.8em', fontWeight: 600, color: '#9C8E7D', marginBottom: 10, textTransform: 'uppercase', letterSpacing: 0.5 }}>
                   Avis reçus ({data.reviews.length}) — Moyenne {(data.reviews.reduce((s, r) => s + (r.rating || 0), 0) / data.reviews.length).toFixed(1)}/5
                 </div>
-                {data.reviews.slice(0, 5).map(r => (
+                {data.reviews.map(r => (
                   <div key={r.id} style={{ display: 'flex', gap: 10, alignItems: 'flex-start', padding: '8px 0', borderTop: '1px solid var(--border)' }}>
                     <span style={{ color: 'var(--brand)', whiteSpace: 'nowrap' }}>{'★'.repeat(Math.round(r.rating || 0))}</span>
                     <span style={{ fontSize: '0.85em', color: '#4A3728', fontStyle: 'italic', flex: 1 }}>
-                      "{r.comment?.substring(0, 120)}{r.comment?.length > 120 ? '…' : ''}"
+                      "{r.comment || ''}"
                     </span>
                     <span style={{ fontSize: '0.78em', color: '#9C8E7D', whiteSpace: 'nowrap' }}>{r.reviewer_name || ''}</span>
                   </div>

@@ -155,10 +155,10 @@ export function genererRapportHTML(proprio, mois, data) {
     : '<p style="color:#9C8E7D;font-style:italic;font-size:0.9em;margin:8px 0 0;">Aucune réservation ce mois.</p>'
 
   const reviewsHTML = reviews.length
-    ? reviews.slice(0, 3).map(r => `
+    ? reviews.map(r => `
       <div class="avis-block" style="border-left:3px solid #CC9933;padding:8px 14px;margin-bottom:8px;background:#F7F4EF;border-radius:0 6px 6px 0;">
         <div style="color:#CC9933;font-size:1em;margin-bottom:3px;">${'&#9733;'.repeat(Math.round(r.rating || 0))}${'&#9734;'.repeat(5 - Math.round(r.rating || 0))}</div>
-        <p style="margin:0;color:#2C2416;font-style:italic;line-height:1.5;font-size:13px;">«&nbsp;${r.comment?.substring(0, 180) || ''}${(r.comment?.length || 0) > 180 ? '…' : ''}&nbsp;»</p>
+        <p style="margin:0;color:#2C2416;font-style:italic;line-height:1.5;font-size:13px;">«&nbsp;${r.comment || ''}&nbsp;»</p>
       </div>`).join('')
     : '<p style="color:#9C8E7D;font-style:italic;font-size:0.9em;">Aucun avis reçu ce mois.</p>'
 
