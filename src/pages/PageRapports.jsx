@@ -404,18 +404,17 @@ export default function PageRapports() {
       .not('final_status', 'in', '("cancelled","not_accepted","declined","expired")')
       .order('arrival_date')
 
-    async function _genererAnalyse() {
-      const sys = `Tu es Oïhan, gérant de Destination Côte Basque. Tu rédiges un compte-rendu mensuel court et personnalisé pour le propriétaire du bien que tu gères à Biarritz. Ton ton est professionnel, humain et direct. Tu interprètes les chiffres, tu ne les listes pas. 3 à 4 paragraphes fluides, sans titres, sans bullet points, sans jargon comptable. Si les résultats sont en retrait, tu l'expliques sobrement sans alarmer. Tu écris comme une vraie personne qui connaît le bien et son propriétaire.
+    const SYSTEM_PROMPT = `Tu es Oïhan, gérant de Destination Côte Basque.\nTu rédiges des notes mensuelles internes sur les biens que tu gères.\n\nRÈGLES ABSOLUES — à respecter dans les 3 blocs sans exception :\n\nTON ET FORME :\n- Pas de "Bonjour", "Cher", "Madame", "Monsieur" — aucune formule d'adresse\n- Pas de "À bientôt", "Cordialement", "Oïhan" — aucune signature ni formule de clôture\n- Jamais "vous", "votre", "tu", "ton" — parler du bien à la 3ème personne\n- Utiliser : "l'appartement", "le bien", le nom du bien, "il", "les réservations"\n- Jamais "votre taux", "votre reversement" → "le reversement", "le taux d'occupation"\n- Jamais "je vous signale", "je dois vous informer" → information factuelle directe\n\nCONTENU :\n- Ne jamais inventer d'équipements ou caractéristiques non listés dans les données fournies\n- Ne pas répéter une information déjà présente dans un autre bloc du même rapport\n- Ne pas reformuler différemment la même idée si elle est dans un autre bloc\n- Les infos de la section "NOTE OÏHAN" ne doivent apparaître que dans UN SEUL bloc\n\nSTYLE :\n- Paragraphes courts et denses\n- Pas de titres, pas de #, pas de ---, pas de bullet points\n- Le gras **mot** est autorisé uniquement pour souligner un mot dans un paragraphe\n- Français naturel et professionnel\n- Maximum 3-4 paragraphes par bloc`
 
-FORMAT STRICT :
-- Paragraphes simples séparés par une ligne vide
-- Pas de # ni de titres markdown
-- Pas de --- séparateurs
-- Le gras **mot** est autorisé uniquement pour mettre en valeur un mot dans un paragraphe, jamais comme titre
-- Pas de signe : après du gras en début de phrase`
-      const prompt = `Bien : "${data.bien?.hospitable_name}"
-Propriétaire : ${data.proprio?.nom}
-Mois : ${moisLabel}
+    const [m1yr, m1mo] = m1.split('-').map(Number)
+    const [m2yr, m2mo] = m2.split('-').map(Number)
+    const nextMoisLabel = MOIS_FR[m1mo - 1] + ' ' + m1yr
+    const nextNextMoisLabel = MOIS_FR[m2mo - 1] + ' ' + m2yr
+    const totalNuitsFutures = (resasFutures || []).reduce((s, r) => s + (r.nights || 0), 0)
+    const meteoPrevisions = meteoFutur || 'Prévisions non disponibles.'
+
+    async function _genererAnalyse() {
+      const prompt = `Bien : ${data.bien?.hospitable_name} — ${moisLabel}
 
 PERFORMANCE DU MOIS :
 - Base commissionnable : ${fmt(data.kpis.caHeb)}
@@ -429,11 +428,12 @@ PERFORMANCE DU MOIS :
 AVIS VOYAGEURS :
 ${data.reviews.slice(0, 5).map(r => `- ${r.rating}/5 : "${r.comment?.substring(0, 150)}"`).join('\n') || 'Aucun avis ce mois'}
 
-${notePerso ? 'NOTE PERSONNELLE OÏHAN :\n' + notePerso : ''}
+${notePerso ? 'NOTE OÏHAN (à intégrer dans ce bloc uniquement — ne pas répéter dans les autres blocs) :\n' + notePerso : ''}
 
-IMPORTANT : Ne pas mettre de titres, de # ni de --- dans le texte. Pas de ligne du type '# Titre', '## Sous-titre', '---' ou '**Titre :**' en début de paragraphe. Le texte doit être des paragraphes purs sans structure markdown apparente.`
+FORMAT : Pas de formule d'introduction ni de conclusion.
+Commencer directement par l'analyse. Ne pas terminer par une phrase de transition vers les mois suivants (ce sera dans le bloc Perspectives).`
       const { data: llmData, error: llmErr } = await Promise.race([
-        supabase.functions.invoke('llm-analyse', { body: { prompt, system: sys } }),
+        supabase.functions.invoke('llm-analyse', { body: { prompt, system: SYSTEM_PROMPT } }),
         new Promise((_, reject) => setTimeout(() => reject(new Error('timeout')), 30000)),
       ])
       if (llmErr) throw llmErr
@@ -448,16 +448,7 @@ IMPORTANT : Ne pas mettre de titres, de # ni de --- dans le texte. Pas de ligne 
     }
 
     async function _genererContexte() {
-      const sys = `Tu es Oïhan, gérant de Destination Côte Basque. Tu rédiges une note de contexte marché concise pour le propriétaire d'un bien à Biarritz. Ton professionnel et direct. 2 à 3 paragraphes fluides. Tu décris la météo du mois passé et son impact sur la location, le contexte saisonnier, sans inventer de chiffres.
-
-FORMAT STRICT :
-- Paragraphes simples séparés par une ligne vide
-- Pas de # ni de titres markdown
-- Pas de --- séparateurs
-- Le gras **mot** est autorisé uniquement pour mettre en valeur un mot dans un paragraphe, jamais comme titre
-- Pas de signe : après du gras en début de phrase`
-      const prompt = `Bien : "${data.bien?.hospitable_name}"
-Mois : ${moisLabel}
+      const prompt = `Bien : ${data.bien?.hospitable_name} — ${moisLabel}
 
 MÉTÉO BIARRITZ (${moisLabel}) :
 ${meteoResume}
@@ -465,11 +456,12 @@ ${meteoResume}
 TAUX D'OCCUPATION : ${data.kpis.tauxOcc}% (N-1 : ${data.kpisN1?.tauxOcc ?? '?'}%)
 RÉSERVATIONS : ${data.kpis.nbResas} (N-1 : ${data.kpisN1?.nbResas ?? '?'})
 
-${notePerso ? 'CONTEXTE PARTICULIER :\n' + notePerso : ''}
-
-IMPORTANT : Ne pas mettre de titres, de # ni de --- dans le texte. Pas de ligne du type '# Titre', '## Sous-titre', '---' ou '**Titre :**' en début de paragraphe. Le texte doit être des paragraphes purs sans structure markdown apparente.`
+FORMAT : Pas de formule d'introduction ni de conclusion.
+Commencer directement par le contexte météo/marché.
+NE PAS reprendre les infos de la note Oïhan — elles ont déjà été intégrées dans le bloc Analyse.
+NE PAS répéter les chiffres de performance déjà dans le bloc Analyse.`
       const { data: llmData, error: llmErr } = await Promise.race([
-        supabase.functions.invoke('llm-analyse', { body: { prompt, system: sys } }),
+        supabase.functions.invoke('llm-analyse', { body: { prompt, system: SYSTEM_PROMPT } }),
         new Promise((_, reject) => setTimeout(() => reject(new Error('timeout')), 30000)),
       ])
       if (llmErr) throw llmErr
@@ -484,28 +476,29 @@ IMPORTANT : Ne pas mettre de titres, de # ni de --- dans le texte. Pas de ligne 
     }
 
     async function _genererTendances() {
-      const sys = `Tu es Oïhan, gérant de Destination Côte Basque. Tu rédiges une note de perspectives pour M+1 et M+2 pour le propriétaire d'un bien à Biarritz. Ton professionnel, concret et rassurant. 2 paragraphes max. Tu commentes les réservations à venir et les prévisions météo disponibles.
+      const prompt = `Bien : ${data.bien?.hospitable_name} — Perspectives ${nextMoisLabel} / ${nextNextMoisLabel}
+
+RÉSERVATIONS EN PORTEFEUILLE (M+1/M+2) :
+${resasFutures?.length > 0
+  ? resasFutures.map(r => '- ' + r.arrival_date + ' → ' + r.departure_date + ' (' + r.nights + 'n, ' + r.platform + ')').join('\n')
+  : 'Aucune réservation enregistrée pour les 2 prochains mois'}
+Total : ${resasFutures?.length || 0} réservation(s), ${totalNuitsFutures} nuits couvertes
+
+PRÉVISIONS MÉTÉO PROCHAINES SEMAINES :
+${meteoPrevisions}
+
+CE QUI A DÉJÀ ÉTÉ DIT dans les blocs précédents (NE PAS répéter) :
+- Analyse : "${llmAnalyse?.substring(0, 250) || 'non généré'}"
+- Contexte : "${llmContexte?.substring(0, 250) || 'non généré'}"
 
 FORMAT STRICT :
-- Paragraphes simples séparés par une ligne vide
-- Pas de # ni de titres markdown
-- Pas de --- séparateurs
-- Le gras **mot** est autorisé uniquement pour mettre en valeur un mot dans un paragraphe, jamais comme titre
-- Pas de signe : après du gras en début de phrase`
-      const prompt = `Bien : "${data.bien?.hospitable_name}"
-Mois de référence : ${moisLabel}
-
-RÉSERVATIONS À VENIR (M+1/M+2) :
-${resasFutures?.length > 0
-  ? resasFutures.map(r => `- ${r.arrival_date} → ${r.departure_date} (${r.nights}n, ${((r.fin_revenue || 0) / 100).toFixed(0)}€, ${r.platform})`).join('\n')
-  : 'Aucune réservation enregistrée pour les 2 prochains mois'}
-
-${meteoFutur ? 'MÉTÉO PRÉVISIONNEL :\n' + meteoFutur : ''}
-${notePerso ? '\nCONTEXTE PARTICULIER :\n' + notePerso : ''}
-
-IMPORTANT : Ne pas mettre de titres, de # ni de --- dans le texte. Pas de ligne du type '# Titre', '## Sous-titre', '---' ou '**Titre :**' en début de paragraphe. Le texte doit être des paragraphes purs sans structure markdown apparente.`
+- Parler des réservations à la 3ème personne : "les réservations sont en portefeuille", "le carnet se remplit"
+- Jamais "vous avez", "vous pouvez compter" → "le bien affiche", "le portefeuille compte"
+- Factuel et rassurant, sans redire ce qui est déjà dans les blocs précédents
+- 2-3 paragraphes max
+- Pas de formule d'introduction ni de signature finale`
       const { data: llmData, error: llmErr } = await Promise.race([
-        supabase.functions.invoke('llm-analyse', { body: { prompt, system: sys } }),
+        supabase.functions.invoke('llm-analyse', { body: { prompt, system: SYSTEM_PROMPT } }),
         new Promise((_, reject) => setTimeout(() => reject(new Error('timeout')), 30000)),
       ])
       if (llmErr) throw llmErr
@@ -518,7 +511,6 @@ IMPORTANT : Ne pas mettre de titres, de # ni de --- dans le texte. Pas de ligne 
         )
       }
     }
-
     const cleanLlmText = (text) => text
       .replace(/^#+\s+.+$/gm, '')
       .replace(/^---+$/gm, '')
