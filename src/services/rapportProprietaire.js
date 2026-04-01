@@ -277,7 +277,7 @@ export function genererRapportHTML(proprio, mois, data) {
       <div style="font-size:16px;font-weight:400;color:#fff;letter-spacing:0.02em;white-space:nowrap;">${proprio?.nom || ''} — ${bienName}</div>
     </div>
     <!-- Logo plus bas et plus grand -->
-    <div style="position:absolute;bottom:-22px;left:0;right:0;text-align:center;">
+    <div style="position:absolute;bottom:-2px;left:0;right:0;text-align:center;">
       <img src="${logoSrc}"
         style="height:200px;display:block;margin:0 auto;-webkit-print-color-adjust:exact;print-color-adjust:exact;" onerror="this.style.display='none'"/>
     </div>
