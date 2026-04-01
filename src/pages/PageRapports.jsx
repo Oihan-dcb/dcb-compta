@@ -60,10 +60,9 @@ export default function PageRapports() {
       })
 
     supabase.from('reservation').select('mois_comptable').then(({ data: res }) => {
-      if (res) {
-        const uniq = [...new Set(res.map(d => d.mois_comptable).filter(Boolean))].sort((a, b) => b.localeCompare(a))
-        if (uniq.length) setMoisDispos(uniq)
-      }
+      const uniq = [...new Set([moisCourant, ...(res || []).map(d => d.mois_comptable).filter(Boolean)])]
+        .sort((a, b) => b.localeCompare(a))
+      setMoisDispos(uniq)
     })
   }, [])
 

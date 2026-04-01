@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 
 export const MOIS_FR = ['Jan','Fév','Mar','Avr','Mai','Jun','Jul','Aoû','Sep','Oct','Nov','Déc']
 
@@ -12,6 +12,7 @@ export default function MoisSelector({ mois, setMois, moisDispos }) {
   }
   const annees = Object.keys(parAnnee).sort((a, b) => b - a)
   const [anneeActive, setAnneeActive] = useState(() => mois.split('-')[0])
+  useEffect(() => { setAnneeActive(mois.split('-')[0]) }, [mois])
   const [year, monthIdx] = mois.split('-')
 
   return (
