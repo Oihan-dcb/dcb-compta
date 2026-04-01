@@ -279,7 +279,7 @@ export function genererRapportHTML(proprio, mois, data) {
     <!-- Logo plus bas et plus grand -->
     <div style="position:absolute;bottom:8px;left:0;right:0;text-align:center;">
       <img src="${logoSrc}"
-        style="height:188px;display:block;margin:0 auto;-webkit-print-color-adjust:exact;print-color-adjust:exact;" onerror="this.style.display='none'"/>
+        style="height:200px;display:block;margin:0 auto;-webkit-print-color-adjust:exact;print-color-adjust:exact;" onerror="this.style.display='none'"/>
     </div>
     <div style="position:absolute;bottom:0;left:0;right:0;background:linear-gradient(to top,rgba(20,14,8,0.88) 0%,transparent 100%);">
       <div style="display:flex;justify-content:space-around;padding:10px 24px 14px;">
