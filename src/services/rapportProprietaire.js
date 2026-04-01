@@ -207,10 +207,33 @@ export function genererRapportHTML(proprio, mois, data) {
   @page { size: A4 portrait; margin: 8mm 6mm; }
   @media print {
     * { -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important; }
-    body { margin: 0; padding: 0; font-size: 12px; }
+    body { margin: 0; padding: 0; }
     .container { max-width:100% !important; }
     img { max-width:100% !important; }
-    .kpi-grid, table, .avis-block { page-break-inside: avoid; }
+    .section-kpis,
+    .section-synthese,
+    .section-analyse,
+    .section-sejours,
+    .section-avis,
+    .section-contexte,
+    .section-perspectives,
+    table,
+    .avis-block,
+    .kpi-grid {
+      page-break-inside: avoid;
+      break-inside: avoid;
+    }
+    .section-sejours,
+    .section-avis {
+      page-break-before: auto;
+      break-before: auto;
+    }
+    p {
+      page-break-inside: avoid;
+      break-inside: avoid;
+      orphans: 3;
+      widows: 3;
+    }
   }
 </style>
 </head>
@@ -218,7 +241,7 @@ export function genererRapportHTML(proprio, mois, data) {
 <div class="container">
 
   <!-- HERO + KPIs financiers intégrés -->
-  <div style="position:relative;height:230px;overflow:hidden;">
+  <div class="section-synthese" style="position:relative;height:230px;overflow:hidden;">
     <img src="https://omuncchvypbtxkpalwcr.supabase.co/storage/v1/object/public/rapport-assets/hero.jpg"
       style="width:100%;height:100%;object-fit:cover;object-position:center 35%;display:block;"/>
     <div style="position:absolute;inset:0;background:linear-gradient(to bottom,rgba(237,235,229,0.12) 0%,rgba(44,36,22,0.45) 45%,rgba(20,14,8,0.90) 100%);"></div>
@@ -249,7 +272,7 @@ export function genererRapportHTML(proprio, mois, data) {
   </div>
 
   <!-- KPIs -->
-  <div class="section">
+  <div class="section section-kpis">
     <div class="section-title">Indicateurs du mois</div>
     <div class="kpi-grid">
       <div class="kpi">
@@ -284,7 +307,7 @@ export function genererRapportHTML(proprio, mois, data) {
 
   ${llmHTML ? `
   <!-- ANALYSE DU MOIS -->
-  <div class="section">
+  <div class="section section-analyse">
     <div class="section-title">Analyse du mois</div>
     <div style="border-left:3px solid #CC9933;padding-left:18px;">
       ${llmHTML}
@@ -292,38 +315,38 @@ export function genererRapportHTML(proprio, mois, data) {
   </div>` : ''}
 
   <!-- RÉSERVATIONS -->
-  <div class="section">
+  <div class="section section-sejours">
     <div class="section-title">Séjours du mois (${(resas || []).length})</div>
     ${resasHTML}
   </div>
 
   ${reviews.length ? `
   <!-- AVIS -->
-  <div class="section">
+  <div class="section section-avis">
     <div class="section-title">Avis voyageurs (${reviews.length}${noteMoisMoy ? ' · ★ ' + noteMoisMoy + '/5' : ''})</div>
     ${reviewsHTML}
   </div>` : ''}
 
   ${llmContexte ? `
   <!-- CONTEXTE MARCHÉ -->
-  <div class="section" style="background:#F7F4EF;">
+  <div class="section section-contexte" style="background:#F7F4EF;">
     <div class="section-title">Contexte marché</div>
     <p style="margin:0 0 10px;line-height:1.7;font-size:13px;color:#2C2416;">${cleanForPdf(llmContexte)}</p>
   </div>` : noteContexte ? `
   <!-- CONTEXTE -->
-  <div class="section">
+  <div class="section section-contexte">
     <div class="section-title">Contexte & tendances</div>
     <p style="margin:0;color:#2C2416;line-height:1.7;font-size:0.95em;">${noteContexte.replace(/\n/g, '<br/>')}</p>
   </div>` : noteHTML ? `
   <!-- NOTE MARCHÉ -->
-  <div class="section">
+  <div class="section section-contexte">
     <div class="section-title">Note de marché</div>
     ${noteHTML}
   </div>` : ''}
 
   ${llmTendances ? `
   <!-- PERSPECTIVES -->
-  <div class="section">
+  <div class="section section-perspectives">
     <div class="section-title">Perspectives M+1/M+2</div>
     <div style="border-left:3px solid #CC9933;padding-left:18px;">
       <p style="margin:0 0 10px;line-height:1.7;font-size:13px;color:#2C2416;">${cleanForPdf(llmTendances)}</p>
@@ -332,7 +355,7 @@ export function genererRapportHTML(proprio, mois, data) {
 
   ${noteReco ? `
   <!-- RECOMMANDATIONS -->
-  <div class="section" style="background:#FDFAF7;">
+  <div class="section section-synthese" style="background:#FDFAF7;">
     <div class="section-title">Recommandations DCB</div>
     <p style="margin:0;color:#2C2416;line-height:1.7;font-size:0.95em;">${noteReco.replace(/\n/g, '<br/>')}</p>
   </div>` : ''}
