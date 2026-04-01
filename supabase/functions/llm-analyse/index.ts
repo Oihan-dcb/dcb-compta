@@ -6,8 +6,15 @@ const corsHeaders = {
 Deno.serve(async (req) => {
   if (req.method === 'OPTIONS') return new Response('ok', { headers: corsHeaders })
 
-  const { prompt } = await req.json()
+  const { prompt, system } = await req.json()
   const apiKey = Deno.env.get('ANTHROPIC_API_KEY') ?? ''
+
+  const body: Record<string, unknown> = {
+    model: 'claude-haiku-4-5-20251001',
+    max_tokens: 1024,
+    messages: [{ role: 'user', content: prompt }],
+  }
+  if (system) body.system = system
 
   const res = await fetch('https://api.anthropic.com/v1/messages', {
     method: 'POST',
@@ -16,11 +23,7 @@ Deno.serve(async (req) => {
       'x-api-key': apiKey,
       'anthropic-version': '2023-06-01',
     },
-    body: JSON.stringify({
-      model: 'claude-haiku-4-5-20251001',
-      max_tokens: 512,
-      messages: [{ role: 'user', content: prompt }],
-    }),
+    body: JSON.stringify(body),
   })
 
   if (!res.ok) {

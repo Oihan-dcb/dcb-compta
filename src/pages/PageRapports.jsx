@@ -31,6 +31,11 @@ function prevYear(mois) {
   return `${parseInt(y) - 1}-${m}`
 }
 
+function nextMoisStr(mois) {
+  const [y, m] = mois.split('-').map(Number)
+  return m === 12 ? `${y+1}-01` : `${y}-${String(m+1).padStart(2,'0')}`
+}
+
 function renderMarkdown(text) {
   if (!text) return ''
   return text
@@ -60,6 +65,7 @@ export default function PageRapports() {
   const [bienIdsActifs, setBienIdsActifs] = useState(null)
   const [biensEnvoyes, setBiensEnvoyes] = useState(new Set())
   const [editingLlm, setEditingLlm] = useState(false)
+  const [notePerso, setNotePerso] = useState('')
 
   useEffect(() => {
     supabase
@@ -132,6 +138,7 @@ export default function PageRapports() {
         noteMarche,
         noteRecoVal,
         noteLlmVal,
+        notePersoVal,
         { data: facture },
       ] = await Promise.all([
         supabase
@@ -160,6 +167,9 @@ export default function PageRapports() {
         supabase.from('bien_notes').select('note_analyse_llm')
           .eq('bien_id', selectedBienId).eq('mois', mois).maybeSingle()
           .then(r => r.data?.note_analyse_llm || ''),
+        supabase.from('bien_notes').select('note_personnalisation')
+          .eq('bien_id', selectedBienId).eq('mois', mois).maybeSingle()
+          .then(r => r.data?.note_personnalisation || ''),
         supabase.from('facture_evoliz').select('id, id_evoliz, statut')
           .eq('proprietaire_id', selectedPropId).eq('mois', mois).eq('type_facture', 'honoraires').maybeSingle(),
       ])
@@ -169,6 +179,7 @@ export default function PageRapports() {
       setNote(noteMarche)
       setNoteReco(noteRecoVal)
       setLlmAnalyse(noteLlmVal)
+      setNotePerso(notePersoVal)
 
       const resasValides = (resas || []).filter(r => !STATUTS_NON_VENTILABLES.includes(r.final_status))
       const resaIds = resasValides.map(r => r.id)
@@ -283,6 +294,15 @@ export default function PageRapports() {
     } catch (e) { console.error(e) }
   }
 
+  async function handleNotePersoBlur() {
+    try {
+      await supabase.from('bien_notes').upsert(
+        { bien_id: selectedBienId, mois, note_personnalisation: notePerso, updated_at: new Date().toISOString() },
+        { onConflict: 'bien_id,mois' }
+      )
+    } catch (e) { console.error(e) }
+  }
+
   async function handleEmailBlur() {
     const val = email.trim()
     try {
@@ -292,32 +312,125 @@ export default function PageRapports() {
 
   async function lancerAnalyseLLM() {
     if (!data) return
-    const [yr, mo] = mois.split('-')
-    const moisLabel = MOIS_FR[parseInt(mo) - 1] + ' ' + yr
-    const noteMoy = data.reviews.length
-      ? (data.reviews.reduce((s, r) => s + (r.rating || 0), 0) / data.reviews.length).toFixed(1)
-      : 'N/A'
-    const prompt = `Tu es consultant en gestion locative haut de gamme à Biarritz pour Destination Côte Basque.
-Tu rédiges une analyse mensuelle DESTINÉE AU PROPRIÉTAIRE du bien "${data.bien?.hospitable_name}".
+    const [yr, mo] = mois.split('-').map(Number)
+    const moisLabel = MOIS_FR[mo - 1] + ' ' + yr
+    const m1 = nextMoisStr(mois)
+    const m2 = nextMoisStr(m1)
+    const prixMoyenNuit = data.kpis.nuitsOccupees > 0
+      ? Math.round((data.kpis.caHeb / data.kpis.nuitsOccupees) / 100)
+      : 0
 
-RÈGLES :
-- Parle au propriétaire directement ("votre bien", "vos voyageurs")
-- Une note élevée = preuve de la qualité du bien lui-même (emplacement, décoration, équipements)
-- Ne mentionne pas les actions internes DCB (photos, gestion des avis, Airbnb)
-- Les recommandations concernent le BIEN : travaux, équipements, positionnement tarifaire
-- Ton rassurant, valorisant, professionnel
-- 5-6 lignes maximum, pas de bullet points excessifs
+    // Météo Open-Meteo
+    let meteoResume = 'Données météo non disponibles.'
+    try {
+      const meteoRes = await fetch(
+        `https://api.open-meteo.com/v1/forecast?latitude=43.48&longitude=-1.56&daily=temperature_2m_max,temperature_2m_min,precipitation_sum,sunshine_duration&timezone=Europe%2FParis&past_days=31&forecast_days=14`
+      )
+      const meteo = await meteoRes.json()
+      const days = (meteo.daily?.time || [])
+      const moisPad = String(mo).padStart(2, '0')
+      const idx = days.reduce((acc, d, i) => d.startsWith(`${yr}-${moisPad}`) ? [...acc, i] : acc, [])
+      if (idx.length > 0) {
+        const tMax = idx.map(i => meteo.daily.temperature_2m_max[i]).filter(v => v != null)
+        const tMin = idx.map(i => meteo.daily.temperature_2m_min[i]).filter(v => v != null)
+        const pluie = idx.map(i => meteo.daily.precipitation_sum[i] || 0)
+        const soleil = idx.map(i => (meteo.daily.sunshine_duration[i] || 0) / 3600)
+        const avg = arr => arr.length ? (arr.reduce((s, v) => s + v, 0) / arr.length).toFixed(1) : '?'
+        const sum = arr => arr.reduce((s, v) => s + v, 0).toFixed(0)
+        meteoResume = `Tmax moy. ${avg(tMax)}°C, Tmin moy. ${avg(tMin)}°C, précipitations ${sum(pluie)}mm, ensoleillement moy. ${avg(soleil)}h/j`
+      }
+    } catch (e) { console.warn('Météo non disponible:', e.message) }
 
-Données ${moisLabel} :
+    // Réservations M+1 et M+2
+    const { data: resasFutures } = await supabase
+      .from('reservation')
+      .select('code, arrival_date, departure_date, nights, fin_revenue, final_status, platform')
+      .eq('bien_id', selectedBienId)
+      .in('mois_comptable', [m1, m2])
+      .not('final_status', 'in', '("cancelled","not_accepted","declined","expired")')
+      .order('arrival_date')
+
+    // Taux de commission
+    const { data: bienData } = await supabase
+      .from('bien')
+      .select('taux_commission_override, proprietaire:proprietaire_id(taux_commission)')
+      .eq('id', selectedBienId)
+      .single()
+    const tauxCommission = bienData?.taux_commission_override
+      || bienData?.proprietaire?.taux_commission
+      || 25
+
+    const systemPrompt = `Tu es Oïhan, gérant de Destination Côte Basque, spécialiste de la location saisonnière haut de gamme.
+Tu écris des comptes-rendus mensuels destinés aux propriétaires de biens immobiliers que tu gères.
+
+TON POSITIONNEMENT :
+Tu es un expert de confiance qui pilote activement la performance du bien.
+Tu maîtrises toute la chaîne : revenus, réservations, gestion opérationnelle, expérience client et optimisation.
+Tu ne fais pas que rapporter des chiffres, tu les interprètes.
+
+TON TON :
+- Professionnel mais humain
+- Direct, fluide, naturel
+- Jamais froid ni administratif
+- Jamais commercial forcé
+- Tu inspires confiance, maîtrise et honnêteté
+
+RÈGLES ABSOLUES :
+- Aucun jargon comptable (ne jamais utiliser HON, LOY, FMEN, etc.)
+- Aucun chiffre sans interprétation
+- Pas de liste brute de données
+- Pas de bullet points
+- Paragraphes courts, français fluide et élégant
+- Chaque information doit apporter une lecture claire
+- Tu écris comme si tu connaissais parfaitement le bien et le propriétaire
+- Tu ne fais jamais référence à "des données", "un logiciel" ou "un système"
+- Tu incarnes une vraie personne
+
+GESTION DES PERFORMANCES FAIBLES :
+- Ne jamais éviter le sujet si les résultats sont en retrait
+- Toujours expliquer simplement les raisons possibles
+- Ton bienveillant et constructif, jamais alarmiste
+- Donner le sentiment que la situation est pilotée et sous contrôle
+
+STRUCTURE ATTENDUE (7 parties, sans titres dans le texte) :
+1. Introduction personnalisée + vision globale du mois en 1-2 phrases
+2. Performance du mois : lecture du revenu, mise en perspective, explication si nécessaire
+3. Analyse qualitative : occupation, dynamique des réservations, analyse des avis voyageurs
+4. Contexte marché & local : météo, saisonnalité, événements locaux Biarritz
+5. Tendance à venir : réservations déjà enregistrées M+1/M+2, niveau d'anticipation, lecture rassurante
+6. Pilotage & actions : ce qui est fait ou ajusté (pricing, stratégie, gestion)
+7. Conclusion synthèse, ton rassurant et maîtrisé`
+
+    const userPrompt = `Bien : "${data.bien?.hospitable_name}"
+Propriétaire : ${data.proprio?.nom}
+Mois : ${moisLabel}
+
+PERFORMANCE DU MOIS :
+- Base commissionnable : ${fmt(data.kpis.caHeb)}
+- Taux de commission : ${tauxCommission}%
+- Reversement net : ${fmt(data.kpis.loyTotal)}
 - Réservations : ${data.kpis.nbResas} (N-1 : ${data.kpisN1?.nbResas ?? '?'})
-- CA : ${fmt(data.kpis.caHeb)} (N-1 : ${fmt(data.kpisN1?.caHeb ?? 0)})
 - Taux occupation : ${data.kpis.tauxOcc}% (N-1 : ${data.kpisN1?.tauxOcc ?? '?'}%)
-- Note voyageurs : ${data.noteMoisMoy ? data.noteMoisMoy + '/5' : 'non disponible'}
-- Reversement net : ${fmt(data.kpis.loyTotal)}`
+- Prix moyen/nuit : ${prixMoyenNuit}€
+- Note voyageurs : ${data.noteMoisMoy ? data.noteMoisMoy + '/5 (' + data.reviews.length + ' avis)' : 'aucun avis ce mois'}
+
+AVIS VOYAGEURS :
+${data.reviews.slice(0, 5).map(r => `- ${r.rating}/5 : "${r.comment?.substring(0, 150)}"`).join('\n') || 'Aucun avis ce mois'}
+
+MÉTÉO BIARRITZ (${moisLabel}) :
+${meteoResume}
+
+RÉSERVATIONS À VENIR (M+1/M+2) :
+${resasFutures?.length > 0
+  ? resasFutures.map(r => `- ${r.arrival_date} → ${r.departure_date} (${r.nights}n, ${((r.fin_revenue || 0) / 100).toFixed(0)}€, ${r.platform})`).join('\n')
+  : 'Aucune réservation enregistrée pour les 2 prochains mois'}
+
+${notePerso ? 'NOTE PERSONNELLE OÏHAN (à intégrer naturellement) :\n' + notePerso : ''}`
+
     try {
       const { data: llmData, error: llmErr } = await Promise.race([
-        supabase.functions.invoke('llm-analyse', { body: { prompt } }),
-        new Promise((_, reject) => setTimeout(() => reject(new Error('timeout')), 15000)),
+        supabase.functions.invoke('llm-analyse', { body: { prompt: userPrompt, system: systemPrompt } }),
+        new Promise((_, reject) => setTimeout(() => reject(new Error('timeout')), 30000)),
       ])
       if (llmErr) throw llmErr
       const txt = llmData?.text || ''
@@ -337,6 +450,9 @@ Données ${moisLabel} :
     try {
       const html = genererRapportHTML(data.proprio, mois, {
         kpis: data.kpis, resas: data.resas, reviews: data.reviews,
+        bien: data.bien, llmAnalyse, kpisN1: data.kpisN1,
+        noteMoisMoy: data.noteMoisMoy, noteGlobaleMoy: data.noteGlobaleMoy,
+        nbReviewsGlobal: data.nbReviewsGlobal,
         notes: [{ bienName: data.bien?.hospitable_name, note }],
       })
       await envoyerRapportEmail({ ...data.proprio, email }, mois, html)
@@ -583,6 +699,16 @@ Données ${moisLabel} :
                 </table>
               </div>
             )}
+
+            {/* BLOC 5b — Personnalisation Oïhan */}
+            <div style={{ marginBottom: 16 }}>
+              <label style={{ fontSize: '0.78em', fontWeight: 600, color: 'var(--brand)', display: 'block', marginBottom: 4 }}>✏️ Personnalisation Oïhan</label>
+              <textarea value={notePerso} onChange={e => setNotePerso(e.target.value)} onBlur={handleNotePersoBlur}
+                placeholder="Événements du mois, contexte particulier, notes pour le LLM… (invisible dans le PDF)"
+                rows={3}
+                style={{ width: '100%', border: '1px dashed var(--border)', borderRadius: 6, padding: '8px 10px', fontSize: '0.85em', background: '#FDFAF4', color: 'var(--text)', resize: 'vertical', fontFamily: 'inherit' }} />
+              <div style={{ fontSize: '0.7em', color: '#9C8E7D', marginTop: 3 }}>Invisible dans le rapport PDF — utilisé uniquement par l'analyse IA.</div>
+            </div>
 
             {/* BLOC 6 — Analyse LLM */}
             <div style={{ marginBottom: 20 }}>
