@@ -301,7 +301,7 @@ export function genererRapportHTML(proprio, mois, data) {
       </div>
       <div style="text-align:center;">
         <div style="font-size:8px;letter-spacing:0.04em;text-transform:uppercase;color:rgba(212,196,176,0.8);margin-bottom:3px;">Virement propriétaire</div>
-        <div style="font-size:18px;font-weight:400;color:#fff;">${fmt(kpis.loyTotal)}</div>
+        <div style="font-size:18px;font-weight:400;color:#fff;">${fmt(kpis.virementNet ?? kpis.loyTotal)}</div>
       </div>
       </div>
     </div>
