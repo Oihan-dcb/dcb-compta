@@ -234,7 +234,7 @@ export default function PageRapports() {
       try {
         let qPhf = supabase
           .from('prestation_hors_forfait')
-          .select('id, bien_id, reservation_id, date_prestation, description, montant, type_imputation')
+          .select('id, bien_id, reservation_id, date_prestation, description, montant, type_imputation, prestation_type:prestation_type_id(nom)')
           .eq('mois', mois)
           .eq('statut', 'valide')
           .in('type_imputation', ['deduction_loy', 'debours_proprio', 'haowner'])
@@ -263,11 +263,12 @@ export default function PageRapports() {
       const extrasGlobaux = (prestations || [])
         .filter(p => ['deduction_loy', 'debours_proprio'].includes(p.type_imputation) && !p.reservation_id)
         .sort((a, b) => (a.date_prestation || '').localeCompare(b.date_prestation || ''))
+        .map(p => ({ ...p, libelle: p.description || p.prestation_type?.nom || '—' }))
 
       const haownerList = (prestations || [])
         .filter(p => p.type_imputation === 'haowner')
         .sort((a, b) => (a.date_prestation || '').localeCompare(b.date_prestation || ''))
-        .map(p => ({ ...p, montant_ttc: Math.round((p.montant || 0) * 1.20) }))
+        .map(p => ({ ...p, montant_ttc: Math.round((p.montant || 0) * 1.20), libelle: p.description || p.prestation_type?.nom || '—' }))
 
       let reviews = []
       {
@@ -907,6 +908,61 @@ FORMAT :
                 ) : (
                   <p style={{ color: '#9C8E7D', fontStyle: 'italic', fontSize: '0.88em' }}>Aucune réservation ce mois.</p>
                 )}
+              </div>
+            )}
+
+            {/* BLOC 3b — Débours hors forfait (sans réservation liée) */}
+            {!vueSynthese && (data.extrasGlobaux || []).length > 0 && (
+              <div style={{ marginBottom: 16 }}>
+                <div style={{ fontSize: '0.8em', fontWeight: 600, color: '#9C8E7D', marginBottom: 8, textTransform: 'uppercase', letterSpacing: 0.5 }}>
+                  Débours hors forfait ({(data.extrasGlobaux || []).length})
+                </div>
+                <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.82em' }}>
+                  <thead>
+                    <tr style={{ background: '#EAE3D4', color: 'var(--text)' }}>
+                      <th style={{ padding: '6px 8px', textAlign: 'left', borderBottom: '2px solid var(--brand)' }}>Date</th>
+                      <th style={{ padding: '6px 8px', textAlign: 'left', borderBottom: '2px solid var(--brand)' }}>Prestation</th>
+                      <th style={{ padding: '6px 8px', textAlign: 'right', borderBottom: '2px solid var(--brand)' }}>Montant</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {(data.extrasGlobaux || []).map((p, i) => (
+                      <tr key={p.id} style={{ background: i % 2 === 0 ? '#FDFAF4' : '#F7F3EC' }}>
+                        <td style={{ padding: '6px 8px', color: '#4A3728', whiteSpace: 'nowrap' }}>{p.date_prestation ? p.date_prestation.split('-').reverse().join('/') : '—'}</td>
+                        <td style={{ padding: '6px 8px', color: 'var(--text)' }}>{p.libelle}</td>
+                        <td style={{ padding: '6px 8px', textAlign: 'right', color: '#4A3728' }}>{fmt(p.montant)}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+
+            {/* BLOC 3c — Achats propriétaire (HAOWNER) */}
+            {!vueSynthese && (data.haownerList || []).length > 0 && (
+              <div style={{ marginBottom: 24 }}>
+                <div style={{ fontSize: '0.8em', fontWeight: 600, color: '#9C8E7D', marginBottom: 8, textTransform: 'uppercase', letterSpacing: 0.5 }}>
+                  Achats propriétaire ({(data.haownerList || []).length})
+                </div>
+                <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.82em' }}>
+                  <thead>
+                    <tr style={{ background: '#EAE3D4', color: 'var(--text)' }}>
+                      <th style={{ padding: '6px 8px', textAlign: 'left', borderBottom: '2px solid var(--brand)' }}>Date</th>
+                      <th style={{ padding: '6px 8px', textAlign: 'left', borderBottom: '2px solid var(--brand)' }}>Description</th>
+                      <th style={{ padding: '6px 8px', textAlign: 'right', borderBottom: '2px solid var(--brand)' }}>Montant TTC</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {(data.haownerList || []).map((p, i) => (
+                      <tr key={p.id} style={{ background: i % 2 === 0 ? '#FDFAF4' : '#F7F3EC' }}>
+                        <td style={{ padding: '6px 8px', color: '#4A3728', whiteSpace: 'nowrap' }}>{p.date_prestation ? p.date_prestation.split('-').reverse().join('/') : '—'}</td>
+                        <td style={{ padding: '6px 8px', color: 'var(--text)' }}>{p.libelle}</td>
+                        <td style={{ padding: '6px 8px', textAlign: 'right', color: 'var(--brand)', fontWeight: 600 }}>{fmt(p.montant_ttc)}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+                <div style={{ textAlign: 'right', fontSize: '0.75em', color: '#9C8E7D', marginTop: 4 }}>TVA 20% incluse</div>
               </div>
             )}
 

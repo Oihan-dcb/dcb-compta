@@ -375,7 +375,7 @@ export function genererRapportHTML(proprio, mois, data) {
         ${extrasGlobaux.map((p, i) => `
         <tr style="background:${i % 2 === 0 ? '#fff' : '#F7F4EF'};">
           <td style="padding:6px 8px;color:#3a3530;">${p.date_prestation ? p.date_prestation.substring(5).split('-').reverse().join('/') : '—'}</td>
-          <td style="padding:6px 8px;color:#3a3530;">${p.description || '—'}</td>
+          <td style="padding:6px 8px;color:#3a3530;">${p.libelle || p.description || '—'}</td>
           <td style="padding:6px 8px;text-align:right;white-space:nowrap;color:#4A3728;">${fmt(p.montant)}</td>
         </tr>`).join('')}
       </tbody>
@@ -404,7 +404,7 @@ export function genererRapportHTML(proprio, mois, data) {
         ${haownerList.map((p, i) => `
         <tr style="background:${i % 2 === 0 ? '#fff' : '#F7F4EF'};">
           <td style="padding:6px 8px;color:#3a3530;">${p.date_prestation ? p.date_prestation.substring(5).split('-').reverse().join('/') : '—'}</td>
-          <td style="padding:6px 8px;color:#3a3530;">${p.description || '—'}</td>
+          <td style="padding:6px 8px;color:#3a3530;">${p.libelle || p.description || '—'}</td>
           <td style="padding:6px 8px;text-align:right;white-space:nowrap;color:#CC9933;font-weight:500;">${fmt(p.montant_ttc)}</td>
         </tr>`).join('')}
       </tbody>
