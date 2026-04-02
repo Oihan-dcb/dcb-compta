@@ -1,13 +1,42 @@
-# DCB Compta — Journal session 02 avril 2026 — Sécurisation tokens
+# DCB Compta — Journal session 02 avril 2026 — Bilan complet
 
-## Sécurisation complète SMTP / tokens
+## Rapport propriétaire — opérationnel
+
+- Phases 1–4 `prestation_hors_forfait` → PDF complètes ✅
+- Colonnes HON / LOY / VIR dans tableau réservations ✅
+- Section débours (DEB_AE / HAOWNER) dans le rapport PDF ✅
+- Aperçu mail avant envoi + case PDF Evoliz optionnel ✅
+- **Premier rapport envoyé avec succès** : BURGY 602, mars 2026 ✅
+
+## Corrections comptables
+
+- Taux FMEN Airbnb corrigé : 16,21 % → 13,95 % ✅
+- AUTO supprimé du reversement propriétaire (LOY) ✅
+- Footer email : `oihan@` → `rapports@destinationcotebasque.com` ✅
+- `&nbsp;` supprimés dans HTML email → fin des `=20` en quoted-printable ✅
+
+## Evoliz — push opérationnel
+
+- Refs HON / FMEN / DIV configurées ✅
+- Paiement automatique au push ✅
+- Encodage UTF-8 correct ✅
+
+## Sécurisation tokens
 
 - Tokens révoqués : `sbp_b707...` (Supabase) + `ghp_lnjT...` (GitHub) ✅
 - Remote GitHub mis à jour avec nouveau token ✅
 - `DCB_MANAGEMENT_TOKEN` configuré dans Supabase secrets (hors code source) ✅
 - Edge Function `update-smtp-secrets` créée et déployée sur `omuncchvypbtxkpalwcr` ✅
-- `PageConfig.jsx` : `sauvegarderSMTP()` passe désormais par la Edge Function ✅
-- Scan `grep sbp_|ghp_` sur `src/` : **aucun résultat** ✅
+- `sauvegarderSMTP()` passe désormais par la Edge Function — aucun token dans `src/` ✅
+
+## Reste à faire
+
+- Classification Evoliz : IDs comptes à récupérer
+- Factures mars restantes à valider et pousser vers Evoliz
+- Tester bouton Sauvegarder PageConfig SMTP en prod (Vercel)
+- Fix `ctrl_ventilation_vs_revenu_ok` dans `exportCSVComptable.js`
+- CF-PAE1 / PAE2 à confirmer
+- Supprimer test AE record `id: 19a27f7a`
 
 ### Reste à faire
 - Tester l'envoi SMTP une fois `SMTP_PASS` configuré dans les secrets Supabase
