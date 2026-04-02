@@ -749,7 +749,8 @@ FORMAT :
   const kpiCards = !data ? [] : [
     { val: data.kpis.nbResas,             lbl: 'Réservations',      rawN: data.kpis.nbResas,       rawN1: data.kpisN1.nbResas || 0, dispN1: data.kpisN1.nbResas > 0 ? data.kpisN1.nbResas : null },
     { val: fmt(data.kpis.caHeb),          lbl: 'CA Hébergement',    rawN: data.kpis.caHeb,         rawN1: data.kpisN1.caHeb || 0,   dispN1: data.kpisN1.caHeb > 0 ? fmt(data.kpisN1.caHeb) : null },
-    { val: fmt(data.kpis.loyTotal),       lbl: 'Total HON',          rawN: null,                    rawN1: null,                     dispN1: null },
+    { val: fmt(data.kpis.honTotal),       lbl: 'Total HON',          rawN: null,                    rawN1: null,                     dispN1: null },
+    { val: fmt(data.kpis.loyTotal),       lbl: 'Virement proprio',   rawN: null,                    rawN1: null,                     dispN1: null },
     { val: `${data.kpis.nuitsOccupees}/${data.kpis.nuitsDispos}`, lbl: 'Nuits occ./dispo.', rawN: data.kpis.nuitsOccupees, rawN1: data.kpisN1.nuitsOccupees || 0, dispN1: data.kpisN1.nuitsOccupees > 0 ? data.kpisN1.nuitsOccupees : null },
     { val: `${data.kpis.tauxOcc} %`,      lbl: "Taux d'occupation", rawN: data.kpis.tauxOcc,       rawN1: data.kpisN1.tauxOcc || 0, dispN1: data.kpisN1.tauxOcc > 0 ? `${data.kpisN1.tauxOcc} %` : null },
     { val: `${data.kpis.dureeMoy} nuits`, lbl: 'Durée moyenne',     rawN: null,                    rawN1: null,                     dispN1: null },
