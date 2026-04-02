@@ -437,7 +437,7 @@ export function genererRapportHTML(proprio, mois, data) {
 
   <div class="footer">
     <div style="margin-bottom:4px;">Destination Côte Basque — Conciergerie de prestige, Biarritz</div>
-    <div>Rapport généré le ${new Date().toLocaleDateString('fr-FR')} · contact@destinationcotebasque.com</div>
+    <div>Rapport généré le ${new Date().toLocaleDateString('fr-FR')} · oihan@destinationcotebasque.com</div>
   </div>
 
 </div>
