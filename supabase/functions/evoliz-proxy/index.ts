@@ -172,6 +172,7 @@ serve(async (req) => {
           items: (payload.items || []).map((l: any) => ({
             type: 'article',
             designation: l.designation,
+            reference: l.reference || undefined,
             quantity: l.quantity || 1,
             unit_price: l.unitPrice,     // En euros (pas en centimes)
             vat_rate: l.vatRate ?? 20,

@@ -196,7 +196,7 @@ export default function PageRapports() {
         supabase.from('bien_notes').select('note_personnalisation')
           .eq('bien_id', selectedBienId).eq('mois', mois).maybeSingle()
           .then(r => r.data?.note_personnalisation || ''),
-        supabase.from('facture_evoliz').select('id, id_evoliz, statut, montant_ttc')
+        supabase.from('facture_evoliz').select('id, id_evoliz, statut, total_ttc')
           .eq('proprietaire_id', selectedPropId).eq('mois', mois).eq('type_facture', 'honoraires').maybeSingle(),
         supabase.from('bien').select('taux_commission_override, proprietaire:proprietaire_id(taux_commission)')
           .eq('id', selectedBienId).maybeSingle()

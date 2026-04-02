@@ -144,8 +144,9 @@ export async function creerFactureEvoliz(facture) {
     .filter(l => l.montant_ht > 0)
     .map(l => ({
       designation: l.libelle,
+      reference: l.code,
       quantity: 1,
-      unitPrice: l.montant_ht / 100,   // centimes Ã¢ÂÂ euros
+      unitPrice: l.montant_ht / 100,
       vatRate: l.taux_tva ?? 20,
     }))
 
@@ -153,8 +154,8 @@ export async function creerFactureEvoliz(facture) {
 
   // 4. Note de bas de facture
   const comment = facture.solde_negatif
-    ? `Remboursement de frais avancÃÂ©s Ã¢ÂÂ mois ${facture.mois}`
-    : `Honoraires de gestion locative Ã¢ÂÂ ${facture.mois}\n\nConformÃÂ©ment au mandat de gestion, les honoraires de gestion sont directement prÃÂ©levÃÂ©s sur le loyer encaissÃÂ© avant reversement au propriÃÂ©taire.`
+    ? `Remboursement de frais avancés — mois ${facture.mois}`
+    : `Honoraires de gestion locative — ${facture.mois}\n\nConformément au mandat de gestion, les honoraires de gestion sont directement prélevés sur le loyer encaissé avant reversement au propriétaire.`
 
   // 5 & 6. Créer et sauvegarder la facture dans Evoliz
   // Si Evoliz échoue ici : reset à 'valide' — relance possible sans doublon.
@@ -173,6 +174,20 @@ export async function creerFactureEvoliz(facture) {
     // saveInvoice : passe de filled → create, numéro définitif attribué
     const savedInvoice = await evolizCall('saveInvoice', { invoiceId })
     invoiceNumber = savedInvoice?.document_number
+
+    // Paiement automatique — virement compte de gestion DCB
+    const montantTTC = (facture.facture_evoliz_ligne || [])
+      .filter(l => l.montant_ttc > 0)
+      .reduce((s, l) => s + l.montant_ttc, 0) / 100
+    if (montantTTC > 0) {
+      await evolizCall('createPayment', {
+        invoiceId,
+        paydate: dateEmission,
+        label: 'Virement compte de gestion DCB',
+        paytypeid: 4,
+        amount: montantTTC,
+      })
+    }
   } catch (evolizErr) {
     // Evoliz a échoué — aucune facture finalisée côté Evoliz : reset à 'valide'
     await supabase.from('facture_evoliz')
@@ -189,7 +204,7 @@ export async function creerFactureEvoliz(facture) {
       .update({
         id_evoliz: String(invoiceId),
         numero_facture: invoiceNumber || null,
-        statut: 'envoye_evoliz',
+        statut: 'payee',
         date_emission: dateEmission,
       })
       .eq('id', facture.id)
