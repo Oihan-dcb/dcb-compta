@@ -286,7 +286,7 @@ async function genererFactureGroupe(proprio, biens, mois) {
     deboursPropSurplusTotal += deboursPropSurplus
   }
 
-  const montantReversement = Math.max(0, loy.ht - totalPrestations - haownerTTC - fraisDeduireTTC - autoAbsorbableTotal - deboursPropAbsorbTotal)
+  const montantReversement = Math.max(0, loy.ht - totalPrestations - haownerTTC - fraisDeduireTTC - deboursPropAbsorbTotal)
 
   // Cas solde nÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂ©gatif : uniquement des expenses, pas de rÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂ©servations
   const soldeNegatif = totalHT === 0 && div.ht > 0
