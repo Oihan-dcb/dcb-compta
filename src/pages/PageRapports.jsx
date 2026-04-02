@@ -230,7 +230,44 @@ export default function PageRapports() {
         loyTotal = (vents || []).filter(v => v.code === 'LOY').reduce((s, v) => s + (v.montant_ht || 0), 0)
       }
 
-      const fraisByResa = {}
+      let prestations = []
+      try {
+        let qPhf = supabase
+          .from('prestation_hors_forfait')
+          .select('id, bien_id, reservation_id, date_prestation, description, montant, type_imputation')
+          .eq('mois', mois)
+          .eq('statut', 'valide')
+          .in('type_imputation', ['deduction_loy', 'debours_proprio', 'haowner'])
+        if (isGlobal) {
+          if (!maiteIdsLocal || maiteIdsLocal.length === 0) {
+            prestations = []
+          } else {
+            qPhf = qPhf.in('bien_id', maiteIdsLocal)
+            const { data: phfData } = await qPhf
+            prestations = phfData || []
+          }
+        } else {
+          qPhf = qPhf.eq('bien_id', selectedBienId)
+          const { data: phfData } = await qPhf
+          prestations = phfData || []
+        }
+      } catch (_) { /* silencieux — ne bloque pas le chargement */ }
+
+      const extraByResa = {}
+      ;(prestations || [])
+        .filter(p => ['deduction_loy', 'debours_proprio'].includes(p.type_imputation) && p.reservation_id)
+        .forEach(p => {
+          extraByResa[p.reservation_id] = (extraByResa[p.reservation_id] || 0) + (p.montant || 0)
+        })
+
+      const extrasGlobaux = (prestations || [])
+        .filter(p => ['deduction_loy', 'debours_proprio'].includes(p.type_imputation) && !p.reservation_id)
+        .sort((a, b) => (a.date_prestation || '').localeCompare(b.date_prestation || ''))
+
+      const haownerList = (prestations || [])
+        .filter(p => p.type_imputation === 'haowner')
+        .sort((a, b) => (a.date_prestation || '').localeCompare(b.date_prestation || ''))
+        .map(p => ({ ...p, montant_ttc: Math.round((p.montant || 0) * 1.20) }))
 
       let reviews = []
       {
@@ -279,7 +316,7 @@ export default function PageRapports() {
         proprio,
         bien: (proprio?.bien || []).find(b => b.id === selectedBienId),
         tauxCommission,
-        resas: resasValides.map(r => ({ ...r, vent: ventByResa[r.id] || {}, extra: fraisByResa[r.id] || 0 })),
+        resas: resasValides.map(r => ({ ...r, vent: ventByResa[r.id] || {}, extra: extraByResa[r.id] || 0 })),
         reviews,
         facture,
         frais: fraisData || [],
@@ -289,6 +326,8 @@ export default function PageRapports() {
         noteMoisMoy,
         noteGlobaleMoy,
         nbReviewsGlobal: allReviewsData?.length || 0,
+        extrasGlobaux,
+        haownerList,
       })
     } catch (err) {
       setError(err.message)
@@ -621,6 +660,8 @@ FORMAT :
       noteContexte: note,
       noteReco,
       tauxCommission: data.tauxCommission,
+      extrasGlobaux: data?.extrasGlobaux || [],
+      haownerList: data?.haownerList || [],
     }
   }
 
