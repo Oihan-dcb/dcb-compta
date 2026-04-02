@@ -83,6 +83,8 @@ export default function PageRapports() {
   const [generatingPDF, setGeneratingPDF] = useState(false)
   const [notePerso, setNotePerso] = useState('')
   const [modeMaite, setModeMaite] = useState('chambre')
+  const [joindrePDF, setJoindrePDF] = useState(false)
+  const [showMailPreview, setShowMailPreview] = useState(false)
 
   useEffect(() => {
     supabase
@@ -717,7 +719,7 @@ FORMAT :
     setStatut('sending')
     try {
       const html = genererRapportHTML(data.proprio, mois, buildRapportData())
-      await Promise.all(emails.map(addr => envoyerRapportEmail({ ...data.proprio, email: addr }, mois, html)))
+      await Promise.all(emails.map(addr => envoyerRapportEmail({ ...data.proprio, email: addr }, mois, html, joindrePDF)))
       await supabase.from('bien_notes').upsert(
         { bien_id: selectedBienId, mois, rapport_envoye_at: new Date().toISOString() },
         { onConflict: 'bien_id,mois' }
@@ -1158,11 +1160,46 @@ FORMAT :
                 onClick={() => setPreviewOpen(true)}>Aperçu</button>
               <button onClick={telechargerPDF} disabled={!data || generatingPDF} className="btn btn-secondary"
                 style={{ fontSize: '0.85em', padding: '8px 14px' }}>{generatingPDF ? '⏳ Génération...' : '⬇ PDF'}</button>
+              <label style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: '0.82em', color: 'var(--text)', cursor: 'pointer', marginRight: 4 }}>
+                <input type="checkbox" checked={joindrePDF} onChange={e => setJoindrePDF(e.target.checked)} style={{ cursor: 'pointer' }} />
+                Joindre la facture PDF Evoliz
+              </label>
+              <button style={{ padding: '8px 14px', border: '1px solid var(--border)', borderRadius: 8, background: 'none', fontSize: '0.85em', cursor: 'pointer' }}
+                onClick={() => setShowMailPreview(true)} disabled={!data}>
+                👁 Aperçu mail
+              </button>
               <button className="btn btn-primary"
                 style={{ fontSize: '0.85em', padding: '8px 14px', background: 'var(--brand)', color: '#fff', border: 'none', opacity: statut === 'sending' ? 0.6 : 1 }}
                 onClick={envoyer} disabled={statut === 'sending' || !email}>
                 {statut === 'sending' ? '…' : 'Envoyer'}
               </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Modal aperçu mail */}
+      {showMailPreview && data && (
+        <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.5)', zIndex: 1000, display: 'flex', alignItems: 'center', justifyContent: 'center' }}
+          onClick={() => setShowMailPreview(false)}>
+          <div style={{ background: 'var(--bg)', borderRadius: 12, width: '80%', maxWidth: 700, maxHeight: '90vh', overflow: 'auto', padding: 24 }}
+            onClick={e => e.stopPropagation()}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
+              <h3 style={{ margin: 0, fontSize: '1em' }}>Aperçu du mail</h3>
+              <button onClick={() => setShowMailPreview(false)} style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: '1.2em' }}>×</button>
+            </div>
+            <div style={{ fontSize: '0.82em', background: 'var(--bg-secondary, #F0EBE1)', padding: '12px 16px', borderRadius: 8, marginBottom: 16, lineHeight: 1.8, border: '1px solid var(--border)' }}>
+              <div><strong>De :</strong> oihan@destinationcotebasque.com</div>
+              <div><strong>À :</strong> {email || '(email non renseigné)'}</div>
+              <div><strong>Objet :</strong> Rapport mensuel — {data.bien?.hospitable_name || data.proprio?.nom} — {moisLabel}</div>
+              {joindrePDF && <div><strong>PJ :</strong> 📎 Facture PDF Evoliz</div>}
+            </div>
+            <div style={{ border: '1px solid var(--border)', borderRadius: 8, overflow: 'hidden', height: 500 }}>
+              <iframe srcDoc={genererRapportHTML(data.proprio, mois, buildRapportData())} style={{ width: '100%', height: '100%', border: 'none' }} title="Aperçu mail" />
+            </div>
+            <div style={{ display: 'flex', gap: 8, marginTop: 16, justifyContent: 'flex-end' }}>
+              <button onClick={() => setShowMailPreview(false)} style={{ padding: '8px 16px', border: '1px solid var(--border)', borderRadius: 8, background: 'none', cursor: 'pointer' }}>Fermer</button>
+              <button onClick={() => { setShowMailPreview(false); envoyer() }} style={{ padding: '8px 16px', background: 'var(--brand)', color: '#fff', border: 'none', borderRadius: 8, cursor: 'pointer', fontWeight: 600 }}>✉️ Envoyer</button>
             </div>
           </div>
         </div>

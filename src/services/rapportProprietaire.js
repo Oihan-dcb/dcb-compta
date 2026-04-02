@@ -448,36 +448,38 @@ export function genererRapportHTML(proprio, mois, data) {
 // Envoi email via Edge Function smtp-send
 // ─────────────────────────────────────────
 
-export async function envoyerRapportEmail(proprio, mois, htmlBody) {
+export async function envoyerRapportEmail(proprio, mois, htmlBody, joindrePDF = false) {
   const [year, monthIdx] = mois.split('-')
   const MOIS_FR = ['janvier','février','mars','avril','mai','juin','juillet','août','septembre','octobre','novembre','décembre']
   const moisLabel = MOIS_FR[parseInt(monthIdx) - 1] + ' ' + year
 
   if (!proprio.email) throw new Error(`Pas d'email pour ${proprio.nom}`)
 
-  // Récupérer le PDF de la facture honoraires si disponible
+  // Récupérer le PDF de la facture honoraires (uniquement si demandé)
   let attachments = []
-  try {
-    const { data: facture } = await supabase
-      .from('facture_evoliz')
-      .select('id_evoliz')
-      .eq('proprietaire_id', proprio.id)
-      .eq('mois', mois)
-      .eq('type_facture', 'honoraires')
-      .not('id_evoliz', 'is', null)
-      .maybeSingle()
+  if (joindrePDF) {
+    try {
+      const { data: facture } = await supabase
+        .from('facture_evoliz')
+        .select('id_evoliz')
+        .eq('proprietaire_id', proprio.id)
+        .eq('mois', mois)
+        .eq('type_facture', 'honoraires')
+        .not('id_evoliz', 'is', null)
+        .maybeSingle()
 
-    if (facture?.id_evoliz) {
-      const pdfBase64 = await getInvoicePDFBase64(facture.id_evoliz)
-      if (pdfBase64) {
-        attachments = [{
-          filename: `Facture_${moisLabel.replace(' ', '_')}_${proprio.nom}.pdf`,
-          content_base64: pdfBase64,
-        }]
+      if (facture?.id_evoliz) {
+        const pdfBase64 = await getInvoicePDFBase64(facture.id_evoliz)
+        if (pdfBase64) {
+          attachments = [{
+            filename: `Facture_${moisLabel.replace(' ', '_')}_${proprio.nom}.pdf`,
+            content_base64: pdfBase64,
+          }]
+        }
       }
+    } catch (e) {
+      console.warn('PDF Evoliz non disponible, envoi sans pièce jointe:', e.message)
     }
-  } catch (e) {
-    console.warn('PDF Evoliz non disponible, envoi sans pièce jointe:', e.message)
   }
 
   const { data: { session } } = await supabase.auth.getSession()
