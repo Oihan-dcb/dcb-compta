@@ -217,19 +217,23 @@ export default function PageRapports() {
 
       let loyTotal = 0
       let honTotal = 0
+      let virTotal = 0
       let ventByResa = {}
+      let vents = []
       if (resaIds.length) {
-        const { data: vents } = await supabase
+        const { data: ventsData } = await supabase
           .from('ventilation')
           .select('reservation_id, code, montant_ht, montant_ttc')
           .in('reservation_id', resaIds)
           .in('code', ['HON', 'LOY', 'VIR', 'FMEN'])
-        for (const v of vents || []) {
+        vents = ventsData || []
+        for (const v of vents) {
           if (!ventByResa[v.reservation_id]) ventByResa[v.reservation_id] = {}
           ventByResa[v.reservation_id][v.code] = v
         }
-        loyTotal = (vents || []).filter(v => v.code === 'LOY').reduce((s, v) => s + (v.montant_ht || 0), 0)
-        honTotal = (vents || []).filter(v => v.code === 'HON').reduce((s, v) => s + (v.montant_ttc || 0), 0)
+        loyTotal = vents.filter(v => v.code === 'LOY').reduce((s, v) => s + (v.montant_ht || 0), 0)
+        honTotal = vents.filter(v => v.code === 'HON').reduce((s, v) => s + (v.montant_ttc || 0), 0)
+        virTotal = vents.filter(v => v.code === 'VIR').reduce((s, v) => s + (v.montant_ht || 0), 0)
       }
 
       let prestations = []
@@ -271,6 +275,12 @@ export default function PageRapports() {
         .filter(p => p.type_imputation === 'haowner')
         .sort((a, b) => (a.date_prestation || '').localeCompare(b.date_prestation || ''))
         .map(p => ({ ...p, montant_ttc: Math.round((p.montant || 0) * 1.20), libelle: p.description || p.prestation_type?.nom || '—' }))
+
+      const totalDebours = (prestations || [])
+        .filter(p => ['deduction_loy', 'debours_proprio'].includes(p.type_imputation))
+        .reduce((s, p) => s + (p.montant || 0), 0)
+      const totalHaowner = haownerList.reduce((s, p) => s + (p.montant_ttc || 0), 0)
+      const virementNet = Math.max(0, virTotal - totalDebours - totalHaowner)
 
       let reviews = []
       {
@@ -323,7 +333,7 @@ export default function PageRapports() {
         reviews,
         facture,
         frais: fraisData || [],
-        kpis: { nbResas, caHeb, nuitsOccupees, nuitsDispos, tauxOcc, dureeMoy, loyTotal, honTotal: facture?.montant_ttc || honTotal },
+        kpis: { nbResas, caHeb, nuitsOccupees, nuitsDispos, tauxOcc, dureeMoy, loyTotal, honTotal: facture?.montant_ttc || honTotal, virementNet },
         kpisN1,
         alertes,
         noteMoisMoy,
@@ -750,7 +760,7 @@ FORMAT :
     { val: data.kpis.nbResas,             lbl: 'Réservations',      rawN: data.kpis.nbResas,       rawN1: data.kpisN1.nbResas || 0, dispN1: data.kpisN1.nbResas > 0 ? data.kpisN1.nbResas : null },
     { val: fmt(data.kpis.caHeb),          lbl: 'CA Hébergement',    rawN: data.kpis.caHeb,         rawN1: data.kpisN1.caHeb || 0,   dispN1: data.kpisN1.caHeb > 0 ? fmt(data.kpisN1.caHeb) : null },
     { val: fmt(data.kpis.honTotal),       lbl: 'Total HON',          rawN: null,                    rawN1: null,                     dispN1: null },
-    { val: fmt(data.kpis.loyTotal),       lbl: 'Virement proprio',   rawN: null,                    rawN1: null,                     dispN1: null },
+    { val: fmt(data.kpis.virementNet),    lbl: 'Virement proprio',   rawN: null,                    rawN1: null,                     dispN1: null },
     { val: `${data.kpis.nuitsOccupees}/${data.kpis.nuitsDispos}`, lbl: 'Nuits occ./dispo.', rawN: data.kpis.nuitsOccupees, rawN1: data.kpisN1.nuitsOccupees || 0, dispN1: data.kpisN1.nuitsOccupees > 0 ? data.kpisN1.nuitsOccupees : null },
     { val: `${data.kpis.tauxOcc} %`,      lbl: "Taux d'occupation", rawN: data.kpis.tauxOcc,       rawN1: data.kpisN1.tauxOcc || 0, dispN1: data.kpisN1.tauxOcc > 0 ? `${data.kpisN1.tauxOcc} %` : null },
     { val: `${data.kpis.dureeMoy} nuits`, lbl: 'Durée moyenne',     rawN: null,                    rawN1: null,                     dispN1: null },
