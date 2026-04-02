@@ -14,6 +14,7 @@ export default function PagePrestationsAE() {
   const [mois, setMois] = useState(() => new Date().toISOString().slice(0, 7))
   const [editing, setEditing] = useState(null)
   const [formEdit, setFormEdit] = useState({})
+  const [resasDisponibles, setResasDisponibles] = useState([])
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState(null)
   const [success, setSuccess] = useState(null)
@@ -62,6 +63,26 @@ export default function PagePrestationsAE() {
     finally { setLoading(false) }
   }
 
+  async function chargerResasBien(bienId) {
+    if (!bienId) { setResasDisponibles([]); return }
+    const [annee, moisNum] = mois.split('-').map(Number)
+    const prevMois = moisNum === 1
+      ? `${annee-1}-12-01`
+      : `${annee}-${String(moisNum-1).padStart(2,'0')}-01`
+    const nextMois = moisNum === 12
+      ? `${annee+1}-01-28`
+      : `${annee}-${String(moisNum+1).padStart(2,'0')}-28`
+    const { data } = await supabase
+      .from('reservation')
+      .select('id, guest_name, arrival_date, departure_date, nights')
+      .eq('bien_id', bienId)
+      .gte('departure_date', prevMois)
+      .lte('arrival_date', nextMois)
+      .not('final_status', 'in', '("cancelled","not_accepted","declined","expired")')
+      .order('arrival_date')
+    setResasDisponibles(data || [])
+  }
+
   async function valider(id) {
     setSaving(true)
     try {
@@ -105,6 +126,7 @@ export default function PagePrestationsAE() {
         montant: Math.round(parseFloat(formEdit.montant_eur || 0) * 100),
         description: formEdit.description || null,
         type_imputation: formEdit.type_imputation || 'deduction_loy',
+        reservation_id: formEdit.reservation_id || null,
         updated_at: new Date().toISOString()
       }
       await supabase.from('prestation_hors_forfait').update(updates).eq('id', editing)
@@ -222,7 +244,7 @@ export default function PagePrestationsAE() {
                 <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 8, flexShrink: 0 }}>
                   <div style={{ fontSize: 18, fontWeight: 700, color: STATUT_COLOR[p.statut] }}>{fmt(p.montant)}</div>
                   <div style={{ display: 'flex', gap: 6 }}>
-                    <button onClick={() => { setEditing(p.id); setFormEdit({ bien_id: p.bien_id, date_prestation: p.date_prestation, duree_minutes: p.duree_minutes, montant_eur: p.montant ? (p.montant/100).toFixed(2) : '', description: p.description || '', type_imputation: p.type_imputation || 'deduction_loy' }) }}
+                    <button onClick={() => { setEditing(p.id); setFormEdit({ bien_id: p.bien_id, date_prestation: p.date_prestation, duree_minutes: p.duree_minutes, montant_eur: p.montant ? (p.montant/100).toFixed(2) : '', description: p.description || '', type_imputation: p.type_imputation || 'deduction_loy', reservation_id: p.reservation_id || '' }); chargerResasBien(p.bien_id) }}
                       style={{ background: '#f3f4f6', border: 'none', borderRadius: 6, padding: '5px 10px', fontSize: 12, cursor: 'pointer', fontWeight: 600 }}>
                       ✏️ Modifier
                     </button>
@@ -261,12 +283,33 @@ export default function PagePrestationsAE() {
             <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
               <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
                 <label style={{ fontSize: 11, fontWeight: 600, color: '#666', textTransform: 'uppercase' }}>Bien</label>
-                <select value={formEdit.bien_id || ''} onChange={e => setFormEdit(f => ({ ...f, bien_id: e.target.value }))}
+                <select value={formEdit.bien_id || ''} onChange={e => { const v = e.target.value; setFormEdit(f => ({ ...f, bien_id: v, reservation_id: '' })); chargerResasBien(v) }}
                   style={{ padding: '8px 10px', borderRadius: 7, border: '1.5px solid #e5e7eb', fontSize: 13 }}>
                   <option value="">— Sélectionner —</option>
                   {biens.map(b => <option key={b.id} value={b.id}>{b.code} — {b.hospitable_name}</option>)}
                 </select>
               </div>
+              {['deduction_loy','debours_proprio'].includes(formEdit.type_imputation) && (
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+                  <label style={{ fontSize: 11, fontWeight: 600, color: '#666', textTransform: 'uppercase' }}>Réservation liée (optionnel)</label>
+                  <select
+                    value={formEdit.reservation_id || ''}
+                    onChange={e => setFormEdit(f => ({ ...f, reservation_id: e.target.value }))}
+                    disabled={!formEdit.bien_id}
+                    style={{ padding: '8px 10px', borderRadius: 7, border: '1.5px solid #e5e7eb', fontSize: 13, background: formEdit.bien_id ? '#fff' : '#f9fafb', color: '#2C2416' }}
+                  >
+                    <option value="">— Sans réservation liée —</option>
+                    {resasDisponibles.map(r => {
+                      const fmtD = d => d ? d.substring(5).split('-').reverse().join('/') : '?'
+                      return (
+                        <option key={r.id} value={r.id}>
+                          {r.guest_name} · {fmtD(r.arrival_date)} → {fmtD(r.departure_date)} ({r.nights}n)
+                        </option>
+                      )
+                    })}
+                  </select>
+                </div>
+              )}
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
                 <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
                   <label style={{ fontSize: 11, fontWeight: 600, color: '#666', textTransform: 'uppercase' }}>Date</label>
@@ -291,7 +334,7 @@ export default function PagePrestationsAE() {
               </div>
               <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
                 <label style={{ fontSize: 11, fontWeight: 600, color: '#666', textTransform: 'uppercase' }}>Imputation comptable</label>
-                <select value={formEdit.type_imputation || 'deduction_loy'} onChange={e => setFormEdit(f => ({ ...f, type_imputation: e.target.value }))}
+                <select value={formEdit.type_imputation || 'deduction_loy'} onChange={e => { const v = e.target.value; setFormEdit(f => ({ ...f, type_imputation: v, ...(!['deduction_loy','debours_proprio'].includes(v) && { reservation_id: '' }) })) }}
                   style={{ padding: '8px 10px', borderRadius: 7, border: '1.5px solid #e5e7eb', fontSize: 13 }}>
                   <option value="deduction_loy">Déduction LOY propriétaire</option>
                   <option value="debours_proprio">Facture débours propriétaire</option>
