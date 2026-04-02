@@ -127,14 +127,16 @@ export function genererRapportHTML(proprio, mois, data) {
   const resasHTML = (resas || []).length
     ? `<table style="width:100%;border-collapse:collapse;font-size:11px;table-layout:fixed;margin-top:6px;">
         <colgroup>
-          <col style="width:8%">
-          <col style="width:8%">
-          <col style="width:18%">
-          <col style="width:6%">
-          <col style="width:8%">
-          <col style="width:19%">
-          <col style="width:19%">
+          <col style="width:7%">
+          <col style="width:7%">
           <col style="width:14%">
+          <col style="width:5%">
+          <col style="width:7%">
+          <col style="width:12%">
+          <col style="width:11%">
+          <col style="width:11%">
+          <col style="width:11%">
+          <col style="width:10%">
         </colgroup>
         <thead>
           <tr style="background:#EDEBE5;">
@@ -144,7 +146,9 @@ export function genererRapportHTML(proprio, mois, data) {
             <th style="padding:5px 4px;text-align:center;border-bottom:2px solid #CC9933;color:#2C2416;font-weight:600;">Nuits</th>
             <th style="padding:5px 4px;text-align:center;border-bottom:2px solid #CC9933;color:#2C2416;font-weight:600;">Canal</th>
             <th style="padding:5px 4px;text-align:right;border-bottom:2px solid #CC9933;color:#2C2416;font-weight:600;">Base comm.</th>
-            <th style="padding:5px 4px;text-align:right;border-bottom:2px solid #CC9933;color:#2C2416;font-weight:600;">Reversement</th>
+            <th style="padding:5px 4px;text-align:right;border-bottom:2px solid #CC9933;color:#2C2416;font-weight:600;">HON</th>
+            <th style="padding:5px 4px;text-align:right;border-bottom:2px solid #CC9933;color:#2C2416;font-weight:600;">LOY</th>
+            <th style="padding:5px 4px;text-align:right;border-bottom:2px solid #CC9933;color:#2C2416;font-weight:600;">VIR</th>
             <th style="padding:5px 4px;text-align:right;border-bottom:2px solid #CC9933;color:#2C2416;font-weight:600;">Débours</th>
           </tr>
         </thead>
@@ -166,7 +170,9 @@ export function genererRapportHTML(proprio, mois, data) {
                 <span style="color:#4A3728;">${platLabel}</span>
               </td>
               <td style="padding:5px 4px;text-align:right;color:#2C2416;white-space:nowrap;">${fmt(r.fin_revenue)}</td>
-              <td style="padding:5px 4px;text-align:right;font-weight:600;color:#059669;white-space:nowrap;">${v.LOY ? fmt(v.LOY.montant_ht) : '—'}</td>
+              <td style="padding:5px 4px;text-align:right;white-space:nowrap;color:#9c8c7a;">${v.HON ? fmt(v.HON.montant_ttc) : '—'}</td>
+              <td style="padding:5px 4px;text-align:right;font-weight:500;white-space:nowrap;color:#CC9933;">${v.LOY ? fmt(v.LOY.montant_ht) : '—'}</td>
+              <td style="padding:5px 4px;text-align:right;white-space:nowrap;color:#2d7a50;">${v.VIR ? fmt(v.VIR.montant_ht) : '—'}</td>
               <td style="padding:5px 4px;text-align:right;white-space:nowrap;color:${r.extra > 0 ? '#4A3728' : '#9C8E7D'};">${r.extra > 0 ? fmt(r.extra) : '—'}</td>
             </tr>`}).join('')}
         </tbody>
