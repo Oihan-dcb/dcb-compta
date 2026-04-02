@@ -127,16 +127,15 @@ export function genererRapportHTML(proprio, mois, data) {
   const resasHTML = (resas || []).length
     ? `<table style="width:100%;border-collapse:collapse;font-size:11px;table-layout:fixed;margin-top:6px;">
         <colgroup>
-          <col style="width:7%">
-          <col style="width:7%">
-          <col style="width:14%">
-          <col style="width:5%">
-          <col style="width:7%">
+          <col style="width:8%">
+          <col style="width:8%">
+          <col style="width:18%">
+          <col style="width:6%">
+          <col style="width:9%">
+          <col style="width:17%">
+          <col style="width:11%">
           <col style="width:12%">
           <col style="width:11%">
-          <col style="width:11%">
-          <col style="width:11%">
-          <col style="width:10%">
         </colgroup>
         <thead>
           <tr style="background:#EDEBE5;">
@@ -149,7 +148,6 @@ export function genererRapportHTML(proprio, mois, data) {
             <th style="padding:5px 4px;text-align:right;border-bottom:2px solid #CC9933;color:#2C2416;font-weight:600;">HON</th>
             <th style="padding:5px 4px;text-align:right;border-bottom:2px solid #CC9933;color:#2C2416;font-weight:600;">LOY</th>
             <th style="padding:5px 4px;text-align:right;border-bottom:2px solid #CC9933;color:#2C2416;font-weight:600;">VIR</th>
-            <th style="padding:5px 4px;text-align:right;border-bottom:2px solid #CC9933;color:#2C2416;font-weight:600;">Débours</th>
           </tr>
         </thead>
         <tbody>
@@ -173,7 +171,6 @@ export function genererRapportHTML(proprio, mois, data) {
               <td style="padding:5px 4px;text-align:right;white-space:nowrap;color:#9c8c7a;">${v.HON ? fmt(v.HON.montant_ttc) : '—'}</td>
               <td style="padding:5px 4px;text-align:right;font-weight:500;white-space:nowrap;color:#CC9933;">${v.LOY ? fmt(v.LOY.montant_ht) : '—'}</td>
               <td style="padding:5px 4px;text-align:right;white-space:nowrap;color:#2d7a50;">${v.VIR ? fmt(v.VIR.montant_ht) : '—'}</td>
-              <td style="padding:5px 4px;text-align:right;white-space:nowrap;color:${r.extra > 0 ? '#4A3728' : '#9C8E7D'};">${r.extra > 0 ? fmt(r.extra) : '—'}</td>
             </tr>`}).join('')}
         </tbody>
       </table>`
@@ -282,7 +279,7 @@ export function genererRapportHTML(proprio, mois, data) {
     <!-- Logo + Titre centrés + KPIs financiers -->
     <!-- Titres centrés en haut du hero -->
     <div style="position:absolute;top:0;left:0;right:0;bottom:175px;display:flex;flex-direction:column;align-items:center;justify-content:center;">
-      <div style="font-size:9px;letter-spacing:0.05em;text-transform:uppercase;color:rgba(212,196,176,0.85);margin-bottom:4px;white-space:nowrap;">Rapport mensuel · ${moisLabel}</div>
+      <div style="font-size:9px;letter-spacing:0.05em;text-transform:uppercase;color:#fff;margin-bottom:4px;white-space:nowrap;">Rapport mensuel · ${moisLabel}</div>
       <div style="font-size:16px;font-weight:400;color:#fff;letter-spacing:0.02em;white-space:nowrap;">${proprio?.nom || ''} — ${bienName}</div>
     </div>
     <!-- Logo plus bas et plus grand -->
@@ -359,63 +356,43 @@ export function genererRapportHTML(proprio, mois, data) {
     ${resasHTML}
   </div>
 
-  ${extrasGlobaux.length > 0 ? `
+  ${(extrasGlobaux.length > 0 || haownerList.length > 0) ? `
   <div style="margin:16px 0;padding:20px 24px;background:#F7F4EF;break-inside:avoid;">
     <div style="font-size:9px;letter-spacing:0.05em;text-transform:uppercase;color:#9c8c7a;margin-bottom:12px;padding-bottom:8px;border-bottom:1px solid #ece8e2;">
-      Débours hors forfait du mois
+      Débours et achats du mois
     </div>
     <table style="width:100%;border-collapse:collapse;font-size:11px;table-layout:fixed;">
       <colgroup>
-        <col style="width:15%">
-        <col style="width:70%">
+        <col style="width:12%">
+        <col style="width:9%">
+        <col style="width:64%">
         <col style="width:15%">
       </colgroup>
       <thead>
         <tr style="background:#EDEBE5;">
-          <th style="padding:6px 8px;text-align:left;font-weight:400;font-size:9px;letter-spacing:0.05em;color:#9c8c7a;">Date</th>
-          <th style="padding:6px 8px;text-align:left;font-weight:400;font-size:9px;letter-spacing:0.05em;color:#9c8c7a;">Prestation</th>
-          <th style="padding:6px 8px;text-align:right;font-weight:400;font-size:9px;letter-spacing:0.05em;color:#9c8c7a;">Montant</th>
+          <th style="padding:6px 8px;text-align:left;font-weight:400;font-size:9px;color:#9c8c7a;">Date</th>
+          <th style="padding:6px 8px;text-align:left;font-weight:400;font-size:9px;color:#9c8c7a;">Type</th>
+          <th style="padding:6px 8px;text-align:left;font-weight:400;font-size:9px;color:#9c8c7a;">Description</th>
+          <th style="padding:6px 8px;text-align:right;font-weight:400;font-size:9px;color:#9c8c7a;">Montant</th>
         </tr>
       </thead>
       <tbody>
         ${extrasGlobaux.map((p, i) => `
         <tr style="background:${i % 2 === 0 ? '#fff' : '#F7F4EF'};">
           <td style="padding:6px 8px;color:#3a3530;">${p.date_prestation ? p.date_prestation.substring(5).split('-').reverse().join('/') : '—'}</td>
+          <td style="padding:6px 8px;color:#9c8c7a;font-size:10px;">Débours</td>
           <td style="padding:6px 8px;color:#3a3530;">${p.libelle || p.description || '—'}</td>
           <td style="padding:6px 8px;text-align:right;white-space:nowrap;color:#4A3728;">${fmt(p.montant)}</td>
         </tr>`).join('')}
-      </tbody>
-    </table>
-  </div>` : ''}
-
-  ${haownerList.length > 0 ? `
-  <div style="margin:16px 0;padding:20px 24px;background:#fff;border-left:2px solid #CC9933;break-inside:avoid;">
-    <div style="font-size:9px;letter-spacing:0.05em;text-transform:uppercase;color:#9c8c7a;margin-bottom:12px;padding-bottom:8px;border-bottom:1px solid #ece8e2;">
-      Achats pour compte propriétaire
-    </div>
-    <table style="width:100%;border-collapse:collapse;font-size:11px;table-layout:fixed;">
-      <colgroup>
-        <col style="width:15%">
-        <col style="width:70%">
-        <col style="width:15%">
-      </colgroup>
-      <thead>
-        <tr style="background:#EDEBE5;">
-          <th style="padding:6px 8px;text-align:left;font-weight:400;font-size:9px;letter-spacing:0.05em;color:#9c8c7a;">Date</th>
-          <th style="padding:6px 8px;text-align:left;font-weight:400;font-size:9px;letter-spacing:0.05em;color:#9c8c7a;">Description</th>
-          <th style="padding:6px 8px;text-align:right;font-weight:400;font-size:9px;letter-spacing:0.05em;color:#9c8c7a;">Montant TTC</th>
-        </tr>
-      </thead>
-      <tbody>
         ${haownerList.map((p, i) => `
-        <tr style="background:${i % 2 === 0 ? '#fff' : '#F7F4EF'};">
+        <tr style="background:${(extrasGlobaux.length + i) % 2 === 0 ? '#fff' : '#F7F4EF'};">
           <td style="padding:6px 8px;color:#3a3530;">${p.date_prestation ? p.date_prestation.substring(5).split('-').reverse().join('/') : '—'}</td>
+          <td style="padding:6px 8px;color:#CC9933;font-size:10px;">Achat</td>
           <td style="padding:6px 8px;color:#3a3530;">${p.libelle || p.description || '—'}</td>
-          <td style="padding:6px 8px;text-align:right;white-space:nowrap;color:#CC9933;font-weight:500;">${fmt(p.montant_ttc)}</td>
+          <td style="padding:6px 8px;text-align:right;white-space:nowrap;color:#CC9933;font-weight:500;">${fmt(p.montant_ttc)} <span style="font-size:9px;color:#9c8c7a;">TTC</span></td>
         </tr>`).join('')}
       </tbody>
     </table>
-    <div style="text-align:right;font-size:10px;color:#9C8E7D;margin-top:6px;">TVA 20% incluse</div>
   </div>` : ''}
 
   ${reviews.length ? `
