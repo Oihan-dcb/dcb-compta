@@ -113,7 +113,7 @@ export async function getKPIsMois(proprietaireId, mois) {
 // ─────────────────────────────────────────
 
 export function genererRapportHTML(proprio, mois, data) {
-  const { kpis, resas, reviews, notes, bien, llmAnalyse, llmContexte, llmTendances, kpisN1, noteMoisMoy, noteGlobaleMoy, nbReviewsGlobal, noteContexte, noteReco, tauxCommission } = data
+  const { kpis, resas, reviews, notes, bien, llmAnalyse, llmContexte, llmTendances, kpisN1, noteMoisMoy, noteGlobaleMoy, nbReviewsGlobal, noteContexte, noteReco, tauxCommission, extrasGlobaux = [], haownerList = [] } = data
   const [year, monthIdx] = mois.split('-')
   const MOIS_FR = ['janvier','février','mars','avril','mai','juin','juillet','août','septembre','octobre','novembre','décembre']
   const moisLabel = MOIS_FR[parseInt(monthIdx) - 1] + ' ' + year
@@ -127,13 +127,14 @@ export function genererRapportHTML(proprio, mois, data) {
   const resasHTML = (resas || []).length
     ? `<table style="width:100%;border-collapse:collapse;font-size:11px;table-layout:fixed;margin-top:6px;">
         <colgroup>
-          <col style="width:9%">
-          <col style="width:9%">
-          <col style="width:22%">
+          <col style="width:8%">
+          <col style="width:8%">
+          <col style="width:18%">
           <col style="width:6%">
-          <col style="width:12%">
-          <col style="width:21%">
-          <col style="width:21%">
+          <col style="width:8%">
+          <col style="width:19%">
+          <col style="width:19%">
+          <col style="width:14%">
         </colgroup>
         <thead>
           <tr style="background:#EDEBE5;">
@@ -144,6 +145,7 @@ export function genererRapportHTML(proprio, mois, data) {
             <th style="padding:5px 4px;text-align:center;border-bottom:2px solid #CC9933;color:#2C2416;font-weight:600;">Canal</th>
             <th style="padding:5px 4px;text-align:right;border-bottom:2px solid #CC9933;color:#2C2416;font-weight:600;">Base comm.</th>
             <th style="padding:5px 4px;text-align:right;border-bottom:2px solid #CC9933;color:#2C2416;font-weight:600;">Reversement</th>
+            <th style="padding:5px 4px;text-align:right;border-bottom:2px solid #CC9933;color:#2C2416;font-weight:600;">Débours</th>
           </tr>
         </thead>
         <tbody>
@@ -165,6 +167,7 @@ export function genererRapportHTML(proprio, mois, data) {
               </td>
               <td style="padding:5px 4px;text-align:right;color:#2C2416;white-space:nowrap;">${fmt(r.fin_revenue)}</td>
               <td style="padding:5px 4px;text-align:right;font-weight:600;color:#059669;white-space:nowrap;">${v.LOY ? fmt(v.LOY.montant_ht) : '—'}</td>
+              <td style="padding:5px 4px;text-align:right;white-space:nowrap;color:${r.extra > 0 ? '#4A3728' : '#9C8E7D'};">${r.extra > 0 ? fmt(r.extra) : '—'}</td>
             </tr>`}).join('')}
         </tbody>
       </table>`
@@ -349,6 +352,65 @@ export function genererRapportHTML(proprio, mois, data) {
     <div class="section-title">Séjours du mois (${(resas || []).length})</div>
     ${resasHTML}
   </div>
+
+  ${extrasGlobaux.length > 0 ? `
+  <div style="margin:16px 0;padding:20px 24px;background:#F7F4EF;break-inside:avoid;">
+    <div style="font-size:9px;letter-spacing:0.05em;text-transform:uppercase;color:#9c8c7a;margin-bottom:12px;padding-bottom:8px;border-bottom:1px solid #ece8e2;">
+      Débours hors forfait du mois
+    </div>
+    <table style="width:100%;border-collapse:collapse;font-size:11px;table-layout:fixed;">
+      <colgroup>
+        <col style="width:15%">
+        <col style="width:70%">
+        <col style="width:15%">
+      </colgroup>
+      <thead>
+        <tr style="background:#EDEBE5;">
+          <th style="padding:6px 8px;text-align:left;font-weight:400;font-size:9px;letter-spacing:0.05em;color:#9c8c7a;">Date</th>
+          <th style="padding:6px 8px;text-align:left;font-weight:400;font-size:9px;letter-spacing:0.05em;color:#9c8c7a;">Prestation</th>
+          <th style="padding:6px 8px;text-align:right;font-weight:400;font-size:9px;letter-spacing:0.05em;color:#9c8c7a;">Montant</th>
+        </tr>
+      </thead>
+      <tbody>
+        ${extrasGlobaux.map((p, i) => `
+        <tr style="background:${i % 2 === 0 ? '#fff' : '#F7F4EF'};">
+          <td style="padding:6px 8px;color:#3a3530;">${p.date_prestation ? p.date_prestation.substring(5).split('-').reverse().join('/') : '—'}</td>
+          <td style="padding:6px 8px;color:#3a3530;">${p.description || '—'}</td>
+          <td style="padding:6px 8px;text-align:right;white-space:nowrap;color:#4A3728;">${fmt(p.montant)}</td>
+        </tr>`).join('')}
+      </tbody>
+    </table>
+  </div>` : ''}
+
+  ${haownerList.length > 0 ? `
+  <div style="margin:16px 0;padding:20px 24px;background:#fff;border-left:2px solid #CC9933;break-inside:avoid;">
+    <div style="font-size:9px;letter-spacing:0.05em;text-transform:uppercase;color:#9c8c7a;margin-bottom:12px;padding-bottom:8px;border-bottom:1px solid #ece8e2;">
+      Achats pour compte propriétaire
+    </div>
+    <table style="width:100%;border-collapse:collapse;font-size:11px;table-layout:fixed;">
+      <colgroup>
+        <col style="width:15%">
+        <col style="width:70%">
+        <col style="width:15%">
+      </colgroup>
+      <thead>
+        <tr style="background:#EDEBE5;">
+          <th style="padding:6px 8px;text-align:left;font-weight:400;font-size:9px;letter-spacing:0.05em;color:#9c8c7a;">Date</th>
+          <th style="padding:6px 8px;text-align:left;font-weight:400;font-size:9px;letter-spacing:0.05em;color:#9c8c7a;">Description</th>
+          <th style="padding:6px 8px;text-align:right;font-weight:400;font-size:9px;letter-spacing:0.05em;color:#9c8c7a;">Montant TTC</th>
+        </tr>
+      </thead>
+      <tbody>
+        ${haownerList.map((p, i) => `
+        <tr style="background:${i % 2 === 0 ? '#fff' : '#F7F4EF'};">
+          <td style="padding:6px 8px;color:#3a3530;">${p.date_prestation ? p.date_prestation.substring(5).split('-').reverse().join('/') : '—'}</td>
+          <td style="padding:6px 8px;color:#3a3530;">${p.description || '—'}</td>
+          <td style="padding:6px 8px;text-align:right;white-space:nowrap;color:#CC9933;font-weight:500;">${fmt(p.montant_ttc)}</td>
+        </tr>`).join('')}
+      </tbody>
+    </table>
+    <div style="text-align:right;font-size:10px;color:#9C8E7D;margin-top:6px;">TVA 20% incluse</div>
+  </div>` : ''}
 
   ${reviews.length ? `
   <!-- AVIS -->
