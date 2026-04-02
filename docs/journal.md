@@ -1,3 +1,19 @@
+# DCB Compta — Journal session 02 avril 2026 — Sécurisation tokens
+
+## Sécurisation complète SMTP / tokens
+
+- Tokens révoqués : `sbp_b707...` (Supabase) + `ghp_lnjT...` (GitHub) ✅
+- Remote GitHub mis à jour avec nouveau token ✅
+- `DCB_MANAGEMENT_TOKEN` configuré dans Supabase secrets (hors code source) ✅
+- Edge Function `update-smtp-secrets` créée et déployée sur `omuncchvypbtxkpalwcr` ✅
+- `PageConfig.jsx` : `sauvegarderSMTP()` passe désormais par la Edge Function ✅
+- Scan `grep sbp_|ghp_` sur `src/` : **aucun résultat** ✅
+
+### Reste à faire
+- Tester l'envoi SMTP une fois `SMTP_PASS` configuré dans les secrets Supabase
+
+---
+
 # DCB Compta — Journal session 22 mars 2026 (partie 10)
 
 ## Bugs résolus
