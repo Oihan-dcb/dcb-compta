@@ -162,6 +162,7 @@ async function genererFactureGroupe(proprio, biens, mois) {
   const mgt = sumByCode('MGT')
   const ae  = sumByCode('AE')
   const loy = sumByCode('LOY')
+  const vir = sumByCode('VIR')
 
   // CF-P1 : prestations hors forfait deduction_loy validees -- deduction directe sur reversement
   const { data: prestationsDeduction } = await supabase
@@ -286,7 +287,7 @@ async function genererFactureGroupe(proprio, biens, mois) {
     deboursPropSurplusTotal += deboursPropSurplus
   }
 
-  const montantReversement = Math.max(0, loy.ht - totalPrestations - haownerTTC - fraisDeduireTTC - deboursPropAbsorbTotal)
+  const montantReversement = Math.max(0, vir.ht - totalPrestations - haownerTTC - fraisDeduireTTC - deboursPropAbsorbTotal)
 
   // Cas solde nÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂ©gatif : uniquement des expenses, pas de rÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂ©servations
   const soldeNegatif = totalHT === 0 && div.ht > 0
