@@ -21,7 +21,7 @@ export default function PageConfigSMTP() {
         'https://api.supabase.com/v1/projects/omuncchvypbtxkpalwcr/secrets',
         {
           method: 'POST',
-          headers: { 'Authorization': 'Bearer REMOVED_TOKEN', 'Content-Type': 'application/json' },
+          headers: { 'Authorization': 'Bearer ' + import.meta.env.VITE_SUPABASE_MANAGEMENT_TOKEN, 'Content-Type': 'application/json' },
           body: JSON.stringify(fields),
         }
       )
