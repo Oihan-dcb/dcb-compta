@@ -122,7 +122,7 @@ Les deux applications partagent la **même base Supabase**. Aucune des deux n'a 
 **Rôle réel** : Génération et envoi par email des rapports mensuels propriétaires. KPIs, liste des réservations, avis voyageurs, notes de marché.
 **Données** : lit `reservation`, `ventilation` (LOY), `bien_notes`, `reservation_review` ; écrit `bien_notes`
 **Dépendances entrantes** : Données du mois (réservations, ventilation calculée), avis webhook (`reservation_review`), notes DCB (`bien_notes`)
-**Dépendances sortantes** : Email HTML via `smtp-send` Edge Function (OVH SMTP) avec CC oihan@destinationcotebasque.com
+**Dépendances sortantes** : Email HTML via `smtp-send` Edge Function (OVH SMTP) avec CC rapports@destinationcotebasque.com
 **Services** : `rapportProprietaire.js` (getBienNote, saveBienNote, getReviewsMois, getKPIsMois, genererRapportHTML, envoyerRapportEmail)
 
 ---
@@ -465,3 +465,12 @@ La logique de ventilation comptable (transformation `fin_revenue` → HON/FMEN/A
 - `944aadc` fix(pdf): `@sparticuz/chromium` complet + `setBypassCSP` + `emulateMediaType('print')` + letter-spacing réduit
 - `f902350` fix(pdf): tous les avis sans limite de slice/substring — texte complet dans PDF et prompt LLM
 - `d0e05a8`→`b933fd5` fix(pdf): header hero refonte — logo (200px, bottom:-2px) et titres (`white-space:nowrap`, bottom:175px) en blocs indépendants
+
+## Fixes session 02 avril 2026 — Sécurisation + rapport opérationnel
+
+- `fd7abb4` fix(rapport): `&nbsp;` → espaces normaux dans HTML email (supprime les `=20` quoted-printable) + footer `oihan@` → `rapports@destinationcotebasque.com` + CC idem dans `envoyerRapportEmail`
+- `076a246` security: `DCB_MANAGEMENT_TOKEN` renommé depuis `SUPABASE_MANAGEMENT_TOKEN` — token hors code source, stocké dans Supabase secrets
+- Edge Function `update-smtp-secrets` déployée — `PageConfigSMTP.jsx` passe par `supabase.functions.invoke` au lieu d'un fetch direct avec token hardcodé
+- Tokens révoqués : `sbp_b707...` (Supabase Management) + `ghp_lnjT...` (GitHub PAT) — aucun secret actif dans le code source ni le git log
+- `.env.local` créé en local (gitignored) avec `VITE_SUPABASE_URL` + `VITE_SUPABASE_ANON_KEY`
+- **Premier rapport propriétaire envoyé** : BURGY 602, mars 2026 ✅

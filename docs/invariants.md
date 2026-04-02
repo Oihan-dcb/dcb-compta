@@ -1,6 +1,6 @@
 # DCB Compta — Invariants système
 
-> **Statut** : Document d'audit — mars 2026
+> **Statut** : Document d'audit — avril 2026
 > **Source** : Code source + audit complet + règles métier (`domain-rules.md`)
 > **Avertissement** : Ce document distingue explicitement les invariants respectés et ceux actuellement violés, avec référence aux bugs correspondants.
 
@@ -118,7 +118,7 @@ Ces invariants ont la priorité absolue. Leur violation peut entraîner une fact
 
 ### Invariants violés actifs
 
-Aucun invariant actif violé à l'issue de la session du 30 mars 2026.
+Aucun invariant actif violé à l'issue de la session du 02 avril 2026.
 
 > I-60 reste ⚠ partiellement couvert (~15 opérations non loguées) mais n'est plus considéré comme un invariant critique bloquant.
 
