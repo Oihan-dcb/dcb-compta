@@ -11,8 +11,8 @@ serve(async (req) => {
   }
 
   try {
-    const MGMT_TOKEN = Deno.env.get('SUPABASE_MANAGEMENT_TOKEN')
-    if (!MGMT_TOKEN) throw new Error('SUPABASE_MANAGEMENT_TOKEN non configuré')
+    const MGMT_TOKEN = Deno.env.get('DCB_MANAGEMENT_TOKEN')
+    if (!MGMT_TOKEN) throw new Error('DCB_MANAGEMENT_TOKEN non configuré')
 
     const PROJECT_REF = 'omuncchvypbtxkpalwcr'
     const body = await req.json()
