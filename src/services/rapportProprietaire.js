@@ -303,7 +303,7 @@ export function genererRapportHTML(proprio, mois, data) {
         <div style="font-size:9px;color:rgba(204,153,51,0.7);">${tauxCommission ? tauxCommission + '% TTC' : 'gestion & services'}</div>
       </div>
       <div style="text-align:center;">
-        <div style="font-size:8px;letter-spacing:0.04em;text-transform:uppercase;color:rgba(212,196,176,0.8);margin-bottom:3px;">Total HON</div>
+        <div style="font-size:8px;letter-spacing:0.04em;text-transform:uppercase;color:rgba(212,196,176,0.8);margin-bottom:3px;">Virement propriétaire</div>
         <div style="font-size:18px;font-weight:400;color:#fff;">${fmt(kpis.loyTotal)}</div>
       </div>
       </div>
