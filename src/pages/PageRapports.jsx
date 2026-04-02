@@ -85,6 +85,7 @@ export default function PageRapports() {
   const [modeMaite, setModeMaite] = useState('chambre')
   const [joindrePDF, setJoindrePDF] = useState(false)
   const [showMailPreview, setShowMailPreview] = useState(false)
+  const [erreurDetail, setErreurDetail] = useState('')
 
   useEffect(() => {
     supabase
@@ -726,7 +727,7 @@ FORMAT :
       )
       setBiensEnvoyes(prev => new Set([...prev, selectedBienId]))
       setStatut(emails.length > 1 ? `sent_${emails.length}` : 'sent')
-    } catch (e) { console.error(e); setStatut('error') }
+    } catch (e) { console.error('ERREUR ENVOI:', e); setStatut('error'); setErreurDetail(e?.message || String(e)) }
   }
 
   const proprio = proprietaires.find(p => p.id === selectedPropId)
@@ -1174,6 +1175,11 @@ FORMAT :
                 {statut === 'sending' ? '…' : 'Envoyer'}
               </button>
             </div>
+            {statut === 'error' && erreurDetail && (
+              <div style={{ marginTop: 8, padding: '8px 12px', background: '#fff0f0', border: '1px solid #f5c6c6', borderRadius: 6, fontSize: '0.78em', color: '#c0392b' }}>
+                ⚠️ {erreurDetail}
+              </div>
+            )}
           </div>
         </div>
       )}

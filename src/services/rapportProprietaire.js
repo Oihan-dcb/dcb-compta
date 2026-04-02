@@ -113,7 +113,9 @@ export async function getKPIsMois(proprietaireId, mois) {
 // ─────────────────────────────────────────
 
 export function genererRapportHTML(proprio, mois, data) {
-  const { kpis, resas, reviews, notes, bien, llmAnalyse, llmContexte, llmTendances, kpisN1, noteMoisMoy, noteGlobaleMoy, nbReviewsGlobal, noteContexte, noteReco, tauxCommission, extrasGlobaux = [], haownerList = [] } = data
+  const { resas, reviews, notes, bien, llmAnalyse, llmContexte, llmTendances, noteMoisMoy, noteGlobaleMoy, nbReviewsGlobal, noteContexte, noteReco, tauxCommission, extrasGlobaux = [], haownerList = [] } = data
+  const kpis = data?.kpis || {}
+  const kpisN1 = data?.kpisN1 || {}
   const [year, monthIdx] = mois.split('-')
   const MOIS_FR = ['janvier','février','mars','avril','mai','juin','juillet','août','septembre','octobre','novembre','décembre']
   const moisLabel = MOIS_FR[parseInt(monthIdx) - 1] + ' ' + year
