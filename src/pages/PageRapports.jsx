@@ -712,16 +712,18 @@ FORMAT :
 
   async function envoyer() {
     if (!data) return
+    const emails = email.split(',').map(e => e.trim()).filter(e => e.includes('@'))
+    if (emails.length === 0) { alert('Email invalide'); return }
     setStatut('sending')
     try {
       const html = genererRapportHTML(data.proprio, mois, buildRapportData())
-      await envoyerRapportEmail({ ...data.proprio, email }, mois, html)
+      await Promise.all(emails.map(addr => envoyerRapportEmail({ ...data.proprio, email: addr }, mois, html)))
       await supabase.from('bien_notes').upsert(
         { bien_id: selectedBienId, mois, rapport_envoye_at: new Date().toISOString() },
         { onConflict: 'bien_id,mois' }
       )
       setBiensEnvoyes(prev => new Set([...prev, selectedBienId]))
-      setStatut('sent')
+      setStatut(emails.length > 1 ? `sent_${emails.length}` : 'sent')
     } catch (e) { console.error(e); setStatut('error') }
   }
 
@@ -742,7 +744,7 @@ FORMAT :
     sent:    { label: 'Envoyé ✓',   color: '#059669', bg: '#D1FAE5' },
     error:   { label: 'Erreur',     color: '#DC2626', bg: '#FEE2E2' },
   }
-  const st = STATUT_STYLES[statut]
+  const st = STATUT_STYLES[statut] || { label: `Envoyé ✓ (${statut.replace('sent_', '')} destinataires)`, color: '#059669', bg: '#D1FAE5' }
 
   function DeltaBadge({ rawN, rawN1 }) {
     if (rawN1 === undefined || rawN1 === null || rawN1 === 0)
@@ -1146,8 +1148,8 @@ FORMAT :
 
             {/* Email + actions */}
             <div style={{ display: 'flex', gap: 10, alignItems: 'center', flexWrap: 'wrap' }}>
-              <input type="email" value={email} onChange={e => setEmail(e.target.value)} onBlur={handleEmailBlur}
-                placeholder="Email propriétaire"
+              <input type="text" value={email} onChange={e => setEmail(e.target.value)} onBlur={handleEmailBlur}
+                placeholder="Email(s) propriétaire — séparer par des virgules"
                 style={{ flex: 1, minWidth: 220, fontSize: '0.88em', padding: '8px 10px',
                   border: `1px solid ${email ? '#059669' : '#D97706'}`, borderRadius: 6,
                   background: email ? '#F0FDF4' : '#FFFBEB', color: 'var(--text)', outline: 'none' }}
