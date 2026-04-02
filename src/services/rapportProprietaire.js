@@ -182,7 +182,7 @@ export function genererRapportHTML(proprio, mois, data) {
     ? reviews.map(r => `
       <div class="avis-block" style="border-left:3px solid #CC9933;padding:8px 14px;margin-bottom:8px;background:#F7F4EF;border-radius:0 6px 6px 0;">
         <div style="color:#CC9933;font-size:1em;margin-bottom:3px;">${SVG.stars(r.rating || 0, 13)}</div>
-        <p style="margin:0;color:#2C2416;font-style:italic;line-height:1.5;font-size:13px;">«&nbsp;${r.comment || ''}&nbsp;»</p>
+        <p style="margin:0;color:#2C2416;font-style:italic;line-height:1.5;font-size:13px;">« ${r.comment || ''} »</p>
       </div>`).join('')
     : '<p style="color:#9C8E7D;font-style:italic;font-size:0.9em;">Aucun avis reçu ce mois.</p>'
 
@@ -439,7 +439,7 @@ export function genererRapportHTML(proprio, mois, data) {
 
   <div class="footer">
     <div style="margin-bottom:4px;">Destination Côte Basque — Conciergerie de prestige, Biarritz</div>
-    <div>Rapport généré le ${new Date().toLocaleDateString('fr-FR')} · oihan@destinationcotebasque.com</div>
+    <div>Rapport généré le ${new Date().toLocaleDateString('fr-FR')} · rapports@destinationcotebasque.com</div>
   </div>
 
 </div>
@@ -493,7 +493,7 @@ export async function envoyerRapportEmail(proprio, mois, htmlBody, joindrePDF = 
     },
     body: JSON.stringify({
       to: proprio.email,
-      cc: 'oihan@destinationcotebasque.com',
+      cc: 'rapports@destinationcotebasque.com',
       subject: `Rapport mensuel ${moisLabel} — Destination Côte Basque`,
       html: htmlBody,
       attachments: attachments.length ? attachments : undefined,
