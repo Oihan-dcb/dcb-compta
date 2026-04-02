@@ -299,7 +299,7 @@ export function genererRapportHTML(proprio, mois, data) {
       </div>
       <div style="text-align:center;border-left:1px solid rgba(204,153,51,0.4);border-right:1px solid rgba(204,153,51,0.4);padding:0 20px;">
         <div style="font-size:8px;letter-spacing:0.04em;text-transform:uppercase;color:#CC9933;margin-bottom:3px;">Honoraires DCB</div>
-        <div style="font-size:18px;font-weight:400;color:#CC9933;">${fmt(kpis.caHeb - kpis.loyTotal)}</div>
+        <div style="font-size:18px;font-weight:400;color:#CC9933;">${fmt(kpis.honTotal)}</div>
         <div style="font-size:9px;color:rgba(204,153,51,0.7);">${tauxCommission ? tauxCommission + '% TTC' : 'gestion & services'}</div>
       </div>
       <div style="text-align:center;">

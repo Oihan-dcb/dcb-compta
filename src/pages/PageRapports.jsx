@@ -216,6 +216,7 @@ export default function PageRapports() {
       const resaIds = resasValides.map(r => r.id)
 
       let loyTotal = 0
+      let honTotal = 0
       let ventByResa = {}
       if (resaIds.length) {
         const { data: vents } = await supabase
@@ -228,6 +229,7 @@ export default function PageRapports() {
           ventByResa[v.reservation_id][v.code] = v
         }
         loyTotal = (vents || []).filter(v => v.code === 'LOY').reduce((s, v) => s + (v.montant_ht || 0), 0)
+        honTotal = (vents || []).filter(v => v.code === 'HON').reduce((s, v) => s + (v.montant_ttc || 0), 0)
       }
 
       let prestations = []
@@ -321,7 +323,7 @@ export default function PageRapports() {
         reviews,
         facture,
         frais: fraisData || [],
-        kpis: { nbResas, caHeb, nuitsOccupees, nuitsDispos, tauxOcc, dureeMoy, loyTotal },
+        kpis: { nbResas, caHeb, nuitsOccupees, nuitsDispos, tauxOcc, dureeMoy, loyTotal, honTotal },
         kpisN1,
         alertes,
         noteMoisMoy,
