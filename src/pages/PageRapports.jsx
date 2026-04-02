@@ -196,7 +196,7 @@ export default function PageRapports() {
         supabase.from('bien_notes').select('note_personnalisation')
           .eq('bien_id', selectedBienId).eq('mois', mois).maybeSingle()
           .then(r => r.data?.note_personnalisation || ''),
-        supabase.from('facture_evoliz').select('id, id_evoliz, statut')
+        supabase.from('facture_evoliz').select('id, id_evoliz, statut, montant_ttc')
           .eq('proprietaire_id', selectedPropId).eq('mois', mois).eq('type_facture', 'honoraires').maybeSingle(),
         supabase.from('bien').select('taux_commission_override, proprietaire:proprietaire_id(taux_commission)')
           .eq('id', selectedBienId).maybeSingle()
@@ -323,7 +323,7 @@ export default function PageRapports() {
         reviews,
         facture,
         frais: fraisData || [],
-        kpis: { nbResas, caHeb, nuitsOccupees, nuitsDispos, tauxOcc, dureeMoy, loyTotal, honTotal },
+        kpis: { nbResas, caHeb, nuitsOccupees, nuitsDispos, tauxOcc, dureeMoy, loyTotal, honTotal: facture?.montant_ttc || honTotal },
         kpisN1,
         alertes,
         noteMoisMoy,
