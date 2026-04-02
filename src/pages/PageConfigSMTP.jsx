@@ -10,22 +10,18 @@ export default function PageConfigSMTP() {
     setSmtpSaving(true)
     setSmtpTestResult(null)
     try {
-      const fields = []
-      if (smtpConfig.host) fields.push({ name: 'SMTP_HOST', value: smtpConfig.host })
-      if (smtpConfig.port) fields.push({ name: 'SMTP_PORT', value: smtpConfig.port })
-      if (smtpConfig.user) fields.push({ name: 'SMTP_USER', value: smtpConfig.user })
-      if (smtpConfig.from) fields.push({ name: 'SMTP_FROM', value: smtpConfig.from })
-      if (smtpConfig.pass) fields.push({ name: 'SMTP_PASS', value: smtpConfig.pass })
-      if (fields.length === 0) { alert('Aucun champ à sauvegarder'); return }
-      const res = await fetch(
-        'https://api.supabase.com/v1/projects/omuncchvypbtxkpalwcr/secrets',
-        {
-          method: 'POST',
-          headers: { 'Authorization': 'Bearer ' + import.meta.env.VITE_SUPABASE_MANAGEMENT_TOKEN, 'Content-Type': 'application/json' },
-          body: JSON.stringify(fields),
-        }
-      )
-      if (!res.ok) throw new Error('Erreur Supabase ' + res.status)
+      const fields = {}
+      if (smtpConfig.host.trim()) fields.host = smtpConfig.host.trim()
+      if (smtpConfig.port.trim()) fields.port = smtpConfig.port.trim()
+      if (smtpConfig.user.trim()) fields.user = smtpConfig.user.trim()
+      if (smtpConfig.from.trim()) fields.from = smtpConfig.from.trim()
+      if (smtpConfig.pass)        fields.pass = smtpConfig.pass
+
+      if (Object.keys(fields).length === 0) { alert('Aucun champ renseigné'); return }
+
+      const { error } = await supabase.functions.invoke('update-smtp-secrets', { body: fields })
+      if (error) throw new Error(error.message)
+
       setSmtpConfig(p => ({ ...p, pass: '' }))
       alert('✅ Configuration SMTP sauvegardée')
     } catch(e) {
