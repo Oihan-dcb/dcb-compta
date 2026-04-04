@@ -44,7 +44,7 @@ export async function calculerVentilationMois(mois) {
     `)
     .eq('mois_comptable', mois)
     .eq('ventilation_calculee', false)
-    .not('final_status', 'in', '("cancelled","not_accepted","not accepted","declined","expired")')
+    .or('fin_revenue.gt.0,final_status.not.in.("cancelled","not_accepted","not accepted","declined","expired")')
     .eq('owner_stay', false)
 
   if (error) throw error
@@ -182,12 +182,14 @@ export async function calculerVentilationResa(resa) {
   const STATUTS_NON_VENTILABLES = ['cancelled', 'not_accepted', 'not accepted', 'declined', 'expired']
   const isCancelled = STATUTS_NON_VENTILABLES.includes(resa.final_status)
 
-  // Réservation annulée/refusée → pas de ventilation
-  if (isCancelled) {
+  // Réservation annulée/refusée sans payout → pas de ventilation
+  const finRevenue = parseFloat(resa.fin_revenue || 0)
+  if (isCancelled && finRevenue === 0) {
     await supabase.from('ventilation').delete().eq('reservation_id', resa.id)
     await supabase.from('reservation').update({ ventilation_calculee: true }).eq('id', resa.id)
     return []
   }
+  // Si annulée mais fin_revenue > 0 (frais d'annulation perçus) → ventiler normalement
 
   // Fees depuis Hospitable
   // ─────────────────────────────────────────────────────────────────────────

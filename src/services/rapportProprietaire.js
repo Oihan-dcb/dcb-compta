@@ -112,7 +112,7 @@ export async function getKPIsMois(proprietaireId, mois) {
 // Génération HTML rapport
 // ─────────────────────────────────────────
 
-export function genererRapportHTML(proprio, mois, data) {
+export function genererRapportHTML(proprio, mois, data, colonnes = {}) {
   const { resas, reviews, notes, bien, llmAnalyse, llmContexte, llmTendances, noteMoisMoy, noteGlobaleMoy, nbReviewsGlobal, noteContexte, noteReco, tauxCommission, extrasGlobaux = [], haownerList = [] } = data
   const kpis = data?.kpis || {}
   const kpisN1 = data?.kpisN1 || {}
@@ -126,6 +126,18 @@ export function genererRapportHTML(proprio, mois, data) {
   const PLATFORM_LABELS = { airbnb: 'Airbnb', booking: 'Booking', stripe: 'Direct', direct: 'Direct' }
   const PLATFORM_COLORS = { airbnb: '#FF5A5F', booking: '#003580', stripe: '#059669', direct: '#059669' }
 
+  const cols = {
+    brut:      colonnes.brut      ?? false,
+    base_comm: colonnes.base_comm ?? true,
+    hon:       colonnes.hon       ?? true,
+    loy:       colonnes.loy       ?? true,
+    vir:       colonnes.vir       ?? true,
+    debours:   colonnes.debours   ?? false,
+  }
+  const optActives = Object.values(cols).filter(Boolean).length
+  const optWidth = optActives > 0 ? Math.floor(54 / optActives) : 0
+  const thStyle = 'padding:5px 4px;text-align:right;border-bottom:2px solid #CC9933;color:#2C2416;font-weight:600;'
+
   const resasHTML = (resas || []).length
     ? `<table style="width:100%;border-collapse:collapse;font-size:11px;table-layout:fixed;margin-top:6px;">
         <colgroup>
@@ -133,11 +145,13 @@ export function genererRapportHTML(proprio, mois, data) {
           <col style="width:8%">
           <col style="width:18%">
           <col style="width:6%">
-          <col style="width:9%">
-          <col style="width:17%">
-          <col style="width:11%">
-          <col style="width:12%">
-          <col style="width:11%">
+          <col style="width:8%">
+          ${cols.brut      ? `<col style="width:${optWidth}%">` : ''}
+          ${cols.base_comm ? `<col style="width:${optWidth}%">` : ''}
+          ${cols.hon       ? `<col style="width:${optWidth}%">` : ''}
+          ${cols.loy       ? `<col style="width:${optWidth}%">` : ''}
+          ${cols.vir       ? `<col style="width:${optWidth}%">` : ''}
+          ${cols.debours   ? `<col style="width:${optWidth}%">` : ''}
         </colgroup>
         <thead>
           <tr style="background:#EDEBE5;">
@@ -146,14 +160,18 @@ export function genererRapportHTML(proprio, mois, data) {
             <th style="padding:5px 5px;text-align:left;border-bottom:2px solid #CC9933;color:#2C2416;font-weight:600;">Voyageur</th>
             <th style="padding:5px 4px;text-align:center;border-bottom:2px solid #CC9933;color:#2C2416;font-weight:600;">Nuits</th>
             <th style="padding:5px 4px;text-align:center;border-bottom:2px solid #CC9933;color:#2C2416;font-weight:600;">Canal</th>
-            <th style="padding:5px 4px;text-align:right;border-bottom:2px solid #CC9933;color:#2C2416;font-weight:600;">Base comm.</th>
-            <th style="padding:5px 4px;text-align:right;border-bottom:2px solid #CC9933;color:#2C2416;font-weight:600;">HON</th>
-            <th style="padding:5px 4px;text-align:right;border-bottom:2px solid #CC9933;color:#2C2416;font-weight:600;">LOY</th>
-            <th style="padding:5px 4px;text-align:right;border-bottom:2px solid #CC9933;color:#2C2416;font-weight:600;">VIR</th>
+            ${cols.brut      ? `<th style="${thStyle}">Brut voyageur</th>` : ''}
+            ${cols.base_comm ? `<th style="${thStyle}">Base comm.</th>` : ''}
+            ${cols.hon       ? `<th style="${thStyle}">HON</th>` : ''}
+            ${cols.loy       ? `<th style="${thStyle}">LOY</th>` : ''}
+            ${cols.vir       ? `<th style="${thStyle}">VIR</th>` : ''}
+            ${cols.debours   ? `<th style="${thStyle}">Débours</th>` : ''}
           </tr>
         </thead>
         <tbody>
           ${(resas || []).map((r, i) => {
+            const STATUTS_NON_VENTILABLES_HTML = ['cancelled', 'not_accepted', 'not accepted', 'declined', 'expired']
+            const isCancelledWithPayout = STATUTS_NON_VENTILABLES_HTML.includes(r.final_status) && (r.fin_revenue || 0) > 0
             const plat = (r.platform || '').toLowerCase()
             const platLabel = PLATFORM_LABELS[plat] || r.platform || '—'
             const platColor = PLATFORM_COLORS[plat] || '#9C8E7D'
@@ -163,16 +181,18 @@ export function genererRapportHTML(proprio, mois, data) {
             return `<tr style="background:${i % 2 === 0 ? '#F7F4EF' : '#fff'};">
               <td style="padding:5px 5px;color:#2C2416;white-space:nowrap;">${arrFR}</td>
               <td style="padding:5px 5px;color:#4A3728;white-space:nowrap;">${depFR}</td>
-              <td style="padding:5px 5px;color:#2C2416;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${r.guest_name || '—'}</td>
+              <td style="padding:5px 5px;color:#2C2416;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${r.guest_name || '—'}${isCancelledWithPayout ? ' <span style="font-size:9px;color:#9C8E7D;font-style:italic;">(annulée)</span>' : ''}</td>
               <td style="padding:5px 4px;text-align:center;color:#4A3728;">${r.nights || '—'}</td>
               <td style="padding:5px 4px;text-align:center;">
                 <span style="display:inline-block;width:7px;height:7px;border-radius:50%;background:${platColor};margin-right:3px;vertical-align:middle;"></span>
                 <span style="color:#4A3728;">${platLabel}</span>
               </td>
-              <td style="padding:5px 4px;text-align:right;color:#2C2416;white-space:nowrap;">${fmt(r.fin_revenue)}</td>
-              <td style="padding:5px 4px;text-align:right;white-space:nowrap;color:#9c8c7a;">${v.HON ? fmt(v.HON.montant_ttc) : '—'}</td>
-              <td style="padding:5px 4px;text-align:right;font-weight:500;white-space:nowrap;color:#CC9933;">${v.LOY ? fmt(v.LOY.montant_ht) : '—'}</td>
-              <td style="padding:5px 4px;text-align:right;white-space:nowrap;color:#2d7a50;">${v.VIR ? fmt(v.VIR.montant_ht) : '—'}</td>
+              ${cols.brut      ? `<td style="padding:5px 4px;text-align:right;white-space:nowrap;color:#2C2416;">${fmt(r.fin_accommodation || 0)}</td>` : ''}
+              ${cols.base_comm ? `<td style="padding:5px 4px;text-align:right;white-space:nowrap;color:#2C2416;">${fmt(r.fin_revenue || 0)}</td>` : ''}
+              ${cols.hon       ? `<td style="padding:5px 4px;text-align:right;white-space:nowrap;color:#9c8c7a;">${v.HON ? fmt(v.HON.montant_ttc) : '—'}</td>` : ''}
+              ${cols.loy       ? `<td style="padding:5px 4px;text-align:right;font-weight:500;white-space:nowrap;color:#CC9933;">${v.LOY ? fmt(v.LOY.montant_ht) : '—'}</td>` : ''}
+              ${cols.vir       ? `<td style="padding:5px 4px;text-align:right;white-space:nowrap;color:#2d7a50;">${v.VIR ? fmt(v.VIR.montant_ht) : '—'}</td>` : ''}
+              ${cols.debours   ? `<td style="padding:5px 4px;text-align:right;white-space:nowrap;color:#4A3728;">${r.extra > 0 ? fmt(r.extra) : '—'}</td>` : ''}
             </tr>`}).join('')}
         </tbody>
       </table>`

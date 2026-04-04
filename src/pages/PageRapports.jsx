@@ -86,11 +86,12 @@ export default function PageRapports() {
   const [joindrePDF, setJoindrePDF] = useState(false)
   const [showMailPreview, setShowMailPreview] = useState(false)
   const [erreurDetail, setErreurDetail] = useState('')
+  const [colsConfig, setColsConfig] = useState({})
 
   useEffect(() => {
     supabase
       .from('proprietaire')
-      .select('id, nom, email, bien(id, hospitable_name, listed, agence, groupe_facturation)')
+      .select('id, nom, email, bien(id, hospitable_name, listed, agence, groupe_facturation, rapport_config)')
       .eq('actif', true)
       .order('nom')
       .then(({ data: props }) => {
@@ -130,7 +131,7 @@ export default function PageRapports() {
     setPreviewOpen(false)
     Promise.all([
       supabase.from('reservation').select('bien_id').eq('mois_comptable', mois)
-        .not('final_status', 'in', '("cancelled","not_accepted","declined","expired")'),
+        .or('fin_revenue.gt.0,final_status.not.in.("cancelled","not_accepted","declined","expired")'),
       supabase.from('frais_proprietaire').select('bien_id').eq('mois_facturation', mois),
       supabase.from('bien_notes').select('bien_id').eq('mois', mois).not('rapport_envoye_at', 'is', null),
     ]).then(([{ data: resasBiens }, { data: fraisBiens }, { data: rapports }]) => {
@@ -215,7 +216,9 @@ export default function PageRapports() {
       setLlmTendances(noteTendancesVal)
       setNotePerso(notePersoVal)
 
-      const resasValides = (resas || []).filter(r => !STATUTS_NON_VENTILABLES.includes(r.final_status))
+      const resasValides = (resas || []).filter(r =>
+        !STATUTS_NON_VENTILABLES.includes(r.final_status) || (r.fin_revenue || 0) > 0
+      )
       const resaIds = resasValides.map(r => r.id)
 
       let loyTotal = 0
@@ -353,6 +356,10 @@ export default function PageRapports() {
   }, [selectedBienId, selectedPropId, mois, proprietaires, modeMaite])
 
   useEffect(() => { charger() }, [charger])
+
+  useEffect(() => {
+    if (data?.bien?.rapport_config?.colonnes) setColsConfig(data.bien.rapport_config.colonnes)
+  }, [data?.bien?.id])
 
   async function handleNoteBlur() {
     try {
@@ -678,6 +685,7 @@ FORMAT :
       tauxCommission: data.tauxCommission,
       extrasGlobaux: data?.extrasGlobaux || [],
       haownerList: data?.haownerList || [],
+      colonnes: colsConfig,
     }
   }
 
@@ -685,7 +693,8 @@ FORMAT :
     if (!data) return
     setGeneratingPDF(true)
     try {
-      const html = genererRapportHTML(data.proprio, mois, buildRapportData())
+      const rapportData = buildRapportData()
+      const html = genererRapportHTML(data.proprio, mois, rapportData, rapportData.colonnes)
       const response = await fetch('/api/generate-pdf', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -719,7 +728,8 @@ FORMAT :
     if (emails.length === 0) { alert('Email invalide'); return }
     setStatut('sending')
     try {
-      const html = genererRapportHTML(data.proprio, mois, buildRapportData())
+      const rapportData = buildRapportData()
+      const html = genererRapportHTML(data.proprio, mois, rapportData, rapportData.colonnes)
       await Promise.all(emails.map(addr => envoyerRapportEmail({ ...data.proprio, email: addr }, mois, html, joindrePDF)))
       await supabase.from('bien_notes').upsert(
         { bien_id: selectedBienId, mois, rapport_envoye_at: new Date().toISOString() },
@@ -883,6 +893,30 @@ FORMAT :
                 <div style={{ fontSize: '0.8em', fontWeight: 600, color: '#9C8E7D', marginBottom: 10, textTransform: 'uppercase', letterSpacing: 0.5 }}>
                   Réservations ({data.resas.length})
                 </div>
+                <div style={{ marginBottom: 10, padding: '8px 12px', background: 'var(--bg)', border: '1px solid var(--border)', borderRadius: 8, fontSize: '0.8em', display: 'flex', alignItems: 'center', flexWrap: 'wrap', gap: 4 }}>
+                  <span style={{ fontWeight: 600, marginRight: 6, color: 'var(--text)' }}>Colonnes rapport :</span>
+                  {[
+                    { key: 'brut',      label: 'Brut voyageur', def: false },
+                    { key: 'base_comm', label: 'Base comm.',    def: true  },
+                    { key: 'hon',       label: 'HON',           def: true  },
+                    { key: 'loy',       label: 'LOY',           def: true  },
+                    { key: 'vir',       label: 'VIR',           def: true  },
+                    { key: 'debours',   label: 'Débours',       def: false },
+                  ].map(({ key, label, def }) => (
+                    <label key={key} style={{ marginRight: 8, cursor: 'pointer', display: 'inline-flex', alignItems: 'center', gap: 4 }}>
+                      <input type="checkbox"
+                        checked={colsConfig[key] ?? def}
+                        onChange={async (e) => {
+                          const newCols = { ...colsConfig, [key]: e.target.checked }
+                          setColsConfig(newCols)
+                          if (data?.bien?.id) {
+                            await supabase.from('bien').update({ rapport_config: { colonnes: newCols } }).eq('id', data.bien.id)
+                          }
+                        }} />
+                      {label}
+                    </label>
+                  ))}
+                </div>
                 {data.resas.length > 0 ? (
                   <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.82em' }}>
                     <thead>
@@ -909,7 +943,12 @@ FORMAT :
                         return (
                           <tr key={r.id} style={{ background: i % 2 === 0 ? '#FDFAF4' : '#F7F3EC' }}>
                             <td style={{ padding: '6px 8px', color: '#9C8E7D', fontFamily: 'monospace' }}>{r.code}</td>
-                            <td style={{ padding: '6px 8px', color: 'var(--text)' }}>{r.guest_name || '—'}</td>
+                            <td style={{ padding: '6px 8px', color: 'var(--text)' }}>
+                              {r.guest_name || '—'}
+                              {STATUTS_NON_VENTILABLES.includes(r.final_status) && (r.fin_revenue || 0) > 0 && (
+                                <span style={{ marginLeft: 6, fontSize: '0.75em', color: '#9C8E7D', fontStyle: 'italic' }}>(annulée — frais perçus)</span>
+                              )}
+                            </td>
                             <td style={{ padding: '6px 8px', color: '#4A3728', whiteSpace: 'nowrap' }}>{r.arrival_date ? r.arrival_date.split('-').reverse().join('/') : '—'}</td>
                             <td style={{ padding: '6px 8px' }}>{getCanal(r.platform, r.owner_stay)}</td>
                             <td style={{ padding: '6px 8px', textAlign: 'right', color: '#4A3728' }}>{r.nights || '—'}</td>
@@ -1201,7 +1240,7 @@ FORMAT :
               {joindrePDF && <div><strong>PJ :</strong> 📎 Facture PDF Evoliz</div>}
             </div>
             <div style={{ border: '1px solid var(--border)', borderRadius: 8, overflow: 'hidden', height: 500 }}>
-              <iframe srcDoc={genererRapportHTML(data.proprio, mois, buildRapportData())} style={{ width: '100%', height: '100%', border: 'none' }} title="Aperçu mail" />
+              <iframe srcDoc={(() => { const d = buildRapportData(); return genererRapportHTML(data.proprio, mois, d, d.colonnes) })()} style={{ width: '100%', height: '100%', border: 'none' }} title="Aperçu mail" />
             </div>
             <div style={{ display: 'flex', gap: 8, marginTop: 16, justifyContent: 'flex-end' }}>
               <button onClick={() => setShowMailPreview(false)} style={{ padding: '8px 16px', border: '1px solid var(--border)', borderRadius: 8, background: 'none', cursor: 'pointer' }}>Fermer</button>
@@ -1213,7 +1252,8 @@ FORMAT :
 
       {/* Modal aperçu */}
       {previewOpen && data && (() => {
-        const html = genererRapportHTML(data.proprio, mois, buildRapportData())
+        const rapportData = buildRapportData()
+        const html = genererRapportHTML(data.proprio, mois, rapportData, rapportData.colonnes)
         return (
           <div style={{ position: 'fixed', inset: 0, background: 'rgba(44,36,22,0.6)', zIndex: 1000, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 20 }}
             onClick={() => setPreviewOpen(false)}>
