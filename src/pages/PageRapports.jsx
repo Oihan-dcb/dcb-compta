@@ -337,15 +337,25 @@ export default function PageRapports() {
         proprio,
         bien: (proprio?.bien || []).find(b => b.id === selectedBienId),
         tauxCommission,
-        resas: resasValides.map(r => ({
-          ...r,
-          vent: ventByResa[r.id] || {},
-          extra: extraByResa[r.id] || 0,
-          menage_voyageur: ventByResa[r.id]?.MEN?.montant_ht || 0,
-          base_comm: tauxCommission > 0
-            ? Math.round((ventByResa[r.id]?.HON?.montant_ht || 0) / (tauxCommission / 100))
-            : 0,
-        })),
+        resas: resasValides.map(r => {
+          const v = ventByResa[r.id] || {}
+          const virHt = v.VIR?.montant_ht || 0
+          const loyHt = v.LOY?.montant_ht || 0
+          return {
+            ...r,
+            vent: v,
+            extra: extraByResa[r.id] || 0,
+            hon:  v.HON?.montant_ttc || 0,
+            loy:  loyHt,
+            vir:  virHt,
+            fmen: v.FMEN?.montant_ttc || 0,
+            taxe: Math.max(0, virHt - loyHt),
+            menage_voyageur: v.MEN?.montant_ht || 0,
+            base_comm: tauxCommission > 0
+              ? Math.round((v.HON?.montant_ht || 0) / (tauxCommission / 100))
+              : 0,
+          }
+        }),
         reviews,
         facture,
         frais: fraisData || [],
@@ -357,6 +367,7 @@ export default function PageRapports() {
         nbReviewsGlobal: allReviewsData?.length || 0,
         extrasGlobaux,
         haownerList,
+        ventByResa,
       })
     } catch (err) {
       setError(err.message)
@@ -684,15 +695,34 @@ FORMAT :
   }
 
   function buildRapportData() {
+    const vByResa = data.ventByResa || {}
+    const taux = data.tauxCommission || 0
+    const resas = (data.resas || []).map(r => {
+      const v = vByResa[r.id] || {}
+      const virHt = v.VIR?.montant_ht || 0
+      const loyHt = v.LOY?.montant_ht || 0
+      return {
+        ...r,
+        hon:  v.HON?.montant_ttc || 0,
+        loy:  loyHt,
+        vir:  virHt,
+        fmen: v.FMEN?.montant_ttc || 0,
+        taxe: Math.max(0, virHt - loyHt),
+        menage_voyageur: v.MEN?.montant_ht || 0,
+        base_comm: taux > 0
+          ? Math.round((v.HON?.montant_ht || 0) / (taux / 100))
+          : 0,
+      }
+    })
     return {
-      kpis: data.kpis, resas: data.resas, reviews: data.reviews,
+      kpis: data.kpis, resas, reviews: data.reviews,
       bien: data.bien, llmAnalyse, llmContexte, llmTendances, kpisN1: data.kpisN1,
       noteMoisMoy: data.noteMoisMoy, noteGlobaleMoy: data.noteGlobaleMoy,
       nbReviewsGlobal: data.nbReviewsGlobal,
       notes: [{ bienName: data.bien?.hospitable_name, note }],
       noteContexte: note,
       noteReco,
-      tauxCommission: data.tauxCommission,
+      tauxCommission: taux,
       extrasGlobaux: data?.extrasGlobaux || [],
       haownerList: data?.haownerList || [],
       colonnes: colsConfig,
