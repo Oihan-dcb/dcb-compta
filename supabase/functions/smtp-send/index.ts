@@ -6,21 +6,25 @@ const SMTP_USER = Deno.env.get('SMTP_USER') || ''
 const SMTP_PASS = Deno.env.get('SMTP_PASS') || ''
 const SMTP_FROM = Deno.env.get('SMTP_FROM') || SMTP_USER
 
-Deno.serve(async (req) => {
-  if (req.method === 'OPTIONS') {
-    return new Response(null, {
-      headers: { 'Access-Control-Allow-Origin': '*', 'Access-Control-Allow-Headers': 'authorization, content-type' },
-    })
-  }
+const CORS = {
+  'Access-Control-Allow-Origin': '*',
+  'Access-Control-Allow-Headers': 'authorization, content-type',
+}
+const jsonCors = { 'Content-Type': 'application/json', ...CORS }
 
-  if (req.method !== 'POST') return new Response('Method Not Allowed', { status: 405 })
+const err = (msg: string, status = 400) =>
+  new Response(JSON.stringify({ error: msg }), { status, headers: jsonCors })
+
+Deno.serve(async (req) => {
+  if (req.method === 'OPTIONS') return new Response(null, { headers: CORS })
+  if (req.method !== 'POST') return err('Method Not Allowed', 405)
 
   let body: any
-  try { body = await req.json() } catch { return new Response('Invalid JSON', { status: 400 }) }
+  try { body = await req.json() } catch { return err('Invalid JSON', 400) }
 
   const { to, cc, subject, html, attachments } = body
-  if (!to || !subject || !html) return new Response('Missing to/subject/html', { status: 400 })
-  if (!SMTP_HOST || !SMTP_USER || !SMTP_PASS) return new Response('SMTP not configured', { status: 500 })
+  if (!to || !subject || !html) return err('Missing to/subject/html', 400)
+  if (!SMTP_HOST || !SMTP_USER || !SMTP_PASS) return err('SMTP not configured', 500)
 
   try {
     const client = new SMTPClient({
@@ -51,14 +55,9 @@ Deno.serve(async (req) => {
     await client.close()
 
     console.log('Email envoyé à', to, ':', subject)
-    return new Response(JSON.stringify({ ok: true }), {
-      headers: { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' },
-    })
-  } catch (err: any) {
-    console.error('SMTP error:', err)
-    return new Response(JSON.stringify({ error: err.message || String(err) }), {
-      status: 500,
-      headers: { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' },
-    })
+    return new Response(JSON.stringify({ ok: true }), { headers: jsonCors })
+  } catch (e: any) {
+    console.error('SMTP error:', e)
+    return new Response(JSON.stringify({ error: e.message || String(e) }), { status: 500, headers: jsonCors })
   }
 })
