@@ -508,12 +508,11 @@ export async function envoyerRapportEmail(proprio, mois, htmlBody, joindrePDF = 
     }
   }
 
-  const { data: { session } } = await supabase.auth.getSession()
   const res = await fetch(`${SUPABASE_URL}/functions/v1/smtp-send`, {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
-      'Authorization': `Bearer ${session?.access_token || import.meta.env.VITE_SUPABASE_ANON_KEY}`,
+      'Authorization': `Bearer ${import.meta.env.VITE_SUPABASE_ANON_KEY}`,
     },
     body: JSON.stringify({
       to: proprio.email,
