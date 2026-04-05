@@ -38,18 +38,18 @@ export function genererStatementHTML(proprio, mois, data) {
   }
 
   // Calculs Summary — accès via r.vent (structure réelle des resas)
-  const honTotal    = resas.reduce((s, r) => s + (r.vent?.HON?.montant_ttc || 0), 0)
-  const fmenTotal   = resas.reduce((s, r) => s + (r.vent?.FMEN?.montant_ttc || 0), 0)
-  const caHeb       = resas.reduce((s, r) => s + (r.fin_revenue || 0), 0)
-  const loyTotalAll = resas.reduce((s, r) => s + (r.vent?.LOY?.montant_ht || 0), 0)
-  const virTotalAll = resas.reduce((s, r) => s + (r.vent?.VIR?.montant_ht || 0), 0)
-  const taxeTotal   = Math.max(0, virTotalAll - loyTotalAll)
+  const honTotal      = resas.reduce((s, r) => s + (r.vent?.HON?.montant_ttc || 0), 0)
+  const menageTotal   = resas.reduce((s, r) => s + (r.menage_voyageur || 0), 0)
+  const caHeb         = resas.reduce((s, r) => s + (r.fin_revenue || 0), 0)
+  const loyTotalAll   = resas.reduce((s, r) => s + (r.vent?.LOY?.montant_ht || 0), 0)
+  const virTotalAll   = resas.reduce((s, r) => s + (r.vent?.VIR?.montant_ht || 0), 0)
+  const taxeTotal     = Math.max(0, virTotalAll - loyTotalAll)
   const finAccomTotal = resas.reduce((s, r) => s + (r.fin_accommodation || 0), 0)
   const baseCommTotal = resas.reduce((s, r) => s + (r.base_comm || 0), 0)
-  const deboursTotal = [...extrasGlobaux, ...haownerList]
+  const deboursTotal  = [...extrasGlobaux, ...haownerList]
     .reduce((s, p) => s + (p.montant_ttc || p.montant || 0), 0)
     + resas.reduce((s, r) => s + (r.extra || 0), 0)
-  const totalManager = honTotal + fmenTotal + deboursTotal
+  const totalManager = honTotal + deboursTotal
   const netProprio   = caHeb - totalManager
   const totalDuOwner = netProprio + taxeTotal
 
@@ -60,13 +60,11 @@ export function genererStatementHTML(proprio, mois, data) {
   const STATUTS_ANNULES = ['cancelled', 'not_accepted', 'not accepted', 'declined', 'expired']
 
   const lignesResas = resas.map(r => {
-    const honR       = r.vent?.HON?.montant_ttc || 0
-    const fmenR      = r.vent?.FMEN?.montant_ttc || 0
-    const debR       = r.extra || 0
-    const totalMgrR  = honR + fmenR + debR
-    const loyR       = r.vent?.LOY?.montant_ht || 0
-    const virR       = r.vent?.VIR?.montant_ht || 0
-    const taxeR      = Math.max(0, virR - loyR)
+    const honR    = r.vent?.HON?.montant_ttc || 0
+    const loyR    = r.vent?.LOY?.montant_ht || 0
+    const virR    = r.vent?.VIR?.montant_ht || 0
+    const taxeR   = Math.max(0, virR - loyR)
+    const menR    = r.menage_voyageur || 0
     const isCancelled = STATUTS_ANNULES.includes(r.final_status)
 
     return `
@@ -84,11 +82,8 @@ export function genererStatementHTML(proprio, mois, data) {
       <td style="padding:4px 5px;font-size:9px;text-align:right;white-space:nowrap;color:#4A3728">${fmt(r.fin_accommodation || 0)}</td>
       <td style="padding:4px 5px;font-size:9px;text-align:right;white-space:nowrap;color:#4A3728">${(r.base_comm || 0) > 0 ? fmt(r.base_comm) : '—'}</td>
       <td style="padding:4px 5px;font-size:9px;text-align:right;white-space:nowrap;color:#9c8c7a">${honR > 0 ? fmt(honR) : '—'}</td>
-      <td style="padding:4px 5px;font-size:9px;text-align:right;white-space:nowrap">${fmenR > 0 ? fmt(fmenR) : '—'}</td>
-      <td style="padding:4px 5px;font-size:9px;text-align:right;white-space:nowrap;color:#4A3728">${debR > 0 ? fmt(debR) : '—'}</td>
-      <td style="padding:4px 5px;font-size:9px;text-align:right;white-space:nowrap;font-weight:600;color:#2C2416">${totalMgrR > 0 ? fmt(totalMgrR) : '—'}</td>
+      <td style="padding:4px 5px;font-size:9px;text-align:right;white-space:nowrap;color:#4A3728">${menR > 0 ? fmt(menR) : '—'}</td>
       <td style="padding:4px 5px;font-size:9px;text-align:right;white-space:nowrap;color:#9c8c7a">${taxeR > 0 ? fmt(taxeR) : '—'}</td>
-      <td style="padding:4px 5px;font-size:9px;text-align:right;white-space:nowrap;color:#CC9933;font-weight:500">${loyR > 0 ? fmt(loyR) : '—'}</td>
       <td style="padding:4px 5px;font-size:9px;text-align:right;white-space:nowrap;color:#2d7a50;font-weight:500">${virR > 0 ? fmt(virR) : '—'}</td>
     </tr>`
   }).join('')
@@ -158,7 +153,7 @@ export function genererStatementHTML(proprio, mois, data) {
       <span style="color:#9c8c7a">Commissions DCB (HON)</span><span style="font-weight:500">${fmt(honTotal)}</span>
     </div>
     <div style="display:flex;justify-content:space-between;padding:3px 0;border-bottom:1px solid #ece8e2;font-size:10px">
-      <span style="color:#9c8c7a">Forfaits ménage (FMEN)</span><span>${fmt(fmenTotal)}</span>
+      <span style="color:#9c8c7a">Ménage total (voyageurs)</span><span>${fmt(menageTotal)}</span>
     </div>
     <div style="display:flex;justify-content:space-between;padding:3px 0;border-bottom:1px solid #ece8e2;font-size:10px">
       <span style="color:#9c8c7a">Débours / Achats</span><span>${deboursTotal > 0 ? fmt(deboursTotal) : '—'}</span>
@@ -188,21 +183,18 @@ export function genererStatementHTML(proprio, mois, data) {
 <div style="overflow-x:auto">
   <table style="width:100%;border-collapse:collapse;table-layout:fixed;min-width:900px">
     <colgroup>
-      <col style="width:7%">
       <col style="width:8%">
+      <col style="width:10%">
+      <col style="width:7%">
+      <col style="width:9%">
+      <col style="width:4%">
+      <col style="width:9%">
+      <col style="width:9%">
+      <col style="width:9%">
+      <col style="width:8%">
+      <col style="width:9%">
       <col style="width:6%">
-      <col style="width:7%">
-      <col style="width:3%">
-      <col style="width:7%">
-      <col style="width:7%">
-      <col style="width:7%">
-      <col style="width:6%">
-      <col style="width:6%">
-      <col style="width:5%">
-      <col style="width:7%">
-      <col style="width:5%">
-      <col style="width:7%">
-      <col style="width:7%">
+      <col style="width:12%">
     </colgroup>
     <thead>
       <tr style="background:#EDEBE5;border-bottom:2px solid #CC9933">
@@ -215,11 +207,8 @@ export function genererStatementHTML(proprio, mois, data) {
         <th style="padding:5px 5px;text-align:right;font-weight:400;font-size:8px;color:#9c8c7a">Net plateforme</th>
         <th style="padding:5px 5px;text-align:right;font-weight:400;font-size:8px;color:#9c8c7a">Base comm.</th>
         <th style="padding:5px 5px;text-align:right;font-weight:400;font-size:8px;color:#9c8c7a">HON TTC</th>
-        <th style="padding:5px 5px;text-align:right;font-weight:400;font-size:8px;color:#9c8c7a">FMEN TTC</th>
-        <th style="padding:5px 5px;text-align:right;font-weight:400;font-size:8px;color:#9c8c7a">Débours</th>
-        <th style="padding:5px 5px;text-align:right;font-weight:400;font-size:8px;color:#9c8c7a">Total DCB</th>
+        <th style="padding:5px 5px;text-align:right;font-weight:400;font-size:8px;color:#9c8c7a">Ménage total</th>
         <th style="padding:5px 5px;text-align:right;font-weight:400;font-size:8px;color:#9c8c7a">Taxe séj.</th>
-        <th style="padding:5px 5px;text-align:right;font-weight:400;font-size:8px;color:#CC9933">LOY</th>
         <th style="padding:5px 5px;text-align:right;font-weight:400;font-size:8px;color:#2d7a50">VIR</th>
       </tr>
     </thead>
@@ -231,12 +220,9 @@ export function genererStatementHTML(proprio, mois, data) {
         <td style="padding:5px 5px;text-align:right;font-size:9.5px;color:#4A3728">${fmt(finAccomTotal)}</td>
         <td style="padding:5px 5px;text-align:right;font-size:9.5px;color:#4A3728">${baseCommTotal > 0 ? fmt(baseCommTotal) : '—'}</td>
         <td style="padding:5px 5px;text-align:right;font-size:9.5px;color:#9c8c7a">${fmt(honTotal)}</td>
-        <td style="padding:5px 5px;text-align:right;font-size:9.5px">${fmt(fmenTotal)}</td>
-        <td style="padding:5px 5px;text-align:right;font-size:9.5px;color:#4A3728">${deboursTotal > 0 ? fmt(deboursTotal) : '—'}</td>
-        <td style="padding:5px 5px;text-align:right;font-size:9.5px;color:#CC9933">${fmt(totalManager)}</td>
+        <td style="padding:5px 5px;text-align:right;font-size:9.5px;color:#4A3728">${menageTotal > 0 ? fmt(menageTotal) : '—'}</td>
         <td style="padding:5px 5px;text-align:right;font-size:9.5px;color:#9c8c7a">${taxeTotal > 0 ? fmt(taxeTotal) : '—'}</td>
-        <td style="padding:5px 5px;text-align:right;font-size:9.5px;color:#CC9933">${fmt(loyTotalAll)}</td>
-        <td style="padding:5px 5px;text-align:right;font-size:9.5px;color:#2d7a50">${fmt(totalDuOwner)}</td>
+        <td style="padding:5px 5px;text-align:right;font-size:9.5px;color:#2d7a50">${fmt(virTotalAll)}</td>
       </tr>
     </tfoot>
   </table>
