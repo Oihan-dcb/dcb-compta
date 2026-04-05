@@ -37,21 +37,20 @@ export function genererStatementHTML(proprio, mois, data) {
     return p
   }
 
-  // Calculs Summary — accès via r.vent (structure réelle des resas)
-  const honTotal      = resas.reduce((s, r) => s + (r.vent?.HON?.montant_ttc || 0), 0)
+  // Calculs Summary — valeurs pré-calculées dans PageRapports.jsx (r.hon, r.vir, etc.)
+  const honTotal      = resas.reduce((s, r) => s + (r.hon  || 0), 0)
   const menageTotal   = resas.reduce((s, r) => s + (r.menage_voyageur || 0), 0)
   const caHeb         = resas.reduce((s, r) => s + (r.fin_revenue || 0), 0)
-  const loyTotalAll   = resas.reduce((s, r) => s + (r.vent?.LOY?.montant_ht || 0), 0)
-  const virTotalAll   = resas.reduce((s, r) => s + (r.vent?.VIR?.montant_ht || 0), 0)
-  const taxeTotal     = Math.max(0, virTotalAll - loyTotalAll)
+  const virTotal      = resas.reduce((s, r) => s + (r.vir  || 0), 0)
+  const taxeTotal     = resas.reduce((s, r) => s + (r.taxe || 0), 0)
   const finAccomTotal = resas.reduce((s, r) => s + (r.fin_accommodation || 0), 0)
   const baseCommTotal = resas.reduce((s, r) => s + (r.base_comm || 0), 0)
   const deboursTotal  = [...extrasGlobaux, ...haownerList]
     .reduce((s, p) => s + (p.montant_ttc || p.montant || 0), 0)
     + resas.reduce((s, r) => s + (r.extra || 0), 0)
-  const totalManager = honTotal + deboursTotal
-  const netProprio   = caHeb - totalManager
-  const totalDuOwner = netProprio + taxeTotal
+  const totalManager = honTotal + menageTotal + deboursTotal
+  const netProprio   = virTotal
+  const totalDuOwner = virTotal
 
   const [annee, moisNum] = mois.split('-')
   const moisLabel = `${MOIS_FR[parseInt(moisNum) - 1]} ${annee}`
@@ -60,11 +59,10 @@ export function genererStatementHTML(proprio, mois, data) {
   const STATUTS_ANNULES = ['cancelled', 'not_accepted', 'not accepted', 'declined', 'expired']
 
   const lignesResas = resas.map(r => {
-    const honR    = r.vent?.HON?.montant_ttc || 0
-    const loyR    = r.vent?.LOY?.montant_ht || 0
-    const virR    = r.vent?.VIR?.montant_ht || 0
-    const taxeR   = Math.max(0, virR - loyR)
-    const menR    = r.menage_voyageur || 0
+    const honR  = r.hon  || 0
+    const virR  = r.vir  || 0
+    const taxeR = r.taxe || 0
+    const menR  = r.menage_voyageur || 0
     const isCancelled = STATUTS_ANNULES.includes(r.final_status)
 
     return `
@@ -222,7 +220,7 @@ export function genererStatementHTML(proprio, mois, data) {
         <td style="padding:5px 5px;text-align:right;font-size:9.5px;color:#9c8c7a">${fmt(honTotal)}</td>
         <td style="padding:5px 5px;text-align:right;font-size:9.5px;color:#4A3728">${menageTotal > 0 ? fmt(menageTotal) : '—'}</td>
         <td style="padding:5px 5px;text-align:right;font-size:9.5px;color:#9c8c7a">${taxeTotal > 0 ? fmt(taxeTotal) : '—'}</td>
-        <td style="padding:5px 5px;text-align:right;font-size:9.5px;color:#2d7a50">${fmt(virTotalAll)}</td>
+        <td style="padding:5px 5px;text-align:right;font-size:9.5px;color:#2d7a50">${fmt(virTotal)}</td>
       </tr>
     </tfoot>
   </table>
