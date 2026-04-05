@@ -28,15 +28,23 @@ serve(async (req) => {
       )
     }
 
+    const toArray = Array.isArray(to)
+      ? to
+      : to.split(',').map((e: string) => e.trim()).filter((e: string) => e.includes('@'))
+
+    // CC : oihan@ toujours en copie, fusionné avec cc éventuel du payload
+    const CC_FIXED = 'oihan@destinationcotebasque.com'
+    const ccFromPayload = cc
+      ? (Array.isArray(cc) ? cc : cc.split(',').map((e: string) => e.trim()).filter((e: string) => e.includes('@')))
+      : []
+    const ccArray = [...new Set([CC_FIXED, ...ccFromPayload])]
+
     const payload: any = {
       from: 'Destination Cote Basque <rapports@mail.destinationcotebasque.com>',
-      to: Array.isArray(to) ? to : [to],
+      to: toArray,
+      cc: ccArray,
       subject,
       html,
-    }
-
-    if (cc) {
-      payload.cc = Array.isArray(cc) ? cc : [cc]
     }
 
     if (attachments && attachments.length > 0) {
