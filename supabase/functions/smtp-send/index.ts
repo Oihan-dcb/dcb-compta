@@ -29,7 +29,8 @@ serve(async (req) => {
     }
 
     const payload: any = {
-      from: 'Destination Cote Basque <rapports@mail.destinationcotebasque.com>',
+      // TODO: repasser sur rapports@mail.destinationcotebasque.com quand domaine vérifié dans Resend
+      from: 'Destination Cote Basque <onboarding@resend.dev>',
       to: Array.isArray(to) ? to : [to],
       subject,
       html,

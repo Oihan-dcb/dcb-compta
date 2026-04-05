@@ -14,14 +14,13 @@ import PageFraisProprietaire from './pages/PageFraisProprietaire'
 import PageImport from './pages/PageImport'
 import PageJournal from './pages/PageJournal'
 import PageRapports from './pages/PageRapports'
-import PageConfigSMTP from './pages/PageConfigSMTP'
 import './App.css'
 
 function ConfigDropdown() {
   const [open, setOpen] = useState(false)
   const ref = useRef(null)
   const location = useLocation()
-  const configPaths = ['/import', '/journal', '/auto-entrepreneurs', '/config', '/config-smtp']
+  const configPaths = ['/import', '/journal', '/auto-entrepreneurs', '/config']
   const isActive = configPaths.some(p => location.pathname === p)
 
   useEffect(() => {
@@ -46,7 +45,6 @@ function ConfigDropdown() {
             { to: '/journal', label: 'Journal' },
             { to: '/auto-entrepreneurs', label: 'AEs' },
             { to: '/config', label: 'Paramètres' },
-            { to: '/config-smtp', label: 'Email SMTP' },
           ].map(({ to, label }) => (
             <NavLink key={to} to={to} onClick={() => setOpen(false)}
               className={({ isActive }) => isActive ? 'nav-link active' : 'nav-link'}
@@ -121,7 +119,6 @@ export default function App() {
             <Route path="/auto-entrepreneurs" element={<PageAutoEntrepreneurs />} />
             <Route path="/journal" element={<PageJournal />} />
             <Route path="/config" element={<PageConfig />} />
-            <Route path="/config-smtp" element={<PageConfigSMTP />} />
           </Routes>
         </main>
       </div>
