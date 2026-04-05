@@ -10,7 +10,7 @@ export default async function handler(req, res) {
     return res.status(405).json({ error: 'Method not allowed' })
   }
 
-  const { html } = req.body || {}
+  const { html, orientation = 'portrait' } = req.body || {}
 
   if (!html || typeof html !== 'string' || html.length < 100) {
     return res.status(400).json({ error: 'HTML invalide ou manquant' })
@@ -60,6 +60,7 @@ export default async function handler(req, res) {
 
     const pdf = await page.pdf({
       format: 'A4',
+      landscape: orientation === 'landscape',
       printBackground: true,
       margin: { top: '8mm', right: '6mm', bottom: '8mm', left: '6mm' },
     })

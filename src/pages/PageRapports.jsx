@@ -4,6 +4,7 @@ import { supabase } from '../lib/supabase'
 import {
   genererRapportHTML, envoyerRapportEmail
 } from '../services/rapportProprietaire'
+import { genererStatementHTML } from '../services/rapportStatement'
 
 const moisCourant = new Date().toISOString().substring(0, 7)
 const STATUTS_NON_VENTILABLES = ['cancelled', 'not_accepted', 'not accepted', 'declined', 'expired']
@@ -87,6 +88,7 @@ export default function PageRapports() {
   const [showMailPreview, setShowMailPreview] = useState(false)
   const [erreurDetail, setErreurDetail] = useState('')
   const [colsConfig, setColsConfig] = useState({})
+  const [useStatement, setUseStatement] = useState(false)
 
   useEffect(() => {
     supabase
@@ -694,16 +696,22 @@ FORMAT :
     }
   }
 
+  function getHTML() {
+    const rapportData = buildRapportData()
+    return useStatement
+      ? genererStatementHTML(data.proprio, mois, rapportData)
+      : genererRapportHTML(data.proprio, mois, rapportData, rapportData.colonnes)
+  }
+
   async function telechargerPDF() {
     if (!data) return
     setGeneratingPDF(true)
     try {
-      const rapportData = buildRapportData()
-      const html = genererRapportHTML(data.proprio, mois, rapportData, rapportData.colonnes)
+      const html = getHTML()
       const response = await fetch('/api/generate-pdf', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ html }),
+        body: JSON.stringify({ html, orientation: useStatement ? 'landscape' : 'portrait' }),
       })
       if (!response.ok) {
         const err = await response.json()
@@ -733,8 +741,7 @@ FORMAT :
     if (emails.length === 0) { alert('Email invalide'); return }
     setStatut('sending')
     try {
-      const rapportData = buildRapportData()
-      const html = genererRapportHTML(data.proprio, mois, rapportData, rapportData.colonnes)
+      const html = getHTML()
       await Promise.all(emails.map(addr => envoyerRapportEmail({ ...data.proprio, email: addr }, mois, html, joindrePDF)))
       await supabase.from('bien_notes').upsert(
         { bien_id: selectedBienId, mois, rapport_envoye_at: new Date().toISOString() },
@@ -1217,6 +1224,10 @@ FORMAT :
                 <input type="checkbox" checked={joindrePDF} onChange={e => setJoindrePDF(e.target.checked)} style={{ cursor: 'pointer' }} />
                 Joindre la facture PDF Evoliz
               </label>
+              <label style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: '0.82em', color: 'var(--text)', cursor: 'pointer', marginRight: 4 }}>
+                <input type="checkbox" checked={useStatement} onChange={e => setUseStatement(e.target.checked)} style={{ cursor: 'pointer' }} />
+                Version statement
+              </label>
               <button style={{ padding: '8px 14px', border: '1px solid var(--border)', borderRadius: 8, background: 'none', fontSize: '0.85em', cursor: 'pointer' }}
                 onClick={() => setShowMailPreview(true)} disabled={!data}>
                 👁 Aperçu mail
@@ -1253,7 +1264,7 @@ FORMAT :
               {joindrePDF && <div><strong>PJ :</strong> 📎 Facture PDF Evoliz</div>}
             </div>
             <div style={{ border: '1px solid var(--border)', borderRadius: 8, overflow: 'hidden', height: 500 }}>
-              <iframe srcDoc={(() => { const d = buildRapportData(); return genererRapportHTML(data.proprio, mois, d, d.colonnes) })()} style={{ width: '100%', height: '100%', border: 'none' }} title="Aperçu mail" />
+              <iframe srcDoc={getHTML()} style={{ width: '100%', height: '100%', border: 'none' }} title="Aperçu mail" />
             </div>
             <div style={{ display: 'flex', gap: 8, marginTop: 16, justifyContent: 'flex-end' }}>
               <button onClick={() => setShowMailPreview(false)} style={{ padding: '8px 16px', border: '1px solid var(--border)', borderRadius: 8, background: 'none', cursor: 'pointer' }}>Fermer</button>
@@ -1265,8 +1276,7 @@ FORMAT :
 
       {/* Modal aperçu */}
       {previewOpen && data && (() => {
-        const rapportData = buildRapportData()
-        const html = genererRapportHTML(data.proprio, mois, rapportData, rapportData.colonnes)
+        const html = getHTML()
         return (
           <div style={{ position: 'fixed', inset: 0, background: 'rgba(44,36,22,0.6)', zIndex: 1000, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 20 }}
             onClick={() => setPreviewOpen(false)}>
