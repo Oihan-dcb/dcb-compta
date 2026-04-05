@@ -1,3 +1,7 @@
+function escapeNonAscii(s) {
+  return s.replace(/[^\x00-\x7F]/g, c => `&#${c.codePointAt(0)};`)
+}
+
 const PLATFORM_COLORS = { airbnb: '#FF5A5F', booking: '#003580', direct: '#2d7a50', stripe: '#2d7a50', default: '#9C8E7D' }
 const MOIS_FR = ['Janvier','Février','Mars','Avril','Mai','Juin','Juillet','Août','Septembre','Octobre','Novembre','Décembre']
 
@@ -320,7 +324,7 @@ export function genererMailStatementHTML(proprio, mois, data) {
 
   const hasContent = data.llmAnalyse || data.llmContexte || data.llmTendances || reviews.length
 
-  return `<!DOCTYPE html>
+  const html = `<!DOCTYPE html>
 <html lang="fr">
 <head>
 <meta charset="UTF-8">
@@ -366,4 +370,5 @@ export function genererMailStatementHTML(proprio, mois, data) {
 </div>
 </body>
 </html>`
+  return escapeNonAscii(html)
 }
