@@ -751,46 +751,59 @@ FORMAT :
       let htmlBody, prependAttachments = []
 
       if (useStatement) {
+        console.log('[envoyer] étape 1 — genererMailStatementHTML')
         const rapportData = buildRapportData()
         htmlBody = genererMailStatementHTML(data.proprio, mois, rapportData)
+        console.log('[envoyer] mail body length:', htmlBody.length)
 
         // Générer le statement PDF en pièce jointe
         try {
+          console.log('[envoyer] étape 2 — genererStatementHTML')
           const statementHtml = genererStatementHTML(data.proprio, mois, rapportData)
+          console.log('[envoyer] étape 3 — fetch /api/generate-pdf')
           const pdfRes = await fetch('/api/generate-pdf', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ html: statementHtml, orientation: 'landscape' }),
           })
+          console.log('[envoyer] generate-pdf status:', pdfRes.status)
           if (pdfRes.ok) {
             const ab = await pdfRes.arrayBuffer()
             const u8 = new Uint8Array(ab)
             let base64 = ''
             for (let i = 0; i < u8.length; i += 3072) base64 += btoa(String.fromCharCode(...u8.slice(i, i + 3072)))
+            console.log('[envoyer] PDF base64 length:', base64.length)
             const bienNom = data.bien?.hospitable_name?.replace(/[^a-zA-Z0-9]/g, '_') || 'bien'
             prependAttachments = [{
               filename: `Statement_${bienNom}_${mois}.pdf`,
               content_base64: base64,
             }]
+          } else {
+            const errText = await pdfRes.text()
+            console.warn('[envoyer] generate-pdf erreur:', pdfRes.status, errText)
           }
         } catch (e) {
-          console.warn('Statement PDF non joint:', e.message)
+          console.warn('[envoyer] Statement PDF non joint:', e.message, e)
         }
+        console.log('[envoyer] prependAttachments count:', prependAttachments.length)
       } else {
         htmlBody = getHTML()
       }
 
       const bienName = data.bien?.hospitable_name || data.proprio?.nom
+      const smtpPayloadSize = JSON.stringify({ htmlBody, prependAttachments }).length
+      console.log('[envoyer] étape 4 — smtp-send, payload ~', Math.round(smtpPayloadSize / 1024), 'KB, joindrePDF:', joindrePDF)
       await Promise.all(emails.map(addr =>
         envoyerRapportEmail({ ...data.proprio, email: addr, bienName }, mois, htmlBody, joindrePDF, prependAttachments)
       ))
+      console.log('[envoyer] étape 5 — bien_notes upsert')
       await supabase.from('bien_notes').upsert(
         { bien_id: selectedBienId, mois, rapport_envoye_at: new Date().toISOString() },
         { onConflict: 'bien_id,mois' }
       )
       setBiensEnvoyes(prev => new Set([...prev, selectedBienId]))
       setStatut(emails.length > 1 ? `sent_${emails.length}` : 'sent')
-    } catch (e) { console.error('ERREUR ENVOI:', e); setStatut('error'); setErreurDetail(e?.message || String(e)) }
+    } catch (e) { console.error('ERREUR ENVOI STATEMENT:', e); setStatut('error'); setErreurDetail(e?.message || String(e)) }
   }
 
   const proprio = proprietaires.find(p => p.id === selectedPropId)
