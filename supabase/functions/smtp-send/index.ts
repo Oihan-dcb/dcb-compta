@@ -17,6 +17,19 @@ const err = (msg: string, status = 400) =>
 
 Deno.serve(async (req) => {
   if (req.method === 'OPTIONS') return new Response(null, { headers: CORS })
+
+  // Route GET /diag — retourne la présence des secrets sans les valeurs
+  if (req.method === 'GET') {
+    return new Response(JSON.stringify({
+      diag: true,
+      SMTP_HOST: SMTP_HOST ? `${SMTP_HOST.substring(0, 10)}...` : 'MISSING',
+      SMTP_PORT,
+      SMTP_USER: SMTP_USER ? `${SMTP_USER.substring(0, 5)}...` : 'MISSING',
+      SMTP_PASS: SMTP_PASS ? 'SET' : 'MISSING',
+      SMTP_FROM: SMTP_FROM ? `${SMTP_FROM.substring(0, 5)}...` : 'MISSING',
+    }), { headers: jsonCors })
+  }
+
   if (req.method !== 'POST') return err('Method Not Allowed', 405)
 
   let body: any
