@@ -238,3 +238,127 @@ ${transactions}
 </body>
 </html>`
 }
+
+// ─────────────────────────────────────────
+// Corps du mail quand useStatement = true
+// Contenu : KPIs intro + LLM + avis voyageurs (sans tableau financier)
+// Le statement complet est en pièce jointe PDF
+// ─────────────────────────────────────────
+
+const SVG_STAR_FULL = (size = 13, color = '#CC9933') =>
+  `<svg width="${size}" height="${size}" viewBox="0 0 24 24" style="display:inline-block;vertical-align:middle;margin-bottom:1px" fill="${color}"><polygon points="12,2 15.09,8.26 22,9.27 17,14.14 18.18,21.02 12,17.77 5.82,21.02 7,14.14 2,9.27 8.91,8.26"/></svg>`
+const SVG_STAR_EMPTY = (size = 13, color = '#CC9933') =>
+  `<svg width="${size}" height="${size}" viewBox="0 0 24 24" style="display:inline-block;vertical-align:middle;margin-bottom:1px" fill="none" stroke="${color}" stroke-width="2"><polygon points="12,2 15.09,8.26 22,9.27 17,14.14 18.18,21.02 12,17.77 5.82,21.02 7,14.14 2,9.27 8.91,8.26"/></svg>`
+const svgStars = (rating, size = 13) => {
+  let s = ''
+  for (let i = 1; i <= 5; i++) s += i <= Math.round(rating) ? SVG_STAR_FULL(size) : SVG_STAR_EMPTY(size)
+  return s
+}
+
+export function genererMailStatementHTML(proprio, mois, data) {
+  const [annee, moisNum] = mois.split('-')
+  const moisLabel = `${MOIS_FR[parseInt(moisNum) - 1]} ${annee}`
+  const bienNom = data.bien?.hospitable_name || proprio?.nom || ''
+  const kpis = data.kpis || {}
+  const reviews = data.reviews || []
+  const noteMoisMoy = data.noteMoisMoy
+
+  const fmtEur = (c) => ((c || 0) / 100).toLocaleString('fr-FR', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) + ' €'
+
+  const cleanLLM = (text) => {
+    if (!text) return ''
+    return text
+      .replace(/^#+\s+.+\n?/gm, '')
+      .replace(/^-{3,}\n?/gm, '')
+      .replace(/^\*\*[A-Z][^*\n]{0,40}\*\*\s*[-:]\s*\n?/gm, '')
+      .replace(/^\*\*[A-Z][^*\n]{0,40}\*\*\s*\n/gm, '')
+      .replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>')
+      .replace(/\n\n+/g, '</p><p style="margin:0 0 10px;line-height:1.7;font-size:13px;color:#2C2416;">')
+      .replace(/\n/g, '<br/>')
+      .trim()
+  }
+
+  const kpiBlock = (kpis.nbResas || kpis.caHeb) ? `
+<div style="display:flex;gap:12px;margin:16px 0 4px;">
+  ${kpis.nbResas != null ? `<div style="flex:1;background:#F7F4EF;border:1px solid #EDEBE5;border-radius:8px;padding:12px 8px;text-align:center;">
+    <div style="font-size:22px;font-weight:700;color:#2C2416;">${kpis.nbResas}</div>
+    <div style="font-size:9px;color:#9C8E7D;text-transform:uppercase;letter-spacing:0.5px;margin-top:3px;">Réservations</div>
+  </div>` : ''}
+  ${kpis.caHeb != null ? `<div style="flex:1;background:#F7F4EF;border:1px solid #EDEBE5;border-radius:8px;padding:12px 8px;text-align:center;">
+    <div style="font-size:22px;font-weight:700;color:#CC9933;">${fmtEur(kpis.caHeb)}</div>
+    <div style="font-size:9px;color:#9C8E7D;text-transform:uppercase;letter-spacing:0.5px;margin-top:3px;">CA hébergement</div>
+  </div>` : ''}
+  ${noteMoisMoy != null ? `<div style="flex:1;background:#F7F4EF;border:1px solid #EDEBE5;border-radius:8px;padding:12px 8px;text-align:center;">
+    <div style="font-size:22px;font-weight:700;color:#2C2416;">${SVG_STAR_FULL(16)} ${noteMoisMoy}</div>
+    <div style="font-size:9px;color:#9C8E7D;text-transform:uppercase;letter-spacing:0.5px;margin-top:3px;">Note voyageurs</div>
+  </div>` : ''}
+</div>` : ''
+
+  const llmBlock = (label, text) => {
+    if (!text) return ''
+    const cleaned = cleanLLM(text)
+    return `
+<div style="padding:14px 20px;border-bottom:1px solid #EDEBE5;">
+  <div style="font-size:0.68em;font-weight:700;letter-spacing:1px;text-transform:uppercase;color:#CC9933;margin-bottom:10px;">${label}</div>
+  <p style="margin:0 0 10px;line-height:1.7;font-size:13px;color:#2C2416;">${cleaned}</p>
+</div>`
+  }
+
+  const reviewsBlock = reviews.length ? `
+<div style="padding:14px 20px;border-bottom:1px solid #EDEBE5;">
+  <div style="font-size:0.68em;font-weight:700;letter-spacing:1px;text-transform:uppercase;color:#CC9933;margin-bottom:10px;">Avis voyageurs (${reviews.length}${noteMoisMoy ? ' · ' + SVG_STAR_FULL(12) + ' ' + noteMoisMoy + '/5' : ''})</div>
+  ${reviews.map(r => `<div style="border-left:3px solid #CC9933;padding:8px 14px;margin-bottom:8px;background:#F7F4EF;border-radius:0 6px 6px 0;">
+    <div style="color:#CC9933;font-size:1em;margin-bottom:3px;">${svgStars(r.rating || 0, 13)}</div>
+    <p style="margin:0;color:#2C2416;font-style:italic;line-height:1.5;font-size:13px;">« ${r.comment || ''} »</p>
+  </div>`).join('')}
+</div>` : ''
+
+  const hasContent = data.llmAnalyse || data.llmContexte || data.llmTendances || reviews.length
+
+  return `<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>${bienNom} — ${moisLabel}</title>
+<link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+  * { box-sizing:border-box; margin:0; padding:0; }
+  body { font-family:'DM Sans',Arial,sans-serif; background:#F7F4EF; color:#2C2416; -webkit-font-smoothing:antialiased; }
+  .container { max-width:680px; margin:0 auto; background:#fff; }
+</style>
+</head>
+<body>
+<div class="container">
+
+  <!-- Header -->
+  <div style="padding:20px 24px 16px;border-bottom:2px solid #CC9933;background:#fff;">
+    <div style="font-size:0.65em;font-weight:700;letter-spacing:2px;text-transform:uppercase;color:#CC9933;margin-bottom:4px;">Destination Côte Basque</div>
+    <div style="font-size:1.25em;font-weight:700;color:#2C2416;">${bienNom}</div>
+    <div style="font-size:0.85em;color:#9C8E7D;margin-top:2px;">${moisLabel}</div>
+  </div>
+
+  <!-- Intro + KPIs -->
+  <div style="padding:14px 24px;border-bottom:1px solid #EDEBE5;font-size:13px;color:#2C2416;line-height:1.7;">
+    Veuillez trouver ci-dessous le résumé du mois de ${moisLabel.toLowerCase()} pour votre bien.
+    Le détail financier complet est disponible en pièce jointe (statement PDF).
+    ${kpiBlock}
+  </div>
+
+  ${!hasContent ? `<div style="padding:20px 24px;font-size:13px;color:#9C8E7D;font-style:italic;">Aucun commentaire disponible pour ce mois.</div>` : ''}
+
+  ${llmBlock('Analyse du mois', data.llmAnalyse)}
+  ${llmBlock('Contexte marché', data.llmContexte)}
+  ${llmBlock('Perspectives', data.llmTendances)}
+  ${reviewsBlock}
+
+  <!-- Footer -->
+  <div style="text-align:center;padding:12px 24px;font-size:0.75em;color:#9C8E7D;background:#F7F4EF;border-top:2px solid #CC9933;">
+    Destination Côte Basque · rapports@destinationcotebasque.com<br>
+    Conciergerie de prestige — Biarritz
+  </div>
+
+</div>
+</body>
+</html>`
+}

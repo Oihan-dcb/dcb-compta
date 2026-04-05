@@ -474,7 +474,7 @@ export function genererRapportHTML(proprio, mois, data, colonnes = {}) {
 // Envoi email via Edge Function smtp-send
 // ─────────────────────────────────────────
 
-export async function envoyerRapportEmail(proprio, mois, htmlBody, joindrePDF = false) {
+export async function envoyerRapportEmail(proprio, mois, htmlBody, joindrePDF = false, prependAttachments = []) {
   const [year, monthIdx] = mois.split('-')
   const MOIS_FR = ['janvier','février','mars','avril','mai','juin','juillet','août','septembre','octobre','novembre','décembre']
   const moisLabel = MOIS_FR[parseInt(monthIdx) - 1] + ' ' + year
@@ -482,7 +482,7 @@ export async function envoyerRapportEmail(proprio, mois, htmlBody, joindrePDF = 
   if (!proprio.email) throw new Error(`Pas d'email pour ${proprio.nom}`)
 
   // Récupérer le PDF de la facture honoraires (uniquement si demandé)
-  let attachments = []
+  let attachments = [...prependAttachments]
   if (joindrePDF) {
     try {
       const { data: facture } = await supabase
@@ -497,10 +497,10 @@ export async function envoyerRapportEmail(proprio, mois, htmlBody, joindrePDF = 
       if (facture?.id_evoliz) {
         const pdfBase64 = await getInvoicePDFBase64(facture.id_evoliz)
         if (pdfBase64) {
-          attachments = [{
+          attachments.push({
             filename: `Facture_${moisLabel.replace(' ', '_')}_${proprio.nom}.pdf`,
             content_base64: pdfBase64,
-          }]
+          })
         }
       }
     } catch (e) {

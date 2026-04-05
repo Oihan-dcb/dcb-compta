@@ -4,7 +4,7 @@ import { supabase } from '../lib/supabase'
 import {
   genererRapportHTML, envoyerRapportEmail
 } from '../services/rapportProprietaire'
-import { genererStatementHTML } from '../services/rapportStatement'
+import { genererStatementHTML, genererMailStatementHTML } from '../services/rapportStatement'
 
 const moisCourant = new Date().toISOString().substring(0, 7)
 const STATUTS_NON_VENTILABLES = ['cancelled', 'not_accepted', 'not accepted', 'declined', 'expired']
@@ -703,6 +703,13 @@ FORMAT :
       : genererRapportHTML(data.proprio, mois, rapportData, rapportData.colonnes)
   }
 
+  function getMailHTML() {
+    const rapportData = buildRapportData()
+    return useStatement
+      ? genererMailStatementHTML(data.proprio, mois, rapportData)
+      : genererRapportHTML(data.proprio, mois, rapportData, rapportData.colonnes)
+  }
+
   async function telechargerPDF() {
     if (!data) return
     setGeneratingPDF(true)
@@ -741,8 +748,43 @@ FORMAT :
     if (emails.length === 0) { alert('Email invalide'); return }
     setStatut('sending')
     try {
-      const html = getHTML()
-      await Promise.all(emails.map(addr => envoyerRapportEmail({ ...data.proprio, email: addr }, mois, html, joindrePDF)))
+      let htmlBody, prependAttachments = []
+
+      if (useStatement) {
+        const rapportData = buildRapportData()
+        htmlBody = genererMailStatementHTML(data.proprio, mois, rapportData)
+
+        // Générer le statement PDF en pièce jointe
+        try {
+          const statementHtml = genererStatementHTML(data.proprio, mois, rapportData)
+          const pdfRes = await fetch('/api/generate-pdf', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ html: statementHtml, orientation: 'landscape' }),
+          })
+          if (pdfRes.ok) {
+            const blob = await pdfRes.blob()
+            const base64 = await new Promise((resolve) => {
+              const reader = new FileReader()
+              reader.onload = () => resolve(reader.result.split(',')[1])
+              reader.readAsDataURL(blob)
+            })
+            const bienNom = data.bien?.hospitable_name?.replace(/[^a-zA-Z0-9]/g, '_') || 'bien'
+            prependAttachments = [{
+              filename: `Statement_${bienNom}_${mois}.pdf`,
+              content_base64: base64,
+            }]
+          }
+        } catch (e) {
+          console.warn('Statement PDF non joint:', e.message)
+        }
+      } else {
+        htmlBody = getHTML()
+      }
+
+      await Promise.all(emails.map(addr =>
+        envoyerRapportEmail({ ...data.proprio, email: addr }, mois, htmlBody, joindrePDF, prependAttachments)
+      ))
       await supabase.from('bien_notes').upsert(
         { bien_id: selectedBienId, mois, rapport_envoye_at: new Date().toISOString() },
         { onConflict: 'bien_id,mois' }
@@ -1261,10 +1303,11 @@ FORMAT :
               <div><strong>De :</strong> oihan@destinationcotebasque.com</div>
               <div><strong>À :</strong> {email || '(email non renseigné)'}</div>
               <div><strong>Objet :</strong> Rapport mensuel — {data.bien?.hospitable_name || data.proprio?.nom} — {moisLabel}</div>
+              {useStatement && <div><strong>PJ :</strong> 📎 Statement PDF (paysage)</div>}
               {joindrePDF && <div><strong>PJ :</strong> 📎 Facture PDF Evoliz</div>}
             </div>
             <div style={{ border: '1px solid var(--border)', borderRadius: 8, overflow: 'hidden', height: 500 }}>
-              <iframe srcDoc={getHTML()} style={{ width: '100%', height: '100%', border: 'none' }} title="Aperçu mail" />
+              <iframe srcDoc={getMailHTML()} style={{ width: '100%', height: '100%', border: 'none' }} title="Aperçu mail" />
             </div>
             <div style={{ display: 'flex', gap: 8, marginTop: 16, justifyContent: 'flex-end' }}>
               <button onClick={() => setShowMailPreview(false)} style={{ padding: '8px 16px', border: '1px solid var(--border)', borderRadius: 8, background: 'none', cursor: 'pointer' }}>Fermer</button>
