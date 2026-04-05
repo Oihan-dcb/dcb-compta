@@ -231,7 +231,7 @@ export default function PageRapports() {
           .from('ventilation')
           .select('reservation_id, code, montant_ht, montant_ttc')
           .in('reservation_id', resaIds)
-          .in('code', ['HON', 'LOY', 'VIR', 'FMEN'])
+          .in('code', ['HON', 'LOY', 'VIR', 'FMEN', 'AUTO'])
         vents = ventsData || []
         for (const v of vents) {
           if (!ventByResa[v.reservation_id]) ventByResa[v.reservation_id] = {}
@@ -335,7 +335,12 @@ export default function PageRapports() {
         proprio,
         bien: (proprio?.bien || []).find(b => b.id === selectedBienId),
         tauxCommission,
-        resas: resasValides.map(r => ({ ...r, vent: ventByResa[r.id] || {}, extra: extraByResa[r.id] || 0 })),
+        resas: resasValides.map(r => ({
+          ...r,
+          vent: ventByResa[r.id] || {},
+          extra: extraByResa[r.id] || 0,
+          menage_voyageur: (ventByResa[r.id]?.FMEN?.montant_ttc || 0) + (ventByResa[r.id]?.AUTO?.montant_ht || 0),
+        })),
         reviews,
         facture,
         frais: fraisData || [],
@@ -901,7 +906,8 @@ FORMAT :
                     { key: 'hon',       label: 'HON',           def: true  },
                     { key: 'loy',       label: 'LOY',           def: true  },
                     { key: 'vir',       label: 'VIR',           def: true  },
-                    { key: 'debours',   label: 'Débours',       def: false },
+                    { key: 'debours',   label: 'Débours',         def: false },
+                    { key: 'menage',    label: 'Ménage voyageur', def: false },
                   ].map(({ key, label, def }) => (
                     <label key={key} style={{ marginRight: 8, cursor: 'pointer', display: 'inline-flex', alignItems: 'center', gap: 4 }}>
                       <input type="checkbox"
@@ -921,20 +927,23 @@ FORMAT :
                   <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.82em' }}>
                     <thead>
                       <tr style={{ background: '#EAE3D4', color: 'var(--text)' }}>
-                        {[
-                          { h: 'Code',       right: false },
-                          { h: 'Voyageur',   right: false },
-                          { h: 'Arrivée',    right: false },
-                          { h: 'Plateforme', right: false },
-                          { h: 'Nuits',      right: true  },
-                          { h: 'Base comm.', right: true  },
-                          { h: 'HON',        right: true  },
-                          { h: 'LOY',        right: true  },
-                          { h: 'VIR',        right: true  },
-                          { h: 'EXTRA',      right: true  },
-                        ].map(({ h, right }) => (
-                          <th key={h} style={{ padding: '7px 8px', textAlign: right ? 'right' : 'left', borderBottom: '2px solid var(--brand)', whiteSpace: 'nowrap' }}>{h}</th>
-                        ))}
+                        {(() => {
+                          const thF = (label, right = false, color) => <th key={label} style={{ padding: '7px 8px', textAlign: right ? 'right' : 'left', borderBottom: '2px solid var(--brand)', whiteSpace: 'nowrap', ...(color ? { color } : {}) }}>{label}</th>
+                          return <>
+                            {thF('Code')}
+                            {thF('Voyageur')}
+                            {thF('Arrivée')}
+                            {thF('Plateforme')}
+                            {thF('Nuits', true)}
+                            {(colsConfig.brut      ?? false) && thF('Brut voyageur', true)}
+                            {(colsConfig.base_comm  ?? true)  && thF('Base comm.', true)}
+                            {(colsConfig.hon        ?? true)  && thF('HON', true, '#9c8c7a')}
+                            {(colsConfig.loy        ?? true)  && thF('LOY', true, '#CC9933')}
+                            {(colsConfig.vir        ?? true)  && thF('VIR', true, '#2d7a50')}
+                            {(colsConfig.debours    ?? false) && thF('Débours', true)}
+                            {(colsConfig.menage     ?? false) && thF('Ménage voyageur', true)}
+                          </>
+                        })()}
                       </tr>
                     </thead>
                     <tbody>
@@ -952,11 +961,13 @@ FORMAT :
                             <td style={{ padding: '6px 8px', color: '#4A3728', whiteSpace: 'nowrap' }}>{r.arrival_date ? r.arrival_date.split('-').reverse().join('/') : '—'}</td>
                             <td style={{ padding: '6px 8px' }}>{getCanal(r.platform, r.owner_stay)}</td>
                             <td style={{ padding: '6px 8px', textAlign: 'right', color: '#4A3728' }}>{r.nights || '—'}</td>
-                            <td style={{ padding: '6px 8px', textAlign: 'right', color: 'var(--text)' }}>{fmt(r.fin_revenue)}</td>
-                            <td style={{ padding: '6px 8px', textAlign: 'right', color: '#D97706' }}>{v.HON  ? fmt(v.HON.montant_ttc)  : '—'}</td>
-                            <td style={{ padding: '6px 8px', textAlign: 'right', color: '#059669', fontWeight: 600 }}>{v.LOY  ? fmt(v.LOY.montant_ht)   : '—'}</td>
-                            <td style={{ padding: '6px 8px', textAlign: 'right', color: '#4A3728' }}>{v.VIR  ? fmt(v.VIR.montant_ht)   : '—'}</td>
-                            <td style={{ padding: '6px 8px', textAlign: 'right', color: r.extra > 0 ? '#DC2626' : '#9C8E7D' }}>{r.extra > 0 ? fmt(r.extra) : '—'}</td>
+                            {(colsConfig.brut      ?? false) && <td style={{ padding: '6px 8px', textAlign: 'right', color: '#4A3728', whiteSpace: 'nowrap' }}>{fmt(r.fin_accommodation || 0)}</td>}
+                            {(colsConfig.base_comm  ?? true)  && <td style={{ padding: '6px 8px', textAlign: 'right', color: 'var(--text)', whiteSpace: 'nowrap' }}>{fmt(r.fin_revenue || 0)}</td>}
+                            {(colsConfig.hon        ?? true)  && <td style={{ padding: '6px 8px', textAlign: 'right', color: '#9c8c7a', whiteSpace: 'nowrap' }}>{v.HON ? fmt(v.HON.montant_ttc) : '—'}</td>}
+                            {(colsConfig.loy        ?? true)  && <td style={{ padding: '6px 8px', textAlign: 'right', color: '#CC9933', fontWeight: 600, whiteSpace: 'nowrap' }}>{v.LOY ? fmt(v.LOY.montant_ht) : '—'}</td>}
+                            {(colsConfig.vir        ?? true)  && <td style={{ padding: '6px 8px', textAlign: 'right', color: '#2d7a50', whiteSpace: 'nowrap' }}>{v.VIR ? fmt(v.VIR.montant_ht) : '—'}</td>}
+                            {(colsConfig.debours    ?? false) && <td style={{ padding: '6px 8px', textAlign: 'right', color: r.extra > 0 ? '#DC2626' : '#9C8E7D', whiteSpace: 'nowrap' }}>{r.extra > 0 ? fmt(r.extra) : '—'}</td>}
+                            {(colsConfig.menage     ?? false) && <td style={{ padding: '6px 8px', textAlign: 'right', color: '#4A3728', whiteSpace: 'nowrap' }}>{r.menage_voyageur > 0 ? fmt(r.menage_voyageur) : '—'}</td>}
                           </tr>
                         )
                       })}

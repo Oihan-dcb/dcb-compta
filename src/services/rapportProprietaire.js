@@ -133,6 +133,7 @@ export function genererRapportHTML(proprio, mois, data, colonnes = {}) {
     loy:       colonnes.loy       ?? true,
     vir:       colonnes.vir       ?? true,
     debours:   colonnes.debours   ?? false,
+    menage:    colonnes.menage    ?? false,
   }
   const optActives = Object.values(cols).filter(Boolean).length
   const optWidth = optActives > 0 ? Math.floor(54 / optActives) : 0
@@ -152,6 +153,7 @@ export function genererRapportHTML(proprio, mois, data, colonnes = {}) {
           ${cols.loy       ? `<col style="width:${optWidth}%">` : ''}
           ${cols.vir       ? `<col style="width:${optWidth}%">` : ''}
           ${cols.debours   ? `<col style="width:${optWidth}%">` : ''}
+          ${cols.menage    ? `<col style="width:${optWidth}%">` : ''}
         </colgroup>
         <thead>
           <tr style="background:#EDEBE5;">
@@ -166,6 +168,7 @@ export function genererRapportHTML(proprio, mois, data, colonnes = {}) {
             ${cols.loy       ? `<th style="${thStyle}">LOY</th>` : ''}
             ${cols.vir       ? `<th style="${thStyle}">VIR</th>` : ''}
             ${cols.debours   ? `<th style="${thStyle}">Débours</th>` : ''}
+            ${cols.menage    ? `<th style="${thStyle}">Ménage voyageur</th>` : ''}
           </tr>
         </thead>
         <tbody>
@@ -193,6 +196,7 @@ export function genererRapportHTML(proprio, mois, data, colonnes = {}) {
               ${cols.loy       ? `<td style="padding:5px 4px;text-align:right;font-weight:500;white-space:nowrap;color:#CC9933;">${v.LOY ? fmt(v.LOY.montant_ht) : '—'}</td>` : ''}
               ${cols.vir       ? `<td style="padding:5px 4px;text-align:right;white-space:nowrap;color:#2d7a50;">${v.VIR ? fmt(v.VIR.montant_ht) : '—'}</td>` : ''}
               ${cols.debours   ? `<td style="padding:5px 4px;text-align:right;white-space:nowrap;color:#4A3728;">${r.extra > 0 ? fmt(r.extra) : '—'}</td>` : ''}
+              ${cols.menage    ? `<td style="padding:5px 4px;text-align:right;white-space:nowrap;color:#4A3728;">${(r.menage_voyageur || 0) > 0 ? fmt(r.menage_voyageur) : '—'}</td>` : ''}
             </tr>`}).join('')}
         </tbody>
       </table>`
