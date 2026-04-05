@@ -278,21 +278,26 @@ export function genererMailStatementHTML(proprio, mois, data) {
       .trim()
   }
 
-  const kpiBlock = (kpis.nbResas || kpis.caHeb) ? `
+  const kpiBlock = `
 <div style="display:flex;gap:12px;margin:16px 0 4px;">
   ${kpis.nbResas != null ? `<div style="flex:1;background:#F7F4EF;border:1px solid #EDEBE5;border-radius:8px;padding:12px 8px;text-align:center;">
     <div style="font-size:22px;font-weight:700;color:#2C2416;">${kpis.nbResas}</div>
-    <div style="font-size:9px;color:#9C8E7D;text-transform:uppercase;letter-spacing:0.5px;margin-top:3px;">Réservations</div>
+    <div style="font-size:9px;color:#9C8E7D;text-transform:uppercase;letter-spacing:0.5px;margin-top:3px;">Reservations</div>
   </div>` : ''}
   ${kpis.caHeb != null ? `<div style="flex:1;background:#F7F4EF;border:1px solid #EDEBE5;border-radius:8px;padding:12px 8px;text-align:center;">
     <div style="font-size:22px;font-weight:700;color:#CC9933;">${fmtEur(kpis.caHeb)}</div>
-    <div style="font-size:9px;color:#9C8E7D;text-transform:uppercase;letter-spacing:0.5px;margin-top:3px;">CA hébergement</div>
+    <div style="font-size:9px;color:#9C8E7D;text-transform:uppercase;letter-spacing:0.5px;margin-top:3px;">CA hebergement</div>
   </div>` : ''}
   ${noteMoisMoy != null ? `<div style="flex:1;background:#F7F4EF;border:1px solid #EDEBE5;border-radius:8px;padding:12px 8px;text-align:center;">
     <div style="font-size:22px;font-weight:700;color:#2C2416;">${SVG_STAR_FULL(16)} ${noteMoisMoy}</div>
     <div style="font-size:9px;color:#9C8E7D;text-transform:uppercase;letter-spacing:0.5px;margin-top:3px;">Note voyageurs</div>
   </div>` : ''}
-</div>` : ''
+  <div style="flex:1;text-align:center;padding:16px 8px;background:#fff;border-radius:8px;border:1px solid #e8e3db;">
+    <div style="font-size:24px;line-height:1;margin-bottom:6px;">&#128206;</div>
+    <div style="font-size:9px;letter-spacing:0.08em;text-transform:uppercase;color:#9c8c7a;margin-top:4px;">STATEMENT PDF</div>
+    <div style="font-size:10px;color:#9c8c7a;margin-top:2px;">En piece jointe</div>
+  </div>
+</div>`
 
   const llmBlock = (label, text) => {
     if (!text) return ''

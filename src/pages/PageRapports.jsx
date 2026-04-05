@@ -763,12 +763,10 @@ FORMAT :
             body: JSON.stringify({ html: statementHtml, orientation: 'landscape' }),
           })
           if (pdfRes.ok) {
-            const blob = await pdfRes.blob()
-            const base64 = await new Promise((resolve) => {
-              const reader = new FileReader()
-              reader.onload = () => resolve(reader.result.split(',')[1])
-              reader.readAsDataURL(blob)
-            })
+            const ab = await pdfRes.arrayBuffer()
+            const u8 = new Uint8Array(ab)
+            let base64 = ''
+            for (let i = 0; i < u8.length; i += 3072) base64 += btoa(String.fromCharCode(...u8.slice(i, i + 3072)))
             const bienNom = data.bien?.hospitable_name?.replace(/[^a-zA-Z0-9]/g, '_') || 'bien'
             prependAttachments = [{
               filename: `Statement_${bienNom}_${mois}.pdf`,
@@ -782,8 +780,9 @@ FORMAT :
         htmlBody = getHTML()
       }
 
+      const bienName = data.bien?.hospitable_name || data.proprio?.nom
       await Promise.all(emails.map(addr =>
-        envoyerRapportEmail({ ...data.proprio, email: addr }, mois, htmlBody, joindrePDF, prependAttachments)
+        envoyerRapportEmail({ ...data.proprio, email: addr, bienName }, mois, htmlBody, joindrePDF, prependAttachments)
       ))
       await supabase.from('bien_notes').upsert(
         { bien_id: selectedBienId, mois, rapport_envoye_at: new Date().toISOString() },
@@ -1302,7 +1301,7 @@ FORMAT :
             <div style={{ fontSize: '0.82em', background: 'var(--bg-secondary, #F0EBE1)', padding: '12px 16px', borderRadius: 8, marginBottom: 16, lineHeight: 1.8, border: '1px solid var(--border)' }}>
               <div><strong>De :</strong> oihan@destinationcotebasque.com</div>
               <div><strong>À :</strong> {email || '(email non renseigné)'}</div>
-              <div><strong>Objet :</strong> Rapport mensuel — {data.bien?.hospitable_name || data.proprio?.nom} — {moisLabel}</div>
+              <div><strong>Objet :</strong> Rapport mensuel {moisLabel} - Destination Cote Basque - {data.bien?.hospitable_name || data.proprio?.nom}</div>
               {useStatement && <div><strong>PJ :</strong> 📎 Statement PDF (paysage)</div>}
               {joindrePDF && <div><strong>PJ :</strong> 📎 Facture PDF Evoliz</div>}
             </div>
