@@ -173,7 +173,7 @@ export default function PageRapports() {
         tauxCommission,
       ] = await Promise.all([
         (() => {
-          let q = supabase.from('reservation').select('id, code, fin_revenue, fin_accommodation, base_comm, nights, arrival_date, departure_date, final_status, platform, owner_stay, guest_name, bien:bien_id(hospitable_name, code)').eq('mois_comptable', mois).order('arrival_date')
+          let q = supabase.from('reservation').select('id, code, fin_revenue, fin_accommodation, nights, arrival_date, departure_date, final_status, platform, owner_stay, guest_name, bien:bien_id(hospitable_name, code)').eq('mois_comptable', mois).order('arrival_date')
           return isGlobal ? q.in('bien_id', maiteIdsLocal) : q.eq('bien_id', selectedBienId)
         })(),
         (() => {
@@ -342,6 +342,9 @@ export default function PageRapports() {
           vent: ventByResa[r.id] || {},
           extra: extraByResa[r.id] || 0,
           menage_voyageur: ventByResa[r.id]?.MEN?.montant_ht || 0,
+          base_comm: tauxCommission > 0
+            ? Math.round((ventByResa[r.id]?.HON?.montant_ht || 0) / (tauxCommission / 100))
+            : 0,
         })),
         reviews,
         facture,
