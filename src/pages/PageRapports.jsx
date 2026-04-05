@@ -231,7 +231,7 @@ export default function PageRapports() {
           .from('ventilation')
           .select('reservation_id, code, montant_ht, montant_ttc')
           .in('reservation_id', resaIds)
-          .in('code', ['HON', 'LOY', 'VIR', 'FMEN', 'AUTO'])
+          .in('code', ['HON', 'LOY', 'VIR', 'FMEN', 'AUTO', 'MEN'])
         vents = ventsData || []
         for (const v of vents) {
           if (!ventByResa[v.reservation_id]) ventByResa[v.reservation_id] = {}
@@ -339,7 +339,7 @@ export default function PageRapports() {
           ...r,
           vent: ventByResa[r.id] || {},
           extra: extraByResa[r.id] || 0,
-          menage_voyageur: (ventByResa[r.id]?.FMEN?.montant_ttc || 0) + (ventByResa[r.id]?.AUTO?.montant_ht || 0),
+          menage_voyageur: ventByResa[r.id]?.MEN?.montant_ht || 0,
         })),
         reviews,
         facture,
@@ -924,7 +924,8 @@ FORMAT :
                   ))}
                 </div>
                 {data.resas.length > 0 ? (
-                  <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.82em' }}>
+                  <div style={{ overflowX: 'auto', width: '100%' }}>
+                  <table style={{ width: '100%', minWidth: 700, borderCollapse: 'collapse', fontSize: '0.78em' }}>
                     <thead>
                       <tr style={{ background: '#EAE3D4', color: 'var(--text)' }}>
                         {(() => {
@@ -973,6 +974,7 @@ FORMAT :
                       })}
                     </tbody>
                   </table>
+                  </div>
                 ) : (
                   <p style={{ color: '#9C8E7D', fontStyle: 'italic', fontSize: '0.88em' }}>Aucune réservation ce mois.</p>
                 )}
