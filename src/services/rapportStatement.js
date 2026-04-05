@@ -141,7 +141,7 @@ export function genererStatementHTML(proprio, mois, data) {
   <div style="text-align:right;font-size:9.5px;color:#9c8c7a">
     <div style="font-weight:600;color:#2C2416;font-size:12px;margin-bottom:2px">Statement mensuel</div>
     <div>Généré le ${new Date().toLocaleDateString('fr-FR')}</div>
-    <div style="margin-top:3px;font-size:8.5px">rapports@destinationcotebasque.com</div>
+    <div style="margin-top:3px;font-size:8.5px">oihan@destinationcotebasque.com</div>
   </div>
 </div>
 
@@ -237,7 +237,7 @@ ${transactions}
 
 <div style="margin-top:16px;padding-top:10px;border-top:1px solid #ece8e2;font-size:8.5px;color:#9c8c7a;display:flex;justify-content:space-between">
   <span>Destination Côte Basque — Conciergerie de prestige, Biarritz</span>
-  <span>rapports@destinationcotebasque.com</span>
+  <span>oihan@destinationcotebasque.com</span>
 </div>
 
 </body>
@@ -370,7 +370,7 @@ export function genererMailStatementHTML(proprio, mois, data) {
 
   <!-- Footer -->
   <div style="text-align:center;padding:12px 24px;font-size:0.75em;color:#9C8E7D;background:#F7F4EF;border-top:2px solid #CC9933;">
-    Destination Côte Basque · rapports@destinationcotebasque.com<br>
+    Destination Côte Basque · oihan@destinationcotebasque.com<br>
     Conciergerie de prestige — Biarritz
   </div>
 
