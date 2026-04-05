@@ -40,10 +40,10 @@ export function genererStatementHTML(proprio, mois, data) {
   // Calculs Summary — valeurs pré-calculées dans PageRapports.jsx (r.hon, r.vir, etc.)
   const honTotal      = resas.reduce((s, r) => s + (r.hon  || 0), 0)
   const menageTotal   = resas.reduce((s, r) => s + (r.menage_voyageur || 0), 0)
+  const grossTotal    = resas.reduce((s, r) => s + (r.gross_revenue || r.fin_revenue || 0), 0)
   const caHeb         = resas.reduce((s, r) => s + (r.fin_revenue || 0), 0)
   const virTotal      = resas.reduce((s, r) => s + (r.vir  || 0), 0)
   const taxeTotal     = resas.reduce((s, r) => s + (r.taxe || 0), 0)
-  const finAccomTotal = resas.reduce((s, r) => s + (r.fin_accommodation || 0), 0)
   const baseCommTotal = resas.reduce((s, r) => s + (r.base_comm || 0), 0)
   const deboursTotal  = [...extrasGlobaux, ...haownerList]
     .reduce((s, p) => s + (p.montant_ttc || p.montant || 0), 0)
@@ -76,8 +76,8 @@ export function genererStatementHTML(proprio, mois, data) {
       </td>
       <td style="padding:4px 5px;font-size:8.5px;white-space:nowrap">${fmtDate(r.arrival_date)} – ${fmtDate(r.departure_date)}</td>
       <td style="padding:4px 5px;font-size:9px;text-align:right">${r.nights || '—'}</td>
-      <td style="padding:4px 5px;font-size:9px;text-align:right;white-space:nowrap">${fmt(r.fin_revenue)}</td>
-      <td style="padding:4px 5px;font-size:9px;text-align:right;white-space:nowrap;color:#4A3728">${fmt(r.fin_accommodation || 0)}</td>
+      <td style="padding:4px 5px;font-size:9px;text-align:right;white-space:nowrap">${fmt(r.gross_revenue || r.fin_revenue)}</td>
+      <td style="padding:4px 5px;font-size:9px;text-align:right;white-space:nowrap;color:#4A3728">${fmt(r.fin_revenue || 0)}</td>
       <td style="padding:4px 5px;font-size:9px;text-align:right;white-space:nowrap;color:#4A3728">${(r.base_comm || 0) > 0 ? fmt(r.base_comm) : '—'}</td>
       <td style="padding:4px 5px;font-size:9px;text-align:right;white-space:nowrap;color:#9c8c7a">${honR > 0 ? fmt(honR) : '—'}</td>
       <td style="padding:4px 5px;font-size:9px;text-align:right;white-space:nowrap;color:#4A3728">${menR > 0 ? fmt(menR) : '—'}</td>
@@ -163,7 +163,10 @@ export function genererStatementHTML(proprio, mois, data) {
   <div style="background:#F7F4EC;border-radius:7px;padding:12px 14px">
     <div style="font-size:8.5px;letter-spacing:0.08em;text-transform:uppercase;color:#9c8c7a;margin-bottom:8px">Reversement propriétaire</div>
     <div style="display:flex;justify-content:space-between;padding:3px 0;border-bottom:1px solid #ece8e2;font-size:10px">
-      <span style="color:#9c8c7a">Total revenus voyageurs</span><span>${fmt(caHeb)}</span>
+      <span style="color:#9c8c7a">Total revenus voyageurs (brut)</span><span>${fmt(grossTotal)}</span>
+    </div>
+    <div style="display:flex;justify-content:space-between;padding:3px 0;border-bottom:1px solid #ece8e2;font-size:10px">
+      <span style="color:#9c8c7a">Net reçu plateforme</span><span>${fmt(caHeb)}</span>
     </div>
     <div style="display:flex;justify-content:space-between;padding:3px 0;border-bottom:1px solid #ece8e2;font-size:10px">
       <span style="color:#9c8c7a">Revenus nets propriétaire</span><span>${fmt(netProprio)}</span>
@@ -214,8 +217,8 @@ export function genererStatementHTML(proprio, mois, data) {
     <tfoot>
       <tr style="background:#EDEBE5;border-top:2px solid #CC9933;font-weight:700">
         <td colspan="5" style="padding:5px 5px;font-size:9.5px">Total</td>
-        <td style="padding:5px 5px;text-align:right;font-size:9.5px">${fmt(caHeb)}</td>
-        <td style="padding:5px 5px;text-align:right;font-size:9.5px;color:#4A3728">${fmt(finAccomTotal)}</td>
+        <td style="padding:5px 5px;text-align:right;font-size:9.5px">${fmt(grossTotal)}</td>
+        <td style="padding:5px 5px;text-align:right;font-size:9.5px;color:#4A3728">${fmt(caHeb)}</td>
         <td style="padding:5px 5px;text-align:right;font-size:9.5px;color:#4A3728">${baseCommTotal > 0 ? fmt(baseCommTotal) : '—'}</td>
         <td style="padding:5px 5px;text-align:right;font-size:9.5px;color:#9c8c7a">${fmt(honTotal)}</td>
         <td style="padding:5px 5px;text-align:right;font-size:9.5px;color:#4A3728">${menageTotal > 0 ? fmt(menageTotal) : '—'}</td>

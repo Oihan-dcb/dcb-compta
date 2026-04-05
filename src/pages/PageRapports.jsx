@@ -173,7 +173,7 @@ export default function PageRapports() {
         tauxCommission,
       ] = await Promise.all([
         (() => {
-          let q = supabase.from('reservation').select('id, code, fin_revenue, fin_accommodation, nights, arrival_date, departure_date, final_status, platform, owner_stay, guest_name, bien:bien_id(hospitable_name, code)').eq('mois_comptable', mois).order('arrival_date')
+          let q = supabase.from('reservation').select('id, code, fin_revenue, fin_accommodation, fin_host_service_fee, nights, arrival_date, departure_date, final_status, platform, owner_stay, guest_name, bien:bien_id(hospitable_name, code)').eq('mois_comptable', mois).order('arrival_date')
           return isGlobal ? q.in('bien_id', maiteIdsLocal) : q.eq('bien_id', selectedBienId)
         })(),
         (() => {
@@ -701,8 +701,15 @@ FORMAT :
       const v = vByResa[r.id] || {}
       const virHt = v.VIR?.montant_ht || 0
       const loyHt = v.LOY?.montant_ht || 0
+      // gross_revenue = fin_revenue - fin_host_service_fee
+      // fin_host_service_fee est NÉGATIF (ex: -6455) → soustraction = addition
+      // Fallback sur fin_revenue si fin_host_service_fee est null (resas CSV)
+      const gross_revenue = r.fin_host_service_fee != null
+        ? (r.fin_revenue || 0) - (r.fin_host_service_fee || 0)
+        : (r.fin_revenue || 0)
       return {
         ...r,
+        gross_revenue,
         hon:  v.HON?.montant_ttc || 0,
         loy:  loyHt,
         vir:  virHt,
