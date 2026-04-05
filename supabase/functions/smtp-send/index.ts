@@ -26,7 +26,9 @@ Deno.serve(async (req) => {
   if (!to || !subject || !html) return err('Missing to/subject/html', 400)
   if (!SMTP_HOST || !SMTP_USER || !SMTP_PASS) return err('SMTP not configured', 500)
 
-  try {
+  const TIMEOUT_MS = 25000
+
+  const smtpSend = async () => {
     const client = new SMTPClient({
       connection: {
         hostname: SMTP_HOST,
@@ -53,7 +55,14 @@ Deno.serve(async (req) => {
     })
 
     await client.close()
+  }
 
+  const timeout = new Promise<never>((_, reject) =>
+    setTimeout(() => reject(new Error(`SMTP timeout after ${TIMEOUT_MS}ms — check OVH connectivity from Supabase`)), TIMEOUT_MS)
+  )
+
+  try {
+    await Promise.race([smtpSend(), timeout])
     console.log('Email envoyé à', to, ':', subject)
     return new Response(JSON.stringify({ ok: true }), { headers: jsonCors })
   } catch (e: any) {
