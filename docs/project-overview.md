@@ -122,7 +122,7 @@ Les deux applications partagent la **même base Supabase**. Aucune des deux n'a 
 **Rôle réel** : Génération et envoi par email des rapports mensuels propriétaires. KPIs, liste des réservations, avis voyageurs, notes de marché.
 **Données** : lit `reservation`, `ventilation` (LOY), `bien_notes`, `reservation_review` ; écrit `bien_notes`
 **Dépendances entrantes** : Données du mois (réservations, ventilation calculée), avis webhook (`reservation_review`), notes DCB (`bien_notes`)
-**Dépendances sortantes** : Email HTML via `smtp-send` Edge Function (OVH SMTP) avec CC rapports@destinationcotebasque.com
+**Dépendances sortantes** : Email HTML via `smtp-send` Edge Function (Resend API) — from `rapports@mail.destinationcotebasque.com`, CC `oihan@destinationcotebasque.com`
 **Services** : `rapportProprietaire.js` (getBienNote, saveBienNote, getReviewsMois, getKPIsMois, genererRapportHTML, envoyerRapportEmail)
 
 ---
@@ -417,7 +417,7 @@ La logique de ventilation comptable (transformation `fin_revenue` → HON/FMEN/A
 - `b17af1e` UI : badge Débours AE + masquer reversement null dans PageFactures
 - `65c84a4` fix : guard explicite si INSERT ne retourne pas d'id dans `genererFactureDebours`
 - RLS activé sur 5 tables publiques sans politique : `bien_notes`, `reservation_review`, `frais_proprietaire`, `prestation_type`, `import_log` — politique permissive (app interne, anon key)
-- Module rapport mensuel propriétaires : tables `bien_notes` + `reservation_review` (SQL), Edge Function `smtp-send` (OVH SMTP via denomailer@1.6.0), service `rapportProprietaire.js` (KPIs, HTML, email avec CC), `PageRapports.jsx`, route `/rapports` dans App.jsx
+- Module rapport mensuel propriétaires : tables `bien_notes` + `reservation_review` (SQL), Edge Function `smtp-send` (Resend API), service `rapportProprietaire.js` (KPIs, HTML, email avec CC), `PageRapports.jsx`, route `/rapports` dans App.jsx
 - Nav "Config" transformée en dropdown (ConfigDropdown) : Import CSV, Journal, AEs, Paramètres
 - `PageMatching.jsx` supprimé (page cachée sans lien nav, dead code)
 - `updateBienMenage` supprimé de `syncBiens.js` (0 usages)
@@ -474,3 +474,13 @@ La logique de ventilation comptable (transformation `fin_revenue` → HON/FMEN/A
 - Tokens révoqués : `sbp_b707...` (Supabase Management) + `ghp_lnjT...` (GitHub PAT) — aucun secret actif dans le code source ni le git log
 - `.env.local` créé en local (gitignored) avec `VITE_SUPABASE_URL` + `VITE_SUPABASE_ANON_KEY`
 - **Premier rapport propriétaire envoyé** : BURGY 602, mars 2026 ✅
+
+## Fixes session 05 avril 2026 — Migration Resend + nettoyage SMTP
+
+- Migration OVH SMTP → Resend API HTTP dans `smtp-send` : denomailer supprimé, fetch natif vers `api.resend.com`. Cause racine résolue : `UnexpectedEof TLS close_notify` OVH provoquait un faux 502 malgré envoi effectif.
+- Domaine `mail.destinationcotebasque.com` vérifié dans Resend — from : `rapports@mail.destinationcotebasque.com`
+- Secret `RESEND_API_KEY` configuré dans Supabase ; secrets OVH (`SMTP_HOST/PORT/USER/PASS/FROM`) supprimés
+- `PageConfigSMTP.jsx` supprimé — config SMTP OVH obsolète
+- Route `/config-smtp` et lien nav "Email SMTP" supprimés de `App.jsx`
+- Gestion `envoi_incertain` ajoutée dans `PageRapports.jsx` + `rapportProprietaire.js` : erreurs réseau post-envoi (Load failed, 502) affichent un avertissement avec actions "Marquer comme envoyé" / "Réessayer" au lieu d'un échec dur
+- Statement PDF : colonnes Brut/Net/base_comm corrigées (`gross_revenue = fin_revenue - fin_host_service_fee`, `base_comm = fin_accommodation + fin_host_service_fee`) — `buildRapportData()` recalcule depuis `ventByResa` à chaque appel

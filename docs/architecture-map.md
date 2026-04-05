@@ -39,7 +39,7 @@ Deux applications React (DCB Compta + Portail AE) partagent une base Supabase co
 │    create-ae-user       sync-ical-ae                           │
 │    sync-ical-cron       hospitable-webhook                     │
 │    global-sync          evoliz-proxy                           │
-│    smtp-send            update-smtp-secrets                    │
+│    smtp-send (Resend API)                                      │
 │    [reset-ae-password]                                         │
 └────────────────────────┬────────────────────────────────────────┘
                          │ API HTTPS
@@ -278,8 +278,7 @@ dcb-portail-ae (React, repo privé)
 | `global-sync` | PageConfig (lancerGlobalUpdate) | Sync totale all-time | ✅ Existe — **produit des NaN** (CF-C2) |
 | `evoliz-proxy` | syncProprietaires.js + evoliz.js | Proxy vers API Evoliz | ✅ Existe |
 | `hospitable-webhook` | Hospitable (événements temps réel) | Upsert réservations + avis | ✅ Existe — `handleReview` upsert dans `reservation_review` (30 mars). Appelle RPC `ventiler_toutes_resas` probablement inexistante. [✅ Confirmé fournisseur : si les financials changent, Hospitable déclenche un webhook réservation.] |
-| `smtp-send` | rapportProprietaire.js | Envoi email SMTP OVH | ✅ Existe — denomailer@1.6.0. Supporte to/cc/subject/html/attachments. CC rapports@destinationcotebasque.com. |
-| `update-smtp-secrets` | PageConfigSMTP.jsx (sauvegarderSMTP) | Écrit SMTP_HOST/PORT/USER/FROM/PASS dans les secrets Supabase via Management API | ✅ Déployé 02/04/2026 — token `DCB_MANAGEMENT_TOKEN` (hors code source) |
+| `smtp-send` | rapportProprietaire.js | Envoi email via Resend API HTTP | ✅ Migration Resend 05/04/2026 — fetch natif vers api.resend.com. From: rapports@mail.destinationcotebasque.com. Supporte to/cc/subject/html/attachments. Secret: RESEND_API_KEY. |
 | `ventiler_toutes_resas` | hospitable-webhook (RPC Postgres) | Ventilation post-webhook | 🔶 **Probablement inexistante** en base |
 
 ---
@@ -418,8 +417,7 @@ Chaque action utilisateur déclenche une chaîne précise de fonctions et d'effe
 | ⚡ Re-matching complet | PageConfig | `rapprochement.js` → `resetEtRematcher` | `ventilation`, `reservation`, `payout_hospitable`, `mouvement_bancaire` | Depuis 2025 seulement — écrase les rapprochements manuels |
 | + Créer accès AE | PageAEs | `create-ae-user` Edge Function | `auto_entrepreneur` (ae_user_id, mdp_temporaire) | ✅ mdp_temporaire sauvegardé (code path ✅, audit 30 mars) |
 | 🔑 Reset mdp | PageAEs | `reset-ae-password` Edge Function | `auto_entrepreneur` (mdp_temporaire) | ✅ Edge Function existe — sauvegarde mdp_temporaire (code path ✅, audit 30 mars) |
-| 📧 Envoyer rapport | PageRapports | `rapportProprietaire.js` → `smtp-send` | `bien_notes` (SELECT), `reservation_review` (SELECT) | Email HTML avec CC rapports@destinationcotebasque.com. Aperçu modal avant envoi. |
-| 💾 Sauvegarder SMTP | PageConfigSMTP | `update-smtp-secrets` Edge Function | — (Supabase secrets) | Aucun token dans le code source — DCB_MANAGEMENT_TOKEN côté Supabase |
+| 📧 Envoyer rapport | PageRapports | `rapportProprietaire.js` → `smtp-send` | `bien_notes` (SELECT), `reservation_review` (SELECT) | Email via Resend API. From: rapports@mail.destinationcotebasque.com. CC oihan@. Gestion `envoi_incertain` si erreur réseau post-envoi. |
 | Sync iCal (AE) | PageAEs / Portail | `sync-ical-ae` Edge Function | `mission_menage` | Pas de protection contre les correspondances ical_code multiples |
 | ✓ Valider prestation | PagePrestations | UPDATE inline Supabase | `prestation_hors_forfait` (statut=valide) | Impact sur factures pour types deduction_loy et haowner ✅. Aucun impact pour dcb_direct et debours_proprio ⚠. Aucun impact sur ventilation (code EXTRA absent). |
 | Importer CSV Hospitable | PageImport | `importCSV.js` → `importHospitableCSV` | `reservation`, `reservation_fee` (DELETE+INSERT sans transaction ⚠) | `fusionnerDoublons` ne migre pas `reservation_paiement` ni `payout_reservation` |
