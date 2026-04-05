@@ -350,7 +350,7 @@ export default function PageRapports() {
             vir:  virHt,
             fmen: v.FMEN?.montant_ttc || 0,
             taxe: Math.max(0, virHt - loyHt),
-            menage_voyageur: v.MEN?.montant_ht || 0,
+            menage_voyageur: (v.FMEN?.montant_ttc || 0) + (v.AUTO?.montant_ht || 0),
             base_comm: (r.fin_accommodation || 0) + (r.fin_host_service_fee || 0),
           }
         }),
