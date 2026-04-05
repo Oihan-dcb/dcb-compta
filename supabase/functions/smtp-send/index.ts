@@ -29,7 +29,7 @@ serve(async (req) => {
     }
 
     const payload: any = {
-      from: 'Destination Côte Basque <onboarding@resend.dev>',
+      from: 'Destination Cote Basque <rapports@mail.destinationcotebasque.com>',
       to: Array.isArray(to) ? to : [to],
       subject,
       html,
