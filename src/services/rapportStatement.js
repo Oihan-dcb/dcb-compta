@@ -48,9 +48,10 @@ export function genererStatementHTML(proprio, mois, data) {
   const deboursTotal  = [...extrasGlobaux, ...haownerList]
     .reduce((s, p) => s + (p.montant_ttc || p.montant || 0), 0)
     + resas.reduce((s, r) => s + (r.extra || 0), 0)
-  const totalManager = honTotal + menageTotal + deboursTotal
-  const netProprio   = virTotal
-  const totalDuOwner = virTotal
+  const totalManager  = honTotal + menageTotal + deboursTotal
+  const virementNet   = virTotal - deboursTotal
+  const netProprio    = virementNet
+  const totalDuOwner  = virementNet
 
   const [annee, moisNum] = mois.split('-')
   const moisLabel = `${MOIS_FR[parseInt(moisNum) - 1]} ${annee}`
@@ -169,8 +170,11 @@ export function genererStatementHTML(proprio, mois, data) {
       <span style="color:#9c8c7a">Net reçu plateforme</span><span>${fmt(caHeb)}</span>
     </div>
     <div style="display:flex;justify-content:space-between;padding:3px 0;border-bottom:1px solid #ece8e2;font-size:10px">
-      <span style="color:#9c8c7a">Revenus nets propriétaire</span><span>${fmt(netProprio)}</span>
+      <span style="color:#9c8c7a">Réversement brut (VIR)</span><span>${fmt(virTotal)}</span>
     </div>
+    ${deboursTotal > 0 ? `<div style="display:flex;justify-content:space-between;padding:3px 0;border-bottom:1px solid #ece8e2;font-size:10px">
+      <span style="color:#9c8c7a">Débours / Achats</span><span style="color:#DC2626">− ${fmt(deboursTotal)}</span>
+    </div>` : ''}
     <div style="display:flex;justify-content:space-between;padding:3px 0;border-bottom:1px solid #ece8e2;font-size:10px">
       <span style="color:#9c8c7a">Taxes de séjour</span><span>${taxeTotal > 0 ? fmt(taxeTotal) : '—'}</span>
     </div>

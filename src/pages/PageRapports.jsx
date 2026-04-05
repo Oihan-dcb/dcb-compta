@@ -351,9 +351,7 @@ export default function PageRapports() {
             fmen: v.FMEN?.montant_ttc || 0,
             taxe: Math.max(0, virHt - loyHt),
             menage_voyageur: v.MEN?.montant_ht || 0,
-            base_comm: tauxCommission > 0
-              ? Math.round((v.HON?.montant_ht || 0) / (tauxCommission / 100))
-              : 0,
+            base_comm: (r.fin_accommodation || 0) + (r.fin_host_service_fee || 0),
           }
         }),
         reviews,
