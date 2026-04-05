@@ -716,9 +716,7 @@ FORMAT :
         fmen: v.FMEN?.montant_ttc || 0,
         taxe: Math.max(0, virHt - loyHt),
         menage_voyageur: v.MEN?.montant_ht || 0,
-        base_comm: taux > 0
-          ? Math.round((v.HON?.montant_ht || 0) / (taux / 100))
-          : 0,
+        base_comm: (r.fin_accommodation || 0) + (r.fin_host_service_fee || 0),
       }
     })
     return {
