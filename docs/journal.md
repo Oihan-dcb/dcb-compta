@@ -184,3 +184,23 @@ meteoPrevisions = meteoFutur || 'Données météo non disponibles...'
 - Tester génération PDF Puppeteer en prod (cold start ~15-20s)
 - Favicons Northwell
 - Supprimer AE TEST id: 19a27f7a-4ab2-4b80-a96a-9179a0fb011f
+
+---
+
+## Migration SMTP OVH → Resend API — 05/04/2026
+
+### Contexte
+L'envoi d'emails via OVH SMTP (denomailer) provoquait des `Load failed` / `502` côté navigateur malgré l'envoi effectif des mails. Cause prouvée par logs Supabase : `UnexpectedEof: peer closed connection without sending TLS close_notify` — le serveur OVH coupait la session TLS sans fermeture propre.
+
+### Ce qui a changé
+- `smtp-send/index.ts` : denomailer supprimé → fetch natif vers API REST Resend
+- Domaine expéditeur vérifié : `mail.destinationcotebasque.com`
+- From : `rapports@mail.destinationcotebasque.com`
+- Secret Supabase : `RESEND_API_KEY` (secrets OVH SMTP_HOST/PORT/USER/PASS/FROM supprimés)
+- `PageConfigSMTP.jsx` supprimé (config OVH obsolète)
+- Lien nav "Email SMTP" et route `/config-smtp` supprimés de `App.jsx`
+- Front : gestion `envoi_incertain` (erreur réseau post-envoi) dans `PageRapports.jsx` + `rapportProprietaire.js`
+
+### Résultat
+- `{ ok: true, id: "..." }` confirmé en prod avec domaine vérifié ✅
+- Load failed résolu définitivement ✅
