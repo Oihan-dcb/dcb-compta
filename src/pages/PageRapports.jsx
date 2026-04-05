@@ -839,7 +839,16 @@ FORMAT :
       )
       setBiensEnvoyes(prev => new Set([...prev, selectedBienId]))
       setStatut(emails.length > 1 ? `sent_${emails.length}` : 'sent')
-    } catch (e) { console.error('ERREUR ENVOI STATEMENT:', e); setStatut('error'); setErreurDetail(e?.message || String(e)) }
+    } catch (e) {
+      console.error('ERREUR ENVOI STATEMENT:', e)
+      if (e?.uncertainSend) {
+        setStatut('envoi_incertain')
+        setErreurDetail(e?.message || String(e))
+      } else {
+        setStatut('error')
+        setErreurDetail(e?.message || String(e))
+      }
+    }
   }
 
   const proprio = proprietaires.find(p => p.id === selectedPropId)
@@ -854,10 +863,11 @@ FORMAT :
   const moisLabel = MOIS_FR[parseInt(monthIdx) - 1] + ' ' + year
 
   const STATUT_STYLES = {
-    idle:    { label: 'Non envoyé', color: '#9C8E7D', bg: '#F0EBE1' },
-    sending: { label: 'Envoi…',     color: '#D97706', bg: '#FEF3C7' },
-    sent:    { label: 'Envoyé ✓',   color: '#059669', bg: '#D1FAE5' },
-    error:   { label: 'Erreur',     color: '#DC2626', bg: '#FEE2E2' },
+    idle:             { label: 'Non envoyé',     color: '#9C8E7D', bg: '#F0EBE1' },
+    sending:          { label: 'Envoi…',         color: '#D97706', bg: '#FEF3C7' },
+    sent:             { label: 'Envoyé ✓',       color: '#059669', bg: '#D1FAE5' },
+    error:            { label: 'Erreur',         color: '#DC2626', bg: '#FEE2E2' },
+    envoi_incertain:  { label: 'Envoi incertain',color: '#D97706', bg: '#FEF3C7' },
   }
   const st = STATUT_STYLES[statut] || { label: `Envoyé ✓ (${statut.replace('sent_', '')} destinataires)`, color: '#059669', bg: '#D1FAE5' }
 
@@ -1331,6 +1341,32 @@ FORMAT :
             {statut === 'error' && erreurDetail && (
               <div style={{ marginTop: 8, padding: '8px 12px', background: '#fff0f0', border: '1px solid #f5c6c6', borderRadius: 6, fontSize: '0.78em', color: '#c0392b' }}>
                 ⚠️ {erreurDetail}
+              </div>
+            )}
+            {statut === 'envoi_incertain' && (
+              <div style={{ marginTop: 8, padding: '10px 14px', background: '#fffbeb', border: '1px solid #fcd34d', borderRadius: 6, fontSize: '0.78em', color: '#92400e' }}>
+                <div style={{ marginBottom: 8 }}>
+                  ⚠️ Envoi incertain : une erreur réseau est survenue après l'envoi. Dans certains cas, l'email est quand même bien parti. Vérifie la réception avant de relancer.
+                </div>
+                <div style={{ display: 'flex', gap: 8 }}>
+                  <button
+                    style={{ padding: '4px 10px', border: '1px solid #d97706', borderRadius: 5, background: '#fff', color: '#92400e', fontSize: '0.9em', cursor: 'pointer' }}
+                    onClick={async () => {
+                      await supabase.from('bien_notes').upsert(
+                        { bien_id: selectedBienId, mois, rapport_envoye_at: new Date().toISOString() },
+                        { onConflict: 'bien_id,mois' }
+                      )
+                      setBiensEnvoyes(prev => new Set([...prev, selectedBienId]))
+                      setStatut('sent')
+                    }}>
+                    Marquer comme envoyé
+                  </button>
+                  <button
+                    style={{ padding: '4px 10px', border: '1px solid #d97706', borderRadius: 5, background: '#fff', color: '#92400e', fontSize: '0.9em', cursor: 'pointer' }}
+                    onClick={() => { setStatut('idle'); setErreurDetail('') }}>
+                    Réessayer
+                  </button>
+                </div>
               </div>
             )}
           </div>

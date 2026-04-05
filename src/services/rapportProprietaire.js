@@ -508,24 +508,40 @@ export async function envoyerRapportEmail(proprio, mois, htmlBody, joindrePDF = 
     }
   }
 
-  const res = await fetch(`${SUPABASE_URL}/functions/v1/smtp-send`, {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      'Authorization': `Bearer ${import.meta.env.VITE_SUPABASE_ANON_KEY}`,
-    },
-    body: JSON.stringify({
-      to: proprio.email,
-      cc: 'oihan@destinationcotebasque.com',
-      subject: `Rapport mensuel ${moisLabel} - Destination Cote Basque - ${proprio.bienName || proprio.nom}`,
-      html: htmlBody,
-      attachments: attachments.length ? attachments : undefined,
-    }),
-  })
+  let res
+  try {
+    res = await fetch(`${SUPABASE_URL}/functions/v1/smtp-send`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${import.meta.env.VITE_SUPABASE_ANON_KEY}`,
+      },
+      body: JSON.stringify({
+        to: proprio.email,
+        cc: 'oihan@destinationcotebasque.com',
+        subject: `Rapport mensuel ${moisLabel} - Destination Cote Basque - ${proprio.bienName || proprio.nom}`,
+        html: htmlBody,
+        attachments: attachments.length ? attachments : undefined,
+      }),
+    })
+  } catch (fetchErr) {
+    const msg = fetchErr?.message || String(fetchErr)
+    if (msg === 'Load failed' || msg === 'Failed to fetch' || msg.toLowerCase().includes('networkerror')) {
+      const e = new Error(msg)
+      e.uncertainSend = true
+      throw e
+    }
+    throw fetchErr
+  }
 
   if (!res.ok) {
-    const err = await res.text()
-    throw new Error(`smtp-send: ${err}`)
+    if (res.status === 502 || res.status === 503) {
+      const e = new Error(`smtp-send HTTP ${res.status}`)
+      e.uncertainSend = true
+      throw e
+    }
+    const errText = await res.text()
+    throw new Error(`smtp-send: ${errText}`)
   }
   return true
 }
