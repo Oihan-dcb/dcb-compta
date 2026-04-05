@@ -323,16 +323,22 @@ export function genererMailStatementHTML(proprio, mois, data) {
 </div>`
   }
 
-  const reviewsBlock = reviews.length ? `
+  // Échapper les non-ASCII du contenu LLM (provient de l'API Anthropic, contient accents)
+  const safeAnalyse   = escapeNonAscii(data.llmAnalyse   || '')
+  const safeContexte  = escapeNonAscii(data.llmContexte  || '')
+  const safeTendances = escapeNonAscii(data.llmTendances || '')
+  const safeReviews   = reviews.map(r => ({ ...r, comment: escapeNonAscii(r.comment || '') }))
+
+  const reviewsBlock = safeReviews.length ? `
 <div style="padding:14px 20px;border-bottom:1px solid #EDEBE5;">
-  <div style="font-size:0.68em;font-weight:700;letter-spacing:1px;text-transform:uppercase;color:#CC9933;margin-bottom:10px;">Avis voyageurs (${reviews.length}${noteMoisMoy ? ' · ' + SVG_STAR_FULL(12) + ' ' + noteMoisMoy + '/5' : ''})</div>
-  ${reviews.map(r => `<div style="border-left:3px solid #CC9933;padding:8px 14px;margin-bottom:8px;background:#F7F4EF;border-radius:0 6px 6px 0;">
+  <div style="font-size:0.68em;font-weight:700;letter-spacing:1px;text-transform:uppercase;color:#CC9933;margin-bottom:10px;">Avis voyageurs (${safeReviews.length}${noteMoisMoy ? ' - ' + SVG_STAR_FULL(12) + ' ' + noteMoisMoy + '/5' : ''})</div>
+  ${safeReviews.map(r => `<div style="border-left:3px solid #CC9933;padding:8px 14px;margin-bottom:8px;background:#F7F4EF;border-radius:0 6px 6px 0;">
     <div style="color:#CC9933;font-size:1em;margin-bottom:3px;">${svgStars(r.rating || 0, 13)}</div>
-    <p style="margin:0;color:#2C2416;font-style:italic;line-height:1.5;font-size:13px;">« ${r.comment || ''} »</p>
+    <p style="margin:0;color:#2C2416;font-style:italic;line-height:1.5;font-size:13px;">&#171; ${r.comment} &#187;</p>
   </div>`).join('')}
 </div>` : ''
 
-  const hasContent = data.llmAnalyse || data.llmContexte || data.llmTendances || reviews.length
+  const hasContent = safeAnalyse || safeContexte || safeTendances || safeReviews.length
 
   const html = `<!DOCTYPE html>
 <html lang="fr">
@@ -366,9 +372,9 @@ export function genererMailStatementHTML(proprio, mois, data) {
 
   ${!hasContent ? `<div style="padding:20px 24px;font-size:13px;color:#9C8E7D;font-style:italic;">Aucun commentaire disponible pour ce mois.</div>` : ''}
 
-  ${llmBlock('Analyse du mois', data.llmAnalyse)}
-  ${llmBlock('Contexte marché', data.llmContexte)}
-  ${llmBlock('Perspectives', data.llmTendances)}
+  ${llmBlock('Analyse du mois', safeAnalyse)}
+  ${llmBlock('Contexte march&#233;', safeContexte)}
+  ${llmBlock('Perspectives', safeTendances)}
   ${reviewsBlock}
 
   <!-- Footer -->

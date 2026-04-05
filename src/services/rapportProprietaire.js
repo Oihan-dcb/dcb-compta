@@ -517,7 +517,7 @@ export async function envoyerRapportEmail(proprio, mois, htmlBody, joindrePDF = 
     },
     body: JSON.stringify({
       to: proprio.email,
-      cc: 'rapports@destinationcotebasque.com',
+      cc: 'oihan@destinationcotebasque.com',
       subject: `Rapport mensuel ${moisLabel} - Destination Cote Basque - ${proprio.bienName || proprio.nom}`,
       html: htmlBody,
       attachments: attachments.length ? attachments : undefined,

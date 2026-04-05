@@ -32,18 +32,12 @@ Deno.serve(async (req) => {
       },
     })
 
-    const attachList = (attachments || []).map((a: any) => {
-      const binaryStr = atob(a.content_base64)
-      const bytes = new Uint8Array(binaryStr.length)
-      for (let i = 0; i < binaryStr.length; i++) {
-        bytes[i] = binaryStr.charCodeAt(i)
-      }
-      return {
-        filename: a.filename,
-        content: bytes,
-        mimeType: 'application/pdf',
-      }
-    })
+    const attachList = (attachments || []).map((a: any) => ({
+      filename: a.filename,
+      mimeType: 'application/pdf',
+      content: a.content_base64,
+      encoding: 'base64',
+    }))
 
     await client.send({
       from: SMTP_FROM,
