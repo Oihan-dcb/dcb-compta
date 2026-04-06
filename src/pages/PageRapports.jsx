@@ -945,6 +945,10 @@ FORMAT :
             {(isMaite && modeMaite !== 'global' ? biensActifsMaite : biensActifs).map(b => <option key={b.id} value={b.id}>{b.hospitable_name}</option>)}
           </select>
         )}
+        <button onClick={charger} disabled={loading}
+          style={{ padding: '8px 14px', border: '1px solid var(--border)', borderRadius: 8, background: '#fff', color: 'var(--text)', fontSize: '0.88em', cursor: loading ? 'default' : 'pointer', opacity: loading ? 0.5 : 1 }}>
+          ↻ Actualiser
+        </button>
       </div>
 
       {error && <div style={{ background: '#FEE2E2', color: '#DC2626', padding: '10px 14px', borderRadius: 8, marginBottom: 16 }}>{error}</div>}
