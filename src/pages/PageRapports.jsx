@@ -703,12 +703,9 @@ FORMAT :
       const v = vByResa[r.id] || {}
       const virHt = v.VIR?.montant_ht || 0
       const loyHt = v.LOY?.montant_ht || 0
-      // gross_revenue = fin_revenue - fin_host_service_fee
-      // fin_host_service_fee est NÉGATIF (ex: -6455) → soustraction = addition
-      // Fallback sur fin_revenue si fin_host_service_fee est null (resas CSV)
-      const gross_revenue = r.fin_host_service_fee != null
-        ? (r.fin_revenue || 0) - (r.fin_host_service_fee || 0)
-        : (r.fin_revenue || 0)
+      // gross_revenue = fin_accommodation + MEN.montant_ht (brut voyageur)
+      // Plus robuste que fin_revenue - fin_host_service_fee : fin_accommodation toujours renseigné, MEN disponible si ventilée
+      const gross_revenue = (r.fin_accommodation || 0) + (v.MEN?.montant_ht || 0)
       return {
         ...r,
         gross_revenue,
