@@ -291,7 +291,10 @@ export default function PageRapports() {
         .filter(p => ['deduction_loy', 'debours_proprio'].includes(p.type_imputation))
         .reduce((s, p) => s + (p.montant || 0), 0)
       const totalHaowner = haownerList.reduce((s, p) => s + (p.montant_ttc || 0), 0)
-      const virementNet = Math.max(0, virTotal - totalDebours - totalHaowner)
+      const ownerStayMenageTotal = resasValides
+        .filter(r => r.owner_stay)
+        .reduce((s, r) => s + (ventByResa[r.id]?.FMEN?.montant_ttc || 0) + (ventByResa[r.id]?.AUTO?.montant_ht || 0), 0)
+      const virementNet = Math.max(0, virTotal - totalDebours - totalHaowner - ownerStayMenageTotal)
 
       let reviews = []
       {
