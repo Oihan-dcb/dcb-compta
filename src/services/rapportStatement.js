@@ -41,7 +41,7 @@ export function genererStatementHTML(proprio, mois, data) {
   // Calculs Summary — valeurs pré-calculées dans PageRapports.jsx (r.hon, r.vir, etc.)
   const honTotal      = resas.reduce((s, r) => s + (r.hon  || 0), 0)
   const menageTotal   = resas.reduce((s, r) => s + (r.menage_voyageur || 0), 0)
-  const grossTotal    = resas.reduce((s, r) => s + (r.gross_revenue ?? r.fin_revenue || 0), 0)
+  const grossTotal    = resas.reduce((s, r) => s + ((r.gross_revenue ?? r.fin_revenue) || 0), 0)
   const caHeb         = resas.reduce((s, r) => s + (r.fin_revenue || 0), 0)
   const virTotal      = resas.reduce((s, r) => s + (r.vir  || 0), 0)
   const taxeTotal     = resas.reduce((s, r) => s + (r.taxe || 0), 0)
