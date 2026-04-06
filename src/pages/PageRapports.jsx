@@ -268,10 +268,13 @@ export default function PageRapports() {
       } catch (_) { /* silencieux — ne bloque pas le chargement */ }
 
       const extraByResa = {}
+      const extrasParResa = []
       ;(prestations || [])
         .filter(p => ['deduction_loy', 'debours_proprio'].includes(p.type_imputation) && p.reservation_id)
+        .sort((a, b) => (a.date_prestation || '').localeCompare(b.date_prestation || ''))
         .forEach(p => {
           extraByResa[p.reservation_id] = (extraByResa[p.reservation_id] || 0) + (p.montant || 0)
+          extrasParResa.push({ ...p, libelle: p.description || p.prestation_type?.nom || '—' })
         })
 
       const extrasGlobaux = (prestations || [])
@@ -364,6 +367,7 @@ export default function PageRapports() {
         noteGlobaleMoy,
         nbReviewsGlobal: allReviewsData?.length || 0,
         extrasGlobaux,
+        extrasParResa,
         haownerList,
         ventByResa,
       })
@@ -727,6 +731,7 @@ FORMAT :
       noteReco,
       tauxCommission: taux,
       extrasGlobaux: data?.extrasGlobaux || [],
+      extrasParResa: data?.extrasParResa || [],
       haownerList: data?.haownerList || [],
       colonnes: colsConfig,
     }

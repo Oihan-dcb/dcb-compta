@@ -8,6 +8,7 @@ const MOIS_FR = ['Janvier','Février','Mars','Avril','Mai','Juin','Juillet','Ao�
 export function genererStatementHTML(proprio, mois, data) {
   const resas = data.resas || []
   const extrasGlobaux = data.extrasGlobaux || []
+  const extrasParResa = data.extrasParResa || []
   const haownerList = data.haownerList || []
 
   const fmt = (centimes) => {
@@ -87,7 +88,7 @@ export function genererStatementHTML(proprio, mois, data) {
     </tr>`
   }).join('')
 
-  const hasTransactions = extrasGlobaux.length > 0 || haownerList.length > 0
+  const hasTransactions = extrasGlobaux.length > 0 || extrasParResa.length > 0 || haownerList.length > 0
   const transactions = hasTransactions ? `
   <div style="margin-top:18px">
     <div style="font-size:8.5px;letter-spacing:0.08em;text-transform:uppercase;color:#9c8c7a;margin-bottom:8px;padding-bottom:5px;border-bottom:1px solid #ece8e2">Transactions</div>
@@ -106,6 +107,13 @@ export function genererStatementHTML(proprio, mois, data) {
           <td style="padding:3px 8px;color:#9c8c7a">${p.date_prestation ? p.date_prestation.substring(5).split('-').reverse().join('/') : '—'}</td>
           <td style="padding:3px 8px">${p.libelle || p.description || '—'}</td>
           <td style="padding:3px 8px;color:#9c8c7a">Débours</td>
+          <td style="padding:3px 8px;text-align:right">${fmt(p.montant)}</td>
+        </tr>`).join('')}
+        ${extrasParResa.map(p => `
+        <tr style="border-bottom:1px solid #ece8e2">
+          <td style="padding:3px 8px;color:#9c8c7a">${p.date_prestation ? p.date_prestation.substring(5).split('-').reverse().join('/') : '—'}</td>
+          <td style="padding:3px 8px">${p.libelle || p.description || '—'}</td>
+          <td style="padding:3px 8px;color:#9c8c7a">Débours (résa)</td>
           <td style="padding:3px 8px;text-align:right">${fmt(p.montant)}</td>
         </tr>`).join('')}
         ${haownerList.map(p => `
