@@ -1075,7 +1075,7 @@ FORMAT :
                             <td style={{ padding: '6px 8px', color: '#4A3728', whiteSpace: 'nowrap' }}>{r.arrival_date ? r.arrival_date.split('-').reverse().join('/') : '—'}</td>
                             <td style={{ padding: '6px 8px' }}>{getCanal(r.platform, r.owner_stay)}</td>
                             <td style={{ padding: '6px 8px', textAlign: 'right', color: '#4A3728' }}>{r.nights || '—'}</td>
-                            {(colsConfig.brut      ?? false) && <td style={{ padding: '6px 8px', textAlign: 'right', color: '#4A3728', whiteSpace: 'nowrap' }}>{fmt(r.fin_accommodation || 0)}</td>}
+                            {(colsConfig.brut      ?? false) && <td style={{ padding: '6px 8px', textAlign: 'right', color: '#4A3728', whiteSpace: 'nowrap' }}>{fmt((r.fin_accommodation || 0) + (v.MEN?.montant_ht || 0))}</td>}
                             {(colsConfig.base_comm  ?? true)  && <td style={{ padding: '6px 8px', textAlign: 'right', color: 'var(--text)', whiteSpace: 'nowrap' }}>{fmt(r.base_comm || 0)}</td>}
                             {(colsConfig.hon        ?? true)  && <td style={{ padding: '6px 8px', textAlign: 'right', color: '#9c8c7a', whiteSpace: 'nowrap' }}>{v.HON ? fmt(v.HON.montant_ttc) : '—'}</td>}
                             {(colsConfig.loy        ?? true)  && <td style={{ padding: '6px 8px', textAlign: 'right', color: '#CC9933', fontWeight: 600, whiteSpace: 'nowrap' }}>{v.LOY ? fmt(v.LOY.montant_ht) : '—'}</td>}
