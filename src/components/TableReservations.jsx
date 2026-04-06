@@ -1,3 +1,4 @@
+import { useRef } from 'react'
 import { format } from 'date-fns'
 import { fr } from 'date-fns/locale'
 import { formatMontant } from '../lib/hospitable'
@@ -45,21 +46,27 @@ function BadgeStatut({ r, onToggle }) {
 
 
 export default function TableReservations({ reservations, onSelect, onRefresh }) {
+  const toggling = useRef(false)
+
+  async function handleToggle(r) {
+    if (toggling.current) return
+    toggling.current = true
+    try {
+      await toggleOwnerStay(r)
+      if (onRefresh) onRefresh()
+    } catch (e) {
+      alert('Erreur : ' + e.message)
+    } finally {
+      toggling.current = false
+    }
+  }
+
   if (reservations.length === 0) return (
     <div className="empty-state">
       <div className="empty-state-title">Aucune réservation</div>
       <p>Lance une sync Hospitable pour ce mois.</p>
     </div>
   )
-
-  async function handleToggle(r) {
-    try {
-      await toggleOwnerStay(r)
-      if (onRefresh) onRefresh()
-    } catch (e) {
-      alert('Erreur : ' + e.message)
-    }
-  }
 
   return (
     <div className="table-container">
