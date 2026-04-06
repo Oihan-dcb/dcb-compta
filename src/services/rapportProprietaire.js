@@ -479,7 +479,8 @@ export async function envoyerRapportEmail(proprio, mois, htmlBody, joindrePDF = 
   const MOIS_FR = ['janvier','février','mars','avril','mai','juin','juillet','août','septembre','octobre','novembre','décembre']
   const moisLabel = MOIS_FR[parseInt(monthIdx) - 1] + ' ' + year
 
-  if (!proprio.email) throw new Error(`Pas d'email pour ${proprio.nom}`)
+  const toEmails = Array.isArray(proprio.email) ? proprio.email : [proprio.email]
+  if (!toEmails.length || !toEmails[0]) throw new Error(`Pas d'email pour ${proprio.nom}`)
 
   // Récupérer le PDF de la facture honoraires (uniquement si demandé)
   let attachments = [...prependAttachments]
@@ -517,7 +518,7 @@ export async function envoyerRapportEmail(proprio, mois, htmlBody, joindrePDF = 
         'Authorization': `Bearer ${import.meta.env.VITE_SUPABASE_ANON_KEY}`,
       },
       body: JSON.stringify({
-        to: proprio.email,
+        to: toEmails,
         subject: `Rapport mensuel ${moisLabel} - Destination Cote Basque - ${proprio.bienName || proprio.nom}`,
         html: htmlBody,
         attachments: attachments.length ? attachments : undefined,

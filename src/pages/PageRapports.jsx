@@ -830,16 +830,14 @@ FORMAT :
       const bienName = data.bien?.hospitable_name || data.proprio?.nom
       const smtpPayloadSize = JSON.stringify({ htmlBody, prependAttachments }).length
       console.log('[envoyer] étape 4 — smtp-send, payload ~', Math.round(smtpPayloadSize / 1024), 'KB, joindrePDF:', joindrePDF)
-      await Promise.all(emails.map(addr =>
-        envoyerRapportEmail({ ...data.proprio, email: addr, bienName }, mois, htmlBody, joindrePDF, prependAttachments)
-      ))
+      await envoyerRapportEmail({ ...data.proprio, email: emails, bienName }, mois, htmlBody, joindrePDF, prependAttachments)
       console.log('[envoyer] étape 5 — bien_notes upsert')
       await supabase.from('bien_notes').upsert(
         { bien_id: selectedBienId, mois, rapport_envoye_at: new Date().toISOString() },
         { onConflict: 'bien_id,mois' }
       )
       setBiensEnvoyes(prev => new Set([...prev, selectedBienId]))
-      setStatut(emails.length > 1 ? `sent_${emails.length}` : 'sent')
+      setStatut('sent')
     } catch (e) {
       console.error('ERREUR ENVOI STATEMENT:', e)
       if (e?.uncertainSend) {
