@@ -41,7 +41,7 @@ export function genererStatementHTML(proprio, mois, data) {
   // Calculs Summary — valeurs pré-calculées dans PageRapports.jsx (r.hon, r.vir, etc.)
   const honTotal      = resas.reduce((s, r) => s + (r.hon  || 0), 0)
   const menageTotal   = resas.reduce((s, r) => s + (r.menage_voyageur || 0), 0)
-  const grossTotal    = resas.reduce((s, r) => s + (r.gross_revenue || r.fin_revenue || 0), 0)
+  const grossTotal    = resas.reduce((s, r) => s + (r.gross_revenue ?? r.fin_revenue || 0), 0)
   const caHeb         = resas.reduce((s, r) => s + (r.fin_revenue || 0), 0)
   const virTotal      = resas.reduce((s, r) => s + (r.vir  || 0), 0)
   const taxeTotal     = resas.reduce((s, r) => s + (r.taxe || 0), 0)
@@ -78,7 +78,7 @@ export function genererStatementHTML(proprio, mois, data) {
       </td>
       <td style="padding:4px 5px;font-size:8.5px;white-space:nowrap">${fmtDate(r.arrival_date)} – ${fmtDate(r.departure_date)}</td>
       <td style="padding:4px 5px;font-size:9px;text-align:right">${r.nights || '—'}</td>
-      <td style="padding:4px 5px;font-size:9px;text-align:right;white-space:nowrap">${fmt(r.gross_revenue || r.fin_revenue)}</td>
+      <td style="padding:4px 5px;font-size:9px;text-align:right;white-space:nowrap">${fmt(r.gross_revenue ?? r.fin_revenue)}</td>
       <td style="padding:4px 5px;font-size:9px;text-align:right;white-space:nowrap;color:#4A3728">${fmt(r.fin_revenue || 0)}</td>
       <td style="padding:4px 5px;font-size:9px;text-align:right;white-space:nowrap;color:#4A3728">${(r.base_comm || 0) > 0 ? fmt(r.base_comm) : '—'}</td>
       <td style="padding:4px 5px;font-size:9px;text-align:right;white-space:nowrap;color:#9c8c7a">${honR > 0 ? fmt(honR) : '—'}</td>
