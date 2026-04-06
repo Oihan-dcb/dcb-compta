@@ -17,38 +17,8 @@ export async function toggleOwnerStay(resa) {
     .eq('id', resa.id)
 
   // Supprimer les anciennes lignes dans tous les cas
+  // Le montant ménage doit être saisi manuellement depuis la valeur Hospitable
   await supabase.from('ventilation').delete().eq('reservation_id', resa.id)
-
-  if (newVal) {
-    // Récupérer le forfait ménage du bien
-    const { data: bien } = await supabase
-      .from('bien')
-      .select('forfait_menage_proprio, proprietaire_id')
-      .eq('id', resa.bien?.id || resa.bien_id)
-      .single()
-
-    const forfait = bien?.forfait_menage_proprio
-    if (forfait && forfait > 0) {
-      // Calculer HT/TVA/TTC (TVA 20%)
-      const ttc = forfait                              // stocké en centimes
-      const ht  = Math.round(ttc / 1.20)
-      const tva = ttc - ht
-
-      await supabase.from('ventilation').insert({
-        reservation_id: resa.id,
-        bien_id: resa.bien?.id || resa.bien_id,
-        proprietaire_id: bien.proprietaire_id || null,
-        code: 'FMEN',
-        libelle: 'Forfait ménage séjour proprio',
-        montant_ht: ht,
-        montant_tva: tva,
-        montant_ttc: ttc,
-        taux_tva: 20,
-        mois_comptable: resa.mois_comptable,
-        calcul_source: 'owner_stay_auto',
-      })
-    }
-  }
 
   return newVal
 }

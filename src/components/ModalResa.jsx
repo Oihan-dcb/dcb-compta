@@ -235,6 +235,16 @@ export default function ModalResa({ resa, onClose, onSaved }) {
           ))}
         </div>
 
+        {/* Alerte ménage manquant — owner_stay sans FMEN */}
+        {resa.owner_stay && resa.platform === 'manual' && !ventil.some(v => v.code === 'FMEN') && (
+          <div style={{ margin: '12px 0', padding: '10px 14px', background: '#FFF7ED', border: '1px solid #FCD34D', borderRadius: 8, fontSize: '0.88em' }}>
+            <span style={{ fontWeight: 700, color: '#92400E' }}>⚠ Ménage non saisi</span>
+            <span style={{ color: '#78350F', marginLeft: 8 }}>
+              Séjour proprio — saisir le montant ménage réel depuis Hospitable (créance propriétaire).
+            </span>
+          </div>
+        )}
+
         {/* Ventilation */}
         {isManual && editing ? (
           <VentilationEdit
