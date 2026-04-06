@@ -703,9 +703,9 @@ FORMAT :
       const v = vByResa[r.id] || {}
       const virHt = v.VIR?.montant_ht || 0
       const loyHt = v.LOY?.montant_ht || 0
-      // gross_revenue = fin_accommodation + MEN.montant_ht (brut voyageur)
-      // Plus robuste que fin_revenue - fin_host_service_fee : fin_accommodation toujours renseigné, MEN disponible si ventilée
-      const gross_revenue = (r.fin_accommodation || 0) + (v.MEN?.montant_ht || 0)
+      // gross_revenue = fin_accommodation + MEN + taxe si Direct/Stripe (pass-through)
+      const isDirect = ['direct', 'stripe'].includes((r.platform || '').toLowerCase())
+      const gross_revenue = (r.fin_accommodation || 0) + (v.MEN?.montant_ht || 0) + (isDirect ? Math.max(0, (v.VIR?.montant_ht || 0) - (v.LOY?.montant_ht || 0)) : 0)
       return {
         ...r,
         gross_revenue,
