@@ -49,7 +49,7 @@ export function genererStatementHTML(proprio, mois, data) {
   const deboursTotal  = [...extrasGlobaux, ...haownerList]
     .reduce((s, p) => s + (p.montant_ttc || p.montant || 0), 0)
     + resas.reduce((s, r) => s + (r.extra || 0), 0)
-    + resas.filter(r => r.owner_stay).reduce((s, r) => s + (r.menage_voyageur || 0), 0)
+    + resas.filter(r => r.owner_stay && r.platform === 'manual').reduce((s, r) => s + (r.menage_voyageur || 0), 0)
   const totalManager  = honTotal + menageTotal + deboursTotal
   const virementNet   = virTotal - deboursTotal
   const netProprio    = virementNet

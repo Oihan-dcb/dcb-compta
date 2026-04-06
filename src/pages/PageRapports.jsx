@@ -292,7 +292,7 @@ export default function PageRapports() {
         .reduce((s, p) => s + (p.montant || 0), 0)
       const totalHaowner = haownerList.reduce((s, p) => s + (p.montant_ttc || 0), 0)
       const ownerStayMenageTotal = resasValides
-        .filter(r => r.owner_stay)
+        .filter(r => r.owner_stay && r.platform === 'manual')
         .reduce((s, r) => s + (ventByResa[r.id]?.FMEN?.montant_ttc || 0) + (ventByResa[r.id]?.AUTO?.montant_ht || 0), 0)
       const virementNet = Math.max(0, virTotal - totalDebours - totalHaowner - ownerStayMenageTotal)
 
