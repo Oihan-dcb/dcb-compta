@@ -1098,6 +1098,38 @@ FORMAT :
                         )
                       })}
                     </tbody>
+                    {data.resas.length > 0 && (() => {
+                      const tot = data.resas.reduce((acc, r) => {
+                        const v = r.vent
+                        acc.brut     += r.gross_revenue || 0
+                        acc.base_comm+= r.base_comm || 0
+                        acc.hon      += v.HON?.montant_ttc || 0
+                        acc.loy      += v.LOY?.montant_ht  || 0
+                        acc.vir      += v.VIR?.montant_ht  || 0
+                        acc.debours  += r.extra || 0
+                        acc.menage   += r.menage_voyageur || 0
+                        return acc
+                      }, { brut: 0, base_comm: 0, hon: 0, loy: 0, vir: 0, debours: 0, menage: 0 })
+                      const tdT = (val, color) => (
+                        <td style={{ padding: '7px 8px', textAlign: 'right', fontWeight: 700, color: color || 'var(--text)', whiteSpace: 'nowrap', borderTop: '2px solid var(--brand)' }}>
+                          {fmt(val)}
+                        </td>
+                      )
+                      return (
+                        <tfoot>
+                          <tr style={{ background: '#EAE3D4' }}>
+                            <td colSpan={5} style={{ padding: '7px 8px', fontWeight: 700, color: 'var(--text)', borderTop: '2px solid var(--brand)', letterSpacing: '0.04em' }}>TOTAL</td>
+                            {(colsConfig.brut      ?? false) && tdT(tot.brut)}
+                            {(colsConfig.base_comm  ?? true)  && tdT(tot.base_comm)}
+                            {(colsConfig.hon        ?? true)  && tdT(tot.hon,      '#9c8c7a')}
+                            {(colsConfig.loy        ?? true)  && tdT(tot.loy,      '#CC9933')}
+                            {(colsConfig.vir        ?? true)  && tdT(tot.vir,      '#2d7a50')}
+                            {(colsConfig.debours    ?? false) && tdT(tot.debours)}
+                            {(colsConfig.menage     ?? false) && tdT(tot.menage)}
+                          </tr>
+                        </tfoot>
+                      )
+                    })()}
                   </table>
                   </div>
                 ) : (
