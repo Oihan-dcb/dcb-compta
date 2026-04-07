@@ -182,7 +182,7 @@ export default function PageRapports() {
           return isGlobal ? q.in('bien_id', maiteIdsLocal) : q.eq('bien_id', selectedBienId)
         })(),
         (() => {
-          let q = supabase.from('frais_proprietaire').select('id, libelle, montant_ttc, statut')
+          let q = supabase.from('frais_proprietaire').select('id, libelle, montant_ttc, statut, date')
             .gte('date', `${mois}-01`).lt('date', `${moisSuivant}-01`)
           return isGlobal ? q.in('bien_id', maiteIdsLocal) : q.eq('bien_id', selectedBienId)
         })(),

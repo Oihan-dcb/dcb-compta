@@ -382,7 +382,6 @@ export function genererRapportHTML(proprio, mois, data, colonnes = {}) {
     ${resasHTML}
   </div>
 
-  <div style="font-size:9px;color:red;font-family:monospace;margin:4px 0">DEBUG FRAIS COUNT = ${fraisProprietaire.length} | DEBUG FRAIS = ${fraisProprietaire.map(p => p.libelle).join(', ') || '(aucun)'}</div>
   ${(extrasGlobaux.length > 0 || haownerList.length > 0 || fraisProprietaire.length > 0) ? `
   <div style="margin:16px 0;padding:20px 24px;background:#F7F4EF;break-inside:avoid;">
     <div style="font-size:9px;letter-spacing:0.05em;text-transform:uppercase;color:#9c8c7a;margin-bottom:12px;padding-bottom:8px;border-bottom:1px solid #ece8e2;">
@@ -420,7 +419,7 @@ export function genererRapportHTML(proprio, mois, data, colonnes = {}) {
         </tr>`).join('')}
         ${fraisProprietaire.map((p, i) => `
         <tr style="background:${(extrasGlobaux.length + haownerList.length + i) % 2 === 0 ? '#fff' : '#F7F4EF'};">
-          <td style="padding:6px 8px;color:#3a3530;">—</td>
+          <td style="padding:6px 8px;color:#3a3530;">${p.date ? p.date.substring(5).split('-').reverse().join('/') : '—'}</td>
           <td style="padding:6px 8px;color:#c2410c;font-size:10px;">Frais</td>
           <td style="padding:6px 8px;color:#3a3530;">${p.libelle || '—'}</td>
           <td style="padding:6px 8px;text-align:right;white-space:nowrap;color:#c2410c;">${fmt(p.montant_ttc)}</td>
