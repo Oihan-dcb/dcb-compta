@@ -198,6 +198,31 @@ export function genererRapportHTML(proprio, mois, data, colonnes = {}) {
               ${cols.debours   ? `<td style="padding:5px 4px;text-align:right;white-space:nowrap;color:#4A3728;">${r.extra > 0 ? fmt(r.extra) : '—'}</td>` : ''}
               ${cols.menage    ? `<td style="padding:5px 4px;text-align:right;white-space:nowrap;color:#4A3728;">${(r.menage_voyageur || 0) > 0 ? fmt(r.menage_voyageur) : '—'}</td>` : ''}
             </tr>`}).join('')}
+          ${(() => {
+            const tot = (resas || []).reduce((acc, r) => {
+              const v = r.vent || {}
+              acc.brut      += r.gross_revenue || 0
+              acc.base_comm += r.base_comm || 0
+              acc.hon       += v.HON?.montant_ttc || 0
+              acc.loy       += v.LOY?.montant_ht  || 0
+              acc.vir       += v.VIR?.montant_ht  || 0
+              acc.debours   += r.extra || 0
+              acc.menage    += r.menage_voyageur || 0
+              return acc
+            }, { brut: 0, base_comm: 0, hon: 0, loy: 0, vir: 0, debours: 0, menage: 0 })
+            const S = 'padding:6px 4px;font-weight:700;border-top:2px solid #CC9933;background:#EDEBE5;'
+            const tdT = (val, color) => `<td style="${S}text-align:right;white-space:nowrap;color:${color || '#2C2416'};">${fmt(val)}</td>`
+            return `<tr>
+              <td colspan="5" style="${S}color:#2C2416;letter-spacing:0.04em;">TOTAL</td>
+              ${cols.brut      ? tdT(tot.brut)              : ''}
+              ${cols.base_comm ? tdT(tot.base_comm)         : ''}
+              ${cols.hon       ? tdT(tot.hon,   '#9c8c7a')  : ''}
+              ${cols.loy       ? tdT(tot.loy,   '#CC9933')  : ''}
+              ${cols.vir       ? tdT(tot.vir,   '#2d7a50')  : ''}
+              ${cols.debours   ? tdT(tot.debours)           : ''}
+              ${cols.menage    ? tdT(tot.menage)            : ''}
+            </tr>`
+          })()}
         </tbody>
       </table>`
     : '<p style="color:#9C8E7D;font-style:italic;font-size:0.9em;margin:8px 0 0;">Aucune réservation ce mois.</p>'
