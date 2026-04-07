@@ -99,22 +99,18 @@ export function agregerSejoursProrio(reservations) {
 }
 
 /**
- * Calcule la ventilation d'une réservation individuelle
+ * Calcule les lignes de ventilation — fonction PURE, sans appel DB.
+ * Utilisée directement dans les tests et appelée par calculerVentilationResa.
+ * @param {object} resa — réservation avec bien, reservation_fee chargés
+ * @returns {{ lignes: Array }} lignes de ventilation calculées
  */
-export async function calculerVentilationResa(resa) {
+export function _calculerLignes(resa) {
   const bien = resa.bien
-
   if (!bien) throw new Error(`Bien manquant pour résa ${resa.code}`)
+  if (bien.gestion_loyer === false) return { lignes: [] }
+  if ((bien.agence || 'dcb') !== 'dcb') return { lignes: [] }
 
-  if (bien.gestion_loyer === false) return []  // Proprio gere le loyer
-  if ((bien.agence || 'dcb') !== 'dcb') return []  // Bien Lauian - comptabilite separee - pas de ventilation
-
-  // Revenue = montant net reçu en banque (en centimes)
   const revenue = resa.fin_revenue || 0
-  if (revenue === 0) {
-    await supabase.from('reservation').update({ ventilation_calculee: true }).eq('id', resa.id)
-    return
-  }
 
   // --- Extraire les fees ---
   // Priorité : reservation_fee en base (resas importées CSV)
@@ -182,14 +178,8 @@ export async function calculerVentilationResa(resa) {
   const STATUTS_NON_VENTILABLES = ['cancelled', 'not_accepted', 'not accepted', 'declined', 'expired']
   const isCancelled = STATUTS_NON_VENTILABLES.includes(resa.final_status)
 
-  // Réservation annulée/refusée sans payout → pas de ventilation
-  const finRevenue = parseFloat(resa.fin_revenue || 0)
-  if (isCancelled && finRevenue === 0) {
-    await supabase.from('ventilation').delete().eq('reservation_id', resa.id)
-    await supabase.from('reservation').update({ ventilation_calculee: true }).eq('id', resa.id)
-    return []
-  }
-  // Si annulée mais fin_revenue > 0 (frais d'annulation perçus) → ventiler normalement
+  // Réservation annulée mais fin_revenue > 0 (frais d'annulation) → ventiler normalement
+  // Cas cancelled + fin_revenue === 0 : géré par calculerVentilationResa (appel DB)
 
   // Fees depuis Hospitable
   // ─────────────────────────────────────────────────────────────────────────
@@ -345,6 +335,37 @@ export async function calculerVentilationResa(resa) {
       }
     }
   }
+
+  return { lignes }
+}
+
+/**
+ * Calcule la ventilation d'une réservation individuelle et l'écrit en base.
+ */
+export async function calculerVentilationResa(resa) {
+  const bien = resa.bien
+  if (!bien) throw new Error(`Bien manquant pour résa ${resa.code}`)
+  if (bien.gestion_loyer === false) return []
+  if ((bien.agence || 'dcb') !== 'dcb') return []
+
+  // Revenue = montant net reçu en banque (en centimes)
+  const revenue = resa.fin_revenue || 0
+  if (revenue === 0) {
+    await supabase.from('reservation').update({ ventilation_calculee: true }).eq('id', resa.id)
+    return
+  }
+
+  // Réservation annulée sans payout → supprimer lignes existantes et marquer ventilée
+  const STATUTS_NON_VENTILABLES = ['cancelled', 'not_accepted', 'not accepted', 'declined', 'expired']
+  const isCancelled = STATUTS_NON_VENTILABLES.includes(resa.final_status)
+  if (isCancelled && parseFloat(resa.fin_revenue || 0) === 0) {
+    await supabase.from('ventilation').delete().eq('reservation_id', resa.id)
+    await supabase.from('reservation').update({ ventilation_calculee: true }).eq('id', resa.id)
+    return []
+  }
+
+  // Calcul pur — délégué à _calculerLignes
+  const { lignes } = _calculerLignes(resa)
 
   // Sauvegarder les montant_reel saisis manuellement avant suppression
   const { data: existingLines } = await supabase
