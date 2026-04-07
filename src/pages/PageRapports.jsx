@@ -348,11 +348,12 @@ export default function PageRapports() {
           const virHt = v.VIR?.montant_ht || 0
           const loyHt = v.LOY?.montant_ht || 0
           const isDirect = ['direct', 'stripe'].includes((r.platform || '').toLowerCase())
+          const isBooking = (r.platform || '').toLowerCase() === 'booking'
           return {
             ...r,
             vent: v,
             extra: extraByResa[r.id] || 0,
-            gross_revenue: (r.fin_accommodation || 0) + (v.MEN?.montant_ht || 0) + (isDirect ? Math.max(0, virHt - loyHt) : 0),
+            gross_revenue: (r.fin_accommodation || 0) + (v.MEN?.montant_ht || 0) + ((isDirect || isBooking) ? Math.max(0, virHt - loyHt) : 0),
             hon:  v.HON?.montant_ttc || 0,
             loy:  loyHt,
             vir:  virHt,
