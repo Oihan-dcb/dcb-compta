@@ -158,6 +158,7 @@ export default function PageRapports() {
       const moisN1 = prevYear(mois)
       const [y, m] = mois.split('-').map(Number)
       const nuitsDispos = new Date(y, m, 0).getDate()
+      const moisSuivant = m === 12 ? `${y + 1}-01` : `${y}-${String(m + 1).padStart(2, '0')}`
 
       const [
         { data: resas, error: resasErr },
@@ -181,7 +182,8 @@ export default function PageRapports() {
           return isGlobal ? q.in('bien_id', maiteIdsLocal) : q.eq('bien_id', selectedBienId)
         })(),
         (() => {
-          let q = supabase.from('frais_proprietaire').select('id, libelle, montant_ttc, statut').eq('mois_facturation', mois)
+          let q = supabase.from('frais_proprietaire').select('id, libelle, montant_ttc, statut')
+            .gte('date', `${mois}-01`).lt('date', `${moisSuivant}-01`)
           return isGlobal ? q.in('bien_id', maiteIdsLocal) : q.eq('bien_id', selectedBienId)
         })(),
         supabase.from('bien_notes').select('note_marche')
@@ -733,6 +735,7 @@ FORMAT :
       extrasGlobaux: data?.extrasGlobaux || [],
       extrasParResa: data?.extrasParResa || [],
       haownerList: data?.haownerList || [],
+      fraisProprietaire: data?.frais || [],
       colonnes: colsConfig,
     }
   }

@@ -60,20 +60,24 @@ export default function PageFraisProprietaire() {
     setLoading(true)
     setError(null)
     try {
+      const [y, m] = mois.split('-').map(Number)
+      const moisSuivant = m === 12 ? `${y + 1}-01` : `${y}-${String(m + 1).padStart(2, '0')}`
+
       const { data, error: err } = await supabase
         .from('frais_proprietaire')
         .select('*, bien (id, code, hospitable_name), proprietaire (id, nom, prenom)')
-        .eq('mois_facturation', mois)
+        .gte('date', `${mois}-01`)
+        .lt('date', `${moisSuivant}-01`)
         .order('date')
       if (err) throw err
       setFrais(data || [])
 
-      // Mois dispos
+      // Mois dispos — depuis date réelle
       const { data: moisData } = await supabase
         .from('frais_proprietaire')
-        .select('mois_facturation')
-        .not('mois_facturation', 'is', null)
-      const set = new Set([moisCourant, ...(moisData || []).map(r => r.mois_facturation)])
+        .select('date')
+        .not('date', 'is', null)
+      const set = new Set([moisCourant, ...(moisData || []).map(r => r.date.slice(0, 7))])
       setMoisDispos([...set].sort().reverse())
     } catch (e) {
       setError(e.message)
@@ -105,7 +109,7 @@ export default function PageFraisProprietaire() {
         montant_ttc:       Math.round(parseFloat(form.montant_euros) * 100),
         mode_traitement:   form.mode_traitement,
         mode_encaissement: form.mode_encaissement,
-        mois_facturation:  mois,
+        mois_facturation:  form.date.slice(0, 7),
         source:            'manuel',
       })
       setSuccess('Frais créé')
