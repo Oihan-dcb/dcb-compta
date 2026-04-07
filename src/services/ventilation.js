@@ -355,16 +355,8 @@ export async function calculerVentilationResa(resa) {
   const existingReels = {}
   for (const l of existingLines || []) existingReels[l.code] = l.montant_reel
 
-  // Délier la FK mission_menage → ventilation AVANT le DELETE
-  // (FK RESTRICT bloque le DELETE si une mission_menage.ventilation_auto_id référence la ligne AUTO)
-  // Le RPC lier_ventilation_auto_mission re-lie après INSERT
-  await supabase
-    .from('mission_menage')
-    .update({ ventilation_auto_id: null })
-    .eq('reservation_id', resa.id)
-    .not('ventilation_auto_id', 'is', null)
-
   // Supprimer les ventilations existantes pour cette résa
+  // (FK ON DELETE SET NULL gère automatiquement mission_menage.ventilation_auto_id)
   const { error: delErr } = await supabase.from('ventilation').delete().eq('reservation_id', resa.id)
   if (delErr) throw new Error(`DELETE ventilation: ${delErr.message}`)
 

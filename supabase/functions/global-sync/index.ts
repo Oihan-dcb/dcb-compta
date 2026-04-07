@@ -492,15 +492,8 @@ async function calculerVentilationResa(resa) {
     }
   }
 
-  // Delier la FK mission_menage -> ventilation AVANT le DELETE
-  // (FK RESTRICT bloque le DELETE si une mission_menage.ventilation_auto_id reference la ligne AUTO)
-  await supabase
-    .from('mission_menage')
-    .update({ ventilation_auto_id: null })
-    .eq('reservation_id', resa.id)
-    .not('ventilation_auto_id', 'is', null)
-
   // Supprimer les ventilations existantes pour cette resa
+  // (FK ON DELETE SET NULL gere automatiquement mission_menage.ventilation_auto_id)
   const { error: delErr } = await supabase.from('ventilation').delete().eq('reservation_id', resa.id)
   if (delErr) throw new Error(`DELETE ventilation: ${delErr.message}`)
 
