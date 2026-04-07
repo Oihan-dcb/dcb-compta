@@ -12,7 +12,7 @@ DCB Compta est une application comptable mensuelle pour une conciergerie de loca
 
 **Architecture CSV-first** : l'export CSV Hospitable est la source principale de données pour la comptabilité mensuelle. L'API Hospitable et les webhooks sont des sources secondaires d'enrichissement — utiles mais non indispensables à la cohérence comptable.
 
-**Le système est séquentiel et fragile** : une erreur en amont (mauvaise ventilation, mauvais matching) se propage silencieusement jusqu'aux factures et aux virements. Il présentait trois critiques structurels actifs : ventilation dupliquée en 3 versions dont une cassée (V2 désactivée ✅), double moteur de matching aux logiques divergentes, prestations hors forfait intégrées (`deduction_loy`, `haowner`, `debours_proprio` ✅ — `dcb_direct` : log interne par conception ✅). Module rapport mensuel propriétaires ajouté (mars 2026).
+**Le système est séquentiel et fragile** : une erreur en amont (mauvaise ventilation, mauvais matching) se propage silencieusement jusqu'aux factures et aux virements. Il présentait trois critiques structurels actifs : ventilation dupliquée en 3 versions dont une cassée (V2 alignée avec V1 ✅ — session 07/04/2026), double moteur de matching aux logiques divergentes, prestations hors forfait intégrées (`deduction_loy`, `haowner`, `debours_proprio` ✅ — `dcb_direct` : log interne par conception ✅). Module rapport mensuel propriétaires ajouté (mars 2026).
 
 **Certaines opérations ne sont pas idempotentes** : relancer global-sync, le matching ou pousser vers Evoliz une deuxième fois peut produire des données en double ou des écrasements incorrects.
 
@@ -109,7 +109,7 @@ Les deux applications partagent la **même base Supabase**. Aucune des deux n'a 
 **Données** : Variables d'environnement, déclencheurs d'Edge Functions
 **Dépendances entrantes** : Aucune (interface déclencheuse)
 **Dépendances sortantes** : `global-sync` Edge Function, `syncProprietairesEvoliz`, `lancerMatching` (ancien), `resetEtRematcher`
-**Avertissement** : Clés Evoliz secrète et publique affichées en clair dans le HTML rendu (✅ CF-C1, risque sécurité immédiat). `global-sync` produit des NaN dans la ventilation (✅ CF-C2, critique majeur). Utilise l'ancien moteur de matching (✅ CF-C3).
+**Avertissement** : Clés Evoliz secrète et publique affichées en clair dans le HTML rendu (✅ CF-C1, risque sécurité immédiat). `global-sync` V2 alignée avec V1 (✅ CF-C2 — session 07/04/2026 : commissionableBase unifiée, ownerFees Direct, menLabelsToExclude). Utilise l'ancien moteur de matching (✅ CF-C3).
 
 ### Module 10 — Portail AE
 **Rôle réel** : Interface mobile-first pour les prestataires ménage. Saisie des heures, soumission de prestations extras, consultation des missions.
@@ -288,7 +288,7 @@ Exemples de propagations confirmées :
 
 | Erreur source | Propagation |
 |---|---|
-| Ventilation NaN (global-sync CF-C2) | HON/FMEN/LOY = NaN → facture 0€ ou incorrecte → mauvais reversement |
+| ~~Ventilation NaN (global-sync CF-C2)~~ | ✅ Corrigé session 07/04/2026 — global-sync V2 alignée avec V1 |
 | Suppression mouvement sans nettoyage (CF-BQ1) | réservation reste `rapprochee=true` → VIR orphelin → facture calculée sur base fantôme |
 | Portail AE inaccessible (CF-PAE1/2) | heures non saisies → `montant_reel` null → AUTO = provision (pas réel) → facture inexacte |
 | Matching divergent (CF-C3) | résultats différents selon le bouton → état `rapprochee` instable → incohérences bancaires |
@@ -334,7 +334,7 @@ Certaines opérations **ne peuvent pas être relancées en toute sécurité** sa
 
 | Opération | Risque si relancée |
 |---|---|
-| **global-sync** | Réinsère des payouts avec un schéma divergent, recalcule la ventilation avec NaN, peut écraser des rapprochements existants |
+| **global-sync** | Peut écraser des rapprochements existants. ✅ Ventilation NaN corrigée (session 07/04/2026 — formules alignées avec V1). Payouts : schéma à vérifier si `mois_payout` vs `mois_comptable` diverge. |
 | **Matching auto** (Config, ancien moteur) | Peut créer des doublons de `reservation_paiement`, résultats différents du matching PageRapprochement |
 | **Push vers Evoliz** | Verrou `envoi_en_cours` avant appel Evoliz — si UPDATE final échoue, pas de doublon au retry. Rollback `valide` si Evoliz échoue avant `saveInvoice`. (✅ CF-F2 clos, commit `1c7305f`) |
 | **Import CSV bancaire** | Réimporte tous les mois du fichier sans filtre si `moisSelectionnes` non passé (✅ CF-BQ6) |
@@ -346,11 +346,11 @@ Certaines opérations **ne peuvent pas être relancées en toute sécurité** sa
 
 Ces trois points sont des incohérences structurelles qui affectent la fiabilité globale du système.
 
-### [CRITIQUE 1] Ventilation dupliquée — 3 versions divergentes
-La logique de ventilation comptable (transformation `fin_revenue` → HON/FMEN/AUTO/LOY/VIR/TAXE) existe dans trois fichiers distincts. Toute correction dans l'un ne se propage pas aux autres.
-- V1 `src/services/ventilation.js` — référence la plus cohérente observée
-- V2 `supabase/functions/global-sync/index.ts` — constantes manquantes → **produit des NaN en base**
-- V3 `supabase/functions/hospitable-webhook/index.ts` — appelle `ventiler_toutes_resas` RPC (probablement inexistante)
+### [CRITIQUE 1] ✅ Ventilation dupliquée — V2 alignée (session 07/04/2026)
+La logique de ventilation existe dans trois fichiers distincts. V2 est maintenant alignée avec V1.
+- V1 `src/services/ventilation.js` — référence
+- V2 `supabase/functions/global-sync/index.ts` — ✅ alignée avec V1 : commissionableBase unifiée, ownerFees Direct, LOY Direct, menLabelsToExclude + resort fee, FK ON DELETE SET NULL
+- V3 `supabase/functions/hospitable-webhook/index.ts` — toujours non auditée (appelle probablement RPC inexistante)
 
 ### [CRITIQUE 2] ✅ Matching unifié (CF-C3)
 - `src/services/matching.js` — conservé pour les exports non-matching (`marquerNonRapprochable`, etc.)

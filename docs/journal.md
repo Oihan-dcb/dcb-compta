@@ -1,3 +1,87 @@
+# DCB Compta — Journal session 07 avril 2026
+
+## Formules ventilation Direct — correction majeure
+
+### Problème : LOY Direct incorrect (HOST-9HAQHD Ibaneta)
+Analyse du statement Hospitable pour HOST-9HAQHD :
+- Commissionable base = 299,47€ ✅ (= accommodation 304€ + hostServiceFee −4,53€)
+- Reservation commissions = 71,87€ ✅ (= commissionableBase × 0.24)
+- **Total owner fees = 1,02€** → manquait dans le calcul
+- Net owner income = 228,62€ cible → notre calcul = 227,60€ (écart = 1,02€)
+
+### Correction 1 — commissionableBase unifiée toutes plateformes
+Ancienne formule Direct : `revenue − cleaningFee − communityFee − managementFee − taxes + discounts`  
+Nouvelle formule (toutes plateformes) : `accommodation + hostServiceFee + discountsTotal`
+- Prouvé sur réels : Direct 304−4,53=299,47 ✓ | Booking 152,45−37,87=114,58 ✓
+
+### Correction 2 — ownerFees (nouveau concept, réservations Direct uniquement)
+Les "Total owner fees" Hospitable = portion de la platform fee (hostServiceFee) reversée pro-rata de chaque guest fee, nette de commission DCB :
+```
+totalFeesForOwnerRate = accommodation + Σ guestFees
+ownerFees = Σ_i round(|hostServiceFee| × fee_i / totalFeesForOwnerRate × (1 − taux))
+```
+Vérifié HOST-9HAQHD : management(24) + community(76) + resort(2) = 102¢ = 1,02€ ✓
+
+### Correction 3 — LOY Direct
+Ancienne : `commissionableBase − honTTC + platformRemb(feesDirectBruts/1.0077)`  
+Nouvelle : `commissionableBase − honTTC + ownerFees`
+- `platformRemb` Direct supprimé (concept 0,77% Hospitable abandonné)
+
+### Correction 4 — menLabelsToExclude
+Ajout de `'resort fee'` : `['management fee', 'host service fee', 'resort fee']`
+- Resort fee est une taxe de lieu, pas un vrai ménage — ne doit pas aller dans MEN
+
+## Patches global-sync alignés avec ventilation.js
+
+La Edge Function `global-sync/index.ts` contenait une copie divergente de la logique de ventilation. 4 patches appliqués (via Python byte-level — fichier UTF-8 double-encodé) :
+1. `commissionableBase` unifié toutes plateformes
+2. Bloc `platformRembourseMenage` Direct supprimé
+3. LOY Direct → `commissionableBase − honTTC + ownerFees`
+4. `menLabelsToExclude` + `resort fee`
+
+**global-sync V2 est maintenant alignée avec ventilation.js V1.** Bouton Global Update ré-activable.
+
+## Bug HOST-A8NEDM (Jonathan Frydman) — FK RESTRICT silencieuse
+
+### Diagnostic
+- `ventilation_calculee = false`, seule une ligne AUTO en base (updated_at 2026-04-02)
+- Cause : `mission_menage.ventilation_auto_id_fkey` était en `RESTRICT`
+- Quand ventilation supprime les lignes ventilation pour recalcul, le DELETE échoue (code 23503)
+- L'erreur était ignorée silencieusement (pas de `const { error }` sur le DELETE)
+- 22 réservations affectées
+
+### Fix immédiat — code
+Ajout du déliaison manuelle avant DELETE dans `ventilation.js` et `global-sync` :
+```js
+await supabase.from('mission_menage')
+  .update({ ventilation_auto_id: null })
+  .eq('reservation_id', resa.id)
+  .not('ventilation_auto_id', 'is', null)
+```
+
+## Migration FK — ON DELETE SET NULL (002)
+
+### Migration appliquée en prod (migration 002)
+```sql
+ALTER TABLE mission_menage
+  DROP CONSTRAINT IF EXISTS mission_menage_ventilation_auto_id_fkey,
+  ADD CONSTRAINT mission_menage_ventilation_auto_id_fkey
+    FOREIGN KEY (ventilation_auto_id)
+    REFERENCES ventilation(id)
+    ON DELETE SET NULL;
+```
+Application : `supabase migration repair 001 --status applied` puis `supabase db push`.
+
+### Code simplifié
+Le bloc manuel de déliage FK supprimé de `ventilation.js` et `global-sync/index.ts`.  
+Postgres gère maintenant le NULL automatiquement lors du DELETE ventilation.
+
+## Reste à faire
+- Relancer ⚡ Ventiler sur les réservations Direct mars 2026 (HOST-9HAQHD, HOST-A8NEDM et autres)
+- Valider les montants LOY sur statement Ibaneta après recalcul
+
+---
+
 # DCB Compta — Journal session 02 avril 2026 — Bilan complet
 
 ## Rapport propriétaire — opérationnel

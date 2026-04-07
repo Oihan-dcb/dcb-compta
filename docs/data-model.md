@@ -429,6 +429,8 @@ Missions de ménage créées depuis le calendrier iCal Hospitable de chaque AE.
 | `mois` | text | Format YYYY-MM | |
 | `statut` | text | 'planifie' | ❓ Autres valeurs possibles ? |
 | `type_mission` | text | 'cleaning', 'checkin' | Déduit du titre iCal |
+| `ventilation_auto_id` | uuid FK → ventilation | Lien vers la ligne ventilation AUTO de la réservation correspondante | ON DELETE SET NULL (migration 002 — session 07/04/2026). Null si non lié. RPC `lier_ventilation_auto_mission` crée ce lien après chaque ventilation. |
+| `reservation_id` | uuid FK → reservation | Réservation associée (déduit du iCal) | Peut être null si ical_code non trouvé |
 | `created_at` | timestamptz | | |
 
 ---
