@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect, useCallback, useRef } from 'react'
 import MoisSelector, { MOIS_FR } from '../components/MoisSelector'
 import { supabase } from '../lib/supabase'
 import {
@@ -89,6 +89,7 @@ export default function PageRapports() {
   const [erreurDetail, setErreurDetail] = useState('')
   const [colsConfig, setColsConfig] = useState({})
   const [useStatement, setUseStatement] = useState(false)
+  const reqRef = useRef(0)
 
   useEffect(() => {
     supabase
@@ -117,6 +118,9 @@ export default function PageRapports() {
     const biens = (proprio?.bien || []).filter(b => b.listed && b.agence === 'dcb')
     setSelectedBienId(biens[0]?.id || '')
     setData(null)
+    setColsConfig({})
+    setEmail('')
+    setLoading(true)
     setNote('')
     setNoteReco('')
     setLlmAnalyse('')
@@ -147,6 +151,7 @@ export default function PageRapports() {
 
   const charger = useCallback(async () => {
     if (!selectedBienId || !selectedPropId) return
+    const reqId = ++reqRef.current
     setLoading(true)
     setError(null)
     try {
@@ -341,6 +346,7 @@ export default function PageRapports() {
       if (!proprio?.email) alertes.push({ type: 'warn', msg: 'Email propriétaire manquant' })
       if (caHebN1 > 0 && caHeb < caHebN1 * 0.8) alertes.push({ type: 'warn', msg: `CA en baisse vs N-1 (${fmt(caHeb)} vs ${fmt(caHebN1)})` })
 
+      if (reqRef.current !== reqId) return
       setData({
         proprio,
         bien: (proprio?.bien || []).find(b => b.id === selectedBienId),
@@ -380,9 +386,10 @@ export default function PageRapports() {
         ventByResa,
       })
     } catch (err) {
+      if (reqRef.current !== reqId) return
       setError(err.message)
     } finally {
-      setLoading(false)
+      if (reqRef.current === reqId) setLoading(false)
     }
   }, [selectedBienId, selectedPropId, mois, proprietaires, modeMaite])
 
