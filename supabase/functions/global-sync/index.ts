@@ -406,10 +406,18 @@ async function calculerVentilationResa(resa) {
   const fmenTTC = Math.max(0, fmenBase - dueToOwner - aeAmount)
   const fmenHT  = fmenTTC > 0 ? Math.round(fmenTTC / (1 + TVA_RATE)) : 0
 
-  // LOY Direct : commissionableBase - HON
+  // Owner fees Direct : portion de la platform fee Hospitable attribuee aux guest fees,
+  // reversee a la fraction proprietaire (1 - taux).
+  // Formula : round(|hostServiceFee| x fee_i / (accommodation + S guestFees) x (1 - taux))
+  const totalFeesForOwnerRate = accommodation + guestFeesAll.reduce((s: number, f: any) => s + (f.amount || 0), 0)
+  const ownerFees = (isDirect && totalFeesForOwnerRate > 0)
+    ? guestFeesAll.reduce((s: number, f: any) => s + Math.round(Math.abs(hostServiceFee) * (f.amount || 0) / totalFeesForOwnerRate * (1 - tauxCom)), 0)
+    : 0
+
+  // LOY Direct  : commissionableBase - HON + ownerFees (aligne statement Hospitable)
   // LOY Airbnb/autres : variable de balance
   if (isDirect) {
-    loyAmount = commissionableBase - honTTC
+    loyAmount = commissionableBase - honTTC + ownerFees
   } else {
     loyAmount = revenue - honTTC - fmenTTC - aeAmount - taxesTotal
   }
