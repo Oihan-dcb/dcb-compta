@@ -91,7 +91,8 @@ export function genererStatementHTML(proprio, mois, data) {
   }).join('')
 
   const hasTransactions = extrasGlobaux.length > 0 || extrasParResa.length > 0 || haownerList.length > 0 || fraisProprietaire.length > 0
-  const transactions = hasTransactions ? `
+  const _debugFrais = `DEBUG FRAIS COUNT = ${fraisProprietaire.length} | DEBUG FRAIS = ${fraisProprietaire.map(p => p.libelle).join(', ') || '(aucun)'}`
+  const transactions = `<div style="font-size:9px;color:red;margin:4px 0;font-family:monospace">${_debugFrais}</div>` + (hasTransactions ? `
   <div style="margin-top:18px">
     <div style="font-size:8.5px;letter-spacing:0.08em;text-transform:uppercase;color:#9c8c7a;margin-bottom:8px;padding-bottom:5px;border-bottom:1px solid #ece8e2">Transactions</div>
     <table style="width:100%;border-collapse:collapse;font-size:9px">
@@ -134,7 +135,7 @@ export function genererStatementHTML(proprio, mois, data) {
         </tr>`).join('')}
       </tbody>
     </table>
-  </div>` : ''
+  </div>` : '')
 
   return `<!DOCTYPE html>
 <html lang="fr">
