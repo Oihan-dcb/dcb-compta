@@ -10,6 +10,7 @@ export function genererStatementHTML(proprio, mois, data) {
   const extrasGlobaux = data.extrasGlobaux || []
   const extrasParResa = data.extrasParResa || []
   const haownerList = data.haownerList || []
+  const ownerStayMenageList = data.ownerStayMenageList || []
   const fraisProprietaire = data.fraisProprietaire || []
 
   const fmt = (centimes) => {
@@ -91,7 +92,7 @@ export function genererStatementHTML(proprio, mois, data) {
     </tr>`
   }).join('')
 
-  const hasTransactions = extrasGlobaux.length > 0 || extrasParResa.length > 0 || haownerList.length > 0 || fraisProprietaire.length > 0
+  const hasTransactions = extrasGlobaux.length > 0 || extrasParResa.length > 0 || haownerList.length > 0 || ownerStayMenageList.length > 0 || fraisProprietaire.length > 0
   const transactions = hasTransactions ? `
   <div style="margin-top:18px">
     <div style="font-size:8.5px;letter-spacing:0.08em;text-transform:uppercase;color:#9c8c7a;margin-bottom:8px;padding-bottom:5px;border-bottom:1px solid #ece8e2">Transactions</div>
@@ -125,6 +126,13 @@ export function genererStatementHTML(proprio, mois, data) {
           <td style="padding:3px 8px">${p.libelle || p.description || '—'}</td>
           <td style="padding:3px 8px;color:#CC9933">Achat proprio</td>
           <td style="padding:3px 8px;text-align:right;color:#CC9933">${fmt(p.montant_ttc)} TTC</td>
+        </tr>`).join('')}
+        ${ownerStayMenageList.map(p => `
+        <tr style="border-bottom:1px solid #ece8e2">
+          <td style="padding:3px 8px;color:#9c8c7a">${p.arrival_date ? p.arrival_date.substring(5).split('-').reverse().join('/') : '—'}</td>
+          <td style="padding:3px 8px">${p.libelle || 'Ménage séjour propriétaire'}</td>
+          <td style="padding:3px 8px;color:#4A3728">Ménage proprio</td>
+          <td style="padding:3px 8px;text-align:right;color:#4A3728">${fmt(p.montant)}</td>
         </tr>`).join('')}
         ${fraisProprietaire.map(p => `
         <tr style="border-bottom:1px solid #ece8e2">

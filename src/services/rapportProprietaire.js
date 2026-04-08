@@ -113,7 +113,7 @@ export async function getKPIsMois(proprietaireId, mois) {
 // ─────────────────────────────────────────
 
 export function genererRapportHTML(proprio, mois, data, colonnes = {}) {
-  const { resas, reviews, notes, bien, llmAnalyse, llmContexte, llmTendances, noteMoisMoy, noteGlobaleMoy, nbReviewsGlobal, noteContexte, noteReco, tauxCommission, extrasGlobaux = [], haownerList = [], fraisProprietaire = [] } = data
+  const { resas, reviews, notes, bien, llmAnalyse, llmContexte, llmTendances, noteMoisMoy, noteGlobaleMoy, nbReviewsGlobal, noteContexte, noteReco, tauxCommission, extrasGlobaux = [], haownerList = [], ownerStayMenageList = [], fraisProprietaire = [] } = data
   const kpis = data?.kpis || {}
   const kpisN1 = data?.kpisN1 || {}
   const [year, monthIdx] = mois.split('-')
@@ -407,7 +407,7 @@ export function genererRapportHTML(proprio, mois, data, colonnes = {}) {
     ${resasHTML}
   </div>
 
-  ${(extrasGlobaux.length > 0 || haownerList.length > 0 || fraisProprietaire.length > 0) ? `
+  ${(extrasGlobaux.length > 0 || haownerList.length > 0 || ownerStayMenageList.length > 0 || fraisProprietaire.length > 0) ? `
   <div style="margin:16px 0;padding:20px 24px;background:#F7F4EF;break-inside:avoid;">
     <div style="font-size:9px;letter-spacing:0.05em;text-transform:uppercase;color:#9c8c7a;margin-bottom:12px;padding-bottom:8px;border-bottom:1px solid #ece8e2;">
       Débours et achats du mois
@@ -441,6 +441,13 @@ export function genererRapportHTML(proprio, mois, data, colonnes = {}) {
           <td style="padding:6px 8px;color:#CC9933;font-size:10px;">Achat</td>
           <td style="padding:6px 8px;color:#3a3530;">${p.libelle || p.description || '—'}</td>
           <td style="padding:6px 8px;text-align:right;white-space:nowrap;color:#CC9933;font-weight:500;">${fmt(p.montant_ttc)} <span style="font-size:9px;color:#9c8c7a;">TTC</span></td>
+        </tr>`).join('')}
+        ${(ownerStayMenageList || []).map((p, i) => `
+        <tr style="background:${(extrasGlobaux.length + haownerList.length + i) % 2 === 0 ? '#fff' : '#F7F4EF'};">
+          <td style="padding:6px 8px;color:#3a3530;">${p.arrival_date ? p.arrival_date.substring(5).split('-').reverse().join('/') : '—'}</td>
+          <td style="padding:6px 8px;color:#4A3728;font-size:10px;">Ménage</td>
+          <td style="padding:6px 8px;color:#3a3530;">${p.libelle || 'Ménage séjour propriétaire'}</td>
+          <td style="padding:6px 8px;text-align:right;white-space:nowrap;color:#4A3728;">${fmt(p.montant)}</td>
         </tr>`).join('')}
         ${fraisProprietaire.map((p, i) => {
           const d = p.statut_deduction

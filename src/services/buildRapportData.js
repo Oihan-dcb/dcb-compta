@@ -174,9 +174,17 @@ export async function buildRapportData(bienId, propId, mois, opts = {}) {
   })
 
   // ── Owner stay ménage ────────────────────────────────────────────────────
-  const ownerStayMenageTotal = resasEnrichies
+  // ownerStayList : une ligne par résa proprio (pour affichage dans charges)
+  const ownerStayList = resasEnrichies
     .filter(r => r.owner_stay && r.platform === 'manual')
-    .reduce((s, r) => s + (r.fmen || 0) + (ventByResa[r.id]?.AUTO?.montant_ht || 0), 0)
+    .map(r => ({
+      id: r.id,
+      arrival_date: r.arrival_date,
+      libelle: 'Ménage séjour propriétaire',
+      montant: (r.fmen || 0) + (ventByResa[r.id]?.AUTO?.montant_ht || 0),
+    }))
+    .filter(r => r.montant > 0)
+  const ownerStayMenageTotal = ownerStayList.reduce((s, r) => s + r.montant, 0)
 
   // ── fraisDeductionLoy — règle unique ─────────────────────────────────────
   const fraisDeductionLoy = (fraisData || [])
@@ -244,6 +252,7 @@ export async function buildRapportData(bienId, propId, mois, opts = {}) {
     extrasGlobaux,
     extrasParResa,
     haownerList,
+    ownerStayList,
     ventByResa,
     reviews,
     noteMoisMoy,

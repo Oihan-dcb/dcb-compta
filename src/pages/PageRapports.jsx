@@ -532,6 +532,7 @@ FORMAT :
       extrasGlobaux: data?.extrasGlobaux || [],
       extrasParResa: data?.extrasParResa || [],
       haownerList: data?.haownerList || [],
+      ownerStayMenageList: data?.ownerStayList || [],
       fraisProprietaire: data?.frais || [],
       colonnes: colsConfig,
     }
@@ -923,11 +924,12 @@ FORMAT :
             )}
 
             {/* BLOC 3b/3c/4b — Débours, achats & frais fusionnés */}
-            {!vueSynthese && ((data.extrasGlobaux || []).length > 0 || (data.haownerList || []).length > 0 || data.frais.length > 0) && (() => {
-              const total = (data.extrasGlobaux || []).length + (data.haownerList || []).length + data.frais.length
+            {!vueSynthese && ((data.extrasGlobaux || []).length > 0 || (data.haownerList || []).length > 0 || data.frais.length > 0 || (data.ownerStayList || []).length > 0) && (() => {
+              const total = (data.extrasGlobaux || []).length + (data.haownerList || []).length + data.frais.length + (data.ownerStayList || []).length
               const allRows = [
                 ...(data.extrasGlobaux || []).map(p => ({ ...p, _type: 'debours' })),
                 ...(data.haownerList || []).map(p => ({ ...p, _type: 'achat' })),
+                ...(data.ownerStayList || []).map(p => ({ ...p, _type: 'menage_proprio' })),
                 ...data.frais.map(f => ({ ...f, _type: 'frais' })),
               ]
               return (
@@ -947,20 +949,23 @@ FORMAT :
                     </thead>
                     <tbody>
                       {allRows.map((row, i) => {
-                        const isDebours = row._type === 'debours'
-                        const isAchat   = row._type === 'achat'
-                        const isFrais   = row._type === 'frais'
-                        const date = isDebours || isAchat
+                        const isDebours     = row._type === 'debours'
+                        const isAchat       = row._type === 'achat'
+                        const isFrais       = row._type === 'frais'
+                        const isMenageProprio = row._type === 'menage_proprio'
+                        const date = isMenageProprio
+                          ? (row.arrival_date ? row.arrival_date.split('-').reverse().join('/') : '—')
+                          : isDebours || isAchat
                           ? (row.date_prestation ? row.date_prestation.split('-').reverse().join('/') : '—')
                           : (row.date ? row.date.split('-').reverse().join('/') : '—')
                         const label   = row.libelle || row.description || '—'
-                        const typeLabel = isDebours ? 'Débours' : isAchat ? 'Achat' : 'Frais'
-                        const typeColor = isDebours ? '#9C8E7D' : isAchat ? 'var(--brand)' : '#c2410c'
+                        const typeLabel = isDebours ? 'Débours' : isAchat ? 'Achat' : isMenageProprio ? 'Ménage' : 'Frais'
+                        const typeColor = isDebours ? '#9C8E7D' : isAchat ? 'var(--brand)' : isMenageProprio ? '#4A3728' : '#c2410c'
                         // Montant cell — pour les frais facturés, décomposer déduit vs reliquat
                         const fraisFacture = isFrais && row.statut === 'facture' && row.statut_deduction && row.statut_deduction !== 'en_attente'
                         const montantCell = isAchat
                           ? <span style={{ color: 'var(--brand)', fontWeight: 600 }}>{fmt(row.montant_ttc)}</span>
-                          : isDebours
+                          : (isDebours || isMenageProprio)
                           ? <span style={{ color: '#4A3728' }}>{fmt(row.montant)}</span>
                           : fraisFacture && row.statut_deduction !== 'totalement_deduit'
                           ? <span style={{ lineHeight: 1.5 }}>
