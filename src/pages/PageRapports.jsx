@@ -188,7 +188,7 @@ export default function PageRapports() {
           return isGlobal ? q.in('bien_id', maiteIdsLocal) : q.eq('bien_id', selectedBienId)
         })(),
         (() => {
-          let q = supabase.from('frais_proprietaire').select('id, libelle, montant_ttc, statut, date')
+          let q = supabase.from('frais_proprietaire').select('id, libelle, montant_ttc, statut, date, montant_deduit_loy, montant_reliquat, statut_deduction')
             .gte('date', `${mois}-01`).lt('date', `${moisSuivant}-01`)
           return isGlobal ? q.in('bien_id', maiteIdsLocal) : q.eq('bien_id', selectedBienId)
         })(),
@@ -1165,22 +1165,40 @@ FORMAT :
                           ? (row.date_prestation ? row.date_prestation.split('-').reverse().join('/') : '—')
                           : (row.date ? row.date.split('-').reverse().join('/') : '—')
                         const label   = row.libelle || row.description || '—'
-                        const montant = isAchat ? fmt(row.montant_ttc) : fmt(isDebours ? row.montant : row.montant_ttc)
                         const typeLabel = isDebours ? 'Débours' : isAchat ? 'Achat' : 'Frais'
                         const typeColor = isDebours ? '#9C8E7D' : isAchat ? 'var(--brand)' : '#c2410c'
-                        const montantColor = isDebours ? '#4A3728' : isAchat ? 'var(--brand)' : '#DC2626'
+                        // Montant cell — pour les frais facturés, décomposer déduit vs reliquat
+                        const fraisFacture = isFrais && row.statut === 'facture' && row.statut_deduction && row.statut_deduction !== 'en_attente'
+                        const montantCell = isAchat
+                          ? <span style={{ color: 'var(--brand)', fontWeight: 600 }}>{fmt(row.montant_ttc)}</span>
+                          : isDebours
+                          ? <span style={{ color: '#4A3728' }}>{fmt(row.montant)}</span>
+                          : fraisFacture && row.statut_deduction !== 'totalement_deduit'
+                          ? <span style={{ lineHeight: 1.5 }}>
+                              {row.montant_deduit_loy > 0 && <span style={{ display: 'block', color: '#059669', fontSize: '0.9em' }}>↓ {fmt(row.montant_deduit_loy)} déduit</span>}
+                              {row.montant_reliquat > 0  && <span style={{ display: 'block', color: '#DC2626', fontSize: '0.9em' }}>! {fmt(row.montant_reliquat)} reliquat</span>}
+                            </span>
+                          : <span style={{ color: '#DC2626' }}>{fmt(row.montant_ttc)}</span>
+                        // Badge statut pour les frais
+                        const DEDUCTION_BADGE = {
+                          totalement_deduit:    { label: 'Déduit ✓',   color: '#059669', bg: '#D1FAE5' },
+                          partiellement_deduit: { label: 'Partiel ⚠',  color: '#B45309', bg: '#FFF7ED' },
+                          non_deduit:           { label: 'Reliquat',   color: '#DC2626', bg: '#FEE2E2' },
+                        }
+                        const fraisBadge = isFrais
+                          ? (DEDUCTION_BADGE[row.statut_deduction] || { label: row.statut || 'en attente', color: '#B45309', bg: '#FEF3C7' })
+                          : null
                         return (
                           <tr key={`${row._type}-${row.id}`} style={{ background: i % 2 === 0 ? '#FDFAF4' : '#F7F3EC' }}>
                             <td style={{ padding: '6px 8px', color: '#4A3728', whiteSpace: 'nowrap' }}>{date}</td>
                             <td style={{ padding: '6px 8px', color: typeColor, fontWeight: 500, whiteSpace: 'nowrap' }}>{typeLabel}</td>
                             <td style={{ padding: '6px 8px', color: 'var(--text)' }}>{label}{isAchat && <span style={{ fontSize: '0.8em', color: '#9C8E7D', marginLeft: 4 }}>TTC</span>}</td>
-                            <td style={{ padding: '6px 8px', textAlign: 'right', fontWeight: isAchat ? 600 : 400, color: montantColor, whiteSpace: 'nowrap' }}>{montant}</td>
+                            <td style={{ padding: '6px 8px', textAlign: 'right', whiteSpace: 'nowrap' }}>{montantCell}</td>
                             <td style={{ padding: '6px 8px' }}>
-                              {isFrais && (
+                              {fraisBadge && (
                                 <span style={{ padding: '2px 8px', borderRadius: 10, fontSize: '0.78em', fontWeight: 600,
-                                  background: row.statut === 'facturé' ? '#D1FAE5' : '#FEF3C7',
-                                  color: row.statut === 'facturé' ? '#059669' : '#D97706' }}>
-                                  {row.statut || 'en attente'}
+                                  background: fraisBadge.bg, color: fraisBadge.color }}>
+                                  {fraisBadge.label}
                                 </span>
                               )}
                             </td>

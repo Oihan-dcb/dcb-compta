@@ -17,9 +17,16 @@ const MODES_ENCAISSEMENT = {
 }
 
 const STATUT_LABELS = {
-  brouillon:   { label: 'Brouillon',       color: '#8C7B65', bg: '#F7F3EC' },
-  a_facturer:  { label: 'À facturer',      color: '#B45309', bg: '#FFF7ED' },
-  facture:     { label: 'Facturé',         color: '#059669', bg: '#D1FAE5' },
+  brouillon:   { label: 'Brouillon',   color: '#8C7B65', bg: '#F7F3EC' },
+  a_facturer:  { label: 'À facturer',  color: '#B45309', bg: '#FFF7ED' },
+  facture:     { label: 'Facturé',     color: '#059669', bg: '#D1FAE5' },
+}
+
+const DEDUCTION_LABELS = {
+  totalement_deduit:    { label: 'Déduit ✓',     color: '#059669', bg: '#D1FAE5' },
+  partiellement_deduit: { label: 'Partiel ⚠',    color: '#B45309', bg: '#FFF7ED' },
+  non_deduit:           { label: 'Non couvert',  color: '#DC2626', bg: '#FEE2E2' },
+  en_attente:           { label: '—',            color: '#8C7B65', bg: 'transparent' },
 }
 
 const FORM_EMPTY = {
@@ -173,15 +180,18 @@ export default function PageFraisProprietaire() {
                 <th>Date</th>
                 <th>Libellé</th>
                 <th style={{ textAlign: 'right' }}>Montant TTC</th>
+                <th style={{ textAlign: 'right' }}>Déduit LOY</th>
+                <th style={{ textAlign: 'right' }}>Reliquat</th>
                 <th>Mode</th>
                 <th>Encaissement</th>
-                <th>Statut</th>
+                <th>Résultat</th>
                 <th></th>
               </tr>
             </thead>
             <tbody>
               {frais.map(f => {
-                const st = STATUT_LABELS[f.statut] || {}
+                const st  = STATUT_LABELS[f.statut] || {}
+                const ded = f.statut === 'facture' ? (DEDUCTION_LABELS[f.statut_deduction] || DEDUCTION_LABELS.en_attente) : null
                 const proprio = f.proprietaire
                   ? `${f.proprietaire.nom}${f.proprietaire.prenom ? ' ' + f.proprietaire.prenom : ''}`
                   : '—'
@@ -192,16 +202,24 @@ export default function PageFraisProprietaire() {
                     <td style={{ whiteSpace: 'nowrap' }}>{f.date}</td>
                     <td>{f.libelle}</td>
                     <td style={{ textAlign: 'right', fontWeight: 600 }}>{formatMontant(f.montant_ttc)}</td>
+                    <td style={{ textAlign: 'right', color: '#059669', fontWeight: f.statut === 'facture' ? 600 : 400 }}>
+                      {f.statut === 'facture' ? formatMontant(f.montant_deduit_loy) : '—'}
+                    </td>
+                    <td style={{ textAlign: 'right', color: f.montant_reliquat > 0 ? '#DC2626' : 'var(--text-muted)', fontWeight: f.montant_reliquat > 0 ? 600 : 400 }}>
+                      {f.statut === 'facture' ? (f.montant_reliquat > 0 ? formatMontant(f.montant_reliquat) : '—') : '—'}
+                    </td>
                     <td style={{ fontSize: 12 }}>{MODES_TRAITEMENT[f.mode_traitement] || f.mode_traitement}</td>
                     <td style={{ fontSize: 12 }}>{MODES_ENCAISSEMENT[f.mode_encaissement] || f.mode_encaissement}</td>
                     <td>
-                      <span style={{
-                        display: 'inline-block', padding: '2px 8px', borderRadius: 10,
-                        fontSize: 12, fontWeight: 600,
-                        color: st.color, background: st.bg,
-                      }}>
-                        {st.label}
-                      </span>
+                      {ded ? (
+                        <span style={{ display: 'inline-block', padding: '2px 8px', borderRadius: 10, fontSize: 12, fontWeight: 600, color: ded.color, background: ded.bg }}>
+                          {ded.label}
+                        </span>
+                      ) : (
+                        <span style={{ display: 'inline-block', padding: '2px 8px', borderRadius: 10, fontSize: 12, fontWeight: 600, color: st.color, background: st.bg }}>
+                          {st.label}
+                        </span>
+                      )}
                     </td>
                     <td>
                       {f.statut === 'brouillon' && (

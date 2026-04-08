@@ -442,13 +442,26 @@ export function genererRapportHTML(proprio, mois, data, colonnes = {}) {
           <td style="padding:6px 8px;color:#3a3530;">${p.libelle || p.description || '—'}</td>
           <td style="padding:6px 8px;text-align:right;white-space:nowrap;color:#CC9933;font-weight:500;">${fmt(p.montant_ttc)} <span style="font-size:9px;color:#9c8c7a;">TTC</span></td>
         </tr>`).join('')}
-        ${fraisProprietaire.map((p, i) => `
+        ${fraisProprietaire.map((p, i) => {
+          const d = p.statut_deduction
+          const fraisFacture = p.statut === 'facture' && d && d !== 'en_attente'
+          let montantCell
+          if (fraisFacture && d === 'totalement_deduit') {
+            montantCell = `<span style="color:#059669;">${fmt(p.montant_deduit_loy)}</span> <span style="font-size:9px;color:#059669;">déduit</span>`
+          } else if (fraisFacture && d === 'partiellement_deduit') {
+            montantCell = `<span style="display:block;color:#059669;font-size:10px;">↓ ${fmt(p.montant_deduit_loy)} déduit</span><span style="display:block;color:#c2410c;font-size:10px;">! ${fmt(p.montant_reliquat)} reliquat</span>`
+          } else if (fraisFacture && d === 'non_deduit') {
+            montantCell = `<span style="color:#c2410c;">${fmt(p.montant_ttc)}</span> <span style="font-size:9px;color:#c2410c;">reliquat</span>`
+          } else {
+            montantCell = `<span style="color:#c2410c;">${fmt(p.montant_ttc)}</span>`
+          }
+          return `
         <tr style="background:${(extrasGlobaux.length + haownerList.length + i) % 2 === 0 ? '#fff' : '#F7F4EF'};">
           <td style="padding:6px 8px;color:#3a3530;">${p.date ? p.date.substring(5).split('-').reverse().join('/') : '—'}</td>
           <td style="padding:6px 8px;color:#c2410c;font-size:10px;">Frais</td>
           <td style="padding:6px 8px;color:#3a3530;">${p.libelle || '—'}</td>
-          <td style="padding:6px 8px;text-align:right;white-space:nowrap;color:#c2410c;">${fmt(p.montant_ttc)}</td>
-        </tr>`).join('')}
+          <td style="padding:6px 8px;text-align:right;white-space:nowrap;">${montantCell}</td>
+        </tr>`}).join('')}
       </tbody>
     </table>
   </div>` : ''}
