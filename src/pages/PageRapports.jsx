@@ -5,6 +5,7 @@ import {
   genererRapportHTML, envoyerRapportEmail
 } from '../services/rapportProprietaire'
 import { genererStatementHTML, genererMailStatementHTML } from '../services/rapportStatement'
+import { buildRapportData as buildRapportDataService } from '../services/buildRapportData'
 
 const moisCourant = new Date().toISOString().substring(0, 7)
 const STATUTS_NON_VENTILABLES = ['cancelled', 'not_accepted', 'not accepted', 'declined', 'expired']
@@ -161,242 +162,35 @@ export default function PageRapports() {
       const maiteIdsLocal = (proprio?.bien || []).filter(b => b.groupe_facturation === 'MAITE').map(b => b.id)
       const isGlobal = modeMaite === 'global' && maiteIdsLocal.length > 0
 
-      const moisN1 = prevYear(mois)
-      const [y, m] = mois.split('-').map(Number)
-      const nuitsDispos = new Date(y, m, 0).getDate()
-      const moisSuivant = m === 12 ? `${y + 1}-01` : `${y}-${String(m + 1).padStart(2, '0')}`
-
-      const [
-        { data: resas, error: resasErr },
-        { data: resasN1 },
-        { data: fraisData },
-        noteMarche,
-        noteRecoVal,
-        noteLlmVal,
-        noteContexteVal,
-        noteTendancesVal,
-        notePersoVal,
-        { data: facture },
-        tauxCommission,
-      ] = await Promise.all([
-        (() => {
-          let q = supabase.from('reservation').select('id, code, fin_revenue, fin_accommodation, fin_host_service_fee, nights, arrival_date, departure_date, final_status, platform, owner_stay, guest_name, bien:bien_id(hospitable_name, code), reservation_fee(fee_type, amount)').eq('mois_comptable', mois).order('arrival_date')
-          return isGlobal ? q.in('bien_id', maiteIdsLocal) : q.eq('bien_id', selectedBienId)
-        })(),
-        (() => {
-          let q = supabase.from('reservation').select('id, fin_revenue, nights, final_status').eq('mois_comptable', moisN1).neq('final_status', 'cancelled')
-          return isGlobal ? q.in('bien_id', maiteIdsLocal) : q.eq('bien_id', selectedBienId)
-        })(),
-        (() => {
-          let q = supabase.from('frais_proprietaire').select('id, libelle, montant_ttc, statut, date, mode_traitement, montant_deduit_loy, montant_reliquat, statut_deduction')
-            .gte('date', `${mois}-01`).lt('date', `${moisSuivant}-01`)
-          return isGlobal ? q.in('bien_id', maiteIdsLocal) : q.eq('bien_id', selectedBienId)
-        })(),
-        supabase.from('bien_notes').select('note_marche')
+      // Notes (UI state) + données métier en parallèle
+      const [notesRow, result] = await Promise.all([
+        supabase.from('bien_notes')
+          .select('note_marche, note_recommandations, note_analyse_llm, note_contexte, note_tendances, note_personnalisation')
           .eq('bien_id', selectedBienId).eq('mois', mois).maybeSingle()
-          .then(r => r.data?.note_marche || ''),
-        supabase.from('bien_notes').select('note_recommandations')
-          .eq('bien_id', selectedBienId).eq('mois', mois).maybeSingle()
-          .then(r => r.data?.note_recommandations || ''),
-        supabase.from('bien_notes').select('note_analyse_llm')
-          .eq('bien_id', selectedBienId).eq('mois', mois).maybeSingle()
-          .then(r => r.data?.note_analyse_llm || ''),
-        supabase.from('bien_notes').select('note_contexte')
-          .eq('bien_id', selectedBienId).eq('mois', mois).maybeSingle()
-          .then(r => r.data?.note_contexte || ''),
-        supabase.from('bien_notes').select('note_tendances')
-          .eq('bien_id', selectedBienId).eq('mois', mois).maybeSingle()
-          .then(r => r.data?.note_tendances || ''),
-        supabase.from('bien_notes').select('note_personnalisation')
-          .eq('bien_id', selectedBienId).eq('mois', mois).maybeSingle()
-          .then(r => r.data?.note_personnalisation || ''),
-        supabase.from('facture_evoliz').select('id, id_evoliz, statut, total_ttc, montant_reversement')
-          .eq('proprietaire_id', selectedPropId).eq('mois', mois).eq('type_facture', 'honoraires').maybeSingle(),
-        supabase.from('bien').select('taux_commission_override, proprietaire:proprietaire_id(taux_commission)')
-          .eq('id', selectedBienId).maybeSingle()
-          .then(r => r.data?.taux_commission_override || r.data?.proprietaire?.taux_commission || 25),
+          .then(r => r.data || {}),
+        buildRapportDataService(selectedBienId, selectedPropId, mois, { isGlobal, maiteIds: maiteIdsLocal }),
       ])
 
-      if (resasErr) throw new Error(resasErr.message)
+      setNote(notesRow.note_marche || '')
+      setNoteReco(notesRow.note_recommandations || '')
+      setLlmAnalyse(notesRow.note_analyse_llm || '')
+      setLlmContexte(notesRow.note_contexte || '')
+      setLlmTendances(notesRow.note_tendances || '')
+      setNotePerso(notesRow.note_personnalisation || '')
 
-      setNote(noteMarche)
-      setNoteReco(noteRecoVal)
-      setLlmAnalyse(noteLlmVal)
-      setLlmContexte(noteContexteVal)
-      setLlmTendances(noteTendancesVal)
-      setNotePerso(notePersoVal)
-
-      const resasValides = (resas || []).filter(r =>
-        !STATUTS_NON_VENTILABLES.includes(r.final_status) || (r.fin_revenue || 0) > 0
-      )
-      const resaIds = resasValides.map(r => r.id)
-
-      let loyTotal = 0
-      let honTotal = 0
-      let virTotal = 0
-      let ventByResa = {}
-      let vents = []
-      if (resaIds.length) {
-        const { data: ventsData } = await supabase
-          .from('ventilation')
-          .select('reservation_id, code, montant_ht, montant_ttc')
-          .in('reservation_id', resaIds)
-          .in('code', ['HON', 'LOY', 'VIR', 'FMEN', 'AUTO', 'MEN'])
-        vents = ventsData || []
-        for (const v of vents) {
-          if (!ventByResa[v.reservation_id]) ventByResa[v.reservation_id] = {}
-          ventByResa[v.reservation_id][v.code] = v
-        }
-        loyTotal = vents.filter(v => v.code === 'LOY').reduce((s, v) => s + (v.montant_ht || 0), 0)
-        honTotal = vents.filter(v => v.code === 'HON').reduce((s, v) => s + (v.montant_ttc || 0), 0)
-        virTotal = vents.filter(v => v.code === 'VIR').reduce((s, v) => s + (v.montant_ht || 0), 0)
-      }
-
-      let prestations = []
-      try {
-        let qPhf = supabase
-          .from('prestation_hors_forfait')
-          .select('id, bien_id, reservation_id, date_prestation, description, montant, type_imputation, prestation_type:prestation_type_id(nom)')
-          .eq('mois', mois)
-          .eq('statut', 'valide')
-          .in('type_imputation', ['deduction_loy', 'debours_proprio', 'haowner'])
-        if (isGlobal) {
-          if (!maiteIdsLocal || maiteIdsLocal.length === 0) {
-            prestations = []
-          } else {
-            qPhf = qPhf.in('bien_id', maiteIdsLocal)
-            const { data: phfData } = await qPhf
-            prestations = phfData || []
-          }
-        } else {
-          qPhf = qPhf.eq('bien_id', selectedBienId)
-          const { data: phfData } = await qPhf
-          prestations = phfData || []
-        }
-      } catch (_) { /* silencieux — ne bloque pas le chargement */ }
-
-      const extraByResa = {}
-      const extrasParResa = []
-      ;(prestations || [])
-        .filter(p => ['deduction_loy', 'debours_proprio'].includes(p.type_imputation) && p.reservation_id)
-        .sort((a, b) => (a.date_prestation || '').localeCompare(b.date_prestation || ''))
-        .forEach(p => {
-          extraByResa[p.reservation_id] = (extraByResa[p.reservation_id] || 0) + (p.montant || 0)
-          extrasParResa.push({ ...p, libelle: p.description || p.prestation_type?.nom || '—' })
-        })
-
-      const extrasGlobaux = (prestations || [])
-        .filter(p => ['deduction_loy', 'debours_proprio'].includes(p.type_imputation) && !p.reservation_id)
-        .sort((a, b) => (a.date_prestation || '').localeCompare(b.date_prestation || ''))
-        .map(p => ({ ...p, libelle: p.description || p.prestation_type?.nom || '—' }))
-
-      const haownerList = (prestations || [])
-        .filter(p => p.type_imputation === 'haowner')
-        .sort((a, b) => (a.date_prestation || '').localeCompare(b.date_prestation || ''))
-        .map(p => ({ ...p, montant_ttc: Math.round((p.montant || 0) * 1.20), libelle: p.description || p.prestation_type?.nom || '—' }))
-
-      const totalDebours = (prestations || [])
-        .filter(p => ['deduction_loy', 'debours_proprio'].includes(p.type_imputation))
-        .reduce((s, p) => s + (p.montant || 0), 0)
-      const totalHaowner = haownerList.reduce((s, p) => s + (p.montant_ttc || 0), 0)
-      const ownerStayMenageTotal = resasValides
-        .filter(r => r.owner_stay && r.platform === 'manual')
-        .reduce((s, r) => s + (ventByResa[r.id]?.FMEN?.montant_ttc || 0) + (ventByResa[r.id]?.AUTO?.montant_ht || 0), 0)
-      // Frais propriétaire deduire_loyer : utiliser montant_deduit_loy si facturé (sauf si en_attente → fallback montant_ttc), montant_ttc si a_facturer
-      const fraisDeductionLoy = (fraisData || [])
-        .filter(f => f.mode_traitement === 'deduire_loyer')
-        .reduce((s, f) => {
-          if (f.statut === 'facture' && f.statut_deduction !== 'en_attente') return s + (f.montant_deduit_loy || 0)
-          if (f.statut === 'facture' && f.statut_deduction === 'en_attente')  return s + (f.montant_ttc || 0)
-          if (f.statut === 'a_facturer')  return s + (f.montant_ttc || 0)
-          return s
-        }, 0)
-      // Si la facture est déjà générée (hors brouillon/calcul_en_cours), montant_reversement est la source de vérité
-      const virementNet = (facture?.montant_reversement > 0 && facture?.statut !== 'brouillon' && facture?.statut !== 'calcul_en_cours')
-        ? facture.montant_reversement
-        : Math.max(0, virTotal - totalDebours - totalHaowner - fraisDeductionLoy - ownerStayMenageTotal)
-
-      let reviews = []
-      {
-        const [yr, mo] = mois.split('-').map(Number)
-        const nextMois = mo === 12 ? `${yr+1}-01` : `${yr}-${String(mo+1).padStart(2,'0')}`
-        const { data: revData } = await supabase
-          .from('reservation_review')
-          .select('id, reviewer_name, rating, comment, submitted_at')
-          .eq('bien_id', selectedBienId)
-          .gte('submitted_at', `${mois}-01`)
-          .lt('submitted_at', `${nextMois}-01`)
-          .order('submitted_at', { ascending: false })
-        reviews = revData || []
-      }
-
-      const { data: allReviewsData } = await supabase
-        .from('reservation_review').select('rating')
-        .eq('bien_id', selectedBienId).not('rating', 'is', null)
-
-      const noteMoisMoy = reviews.length > 0
-        ? (reviews.reduce((s, r) => s + (r.rating || 0), 0) / reviews.length).toFixed(1) : null
-      const noteGlobaleMoy = allReviewsData?.length > 0
-        ? (allReviewsData.reduce((s, r) => s + (r.rating || 0), 0) / allReviewsData.length).toFixed(1) : null
-
-      const nbResas = resasValides.length
-      const caHeb = resasValides.reduce((s, r) => s + (r.fin_revenue || 0), 0)
-      const durees = resasValides.map(r => r.nights || 0).filter(v => v > 0)
-      const nuitsOccupees = durees.reduce((s, v) => s + v, 0)
-      const dureeMoy = durees.length ? (durees.reduce((s, v) => s + v, 0) / durees.length).toFixed(1) : '0'
-      const tauxOcc = nuitsDispos > 0 ? Math.round((nuitsOccupees / nuitsDispos) * 100) : 0
-
-      const resaN1Valid = resasN1 || []
-      const caHebN1 = resaN1Valid.reduce((s, r) => s + (r.fin_revenue || 0), 0)
-      const nuitesN1 = resaN1Valid.map(r => r.nights || 0).filter(v => v > 0)
-      const nuitsOccN1 = nuitesN1.reduce((s, v) => s + v, 0)
-      const tauxOccN1 = nuitsDispos > 0 ? Math.round((nuitsOccN1 / nuitsDispos) * 100) : 0
-      const kpisN1 = { nbResas: resaN1Valid.length, caHeb: caHebN1, nuitsOccupees: nuitsOccN1, tauxOcc: tauxOccN1 }
-
+      const { kpis, kpisN1, reviews } = result
       const alertes = []
-      if (tauxOcc < 50 && nbResas > 0) alertes.push({ type: 'warn', msg: `Taux d'occupation faible (${tauxOcc} %)` })
-      if (reviews.length === 0 && nbResas > 0) alertes.push({ type: 'info', msg: 'Aucun avis reçu ce mois' })
+      if (kpis.tauxOcc < 50 && kpis.nbResas > 0) alertes.push({ type: 'warn', msg: `Taux d'occupation faible (${kpis.tauxOcc} %)` })
+      if (reviews.length === 0 && kpis.nbResas > 0) alertes.push({ type: 'info', msg: 'Aucun avis reçu ce mois' })
       if (!proprio?.email) alertes.push({ type: 'warn', msg: 'Email propriétaire manquant' })
-      if (caHebN1 > 0 && caHeb < caHebN1 * 0.8) alertes.push({ type: 'warn', msg: `CA en baisse vs N-1 (${fmt(caHeb)} vs ${fmt(caHebN1)})` })
+      if (kpisN1.caHeb > 0 && kpis.caHeb < kpisN1.caHeb * 0.8) alertes.push({ type: 'warn', msg: `CA en baisse vs N-1 (${fmt(kpis.caHeb)} vs ${fmt(kpisN1.caHeb)})` })
 
       if (reqRef.current !== reqId) return
       setData({
+        ...result,
         proprio,
         bien: (proprio?.bien || []).find(b => b.id === selectedBienId),
-        tauxCommission,
-        resas: resasValides.map(r => {
-          const v = ventByResa[r.id] || {}
-          const virHt = v.VIR?.montant_ht || 0
-          const loyHt = v.LOY?.montant_ht || 0
-          const isDirect = ['direct', 'stripe'].includes((r.platform || '').toLowerCase())
-          const isBooking = (r.platform || '').toLowerCase() === 'booking'
-          return {
-            ...r,
-            vent: v,
-            extra: extraByResa[r.id] || 0,
-            gross_revenue: (r.fin_accommodation || 0) + (r.reservation_fee || []).filter(f => f.fee_type === 'guest_fee').reduce((s, f) => s + (f.amount || 0), 0),
-            hon:  v.HON?.montant_ttc || 0,
-            loy:  loyHt,
-            vir:  virHt,
-            fmen: v.FMEN?.montant_ttc || 0,
-            taxe: Math.max(0, virHt - loyHt),
-            menage_voyageur: (v.FMEN?.montant_ttc || 0) + (v.AUTO?.montant_ht || 0),
-            base_comm: r.fin_accommodation || 0,
-          }
-        }),
-        reviews,
-        facture,
-        frais: fraisData || [],
-        kpis: { nbResas, caHeb, nuitsOccupees, nuitsDispos, tauxOcc, dureeMoy, loyTotal, honTotal: facture?.montant_ttc || honTotal, virementNet },
-        kpisN1,
         alertes,
-        noteMoisMoy,
-        noteGlobaleMoy,
-        nbReviewsGlobal: allReviewsData?.length || 0,
-        extrasGlobaux,
-        extrasParResa,
-        haownerList,
-        ventByResa,
       })
     } catch (err) {
       if (reqRef.current !== reqId) return
@@ -724,33 +518,17 @@ FORMAT :
     finally { setGeneratingBloc(null) }
   }
 
-  function buildRapportData() {
-    const vByResa = data.ventByResa || {}
-    const taux = data.tauxCommission || 0
-    const resas = (data.resas || []).map(r => {
-      const v = vByResa[r.id] || {}
-      const virHt = v.VIR?.montant_ht || 0
-      const loyHt = v.LOY?.montant_ht || 0
-      return {
-        ...r,
-        // gross_revenue et base_comm viennent de setData() via ...r (valeurs exactes Hospitable)
-        hon:  v.HON?.montant_ttc || 0,
-        loy:  loyHt,
-        vir:  virHt,
-        fmen: v.FMEN?.montant_ttc || 0,
-        taxe: Math.max(0, virHt - loyHt),
-        menage_voyageur: (v.FMEN?.montant_ttc || 0) + (v.AUTO?.montant_ht || 0),
-      }
-    })
+  // Assemble le payload pour les renderers HTML (injecte les textes LLM/notes qui sont UI state)
+  function buildRendererPayload() {
     return {
-      kpis: data.kpis, resas, reviews: data.reviews,
+      kpis: data.kpis, resas: data.resas, reviews: data.reviews,
       bien: data.bien, llmAnalyse, llmContexte, llmTendances, kpisN1: data.kpisN1,
       noteMoisMoy: data.noteMoisMoy, noteGlobaleMoy: data.noteGlobaleMoy,
       nbReviewsGlobal: data.nbReviewsGlobal,
       notes: [{ bienName: data.bien?.hospitable_name, note }],
       noteContexte: note,
       noteReco,
-      tauxCommission: taux,
+      tauxCommission: data.tauxCommission || 0,
       extrasGlobaux: data?.extrasGlobaux || [],
       extrasParResa: data?.extrasParResa || [],
       haownerList: data?.haownerList || [],
@@ -760,14 +538,14 @@ FORMAT :
   }
 
   function getHTML() {
-    const rapportData = buildRapportData()
+    const rapportData = buildRendererPayload()
     return useStatement
       ? genererStatementHTML(data.proprio, mois, rapportData)
       : genererRapportHTML(data.proprio, mois, rapportData, rapportData.colonnes)
   }
 
   function getMailHTML() {
-    const rapportData = buildRapportData()
+    const rapportData = buildRendererPayload()
     return useStatement
       ? genererMailStatementHTML(data.proprio, mois, rapportData)
       : genererRapportHTML(data.proprio, mois, rapportData, rapportData.colonnes)
@@ -815,7 +593,7 @@ FORMAT :
 
       if (useStatement) {
         console.log('[envoyer] étape 1 — genererMailStatementHTML')
-        const rapportData = buildRapportData()
+        const rapportData = buildRendererPayload()
         htmlBody = genererMailStatementHTML(data.proprio, mois, rapportData)
         console.log('[envoyer] mail body length:', htmlBody.length)
 

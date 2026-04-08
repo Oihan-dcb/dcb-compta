@@ -51,20 +51,9 @@ export function genererStatementHTML(proprio, mois, data) {
     .reduce((s, p) => s + (p.montant_ttc || p.montant || 0), 0)
     + resas.reduce((s, r) => s + (r.extra || 0), 0)
     + resas.filter(r => r.owner_stay && r.platform === 'manual').reduce((s, r) => s + (r.menage_voyageur || 0), 0)
-  // Frais propriétaire deduire_loyer absorbés sur LOY (même logique que PageRapports)
-  const fraisDeductionLoy = fraisProprietaire
-    .filter(f => f.mode_traitement === 'deduire_loyer')
-    .reduce((s, f) => {
-      if (f.statut === 'facture')    return s + (f.montant_deduit_loy || 0)
-      if (f.statut === 'a_facturer') return s + (f.montant_ttc || 0)
-      return s
-    }, 0)
   const totalManager  = honTotal + menageTotal + deboursTotal
-  // Source de vérité : kpis.virementNet (calculé par PageRapports, intègre facture si générée)
-  // Fallback : recalcul local avec frais déduits
-  const virementNet   = data.kpis?.virementNet != null
-    ? data.kpis.virementNet
-    : Math.max(0, virTotal - deboursTotal - fraisDeductionLoy)
+  // virementNet vient de buildRapportData (source de vérité unique)
+  const virementNet   = data.kpis?.virementNet ?? 0
   const netProprio    = virementNet
   const totalDuOwner  = virementNet
 

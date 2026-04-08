@@ -341,7 +341,7 @@ export function genererRapportHTML(proprio, mois, data, colonnes = {}) {
     <div style="position:absolute;bottom:0;left:0;right:0;background:linear-gradient(to top,rgba(20,14,8,0.88) 0%,transparent 100%);">
       <div style="display:flex;justify-content:space-around;padding:10px 24px 14px;">
       <div style="text-align:center;">
-        <div style="font-size:8px;letter-spacing:0.04em;text-transform:uppercase;color:rgba(212,196,176,0.8);margin-bottom:3px;">Base commissionnable</div>
+        <div style="font-size:8px;letter-spacing:0.04em;text-transform:uppercase;color:rgba(212,196,176,0.8);margin-bottom:3px;">Net plateforme</div>
         <div style="font-size:18px;font-weight:400;color:#fff;">${fmt(kpis.caHeb)}</div>
         ${deltaCA !== null ? `<div style="font-size:9px;color:${deltaCA >= 0 ? '#4ADE80' : '#F87171'};">${deltaCA >= 0 ? SVG.arrowUp('#4ADE80') : SVG.arrowDown('#F87171')} vs N-1</div>` : ''}
       </div>
