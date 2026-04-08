@@ -210,7 +210,7 @@ export default function PageRapports() {
         supabase.from('bien_notes').select('note_personnalisation')
           .eq('bien_id', selectedBienId).eq('mois', mois).maybeSingle()
           .then(r => r.data?.note_personnalisation || ''),
-        supabase.from('facture_evoliz').select('id, id_evoliz, statut, total_ttc')
+        supabase.from('facture_evoliz').select('id, id_evoliz, statut, total_ttc, montant_reversement')
           .eq('proprietaire_id', selectedPropId).eq('mois', mois).eq('type_facture', 'honoraires').maybeSingle(),
         supabase.from('bien').select('taux_commission_override, proprietaire:proprietaire_id(taux_commission)')
           .eq('id', selectedBienId).maybeSingle()
@@ -302,7 +302,18 @@ export default function PageRapports() {
       const ownerStayMenageTotal = resasValides
         .filter(r => r.owner_stay && r.platform === 'manual')
         .reduce((s, r) => s + (ventByResa[r.id]?.FMEN?.montant_ttc || 0) + (ventByResa[r.id]?.AUTO?.montant_ht || 0), 0)
-      const virementNet = Math.max(0, virTotal - totalDebours - totalHaowner - ownerStayMenageTotal)
+      // Frais propriétaire deduire_loyer : utiliser montant_deduit_loy si facturé, montant_ttc si a_facturer
+      const fraisDeductionLoy = (fraisData || [])
+        .filter(f => f.mode_traitement === 'deduire_loyer')
+        .reduce((s, f) => {
+          if (f.statut === 'facture')     return s + (f.montant_deduit_loy || 0)
+          if (f.statut === 'a_facturer')  return s + (f.montant_ttc || 0)
+          return s
+        }, 0)
+      // Si la facture est déjà générée, montant_reversement est la source de vérité
+      const virementNet = facture?.montant_reversement > 0
+        ? facture.montant_reversement
+        : Math.max(0, virTotal - totalDebours - totalHaowner - fraisDeductionLoy - ownerStayMenageTotal)
 
       let reviews = []
       {
