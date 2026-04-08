@@ -256,7 +256,15 @@ export function _calculerLignes(resa) {
   //           (Booking a une grille tarifaire différente d'Airbnb — pas de pro-rata confirmé)
   //
   // Direct / Manual : dueToOwner = 0 (Hospitable ne retient rien sur le ménage)
-  const fmenBase = cleaningFeeAirbnb + communityFeeRaw  // = ménage brut voyageur
+  //
+  // Fallback Airbnb sans frais ménage :
+  //   SI platform='airbnb' ET cleaning fee=0 ET community fee=0 ET forfait_dcb_ref>0
+  //   ALORS fmenBase = forfait_dcb_ref + provision_ae_ref (reconstruit depuis le bien)
+  //   Cas couverts : EKIA/Marlène, Gaxuxa/Myriam (aucun frais ménage dans reservation_fee)
+  const totalFeesAirbnb = cleaningFeeAirbnb + communityFeeRaw
+  const fmenBase = (resa.platform === 'airbnb' && totalFeesAirbnb === 0 && (bien.forfait_dcb_ref || 0) > 0)
+    ? (bien.forfait_dcb_ref || 0) + (bien.provision_ae_ref || 0)
+    : totalFeesAirbnb
   const dueToOwner = (resa.platform === 'airbnb' && totalFeesForOwnerRate > 0)
     ? Math.round(Math.abs(hostServiceFee) * fmenBase / totalFeesForOwnerRate * (1 - tauxCom))
     : (resa.platform === 'booking')
