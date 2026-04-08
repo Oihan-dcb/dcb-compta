@@ -180,7 +180,7 @@ export default function PageRapports() {
         tauxCommission,
       ] = await Promise.all([
         (() => {
-          let q = supabase.from('reservation').select('id, code, fin_revenue, fin_accommodation, fin_host_service_fee, nights, arrival_date, departure_date, final_status, platform, owner_stay, guest_name, bien:bien_id(hospitable_name, code)').eq('mois_comptable', mois).order('arrival_date')
+          let q = supabase.from('reservation').select('id, code, fin_revenue, fin_accommodation, fin_host_service_fee, nights, arrival_date, departure_date, final_status, platform, owner_stay, guest_name, bien:bien_id(hospitable_name, code), reservation_fee(fee_type, amount)').eq('mois_comptable', mois).order('arrival_date')
           return isGlobal ? q.in('bien_id', maiteIdsLocal) : q.eq('bien_id', selectedBienId)
         })(),
         (() => {
@@ -188,7 +188,7 @@ export default function PageRapports() {
           return isGlobal ? q.in('bien_id', maiteIdsLocal) : q.eq('bien_id', selectedBienId)
         })(),
         (() => {
-          let q = supabase.from('frais_proprietaire').select('id, libelle, montant_ttc, statut, date, montant_deduit_loy, montant_reliquat, statut_deduction')
+          let q = supabase.from('frais_proprietaire').select('id, libelle, montant_ttc, statut, date, mode_traitement, montant_deduit_loy, montant_reliquat, statut_deduction')
             .gte('date', `${mois}-01`).lt('date', `${moisSuivant}-01`)
           return isGlobal ? q.in('bien_id', maiteIdsLocal) : q.eq('bien_id', selectedBienId)
         })(),
@@ -373,14 +373,14 @@ export default function PageRapports() {
             ...r,
             vent: v,
             extra: extraByResa[r.id] || 0,
-            gross_revenue: (r.fin_accommodation || 0) + (v.MEN?.montant_ht || 0) + (isBooking ? Math.max(0, virHt - loyHt) : 0),
+            gross_revenue: (r.fin_accommodation || 0) + (r.reservation_fee || []).filter(f => f.fee_type === 'guest_fee').reduce((s, f) => s + (f.amount || 0), 0),
             hon:  v.HON?.montant_ttc || 0,
             loy:  loyHt,
             vir:  virHt,
             fmen: v.FMEN?.montant_ttc || 0,
             taxe: Math.max(0, virHt - loyHt),
             menage_voyageur: (v.FMEN?.montant_ttc || 0) + (v.AUTO?.montant_ht || 0),
-            base_comm: (r.fin_accommodation || 0) + (r.fin_host_service_fee || 0),
+            base_comm: r.fin_accommodation || 0,
           }
         }),
         reviews,
@@ -732,14 +732,13 @@ FORMAT :
       const loyHt = v.LOY?.montant_ht || 0
       return {
         ...r,
-        // gross_revenue vient de setData() via ...r
+        // gross_revenue et base_comm viennent de setData() via ...r (valeurs exactes Hospitable)
         hon:  v.HON?.montant_ttc || 0,
         loy:  loyHt,
         vir:  virHt,
         fmen: v.FMEN?.montant_ttc || 0,
         taxe: Math.max(0, virHt - loyHt),
         menage_voyageur: (v.FMEN?.montant_ttc || 0) + (v.AUTO?.montant_ht || 0),
-        base_comm: (r.fin_accommodation || 0) + (r.fin_host_service_fee || 0),
       }
     })
     return {
