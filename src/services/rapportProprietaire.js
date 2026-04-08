@@ -210,10 +210,10 @@ export function genererRapportHTML(proprio, mois, data, colonnes = {}) {
               acc.menage    += r.menage_voyageur || 0
               return acc
             }, { brut: 0, base_comm: 0, hon: 0, loy: 0, vir: 0, debours: 0, menage: 0 })
-            const S = 'padding:6px 4px;font-weight:700;border-top:2px solid #CC9933;background:#EDEBE5;'
-            const tdT = (val, color) => `<td style="${S}text-align:right;white-space:nowrap;color:${color || '#2C2416'};">${fmt(val)}</td>`
+            const S = 'padding:10px 8px;font-weight:700;border-top:3px solid #CC9933;background:#E8E2D6;'
+            const tdT = (val, color) => `<td style="${S}text-align:right;white-space:nowrap;padding-right:10px;color:${color || '#2C2416'};">${fmt(val)}</td>`
             return `<tr>
-              <td colspan="5" style="${S}color:#2C2416;letter-spacing:0.04em;">TOTAL</td>
+              <td colspan="5" style="${S}color:#2C2416;font-size:11px;letter-spacing:0.08em;text-transform:uppercase;padding-left:10px;">Total</td>
               ${cols.brut      ? tdT(tot.brut)              : ''}
               ${cols.base_comm ? tdT(tot.base_comm)         : ''}
               ${cols.hon       ? tdT(tot.hon,   '#9c8c7a')  : ''}
