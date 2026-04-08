@@ -226,7 +226,9 @@ async function genererFactureGroupe(proprio, biens, mois) {
   const totalTVA = com.tva + menConsolide.tva + div.tva + haownerTVA
   const totalTTC = totalHT + totalTVA
 
-  // AUTO ÃÂ©tape 1 : absorption bien par bien -- mode_encaissement = 'dcb' uniquement
+  // AUTO étape 1 : absorption bien par bien -- mode_encaissement = 'dcb' uniquement
+  // fraisDeductionMap : frais.id → { deduit, reliquat } -- calcul frais par frais pour ne pas perdre le reliquat
+  const fraisDeductionMap = new Map()
   let autoAbsorbableTotal = 0
   let autoSurplusTotal    = 0
   let deboursPropAbsorbTotal  = 0
@@ -254,18 +256,23 @@ async function genererFactureGroupe(proprio, biens, mois) {
       .reduce((s, p) => s + (p.montant || 0), 0)
     const haownerBienTTC = haownerBienHT + Math.round(haownerBienHT * 0.20)
 
-    // Frais propriétaire à déduire du loyer de ce bien
-    const fraisDeduireBien = (fraisDeduire || [])
-      .filter(f => f.bien_id === bien.id)
-      .reduce((s, f) => s + (f.montant_ttc || 0), 0)
+    // Frais propriétaire : traités frais par frais pour calculer deduit vs reliquat
+    // LOY disponible après prestations et HAOWNER, avant frais
+    let loyDispoPrealable = Math.max(0, loyBien - prestBien - haownerBienTTC)
+    for (const frais of (fraisDeduire || []).filter(f => f.bien_id === bien.id)) {
+      const deduit   = Math.min(frais.montant_ttc, loyDispoPrealable)
+      const reliquat = frais.montant_ttc - deduit
+      fraisDeductionMap.set(frais.id, { deduit, reliquat })
+      loyDispoPrealable = Math.max(0, loyDispoPrealable - deduit)
+    }
 
     // AUTO depuis ventilation deja chargee en memoire
     const autoBien = ventilation
       .filter(function(l) { return l.bien_id === bien.id && l.code === 'AUTO' })
       .reduce(function(s, l) { return s + (l.montant_reel !== null ? l.montant_reel : (l.montant_ht || 0)) }, 0)
 
-    // LOY disponible après déductions de ce bien
-    const loyBienDisponible = Math.max(0, loyBien - prestBien - haownerBienTTC - fraisDeduireBien)
+    // LOY disponible après déduction de tous les frais de ce bien
+    const loyBienDisponible = loyDispoPrealable
     // Absorption et surplus bien par bien
     const autoAbsorbableBien = Math.min(autoBien, loyBienDisponible)
     const autoSurplusBien    = Math.max(0, autoBien - autoAbsorbableBien)
@@ -287,7 +294,11 @@ async function genererFactureGroupe(proprio, biens, mois) {
     deboursPropSurplusTotal += deboursPropSurplus
   }
 
-  const montantReversement = Math.max(0, vir.ht - totalPrestations - haownerTTC - fraisDeduireTTC - deboursPropAbsorbTotal)
+  // Totaux frais post-boucle : part effectivement déduite du LOY vs reliquat non couvert
+  const fraisDeduitTotal   = [...fraisDeductionMap.values()].reduce((s, v) => s + v.deduit,   0)
+  const fraisReliquatTotal = [...fraisDeductionMap.values()].reduce((s, v) => s + v.reliquat, 0)
+
+  const montantReversement = Math.max(0, vir.ht - totalPrestations - haownerTTC - fraisDeduitTotal - deboursPropAbsorbTotal)
 
   // Cas solde nÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂ©gatif : uniquement des expenses, pas de rÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂ©servations
   const soldeNegatif = totalHT === 0 && div.ht > 0
@@ -424,16 +435,20 @@ async function genererFactureGroupe(proprio, biens, mois) {
     })
   }
 
-  // Frais proprietaire deduits du loyer (ligne de transparence)
+  // Frais déduits du loyer : ligne négative limitée au montant effectivement déduit
   for (const frais of (fraisDeduire || [])) {
+    const { deduit = 0 } = fraisDeductionMap.get(frais.id) || {}
+    if (deduit <= 0) continue
+    const deduitHT  = Math.round(deduit / 1.20)
+    const deduitTVA = deduit - deduitHT
     lignes.push({
       facture_id:  factureId,
       code:        'FRAIS',
       libelle:     frais.libelle || 'Frais proprietaire',
-      montant_ht:  -Math.round(frais.montant_ttc / 1.20),
+      montant_ht:  -deduitHT,
       taux_tva:    20,
-      montant_tva: -(frais.montant_ttc - Math.round(frais.montant_ttc / 1.20)),
-      montant_ttc: -frais.montant_ttc,
+      montant_tva: -deduitTVA,
+      montant_ttc: -deduit,
       ordre:       ordre++,
     })
   }
@@ -463,14 +478,23 @@ async function genererFactureGroupe(proprio, biens, mois) {
     await supabase.from('facture_evoliz_ligne').insert(lignes)
   }
 
-  // Passer les frais à déduire en statut 'facture' (chemin non-skipped uniquement)
-  if (fraisDeduire?.length > 0) {
+  // Mettre à jour chaque frais : deduit, reliquat, statut_deduction (chemin non-skipped uniquement)
+  for (const frais of (fraisDeduire || [])) {
+    const { deduit = 0, reliquat = frais.montant_ttc } = fraisDeductionMap.get(frais.id) || {}
+    const statutDeduction = reliquat === 0 ? 'totalement_deduit'
+      : deduit === 0 ? 'non_deduit'
+      : 'partiellement_deduit'
     await supabase.from('frais_proprietaire')
-      .update({ statut: 'facture' })
-      .in('id', fraisDeduire.map(f => f.id))
+      .update({
+        statut:            'facture',
+        montant_deduit_loy: deduit,
+        montant_reliquat:   reliquat,
+        statut_deduction:   statutDeduction,
+      })
+      .eq('id', frais.id)
   }
 
-  const resteAPayer = Math.max(0, (totalPrestations + haownerTTC) - loy.ht) + autoSurplusTotal + deboursPropSurplusTotal
+  const resteAPayer = Math.max(0, (totalPrestations + haownerTTC) - loy.ht) + autoSurplusTotal + deboursPropSurplusTotal + fraisReliquatTotal
   return { created, factureId, totalHT, totalTTC, soldeNegatif, resteAPayer }
 }
 
