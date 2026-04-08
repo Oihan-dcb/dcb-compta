@@ -17,8 +17,7 @@
  */
 
 import { supabase } from '../lib/supabase'
-
-const STATUTS_NON_VENTILABLES = ['cancelled', 'not_accepted', 'not accepted', 'declined', 'expired']
+import { STATUTS_NON_VENTILABLES } from '../lib/constants'
 
 export async function buildRapportData(bienId, propId, mois, opts = {}) {
   const { isGlobal = false, maiteIds = [] } = opts

@@ -6,9 +6,9 @@ import {
 } from '../services/rapportProprietaire'
 import { genererStatementHTML, genererMailStatementHTML } from '../services/rapportStatement'
 import { buildRapportData as buildRapportDataService } from '../services/buildRapportData'
+import { STATUTS_NON_VENTILABLES } from '../lib/constants'
 
 const moisCourant = new Date().toISOString().substring(0, 7)
-const STATUTS_NON_VENTILABLES = ['cancelled', 'not_accepted', 'not accepted', 'declined', 'expired']
 const fmt = c => ((c || 0) / 100).toFixed(2).replace('.', ',') + ' €'
 
 const PLATFORM_COLORS = {
@@ -140,13 +140,9 @@ export default function PageRapports() {
     Promise.all([
       supabase.from('reservation').select('bien_id').eq('mois_comptable', mois)
         .or('fin_revenue.gt.0,final_status.not.in.("cancelled","not_accepted","declined","expired")'),
-      supabase.from('frais_proprietaire').select('bien_id').eq('mois_facturation', mois),
       supabase.from('bien_notes').select('bien_id').eq('mois', mois).not('rapport_envoye_at', 'is', null),
-    ]).then(([{ data: resasBiens }, { data: fraisBiens }, { data: rapports }]) => {
-      setBienIdsActifs(new Set([
-        ...(resasBiens || []).map(r => r.bien_id),
-        ...(fraisBiens || []).map(f => f.bien_id),
-      ]))
+    ]).then(([{ data: resasBiens }, { data: rapports }]) => {
+      setBienIdsActifs(new Set((resasBiens || []).map(r => r.bien_id)))
       setBiensEnvoyes(new Set((rapports || []).map(r => r.bien_id)))
     })
   }, [mois])

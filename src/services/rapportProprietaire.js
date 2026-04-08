@@ -2,6 +2,7 @@ import { supabase } from '../lib/supabase'
 import { getInvoicePDFBase64 } from './evoliz'
 import heroSrc from '../assets/rapport-hero.jpg?inline'
 import logoSrc from '../assets/rapport-logo.png?inline'
+import { STATUTS_NON_VENTILABLES } from '../lib/constants'
 
 const SVG = {
   starFull: (size=13, color='#CC9933') =>
@@ -173,8 +174,7 @@ export function genererRapportHTML(proprio, mois, data, colonnes = {}) {
         </thead>
         <tbody>
           ${(resas || []).map((r, i) => {
-            const STATUTS_NON_VENTILABLES_HTML = ['cancelled', 'not_accepted', 'not accepted', 'declined', 'expired']
-            const isCancelledWithPayout = STATUTS_NON_VENTILABLES_HTML.includes(r.final_status) && (r.fin_revenue || 0) > 0
+            const isCancelledWithPayout = STATUTS_NON_VENTILABLES.includes(r.final_status) && (r.fin_revenue || 0) > 0
             const plat = (r.platform || '').toLowerCase()
             const platLabel = PLATFORM_LABELS[plat] || r.platform || '—'
             const platColor = PLATFORM_COLORS[plat] || '#9C8E7D'
