@@ -159,10 +159,13 @@ export async function buildRapportData(bienId, propId, mois, opts = {}) {
       vent: v,
       extra: extraByResa[r.id] || 0,
       // gross_revenue = fin_accommodation + guest_fees (valeur brute Hospitable exacte)
+      // fin_accommodation = nuitées brutes (montant voyageur avant commission plateforme)
       gross_revenue: (r.fin_accommodation || 0) +
         (r.reservation_fee || []).filter(f => f.fee_type === 'guest_fee').reduce((s, f) => s + (f.amount || 0), 0),
-      // base_comm = fin_accommodation (Hospitable "Commissionable base")
-      base_comm: r.fin_accommodation || 0,
+      // base_comm = fin_accommodation + fin_host_service_fee
+      // = "Commissionable base" Hospitable (net de la commission hôte Airbnb/Booking/Direct)
+      // fin_host_service_fee est négatif (commission retenue par la plateforme)
+      base_comm: (r.fin_accommodation || 0) + (r.fin_host_service_fee || 0),
       hon:  v.HON?.montant_ttc || 0,
       loy:  loyHt,
       vir:  virHt,
