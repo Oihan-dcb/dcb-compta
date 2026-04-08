@@ -302,16 +302,17 @@ export default function PageRapports() {
       const ownerStayMenageTotal = resasValides
         .filter(r => r.owner_stay && r.platform === 'manual')
         .reduce((s, r) => s + (ventByResa[r.id]?.FMEN?.montant_ttc || 0) + (ventByResa[r.id]?.AUTO?.montant_ht || 0), 0)
-      // Frais propriétaire deduire_loyer : utiliser montant_deduit_loy si facturé, montant_ttc si a_facturer
+      // Frais propriétaire deduire_loyer : utiliser montant_deduit_loy si facturé (sauf si en_attente → fallback montant_ttc), montant_ttc si a_facturer
       const fraisDeductionLoy = (fraisData || [])
         .filter(f => f.mode_traitement === 'deduire_loyer')
         .reduce((s, f) => {
-          if (f.statut === 'facture')     return s + (f.montant_deduit_loy || 0)
+          if (f.statut === 'facture' && f.statut_deduction !== 'en_attente') return s + (f.montant_deduit_loy || 0)
+          if (f.statut === 'facture' && f.statut_deduction === 'en_attente')  return s + (f.montant_ttc || 0)
           if (f.statut === 'a_facturer')  return s + (f.montant_ttc || 0)
           return s
         }, 0)
-      // Si la facture est déjà générée, montant_reversement est la source de vérité
-      const virementNet = facture?.montant_reversement > 0
+      // Si la facture est déjà générée (hors brouillon/calcul_en_cours), montant_reversement est la source de vérité
+      const virementNet = (facture?.montant_reversement > 0 && facture?.statut !== 'brouillon' && facture?.statut !== 'calcul_en_cours')
         ? facture.montant_reversement
         : Math.max(0, virTotal - totalDebours - totalHaowner - fraisDeductionLoy - ownerStayMenageTotal)
 
