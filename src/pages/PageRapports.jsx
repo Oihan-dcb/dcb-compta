@@ -1133,93 +1133,65 @@ FORMAT :
               </div>
             )}
 
-            {/* BLOC 3b — Débours hors forfait (sans réservation liée) */}
-            {!vueSynthese && (data.extrasGlobaux || []).length > 0 && (
-              <div style={{ marginBottom: 16 }}>
-                <div style={{ fontSize: '0.8em', fontWeight: 600, color: '#9C8E7D', marginBottom: 8, textTransform: 'uppercase', letterSpacing: 0.5 }}>
-                  Débours hors forfait ({(data.extrasGlobaux || []).length})
-                </div>
-                <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.82em' }}>
-                  <thead>
-                    <tr style={{ background: '#EAE3D4', color: 'var(--text)' }}>
-                      <th style={{ padding: '6px 8px', textAlign: 'left', borderBottom: '2px solid var(--brand)' }}>Date</th>
-                      <th style={{ padding: '6px 8px', textAlign: 'left', borderBottom: '2px solid var(--brand)' }}>Prestation</th>
-                      <th style={{ padding: '6px 8px', textAlign: 'right', borderBottom: '2px solid var(--brand)' }}>Montant</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {(data.extrasGlobaux || []).map((p, i) => (
-                      <tr key={p.id} style={{ background: i % 2 === 0 ? '#FDFAF4' : '#F7F3EC' }}>
-                        <td style={{ padding: '6px 8px', color: '#4A3728', whiteSpace: 'nowrap' }}>{p.date_prestation ? p.date_prestation.split('-').reverse().join('/') : '—'}</td>
-                        <td style={{ padding: '6px 8px', color: 'var(--text)' }}>{p.libelle}</td>
-                        <td style={{ padding: '6px 8px', textAlign: 'right', color: '#4A3728' }}>{fmt(p.montant)}</td>
+            {/* BLOC 3b/3c/4b — Débours, achats & frais fusionnés */}
+            {!vueSynthese && ((data.extrasGlobaux || []).length > 0 || (data.haownerList || []).length > 0 || data.frais.length > 0) && (() => {
+              const total = (data.extrasGlobaux || []).length + (data.haownerList || []).length + data.frais.length
+              const allRows = [
+                ...(data.extrasGlobaux || []).map(p => ({ ...p, _type: 'debours' })),
+                ...(data.haownerList || []).map(p => ({ ...p, _type: 'achat' })),
+                ...data.frais.map(f => ({ ...f, _type: 'frais' })),
+              ]
+              return (
+                <div style={{ marginBottom: 24 }}>
+                  <div style={{ fontSize: '0.8em', fontWeight: 600, color: '#9C8E7D', marginBottom: 8, textTransform: 'uppercase', letterSpacing: 0.5 }}>
+                    Débours, achats & frais ({total})
+                  </div>
+                  <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.82em' }}>
+                    <thead>
+                      <tr style={{ background: '#EAE3D4', color: 'var(--text)' }}>
+                        <th style={{ padding: '6px 8px', textAlign: 'left', borderBottom: '2px solid var(--brand)' }}>Date</th>
+                        <th style={{ padding: '6px 8px', textAlign: 'left', borderBottom: '2px solid var(--brand)' }}>Type</th>
+                        <th style={{ padding: '6px 8px', textAlign: 'left', borderBottom: '2px solid var(--brand)' }}>Description</th>
+                        <th style={{ padding: '6px 8px', textAlign: 'right', borderBottom: '2px solid var(--brand)' }}>Montant</th>
+                        <th style={{ padding: '6px 8px', textAlign: 'left', borderBottom: '2px solid var(--brand)' }}>Statut</th>
                       </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-            )}
-
-            {/* BLOC 3c — Achats propriétaire (HAOWNER) */}
-            {!vueSynthese && (data.haownerList || []).length > 0 && (
-              <div style={{ marginBottom: 24 }}>
-                <div style={{ fontSize: '0.8em', fontWeight: 600, color: '#9C8E7D', marginBottom: 8, textTransform: 'uppercase', letterSpacing: 0.5 }}>
-                  Achats propriétaire ({(data.haownerList || []).length})
+                    </thead>
+                    <tbody>
+                      {allRows.map((row, i) => {
+                        const isDebours = row._type === 'debours'
+                        const isAchat   = row._type === 'achat'
+                        const isFrais   = row._type === 'frais'
+                        const date = isDebours || isAchat
+                          ? (row.date_prestation ? row.date_prestation.split('-').reverse().join('/') : '—')
+                          : (row.date ? row.date.split('-').reverse().join('/') : '—')
+                        const label   = row.libelle || row.description || '—'
+                        const montant = isAchat ? fmt(row.montant_ttc) : fmt(isDebours ? row.montant : row.montant_ttc)
+                        const typeLabel = isDebours ? 'Débours' : isAchat ? 'Achat' : 'Frais'
+                        const typeColor = isDebours ? '#9C8E7D' : isAchat ? 'var(--brand)' : '#c2410c'
+                        const montantColor = isDebours ? '#4A3728' : isAchat ? 'var(--brand)' : '#DC2626'
+                        return (
+                          <tr key={`${row._type}-${row.id}`} style={{ background: i % 2 === 0 ? '#FDFAF4' : '#F7F3EC' }}>
+                            <td style={{ padding: '6px 8px', color: '#4A3728', whiteSpace: 'nowrap' }}>{date}</td>
+                            <td style={{ padding: '6px 8px', color: typeColor, fontWeight: 500, whiteSpace: 'nowrap' }}>{typeLabel}</td>
+                            <td style={{ padding: '6px 8px', color: 'var(--text)' }}>{label}{isAchat && <span style={{ fontSize: '0.8em', color: '#9C8E7D', marginLeft: 4 }}>TTC</span>}</td>
+                            <td style={{ padding: '6px 8px', textAlign: 'right', fontWeight: isAchat ? 600 : 400, color: montantColor, whiteSpace: 'nowrap' }}>{montant}</td>
+                            <td style={{ padding: '6px 8px' }}>
+                              {isFrais && (
+                                <span style={{ padding: '2px 8px', borderRadius: 10, fontSize: '0.78em', fontWeight: 600,
+                                  background: row.statut === 'facturé' ? '#D1FAE5' : '#FEF3C7',
+                                  color: row.statut === 'facturé' ? '#059669' : '#D97706' }}>
+                                  {row.statut || 'en attente'}
+                                </span>
+                              )}
+                            </td>
+                          </tr>
+                        )
+                      })}
+                    </tbody>
+                  </table>
                 </div>
-                <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.82em' }}>
-                  <thead>
-                    <tr style={{ background: '#EAE3D4', color: 'var(--text)' }}>
-                      <th style={{ padding: '6px 8px', textAlign: 'left', borderBottom: '2px solid var(--brand)' }}>Date</th>
-                      <th style={{ padding: '6px 8px', textAlign: 'left', borderBottom: '2px solid var(--brand)' }}>Description</th>
-                      <th style={{ padding: '6px 8px', textAlign: 'right', borderBottom: '2px solid var(--brand)' }}>Montant TTC</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {(data.haownerList || []).map((p, i) => (
-                      <tr key={p.id} style={{ background: i % 2 === 0 ? '#FDFAF4' : '#F7F3EC' }}>
-                        <td style={{ padding: '6px 8px', color: '#4A3728', whiteSpace: 'nowrap' }}>{p.date_prestation ? p.date_prestation.split('-').reverse().join('/') : '—'}</td>
-                        <td style={{ padding: '6px 8px', color: 'var(--text)' }}>{p.libelle}</td>
-                        <td style={{ padding: '6px 8px', textAlign: 'right', color: 'var(--brand)', fontWeight: 600 }}>{fmt(p.montant_ttc)}</td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-                <div style={{ textAlign: 'right', fontSize: '0.75em', color: '#9C8E7D', marginTop: 4 }}>TVA 20% incluse</div>
-              </div>
-            )}
-
-            {/* BLOC 4b — Frais & ajustements */}
-            {!vueSynthese && data.frais.length > 0 && (
-              <div style={{ marginBottom: 24 }}>
-                <div style={{ fontSize: '0.8em', fontWeight: 600, color: '#9C8E7D', marginBottom: 10, textTransform: 'uppercase', letterSpacing: 0.5 }}>
-                  Frais & ajustements ({data.frais.length})
-                </div>
-                <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.88em' }}>
-                  <thead>
-                    <tr style={{ background: '#EAE3D4', color: 'var(--text)' }}>
-                      <th style={{ padding: '7px 10px', textAlign: 'left', borderBottom: '2px solid var(--brand)' }}>Libellé</th>
-                      <th style={{ padding: '7px 10px', textAlign: 'right', borderBottom: '2px solid var(--brand)' }}>Montant TTC</th>
-                      <th style={{ padding: '7px 10px', textAlign: 'left', borderBottom: '2px solid var(--brand)' }}>Statut</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {data.frais.map((f, i) => (
-                      <tr key={f.id} style={{ background: i % 2 === 0 ? '#FDFAF4' : '#F7F3EC' }}>
-                        <td style={{ padding: '6px 10px', color: 'var(--text)' }}>{f.libelle}</td>
-                        <td style={{ padding: '6px 10px', textAlign: 'right', fontWeight: 600, color: '#DC2626' }}>{fmt(f.montant_ttc)}</td>
-                        <td style={{ padding: '6px 10px' }}>
-                          <span style={{ padding: '2px 8px', borderRadius: 10, fontSize: '0.78em', fontWeight: 600,
-                            background: f.statut === 'facturé' ? '#D1FAE5' : '#FEF3C7',
-                            color: f.statut === 'facturé' ? '#059669' : '#D97706' }}>
-                            {f.statut || 'en attente'}
-                          </span>
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-            )}
+              )
+            })()}
 
             {/* BLOC 5 — Avis voyageurs */}
             {!vueSynthese && data.reviews.length > 0 && (
