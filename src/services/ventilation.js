@@ -282,7 +282,8 @@ export function _calculerLignes(resa) {
   //   ALORS fmenBase = forfait_dcb_ref + provision_ae_ref (reconstruit depuis le bien)
   //   Cas couverts : EKIA/Marlène, Gaxuxa/Myriam (aucun frais ménage dans reservation_fee)
   const totalFeesAirbnb = cleaningFeeAirbnb + communityFeeRaw
-  const fmenBase = (resa.platform === 'airbnb' && totalFeesAirbnb === 0 && (bien.forfait_dcb_ref || 0) > 0)
+  const airbnbFallbackActif = resa.platform === 'airbnb' && totalFeesAirbnb === 0 && (bien.forfait_dcb_ref || 0) > 0
+  const fmenBase = airbnbFallbackActif
     ? (bien.forfait_dcb_ref || 0) + (bien.provision_ae_ref || 0)
     : totalFeesAirbnb
   const dueToOwner = (resa.platform === 'airbnb' && totalFeesForOwnerRate > 0)
@@ -374,7 +375,15 @@ export function _calculerLignes(resa) {
     }
   }
 
-  return { lignes }
+  return {
+    lignes,
+    fallbackAirbnb: airbnbFallbackActif ? {
+      motif: 'airbnb_fees_missing',
+      forfait_dcb_ref: bien.forfait_dcb_ref,
+      provision_ae_ref: bien.provision_ae_ref || 0,
+      fmenBase,
+    } : null,
+  }
 }
 
 /**
@@ -403,7 +412,27 @@ export async function calculerVentilationResa(resa) {
   }
 
   // Calcul pur — délégué à _calculerLignes
-  const { lignes } = _calculerLignes(resa)
+  const { lignes, fallbackAirbnb } = _calculerLignes(resa)
+
+  // Traçabilité : log explicite si fallback Airbnb activé
+  if (fallbackAirbnb) {
+    logOp({
+      categorie: 'ventilation',
+      action: 'fallback_airbnb',
+      source: 'app',
+      statut: 'ok',
+      mois_comptable: resa.mois_comptable,
+      message: `Fallback Airbnb activé : aucun frais ménage dans reservation_fee, fmenBase reconstruit depuis le bien`,
+      meta: {
+        code: resa.code,
+        bien: resa.bien?.code || resa.bien_id,
+        motif: fallbackAirbnb.motif,
+        forfait_dcb_ref: fallbackAirbnb.forfait_dcb_ref,
+        provision_ae_ref: fallbackAirbnb.provision_ae_ref,
+        fmenBase: fallbackAirbnb.fmenBase,
+      },
+    }).catch(() => {})
+  }
 
   // Sauvegarder les montant_reel saisis manuellement avant suppression
   const { data: existingLines } = await supabase
