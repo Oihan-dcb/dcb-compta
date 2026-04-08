@@ -29,7 +29,22 @@ const TVA_RATE = 0.20
  * @param {string} mois - YYYY-MM
  */
 export async function calculerVentilationMois(mois) {
-  // Récupérer les réservations non ventilées du mois
+  // Verrou facture : statuts finaux réels observés en base (liste explicite)
+  // brouillon / calcul_en_cours → reventilable
+  // envoye_evoliz → verrouillé définitivement
+  const STATUTS_VERROU_FACTURE = ['envoye_evoliz']
+
+  const { data: facturesVerrouillees } = await supabase
+    .from('facture_evoliz')
+    .select('proprietaire_id')
+    .eq('mois', mois)
+    .eq('type_facture', 'honoraires')
+    .in('statut', STATUTS_VERROU_FACTURE)
+  const proprietairesVerrouilles = new Set(
+    (facturesVerrouillees || []).map(f => f.proprietaire_id).filter(Boolean)
+  )
+
+  // Récupérer toutes les réservations du mois (ventilation_calculee n'est plus un verrou absolu)
   const { data: reservations, error } = await supabase
     .from('reservation')
     .select(`
@@ -43,7 +58,6 @@ export async function calculerVentilationMois(mois) {
       reservation_fee (*)
     `)
     .eq('mois_comptable', mois)
-    .eq('ventilation_calculee', false)
     .or('fin_revenue.gt.0,final_status.not.in.("cancelled","not_accepted","not accepted","declined","expired")')
     .eq('owner_stay', false)
 
@@ -51,8 +65,14 @@ export async function calculerVentilationMois(mois) {
 
   let total = 0
   let errors = 0
+  let skipped = 0
 
   for (const resa of (reservations || []).filter(r => r.bien?.gestion_loyer !== false && (r.bien?.agence || 'dcb') === 'dcb')) {
+    // Verrou facture : ne jamais écraser une réservation liée à une facture finalisée
+    if (proprietairesVerrouilles.has(resa.bien?.proprietaire_id)) {
+      skipped++
+      continue
+    }
     try {
       await calculerVentilationResa(resa)
       total++
@@ -65,10 +85,10 @@ export async function calculerVentilationMois(mois) {
   logOp({
     categorie: 'ventilation', action: 'compute', mois_comptable: mois,
     statut: errors > 0 ? 'warning' : 'ok', source: 'app',
-    message: `Ventilation ${mois} : ${total} résa(s) calculée(s)${errors > 0 ? ', ' + errors + ' erreur(s)' : ''}`,
-    meta: { total, errors },
+    message: `Ventilation ${mois} : ${total} résa(s) calculée(s)${skipped > 0 ? ', ' + skipped + ' verrouillée(s)' : ''}${errors > 0 ? ', ' + errors + ' erreur(s)' : ''}`,
+    meta: { total, skipped, errors },
   }).catch(() => {})
-  return { total, errors }
+  return { total, skipped, errors }
 }
 
 /**
