@@ -209,6 +209,27 @@ async function genererFactureGroupe(proprio, biens, mois) {
     .eq('statut', 'a_facturer')
   const fraisDeduireTTC = (fraisDeduire || []).reduce((s, f) => s + (f.montant_ttc || 0), 0)
 
+  // Owner stay ménage : FMEN + AUTO pour séjours propriétaire (platform=manual)
+  // Alignement buildRapportData : ownerStayMenageTotal déduit du reversement
+  let ownerStayMenageTotal = 0
+  const { data: ownerStayResas } = await supabase
+    .from('reservation')
+    .select('id')
+    .in('bien_id', bienIds)
+    .eq('mois_comptable', mois)
+    .eq('owner_stay', true)
+    .eq('platform', 'manual')
+  if ((ownerStayResas || []).length > 0) {
+    const ownerStayIds = ownerStayResas.map(r => r.id)
+    const { data: osVent } = await supabase
+      .from('ventilation')
+      .select('code, montant_ht, montant_ttc')
+      .in('reservation_id', ownerStayIds)
+      .in('code', ['FMEN', 'AUTO'])
+    ownerStayMenageTotal = (osVent || []).reduce((s, v) =>
+      s + (v.code === 'FMEN' ? (v.montant_ttc || 0) : (v.montant_ht || 0)), 0)
+  }
+
   // DIV : expenses [DCB]
   const divHT = (expenses || []).reduce((s, e) => s + (e.amount || 0), 0)
   const divTVA = Math.round(divHT * 0.20)
@@ -298,7 +319,7 @@ async function genererFactureGroupe(proprio, biens, mois) {
   const fraisDeduitTotal   = [...fraisDeductionMap.values()].reduce((s, v) => s + v.deduit,   0)
   const fraisReliquatTotal = [...fraisDeductionMap.values()].reduce((s, v) => s + v.reliquat, 0)
 
-  const montantReversement = Math.max(0, vir.ht - totalPrestations - haownerTTC - fraisDeduitTotal - deboursPropAbsorbTotal)
+  const montantReversement = Math.max(0, vir.ht - totalPrestations - haownerTTC - fraisDeduitTotal - deboursPropAbsorbTotal - ownerStayMenageTotal)
 
   // Cas solde nÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂ©gatif : uniquement des expenses, pas de rÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂ©servations
   const soldeNegatif = totalHT === 0 && div.ht > 0
