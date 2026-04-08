@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react'
-import { getAutoEntrepreneurs, saveAutoEntrepreneur, deleteAutoEntrepreneur, createAEWithAuth, resetAEPassword } from '../services/autoEntrepreneurs'
+import { getAutoEntrepreneurs, saveAutoEntrepreneur, deleteAutoEntrepreneur, createAEWithAuth, createAEAccess, resetAEPassword } from '../services/autoEntrepreneurs'
 import { supabase } from '../lib/supabase'
 
 const EMPTY_AE = {
@@ -78,15 +78,20 @@ export default function PageAutoEntrepreneurs() {
 
   async function resetMdp(ae) {
     if (!ae.email) { setError('Email requis pour réinitialiser le mot de passe'); return }
+    const isReset = !!ae.ae_user_id
     setConfirmModal({
-      message: `Réinitialiser le mot de passe de ${ae.prenom} ${ae.nom} ?\nUn nouveau mot de passe temporaire sera généré.`,
+      message: isReset
+        ? `Régénérer le mot de passe de ${ae.prenom} ${ae.nom} ?\nUn nouveau mot de passe temporaire sera généré.`
+        : `Créer l'accès portail pour ${ae.prenom} ${ae.nom} ?\nUn mot de passe temporaire sera généré et l'AE lié à un compte Auth.`,
       onConfirm: async () => {
         setConfirmModal(null)
         setSaving(true)
         try {
-          const { data, error: fnErr } = await supabase.functions.invoke('create-ae-user', { body: { aeId: ae.id, email: ae.email, reset: true } })
-          if (fnErr) throw fnErr
-          setSuccess(`Nouveau mot de passe : ${data?.password}`)
+          const result = isReset
+            ? await resetAEPassword(ae.id, ae.email)
+            : await createAEAccess(ae.id, ae.email)
+          setSuccess(`Mot de passe : ${result?.password}`)
+          await charger()
         } catch(err) { setError(err.message) }
         finally { setSaving(false) }
       }

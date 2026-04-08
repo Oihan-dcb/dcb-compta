@@ -64,6 +64,18 @@ export async function createAEWithAuth(ae, email) {
   return { ae: data, email, password }
 }
 
+export async function createAEAccess(ae_id, email) {
+  const password = 'DCB' + Math.random().toString(36).slice(2, 8).toUpperCase() + Math.floor(Math.random() * 100)
+  const fnResp = await fetch('/api/ae-action', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ action: 'create', ae_id, email, password })
+  })
+  const data = await fnResp.json()
+  if (!fnResp.ok || data?.error) throw new Error(data?.error || `Erreur serveur ${fnResp.status}`)
+  return { password }
+}
+
 export async function resetAEPassword(ae_id, email) {
   const password = 'DCB' + Math.random().toString(36).slice(2, 8).toUpperCase() + Math.floor(Math.random() * 100)
   const fnResp = await fetch('/api/ae-action', {
