@@ -20,7 +20,7 @@ import { supabase } from '../lib/supabase'
 import { logOp } from './journal'
 
 const TVA_RATE = 0.20
-const AIRBNB_LOY_RATE  = 0.1395  // 13.95% taux hôte Airbnb (payout statement) → FMEN et LOY
+// AIRBNB_LOY_RATE supprimé — remplacé par pro-rata du host_service_fee (voir dueToOwner Airbnb)
 
 /**
  * Calcule et sauvegarde la ventilation pour toutes les réservations
@@ -222,10 +222,10 @@ export function _calculerLignes(resa) {
   const taxesTotal = (resa.platform === 'airbnb') ? 0 : taxes.filter(t => !isRemitted(t)).reduce((s, t) => s + (t.amount || 0), 0)
 
   // ── Taux commission plateforme sur les fees ───────────────────────────────
-  // Airbnb  : 13,95% sur (cleaning fee + community fee) — taux hôte payout
-  // Booking : à vérifier sur statement réel
-  // Direct  : 0,77% sur (cleaning + management) via /1.0077
-  const PLATFORM_CLEANING_RATES = { airbnb: 0.1395, booking: 0.1517 }  // Booking ~15,17% mesuré statement Chambre Txomin fév 2026
+  // Airbnb  : pro-rata du host_service_fee sur la part ménage, net de commission DCB (voir dueToOwner)
+  // Booking : taux fixe ~15,17% mesuré statement Chambre Txomin fév 2026
+  // Direct  : dueToOwner = 0
+  const PLATFORM_CLEANING_RATES = { booking: 0.1517 }
 
   let commissionableBase, loyAmount, cleaningFeeNet, platformRateOnCleaning
 
@@ -241,13 +241,24 @@ export function _calculerLignes(resa) {
   const honTTC = isDirect ? Math.floor(commissionableBase * tauxCom) : Math.round(commissionableBase * tauxCom)
   const honHT  = Math.round(honTTC / (1 + TVA_RATE))
 
+  // Assiette commune de répartition pro-rata : accommodation + Σ guest_fees
+  // Utilisée pour Airbnb (dueToOwner) et Direct (ownerFees)
+  const totalFeesForOwnerRate = accommodation + guestFeesAll.reduce((s, f) => s + (f.amount || 0), 0)
+
   // FMEN = fees_ménage_brut - part plateforme - AUTO (TVA 20%)
-  // Airbnb  : cleaning_fee + community_fee, Airbnb retient 13,95%
-  // Direct  : cleaning_fee + community_fee (management_fee → COM séparé)
-  // Booking : taux ~15,17% sur ménage brut
-  const fmenBase = cleaningFeeAirbnb + communityFeeRaw  // = MEN brut (fees ménage voyageur)
-  const dueToOwner = (resa.platform === 'airbnb')
-    ? Math.round(fmenBase * AIRBNB_LOY_RATE)
+  //
+  // Airbnb  : pro-rata du host_service_fee sur la part ménage, net de commission DCB
+  //           dueToOwner = round(|hostServiceFee| × fmenBase / (accommodation + Σ guestFees) × (1 − tauxCom))
+  //           Vérifié HMRN2R9JTY : round(3751 × 12400 / 24200 × 0.75) = 1442 cts = 14.42 € ✓
+  //           → remplace le taux fixe 13,95% qui ne correspondait pas au statement réel
+  //
+  // Booking : taux fixe ~15,17% mesuré statement Chambre Txomin fév 2026
+  //           (Booking a une grille tarifaire différente d'Airbnb — pas de pro-rata confirmé)
+  //
+  // Direct / Manual : dueToOwner = 0 (Hospitable ne retient rien sur le ménage)
+  const fmenBase = cleaningFeeAirbnb + communityFeeRaw  // = ménage brut voyageur
+  const dueToOwner = (resa.platform === 'airbnb' && totalFeesForOwnerRate > 0)
+    ? Math.round(Math.abs(hostServiceFee) * fmenBase / totalFeesForOwnerRate * (1 - tauxCom))
     : (resa.platform === 'booking')
       ? Math.round(fmenBase * PLATFORM_CLEANING_RATES.booking)
       : 0
@@ -265,9 +276,8 @@ export function _calculerLignes(resa) {
 
   // Owner fees Direct : portion de la platform fee Hospitable attribuée aux guest fees,
   // reversée à la fraction propriétaire (1 − taux).
-  // Formula : round(|hostServiceFee| × fee_i / (accommodation + Σ guestFees) × (1 − taux))
+  // Formula : round(|hostServiceFee| × fee_i / totalFeesForOwnerRate × (1 − taux))
   // Vérifié sur HOST-9HAQHD : management=24 + community=76 + resort=2 = 102 centimes ✓
-  const totalFeesForOwnerRate = accommodation + guestFeesAll.reduce((s, f) => s + (f.amount || 0), 0)
   const ownerFees = (isDirect && totalFeesForOwnerRate > 0)
     ? guestFeesAll.reduce((s, f) => s + Math.round(Math.abs(hostServiceFee) * (f.amount || 0) / totalFeesForOwnerRate * (1 - tauxCom)), 0)
     : 0
