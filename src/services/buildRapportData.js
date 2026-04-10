@@ -244,9 +244,11 @@ export async function buildRapportData(bienId, propId, mois, opts = {}) {
   const nuitsOccupees = durees.reduce((s, v) => s + v, 0)
   const dureeMoy = durees.length ? (durees.reduce((s, v) => s + v, 0) / durees.length).toFixed(1) : '0'
   const tauxOcc = nuitsDispos > 0 ? Math.round((nuitsOccupees / nuitsDispos) * 100) : 0
-  // honTotal kpis = somme ventilation HON du bien — facture.total_ttc exclu car
-  // la facture est par proprietaire_id (tous biens confondus), pas par bien_id
-  const honTotal = honTotalVent
+  // honTotal kpis = somme des r.hon depuis resasEnrichies (via ventByResa)
+  // ventByResa déduplique implicitement (last-write-wins par code/resa)
+  // → immunisé contre les lignes HON en doublon dans la table ventilation
+  // honTotalVent (somme brute toutes lignes) est conservé pour _debug uniquement
+  const honTotal = resasEnrichies.reduce((s, r) => s + (r.hon || 0), 0)
 
   const resaN1Valid = resasN1 || []
   const caHebN1 = resaN1Valid.reduce((s, r) => s + (r.fin_revenue || 0), 0)
