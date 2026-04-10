@@ -170,6 +170,16 @@ Aucun invariant actif violé à l'issue de la session du 02 avril 2026.
 | I-83 | `ownerStayMenageTotal` est déduit du `montant_reversement` dans `facturesEvoliz.js` (génération de facture) et dans le calcul BRANCHE 2 de `virementNet` dans `buildRapportData.js` — cohérence génération ↔ affichage | ✅ Implémenté (session 08/04/2026) |
 | I-84 | `fraisDeductionLoy` suit la règle : `statut='facture' && statut_deduction≠'en_attente'` → `montant_deduit_loy` ; `statut='facture' && statut_deduction='en_attente'` → fallback `montant_ttc` ; `statut='a_facturer'` → `montant_ttc`. Cette règle est centralisée dans `buildRapportData.js` uniquement. | ✅ Implémenté (session 08/04/2026) |
 
+### Invariants ajoutés (10 avril 2026 — import CSV + calculs brut + Booking pro-rata)
+
+| Invariant | Description courte | Statut |
+|---|---|---|
+| I-85 | `reservation_fee` ne contient pas de lignes en doublon pour une même réservation — chaque fee type/label apparaît une seule fois. Une ré-import CSV sans purge préalable provoque un doublement silencieux des fees qui fausse tous les calculs HON/LOY/VIR. | ✅ Règle opérationnelle — à surveiller après chaque import |
+| I-86 | Le calcul `gross_revenue` dans `buildRapportData.js` suit la règle plateforme : Direct → `fin_gross_revenue` ; Airbnb → `fin_accommodation + Σ guest_fees` ; Booking → `fin_accommodation + Σ guest_fees + Σ taxes non-remitted`. Le champ `label` doit être inclus dans le SELECT `reservation_fee` — sans lui le filtre `remitted` échoue silencieusement. | ✅ Implémenté (commit `072f6dd`) |
+| I-87 | `fin_host_service_fee` est importé depuis `host_service_fee` CSV comme valeur négative : `-(Math.abs(parseFloat(row.host_service_fee) × 100))`. Toute valeur positive dans ce champ est un symptôme d'une ancienne sync API fantôme. | ✅ Implémenté (session 10/04/2026) |
+| I-88 | `discountsTotal` utilise un fallback unique : `hospitable_raw.financials.host.discounts` (négatif) si présent, sinon `-(fin_discount || 0)` (CSV). Les deux sources ne doivent jamais être additionnées pour éviter le double-comptage. | ✅ Implémenté dans `ventilation.js` (session 10/04/2026) |
+| I-89 | Booking `dueToOwner` est calculé en pro-rata comme Airbnb et Direct : `Math.round(|hostServiceFee| × fmenBase / totalFeesForOwnerRate × (1 − tauxCom))`. Le taux fixe 0.1517 est abandonné. | ✅ Implémenté (session 10/04/2026) |
+
 ### Invariants métier à formaliser (non encore implémentés dans V1)
 
 | Invariant | Description courte |
@@ -178,7 +188,7 @@ Aucun invariant actif violé à l'issue de la session du 02 avril 2026.
 | I-54 | Prestation validée doit produire une écriture EXTRA dans la ventilation |
 | I-73 | Modification après clôture doit être explicite et documentée |
 
-**Total actuel** : 0 invariants violés actifs (⚠ I-60 partiellement couvert), 17 corrigés, 14 nouveaux, sur 55 documentés.
+**Total actuel** : 0 invariants violés actifs (⚠ I-60 partiellement couvert), 17 corrigés, 19 nouveaux, sur 60 documentés.
 
 ---
 

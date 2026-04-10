@@ -40,7 +40,7 @@ Définies dans `ventilation.js` V1 uniquement. Absentes de global-sync V2 (→ N
 | `TVA_RATE` | `0.20` (20%) | Division HT/TTC pour HON, FMEN, COM |
 | `AIRBNB_LOY_RATE` | `0.1395` (13,95%) | Taux hôte Airbnb sur ménage brut → `dueToOwner` (FMEN et LOY indirectement) |
 | `PLATFORM_CLEANING_RATES.airbnb` | `0.1395` (13,95%) | Taux Airbnb sur `fmenBase` — mesuré sur payout statement réel |
-| `PLATFORM_CLEANING_RATES.booking` | `0.1517` (15,17%) | Taux Booking sur ménage brut — mesuré statement Chambre Txomin fév 2026 |
+| ~~`PLATFORM_CLEANING_RATES.booking`~~ | ~~`0.1517`~~ | **Supprimé** session 10/04/2026 — Booking utilise désormais la même formule pro-rata qu'Airbnb et Direct (voir §4.3) |
 
 ---
 
@@ -100,12 +100,16 @@ taxesTotal         = 0  [Airbnb remit les taxes]
 
 ### 4.3 Booking
 
+> ✅ Session 10/04/2026 : `dueToOwner` Booking passe en pro-rata (comme Airbnb et Direct) — remplace le taux fixe 0.1517.
+
 ```
 commissionableBase = accommodation + hostServiceFee + discounts
                    [même formule qu'Airbnb]
 fmenBase           = cleaningFeeAirbnb + communityFeeRaw
                    [même définition qu'Airbnb — base brute ménage avant retrait plateforme et AUTO]
-dueToOwner         = Math.round(fmenBase × 0.1517)
+totalFeesForOwnerRate = accommodation + Σ guestFees
+dueToOwner         = Math.round(|hostServiceFee| × fmenBase / totalFeesForOwnerRate × (1 − tauxCom))
+                   [pro-rata — même formule qu'Airbnb et Direct. Validé TXOMIN mars 2026 : MEN=68€, LOY=93€, VIR=108,25€ ✓]
 fmenTTC            = Math.max(0, fmenBase − dueToOwner − AUTO)
 honTTC             = Math.round(commissionableBase × tauxCom)
 taxesTotal         = Σ taxes non-remitted
@@ -115,7 +119,7 @@ loyAmount          = (fin_revenue − remittedTotal) − honTTC − fmenTTC − 
 virAmount          = loyAmount + taxesTotal
 ```
 
-> **Note de validation** : le recalcul LOY Booking depuis `fin_revenue_net` est la règle **implémentée actuelle** dans V1. Elle diffère de la formule Airbnb (`commissionableBase − honTTC + platformRemb`). La justification métier de cette divergence est liée au taux Booking variable — mais la règle **métier cible à confirmer** reste à valider sur relevés réels supplémentaires.
+> **Note de validation** : le recalcul LOY Booking depuis `fin_revenue_net` est la règle **implémentée actuelle** dans V1. Elle diffère de la formule Airbnb (`commissionableBase − honTTC + platformRemb`). La justification métier : Booking raisonne depuis le fin_revenue total moins les déductions.
 
 ### 4.4 Direct (Hospitable)
 
@@ -327,6 +331,46 @@ Marge de 2€ pour les arrondis bancaires.
 ### 11bis.4 Matching Stripe
 
 Les virements Stripe (`mouvement_bancaire.canal='stripe'`) correspondent à des réservations `platform='direct'`. L'identification se fait via `stripe_payout_line.reservation_code` (pas via `reservation.platform='stripe'` qui n'existe pas en base).
+
+---
+
+## 11ter. Règles CSV-first — calculs depuis données importées (session 10/04/2026)
+
+### 11ter.1 gross_revenue par plateforme (buildRapportData.js)
+
+Le "Brut voyageur" affiché dans les rapports propriétaires suit la règle suivante :
+
+```
+Direct  : fin_gross_revenue (total_price CSV) — valeur exacte Hospitable
+Airbnb  : fin_accommodation + Σ guest_fees
+          [guest_service_fee EXCLUS — fee payé à Airbnb, pas reversé à DCB]
+Booking : fin_accommodation + Σ guest_fees + Σ taxes non-remitted
+          [pass_through_taxes incluses — collectées par Booking, reversées à DCB]
+```
+
+⚠ **Piège** : le filtre `!f.label?.toLowerCase().includes('remitted')` requiert que `label` soit sélectionné dans la requête `reservation_fee`. Sans lui, le filtre s'applique sur `undefined` → `includes` échoue silencieusement → toutes les taxes passent, Brut Booking gonflé.
+
+### 11ter.2 discountsTotal — fallback CSV
+
+```js
+const discountsRaw   = resa.hospitable_raw?.financials?.host?.discounts || []
+const discountsFromApi = discountsRaw.reduce((s, d) => s + (d.amount || 0), 0)
+const discountsTotal   = discountsFromApi !== 0
+  ? discountsFromApi          // API (négatif)
+  : -(resa.fin_discount || 0) // CSV (centimes positifs → négatif pour commissionableBase)
+```
+
+Priorité : `hospitable_raw` (API) si non nul → `fin_discount` (CSV) sinon. Évite les doubles déductions si les deux sources sont présentes.
+
+### 11ter.3 Mapping colonnes CSV Hospitable → base
+
+| Colonne CSV | Champ DB | Signe | Notes |
+|---|---|---|---|
+| `total_price` | `fin_gross_revenue` | positif | Brut voyageur direct |
+| `guest_discount` | `fin_discount` | positif | Remise voyageur en centimes |
+| `adjusted_amount` | `fin_adjusted` | positif | Ajustements/remboursements |
+| `host_service_fee` | `fin_host_service_fee` | **négatif** | Importé comme `-Math.abs(...)` |
+| `guest_service_fee` | `reservation_fee` | — | `fee_type='guest_fee'`, label distinct |
 
 ---
 

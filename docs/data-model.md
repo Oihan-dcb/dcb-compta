@@ -104,7 +104,10 @@ Données brutes des réservations Hospitable. Table centrale du flux mensuel.
 | `reservation_status` | jsonb | Statut complet Hospitable | |
 | `fin_revenue` | integer | Revenu net en centimes (= payout attendu) | Source primaire de la ventilation |
 | `fin_accommodation` | integer | Montant nuitées seules en centimes | |
-| `fin_host_service_fee` | integer | Commission plateforme en centimes (négatif) | |
+| `fin_host_service_fee` | integer | Commission plateforme en centimes (négatif) | Depuis session 10/04/2026 : importé depuis `host_service_fee` CSV comme valeur négative. Avant : valeur fantôme de l'ancienne sync API. |
+| `fin_gross_revenue` | integer | Brut voyageur total en centimes | `total_price` CSV — utilisé pour les réservations directes uniquement. Migration `004`. |
+| `fin_discount` | integer | Remise voyageur en centimes | `guest_discount` CSV. Fallback si `hospitable_raw.financials.host.discounts` absent. Migration `005`. |
+| `fin_adjusted` | integer | Ajustements/remboursements en centimes | `adjusted_amount` CSV. Migration `005`. |
 | `fin_taxes_total` | integer | Total taxes en centimes | |
 | `fin_currency` | text | Devise (EUR) | |
 | `mois_comptable` | text | Format YYYY-MM — mois du check-in | Filtre principal dans toutes les requêtes |
@@ -128,8 +131,8 @@ Détail des fees Hospitable par réservation. Source prioritaire pour la ventila
 |---|---|---|---|
 | `id` | uuid PK | | |
 | `reservation_id` | uuid FK → reservation | | ON DELETE CASCADE |
-| `fee_type` | text | 'guest_fee', 'host_fee', 'tax', 'accommodation_night', 'adjustment' | |
-| `label` | text | Libellé exact Hospitable (ex: "Cleaning fee", "Community fee") | ⚠ **Ne pas considérer comme stable dans le temps** — ✅ confirmé fournisseur. La ventilation identifie les fees par comparaison de ce label : tout changement côté Hospitable casse silencieusement le calcul. |
+| `fee_type` | text | 'guest_fee', 'host_fee', 'tax', 'accommodation_night', 'adjustment' | ⚠ `guest_service_fee` n'est pas une valeur valide — utiliser `guest_fee` avec un label distinct. Constaté session 10/04/2026. |
+| `label` | text | Libellé exact Hospitable (ex: "Cleaning fee", "Community fee") | ⚠ **Ne pas considérer comme stable dans le temps** — ✅ confirmé fournisseur. La ventilation identifie les fees par comparaison de ce label : tout changement côté Hospitable casse silencieusement le calcul. **Inclure `label` dans tous les SELECT `reservation_fee`** — sans lui, les filtres `.label?.includes(...)` échouent silencieusement (bug `remitted` Booking, session 10/04/2026). |
 | `category` | text | Catégorie Hospitable | ⚠ **Ne pas considérer comme stable dans le temps** — ✅ confirmé fournisseur. |
 | `amount` | integer | Montant en centimes | **Peut être positif ou négatif** — ✅ confirmé fournisseur : des line items mixtes sont normaux et attendus. Les `host_fee` sont systématiquement négatifs. `fin_revenue` lui-même peut être négatif. Important : `reduce((s, f) => s + f.amount)` sur les host_fees donne un total négatif, utilisé tel quel dans la ventilation. |
 | `formatted` | text | Montant formaté (ex: "€ 45,00") | |

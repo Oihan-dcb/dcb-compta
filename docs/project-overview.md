@@ -516,3 +516,44 @@ La logique de ventilation existe dans trois fichiers distincts. V2 est maintenan
 - `src/services/rapportProprietaire.js` — suppression calcul fraisDeductionLoy local ; ownerStayMenageList affiché dans PDF
 - `src/services/rapportStatement.js` — virementNet = `kpis.virementNet` ; ownerStayMenageList affiché dans Statement
 - `src/services/facturesEvoliz.js` — `ownerStayMenageTotal` déduit de `montant_reversement` (P1 critique)
+
+## Fixes session 10 avril 2026 — Import CSV + calcul Brut voyageur + Booking pro-rata
+
+### Nouveaux champs importés depuis le CSV Hospitable
+
+Migrations `004_reservation_fin_gross_revenue.sql` et `005_reservation_discount_adjusted.sql` :
+- `fin_gross_revenue` (integer) — `total_price` CSV — Brut voyageur pour réservations directes
+- `fin_discount` (integer) — `guest_discount` CSV — Remise voyageur en centimes
+- `fin_adjusted` (integer) — `adjusted_amount` CSV — Ajustements/remboursements
+- `fin_host_service_fee` — désormais importé depuis `host_service_fee` CSV comme négatif (remplace la valeur fantôme de l'ancienne sync API)
+
+### Calcul gross_revenue par plateforme (buildRapportData.js + rapportStatement.js)
+
+- **Direct** : `fin_gross_revenue` (total_price CSV) — valeur exacte Hospitable
+- **Airbnb** : `fin_accommodation + Σ guest_fees` (guest_service_fee exclus — payé à Airbnb, pas à DCB)
+- **Booking** : `fin_accommodation + Σ guest_fees + Σ taxes non-remitted` (pass_through_taxes incluses)
+- Correctif clé : `label` ajouté dans le select `reservation_fee` de `buildRapportData.js` — sans lui, le filtre `!f.label?.toLowerCase().includes('remitted')` échouait silencieusement → Brut Booking trop élevé (268,44 au lieu de 247,70)
+
+### Remises (discountsTotal) — fallback CSV
+
+Fallback dans `ventilation.js` : `hospitable_raw.financials.host.discounts` (API, négatifs) → `-(resa.fin_discount || 0)` (CSV, centimes). Évite les doubles déductions si les deux sources coexistent.
+
+### Booking dueToOwner — passage en pro-rata
+
+Remplacement du taux fixe `0.1517` par une formule pro-rata identique à Airbnb et Direct :
+```js
+dueToOwner = Math.round(|hostServiceFee| × fmenBase / totalFeesForOwnerRate × (1 − tauxCom))
+```
+Validé sur réservation TXOMIN mars 2026 : MEN=68,00€ / LOY=93,00€ / VIR=108,25€ ✓
+
+### Purge des fees doublonnés (reservation_fee)
+
+Réservations Booking importées en double à chaque sync → tous les calculs faussés. Purgé via SQL `ctid` (suppression des doublons). Trigger : import CSV produisait 61 erreurs + fees dupliqués sur les Bookings existants.
+
+### Import CSV — améliorations
+
+- Lookup secondaire par `hospitable_id` quand `code` absent de la map → évite 409 (UNIQUE constraint) sur les resas avec UUID Hospitable connu sous un code différent
+- Erreurs détaillées affichées dans `PageImport.jsx` : tableau code / plateforme / message pour chaque ligne en échec
+- `guest_service_fee` → `fee_type='guest_fee'` (type valide en DB) avec label distinct
+
+**Commits** : `072f6dd` (label reservation_fee), migrations 004/005, corrections ventilation.js + importCSV.js
