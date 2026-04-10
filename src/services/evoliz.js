@@ -343,7 +343,7 @@ export async function pousserFactureCOMVersEvoliz(factureId, totals, mois) {
       await evolizCall('createPayment', {
         invoiceId,
         paydate: dateEmission,
-        label: 'Virement compte de gestion DCB',
+        label: 'Règlement compte gestion vers compte courant',
         paytypeid: 4,
         amount: montantTTC,
       })
