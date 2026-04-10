@@ -205,8 +205,9 @@ export default function ModalResa({ resa, onClose, onSaved }) {
       const newVal = Math.round(parseFloat(revenuVal.replace(',', '.')) * 100)
       const { error: delErr } = await supabase.from('ventilation').delete().eq('reservation_id', resa.id)
       if (delErr) throw delErr
-      const { error: updErr } = await supabase.from('reservation').update({ fin_revenue: newVal, ventilation_calculee: false }).eq('id', resa.id)
+      const { data: updData, error: updErr } = await supabase.from('reservation').update({ fin_revenue: newVal, ventilation_calculee: false }).eq('id', resa.id).select('id, fin_revenue')
       if (updErr) throw updErr
+      if (!updData || updData.length === 0) throw new Error(`Aucune ligne modifiée — vérifier RLS sur table reservation (id: ${resa.id})`)
       setEditingRevenu(false)
       if (onSaved) onSaved(false, { id: resa.id, fin_revenue: newVal, ventilation: [], ventilation_calculee: false })
     } catch (e) {
