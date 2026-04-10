@@ -50,10 +50,10 @@ export function genererStatementHTML(proprio, mois, data) {
   const taxeTotal     = resas.reduce((s, r) => s + (r.taxe || 0), 0)
   const baseCommTotal = resas.reduce((s, r) => s + (r.base_comm || 0), 0)
   const ownerStayMenageTotal = ownerStayMenageList.reduce((s, p) => s + (p.montant || 0), 0)
-  const deboursTotal  = [...extrasGlobaux, ...haownerList]
-    .reduce((s, p) => s + (p.montant_ttc || p.montant || 0), 0)
+  const haownerTotal  = haownerList.reduce((s, p) => s + (p.montant_ttc || p.montant || 0), 0)
+  const deboursSeuls  = extrasGlobaux.reduce((s, p) => s + (p.montant_ttc || p.montant || 0), 0)
     + resas.reduce((s, r) => s + (r.extra || 0), 0)
-    + ownerStayMenageTotal
+  const deboursTotal  = deboursSeuls + haownerTotal + ownerStayMenageTotal
   const totalManager  = honTotal + menageTotal + deboursTotal
   // virementNet vient de buildRapportData (source de vérité unique) — inclut déjà les remboursements
   const virementNet   = data.kpis?.virementNet ?? 0
@@ -215,8 +215,14 @@ export function genererStatementHTML(proprio, mois, data) {
     ${remboursementsTotal > 0 ? remboursementsList.map(f => `<div style="display:flex;justify-content:space-between;padding:3px 0;border-bottom:1px solid #ece8e2;font-size:10px">
       <span style="color:#059669">${escapeNonAscii(f.libelle || 'Remboursement')}</span><span style="color:#059669">+ ${fmt(f.montant_ttc)}</span>
     </div>`).join('') : ''}
-    ${deboursTotal > 0 ? `<div style="display:flex;justify-content:space-between;padding:3px 0;border-bottom:1px solid #ece8e2;font-size:10px">
-      <span style="color:#9c8c7a">Débours / Achats</span><span style="color:#DC2626">− ${fmt(deboursTotal)}</span>
+    ${deboursSeuls > 0 ? `<div style="display:flex;justify-content:space-between;padding:3px 0;border-bottom:1px solid #ece8e2;font-size:10px">
+      <span style="color:#9c8c7a">Débours / prestations</span><span style="color:#DC2626">− ${fmt(deboursSeuls)}</span>
+    </div>` : ''}
+    ${haownerTotal > 0 ? `<div style="display:flex;justify-content:space-between;padding:3px 0;border-bottom:1px solid #ece8e2;font-size:10px">
+      <span style="color:#CC9933">Achats HAOWNER</span><span style="color:#DC2626">− ${fmt(haownerTotal)}</span>
+    </div>` : ''}
+    ${ownerStayMenageTotal > 0 ? `<div style="display:flex;justify-content:space-between;padding:3px 0;border-bottom:1px solid #ece8e2;font-size:10px">
+      <span style="color:#9c8c7a">Ménage(s) séjour propriétaire</span><span style="color:#DC2626">− ${fmt(ownerStayMenageTotal)}</span>
     </div>` : ''}
     <div style="display:flex;justify-content:space-between;padding:6px 0 0;font-weight:700;font-size:10.5px">
       <span>Total reversement</span><span style="color:#2d7a50">${fmt(totalDuOwner)}</span>
