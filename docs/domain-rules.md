@@ -52,7 +52,7 @@ Ces réservations sont explicitement exclues ou court-circuitées :
 |---|---|---|
 | `bien.gestion_loyer === false` | Exclue — le propriétaire gère son loyer lui-même | ✅ |
 | `bien.agence !== 'dcb'` | Exclue — bien Lauian, comptabilité séparée | ✅ |
-| `reservation.owner_stay === true` | Exclue — séjour propriétaire | ✅ |
+| `reservation.owner_stay === true` | Exclue — séjour propriétaire. Guard explicite dans `calculerVentilationResa` : `ventilation_calculee=true`, aucune ligne produite. La ventilation est saisie manuellement via `VentilationEdit` (codes FMEN + AUTO). | ✅ Session 10/04/2026 |
 | `fin_revenue === 0` | Court-circuit — early return sans écriture | ✅ |
 | `isDirect && isCancelled` | Suppression de la ventilation existante + `ventilation_calculee=true` — pas de nouvelles lignes | ✅ |
 | `final_status IN STATUTS_NON_VENTILABLES` | Suppression de la ventilation + `ventilation_calculee=true` + `fin_revenue=0`. STATUTS_NON_VENTILABLES = `['cancelled','not_accepted','not accepted','declined','expired']` (commit `349ba88`) | ✅ Mars 2026 |
@@ -572,15 +572,29 @@ BRANCHE 2 (estimation en temps réel) :
 
 La BRANCHE 1 court-circuite le recalcul dès qu'une facture validée existe. Le bypass `brouillon`/`calcul_en_cours` est intentionnel — ces statuts sont transitoires et ne reflètent pas un montant gelé.
 
-### 15.4 ownerStayMenageTotal
+### 15.4 Séjour propriétaire — facturation du ménage
 
-Réservations `owner_stay=true && platform='manual'` du mois. Pour chacune :
+**Principe** : `fin_revenue` d'une résa `owner_stay=true` = montant total du ménage à facturer au propriétaire.
+
+**Saisie** : L'utilisateur saisit manuellement FMEN (TTC, TVA 20%) et AUTO (HT, 0%) via `VentilationEdit`. `calculerVentilationResa` est court-circuité (guard `owner_stay`).
+
+**Absorption dans `genererFactureGroupe` (per-bien, en priorité après deboursProp) :**
 
 ```
-montant = ventilation FMEN.montant_ttc + ventilation AUTO.montant_ht
+loyApresDeboursProp → osAutoAbsorb = min(osAutoHT, loyApresDeboursProp)
+                    → osAutoSurplus = max(0, osAutoHT - osAutoAbsorb)
+loyApresOsAuto     → osFmenAbsorb  = min(osFmenTTC, loyApresOsAuto)
+                    → osFmenSurplus = max(0, osFmenTTC - osFmenAbsorb)
+
+ownerStayAbsorbTotal += osAutoAbsorb + osFmenAbsorb
 ```
 
-Agrégé en `ownerStayMenageTotal` — déduit du `virementNet` BRANCHE 2 et du `montant_reversement` dans `facturesEvoliz.js`.
+- La part absorbée (`ownerStayAbsorbTotal`) réduit `montant_reversement` (LOY restituable).
+- Le FMEN surplus → ligne `"Ménage séjour propriétaire"` (FMEN, TVA 20%) dans la facture honoraires.
+- L'AUTO surplus → ligne `DEB_AE` dans `genererFactureDebours`.
+- `sumByCode('FMEN')` exclut les owner stay resas (filtre `reservation_id`) pour éviter le double-comptage avec le FMEN normal.
+
+**Dans buildRapportData.js** : `ownerStayMenageTotal` = global FMEN.TTC + AUTO.HT de toutes les owner_stay resas — déduit du `virementNet` BRANCHE 2 (note : BRANCHE 2 n'a pas la logique per-bien ; si surplus facturé séparément, un léger écart peut exister dans la BRANCHE 2 — toujours préférer BRANCHE 1 facture validée).
 
 Affiché comme liste `ownerStayList` dans le bloc "Débours et achats" des 3 surfaces (couleur `#4A3728`, label "Ménage proprio").
 

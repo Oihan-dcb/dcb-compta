@@ -180,6 +180,15 @@ Aucun invariant actif violé à l'issue de la session du 02 avril 2026.
 | I-88 | `discountsTotal` utilise un fallback unique : `hospitable_raw.financials.host.discounts` (négatif) si présent, sinon `-(fin_discount || 0)` (CSV). Les deux sources ne doivent jamais être additionnées pour éviter le double-comptage. | ✅ Implémenté dans `ventilation.js` (session 10/04/2026) |
 | I-89 | Booking `dueToOwner` est calculé en pro-rata comme Airbnb et Direct : `Math.round(|hostServiceFee| × fmenBase / totalFeesForOwnerRate × (1 − tauxCom))`. Le taux fixe 0.1517 est abandonné. | ✅ Implémenté (session 10/04/2026) |
 
+### Invariants ajoutés (10 avril 2026 — owner stay / séjour propriétaire)
+
+| Invariant | Description courte | Statut |
+|---|---|---|
+| I-90 | `calculerVentilationResa` court-circuite immédiatement pour `owner_stay=true` : `ventilation_calculee=true`, aucune ligne auto-calculée. La ventilation est saisie manuellement (FMEN + AUTO via VentilationEdit). | ✅ Session 10/04/2026 |
+| I-91 | `sumByCode('FMEN')` dans `genererFactureGroupe` exclut les reservation_ids owner_stay — évite le double-comptage avec la ligne "Ménage séjour propriétaire" ou l'absorption sur LOY. | ✅ Session 10/04/2026 |
+| I-92 | Owner stay ménage absorbé par LOY (per-bien, en priorité après deboursProp) → réduit `montant_reversement`. Owner stay surplus FMEN → ligne séparée "Ménage séjour propriétaire" (TVA 20%) dans la facture honoraires. Owner stay surplus AUTO → ligne `DEB_AE` dans `genererFactureDebours`. | ✅ Session 10/04/2026 |
+| I-93 | `STATUTS_NON_VENTILABLES` est importé de `src/lib/constants.js` dans `ventilation.js` — plus de double définition locale. | ✅ Session 10/04/2026 (I-81 renforcé) |
+
 ### Invariants métier à formaliser (non encore implémentés dans V1)
 
 | Invariant | Description courte |
@@ -188,7 +197,7 @@ Aucun invariant actif violé à l'issue de la session du 02 avril 2026.
 | I-54 | Prestation validée doit produire une écriture EXTRA dans la ventilation |
 | I-73 | Modification après clôture doit être explicite et documentée |
 
-**Total actuel** : 0 invariants violés actifs (⚠ I-60 partiellement couvert), 17 corrigés, 19 nouveaux, sur 60 documentés.
+**Total actuel** : 0 invariants violés actifs (⚠ I-60 partiellement couvert), 17 corrigés, 23 nouveaux, sur 64 documentés.
 
 ---
 
