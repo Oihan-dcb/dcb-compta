@@ -55,14 +55,18 @@ export async function importHospitableCSV(rows, moisFiltres = null, onProgress =
 
   // Ã¢ÂÂÃ¢ÂÂ ÃÂtape 2 : charger TOUTES les rÃÂ©servations existantes avec pagination Ã¢ÂÂÃ¢ÂÂ
   const resaMap = {}
+  const resaMapByHospId = {} // lookup secondaire par hospitable_id
   let page = 0
   while (true) {
     const { data: pageData } = await supabase
       .from('reservation')
-      .select('id, code')
+      .select('id, code, hospitable_id')
       .range(page * PAGE_SIZE, (page + 1) * PAGE_SIZE - 1)
     if (!pageData || pageData.length === 0) break
-    for (const r of pageData) resaMap[r.code] = r.id
+    for (const r of pageData) {
+      resaMap[r.code] = r.id
+      if (r.hospitable_id) resaMapByHospId[r.hospitable_id] = r.id
+    }
     if (pageData.length < PAGE_SIZE) break
     page++
   }
@@ -95,9 +99,10 @@ export async function importHospitableCSV(rows, moisFiltres = null, onProgress =
       fin_adjusted: toC(row.adjusted_amount),
     }
 
-    if (resaMap[code]) {
+    const existingId = resaMap[code] || resaMapByHospId[row.uuid]
+    if (existingId) {
       // Existe Ã¢ÂÂ update ciblÃÂ© par id (pas d'upsert pour ÃÂ©viter les contraintes NOT NULL)
-      toUpsert.push({ id: resaMap[code], ...base })
+      toUpsert.push({ id: existingId, ...base })
     } else {
       // Nouvelle Ã¢ÂÂ insert complet avec hospitable_id depuis le champ uuid du CSV
       toInsert.push({
