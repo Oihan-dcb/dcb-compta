@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback, useRef } from 'react'
 import MoisSelector, { MOIS_FR } from '../components/MoisSelector'
+import { useMoisPersisted } from '../hooks/useMoisPersisted'
 import { supabase } from '../lib/supabase'
 import {
   genererRapportHTML, envoyerRapportEmail
@@ -61,7 +62,7 @@ function renderMarkdown(text) {
 }
 
 export default function PageRapports() {
-  const [mois, setMois] = useState(moisCourant)
+  const [mois, setMois] = useMoisPersisted()
   const [moisDispos, setMoisDispos] = useState([moisCourant])
   const [proprietaires, setProprietaires] = useState([])
   const [selectedPropId, setSelectedPropId] = useState('')

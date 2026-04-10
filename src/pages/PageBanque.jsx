@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef } from 'react'
 import { getMouvementsMois, getMoisDispos } from '../services/banque'
+import { useMoisPersisted } from '../hooks/useMoisPersisted'
 import { supabase } from '../lib/supabase'
 import { importBookingCSV } from '../services/importBooking'
 import { annulerRapprochement } from '../services/rapprochement'
@@ -24,7 +25,7 @@ const CANAUX = {
 }
 
 export default function PageBanque() {
-  const [mois, setMois] = useState(moisCourant)
+  const [mois, setMois] = useMoisPersisted()
   const [mouvements, setMouvements] = useState([])
   const [loading, setLoading] = useState(false)
   const [importing, setImporting] = useState(false)

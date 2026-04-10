@@ -11,6 +11,7 @@ import { exportCSVComptable } from '../services/exportCSVComptable'
 
 import MoisSelector from '../components/MoisSelector'
 import ModalResa from '../components/ModalResa'
+import { useMoisPersisted } from '../hooks/useMoisPersisted'
 import { format } from 'date-fns'
 import { fr } from 'date-fns/locale'
 const HOSP_TOKEN = import.meta.env.VITE_HOSPITABLE_TOKEN
@@ -41,7 +42,7 @@ function fmtDate(d) {
 
 export default function PageRapprochement() {
   const navigate = useNavigate()
-  const [mois, setMois] = useState(moisCourant)
+  const [mois, setMois] = useMoisPersisted()
   const [selectedResa, setSelectedResa] = useState(null)
   const [moisDispos, setMoisDispos] = useState([moisCourant])
   const [mouvements, setMouvements] = useState([])

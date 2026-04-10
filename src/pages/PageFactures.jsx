@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react'
 import MoisSelector from '../components/MoisSelector'
+import { useMoisPersisted } from '../hooks/useMoisPersisted'
 import {
   getFacturesMois, genererFacturesMois, validerFacture,
   getStatsFactures, exportCSVComptable, telechargerCSV
@@ -20,7 +21,7 @@ const STATUTS = {
 }
 
 export default function PageFactures() {
-  const [mois, setMois] = useState(moisCourant)
+  const [mois, setMois] = useMoisPersisted()
   const [moisDispos, setMoisDispos] = useState(() => {
     const [cy, cm] = moisCourant.split('-').map(Number)
     return Array.from({ length: cm }, (_, i) => `${cy}-${String(i + 1).padStart(2, '0')}`)

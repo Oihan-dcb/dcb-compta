@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react'
 import { useSearchParams } from 'react-router-dom'
 import MoisSelector from '../components/MoisSelector'
+import { useMoisPersisted } from '../hooks/useMoisPersisted'
 import { supabase } from '../lib/supabase'
 import { syncReservations, getReservationsMois } from '../services/syncReservations'
 import { calculerVentilationMois, getRecapVentilation, calculerVentilationResa } from '../services/ventilation'
@@ -10,9 +11,8 @@ import TableReservations from '../components/TableReservations'
 import TableVentilation from '../components/TableVentilation'
 
 const HOSP_TOKEN = import.meta.env.VITE_HOSPITABLE_TOKEN
-const moisCourant = new Date().toISOString().substring(0, 7)
 export default function PageReservations() {
-  const [mois, setMois] = useState(moisCourant)
+  const [mois, setMois] = useMoisPersisted()
   const [moisDispos, setMoisDispos] = useState([])
   const [reservations, setReservations] = useState([])
   const [recap, setRecap] = useState([])
