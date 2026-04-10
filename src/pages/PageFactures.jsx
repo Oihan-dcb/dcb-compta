@@ -199,8 +199,11 @@ export default function PageFactures() {
   const totalTTC = factures.reduce((s, f) => s + (f.total_ttc || 0), 0)
   const totalReversement = factures.reduce((s, f) => s + (f.montant_reversement || 0), 0)
 
+  // Exclure les factures sans rien à facturer (calcul_en_cours = total zéro)
+  const facturesVisibles = factures.filter(f => f.statut !== 'calcul_en_cours')
+
   // Trier par code bien (direct si bien_id, sinon premier bien du proprio) puis par nom proprio
-  const facturesTries = [...factures].sort((a, b) => {
+  const facturesTries = [...facturesVisibles].sort((a, b) => {
     const codeA = a.bien?.code || a.proprietaire?.bien?.slice().sort((x,y)=>(x.code||'').localeCompare(y.code||''))[0]?.code || ''
     const codeB = b.bien?.code || b.proprietaire?.bien?.slice().sort((x,y)=>(x.code||'').localeCompare(y.code||''))[0]?.code || ''
     const c = codeA.localeCompare(codeB, 'fr', { numeric: true })
