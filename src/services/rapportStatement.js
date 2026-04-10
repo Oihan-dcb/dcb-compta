@@ -49,10 +49,11 @@ export function genererStatementHTML(proprio, mois, data) {
   const loyTotal      = resas.reduce((s, r) => s + (r.loy  || 0), 0)
   const taxeTotal     = resas.reduce((s, r) => s + (r.taxe || 0), 0)
   const baseCommTotal = resas.reduce((s, r) => s + (r.base_comm || 0), 0)
+  const ownerStayMenageTotal = ownerStayMenageList.reduce((s, p) => s + (p.montant || 0), 0)
   const deboursTotal  = [...extrasGlobaux, ...haownerList]
     .reduce((s, p) => s + (p.montant_ttc || p.montant || 0), 0)
     + resas.reduce((s, r) => s + (r.extra || 0), 0)
-    + resas.filter(r => r.owner_stay && r.platform === 'manual').reduce((s, r) => s + (r.menage_voyageur || 0), 0)
+    + ownerStayMenageTotal
   const totalManager  = honTotal + menageTotal + deboursTotal
   // virementNet vient de buildRapportData (source de vérité unique) — inclut déjà les remboursements
   const virementNet   = data.kpis?.virementNet ?? 0
@@ -184,6 +185,9 @@ export function genererStatementHTML(proprio, mois, data) {
     <div style="display:flex;justify-content:space-between;padding:3px 0;border-bottom:1px solid #ece8e2;font-size:10px">
       <span style="color:#9c8c7a">Ménage total (voyageurs)</span><span>${fmt(menageTotal)}</span>
     </div>
+    ${ownerStayMenageTotal > 0 ? `<div style="display:flex;justify-content:space-between;padding:3px 0;border-bottom:1px solid #ece8e2;font-size:10px">
+      <span style="color:#9c8c7a">Ménage(s) séjour propriétaire</span><span>${fmt(ownerStayMenageTotal)}</span>
+    </div>` : ''}
     <div style="display:flex;justify-content:space-between;padding:3px 0;border-bottom:1px solid #ece8e2;font-size:10px">
       <span style="color:#9c8c7a">Débours / Achats</span><span>${deboursTotal > 0 ? fmt(deboursTotal) : '—'}</span>
     </div>

@@ -841,47 +841,6 @@ FORMAT :
               ))}
             </div>
 
-            {/* BLOC 2b — Détail reversement */}
-            {!vueSynthese && data.kpis._virTotal > 0 && (
-              <div style={{ marginBottom: 24, padding: '10px 14px', background: 'var(--bg)', border: '1px solid var(--border)', borderRadius: 8, fontSize: '0.82em' }}>
-                <div style={{ fontWeight: 600, color: '#9C8E7D', marginBottom: 8, textTransform: 'uppercase', fontSize: '0.85em', letterSpacing: 0.5 }}>Calcul reversement</div>
-                <div style={{ display: 'flex', flexDirection: 'column', gap: 3 }}>
-                  <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-                    <span style={{ color: 'var(--text)' }}>LOY brut</span>
-                    <span style={{ fontWeight: 600 }}>{fmt(data.kpis._virTotal)}</span>
-                  </div>
-                  {data.kpis._totalDebours > 0 && (
-                    <div style={{ display: 'flex', justifyContent: 'space-between', color: '#DC2626' }}>
-                      <span>− Débours / prestations</span>
-                      <span>{fmt(data.kpis._totalDebours)}</span>
-                    </div>
-                  )}
-                  {data.kpis._totalHaowner > 0 && (
-                    <div style={{ display: 'flex', justifyContent: 'space-between', color: 'var(--brand)' }}>
-                      <span>− Achats HAOWNER</span>
-                      <span>{fmt(data.kpis._totalHaowner)}</span>
-                    </div>
-                  )}
-                  {data.kpis._fraisDeductionLoy > 0 && (
-                    <div style={{ display: 'flex', justifyContent: 'space-between', color: '#c2410c' }}>
-                      <span>− Frais propriétaire</span>
-                      <span>{fmt(data.kpis._fraisDeductionLoy)}</span>
-                    </div>
-                  )}
-                  {data.kpis._ownerStayMenageTotal > 0 && (
-                    <div style={{ display: 'flex', justifyContent: 'space-between', color: '#4A3728' }}>
-                      <span>− Ménages séjour proprio</span>
-                      <span>{fmt(data.kpis._ownerStayMenageTotal)}</span>
-                    </div>
-                  )}
-                  <div style={{ display: 'flex', justifyContent: 'space-between', fontWeight: 700, borderTop: '1px solid var(--border)', marginTop: 4, paddingTop: 4, color: '#059669' }}>
-                    <span>= Reversement net</span>
-                    <span>{fmt(data.kpis.virementNet)}</span>
-                  </div>
-                </div>
-              </div>
-            )}
-
             {/* BLOC 3 — Table réservations avec platform badges */}
             {!vueSynthese && (
               <div style={{ marginBottom: 24 }}>
