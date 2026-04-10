@@ -162,7 +162,7 @@ export async function buildRapportData(bienId, propId, mois, opts = {}) {
       // Direct  : total_price CSV (fin_gross_revenue)
       // Booking : accommodation + guest_fees + pass_through_taxes (= ce que Hospitable affiche)
       // Airbnb  : accommodation + guest_fees (guest_service_fee exclus — payé à Airbnb, pas à DCB)
-      gross_revenue: (r.platform === 'direct' && r.fin_gross_revenue)
+      gross_revenue: r.owner_stay ? 0 : (r.platform === 'direct' && r.fin_gross_revenue)
         ? r.fin_gross_revenue
         : ((r.fin_accommodation || 0) +
           (r.reservation_fee || []).filter(f => f.fee_type === 'guest_fee').reduce((s, f) => s + (f.amount || 0), 0) +
