@@ -190,8 +190,8 @@ export function genererRapportHTML(proprio, mois, data, colonnes = {}) {
                 <span style="display:inline-block;width:7px;height:7px;border-radius:50%;background:${platColor};margin-right:3px;vertical-align:middle;"></span>
                 <span style="color:#4A3728;">${platLabel}</span>
               </td>
-              ${cols.brut      ? `<td style="padding:5px 4px;text-align:right;white-space:nowrap;color:#2C2416;">${fmt(r.gross_revenue || 0)}</td>` : ''}
-              ${cols.base_comm ? `<td style="padding:5px 4px;text-align:right;white-space:nowrap;color:#2C2416;">${fmt(r.base_comm || 0)}</td>` : ''}
+              ${cols.brut      ? `<td style="padding:5px 4px;text-align:right;white-space:nowrap;color:#2C2416;">${r.owner_stay ? '—' : fmt(r.gross_revenue || 0)}</td>` : ''}
+              ${cols.base_comm ? `<td style="padding:5px 4px;text-align:right;white-space:nowrap;color:#2C2416;">${r.owner_stay ? '—' : fmt(r.base_comm || 0)}</td>` : ''}
               ${cols.hon       ? `<td style="padding:5px 4px;text-align:right;white-space:nowrap;color:#9c8c7a;">${v.HON ? fmt(v.HON.montant_ttc) : '—'}</td>` : ''}
               ${cols.loy       ? `<td style="padding:5px 4px;text-align:right;font-weight:500;white-space:nowrap;color:#CC9933;">${v.LOY ? fmt(v.LOY.montant_ht) : '—'}</td>` : ''}
               ${cols.vir       ? `<td style="padding:5px 4px;text-align:right;white-space:nowrap;color:#2d7a50;">${v.VIR ? fmt(v.VIR.montant_ht) : '—'}</td>` : ''}

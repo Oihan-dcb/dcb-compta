@@ -87,9 +87,9 @@ export function genererStatementHTML(proprio, mois, data) {
       </td>
       <td style="padding:4px 5px;font-size:8.5px;white-space:nowrap">${fmtDate(r.arrival_date)} – ${fmtDate(r.departure_date)}</td>
       <td style="padding:4px 5px;font-size:9px;text-align:right">${r.nights || '—'}</td>
-      <td style="padding:4px 5px;font-size:9px;text-align:right;white-space:nowrap">${fmt(r.gross_revenue ?? r.fin_revenue)}</td>
+      <td style="padding:4px 5px;font-size:9px;text-align:right;white-space:nowrap">${r.owner_stay ? '—' : fmt(r.gross_revenue ?? r.fin_revenue)}</td>
       <td style="padding:4px 5px;font-size:9px;text-align:right;white-space:nowrap;color:#4A3728">${r.owner_stay ? '—' : fmt(r.fin_revenue || 0)}</td>
-      <td style="padding:4px 5px;font-size:9px;text-align:right;white-space:nowrap;color:#4A3728">${(r.base_comm || 0) > 0 ? fmt(r.base_comm) : '—'}</td>
+      <td style="padding:4px 5px;font-size:9px;text-align:right;white-space:nowrap;color:#4A3728">${r.owner_stay ? '—' : (r.base_comm || 0) > 0 ? fmt(r.base_comm) : '—'}</td>
       <td style="padding:4px 5px;font-size:9px;text-align:right;white-space:nowrap;color:#9c8c7a">${honR > 0 ? fmt(honR) : '—'}</td>
       <td style="padding:4px 5px;font-size:9px;text-align:right;white-space:nowrap;color:#4A3728">${menR > 0 ? fmt(menR) : '—'}</td>
       <td style="padding:4px 5px;font-size:9px;text-align:right;white-space:nowrap;color:#9c8c7a">${taxeR > 0 ? fmt(taxeR) : '—'}</td>
