@@ -3,6 +3,7 @@ import { supabase } from '../lib/supabase'
 import MoisSelector from '../components/MoisSelector'
 import { formatMontant } from '../lib/hospitable'
 import { creerFrais, changerStatut } from '../services/fraisProprietaire'
+import { useMoisPersisted } from '../hooks/useMoisPersisted'
 
 const moisCourant = new Date().toISOString().slice(0, 7)
 
@@ -39,7 +40,7 @@ const FORM_EMPTY = {
 }
 
 export default function PageFraisProprietaire() {
-  const [mois, setMois] = useState(moisCourant)
+  const [mois, setMois] = useMoisPersisted()
   const [moisDispos, setMoisDispos] = useState([moisCourant])
   const [frais, setFrais] = useState([])
   const [biens, setBiens] = useState([])

@@ -188,6 +188,9 @@ export default function ModalResa({ resa, onClose, onSaved }) {
   const [modeVentil, setModeVentil] = useState('normal')
   const [ventilating, setVentilating] = useState(false)
   const [paiementsInfo, setPaiementsInfo] = useState([])
+  const [editingRevenu, setEditingRevenu] = useState(false)
+  const [revenuVal, setRevenuVal] = useState('')
+  const [savingRevenu, setSavingRevenu] = useState(false)
   useEffect(() => {
     if (!resa?.id) return
     supabase.from('reservation_paiement')
@@ -195,6 +198,21 @@ export default function ModalResa({ resa, onClose, onSaved }) {
       .eq('reservation_id', resa.id)
       .then(({ data }) => setPaiementsInfo(data || []))
   }, [resa?.id])
+
+  async function saveRevenu() {
+    setSavingRevenu(true)
+    try {
+      const newVal = Math.round(parseFloat(revenuVal.replace(',', '.')) * 100) || 0
+      await supabase.from('ventilation').delete().eq('reservation_id', resa.id)
+      await supabase.from('reservation').update({ fin_revenue: newVal, ventilation_calculee: false }).eq('id', resa.id)
+      setEditingRevenu(false)
+      if (onSaved) onSaved()
+    } catch (e) {
+      alert('Erreur : ' + e.message)
+    } finally {
+      setSavingRevenu(false)
+    }
+  }
 
   function handleProprio() {
     onClose()
@@ -226,7 +244,29 @@ export default function ModalResa({ resa, onClose, onSaved }) {
             ['Statut réservation', resa.final_status === 'cancelled'
               ? <span style={{ color: '#dc2626', fontWeight: 700 }}>⚠ Annulée</span>
               : <span style={{ color: '#16a34a', fontWeight: 700 }}>✓ Confirmée</span>],
-            ['Revenue net', <strong>{resa.fin_revenue ? formatMontant(resa.fin_revenue) : '—'}</strong>],
+            ['Revenue net', isManual ? (
+              editingRevenu
+                ? <span style={{ display: 'inline-flex', gap: 4, alignItems: 'center' }}>
+                    <input type="number" step="0.01" value={revenuVal} onChange={e => setRevenuVal(e.target.value)}
+                      autoFocus onKeyDown={e => { if (e.key === 'Enter') saveRevenu(); if (e.key === 'Escape') setEditingRevenu(false) }}
+                      style={{ width: 80, padding: '2px 6px', border: '1px solid #CC9933', borderRadius: 4, fontSize: '0.95em', fontWeight: 600 }} />
+                    <button onClick={saveRevenu} disabled={savingRevenu}
+                      style={{ fontSize: '0.75em', padding: '2px 8px', background: 'var(--brand)', color: 'white', border: 'none', borderRadius: 4, cursor: 'pointer' }}>
+                      {savingRevenu ? '…' : '✓'}
+                    </button>
+                    <button onClick={() => setEditingRevenu(false)}
+                      style={{ fontSize: '0.75em', padding: '2px 6px', background: '#f5f5f5', border: '1px solid #ddd', borderRadius: 4, cursor: 'pointer' }}>
+                      ✕
+                    </button>
+                  </span>
+                : <span style={{ display: 'inline-flex', gap: 6, alignItems: 'center' }}>
+                    <strong>{resa.fin_revenue ? formatMontant(resa.fin_revenue) : '—'}</strong>
+                    <button onClick={() => { setRevenuVal(((resa.fin_revenue || 0) / 100).toFixed(2)); setEditingRevenu(true) }}
+                      style={{ fontSize: '0.7em', padding: '1px 6px', background: '#f5f5f5', border: '1px solid #ddd', borderRadius: 4, cursor: 'pointer', color: '#666' }}>
+                      ✏️
+                    </button>
+                  </span>
+            ) : <strong>{resa.fin_revenue ? formatMontant(resa.fin_revenue) : '—'}</strong>],
           ].map(([label, val]) => (
             <div key={label}>
               <span style={{ color: '#888', fontSize: '0.8em', textTransform: 'uppercase' }}>{label}</span>
