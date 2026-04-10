@@ -21,6 +21,9 @@ export default function PageAutoEntrepreneurs() {
   const [syncResults, setSyncResults] = useState(null) // { email, password, nom } après création
   const [moisBalance, setMoisBalance] = useState(() => new Date().toISOString().slice(0, 7))
   const [balance, setBalance] = useState(null) // { nb_auto, auto_provision, auto_saisis, auto_reel, fmen_provision, fmen_reel }
+  const [visionMois, setVisionMois] = useState(() => new Date().toISOString().slice(0, 7))
+  const [visionData, setVisionData] = useState([])
+  const [loadingVision, setLoadingVision] = useState(false)
   const [error, setError] = useState(null)
   const [success, setSuccess] = useState(null)
   const [confirmModal, setConfirmModal] = useState(null)
@@ -30,7 +33,7 @@ export default function PageAutoEntrepreneurs() {
   const [errorPT, setErrorPT] = useState(null)
 
   useEffect(() => {
-    charger()
+    charger(true)  // autoSync au chargement
     // Realtime : rafraîchit si des missions sont ajoutées
     const channel = supabase.channel('ae-changes')
       .on('postgres_changes', { event: '*', schema: 'public', table: 'mission_menage' },
@@ -40,7 +43,7 @@ export default function PageAutoEntrepreneurs() {
     return () => { supabase.removeChannel(channel) }
   }, [])
 
-  async function charger() {
+  async function charger(autoSync = false) {
     setLoading(true)
     try {
       const [aesData, ptData] = await Promise.all([
@@ -49,6 +52,10 @@ export default function PageAutoEntrepreneurs() {
       ])
       setAes(aesData)
       setPrestationTypes(ptData)
+      if (autoSync) {
+        const moisCourant = new Date().toISOString().slice(0, 7)
+        syncTousLesAEs(aesData, moisCourant)
+      }
     } catch (err) { setError(err.message) }
     finally { setLoading(false) }
   }
@@ -71,6 +78,34 @@ export default function PageAutoEntrepreneurs() {
       fmen_provision: fmen.reduce((s, v) => s + (v.montant_ht || 0), 0),
       fmen_reel: fmen.filter(v => v.montant_reel != null).reduce((s, v) => s + (v.montant_reel || 0), 0),
     })
+  }
+
+  async function chargerVision(mois) {
+    setLoadingVision(true)
+    const { data } = await supabase
+      .from('prestation_hors_forfait')
+      .select('id, ae_id, bien_id, date_prestation, montant, statut, description, reservation_id, bien:bien_id(code, hospitable_name), prestation_type:prestation_type_id(nom)')
+      .eq('mois', mois)
+      .not('ae_id', 'is', null)
+      .order('date_prestation')
+    setVisionData(data || [])
+    setLoadingVision(false)
+  }
+
+  function exportVisionCSV(mois, rows) {
+    const header = ['AE', 'Bien', 'Date', 'Description', 'Type', 'Montant €', 'Statut']
+    const lines = rows.map(r => [
+      r.aeNom, r.bien?.code || '', r.date_prestation || '',
+      `"${(r.description || r.prestation_type?.nom || '').replace(/"/g, '""')}"`,
+      r.prestation_type?.nom || '',
+      ((r.montant || 0) / 100).toFixed(2), r.statut
+    ].join(';'))
+    const csv = [header.join(';'), ...lines].join('\n')
+    const blob = new Blob(['\uFEFF' + csv], { type: 'text/csv;charset=utf-8' })
+    const url = URL.createObjectURL(blob)
+    const a = document.createElement('a')
+    a.href = url; a.download = `missions-ae-${mois}.csv`; a.click()
+    URL.revokeObjectURL(url)
   }
 
   function ouvrir(ae) { setForm(ae ? { ...ae } : EMPTY_AE); setEditing(ae ? ae.id : 'new'); setError(null); setSuccess(null) }
@@ -99,16 +134,18 @@ export default function PageAutoEntrepreneurs() {
     })
   }
 
-  async function syncTousLesAEs() {
+  async function syncTousLesAEs(aesParam, moisParam) {
+    const liste = (aesParam || aes).filter(a => a.ical_url && a.actif !== false)
+    const moisCible = moisParam || syncMois
+    if (!liste.length) return
     setSyncing(true); setSyncResults(null); setError(null)
-    const aesAvecICal = aes.filter(a => a.ical_url && a.actif !== false)
     const results = []
-    for (const ae of aesAvecICal) {
+    for (const ae of liste) {
       try {
         const r = await fetch('/api/ae-action', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ action: 'sync', ae_id: ae.id, mois: syncMois })
+          body: JSON.stringify({ action: 'sync', ae_id: ae.id, mois: moisCible })
         })
         const d = await r.json()
         results.push({ nom: ae.prenom + ' ' + ae.nom, ...d })
@@ -218,6 +255,7 @@ export default function PageAutoEntrepreneurs() {
       <div style={{ display: 'flex', gap: 8, marginBottom: 20 }}>
         <button style={TAB_STYLE(tab === 'aes')} onClick={() => setTab('aes')}>🧹 Auto-entrepreneurs ({aes.length})</button>
         <button style={TAB_STYLE(tab === 'prestations')} onClick={() => setTab('prestations')}>⚙️ Types de prestations ({prestationTypes.length})</button>
+        <button style={TAB_STYLE(tab === 'vision')} onClick={() => { setTab('vision'); chargerVision(visionMois) }}>📊 Vision mensuelle</button>
       </div>
 
       {loading ? <div style={{ textAlign: 'center', padding: 40, color: '#888' }}>Chargement...</div> : (
@@ -285,6 +323,118 @@ export default function PageAutoEntrepreneurs() {
               ))}
             </div>
           )}
+
+          {tab === 'vision' && (() => {
+            const fmt = v => ((v || 0) / 100).toFixed(2) + ' €'
+            const rowsFlat = visionData.map(m => ({
+              ...m,
+              aeNom: (() => { const a = aes.find(x => x.id === m.ae_id); return a ? `${a.prenom || ''} ${a.nom}`.trim() : '—' })()
+            }))
+            const valides = rowsFlat.filter(m => m.statut === 'valide')
+            const grandTotal = valides.reduce((s, m) => s + (m.montant || 0), 0)
+            // Groupe par AE
+            const parAe = {}
+            for (const m of rowsFlat) {
+              if (!parAe[m.ae_id]) parAe[m.ae_id] = { ae: aes.find(x => x.id === m.ae_id), missions: [] }
+              parAe[m.ae_id].missions.push(m)
+            }
+            const aeGroups = Object.values(parAe).sort((a, b) => {
+              const tA = a.missions.filter(m => m.statut === 'valide').reduce((s, m) => s + (m.montant || 0), 0)
+              const tB = b.missions.filter(m => m.statut === 'valide').reduce((s, m) => s + (m.montant || 0), 0)
+              return tB - tA
+            })
+            return (
+              <div>
+                {/* Sélecteur mois + export */}
+                <div style={{ display: 'flex', gap: 10, alignItems: 'center', marginBottom: 18, flexWrap: 'wrap' }}>
+                  <input type="month" value={visionMois}
+                    onChange={e => { setVisionMois(e.target.value); chargerVision(e.target.value) }}
+                    style={{ padding: '6px 10px', borderRadius: 7, border: '1.5px solid var(--border)', fontSize: 13 }} />
+                  {loadingVision && <span style={{ fontSize: 13, color: '#888' }}>⏳ Chargement…</span>}
+                  <button onClick={() => exportVisionCSV(visionMois, rowsFlat)}
+                    style={{ background: '#16a34a', color: '#fff', border: 'none', borderRadius: 7, padding: '7px 14px', fontSize: 13, fontWeight: 600, cursor: 'pointer' }}>
+                    ⬇ Export CSV
+                  </button>
+                  {grandTotal > 0 && (
+                    <span style={{ fontSize: 14, fontWeight: 700, color: 'var(--text)', marginLeft: 8 }}>
+                      Total validé : {fmt(grandTotal)}
+                    </span>
+                  )}
+                </div>
+                {/* Cards par AE */}
+                {aeGroups.length === 0 && !loadingVision && (
+                  <div style={{ textAlign: 'center', padding: 40, color: '#888' }}>Aucune mission ce mois.</div>
+                )}
+                {aeGroups.map(({ ae, missions }) => {
+                  const totalAe = missions.filter(m => m.statut === 'valide').reduce((s, m) => s + (m.montant || 0), 0)
+                  const nbValide = missions.filter(m => m.statut === 'valide').length
+                  const nbEnAttente = missions.filter(m => m.statut === 'en_attente').length
+                  const nbAnnule = missions.filter(m => m.statut === 'annule').length
+                  const pct = grandTotal > 0 ? Math.round((totalAe / grandTotal) * 100) : 0
+                  return (
+                    <div key={ae?.id || 'inconnu'} style={{ background: '#fff', borderRadius: 12, border: '1px solid #e5e7eb', marginBottom: 14, overflow: 'hidden' }}>
+                      {/* Header AE */}
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 14, padding: '12px 18px', background: '#F7F4EF', borderBottom: '2px solid var(--brand)' }}>
+                        <div style={{ width: 36, height: 36, borderRadius: '50%', background: 'var(--brand)', color: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 700, fontSize: 15, flexShrink: 0 }}>
+                          {(ae?.prenom || ae?.nom || '?')[0].toUpperCase()}
+                        </div>
+                        <div style={{ flex: 1 }}>
+                          <div style={{ fontWeight: 700, fontSize: 15 }}>{ae ? `${ae.prenom || ''} ${ae.nom}`.trim() : '—'}</div>
+                          <div style={{ fontSize: 12, color: '#888', marginTop: 1 }}>
+                            {nbValide} mission{nbValide !== 1 ? 's' : ''} validée{nbValide !== 1 ? 's' : ''}
+                            {nbEnAttente > 0 && <span style={{ color: '#d97706', marginLeft: 8 }}>{nbEnAttente} en attente</span>}
+                            {nbAnnule > 0 && <span style={{ color: '#9c8c7a', marginLeft: 8 }}>{nbAnnule} annulée{nbAnnule !== 1 ? 's' : ''}</span>}
+                          </div>
+                        </div>
+                        <div style={{ textAlign: 'right' }}>
+                          <div style={{ fontSize: 20, fontWeight: 700, color: '#16a34a' }}>{fmt(totalAe)}</div>
+                          {grandTotal > 0 && (
+                            <div style={{ fontSize: 12, color: '#888', marginTop: 2 }}>
+                              {pct}% du total
+                              <div style={{ marginTop: 4, height: 4, width: 80, background: '#e5e7eb', borderRadius: 2, display: 'inline-block', verticalAlign: 'middle', marginLeft: 6 }}>
+                                <div style={{ height: '100%', width: `${pct}%`, background: 'var(--brand)', borderRadius: 2 }} />
+                              </div>
+                            </div>
+                          )}
+                        </div>
+                      </div>
+                      {/* Missions */}
+                      <div style={{ padding: '0 0 4px' }}>
+                        <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
+                          <tbody>
+                            {missions.sort((a, b) => (a.date_prestation || '').localeCompare(b.date_prestation || '')).map(m => {
+                              const STATUT_C = { valide: '#16a34a', en_attente: '#d97706', annule: '#9c8c7a' }
+                              return (
+                                <tr key={m.id} style={{ borderBottom: '1px solid #f3f4f6' }}>
+                                  <td style={{ padding: '7px 18px', color: '#666', whiteSpace: 'nowrap', fontSize: 12 }}>
+                                    {m.date_prestation ? m.date_prestation.split('-').reverse().join('/') : '—'}
+                                  </td>
+                                  <td style={{ padding: '7px 8px', fontWeight: 600, color: 'var(--brand)', fontSize: 12 }}>
+                                    {m.bien?.code || '—'}
+                                  </td>
+                                  <td style={{ padding: '7px 8px', color: 'var(--text)', flex: 1 }}>
+                                    {m.description || m.prestation_type?.nom || '—'}
+                                  </td>
+                                  <td style={{ padding: '7px 18px', textAlign: 'right', fontWeight: 600, whiteSpace: 'nowrap' }}>
+                                    {fmt(m.montant)}
+                                  </td>
+                                  <td style={{ padding: '7px 18px', textAlign: 'right' }}>
+                                    <span style={{ padding: '2px 8px', borderRadius: 10, fontSize: 11, fontWeight: 600, background: `${STATUT_C[m.statut]}20`, color: STATUT_C[m.statut] || '#888' }}>
+                                      {m.statut === 'valide' ? '✓' : m.statut === 'annule' ? '✕' : '⏳'}
+                                    </span>
+                                  </td>
+                                </tr>
+                              )
+                            })}
+                          </tbody>
+                        </table>
+                      </div>
+                    </div>
+                  )
+                })}
+              </div>
+            )
+          })()}
 
           {tab === 'prestations' && (
             <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>

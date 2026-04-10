@@ -43,6 +43,27 @@ export default function PageComptabilite() {
   const [filterStatutFacture, setFilterStatutFacture] = useState('')
   const [filterAlertsOnly, setFilterAlertsOnly] = useState(false)
 
+  // Visibilité colonnes
+  const COLS_DEFS = [
+    { key: 'resas',       label: 'Resas',       def: true },
+    { key: 'rappr',       label: 'Rappr.',       def: true },
+    { key: 'non_vent',    label: 'Non vent.',    def: false },
+    { key: 'hon_ht',      label: 'HON HT',       def: false },
+    { key: 'hon_ttc',     label: 'HON TTC',      def: true },
+    { key: 'fmen_ht',     label: 'FMEN HT',      def: true },
+    { key: 'auto_ht',     label: 'AUTO HT',      def: true },
+    { key: 'loy_ht',      label: 'LOY HT',       def: true },
+    { key: 'vir_ht',      label: 'VIR HT',       def: true },
+    { key: 'taxe',        label: 'TAXE',          def: true },
+    { key: 'facture',     label: 'Facture',       def: true },
+    { key: 'reversement', label: 'Reversement',   def: true },
+    { key: 'ecart',       label: 'Écart',         def: true },
+  ]
+  const [colsVisible, setColsVisible] = useState(() =>
+    Object.fromEntries(COLS_DEFS.map(c => [c.key, c.def]))
+  )
+  const col = k => colsVisible[k] ?? COLS_DEFS.find(c => c.key === k)?.def ?? true
+
   // Chargement mois dispos — même logique que PageRapports
   useEffect(() => {
     supabase.from('reservation').select('mois_comptable').then(({ data: res }) => {
@@ -187,6 +208,18 @@ export default function PageComptabilite() {
         {data && <span style={{ marginLeft: 'auto', fontSize: '0.8em', color: '#9C8E7D' }}>{rowsFiltrees.length} bien(s)</span>}
       </div>
 
+      {/* Sélecteur colonnes */}
+      <div style={{ marginBottom: 14, padding: '8px 12px', background: 'var(--bg)', border: '1px solid var(--border)', borderRadius: 8, display: 'flex', alignItems: 'center', flexWrap: 'wrap', gap: 4 }}>
+        <span style={{ fontSize: '0.8em', fontWeight: 600, color: '#9C8E7D', marginRight: 6 }}>Colonnes :</span>
+        {COLS_DEFS.map(({ key, label }) => (
+          <label key={key} style={{ display: 'inline-flex', alignItems: 'center', gap: 3, fontSize: '0.8em', cursor: 'pointer', marginRight: 8 }}>
+            <input type="checkbox" checked={colsVisible[key] ?? false}
+              onChange={e => setColsVisible(v => ({ ...v, [key]: e.target.checked }))} />
+            {label}
+          </label>
+        ))}
+      </div>
+
       {/* Tableau */}
       {loading && !data && (
         <div style={{ textAlign: 'center', padding: 40, color: '#9C8E7D' }}>Chargement…</div>
@@ -199,19 +232,19 @@ export default function PageComptabilite() {
               <tr style={{ background: 'var(--bg)', borderBottom: '2px solid var(--border)' }}>
                 <th style={th}>Bien</th>
                 <th style={th}>Propriétaire</th>
-                <th style={{ ...th, textAlign: 'right' }}>Resas</th>
-                <th style={{ ...th, textAlign: 'right' }}>Rappr.</th>
-                <th style={{ ...th, textAlign: 'right' }}>Non vent.</th>
-                <th style={{ ...th, textAlign: 'right' }}>HON HT</th>
-                <th style={{ ...th, textAlign: 'right' }}>HON TTC</th>
-                <th style={{ ...th, textAlign: 'right' }}>FMEN HT</th>
-                <th style={{ ...th, textAlign: 'right' }}>AUTO HT</th>
-                <th style={{ ...th, textAlign: 'right' }}>LOY HT</th>
-                <th style={{ ...th, textAlign: 'right' }}>VIR HT</th>
-                <th style={{ ...th, textAlign: 'right' }}>TAXE</th>
-                <th style={th}>Facture</th>
-                <th style={{ ...th, textAlign: 'right' }}>Reversement</th>
-                <th style={{ ...th, textAlign: 'right' }}>Écart</th>
+                {col('resas')       && <th style={{ ...th, textAlign: 'right' }}>Resas</th>}
+                {col('rappr')       && <th style={{ ...th, textAlign: 'right' }}>Rappr.</th>}
+                {col('non_vent')    && <th style={{ ...th, textAlign: 'right' }}>Non vent.</th>}
+                {col('hon_ht')      && <th style={{ ...th, textAlign: 'right' }}>HON HT</th>}
+                {col('hon_ttc')     && <th style={{ ...th, textAlign: 'right' }}>HON TTC</th>}
+                {col('fmen_ht')     && <th style={{ ...th, textAlign: 'right' }}>FMEN HT</th>}
+                {col('auto_ht')     && <th style={{ ...th, textAlign: 'right' }}>AUTO HT</th>}
+                {col('loy_ht')      && <th style={{ ...th, textAlign: 'right' }}>LOY HT</th>}
+                {col('vir_ht')      && <th style={{ ...th, textAlign: 'right' }}>VIR HT</th>}
+                {col('taxe')        && <th style={{ ...th, textAlign: 'right' }}>TAXE</th>}
+                {col('facture')     && <th style={th}>Facture</th>}
+                {col('reversement') && <th style={{ ...th, textAlign: 'right' }}>Reversement</th>}
+                {col('ecart')       && <th style={{ ...th, textAlign: 'right' }}>Écart</th>}
                 <th style={th}>Alertes</th>
               </tr>
             </thead>
@@ -231,42 +264,42 @@ export default function PageComptabilite() {
                     {r.bien_nom && <div style={{ fontSize: '0.85em', color: '#9C8E7D', maxWidth: 140, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{r.bien_nom}</div>}
                   </td>
                   <td style={td}>{r.proprietaire_nom || <span style={{ color: '#9C8E7D', fontStyle: 'italic' }}>—</span>}</td>
-                  <td style={{ ...td, textAlign: 'right' }}>{r.nb_resas}</td>
-                  <td style={{ ...td, textAlign: 'right' }}>
+                  {col('resas')    && <td style={{ ...td, textAlign: 'right' }}>{r.nb_resas}</td>}
+                  {col('rappr')    && <td style={{ ...td, textAlign: 'right' }}>
                     {r.nb_rapprochees > 0
                       ? <span style={{ color: '#059669', fontWeight: 600 }}>{r.nb_rapprochees}</span>
                       : <span style={{ color: '#9C8E7D' }}>0</span>}
                     {r.nb_non_rapprochees > 0 && <span style={{ color: '#f59e0b', marginLeft: 4 }}>({r.nb_non_rapprochees})</span>}
-                  </td>
-                  <td style={{ ...td, textAlign: 'right' }}>
+                  </td>}
+                  {col('non_vent') && <td style={{ ...td, textAlign: 'right' }}>
                     {r.nb_non_ventilees > 0
                       ? <span style={{ color: '#ef4444', fontWeight: 600 }}>{r.nb_non_ventilees}</span>
                       : <span style={{ color: '#9C8E7D' }}>0</span>}
-                  </td>
-                  <td style={{ ...td, textAlign: 'right', fontVariantNumeric: 'tabular-nums' }}>{r.hon_ht ? fmtN(r.hon_ht) : '—'}</td>
-                  <td style={{ ...td, textAlign: 'right', fontVariantNumeric: 'tabular-nums', fontWeight: r.hon_ttc ? 600 : 400 }}>{r.hon_ttc ? fmtN(r.hon_ttc) : '—'}</td>
-                  <td style={{ ...td, textAlign: 'right', fontVariantNumeric: 'tabular-nums' }}>{r.fmen_ht ? fmtN(r.fmen_ht) : '—'}</td>
-                  <td style={{ ...td, textAlign: 'right', fontVariantNumeric: 'tabular-nums' }}>{r.auto_ht ? fmtN(r.auto_ht) : '—'}</td>
-                  <td style={{ ...td, textAlign: 'right', fontVariantNumeric: 'tabular-nums' }}>{r.loy_ht ? fmtN(r.loy_ht) : '—'}</td>
-                  <td style={{ ...td, textAlign: 'right', fontVariantNumeric: 'tabular-nums' }}>{r.vir_ht ? fmtN(r.vir_ht) : '—'}</td>
-                  <td style={{ ...td, textAlign: 'right', fontVariantNumeric: 'tabular-nums' }}>{r.taxe_ht ? fmtN(r.taxe_ht) : '—'}</td>
-                  <td style={td}>
+                  </td>}
+                  {col('hon_ht')      && <td style={{ ...td, textAlign: 'right', fontVariantNumeric: 'tabular-nums' }}>{r.hon_ht ? fmtN(r.hon_ht) : '—'}</td>}
+                  {col('hon_ttc')     && <td style={{ ...td, textAlign: 'right', fontVariantNumeric: 'tabular-nums', fontWeight: r.hon_ttc ? 600 : 400 }}>{r.hon_ttc ? fmtN(r.hon_ttc) : '—'}</td>}
+                  {col('fmen_ht')     && <td style={{ ...td, textAlign: 'right', fontVariantNumeric: 'tabular-nums' }}>{r.fmen_ht ? fmtN(r.fmen_ht) : '—'}</td>}
+                  {col('auto_ht')     && <td style={{ ...td, textAlign: 'right', fontVariantNumeric: 'tabular-nums' }}>{r.auto_ht ? fmtN(r.auto_ht) : '—'}</td>}
+                  {col('loy_ht')      && <td style={{ ...td, textAlign: 'right', fontVariantNumeric: 'tabular-nums' }}>{r.loy_ht ? fmtN(r.loy_ht) : '—'}</td>}
+                  {col('vir_ht')      && <td style={{ ...td, textAlign: 'right', fontVariantNumeric: 'tabular-nums' }}>{r.vir_ht ? fmtN(r.vir_ht) : '—'}</td>}
+                  {col('taxe')        && <td style={{ ...td, textAlign: 'right', fontVariantNumeric: 'tabular-nums' }}>{r.taxe_ht ? fmtN(r.taxe_ht) : '—'}</td>}
+                  {col('facture')     && <td style={td}>
                     {r.facture_statut
                       ? <span style={{ padding: '2px 7px', borderRadius: 10, fontSize: '0.8em', fontWeight: 600, background: r.facture_statut === 'validee' ? '#D1FAE5' : '#FEF3C7', color: r.facture_statut === 'validee' ? '#059669' : '#92400E' }}>{r.facture_statut}</span>
                       : r.hon_ttc > 0
                         ? <span style={{ color: '#ef4444', fontWeight: 600, fontSize: '0.8em' }}>manquante</span>
                         : <span style={{ color: '#9C8E7D', fontSize: '0.8em' }}>—</span>}
-                  </td>
-                  <td style={{ ...td, textAlign: 'right', fontVariantNumeric: 'tabular-nums' }}>
+                  </td>}
+                  {col('reversement') && <td style={{ ...td, textAlign: 'right', fontVariantNumeric: 'tabular-nums' }}>
                     {r.facture_montant_reversement != null ? fmtN(r.facture_montant_reversement) : '—'}
-                  </td>
-                  <td style={{ ...td, textAlign: 'right', fontVariantNumeric: 'tabular-nums' }}>
+                  </td>}
+                  {col('ecart')       && <td style={{ ...td, textAlign: 'right', fontVariantNumeric: 'tabular-nums' }}>
                     {r.ecart_reversement_proprio != null
                       ? <span style={{ color: Math.abs(r.ecart_reversement_proprio) > 100 ? '#f59e0b' : '#059669', fontWeight: Math.abs(r.ecart_reversement_proprio) > 100 ? 700 : 400 }}>
                           {r.ecart_reversement_proprio >= 0 ? '+' : ''}{fmtN(r.ecart_reversement_proprio)}
                         </span>
                       : '—'}
-                  </td>
+                  </td>}
                   <td style={td}>
                     <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap' }}>
                       <AlertBadge level="error"   count={r.alerts.filter(a => a.level === 'error').length} />
@@ -282,19 +315,19 @@ export default function PageComptabilite() {
                 <tr style={{ background: 'var(--bg)', borderTop: '2px solid var(--brand)', fontWeight: 700 }}>
                   <td style={{ ...td, color: 'var(--brand)' }}>TOTAL</td>
                   <td style={td} />
-                  <td style={{ ...td, textAlign: 'right' }}>{rowsFiltrees.reduce((s, r) => s + r.nb_resas, 0)}</td>
-                  <td style={{ ...td, textAlign: 'right' }}>{rowsFiltrees.reduce((s, r) => s + r.nb_rapprochees, 0)}</td>
-                  <td style={{ ...td, textAlign: 'right' }}>{rowsFiltrees.reduce((s, r) => s + r.nb_non_ventilees, 0)}</td>
-                  <td style={{ ...td, textAlign: 'right' }}>{fmtN(rowsFiltrees.reduce((s, r) => s + r.hon_ht,   0))}</td>
-                  <td style={{ ...td, textAlign: 'right' }}>{fmtN(rowsFiltrees.reduce((s, r) => s + r.hon_ttc,  0))}</td>
-                  <td style={{ ...td, textAlign: 'right' }}>{fmtN(rowsFiltrees.reduce((s, r) => s + r.fmen_ht,  0))}</td>
-                  <td style={{ ...td, textAlign: 'right' }}>{fmtN(rowsFiltrees.reduce((s, r) => s + r.auto_ht,  0))}</td>
-                  <td style={{ ...td, textAlign: 'right' }}>{fmtN(rowsFiltrees.reduce((s, r) => s + r.loy_ht,   0))}</td>
-                  <td style={{ ...td, textAlign: 'right' }}>{fmtN(rowsFiltrees.reduce((s, r) => s + r.vir_ht,   0))}</td>
-                  <td style={{ ...td, textAlign: 'right' }}>{fmtN(rowsFiltrees.reduce((s, r) => s + r.taxe_ht,  0))}</td>
-                  <td style={td} />
-                  <td style={td} />
-                  <td style={td} />
+                  {col('resas')       && <td style={{ ...td, textAlign: 'right' }}>{rowsFiltrees.reduce((s, r) => s + r.nb_resas, 0)}</td>}
+                  {col('rappr')       && <td style={{ ...td, textAlign: 'right' }}>{rowsFiltrees.reduce((s, r) => s + r.nb_rapprochees, 0)}</td>}
+                  {col('non_vent')    && <td style={{ ...td, textAlign: 'right' }}>{rowsFiltrees.reduce((s, r) => s + r.nb_non_ventilees, 0)}</td>}
+                  {col('hon_ht')      && <td style={{ ...td, textAlign: 'right' }}>{fmtN(rowsFiltrees.reduce((s, r) => s + r.hon_ht,   0))}</td>}
+                  {col('hon_ttc')     && <td style={{ ...td, textAlign: 'right' }}>{fmtN(rowsFiltrees.reduce((s, r) => s + r.hon_ttc,  0))}</td>}
+                  {col('fmen_ht')     && <td style={{ ...td, textAlign: 'right' }}>{fmtN(rowsFiltrees.reduce((s, r) => s + r.fmen_ht,  0))}</td>}
+                  {col('auto_ht')     && <td style={{ ...td, textAlign: 'right' }}>{fmtN(rowsFiltrees.reduce((s, r) => s + r.auto_ht,  0))}</td>}
+                  {col('loy_ht')      && <td style={{ ...td, textAlign: 'right' }}>{fmtN(rowsFiltrees.reduce((s, r) => s + r.loy_ht,   0))}</td>}
+                  {col('vir_ht')      && <td style={{ ...td, textAlign: 'right' }}>{fmtN(rowsFiltrees.reduce((s, r) => s + r.vir_ht,   0))}</td>}
+                  {col('taxe')        && <td style={{ ...td, textAlign: 'right' }}>{fmtN(rowsFiltrees.reduce((s, r) => s + r.taxe_ht,  0))}</td>}
+                  {col('facture')     && <td style={td} />}
+                  {col('reversement') && <td style={td} />}
+                  {col('ecart')       && <td style={td} />}
                   <td style={td} />
                 </tr>
               </tfoot>
