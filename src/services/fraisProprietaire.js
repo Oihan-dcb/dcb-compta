@@ -64,3 +64,32 @@ export async function changerStatut(id, statut) {
   if (error) throw error
   return data
 }
+
+/**
+ * Réinitialise un frais facturé → a_facturer pour permettre un re-traitement.
+ * À utiliser quand la facture a été annulée ou recalculée.
+ */
+export async function annulerFacturationFrais(id) {
+  const { data: existing, error: fetchErr } = await supabase
+    .from('frais_proprietaire')
+    .select('statut')
+    .eq('id', id)
+    .single()
+  if (fetchErr) throw fetchErr
+  if (existing.statut !== 'facture') {
+    throw new Error(`Réinitialisation impossible : statut actuel '${existing.statut}' (attendu: 'facture')`)
+  }
+  const { data, error } = await supabase
+    .from('frais_proprietaire')
+    .update({
+      statut: 'a_facturer',
+      montant_deduit_loy: 0,
+      montant_reliquat: 0,
+      statut_deduction: 'en_attente',
+    })
+    .eq('id', id)
+    .select()
+    .single()
+  if (error) throw error
+  return data
+}

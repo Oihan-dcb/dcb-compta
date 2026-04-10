@@ -242,6 +242,19 @@ async function genererFactureGroupe(proprio, biens, mois) {
     .neq('statut', 'brouillon')
   const remboursementsTotal = (remboursements || []).reduce((s, f) => s + (f.montant_ttc || 0), 0)
 
+  // Frais refacturés directement au propriétaire (sans absorption LOY)
+  const { data: fraisDirect } = await supabase
+    .from('frais_proprietaire')
+    .select('id, montant_ttc, bien_id, libelle')
+    .in('bien_id', bienIds)
+    .eq('mois_facturation', mois)
+    .eq('mode_traitement', 'facturer_direct')
+    .eq('mode_encaissement', 'dcb')
+    .eq('statut', 'a_facturer')
+  const fraisDirectTTC = (fraisDirect || []).reduce((s, f) => s + (f.montant_ttc || 0), 0)
+  const fraisDirectHT  = Math.round(fraisDirectTTC / 1.20)
+  const fraisDirectTVA = fraisDirectTTC - fraisDirectHT
+
   // DIV : expenses [DCB]
   const divHT = (expenses || []).reduce((s, e) => s + (e.amount || 0), 0)
   const divTVA = Math.round(divHT * 0.20)
@@ -347,14 +360,14 @@ async function genererFactureGroupe(proprio, biens, mois) {
   const osFmenSurplusHT  = Math.round(osFmenSurplusGlobalTTC / 1.20)
   const osFmenSurplusTVA = osFmenSurplusGlobalTTC - osFmenSurplusHT
 
-  // Totaux facture (inclut owner stay FMEN surplus facturé séparément)
-  const totalHT = com.ht + menConsolide.ht + div.ht + haownerHT + osFmenSurplusHT
-  const totalTVA = com.tva + menConsolide.tva + div.tva + haownerTVA + osFmenSurplusTVA
+  // Totaux facture (inclut owner stay FMEN surplus facturé séparément + frais directs)
+  const totalHT = com.ht + menConsolide.ht + div.ht + haownerHT + osFmenSurplusHT + fraisDirectHT
+  const totalTVA = com.tva + menConsolide.tva + div.tva + haownerTVA + osFmenSurplusTVA + fraisDirectTVA
   const totalTTC = totalHT + totalTVA
 
   // ownerStayAbsorbTotal = part couverte par LOY → réduit le reversement
   // owner stay surplus = facturé séparément → ne réduit pas le reversement
-  const montantReversement = Math.max(0, vir.ht - totalPrestations - haownerTTC - fraisDeduitTotal - deboursPropAbsorbTotal - ownerStayAbsorbTotal) + remboursementsTotal
+  const montantReversement = Math.max(0, vir.ht - totalPrestations - haownerTTC - fraisDirectTTC - fraisDeduitTotal - deboursPropAbsorbTotal - ownerStayAbsorbTotal) + remboursementsTotal
 
   // Cas solde nÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂ©gatif : uniquement des expenses, pas de rÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂ©servations
   const soldeNegatif = totalHT === 0 && div.ht > 0
@@ -530,6 +543,22 @@ async function genererFactureGroupe(proprio, biens, mois) {
     })
   }
 
+  // Frais refacturés directement : lignes positives TVA 20% (charge directe proprio)
+  for (const frais of (fraisDirect || [])) {
+    const ht  = Math.round(frais.montant_ttc / 1.20)
+    const tva = frais.montant_ttc - ht
+    lignes.push({
+      facture_id:  factureId,
+      code:        'FRAIS',
+      libelle:     frais.libelle || 'Frais refacturé',
+      montant_ht:  ht,
+      taux_tva:    20,
+      montant_tva: tva,
+      montant_ttc: frais.montant_ttc,
+      ordre:       ordre++,
+    })
+  }
+
   // Owner stay FMEN surplus : ligne prestation de service par bien (TVA 20%)
   for (const [, { osFmenSurplus, bienName }] of ownerStaySurplusByBien) {
     if (osFmenSurplus <= 0) continue
@@ -552,7 +581,7 @@ async function genererFactureGroupe(proprio, biens, mois) {
     await supabase.from('facture_evoliz_ligne').insert(lignes)
   }
 
-  // Mettre à jour chaque frais : deduit, reliquat, statut_deduction (chemin non-skipped uniquement)
+  // Mettre à jour chaque frais deduire_loyer : deduit, reliquat, statut_deduction
   for (const frais of (fraisDeduire || [])) {
     const { deduit = 0, reliquat = frais.montant_ttc } = fraisDeductionMap.get(frais.id) || {}
     const statutDeduction = reliquat === 0 ? 'totalement_deduit'
@@ -564,6 +593,18 @@ async function genererFactureGroupe(proprio, biens, mois) {
         montant_deduit_loy: deduit,
         montant_reliquat:   reliquat,
         statut_deduction:   statutDeduction,
+      })
+      .eq('id', frais.id)
+  }
+
+  // Marquer les frais facturer_direct comme facturés (pas de déduction LOY)
+  for (const frais of (fraisDirect || [])) {
+    await supabase.from('frais_proprietaire')
+      .update({
+        statut:             'facture',
+        montant_deduit_loy: 0,
+        montant_reliquat:   frais.montant_ttc,
+        statut_deduction:   'non_deduit',
       })
       .eq('id', frais.id)
   }

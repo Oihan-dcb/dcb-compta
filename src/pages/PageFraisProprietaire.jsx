@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react'
 import { supabase } from '../lib/supabase'
 import MoisSelector from '../components/MoisSelector'
 import { formatMontant } from '../lib/hospitable'
-import { creerFrais, changerStatut } from '../services/fraisProprietaire'
+import { creerFrais, changerStatut, annulerFacturationFrais } from '../services/fraisProprietaire'
 import { useMoisPersisted } from '../hooks/useMoisPersisted'
 
 const moisCourant = new Date().toISOString().slice(0, 7)
@@ -143,6 +143,18 @@ export default function PageFraisProprietaire() {
     }
   }
 
+  async function reinitialiserFrais(id) {
+    if (!confirm('Réinitialiser ce frais en "à facturer" ?\nLa facture du mois devra être régénérée.')) return
+    setError(null)
+    try {
+      await annulerFacturationFrais(id)
+      setSuccess('Frais réinitialisé — relancez la génération de factures pour ce mois')
+      await charger()
+    } catch (e) {
+      setError(e.message)
+    }
+  }
+
   const totalTTC = frais.reduce((s, f) => s + (f.montant_ttc || 0), 0)
   const nbAFacturer = frais.filter(f => f.statut === 'a_facturer').length
 
@@ -223,17 +235,24 @@ export default function PageFraisProprietaire() {
                         </span>
                       )}
                     </td>
-                    <td>
+                    <td style={{ display: 'flex', gap: 4, flexWrap: 'wrap' }}>
                       {f.statut === 'brouillon' && (
                         <button className="btn btn-secondary" style={{ fontSize: 12, padding: '3px 8px' }}
                           onClick={() => changerStatutFrais(f.id, 'a_facturer')}>
-                          Marquer à facturer
+                          ✓ À facturer
                         </button>
                       )}
                       {f.statut === 'a_facturer' && (
                         <button className="btn btn-secondary" style={{ fontSize: 12, padding: '3px 8px' }}
                           onClick={() => changerStatutFrais(f.id, 'brouillon')}>
-                          Annuler
+                          ← Brouillon
+                        </button>
+                      )}
+                      {f.statut === 'facture' && (
+                        <button className="btn btn-secondary" style={{ fontSize: 12, padding: '3px 8px', color: '#B45309' }}
+                          onClick={() => reinitialiserFrais(f.id)}
+                          title="Réinitialiser pour retraitement — régénérer la facture ensuite">
+                          ↺ Réinitialiser
                         </button>
                       )}
                     </td>
