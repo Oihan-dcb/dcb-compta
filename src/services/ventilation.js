@@ -395,10 +395,44 @@ export async function calculerVentilationResa(resa) {
   if (bien.gestion_loyer === false) return []
   if ((bien.agence || 'dcb') !== 'dcb') return []
 
-  // Séjour propriétaire → pas de ventilation automatique (saisie manuelle via VentilationEdit)
+  // Séjour propriétaire : MEN = fin_revenue, AUTO = provision AE, FMEN = MEN - AUTO
   if (resa.owner_stay) {
+    const men       = resa.fin_revenue || 0
+    const autoHT    = bien.provision_ae_ref || 0
+    const fmenTTC   = Math.max(0, men - autoHT)
+    const fmenHT    = Math.round(fmenTTC / (1 + TVA_RATE))
+    const fmenTVA   = fmenTTC - fmenHT
+
+    // Sauvegarder montant_reel AUTO existant (AE réel saisi manuellement)
+    const { data: existingAutoReel } = await supabase
+      .from('ventilation').select('montant_reel').eq('reservation_id', resa.id).eq('code', 'AUTO').maybeSingle()
+    const autoReel = existingAutoReel?.montant_reel ?? null
+
+    await supabase.from('ventilation').delete().eq('reservation_id', resa.id)
+
+    const lignes = []
+    if (fmenTTC > 0) lignes.push(ligneTVA('FMEN', 'Forfait ménage séjour propriétaire', fmenHT, bien, resa, null, fmenTTC))
+    if (autoHT > 0)  lignes.push(ligneHorsTVA('AUTO', 'Débours auto-entrepreneur', autoHT, bien, resa))
+
+    if (lignes.length > 0) {
+      const { error } = await supabase.from('ventilation').insert(lignes)
+      if (error) throw error
+    }
+
+    // Restaurer le montant_reel AUTO si saisi manuellement
+    if (autoReel !== null && autoHT > 0) {
+      await supabase.from('ventilation').update({ montant_reel: autoReel }).eq('reservation_id', resa.id).eq('code', 'AUTO')
+    }
+
     await supabase.from('reservation').update({ ventilation_calculee: true }).eq('id', resa.id)
-    return []
+
+    // Lier mission_menage si AE
+    const { data: ligneAuto } = await supabase.from('ventilation').select('id').eq('reservation_id', resa.id).eq('code', 'AUTO').single()
+    if (ligneAuto?.id) {
+      await supabase.rpc('lier_ventilation_auto_mission', { p_reservation_id: resa.id, p_ventilation_id: ligneAuto.id }).catch(() => {})
+    }
+
+    return lignes
   }
 
   // Revenue = montant net reçu en banque (en centimes)
