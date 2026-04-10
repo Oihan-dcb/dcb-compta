@@ -252,7 +252,7 @@ export default function PageAutoEntrepreneurs() {
        <div style={{ padding: 24, maxWidth: 1100, margin: '0 auto' }}>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20 }}>
         <div>
-          <h1 style={{ margin: 0, fontSize: 22, fontWeight: 700 }}>Auto-entrepreneurs</h1>
+          <h1 style={{ margin: 0, fontSize: 22, fontWeight: 700 }}>Staff</h1>
           <p style={{ margin: '4px 0 0', color: '#666', fontSize: 14 }}>Prestataires ménage — {aes.length} configuré(s)</p>
         </div>
         <div style={{ display: 'flex', gap: 8 }}>

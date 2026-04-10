@@ -41,7 +41,7 @@ function ConfigDropdown() {
         Config <span style={{ fontSize: 9, opacity: 0.6 }}>▼</span>
       </button>
       {open && (
-        <div style={{ position: 'absolute', top: '110%', right: 0, zIndex: 200, background: 'var(--bg-card)', border: '1px solid var(--border)', borderRadius: 10, boxShadow: '0 8px 24px rgba(0,0,0,0.15)', minWidth: 150, padding: '6px 0' }}
+        <div style={{ position: 'absolute', top: '110%', right: 0, zIndex: 200, background: '#EAE3D4', border: '1px solid var(--border)', borderRadius: 10, boxShadow: '0 8px 24px rgba(0,0,0,0.18)', minWidth: 150, padding: '6px 0' }}
           onMouseLeave={() => setOpen(false)}>
           {[
             { to: '/import', label: 'Import CSV' },
