@@ -2,7 +2,7 @@
 :root {
   --brand: #CC9933; --brand-light: #E4A853; --brand-pale: #FFF8EC;
   --text: #2C2416; --text-muted: #8C7B65; --border: #D9CEB8;
-  --bg: #F7F3EC; --white: #ffffff;
+  --bg: #F7F3EC; --white: #ffffff; --bg-card: #ffffff; --header-bien: #EAE3D4;
   --success: #059669; --success-bg: #d1fae5;
   --warning: #d97706; --warning-bg: #fef3c7;
   --danger: #dc2626; --danger-bg: #fee2e2;
