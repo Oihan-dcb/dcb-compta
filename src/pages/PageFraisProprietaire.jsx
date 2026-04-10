@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react'
 import { supabase } from '../lib/supabase'
 import MoisSelector from '../components/MoisSelector'
 import { formatMontant } from '../lib/hospitable'
-import { creerFrais, changerStatut, annulerFacturationFrais } from '../services/fraisProprietaire'
+import { creerFrais, modifierFrais, supprimerFrais, changerStatut, annulerFacturationFrais } from '../services/fraisProprietaire'
 import { useMoisPersisted } from '../hooks/useMoisPersisted'
 
 const moisCourant = new Date().toISOString().slice(0, 7)
@@ -48,6 +48,8 @@ export default function PageFraisProprietaire() {
   const [loading, setLoading] = useState(false)
   const [showModal, setShowModal] = useState(false)
   const [form, setForm] = useState(FORM_EMPTY)
+  const [editingFrais, setEditingFrais] = useState(null)
+  const [formEdit, setFormEdit] = useState(FORM_EMPTY)
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState(null)
   const [success, setSuccess] = useState(null)
@@ -92,6 +94,61 @@ export default function PageFraisProprietaire() {
       setError(e.message)
     } finally {
       setLoading(false)
+    }
+  }
+
+  function ouvrirEdition(f) {
+    setFormEdit({
+      bien_id:           f.bien_id,
+      date:              f.date,
+      libelle:           f.libelle,
+      montant_euros:     (f.montant_ttc / 100).toFixed(2),
+      mode_traitement:   f.mode_traitement,
+      mode_encaissement: f.mode_encaissement,
+    })
+    setEditingFrais(f)
+    setError(null)
+  }
+
+  async function soumettreMod(e) {
+    e.preventDefault()
+    const bienEd = biens.find(b => b.id === formEdit.bien_id)
+    if (!formEdit.bien_id || !formEdit.libelle || !formEdit.montant_euros || !bienEd?.proprietaire_id) {
+      setError('Bien, libellé, montant et propriétaire requis')
+      return
+    }
+    setSaving(true)
+    setError(null)
+    try {
+      await modifierFrais(editingFrais.id, {
+        bien_id:           formEdit.bien_id,
+        proprietaire_id:   bienEd.proprietaire_id,
+        date:              formEdit.date,
+        libelle:           formEdit.libelle,
+        montant_ttc:       Math.round(parseFloat(formEdit.montant_euros) * 100),
+        mode_traitement:   formEdit.mode_traitement,
+        mode_encaissement: formEdit.mode_encaissement,
+        mois_facturation:  formEdit.date.slice(0, 7),
+      })
+      setSuccess('Frais modifié')
+      setEditingFrais(null)
+      await charger()
+    } catch (e) {
+      setError(e.message)
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  async function supprimerFraisHandler(id) {
+    if (!confirm('Supprimer ce frais ? Cette action est irréversible.')) return
+    setError(null)
+    try {
+      await supprimerFrais(id)
+      setSuccess('Frais supprimé')
+      await charger()
+    } catch (e) {
+      setError(e.message)
     }
   }
 
@@ -255,12 +312,112 @@ export default function PageFraisProprietaire() {
                           ↺ Réinitialiser
                         </button>
                       )}
+                      {(f.statut === 'brouillon' || f.statut === 'a_facturer') && (
+                        <button className="btn btn-secondary" style={{ fontSize: 12, padding: '3px 8px' }}
+                          onClick={() => ouvrirEdition(f)}>
+                          ✏
+                        </button>
+                      )}
+                      {f.statut === 'brouillon' && (
+                        <button className="btn btn-secondary" style={{ fontSize: 12, padding: '3px 8px', color: '#DC2626' }}
+                          onClick={() => supprimerFraisHandler(f.id)}>
+                          🗑
+                        </button>
+                      )}
                     </td>
                   </tr>
                 )
               })}
             </tbody>
           </table>
+        </div>
+      )}
+
+      {/* Modal édition */}
+      {editingFrais && (
+        <div className="modal-overlay" onClick={() => setEditingFrais(null)}>
+          <div className="modal" onClick={e => e.stopPropagation()} style={{ maxWidth: 480 }}>
+            <div className="modal-header">
+              <h2>Modifier le frais</h2>
+              <button className="modal-close" onClick={() => setEditingFrais(null)}>✗</button>
+            </div>
+            <form onSubmit={soumettreMod}>
+              <div className="modal-body" style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+
+                <div>
+                  <label className="form-label">Bien *</label>
+                  <select className="form-select" value={formEdit.bien_id} required
+                    onChange={e => setFormEdit(f => ({ ...f, bien_id: e.target.value }))}>
+                    <option value="">— Sélectionner un bien —</option>
+                    {biens.map(b => (
+                      <option key={b.id} value={b.id}>{b.code} — {b.hospitable_name}</option>
+                    ))}
+                  </select>
+                </div>
+
+                <div>
+                  <label className="form-label">Propriétaire</label>
+                  <input className="form-input" value={(() => {
+                    const b = biens.find(x => x.id === formEdit.bien_id)
+                    return b?.proprietaire ? `${b.proprietaire.nom}${b.proprietaire.prenom ? ' ' + b.proprietaire.prenom : ''}` : '—'
+                  })()} readOnly
+                    style={{ background: 'var(--header-bien)', color: 'var(--text-muted)', cursor: 'default' }} />
+                </div>
+
+                <div>
+                  <label className="form-label">Date *</label>
+                  <input className="form-input" type="date" required
+                    value={formEdit.date}
+                    onChange={e => setFormEdit(f => ({ ...f, date: e.target.value }))} />
+                </div>
+
+                <div>
+                  <label className="form-label">Libellé *</label>
+                  <input className="form-input" type="text" required
+                    value={formEdit.libelle}
+                    onChange={e => setFormEdit(f => ({ ...f, libelle: e.target.value }))} />
+                </div>
+
+                <div>
+                  <label className="form-label">Mode de traitement</label>
+                  <select className="form-select" value={formEdit.mode_traitement}
+                    onChange={e => setFormEdit(f => ({ ...f, mode_traitement: e.target.value }))}>
+                    <option value="deduire_loyer">Déduire du loyer</option>
+                    <option value="facturer_direct">Refacturer au propriétaire</option>
+                    <option value="remboursement">Remboursement (+ LOY)</option>
+                  </select>
+                </div>
+
+                <div>
+                  <label className="form-label">{formEdit.mode_traitement === 'remboursement' ? 'Montant (€) *' : 'Montant TTC (€) *'}</label>
+                  <input className="form-input" type="number" min="0.01" step="0.01" required
+                    value={formEdit.montant_euros}
+                    onChange={e => setFormEdit(f => ({ ...f, montant_euros: e.target.value }))} />
+                </div>
+
+                {formEdit.mode_traitement !== 'remboursement' && (
+                  <div>
+                    <label className="form-label">Mode d'encaissement</label>
+                    <select className="form-select" value={formEdit.mode_encaissement}
+                      onChange={e => setFormEdit(f => ({ ...f, mode_encaissement: e.target.value }))}>
+                      <option value="dcb">DCB a payé</option>
+                      <option value="proprio">Propriétaire a payé</option>
+                    </select>
+                  </div>
+                )}
+
+                {error && <div className="alert alert-error">{error}</div>}
+              </div>
+              <div className="modal-footer">
+                <button type="button" className="btn btn-secondary" onClick={() => setEditingFrais(null)}>
+                  Annuler
+                </button>
+                <button type="submit" className="btn btn-primary" disabled={saving}>
+                  {saving ? <><span className="spinner" /> Enregistrement…</> : 'Enregistrer'}
+                </button>
+              </div>
+            </form>
+          </div>
         </div>
       )}
 

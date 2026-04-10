@@ -729,7 +729,10 @@ FORMAT :
           style={{ padding: '8px 12px', border: '1px solid var(--border)', borderRadius: 8, fontSize: '0.95em', background: '#fff', color: 'var(--text)', minWidth: 200 }}>
           {propsFiltres.map(p => {
             const bienEnvoye = (p.bien || []).some(b => biensEnvoyes.has(b.id))
-            const codes = (p.bien || []).filter(b => b.listed && b.agence === 'dcb').map(b => b.code).filter(Boolean).join(', ')
+            const isMaiteP = (p.bien || []).some(b => b.groupe_facturation === 'MAITE')
+            const codes = isMaiteP
+              ? 'Maison Maïté'
+              : (p.bien || []).filter(b => b.listed && b.agence === 'dcb').map(b => b.code).filter(Boolean).join(', ')
             return (
               <option key={p.id} value={p.id} style={{ color: bienEnvoye ? '#9C8E7D' : 'inherit' }}>
                 {bienEnvoye ? '✓ ' : ''}{codes ? `${codes} — ` : ''}{p.nom}
@@ -767,7 +770,7 @@ FORMAT :
           {/* Header card */}
           <div style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '14px 20px', background: '#EAE3D4', borderBottom: '2px solid var(--brand)', flexWrap: 'wrap' }}>
             <span style={{ fontWeight: 700, color: 'var(--text)', fontSize: '1.05em', flex: 1 }}>
-              {data.bien?.hospitable_name || proprio?.nom} — {moisLabel}
+              {modeMaite === 'global' ? 'Maison Maïté' : (data.bien?.hospitable_name || proprio?.nom)} — {moisLabel}
             </span>
             {data.facture && (
               <span style={{ padding: '3px 10px', borderRadius: 20, fontSize: '0.78em', fontWeight: 600,
@@ -812,6 +815,47 @@ FORMAT :
                 </div>
               ))}
             </div>
+
+            {/* BLOC 2b — Détail reversement */}
+            {!vueSynthese && data.kpis._virTotal > 0 && (
+              <div style={{ marginBottom: 24, padding: '10px 14px', background: 'var(--bg)', border: '1px solid var(--border)', borderRadius: 8, fontSize: '0.82em' }}>
+                <div style={{ fontWeight: 600, color: '#9C8E7D', marginBottom: 8, textTransform: 'uppercase', fontSize: '0.85em', letterSpacing: 0.5 }}>Calcul reversement</div>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 3 }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                    <span style={{ color: 'var(--text)' }}>LOY brut</span>
+                    <span style={{ fontWeight: 600 }}>{fmt(data.kpis._virTotal)}</span>
+                  </div>
+                  {data.kpis._totalDebours > 0 && (
+                    <div style={{ display: 'flex', justifyContent: 'space-between', color: '#DC2626' }}>
+                      <span>− Débours / prestations</span>
+                      <span>{fmt(data.kpis._totalDebours)}</span>
+                    </div>
+                  )}
+                  {data.kpis._totalHaowner > 0 && (
+                    <div style={{ display: 'flex', justifyContent: 'space-between', color: 'var(--brand)' }}>
+                      <span>− Achats HAOWNER</span>
+                      <span>{fmt(data.kpis._totalHaowner)}</span>
+                    </div>
+                  )}
+                  {data.kpis._fraisDeductionLoy > 0 && (
+                    <div style={{ display: 'flex', justifyContent: 'space-between', color: '#c2410c' }}>
+                      <span>− Frais propriétaire</span>
+                      <span>{fmt(data.kpis._fraisDeductionLoy)}</span>
+                    </div>
+                  )}
+                  {data.kpis._ownerStayMenageTotal > 0 && (
+                    <div style={{ display: 'flex', justifyContent: 'space-between', color: '#4A3728' }}>
+                      <span>− Ménages séjour proprio</span>
+                      <span>{fmt(data.kpis._ownerStayMenageTotal)}</span>
+                    </div>
+                  )}
+                  <div style={{ display: 'flex', justifyContent: 'space-between', fontWeight: 700, borderTop: '1px solid var(--border)', marginTop: 4, paddingTop: 4, color: '#059669' }}>
+                    <span>= Reversement net</span>
+                    <span>{fmt(data.kpis.virementNet)}</span>
+                  </div>
+                </div>
+              </div>
+            )}
 
             {/* BLOC 3 — Table réservations avec platform badges */}
             {!vueSynthese && (
@@ -929,7 +973,7 @@ FORMAT :
               </div>
             )}
 
-            {/* BLOC 3b/3c/4b — Débours, achats & frais fusionnés */}
+            {/* BLOC 3b/3c/4b — Charges DCB */}
             {!vueSynthese && ((data.extrasGlobaux || []).length > 0 || (data.haownerList || []).length > 0 || data.frais.length > 0 || (data.ownerStayList || []).length > 0) && (() => {
               const total = (data.extrasGlobaux || []).length + (data.haownerList || []).length + data.frais.length + (data.ownerStayList || []).length
               const allRows = [
@@ -941,7 +985,7 @@ FORMAT :
               return (
                 <div style={{ marginBottom: 24 }}>
                   <div style={{ fontSize: '0.8em', fontWeight: 600, color: '#9C8E7D', marginBottom: 8, textTransform: 'uppercase', letterSpacing: 0.5 }}>
-                    Débours, achats & frais ({total})
+                    Charges DCB ({total})
                   </div>
                   <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.82em' }}>
                     <thead>
@@ -976,7 +1020,7 @@ FORMAT :
                           ? <span style={{ color: 'var(--brand)', fontWeight: 600 }}>{fmt(row.montant_ttc)}</span>
                           : isMenageProprio
                           ? row.a_saisir
-                            ? <span style={{ color: '#B45309', fontStyle: 'italic', fontSize: '0.9em' }}>à saisir</span>
+                            ? <a href={`/prestations-ae`} style={{ color: '#B45309', fontStyle: 'italic', fontSize: '0.9em', textDecoration: 'underline', cursor: 'pointer' }}>à saisir →</a>
                             : <span style={{ color: '#4A3728' }}>{fmt(row.montant)}</span>
                           : isDebours
                           ? <span style={{ color: '#4A3728' }}>{fmt(row.montant)}</span>

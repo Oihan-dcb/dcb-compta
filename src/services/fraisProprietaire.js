@@ -65,6 +65,14 @@ export async function changerStatut(id, statut) {
   return data
 }
 
+export async function supprimerFrais(id) {
+  const { error } = await supabase
+    .from('frais_proprietaire')
+    .delete()
+    .eq('id', id)
+  if (error) throw error
+}
+
 /**
  * Réinitialise un frais facturé → a_facturer pour permettre un re-traitement.
  * À utiliser quand la facture a été annulée ou recalculée.
