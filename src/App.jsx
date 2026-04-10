@@ -14,6 +14,7 @@ import PageFraisProprietaire from './pages/PageFraisProprietaire'
 import PageImport from './pages/PageImport'
 import PageJournal from './pages/PageJournal'
 import PageRapports from './pages/PageRapports'
+import PageComptabilite from './pages/PageComptabilite'
 import './App.css'
 
 function ConfigDropdown() {
@@ -99,6 +100,7 @@ export default function App() {
                 </span>
               )}
             </NavLink>
+            <NavLink to="/comptabilite" className={({isActive}) => isActive ? 'nav-link active' : 'nav-link'}>Comptabilité</NavLink>
             <NavLink to="/rapports" className={({isActive}) => isActive ? 'nav-link active' : 'nav-link'}>Rapports</NavLink>
             <NavLink to="/factures" className={({isActive}) => isActive ? 'nav-link active' : 'nav-link'}>Facturation</NavLink>
             <ConfigDropdown />
@@ -114,6 +116,7 @@ export default function App() {
             <Route path="/frais-proprietaire" element={<PageFraisProprietaire />} />
             <Route path="/prestations-ae" element={<PagePrestationsAE />} />
             <Route path="/factures" element={<PageFactures />} />
+            <Route path="/comptabilite" element={<PageComptabilite />} />
             <Route path="/rapports" element={<PageRapports />} />
             <Route path="/import" element={<PageImport />} />
             <Route path="/auto-entrepreneurs" element={<PageAutoEntrepreneurs />} />
