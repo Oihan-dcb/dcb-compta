@@ -27,6 +27,7 @@ export default function PageAutoEntrepreneurs() {
   // Prestation type form
   const [editingPT, setEditingPT] = useState(null)
   const [formPT, setFormPT] = useState({ nom: '', description: '', taux_defaut: 25, unite: 'heure' })
+  const [errorPT, setErrorPT] = useState(null)
 
   useEffect(() => {
     charger()
@@ -157,16 +158,19 @@ export default function PageAutoEntrepreneurs() {
   async function sauvegarderPT() {
     if (!formPT.nom.trim()) return
     setSaving(true)
+    setErrorPT(null)
     try {
       const data = { ...formPT, taux_defaut: Math.round(parseFloat(formPT.taux_defaut) * 100) || 2500, actif: true }
       if (editingPT && editingPT !== 'new') {
-        await supabase.from('prestation_type').update(data).eq('id', editingPT)
+        const { error } = await supabase.from('prestation_type').update(data).eq('id', editingPT)
+        if (error) throw error
       } else {
-        await supabase.from('prestation_type').insert(data)
+        const { error } = await supabase.from('prestation_type').insert(data)
+        if (error) throw error
       }
       await charger()
       setEditingPT(null)
-    } catch (err) { setError(err.message) }
+    } catch (err) { setErrorPT(err.message) }
     finally { setSaving(false) }
   }
 
@@ -412,8 +416,9 @@ export default function PageAutoEntrepreneurs() {
           <div style={{ background: '#fff', borderRadius: 14, padding: 28, width: '100%', maxWidth: 480, boxShadow: '0 20px 60px rgba(0,0,0,.2)' }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20 }}>
               <h2 style={{ margin: 0, fontSize: 18, fontWeight: 700 }}>{editingPT === 'new' ? 'Nouvelle prestation' : 'Modifier prestation'}</h2>
-              <button onClick={() => setEditingPT(null)} style={{ background: 'none', border: 'none', fontSize: 20, cursor: 'pointer', color: '#888' }}>✕</button>
+              <button onClick={() => { setEditingPT(null); setErrorPT(null) }} style={{ background: 'none', border: 'none', fontSize: 20, cursor: 'pointer', color: '#888' }}>✕</button>
             </div>
+            {errorPT && <div style={{ background: '#FEE2E2', borderRadius: 7, padding: '10px 14px', marginBottom: 14, fontSize: 13, color: '#B91C1C' }}>✕ {errorPT}</div>}
             <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
               <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
                 <label style={{ fontSize: 11, fontWeight: 600, color: '#666', textTransform: 'uppercase' }}>Nom *</label>
