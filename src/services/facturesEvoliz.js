@@ -814,10 +814,12 @@ export async function getFacturesMois(mois) {
     .from('facture_evoliz')
     .select(`
       *,
-      proprietaire (id, nom, prenom, email, iban, id_evoliz),
+      bien (id, code),
+      proprietaire (id, nom, prenom, email, iban, id_evoliz, bien(id, code, groupe_facturation)),
       facture_evoliz_ligne (*)
     `)
     .eq('mois', mois)
+    .neq('type_facture', 'com')
     .order('created_at')
 
   if (error) throw error

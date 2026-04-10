@@ -1,0 +1,20 @@
+wing: dcb_compta
+rooms:
+- name: documentation
+  description: Files from docs/
+- name: supabase
+  description: Files from supabase/
+- name: public
+  description: Files from public/
+- name: backend
+  description: Files from api/
+- name: src
+  description: Files from src/
+- name: frontend
+  description: Files from components/
+- name: scripts
+  description: Files from scripts/
+- name: design
+  description: Files from assets/
+- name: general
+  description: Files that don't fit other rooms

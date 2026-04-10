@@ -199,6 +199,15 @@ export default function PageFactures() {
   const totalTTC = factures.reduce((s, f) => s + (f.total_ttc || 0), 0)
   const totalReversement = factures.reduce((s, f) => s + (f.montant_reversement || 0), 0)
 
+  // Trier par code bien (direct si bien_id, sinon premier bien du proprio) puis par nom proprio
+  const facturesTries = [...factures].sort((a, b) => {
+    const codeA = a.bien?.code || a.proprietaire?.bien?.slice().sort((x,y)=>(x.code||'').localeCompare(y.code||''))[0]?.code || ''
+    const codeB = b.bien?.code || b.proprietaire?.bien?.slice().sort((x,y)=>(x.code||'').localeCompare(y.code||''))[0]?.code || ''
+    const c = codeA.localeCompare(codeB, 'fr', { numeric: true })
+    if (c !== 0) return c
+    return `${a.proprietaire?.nom}`.localeCompare(`${b.proprietaire?.nom}`, 'fr')
+  })
+
   return (
     <div>
       <div className="page-header">
@@ -359,10 +368,14 @@ export default function PageFactures() {
         </div>
       ) : (
         <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-          {factures.map(f => {
+          {facturesTries.map(f => {
             const statutInfo = f.solde_negatif ? STATUTS.solde_negatif : (STATUTS[f.statut] || STATUTS.brouillon)
             const isExpanded = expanded === f.id
             const proprio = f.proprietaire
+            // Code(s) du bien : bien direct si facture mono-bien, sinon codes du groupe
+            const bienCodes = f.bien?.code
+              ? f.bien.code
+              : (proprio?.bien || []).slice().sort((a,b)=>(a.code||'').localeCompare(b.code||'')).map(b=>b.code).filter(Boolean).join(', ')
 
             return (
               <div key={f.id} style={{
@@ -379,18 +392,19 @@ export default function PageFactures() {
                   <div style={{ display: 'flex', gap: 16, alignItems: 'center' }}>
                     <div>
                       <div style={{ fontWeight: 600, fontSize: 15 }}>
+                        {bienCodes && <span style={{ fontFamily: 'monospace', color: 'var(--brand)', marginRight: 8, fontSize: 13 }}>{bienCodes}</span>}
                         {proprio?.nom} {proprio?.prenom || ''}
                       </div>
                       <div style={{ fontSize: 12, color: 'var(--text-muted)' }}>
                         {f.numero_facture || `Brouillon — ${mois}`}
                         {proprio?.iban && <span> · IBAN : {proprio.iban.substring(0, 12)}…</span>}
-          {f.type_facture === 'debours' && (
-            <span style={{ fontSize: 10, fontWeight: 700, background: '#e8f4f8',
-                           color: '#2c7da0', borderRadius: 4, padding: '2px 6px',
-                           marginLeft: 8, verticalAlign: 'middle' }}>
-              Débours AE
-            </span>
-          )}
+                        {f.type_facture === 'debours' && (
+                          <span style={{ fontSize: 10, fontWeight: 700, background: '#e8f4f8',
+                                         color: '#2c7da0', borderRadius: 4, padding: '2px 6px',
+                                         marginLeft: 8, verticalAlign: 'middle' }}>
+                            Débours AE
+                          </span>
+                        )}
                       </div>
                     </div>
                   </div>
