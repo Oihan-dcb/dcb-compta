@@ -857,6 +857,79 @@ export async function marquerEnvoyeeEvoliz(factureId, idEvoliz, numeroFacture) {
   if (error) throw error
 }
 
+// ── FACTURE COM (Commissions Web Directes) ───────────────────────────────────
+
+export async function getFactureCOM(mois) {
+  const { data } = await supabase
+    .from('facture_evoliz')
+    .select('id, statut, total_ht, total_ttc, id_evoliz, numero_facture')
+    .eq('mois', mois)
+    .eq('type_facture', 'com')
+    .maybeSingle()
+  return data
+}
+
+export async function genererFactureCOM(mois) {
+  const { data: comLines, error } = await supabase
+    .from('ventilation')
+    .select('montant_ht, montant_tva, montant_ttc')
+    .eq('mois_comptable', mois)
+    .eq('code', 'COM')
+
+  if (error) throw error
+
+  const totals = (comLines || []).reduce((acc, l) => ({
+    ht:  acc.ht  + (l.montant_ht  || 0),
+    tva: acc.tva + (l.montant_tva || 0),
+    ttc: acc.ttc + (l.montant_ttc || 0),
+  }), { ht: 0, tva: 0, ttc: 0 })
+
+  if (totals.ttc === 0) throw new Error('Aucune commission directe (COM) ce mois — vérifier la ventilation.')
+
+  const { data: existing } = await supabase
+    .from('facture_evoliz')
+    .select('id, statut')
+    .eq('mois', mois)
+    .eq('type_facture', 'com')
+    .maybeSingle()
+
+  if (existing?.statut === 'envoye_evoliz')
+    throw new Error('Facture COM déjà envoyée dans Evoliz — non modifiable.')
+
+  const factureData = {
+    mois,
+    type_facture: 'com',
+    proprietaire_id: null,
+    statut: 'brouillon',
+    total_ht:  totals.ht,
+    total_tva: totals.tva,
+    total_ttc: totals.ttc,
+    montant_reversement: 0,
+  }
+
+  let factureId
+  if (existing?.id) {
+    const { error: upd } = await supabase.from('facture_evoliz').update(factureData).eq('id', existing.id)
+    if (upd) throw upd
+    factureId = existing.id
+  } else {
+    const { data: newF, error: ins } = await supabase.from('facture_evoliz').insert(factureData).select('id').single()
+    if (ins) throw ins
+    factureId = newF.id
+  }
+
+  return { factureId, created: !existing?.id, ...totals }
+}
+
+export async function validerFactureCOM(factureId) {
+  const { error } = await supabase
+    .from('facture_evoliz')
+    .update({ statut: 'valide' })
+    .eq('id', factureId)
+    .eq('statut', 'brouillon')
+  if (error) throw error
+}
+
 /**
  * GÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂ©nÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂ¨re l'export CSV pour l'expert-comptable
  * Une ligne par code ventilation par rÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂ©servation

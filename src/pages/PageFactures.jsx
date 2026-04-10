@@ -3,9 +3,10 @@ import MoisSelector from '../components/MoisSelector'
 import { useMoisPersisted } from '../hooks/useMoisPersisted'
 import {
   getFacturesMois, genererFacturesMois, validerFacture,
-  getStatsFactures, exportCSVComptable, telechargerCSV
+  getStatsFactures, exportCSVComptable, telechargerCSV,
+  getFactureCOM, genererFactureCOM, validerFactureCOM,
 } from '../services/facturesEvoliz'
-import { pousserFacturesMoisVersEvoliz, pingEvoliz } from '../services/evoliz'
+import { pousserFacturesMoisVersEvoliz, pingEvoliz, pousserFactureCOMVersEvoliz } from '../services/evoliz'
 import { formatMontant } from '../lib/hospitable'
 
 const moisCourant = new Date().toISOString().substring(0, 7)
@@ -39,7 +40,12 @@ export default function PageFactures() {
   const [success, setSuccess] = useState(null)
   const [warning, setWarning] = useState(null)
 
-  useEffect(() => { charger() }, [mois])
+  // COM
+  const [comFacture, setComFacture] = useState(null)
+  const [generatingCOM, setGeneratingCOM] = useState(false)
+  const [pushingCOM, setPushingCOM] = useState(false)
+
+  useEffect(() => { charger(); chargerCOM() }, [mois])
   useEffect(() => {
     import('../lib/supabase').then(function(mod) {
       mod.supabase.from('facture_evoliz').select('mois').then(function(res) {
@@ -50,6 +56,56 @@ export default function PageFactures() {
       })
     })
   }, [])
+
+  async function chargerCOM() {
+    const f = await getFactureCOM(mois)
+    setComFacture(f)
+  }
+
+  async function genererCOM() {
+    setGeneratingCOM(true)
+    setError(null)
+    setSuccess(null)
+    try {
+      const result = await genererFactureCOM(mois)
+      setSuccess(`Facture COM ${result.created ? 'créée' : 'mise à jour'} — ${formatMontant(result.ttc)} TTC`)
+      await chargerCOM()
+    } catch (err) {
+      setError(err.message)
+    } finally {
+      setGeneratingCOM(false)
+    }
+  }
+
+  async function validerCOM() {
+    if (!comFacture?.id) return
+    try {
+      await validerFactureCOM(comFacture.id)
+      setSuccess('Facture COM validée — prête pour Evoliz')
+      await chargerCOM()
+    } catch (err) {
+      setError(err.message)
+    }
+  }
+
+  async function pousserCOM() {
+    if (!comFacture?.id) return
+    setPushingCOM(true)
+    setError(null)
+    try {
+      const result = await pousserFactureCOMVersEvoliz(
+        comFacture.id,
+        { ht: comFacture.total_ht, tva: 0, ttc: comFacture.total_ttc },
+        mois
+      )
+      setSuccess(`Facture COM envoyée dans Evoliz — n° ${result.invoiceNumber || result.invoiceId}`)
+      await chargerCOM()
+    } catch (err) {
+      setError(err.message)
+    } finally {
+      setPushingCOM(false)
+    }
+  }
 
   async function charger() {
     setLoading(true)
@@ -247,6 +303,52 @@ export default function PageFactures() {
           {warning}
         </div>
       )}
+
+      {/* ── Bloc COM — Commissions Web Directes ── */}
+      <div style={{ border: '1px solid var(--border)', borderRadius: 'var(--radius)', background: 'var(--white)', marginBottom: 16, overflow: 'hidden' }}>
+        <div style={{ padding: '14px 18px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 12, background: '#F0EBE1', borderBottom: '2px solid var(--brand)' }}>
+          <div>
+            <div style={{ fontWeight: 700, fontSize: 15 }}>Commissions Web Directes — CLI-RESA-WEB-DCB</div>
+            <div style={{ fontSize: 12, color: 'var(--text-muted)', marginTop: 2 }}>
+              Réservations directes · code COM · TVA 20%
+              {comFacture?.numero_facture && <span style={{ marginLeft: 8, fontWeight: 600 }}>· {comFacture.numero_facture}</span>}
+            </div>
+          </div>
+          <div style={{ display: 'flex', gap: 12, alignItems: 'center', flexWrap: 'wrap' }}>
+            {comFacture && (
+              <>
+                <div style={{ textAlign: 'right' }}>
+                  <div style={{ fontSize: 11, color: 'var(--text-muted)', textTransform: 'uppercase' }}>HT</div>
+                  <div style={{ fontWeight: 500 }}>{formatMontant(comFacture.total_ht)}</div>
+                </div>
+                <div style={{ textAlign: 'right' }}>
+                  <div style={{ fontSize: 11, color: 'var(--text-muted)', textTransform: 'uppercase' }}>TTC</div>
+                  <div style={{ fontWeight: 700, fontSize: 16 }}>{formatMontant(comFacture.total_ttc)}</div>
+                </div>
+                <span style={{ padding: '4px 12px', borderRadius: 100, fontSize: 12, fontWeight: 600, background: (STATUTS[comFacture.statut] || STATUTS.brouillon).bg, color: (STATUTS[comFacture.statut] || STATUTS.brouillon).color }}>
+                  {(STATUTS[comFacture.statut] || STATUTS.brouillon).label}
+                </span>
+              </>
+            )}
+            {!comFacture && <span style={{ fontSize: 13, color: 'var(--text-muted)', fontStyle: 'italic' }}>Non générée ce mois</span>}
+            {(!comFacture || comFacture.statut === 'brouillon') && (
+              <button className="btn btn-secondary" style={{ fontSize: 13 }} onClick={genererCOM} disabled={generatingCOM}>
+                {generatingCOM ? <><span className="spinner" /> Génération…</> : '⚡ Générer'}
+              </button>
+            )}
+            {comFacture?.statut === 'brouillon' && (
+              <button className="btn btn-secondary" style={{ fontSize: 13 }} onClick={validerCOM}>
+                ✓ Valider
+              </button>
+            )}
+            {comFacture?.statut === 'valide' && (
+              <button className="btn btn-primary" style={{ fontSize: 13 }} onClick={pousserCOM} disabled={pushingCOM}>
+                {pushingCOM ? <><span className="spinner" /> Evoliz…</> : '— Pousser Evoliz'}
+              </button>
+            )}
+          </div>
+        </div>
+      </div>
 
       {loading ? (
         <div className="loading-state"><span className="spinner" /> Chargement…</div>

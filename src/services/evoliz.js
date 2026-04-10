@@ -293,3 +293,61 @@ export async function getInvoicePDFBase64(invoiceId) {
 export async function getPaytermsEvoliz() {
   return evolizCall('getPayterms')
 }
+
+// ── FACTURE COM ──────────────────────────────────────────────────────────────
+
+/**
+ * Pousse la facture COM (commissions web directes) vers Evoliz
+ * Client cible : CLI-RESA-WEB-DCB (recherche par nom)
+ */
+export async function pousserFactureCOMVersEvoliz(factureId, totals, mois) {
+  // Verrou anti-doublon
+  await supabase.from('facture_evoliz')
+    .update({ statut: 'envoi_en_cours' })
+    .eq('id', factureId)
+    .eq('statut', 'valide')
+
+  try {
+    // 1. Trouver le client CLI-RESA-WEB-DCB dans Evoliz
+    const listResult = await evolizCall('listClients', { search: 'CLI-RESA-WEB-DCB' })
+    const clients = listResult?.data || []
+    if (!clients.length) throw new Error('Client CLI-RESA-WEB-DCB introuvable dans Evoliz — vérifier le nom exact.')
+    const clientId = clients[0].clientid
+
+    // 2. Créer la facture
+    const createdInvoice = await evolizCall('createInvoice', {
+      clientId: parseInt(clientId),
+      documentdate: new Date().toISOString().substring(0, 10),
+      paytermid: 1,
+      comment: `Commissions sur réservations web directes — ${mois}`,
+      items: [{
+        designation: 'Commission gestion réservations directes',
+        reference: 'COM',
+        quantity: 1,
+        unitPrice: totals.ht / 100,
+        vatRate: 20,
+      }],
+    })
+
+    const invoiceId = createdInvoice?.invoiceid
+    if (!invoiceId) throw new Error('invoiceid non retourné par Evoliz')
+
+    // 3. Sauvegarder (numéro définitif)
+    const savedInvoice = await evolizCall('saveInvoice', { invoiceId })
+    const invoiceNumber = savedInvoice?.document_number
+
+    // 4. Mettre à jour Supabase
+    await supabase.from('facture_evoliz').update({
+      statut: 'envoye_evoliz',
+      id_evoliz: String(invoiceId),
+      numero_facture: invoiceNumber || null,
+      date_emission: new Date().toISOString().substring(0, 10),
+    }).eq('id', factureId)
+
+    return { invoiceId, invoiceNumber }
+  } catch (err) {
+    // Reset si échec
+    await supabase.from('facture_evoliz').update({ statut: 'valide' }).eq('id', factureId)
+    throw err
+  }
+}
