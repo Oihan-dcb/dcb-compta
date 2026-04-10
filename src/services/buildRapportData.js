@@ -208,11 +208,15 @@ export async function buildRapportData(bienId, propId, mois, opts = {}) {
   // ── virementNet — règle unique ───────────────────────────────────────────
   // BRANCHE 1 : facture confirmée (hors brouillon/calcul_en_cours) → montant_reversement est la vérité
   // BRANCHE 2 : recalcul depuis virTotal
+  // ownerStayAbsorbBranche2 = seule la part couverte par le LOY résiduel réduit le reversement
+  // Le surplus owner stay est facturé séparément (ligne "Ménage séjour propriétaire") — ne pas déduire deux fois
+  const loyDisponiblePourOwnerStay = Math.max(0, loyTotal - totalDebours - totalHaowner - fraisDeductionLoy)
+  const ownerStayAbsorbBranche2 = Math.min(ownerStayMenageTotal, loyDisponiblePourOwnerStay)
   const virementNet = (facture?.montant_reversement > 0 &&
                        facture?.statut !== 'brouillon' &&
                        facture?.statut !== 'calcul_en_cours')
     ? facture.montant_reversement
-    : Math.max(0, virTotal - totalDebours - totalHaowner - fraisDeductionLoy - ownerStayMenageTotal)
+    : Math.max(0, virTotal - totalDebours - totalHaowner - fraisDeductionLoy - ownerStayAbsorbBranche2)
 
   // ── Avis clients ─────────────────────────────────────────────────────────
   const nextMoisStr = m === 12 ? `${y + 1}-01` : `${y}-${String(m + 1).padStart(2, '0')}`
