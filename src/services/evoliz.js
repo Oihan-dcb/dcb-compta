@@ -335,13 +335,26 @@ export async function pousserFactureCOMVersEvoliz(factureId, totals, mois) {
     // 3. Sauvegarder (numéro définitif)
     const savedInvoice = await evolizCall('saveInvoice', { invoiceId })
     const invoiceNumber = savedInvoice?.document_number
+    const dateEmission = new Date().toISOString().substring(0, 10)
 
-    // 4. Mettre à jour Supabase
+    // 4. Solder automatiquement — virement compte de gestion DCB
+    const montantTTC = totals.ttc / 100
+    if (montantTTC > 0) {
+      await evolizCall('createPayment', {
+        invoiceId,
+        paydate: dateEmission,
+        label: 'Virement compte de gestion DCB',
+        paytypeid: 4,
+        amount: montantTTC,
+      })
+    }
+
+    // 5. Mettre à jour Supabase
     await supabase.from('facture_evoliz').update({
-      statut: 'envoye_evoliz',
+      statut: 'payee',
       id_evoliz: String(invoiceId),
       numero_facture: invoiceNumber || null,
-      date_emission: new Date().toISOString().substring(0, 10),
+      date_emission: dateEmission,
     }).eq('id', factureId)
 
     return { invoiceId, invoiceNumber }
