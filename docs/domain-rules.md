@@ -520,6 +520,7 @@ Le frais a été avancé par DCB. Il est refacturé au propriétaire via la fact
 |---|---|---|
 | `deduire_loyer` | `proprio` | ⚠ Non intégré — le proprio a déjà payé, pas de déduction à calculer |
 | `facturer_direct` | `proprio` | ⚠ Non intégré — le proprio a déjà payé, pas de refacturation à émettre |
+| `remboursement` | — | Pas de mode_encaissement (DCB rembourse directement via le reversement) |
 
 ---
 
@@ -544,16 +545,21 @@ Ni `fin_revenue` (qui inclut host_service_fee négatif), ni le code VIR (LOY+tax
 
 ### 15.2 fraisDeductionLoy — règle complète
 
-Frais `mode_traitement='deduire_loyer'` du mois, accumulés avec la logique suivante :
+Inclut `deduire_loyer` (positif) ET `remboursement` (négatif) :
 
 ```
-si statut='facture' && statut_deduction ≠ 'en_attente' → montant_deduit_loy
-si statut='facture' && statut_deduction = 'en_attente'  → montant_ttc  (fallback)
-si statut='a_facturer'                                  → montant_ttc
-sinon                                                   → 0 (ignoré)
+mode_traitement='deduire_loyer' :
+  si statut='facture' && statut_deduction ≠ 'en_attente' → + montant_deduit_loy
+  si statut='facture' && statut_deduction = 'en_attente'  → + montant_ttc  (fallback)
+  si statut='a_facturer'                                  → + montant_ttc
+  sinon                                                   → 0 (ignoré)
+
+mode_traitement='remboursement' :
+  si statut ≠ 'brouillon'                                 → − montant_ttc
+  [réduit la déduction = augmente le reversement]
 ```
 
-Le cas `statut='facture' && statut_deduction='en_attente'` correspond à un frais facturé mais dont la déduction du loyer n'a pas encore été traitée — on utilise le TTC complet comme estimé conservateur.
+**Remboursement** : montant HT (= TTC, pas de TVA). Saisi en positif, traité comme négatif dans `fraisDeductionLoy`. Visible en vert `+ montant` dans le statement PDF (section Reversement, entre VIR et Débours).
 
 ### 15.3 virementNet — double branche
 
@@ -576,7 +582,11 @@ La BRANCHE 1 court-circuite le recalcul dès qu'une facture validée existe. Le 
 
 **Principe** : `fin_revenue` d'une résa `owner_stay=true` = montant total du ménage à facturer au propriétaire.
 
-**Saisie** : L'utilisateur saisit manuellement FMEN (TTC, TVA 20%) et AUTO (HT, 0%) via `VentilationEdit`. `calculerVentilationResa` est court-circuité (guard `owner_stay`).
+**Calcul automatique** : `calculerVentilationResa` gère le cas `owner_stay=true` :
+- AUTO = `bien.provision_ae_ref`
+- FMEN TTC = `max(0, fin_revenue - AUTO)`
+- Déclenché par le batch ⚡ Ventiler (filtre `owner_stay=false` supprimé) ET via ModalResa
+- `VentilationEdit` reste disponible pour correction manuelle si besoin
 
 **Absorption dans `genererFactureGroupe` (per-bien, en priorité après deboursProp) :**
 

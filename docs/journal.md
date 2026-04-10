@@ -288,3 +288,50 @@ L'envoi d'emails via OVH SMTP (denomailer) provoquait des `Load failed` / `502` 
 ### Résultat
 - `{ ok: true, id: "..." }` confirmé en prod avec domaine vérifié ✅
 - Load failed résolu définitivement ✅
+
+---
+
+## Session fixes UX & métier — 10/04/2026 (suite)
+
+### Fixes déployés
+
+**1. Réservations manuelles annulées — édition fin_revenue**
+- `ModalResa.jsx` : bouton ✏️ sur "Revenue net" pour les resas `platform=manual`
+- Sauvegarde : supprime ventilation + update `fin_revenue` + reset `ventilation_calculee=false`
+- Mise à jour optimiste de la ligne dans le tableau (state local avant rechargement)
+- Vérification erreur Supabase avec `.select()` pour détecter les blocages RLS
+
+**2. Owner stay batch ventilation**
+- `ventilation.js` `calculerVentilationMois` : suppression du filtre `.eq('owner_stay', false)`
+- Les resas `owner_stay=true` sont maintenant incluses dans le batch ⚡ Ventiler
+- `calculerVentilationResa` gère déjà le cas `owner_stay` (FMEN = fin_revenue - AUTO provision)
+
+**3. gross_revenue owner_stay dans rapport**
+- `buildRapportData.js` : `gross_revenue: r.owner_stay ? 0 : ...`
+- Évite que le fin_revenue du ménage proprio apparaisse dans la colonne "Brut voyageur"
+
+**4. Frais type Remboursement**
+- Nouveau `mode_traitement = 'remboursement'` dans `frais_proprietaire`
+- HT sans TVA (HT = TTC), montant positif — vient **augmenter** le LOY/reversement
+- `buildRapportData.js` : remboursement = négatif dans `fraisDeductionLoy` → augmente `virementNet`
+- `facturesEvoliz.js` : `remboursementsTotal` ajouté au `montantReversement`
+- `rapportStatement.js` : lignes vertes `+ montant` dans bloc Reversement
+- `PageRapports.jsx` : typeLabel "Remboursement" en vert dans section Débours & frais
+- Contrainte DB ajoutée via SQL Editor : `CHECK (mode_traitement IN ('deduire_loyer','facturer_direct','remboursement'))`
+
+**5. Ordre LOY → Taxe → VIR dans statement PDF**
+- Ancien affichage : VIR puis Taxes de séjour → double comptage apparent
+- Nouveau : LOY (réversement net) → Taxe de séjour → VIR (= LOY + taxes) → Remboursements → Débours → Total
+
+**6. Cascade mois prestation AE**
+- `PagePrestationsAE.jsx` `sauvegarderModif` : update `mois = date_prestation.slice(0,7)`
+- Quand une date est changée vers avril, la prestation disparaît de mars et apparaît en avril
+
+**7. MoisSelector — mois actif toujours présent**
+- `MoisSelector.jsx` : si `mois` n'est pas dans `moisDispos`, il est ajouté automatiquement
+- Fix global — s'applique à toutes les pages avec MoisSelector
+
+**8. Persistance mois globale — pages manquantes**
+- `PageFraisProprietaire.jsx` et `PagePrestationsAE.jsx` ajoutés à `useMoisPersisted`
+- Toutes les pages principales partagent maintenant `dcb_mois_courant` via localStorage
+

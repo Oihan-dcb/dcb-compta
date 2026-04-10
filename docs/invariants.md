@@ -184,10 +184,15 @@ Aucun invariant actif violé à l'issue de la session du 02 avril 2026.
 
 | Invariant | Description courte | Statut |
 |---|---|---|
-| I-90 | `calculerVentilationResa` court-circuite immédiatement pour `owner_stay=true` : `ventilation_calculee=true`, aucune ligne auto-calculée. La ventilation est saisie manuellement (FMEN + AUTO via VentilationEdit). | ✅ Session 10/04/2026 |
+| I-90 | `calculerVentilationResa` calcule automatiquement pour `owner_stay=true` : FMEN = fin_revenue − AUTO (provision_ae_ref), AUTO = provision bien. Inclus dans le batch ⚡ Ventiler. VentilationEdit reste disponible pour correction. | ✅ Session 10/04/2026 (révisé) |
 | I-91 | `sumByCode('FMEN')` dans `genererFactureGroupe` exclut les reservation_ids owner_stay — évite le double-comptage avec la ligne "Ménage séjour propriétaire" ou l'absorption sur LOY. | ✅ Session 10/04/2026 |
 | I-92 | Owner stay ménage absorbé par LOY (per-bien, en priorité après deboursProp) → réduit `montant_reversement`. Owner stay surplus FMEN → ligne séparée "Ménage séjour propriétaire" (TVA 20%) dans la facture honoraires. Owner stay surplus AUTO → ligne `DEB_AE` dans `genererFactureDebours`. | ✅ Session 10/04/2026 |
 | I-93 | `STATUTS_NON_VENTILABLES` est importé de `src/lib/constants.js` dans `ventilation.js` — plus de double définition locale. | ✅ Session 10/04/2026 (I-81 renforcé) |
+| I-94 | `calculerVentilationMois` inclut les resas `owner_stay=true` (filtre supprimé). `calculerVentilationResa` calcule FMEN = fin_revenue − AUTO auto. | ✅ Session 10/04/2026 |
+| I-95 | `gross_revenue` est 0 pour les resas `owner_stay=true` dans `buildRapportData` — évite d'afficher le ménage proprio dans la colonne "Brut voyageur". | ✅ Session 10/04/2026 |
+| I-96 | `fraisDeductionLoy` inclut les remboursements en négatif (`mode_traitement='remboursement'`, `statut≠'brouillon'`). Un remboursement augmente `virementNet`. | ✅ Session 10/04/2026 |
+| I-97 | `prestation_hors_forfait.mois` est mis à jour en cascade quand `date_prestation` change dans `PagePrestationsAE`. | ✅ Session 10/04/2026 |
+| I-98 | `MoisSelector` inclut toujours le mois actif dans les options, même s'il n'a pas de données dans `moisDispos`. | ✅ Session 10/04/2026 |
 
 ### Invariants métier à formaliser (non encore implémentés dans V1)
 
