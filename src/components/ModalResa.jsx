@@ -111,7 +111,7 @@ function VentilationEdit({ resa, ventil, onSaved, onCancel }) {
         if (error) throw error
       }
       await supabase.from('reservation').update({ ventilation_calculee: true }).eq('id', resa.id)
-      if (onSaved) onSaved()
+      if (onSaved) onSaved(false, { id: resa.id, ventilation: lignes, ventilation_calculee: true })
     } catch (err) {
       alert('Erreur : ' + err.message)
     } finally {
@@ -206,7 +206,7 @@ export default function ModalResa({ resa, onClose, onSaved }) {
       await supabase.from('ventilation').delete().eq('reservation_id', resa.id)
       await supabase.from('reservation').update({ fin_revenue: newVal, ventilation_calculee: false }).eq('id', resa.id)
       setEditingRevenu(false)
-      if (onSaved) onSaved()
+      if (onSaved) onSaved(false, { id: resa.id, fin_revenue: newVal, ventilation: [], ventilation_calculee: false })
     } catch (e) {
       alert('Erreur : ' + e.message)
     } finally {

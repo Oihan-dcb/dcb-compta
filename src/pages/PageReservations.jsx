@@ -168,8 +168,9 @@ export default function PageReservations() {
         <ModalResa
           resa={selectedResa}
           onClose={() => setSelectedResa(null)}
-          onSaved={(reventile) => {
+          onSaved={(reventile, updatedResa) => {
             setSelectedResa(null)
+            if (updatedResa) setReservations(prev => prev.map(r => r.id === updatedResa.id ? { ...r, ...updatedResa } : r))
             charger()
             if (reventile) setTimeout(lancerVentilation, 300)
           }}
