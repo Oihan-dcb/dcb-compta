@@ -135,10 +135,21 @@ export async function importHospitableCSV(rows, moisFiltres = null, onProgress =
   for (let i = 0; i < toInsert.length; i += BULK) {
     const batch = toInsert.slice(i, i + BULK)
     const { data: inserted, error } = await supabase.from('reservation').insert(batch).select('id, code')
-    if (error) { log.errors += batch.length; console.error('insert error:', error) }
-    else {
+    if (error) {
+      // Retry individuel pour identifier les lignes exactes en erreur
+      for (const row of batch) {
+        const { data: d, error: e } = await supabase.from('reservation').insert(row).select('id, code').maybeSingle()
+        if (e) {
+          log.errors++
+          log.errorDetails = log.errorDetails || []
+          log.errorDetails.push({ code: row.code, platform: row.platform, message: e.message })
+        } else if (d) {
+          log.created++
+          resaMap[d.code] = d.id
+        }
+      }
+    } else {
       log.created += batch.length
-      // Mettre ÃÂ  jour resaMap avec les nouveaux IDs
       for (const r of inserted || []) resaMap[r.code] = r.id
     }
     onProgress?.({ step: 'insert', pct: 50 + Math.round((i / Math.max(toInsert.length, 1)) * 10) })

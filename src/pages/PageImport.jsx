@@ -247,6 +247,32 @@ export default function PageImport() {
               🔍 Analyse doublons : {fusionResult.doublons} doublon(s) trouvé(s), {fusionResult.fusions} fusionné(s)
             </div>
           )}
+          {result.errorDetails?.length > 0 && (
+            <div style={{marginBottom: 24}}>
+              <div style={{fontWeight: 600, marginBottom: 8, color: 'var(--error)'}}>
+                ⚠️ {result.errorDetails.length} ligne(s) en erreur
+              </div>
+              <table style={{width: '100%', borderCollapse: 'collapse', fontSize: '0.85em'}}>
+                <thead>
+                  <tr style={{background: 'var(--bg-muted)'}}>
+                    <th style={{padding: '6px 10px', textAlign: 'left', border: '1px solid var(--border)'}}>Code</th>
+                    <th style={{padding: '6px 10px', textAlign: 'left', border: '1px solid var(--border)'}}>Plateforme</th>
+                    <th style={{padding: '6px 10px', textAlign: 'left', border: '1px solid var(--border)'}}>Erreur</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {result.errorDetails.map((e, i) => (
+                    <tr key={i}>
+                      <td style={{padding: '5px 10px', border: '1px solid var(--border)', fontFamily: 'monospace'}}>{e.code}</td>
+                      <td style={{padding: '5px 10px', border: '1px solid var(--border)'}}>{e.platform}</td>
+                      <td style={{padding: '5px 10px', border: '1px solid var(--border)', color: 'var(--error)'}}>{e.message}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+
           <div style={{display: 'flex', gap: 12}}>
             <button className="btn btn-primary" onClick={reset}>📥 Nouvel import</button>
             <button className="btn btn-secondary" onClick={async () => {
