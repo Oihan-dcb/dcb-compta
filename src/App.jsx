@@ -15,6 +15,7 @@ import PageImport from './pages/PageImport'
 import PageJournal from './pages/PageJournal'
 import PageRapports from './pages/PageRapports'
 import PageComptabilite from './pages/PageComptabilite'
+import BugReportButton from './components/BugReportButton'
 import './App.css'
 
 function ConfigDropdown() {
@@ -100,12 +101,13 @@ export default function App() {
                 </span>
               )}
             </NavLink>
-            <NavLink to="/comptabilite" className={({isActive}) => isActive ? 'nav-link active' : 'nav-link'}>Comptabilité</NavLink>
             <NavLink to="/rapports" className={({isActive}) => isActive ? 'nav-link active' : 'nav-link'}>Rapports</NavLink>
             <NavLink to="/factures" className={({isActive}) => isActive ? 'nav-link active' : 'nav-link'}>Facturation</NavLink>
+            <NavLink to="/comptabilite" className={({isActive}) => isActive ? 'nav-link active' : 'nav-link'}>Comptabilité</NavLink>
             <ConfigDropdown />
           </nav>
         </header>
+        <BugReportButton source="compta" />
         <main className="app-main">
           <Routes>
             <Route path="/" element={<PageBiens />} />
