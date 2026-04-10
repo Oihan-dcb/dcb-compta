@@ -6,24 +6,26 @@ export default function BugReportButton({ source = 'compta' }) {
   const [message, setMessage] = useState('')
   const [sending, setSending] = useState(false)
   const [sent, setSent]       = useState(false)
+  const [errSend, setErrSend] = useState(false)
 
   async function envoyer() {
     if (!message.trim()) return
     setSending(true)
-    try {
-      await supabase.from('bug_report').insert({
-        message: message.trim(),
-        page_url: window.location.pathname,
-        source,
-      })
-      setSent(true)
-      setMessage('')
-      setTimeout(() => { setSent(false); setOpen(false) }, 2000)
-    } catch (e) {
-      console.error('bug_report:', e)
-    } finally {
-      setSending(false)
+    setErrSend(false)
+    const { error } = await supabase.from('bug_report').insert({
+      message: message.trim(),
+      page_url: window.location.pathname,
+      source,
+    })
+    setSending(false)
+    if (error) {
+      console.error('bug_report:', error)
+      setErrSend(true)
+      return
     }
+    setSent(true)
+    setMessage('')
+    setTimeout(() => { setSent(false); setOpen(false) }, 2000)
   }
 
   return (
@@ -62,6 +64,10 @@ export default function BugReportButton({ source = 'compta' }) {
           {sent ? (
             <div style={{ color: '#059669', fontWeight: 600, fontSize: '0.85em', padding: '8px 0' }}>
               ✓ Signalement envoyé
+            </div>
+          ) : errSend ? (
+            <div style={{ color: '#DC2626', fontSize: '0.82em', padding: '8px 0' }}>
+              ✗ Erreur lors de l'envoi — réessaie ou contacte directement.
             </div>
           ) : (
             <>
