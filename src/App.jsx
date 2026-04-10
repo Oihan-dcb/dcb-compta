@@ -15,6 +15,7 @@ import PageImport from './pages/PageImport'
 import PageJournal from './pages/PageJournal'
 import PageRapports from './pages/PageRapports'
 import PageComptabilite from './pages/PageComptabilite'
+import PageBugReports from './pages/PageBugReports'
 import BugReportButton from './components/BugReportButton'
 import './App.css'
 
@@ -22,7 +23,7 @@ function ConfigDropdown() {
   const [open, setOpen] = useState(false)
   const ref = useRef(null)
   const location = useLocation()
-  const configPaths = ['/import', '/journal', '/auto-entrepreneurs', '/config']
+  const configPaths = ['/import', '/journal', '/auto-entrepreneurs', '/config', '/bugs']
   const isActive = configPaths.some(p => location.pathname === p)
 
   useEffect(() => {
@@ -46,6 +47,7 @@ function ConfigDropdown() {
             { to: '/import', label: 'Import CSV' },
             { to: '/journal', label: 'Journal' },
             { to: '/auto-entrepreneurs', label: 'AEs' },
+            { to: '/bugs', label: '🐛 Bugs' },
             { to: '/config', label: 'Paramètres' },
           ].map(({ to, label }) => (
             <NavLink key={to} to={to} onClick={() => setOpen(false)}
@@ -123,6 +125,7 @@ export default function App() {
             <Route path="/import" element={<PageImport />} />
             <Route path="/auto-entrepreneurs" element={<PageAutoEntrepreneurs />} />
             <Route path="/journal" element={<PageJournal />} />
+            <Route path="/bugs" element={<PageBugReports />} />
             <Route path="/config" element={<PageConfig />} />
           </Routes>
         </main>
