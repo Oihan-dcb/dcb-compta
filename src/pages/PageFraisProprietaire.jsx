@@ -298,7 +298,7 @@ export default function PageFraisProprietaire() {
                 </div>
 
                 <div>
-                  <label className="form-label">{form.mode_traitement === 'remboursement' ? 'Montant HT (€) *' : 'Montant TTC (€) *'}</label>
+                  <label className="form-label">{form.mode_traitement === 'remboursement' ? 'Montant (€) *' : 'Montant TTC (€) *'}</label>
                   <input className="form-input" type="number" min="0.01" step="0.01" required placeholder="0.00"
                     value={form.montant_euros}
                     onChange={e => setForm(f => ({ ...f, montant_euros: e.target.value }))} />
