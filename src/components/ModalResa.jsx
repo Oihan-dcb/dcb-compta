@@ -202,9 +202,11 @@ export default function ModalResa({ resa, onClose, onSaved }) {
   async function saveRevenu() {
     setSavingRevenu(true)
     try {
-      const newVal = Math.round(parseFloat(revenuVal.replace(',', '.')) * 100) || 0
-      await supabase.from('ventilation').delete().eq('reservation_id', resa.id)
-      await supabase.from('reservation').update({ fin_revenue: newVal, ventilation_calculee: false }).eq('id', resa.id)
+      const newVal = Math.round(parseFloat(revenuVal.replace(',', '.')) * 100)
+      const { error: delErr } = await supabase.from('ventilation').delete().eq('reservation_id', resa.id)
+      if (delErr) throw delErr
+      const { error: updErr } = await supabase.from('reservation').update({ fin_revenue: newVal, ventilation_calculee: false }).eq('id', resa.id)
+      if (updErr) throw updErr
       setEditingRevenu(false)
       if (onSaved) onSaved(false, { id: resa.id, fin_revenue: newVal, ventilation: [], ventilation_calculee: false })
     } catch (e) {
