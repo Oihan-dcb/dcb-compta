@@ -46,6 +46,7 @@ export function genererStatementHTML(proprio, mois, data) {
   const grossTotal    = resas.reduce((s, r) => s + ((r.gross_revenue ?? r.fin_revenue) || 0), 0)
   const caHeb         = resas.reduce((s, r) => s + (r.fin_revenue || 0), 0)
   const virTotal      = resas.reduce((s, r) => s + (r.vir  || 0), 0)
+  const loyTotal      = resas.reduce((s, r) => s + (r.loy  || 0), 0)
   const taxeTotal     = resas.reduce((s, r) => s + (r.taxe || 0), 0)
   const baseCommTotal = resas.reduce((s, r) => s + (r.base_comm || 0), 0)
   const deboursTotal  = [...extrasGlobaux, ...haownerList]
@@ -199,17 +200,20 @@ export function genererStatementHTML(proprio, mois, data) {
       <span style="color:#9c8c7a">Net reçu plateforme</span><span>${fmt(caHeb)}</span>
     </div>
     <div style="display:flex;justify-content:space-between;padding:3px 0;border-bottom:1px solid #ece8e2;font-size:10px">
-      <span style="color:#9c8c7a">Réversement brut (VIR)</span><span>${fmt(virTotal)}</span>
+      <span style="color:#9c8c7a">Reversement net (LOY)</span><span>${fmt(loyTotal)}</span>
     </div>
-    ${deboursTotal > 0 ? `<div style="display:flex;justify-content:space-between;padding:3px 0;border-bottom:1px solid #ece8e2;font-size:10px">
-      <span style="color:#9c8c7a">Débours / Achats</span><span style="color:#DC2626">− ${fmt(deboursTotal)}</span>
+    ${taxeTotal > 0 ? `<div style="display:flex;justify-content:space-between;padding:3px 0;border-bottom:1px solid #ece8e2;font-size:10px">
+      <span style="color:#9c8c7a">Taxes de séjour</span><span>${fmt(taxeTotal)}</span>
     </div>` : ''}
+    <div style="display:flex;justify-content:space-between;padding:3px 0;border-bottom:1px solid #ece8e2;font-size:10px">
+      <span style="color:#9c8c7a">VIR (LOY + taxes)</span><span>${fmt(virTotal)}</span>
+    </div>
     ${remboursementsTotal > 0 ? remboursementsList.map(f => `<div style="display:flex;justify-content:space-between;padding:3px 0;border-bottom:1px solid #ece8e2;font-size:10px">
       <span style="color:#059669">${escapeNonAscii(f.libelle || 'Remboursement')}</span><span style="color:#059669">+ ${fmt(f.montant_ttc)}</span>
     </div>`).join('') : ''}
-    <div style="display:flex;justify-content:space-between;padding:3px 0;border-bottom:1px solid #ece8e2;font-size:10px">
-      <span style="color:#9c8c7a">Taxes de séjour</span><span>${taxeTotal > 0 ? fmt(taxeTotal) : '—'}</span>
-    </div>
+    ${deboursTotal > 0 ? `<div style="display:flex;justify-content:space-between;padding:3px 0;border-bottom:1px solid #ece8e2;font-size:10px">
+      <span style="color:#9c8c7a">Débours / Achats</span><span style="color:#DC2626">− ${fmt(deboursTotal)}</span>
+    </div>` : ''}
     <div style="display:flex;justify-content:space-between;padding:6px 0 0;font-weight:700;font-size:10.5px">
       <span>Total reversement</span><span style="color:#2d7a50">${fmt(totalDuOwner)}</span>
     </div>

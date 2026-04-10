@@ -123,6 +123,7 @@ export default function PagePrestationsAE() {
       const updates = {
         bien_id: formEdit.bien_id || null,
         date_prestation: formEdit.date_prestation || null,
+        mois: formEdit.date_prestation ? formEdit.date_prestation.slice(0, 7) : null,
         duree_minutes: parseInt(formEdit.duree_minutes) || null,
         montant: Math.round(parseFloat(formEdit.montant_eur || 0) * 100),
         description: formEdit.description || null,
