@@ -1,4 +1,4 @@
-import { useRef } from 'react'
+import { useRef, useState } from 'react'
 import { format } from 'date-fns'
 import { fr } from 'date-fns/locale'
 import { formatMontant } from '../lib/hospitable'
@@ -45,8 +45,13 @@ function BadgeStatut({ r, onToggle }) {
 }
 
 
+const SEL = { padding: '4px 8px', border: '1px solid var(--border)', borderRadius: 6, fontSize: '0.82em', background: '#fff', color: 'var(--text)', cursor: 'pointer' }
+
 export default function TableReservations({ reservations, onSelect, onRefresh }) {
   const toggling = useRef(false)
+  const [filterBien, setFilterBien]     = useState('')
+  const [filterPlat, setFilterPlat]     = useState('')
+  const [filterStatut, setFilterStatut] = useState('')
 
   async function handleToggle(r) {
     if (toggling.current) return
@@ -61,6 +66,27 @@ export default function TableReservations({ reservations, onSelect, onRefresh })
     }
   }
 
+  // Valeurs distinctes pour les selects
+  const biens     = [...new Set(reservations.map(r => r.bien?.id).filter(Boolean))]
+    .map(id => { const r = reservations.find(r => r.bien?.id === id); return { id, label: r.bien?.hospitable_name || r.bien?.code || id } })
+    .sort((a, b) => a.label.localeCompare(b.label))
+  const plateformes = [...new Set(reservations.map(r => r.platform).filter(Boolean))].sort()
+
+  function getStatutCompta(r) {
+    if (r.owner_stay) return 'proprio'
+    if (r.rapprochee) return 'rapprochee'
+    const ANNULES = ['cancelled', 'not_accepted', 'not accepted', 'declined', 'expired']
+    if (r.ventilation_calculee && !ANNULES.includes(r.final_status)) return 'ventilee'
+    return 'importee'
+  }
+
+  const filtered = reservations.filter(r => {
+    if (filterBien   && r.bien?.id !== filterBien)            return false
+    if (filterPlat   && r.platform !== filterPlat)            return false
+    if (filterStatut && getStatutCompta(r) !== filterStatut)  return false
+    return true
+  })
+
   if (reservations.length === 0) return (
     <div className="empty-state">
       <div className="empty-state-title">Aucune réservation</div>
@@ -68,7 +94,36 @@ export default function TableReservations({ reservations, onSelect, onRefresh })
     </div>
   )
 
+  const hasFilter = filterBien || filterPlat || filterStatut
+
   return (
+    <div>
+      <div style={{ display: 'flex', gap: 8, alignItems: 'center', marginBottom: 12, flexWrap: 'wrap' }}>
+        <select style={SEL} value={filterBien} onChange={e => setFilterBien(e.target.value)}>
+          <option value=''>Tous les biens</option>
+          {biens.map(b => <option key={b.id} value={b.id}>{b.label}</option>)}
+        </select>
+        <select style={SEL} value={filterPlat} onChange={e => setFilterPlat(e.target.value)}>
+          <option value=''>Tous les distributeurs</option>
+          {plateformes.map(p => <option key={p} value={p}>{p}</option>)}
+        </select>
+        <select style={SEL} value={filterStatut} onChange={e => setFilterStatut(e.target.value)}>
+          <option value=''>Tous les statuts</option>
+          <option value='rapprochee'>Rapprochée</option>
+          <option value='ventilee'>Ventilée</option>
+          <option value='proprio'>Séjour proprio</option>
+          <option value='importee'>Importée</option>
+        </select>
+        {hasFilter && (
+          <button style={{ ...SEL, background: '#f5f5f5', color: '#888', border: '1px solid #ddd' }}
+            onClick={() => { setFilterBien(''); setFilterPlat(''); setFilterStatut('') }}>
+            ✕ Réinitialiser
+          </button>
+        )}
+        {hasFilter && (
+          <span style={{ fontSize: '0.8em', color: '#9C8E7D' }}>{filtered.length} / {reservations.length}</span>
+        )}
+      </div>
     <div className="table-container">
       <table>
         <thead>
@@ -79,7 +134,7 @@ export default function TableReservations({ reservations, onSelect, onRefresh })
           </tr>
         </thead>
         <tbody>
-          {reservations.map(r => (
+          {filtered.map(r => (
             <tr key={r.id} onClick={() => onSelect(r)} style={{ cursor: 'pointer' }}>
               <td><span className="mono">{r.code}</span></td>
               <td><span className={`badge badge-${r.platform}`}>{r.platform}</span></td>
@@ -136,6 +191,7 @@ export default function TableReservations({ reservations, onSelect, onRefresh })
           ))}
         </tbody>
       </table>
+    </div>
     </div>
   )
 }
