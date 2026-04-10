@@ -53,10 +53,13 @@ export function genererStatementHTML(proprio, mois, data) {
     + resas.reduce((s, r) => s + (r.extra || 0), 0)
     + resas.filter(r => r.owner_stay && r.platform === 'manual').reduce((s, r) => s + (r.menage_voyageur || 0), 0)
   const totalManager  = honTotal + menageTotal + deboursTotal
-  // virementNet vient de buildRapportData (source de vérité unique)
+  // virementNet vient de buildRapportData (source de vérité unique) — inclut déjà les remboursements
   const virementNet   = data.kpis?.virementNet ?? 0
   const netProprio    = virementNet
   const totalDuOwner  = virementNet
+  // Remboursements visibles dans le bloc reversement
+  const remboursementsList = fraisProprietaire.filter(f => f.mode_traitement === 'remboursement' && f.statut !== 'brouillon')
+  const remboursementsTotal = remboursementsList.reduce((s, f) => s + (f.montant_ttc || 0), 0)
 
   const [annee, moisNum] = mois.split('-')
   const moisLabel = `${MOIS_FR[parseInt(moisNum) - 1]} ${annee}`
@@ -201,6 +204,9 @@ export function genererStatementHTML(proprio, mois, data) {
     ${deboursTotal > 0 ? `<div style="display:flex;justify-content:space-between;padding:3px 0;border-bottom:1px solid #ece8e2;font-size:10px">
       <span style="color:#9c8c7a">Débours / Achats</span><span style="color:#DC2626">− ${fmt(deboursTotal)}</span>
     </div>` : ''}
+    ${remboursementsTotal > 0 ? remboursementsList.map(f => `<div style="display:flex;justify-content:space-between;padding:3px 0;border-bottom:1px solid #ece8e2;font-size:10px">
+      <span style="color:#059669">${escapeNonAscii(f.libelle || 'Remboursement')}</span><span style="color:#059669">+ ${fmt(f.montant_ttc)}</span>
+    </div>`).join('') : ''}
     <div style="display:flex;justify-content:space-between;padding:3px 0;border-bottom:1px solid #ece8e2;font-size:10px">
       <span style="color:#9c8c7a">Taxes de séjour</span><span>${taxeTotal > 0 ? fmt(taxeTotal) : '—'}</span>
     </div>
