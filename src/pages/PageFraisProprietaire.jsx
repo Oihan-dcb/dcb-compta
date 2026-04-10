@@ -10,6 +10,7 @@ const moisCourant = new Date().toISOString().slice(0, 7)
 const MODES_TRAITEMENT = {
   deduire_loyer:   'Déduire du loyer',
   facturer_direct: 'Refacturer au proprio',
+  remboursement:   'Remboursement (+ LOY)',
 }
 
 const MODES_ENCAISSEMENT = {
@@ -287,29 +288,37 @@ export default function PageFraisProprietaire() {
                 </div>
 
                 <div>
-                  <label className="form-label">Montant TTC (€) *</label>
-                  <input className="form-input" type="number" min="0.01" step="0.01" required placeholder="0.00"
-                    value={form.montant_euros}
-                    onChange={e => setForm(f => ({ ...f, montant_euros: e.target.value }))} />
-                </div>
-
-                <div>
                   <label className="form-label">Mode de traitement</label>
                   <select className="form-select" value={form.mode_traitement}
                     onChange={e => setForm(f => ({ ...f, mode_traitement: e.target.value }))}>
                     <option value="deduire_loyer">Déduire du loyer</option>
                     <option value="facturer_direct">Refacturer au propriétaire</option>
+                    <option value="remboursement">Remboursement (+ LOY)</option>
                   </select>
                 </div>
 
                 <div>
-                  <label className="form-label">Mode d'encaissement</label>
-                  <select className="form-select" value={form.mode_encaissement}
-                    onChange={e => setForm(f => ({ ...f, mode_encaissement: e.target.value }))}>
-                    <option value="dcb">DCB a payé</option>
-                    <option value="proprio">Propriétaire a payé</option>
-                  </select>
+                  <label className="form-label">{form.mode_traitement === 'remboursement' ? 'Montant HT (€) *' : 'Montant TTC (€) *'}</label>
+                  <input className="form-input" type="number" min="0.01" step="0.01" required placeholder="0.00"
+                    value={form.montant_euros}
+                    onChange={e => setForm(f => ({ ...f, montant_euros: e.target.value }))} />
+                  {form.mode_traitement === 'remboursement' && (
+                    <span style={{ fontSize: '0.8em', color: '#059669', marginTop: 4, display: 'block' }}>
+                      ↑ Augmente le reversement propriétaire (HT, sans TVA)
+                    </span>
+                  )}
                 </div>
+
+                {form.mode_traitement !== 'remboursement' && (
+                  <div>
+                    <label className="form-label">Mode d'encaissement</label>
+                    <select className="form-select" value={form.mode_encaissement}
+                      onChange={e => setForm(f => ({ ...f, mode_encaissement: e.target.value }))}>
+                      <option value="dcb">DCB a payé</option>
+                      <option value="proprio">Propriétaire a payé</option>
+                    </select>
+                  </div>
+                )}
 
                 {error && <div className="alert alert-error">{error}</div>}
               </div>

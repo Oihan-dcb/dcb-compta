@@ -958,8 +958,9 @@ FORMAT :
                         const label   = isMenageProprio
                           ? `${row.libelle || 'Ménage séjour propriétaire'}${row.guest_name ? ` — ${row.guest_name}` : ''}`
                           : row.libelle || row.description || '—'
-                        const typeLabel = isDebours ? 'Débours' : isAchat ? 'Achat' : isMenageProprio ? 'Ménage' : 'Frais'
-                        const typeColor = isDebours ? '#9C8E7D' : isAchat ? 'var(--brand)' : isMenageProprio ? '#4A3728' : '#c2410c'
+                        const isRemboursement = isFrais && row.mode_traitement === 'remboursement'
+                        const typeLabel = isDebours ? 'Débours' : isAchat ? 'Achat' : isMenageProprio ? 'Ménage' : isRemboursement ? 'Remboursement' : 'Frais'
+                        const typeColor = isDebours ? '#9C8E7D' : isAchat ? 'var(--brand)' : isMenageProprio ? '#4A3728' : isRemboursement ? '#059669' : '#c2410c'
                         // Montant cell — pour les frais facturés, décomposer déduit vs reliquat
                         const fraisFacture = isFrais && row.statut === 'facture' && row.statut_deduction && row.statut_deduction !== 'en_attente'
                         const montantCell = isAchat
@@ -975,6 +976,8 @@ FORMAT :
                               {row.montant_deduit_loy > 0 && <span style={{ display: 'block', color: '#059669', fontSize: '0.9em' }}>↓ {fmt(row.montant_deduit_loy)} déduit</span>}
                               {row.montant_reliquat > 0  && <span style={{ display: 'block', color: '#DC2626', fontSize: '0.9em' }}>! {fmt(row.montant_reliquat)} reliquat</span>}
                             </span>
+                          : isRemboursement
+                          ? <span style={{ color: '#059669', fontWeight: 600 }}>+ {fmt(row.montant_ttc)}</span>
                           : <span style={{ color: '#DC2626' }}>{fmt(row.montant_ttc)}</span>
                         // Badge statut
                         const DEDUCTION_BADGE = {

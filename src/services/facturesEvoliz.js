@@ -232,6 +232,16 @@ async function genererFactureGroupe(proprio, biens, mois) {
     .eq('statut', 'a_facturer')
   const fraisDeduireTTC = (fraisDeduire || []).reduce((s, f) => s + (f.montant_ttc || 0), 0)
 
+  // Remboursements propriétaire (HT, sans TVA) — augmentent le reversement
+  const { data: remboursements } = await supabase
+    .from('frais_proprietaire')
+    .select('id, montant_ttc, bien_id, libelle')
+    .in('bien_id', bienIds)
+    .eq('mois_facturation', mois)
+    .eq('mode_traitement', 'remboursement')
+    .neq('statut', 'brouillon')
+  const remboursementsTotal = (remboursements || []).reduce((s, f) => s + (f.montant_ttc || 0), 0)
+
   // DIV : expenses [DCB]
   const divHT = (expenses || []).reduce((s, e) => s + (e.amount || 0), 0)
   const divTVA = Math.round(divHT * 0.20)
@@ -344,7 +354,7 @@ async function genererFactureGroupe(proprio, biens, mois) {
 
   // ownerStayAbsorbTotal = part couverte par LOY → réduit le reversement
   // owner stay surplus = facturé séparément → ne réduit pas le reversement
-  const montantReversement = Math.max(0, vir.ht - totalPrestations - haownerTTC - fraisDeduitTotal - deboursPropAbsorbTotal - ownerStayAbsorbTotal)
+  const montantReversement = Math.max(0, vir.ht - totalPrestations - haownerTTC - fraisDeduitTotal - deboursPropAbsorbTotal - ownerStayAbsorbTotal) + remboursementsTotal
 
   // Cas solde nÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂ©gatif : uniquement des expenses, pas de rÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂ©servations
   const soldeNegatif = totalHT === 0 && div.ht > 0

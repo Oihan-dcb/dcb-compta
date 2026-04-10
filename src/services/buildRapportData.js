@@ -199,14 +199,17 @@ export async function buildRapportData(bienId, propId, mois, opts = {}) {
   const ownerStayMenageTotal = ownerStayList.reduce((s, r) => s + r.montant, 0)
 
   // ── fraisDeductionLoy — règle unique ─────────────────────────────────────
-  const fraisDeductionLoy = (fraisData || [])
-    .filter(f => f.mode_traitement === 'deduire_loyer')
-    .reduce((s, f) => {
+  const fraisDeductionLoy = (fraisData || []).reduce((s, f) => {
+    if (f.mode_traitement === 'deduire_loyer') {
       if (f.statut === 'facture' && f.statut_deduction !== 'en_attente') return s + (f.montant_deduit_loy || 0)
       if (f.statut === 'facture' && f.statut_deduction === 'en_attente')  return s + (f.montant_ttc || 0)
       if (f.statut === 'a_facturer')                                       return s + (f.montant_ttc || 0)
-      return s
-    }, 0)
+    }
+    if (f.mode_traitement === 'remboursement' && f.statut !== 'brouillon') {
+      return s - (f.montant_ttc || 0)
+    }
+    return s
+  }, 0)
 
   // ── virementNet — règle unique ───────────────────────────────────────────
   // BRANCHE 1 : facture confirmée (hors brouillon/calcul_en_cours) → montant_reversement est la vérité
