@@ -38,7 +38,7 @@ export async function buildRapportData(bienId, propId, mois, opts = {}) {
     (() => {
       let q = supabase
         .from('reservation')
-        .select('id, code, fin_revenue, fin_accommodation, fin_host_service_fee, fin_gross_revenue, nights, arrival_date, departure_date, final_status, platform, owner_stay, guest_name, bien:bien_id(hospitable_name, code), reservation_fee(fee_type, label, amount)')
+        .select('id, bien_id, code, fin_revenue, fin_accommodation, fin_host_service_fee, fin_gross_revenue, nights, arrival_date, departure_date, final_status, platform, owner_stay, guest_name, bien:bien_id(hospitable_name, code), reservation_fee(fee_type, label, amount)')
         .eq('mois_comptable', mois)
         .order('arrival_date')
       return isGlobal ? q.in('bien_id', maiteIds) : q.eq('bien_id', bienId)
@@ -187,9 +187,10 @@ export async function buildRapportData(bienId, propId, mois, opts = {}) {
   // ── Owner stay ménage ────────────────────────────────────────────────────
   // ownerStayList : une ligne par résa proprio (pour affichage dans charges)
   const ownerStayList = resasEnrichies
-    .filter(r => r.owner_stay && r.platform === 'manual')
+    .filter(r => r.owner_stay)
     .map(r => ({
       id: r.id,
+      bien_id: r.bien_id,
       arrival_date: r.arrival_date,
       guest_name: r.guest_name,
       libelle: 'Ménage séjour propriétaire',

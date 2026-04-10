@@ -91,6 +91,9 @@ export default function PageRapports() {
   const [erreurDetail, setErreurDetail] = useState('')
   const [colsConfig, setColsConfig] = useState({})
   const [useStatement, setUseStatement] = useState(false)
+  const [saisirMenageId, setSaisirMenageId] = useState(null)
+  const [saisirMontant, setSaisirMontant] = useState('')
+  const [savingMenage, setSavingMenage] = useState(false)
   const reqRef = useRef(0)
 
   useEffect(() => {
@@ -147,6 +150,28 @@ export default function PageRapports() {
       setBiensEnvoyes(new Set((rapports || []).map(r => r.bien_id)))
     })
   }, [mois])
+
+  const saveMenageProprio = async (row) => {
+    const montantCents = Math.round(parseFloat(saisirMontant.replace(',', '.')) * 100)
+    if (isNaN(montantCents) || montantCents <= 0) return
+    setSavingMenage(true)
+    try {
+      await supabase.from('ventilation').upsert({
+        reservation_id: row.id,
+        bien_id: row.bien_id,
+        mois: mois,
+        code: 'FMEN',
+        libelle: 'Forfait ménage séjour propriétaire',
+        montant_ht: montantCents,
+        montant_ttc: montantCents,
+      }, { onConflict: 'reservation_id,code' })
+      setSaisirMenageId(null)
+      setSaisirMontant('')
+      await charger()
+    } finally {
+      setSavingMenage(false)
+    }
+  }
 
   const charger = useCallback(async () => {
     if (!selectedBienId || !selectedPropId) return
@@ -1020,7 +1045,29 @@ FORMAT :
                           ? <span style={{ color: 'var(--brand)', fontWeight: 600 }}>{fmt(row.montant_ttc)}</span>
                           : isMenageProprio
                           ? row.a_saisir
-                            ? <a href={`/prestations-ae`} style={{ color: '#B45309', fontStyle: 'italic', fontSize: '0.9em', textDecoration: 'underline', cursor: 'pointer' }}>à saisir →</a>
+                            ? saisirMenageId === row.id
+                              ? <span style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+                                  <input
+                                    type="text" value={saisirMontant}
+                                    onChange={e => setSaisirMontant(e.target.value)}
+                                    placeholder="0.00"
+                                    style={{ width: 70, padding: '2px 6px', border: '1px solid var(--brand)', borderRadius: 4, fontSize: '0.9em' }}
+                                    onKeyDown={e => { if (e.key === 'Enter') saveMenageProprio(row); if (e.key === 'Escape') { setSaisirMenageId(null); setSaisirMontant('') } }}
+                                    autoFocus
+                                  />
+                                  <button onClick={() => saveMenageProprio(row)} disabled={savingMenage}
+                                    style={{ padding: '2px 8px', background: 'var(--brand)', color: '#fff', border: 'none', borderRadius: 4, fontSize: '0.85em', cursor: 'pointer' }}>
+                                    {savingMenage ? '…' : '✓'}
+                                  </button>
+                                  <button onClick={() => { setSaisirMenageId(null); setSaisirMontant('') }}
+                                    style={{ padding: '2px 6px', background: 'transparent', border: '1px solid #D9CEB8', borderRadius: 4, fontSize: '0.85em', cursor: 'pointer' }}>
+                                    ✕
+                                  </button>
+                                </span>
+                              : <button onClick={() => { setSaisirMenageId(row.id); setSaisirMontant('') }}
+                                  style={{ background: 'none', border: 'none', color: '#B45309', fontStyle: 'italic', fontSize: '0.9em', textDecoration: 'underline', cursor: 'pointer', padding: 0 }}>
+                                  à saisir →
+                                </button>
                             : <span style={{ color: '#4A3728' }}>{fmt(row.montant)}</span>
                           : isDebours
                           ? <span style={{ color: '#4A3728' }}>{fmt(row.montant)}</span>
