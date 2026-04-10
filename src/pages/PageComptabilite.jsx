@@ -43,15 +43,16 @@ export default function PageComptabilite() {
   const [filterStatutFacture, setFilterStatutFacture] = useState('')
   const [filterAlertsOnly, setFilterAlertsOnly] = useState(false)
 
-  // Chargement mois dispos
+  // Chargement mois dispos — même logique que PageRapports
   useEffect(() => {
-    supabase.from('reservation').select('mois_comptable').eq('agence', 'dcb').not('mois_comptable', 'is', null)
-      .then(({ data: d }) => {
-        if (!d) return
-        const set = [...new Set(d.map(r => r.mois_comptable))].sort((a, b) => b.localeCompare(a))
-        if (!set.includes(moisCourant)) set.unshift(moisCourant)
-        setMoisDispos(set)
-      })
+    supabase.from('reservation').select('mois_comptable').then(({ data: res }) => {
+      const [cy, cm] = moisCourant.split('-').map(Number)
+      const thisYearMonths = Array.from({ length: cm }, (_, i) =>
+        `${cy}-${String(i + 1).padStart(2, '0')}`)
+      const uniq = [...new Set([...thisYearMonths, ...(res || []).map(d => d.mois_comptable).filter(Boolean)])]
+        .sort((a, b) => b.localeCompare(a))
+      setMoisDispos(uniq)
+    })
   }, [])
 
   const charger = useCallback(async () => {
