@@ -115,7 +115,9 @@ export default function PageReservations() {
   ).length
   const nbDirectes = reservations.filter(r => r.platform === 'direct' || r.platform === 'manual').length
   const nbRapprochees = reservations.filter(r => r.rapprochee).length
-  const nbManuellesNonVentilees = reservations.filter(r => r.platform === 'manual' && (!r.ventilation || r.ventilation.length === 0)).length
+  // Exclut les resas proprio (owner_stay=true) — leur ventilation est saisie manuellement via VentilationEdit
+  // Si on les inclut, le mode "Ventilation normale" leur appliquerait HON+LOY (incorrect)
+  const nbManuellesNonVentilees = reservations.filter(r => r.platform === 'manual' && !r.owner_stay && (!r.ventilation || r.ventilation.length === 0)).length
   const totalRevenue = reservations.filter(r => !r.owner_stay).reduce((s, r) => s + (r.fin_revenue || 0), 0)
   // Richesse générée = total TTC ventilation (HON+FMEN+AUTO+VIR) si ventilé, sinon fin_revenue
   const richesseGeneree = (() => {
@@ -137,7 +139,7 @@ export default function PageReservations() {
             <h3 style={{ margin:'0 0 16px' }}>Ventiler {nbManuellesNonVentilees} réservation{nbManuellesNonVentilees > 1 ? 's' : ''} manuelle{nbManuellesNonVentilees > 1 ? 's' : ''}</h3>
             {[
               { val: 'normal', label: 'Ventilation normale', desc: 'HON + FMEN + AUTO + LOY calculés automatiquement' },
-              { val: 'proprio', label: 'Séjour propriétaire', desc: 'FMEN + AUTO uniquement, owner_stay = true' },
+              { val: 'proprio', label: 'Séjour propriétaire', desc: 'Marquer comme séjour propriétaire — saisir FMEN manuellement (déduit du LOY ou facturé séparément)' },
             ].map(opt => (
               <label key={opt.val} style={{ display:'flex', alignItems:'flex-start', gap:8, marginBottom:10, cursor:'pointer' }}>
                 <input type="radio" name="modeManuelles" value={opt.val}

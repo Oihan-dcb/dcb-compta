@@ -143,14 +143,37 @@ async function genererFactureGroupe(proprio, biens, mois) {
   // COM : ÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂ£ ventilation COM du mois
   const { data: lignesVentil } = await supabase
     .from('ventilation')
-    .select('code, montant_ht, montant_tva, montant_ttc, montant_reel, bien_id')
+    .select('code, montant_ht, montant_tva, montant_ttc, montant_reel, bien_id, reservation_id')
     .in('bien_id', bienIds)
     .eq('mois_comptable', mois)
 
   const ventilation = lignesVentil || []
 
+  // Owner stay reservations — query avant sumByCode pour exclure FMEN du calcul normal
+  const { data: ownerStayResas } = await supabase
+    .from('reservation')
+    .select('id, bien_id')
+    .in('bien_id', bienIds)
+    .eq('mois_comptable', mois)
+    .eq('owner_stay', true)
+    .eq('platform', 'manual')
+
+  const osResaIds = new Set((ownerStayResas || []).map(r => r.id))
+
+  // FMEN + AUTO owner stay par bien (depuis ventilation déjà chargée)
+  const osVentByBien = new Map()
+  if (osResaIds.size > 0) {
+    for (const v of ventilation.filter(l => osResaIds.has(l.reservation_id) && (l.code === 'FMEN' || l.code === 'AUTO'))) {
+      if (!osVentByBien.has(v.bien_id)) osVentByBien.set(v.bien_id, { fmenTTC: 0, autoHT: 0 })
+      const e = osVentByBien.get(v.bien_id)
+      if (v.code === 'FMEN') e.fmenTTC += (v.montant_ttc || 0)
+      if (v.code === 'AUTO') e.autoHT += (v.montant_ht || 0)
+    }
+  }
+
+  // sumByCode exclut les owner stay pour FMEN (traités séparément per-bien)
   const sumByCode = (code) => ventilation
-    .filter(l => l.code === code)
+    .filter(l => l.code === code && !(code === 'FMEN' && osResaIds.has(l.reservation_id)))
     .reduce((s, l) => ({
       ht: s.ht + l.montant_ht,
       tva: s.tva + l.montant_tva,
@@ -209,27 +232,6 @@ async function genererFactureGroupe(proprio, biens, mois) {
     .eq('statut', 'a_facturer')
   const fraisDeduireTTC = (fraisDeduire || []).reduce((s, f) => s + (f.montant_ttc || 0), 0)
 
-  // Owner stay ménage : FMEN + AUTO pour séjours propriétaire (platform=manual)
-  // Alignement buildRapportData : ownerStayMenageTotal déduit du reversement
-  let ownerStayMenageTotal = 0
-  const { data: ownerStayResas } = await supabase
-    .from('reservation')
-    .select('id')
-    .in('bien_id', bienIds)
-    .eq('mois_comptable', mois)
-    .eq('owner_stay', true)
-    .eq('platform', 'manual')
-  if ((ownerStayResas || []).length > 0) {
-    const ownerStayIds = ownerStayResas.map(r => r.id)
-    const { data: osVent } = await supabase
-      .from('ventilation')
-      .select('code, montant_ht, montant_ttc')
-      .in('reservation_id', ownerStayIds)
-      .in('code', ['FMEN', 'AUTO'])
-    ownerStayMenageTotal = (osVent || []).reduce((s, v) =>
-      s + (v.code === 'FMEN' ? (v.montant_ttc || 0) : (v.montant_ht || 0)), 0)
-  }
-
   // DIV : expenses [DCB]
   const divHT = (expenses || []).reduce((s, e) => s + (e.amount || 0), 0)
   const divTVA = Math.round(divHT * 0.20)
@@ -242,11 +244,6 @@ async function genererFactureGroupe(proprio, biens, mois) {
     ttc: men.ttc + mgt.ttc,
   }
 
-  // Totaux facture
-  const totalHT = com.ht + menConsolide.ht + div.ht + haownerHT
-  const totalTVA = com.tva + menConsolide.tva + div.tva + haownerTVA
-  const totalTTC = totalHT + totalTVA
-
   // AUTO étape 1 : absorption bien par bien -- mode_encaissement = 'dcb' uniquement
   // fraisDeductionMap : frais.id → { deduit, reliquat } -- calcul frais par frais pour ne pas perdre le reliquat
   const fraisDeductionMap = new Map()
@@ -254,6 +251,10 @@ async function genererFactureGroupe(proprio, biens, mois) {
   let autoSurplusTotal    = 0
   let deboursPropAbsorbTotal  = 0
   let deboursPropSurplusTotal = 0
+  // Owner stay ménage : absorption per-bien du LOY résiduel après deboursProp
+  // Surplus FMEN → ligne prestation de service ; surplus AUTO → DEB_AE dans facture débours
+  let ownerStayAbsorbTotal = 0
+  const ownerStaySurplusByBien = new Map()
 
   for (const bien of biens) {
     if (bien.mode_encaissement !== 'dcb') continue
@@ -306,20 +307,44 @@ async function genererFactureGroupe(proprio, biens, mois) {
     const deboursPropAbsorb  = Math.min(deboursPropBien, loyApresAuto)
     const deboursPropSurplus = Math.max(0, deboursPropBien - deboursPropAbsorb)
 
-    if (autoBien > 0) {
-    }
-
     autoAbsorbableTotal += autoAbsorbableBien
     autoSurplusTotal    += autoSurplusBien
     deboursPropAbsorbTotal  += deboursPropAbsorb
     deboursPropSurplusTotal += deboursPropSurplus
+
+    // Owner stay ménage : absorbe le LOY résiduel après deboursProp
+    // AUTO absorbé en priorité (hors TVA), puis FMEN (TTC, TVA 20%)
+    const loyApresDeboursProp = Math.max(0, loyApresAuto - deboursPropAbsorb)
+    const osData = osVentByBien.get(bien.id) || { fmenTTC: 0, autoHT: 0 }
+    const osAutoAbsorb   = Math.min(osData.autoHT, loyApresDeboursProp)
+    const osAutoSurplus  = Math.max(0, osData.autoHT - osAutoAbsorb)
+    const loyApresOsAuto = Math.max(0, loyApresDeboursProp - osAutoAbsorb)
+    const osFmenAbsorb   = Math.min(osData.fmenTTC, loyApresOsAuto)
+    const osFmenSurplus  = Math.max(0, osData.fmenTTC - osFmenAbsorb)
+    ownerStayAbsorbTotal += osAutoAbsorb + osFmenAbsorb
+    if (osFmenSurplus > 0 || osAutoSurplus > 0) {
+      ownerStaySurplusByBien.set(bien.id, { osFmenSurplus, osAutoSurplus, bienName: bien.hospitable_name })
+    }
   }
 
   // Totaux frais post-boucle : part effectivement déduite du LOY vs reliquat non couvert
   const fraisDeduitTotal   = [...fraisDeductionMap.values()].reduce((s, v) => s + v.deduit,   0)
   const fraisReliquatTotal = [...fraisDeductionMap.values()].reduce((s, v) => s + v.reliquat, 0)
 
-  const montantReversement = Math.max(0, vir.ht - totalPrestations - haownerTTC - fraisDeduitTotal - deboursPropAbsorbTotal - ownerStayMenageTotal)
+  // Owner stay FMEN surplus → lignes prestation de service TVA 20% incluses dans totalHT/TTC
+  let osFmenSurplusGlobalTTC = 0
+  for (const [, { osFmenSurplus }] of ownerStaySurplusByBien) osFmenSurplusGlobalTTC += osFmenSurplus
+  const osFmenSurplusHT  = Math.round(osFmenSurplusGlobalTTC / 1.20)
+  const osFmenSurplusTVA = osFmenSurplusGlobalTTC - osFmenSurplusHT
+
+  // Totaux facture (inclut owner stay FMEN surplus facturé séparément)
+  const totalHT = com.ht + menConsolide.ht + div.ht + haownerHT + osFmenSurplusHT
+  const totalTVA = com.tva + menConsolide.tva + div.tva + haownerTVA + osFmenSurplusTVA
+  const totalTTC = totalHT + totalTVA
+
+  // ownerStayAbsorbTotal = part couverte par LOY → réduit le reversement
+  // owner stay surplus = facturé séparément → ne réduit pas le reversement
+  const montantReversement = Math.max(0, vir.ht - totalPrestations - haownerTTC - fraisDeduitTotal - deboursPropAbsorbTotal - ownerStayAbsorbTotal)
 
   // Cas solde nÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂ©gatif : uniquement des expenses, pas de rÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂ©servations
   const soldeNegatif = totalHT === 0 && div.ht > 0
@@ -495,6 +520,24 @@ async function genererFactureGroupe(proprio, biens, mois) {
     })
   }
 
+  // Owner stay FMEN surplus : ligne prestation de service par bien (TVA 20%)
+  for (const [, { osFmenSurplus, bienName }] of ownerStaySurplusByBien) {
+    if (osFmenSurplus <= 0) continue
+    const osHT  = Math.round(osFmenSurplus / 1.20)
+    const osTVA = osFmenSurplus - osHT
+    lignes.push({
+      facture_id:  factureId,
+      code:        'FMEN',
+      libelle:     `Ménage séjour propriétaire — ${bienName}`,
+      description: 'Prestation de service facturée au propriétaire (LOY insuffisant)',
+      montant_ht:  osHT,
+      taux_tva:    20,
+      montant_tva: osTVA,
+      montant_ttc: osFmenSurplus,
+      ordre:       ordre++,
+    })
+  }
+
   if (lignes.length > 0) {
     await supabase.from('facture_evoliz_ligne').insert(lignes)
   }
@@ -534,6 +577,21 @@ async function genererFactureDebours(proprio, biens, mois) {
     .from('ventilation').select('bien_id, code, montant_ht, montant_reel')
     .in('bien_id', bienIds).eq('mois_comptable', mois).in('code', ['AUTO', 'LOY'])
 
+  // Batch 1b : owner stay AUTO — surplus non couvert par LOY → DEB_AE
+  const { data: osResasDebours } = await supabase
+    .from('reservation').select('id, bien_id')
+    .in('bien_id', bienIds).eq('mois_comptable', mois).eq('owner_stay', true).eq('platform', 'manual')
+  const osAutoByBien = new Map()
+  if ((osResasDebours || []).length > 0) {
+    const osIds = osResasDebours.map(function(r) { return r.id })
+    const { data: osAutoVent } = await supabase
+      .from('ventilation').select('bien_id, montant_ht')
+      .in('reservation_id', osIds).eq('code', 'AUTO')
+    ;(osAutoVent || []).forEach(function(v) {
+      osAutoByBien.set(v.bien_id, (osAutoByBien.get(v.bien_id) || 0) + (v.montant_ht || 0))
+    })
+  }
+
   // Batch 2 : prestations deduction_loy + haowner + debours_proprio
   const { data: prestationsAll } = await supabase
     .from('prestation_hors_forfait').select('bien_id, montant, type_imputation, ae:ae_id(type)')
@@ -572,15 +630,17 @@ async function genererFactureDebours(proprio, biens, mois) {
     const autoBien = bienVentil
       .filter(function(l) { return l.code === 'AUTO' })
       .reduce(function(s, l) { return s + (l.montant_reel !== null ? l.montant_reel : (l.montant_ht || 0)) }, 0)
+    const osAutoHT = osAutoByBien.get(bien.id) || 0
 
-    if (autoBien === 0) continue
+    if (autoBien === 0 && osAutoHT === 0) continue
 
     let montantAFacturer = 0
     let debPropSurplus   = 0
     let debPropItems     = []
+    let osAutoSurplus    = 0
 
     if (bien.mode_encaissement === 'proprio') {
-      montantAFacturer = autoBien
+      montantAFacturer = autoBien + osAutoHT
     } else {
       const loyBien = bienVentil
         .filter(function(l) { return l.code === 'LOY' })
@@ -605,14 +665,17 @@ async function genererFactureDebours(proprio, biens, mois) {
       const debPropAbsorb   = Math.min(deboursPropBien, loyApresAuto)
       debPropSurplus        = Math.max(0, deboursPropBien - debPropAbsorb)
       montantAFacturer     += debPropSurplus
-    }
 
-    if (autoBien > 0) {
+      // Owner stay AUTO : absorbe le LOY résiduel après deboursProp
+      const loyApresAll = Math.max(0, loyApresAuto - debPropAbsorb)
+      const osAutoAbsorb = Math.min(osAutoHT, loyApresAll)
+      osAutoSurplus = Math.max(0, osAutoHT - osAutoAbsorb)
+      montantAFacturer += osAutoSurplus
     }
 
     if (montantAFacturer === 0) continue
 
-    const autoSurplusBienDebours = Math.max(0, montantAFacturer - debPropSurplus)
+    const autoSurplusBienDebours = Math.max(0, montantAFacturer - debPropSurplus - osAutoSurplus)
     if (autoSurplusBienDebours > 0) {
       lignes.push({
         code:        'DEB_AE',
@@ -621,6 +684,19 @@ async function genererFactureDebours(proprio, biens, mois) {
         taux_tva:    0,
         montant_tva: 0,
         montant_ttc: autoSurplusBienDebours,
+        ordre:       ordre++,
+      })
+    }
+
+    // Owner stay AUTO surplus : DEB_AE séparé (débours AE pour séjour propriétaire)
+    if (osAutoSurplus > 0) {
+      lignes.push({
+        code:        'DEB_AE',
+        libelle:     'Debours AE séjour propriétaire - ' + bien.hospitable_name,
+        montant_ht:  osAutoSurplus,
+        taux_tva:    0,
+        montant_tva: 0,
+        montant_ttc: osAutoSurplus,
         ordre:       ordre++,
       })
     }

@@ -18,6 +18,7 @@
 
 import { supabase } from '../lib/supabase'
 import { logOp } from './journal'
+import { STATUTS_NON_VENTILABLES } from '../lib/constants'
 
 const TVA_RATE = 0.20
 // AIRBNB_LOY_RATE supprimé — remplacé par pro-rata du host_service_fee (voir dueToOwner Airbnb)
@@ -199,7 +200,6 @@ export function _calculerLignes(resa) {
   // ─────────────────────────────────────────────────────────────────────────
 
   const isDirect = resa.platform === 'direct'
-  const STATUTS_NON_VENTILABLES = ['cancelled', 'not_accepted', 'not accepted', 'declined', 'expired']
   const isCancelled = STATUTS_NON_VENTILABLES.includes(resa.final_status)
 
   // Réservation annulée mais fin_revenue > 0 (frais d'annulation) → ventiler normalement
@@ -246,10 +246,8 @@ export function _calculerLignes(resa) {
   const taxesTotal = (resa.platform === 'airbnb') ? 0 : taxes.filter(t => !isRemitted(t)).reduce((s, t) => s + (t.amount || 0), 0)
 
   // ── Taux commission plateforme sur les fees ───────────────────────────────
-  // Airbnb  : pro-rata du host_service_fee sur la part ménage, net de commission DCB (voir dueToOwner)
-  // Booking : taux fixe ~15,17% mesuré statement Chambre Txomin fév 2026
+  // Toutes plateformes : dueToOwner calculé en pro-rata du host_service_fee (voir dueToOwner)
   // Direct  : dueToOwner = 0
-  const PLATFORM_CLEANING_RATES = { booking: 0.1517 }
 
   let commissionableBase, loyAmount, cleaningFeeNet, platformRateOnCleaning
 
@@ -397,6 +395,12 @@ export async function calculerVentilationResa(resa) {
   if (bien.gestion_loyer === false) return []
   if ((bien.agence || 'dcb') !== 'dcb') return []
 
+  // Séjour propriétaire → pas de ventilation automatique (saisie manuelle via VentilationEdit)
+  if (resa.owner_stay) {
+    await supabase.from('reservation').update({ ventilation_calculee: true }).eq('id', resa.id)
+    return []
+  }
+
   // Revenue = montant net reçu en banque (en centimes)
   const revenue = resa.fin_revenue || 0
   if (revenue === 0) {
@@ -405,7 +409,6 @@ export async function calculerVentilationResa(resa) {
   }
 
   // Réservation annulée sans payout → supprimer lignes existantes et marquer ventilée
-  const STATUTS_NON_VENTILABLES = ['cancelled', 'not_accepted', 'not accepted', 'declined', 'expired']
   const isCancelled = STATUTS_NON_VENTILABLES.includes(resa.final_status)
   if (isCancelled && parseFloat(resa.fin_revenue || 0) === 0) {
     await supabase.from('ventilation').delete().eq('reservation_id', resa.id)

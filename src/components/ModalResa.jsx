@@ -317,7 +317,7 @@ export default function ModalResa({ resa, onClose, onSaved }) {
                 </div>
                 {[
                   { val: 'normal', label: 'Ventilation normale', desc: 'HON + FMEN + AUTO + LOY calculés automatiquement' },
-                  { val: 'proprio', label: 'Séjour propriétaire', desc: 'FMEN + AUTO uniquement, owner_stay = true' },
+                  { val: 'proprio', label: 'Séjour propriétaire', desc: 'Marquer comme séjour propriétaire — saisir FMEN manuellement (déduit du LOY ou facturé séparément)' },
                   { val: 'manuel', label: 'Manuel', desc: 'Saisie libre des montants' },
                 ].map(opt => (
                   <label key={opt.val} style={{ display: 'flex', alignItems: 'flex-start', gap: 8, marginBottom: 8, cursor: 'pointer' }}>
