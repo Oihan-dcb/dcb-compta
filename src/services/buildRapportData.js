@@ -189,10 +189,11 @@ export async function buildRapportData(bienId, propId, mois, opts = {}) {
     .map(r => ({
       id: r.id,
       arrival_date: r.arrival_date,
+      guest_name: r.guest_name,
       libelle: 'Ménage séjour propriétaire',
       montant: (r.fmen || 0) + (ventByResa[r.id]?.AUTO?.montant_ht || 0),
+      a_saisir: !ventByResa[r.id]?.FMEN,
     }))
-    .filter(r => r.montant > 0)
   const ownerStayMenageTotal = ownerStayList.reduce((s, r) => s + r.montant, 0)
 
   // ── fraisDeductionLoy — règle unique ─────────────────────────────────────
