@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react'
 import { supabase } from '../lib/supabase'
+import { useMoisPersisted } from '../hooks/useMoisPersisted'
 
 const STATUT_LABEL = { en_attente: 'En attente', valide: 'Validé', annule: 'Annulé' }
 const STATUT_COLOR = { en_attente: '#f59e0b', valide: '#16a34a', annule: '#dc2626' }
@@ -11,7 +12,7 @@ export default function PagePrestationsAE() {
   const [biens, setBiens] = useState([])
   const [loading, setLoading] = useState(true)
   const [filtre, setFiltre] = useState('en_attente') // 'en_attente' | 'valide' | 'annule' | 'tous'
-  const [mois, setMois] = useState(() => new Date().toISOString().slice(0, 7))
+  const [mois, setMois] = useMoisPersisted()
   const [editing, setEditing] = useState(null)
   const [formEdit, setFormEdit] = useState({})
   const [resasDisponibles, setResasDisponibles] = useState([])
