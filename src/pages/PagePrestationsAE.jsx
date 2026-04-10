@@ -20,6 +20,7 @@ export default function PagePrestationsAE() {
   const [error, setError] = useState(null)
   const [success, setSuccess] = useState(null)
   const [confirmModal, setConfirmModal] = useState(null)
+  const [counts, setCounts] = useState({ en_attente: 0, valide: 0, annule: 0 })
 
   useEffect(() => {
     charger()
@@ -54,12 +55,16 @@ export default function PagePrestationsAE() {
       if (err) throw err
       setPrestations(data || [])
 
-      const [{ data: aesData }, { data: biensData }] = await Promise.all([
+      const [{ data: aesData }, { data: biensData }, { data: allStatuts }] = await Promise.all([
         supabase.from('auto_entrepreneur').select('id, nom, prenom').order('nom'),
-        supabase.from('bien').select('id, code, hospitable_name').eq('agence', 'dcb').eq('listed', true).order('code')
+        supabase.from('bien').select('id, code, hospitable_name').eq('agence', 'dcb').eq('listed', true).order('code'),
+        supabase.from('prestation_hors_forfait').select('statut').eq('mois', mois)
       ])
       setAes(aesData || [])
       setBiens(biensData || [])
+      const c = { en_attente: 0, valide: 0, annule: 0 }
+      ;(allStatuts || []).forEach(p => { if (p.statut in c) c[p.statut]++ })
+      setCounts(c)
     } catch (err) { setError(err.message) }
     finally { setLoading(false) }
   }
@@ -175,9 +180,9 @@ export default function PagePrestationsAE() {
       {/* Stats */}
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 14, marginBottom: 20 }}>
         {[
-          { label: 'En attente', val: totalEnAttente, count: prestations.filter(p=>p.statut==='en_attente').length, color: '#f59e0b', bg: '#fffbeb' },
-          { label: 'Validées', val: totalValide, count: prestations.filter(p=>p.statut==='valide').length, color: '#16a34a', bg: '#f0fdf4' },
-          { label: 'Annulées', val: prestations.filter(p=>p.statut==='annule').reduce((s,p)=>s+(p.montant||0),0), count: prestations.filter(p=>p.statut==='annule').length, color: '#dc2626', bg: '#fef2f2' },
+          { label: 'En attente', val: totalEnAttente, count: counts.en_attente, color: '#f59e0b', bg: '#fffbeb' },
+          { label: 'Validées', val: totalValide, count: counts.valide, color: '#16a34a', bg: '#f0fdf4' },
+          { label: 'Annulées', val: prestations.filter(p=>p.statut==='annule').reduce((s,p)=>s+(p.montant||0),0), count: counts.annule, color: '#dc2626', bg: '#fef2f2' },
         ].map(s => (
           <div key={s.label} style={{ background: s.bg, borderRadius: 10, padding: '14px 18px', border: `1px solid ${s.color}33` }}>
             <div style={{ fontSize: 12, color: '#666', textTransform: 'uppercase', fontWeight: 600 }}>{s.label}</div>
@@ -192,9 +197,9 @@ export default function PagePrestationsAE() {
 
       {/* Filtres */}
       <div style={{ display: 'flex', gap: 8, marginBottom: 16 }}>
-        {TAB('en_attente', '⏳ En attente', prestations.filter(p=>p.statut==='en_attente').length)}
-        {TAB('valide', '✓ Validées', prestations.filter(p=>p.statut==='valide').length)}
-        {TAB('annule', '✕ Annulées', prestations.filter(p=>p.statut==='annule').length)}
+        {TAB('en_attente', '⏳ En attente', counts.en_attente)}
+        {TAB('valide', '✓ Validées', counts.valide)}
+        {TAB('annule', '✕ Annulées', counts.annule)}
         {TAB('tous', 'Toutes')}
       </div>
 
@@ -222,11 +227,11 @@ export default function PagePrestationsAE() {
                     <span style={{ background: '#FFF8EC', borderRadius: 5, padding: '2px 8px', fontSize: 12, color: '#CC9933', border: '1px solid #E4A853' }}>
                       🧹 {p.ae?.prenom} {p.ae?.nom}
                     </span>
-                    {p.mission?.date_mission && (
-                      <span style={{ fontSize: 12, color: '#888' }}>
-                        📅 {new Date(p.mission.date_mission + 'T12:00:00').toLocaleDateString('fr-FR')}
-                      </span>
-                    )}
+                    <span style={{ fontSize: 12, color: '#888' }}>
+                      📅 {(p.date_prestation || p.mission?.date_mission)
+                        ? new Date((p.date_prestation || p.mission.date_mission) + 'T12:00:00').toLocaleDateString('fr-FR')
+                        : '—'}
+                    </span>
                   </div>
                   <div style={{ display: 'flex', gap: 16, fontSize: 13, color: '#666', flexWrap: 'wrap' }}>
                     {p.duree_minutes && <span>⏱ {p.duree_minutes} min</span>}

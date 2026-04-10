@@ -202,11 +202,15 @@ export default function PageFactures() {
   // Exclure les factures sans rien à facturer (calcul_en_cours = total zéro)
   const facturesVisibles = factures.filter(f => f.statut !== 'calcul_en_cours')
 
-  // Trier par code bien (direct si bien_id, sinon premier bien du proprio) puis par nom proprio
+  // Tri : code bien direct, ou label groupe (Maison Maïté → "M..."), ou premier code proprio
+  function labelFacture(f) {
+    if (f.bien?.code) return f.bien.code
+    const biens = f.proprietaire?.bien || []
+    if (biens.some(b => b.groupe_facturation === 'MAITE')) return 'Maison Maïté'
+    return biens.slice().sort((a,b)=>(a.code||'').localeCompare(b.code||''))[0]?.code || ''
+  }
   const facturesTries = [...facturesVisibles].sort((a, b) => {
-    const codeA = a.bien?.code || a.proprietaire?.bien?.slice().sort((x,y)=>(x.code||'').localeCompare(y.code||''))[0]?.code || ''
-    const codeB = b.bien?.code || b.proprietaire?.bien?.slice().sort((x,y)=>(x.code||'').localeCompare(y.code||''))[0]?.code || ''
-    const c = codeA.localeCompare(codeB, 'fr', { numeric: true })
+    const c = labelFacture(a).localeCompare(labelFacture(b), 'fr', { numeric: true })
     if (c !== 0) return c
     return `${a.proprietaire?.nom}`.localeCompare(`${b.proprietaire?.nom}`, 'fr')
   })
@@ -375,10 +379,12 @@ export default function PageFactures() {
             const statutInfo = f.solde_negatif ? STATUTS.solde_negatif : (STATUTS[f.statut] || STATUTS.brouillon)
             const isExpanded = expanded === f.id
             const proprio = f.proprietaire
-            // Code(s) du bien : bien direct si facture mono-bien, sinon codes du groupe
+            // Label du bien : code direct, ou "Maison Maïté" pour le groupe, ou codes séparés
             const bienCodes = f.bien?.code
               ? f.bien.code
-              : (proprio?.bien || []).slice().sort((a,b)=>(a.code||'').localeCompare(b.code||'')).map(b=>b.code).filter(Boolean).join(', ')
+              : (proprio?.bien || []).some(b => b.groupe_facturation === 'MAITE')
+                ? 'Maison Maïté'
+                : (proprio?.bien || []).slice().sort((a,b)=>(a.code||'').localeCompare(b.code||'')).map(b=>b.code).filter(Boolean).join(', ')
 
             return (
               <div key={f.id} style={{
