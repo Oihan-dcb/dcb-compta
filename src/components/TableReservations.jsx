@@ -47,7 +47,7 @@ function BadgeStatut({ r, onToggle }) {
 
 const SEL = { padding: '4px 8px', border: '1px solid var(--border)', borderRadius: 6, fontSize: '0.82em', background: '#fff', color: 'var(--text)', cursor: 'pointer' }
 
-export default function TableReservations({ reservations, onSelect, onRefresh }) {
+export default function TableReservations({ reservations, onSelect, onRefresh, loading }) {
   const toggling = useRef(false)
   const [filterBien, setFilterBien]     = useState('')
   const [filterPlat, setFilterPlat]     = useState('')
@@ -87,7 +87,7 @@ export default function TableReservations({ reservations, onSelect, onRefresh })
     return true
   })
 
-  if (reservations.length === 0) return (
+  if (!loading && reservations.length === 0) return (
     <div className="empty-state">
       <div className="empty-state-title">Aucune réservation</div>
       <p>Lance une sync Hospitable pour ce mois.</p>
@@ -124,7 +124,8 @@ export default function TableReservations({ reservations, onSelect, onRefresh })
           <span style={{ fontSize: '0.8em', color: '#9C8E7D' }}>{filtered.length} / {reservations.length}</span>
         )}
       </div>
-    <div className="table-container">
+    {loading && <div style={{ padding: '6px 0', fontSize: '0.82em', color: '#9C8E7D' }}><span className="spinner" style={{ marginRight: 6 }} />Actualisation…</div>}
+    <div className="table-container" style={{ opacity: loading ? 0.5 : 1, transition: 'opacity 0.15s' }}>
       <table>
         <thead>
           <tr>

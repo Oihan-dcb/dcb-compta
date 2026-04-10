@@ -244,10 +244,11 @@ export default function PageReservations() {
         </button>
       </div>
 
-      {loading ? (
+      {/* TableReservations reste monté pour préserver les filtres — loading passé en prop */}
+      {onglet === 'reservations' ? (
+        <TableReservations reservations={reservations} onSelect={setSelectedResa} onRefresh={charger} loading={loading} />
+      ) : loading ? (
         <div className="loading-state"><span className="spinner" /> Chargement…</div>
-      ) : onglet === 'reservations' ? (
-        <TableReservations reservations={reservations} onSelect={setSelectedResa} onRefresh={charger} />
       ) : (
         <TableVentilation recap={recap?.parCode || recap || []} parProprio={recap?.parProprio || []} reservations={reservations} />
       )}
