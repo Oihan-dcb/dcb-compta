@@ -11,7 +11,7 @@ export default function PageAutoEntrepreneurs() {
   const [aes, setAes] = useState([])
   const [prestationTypes, setPrestationTypes] = useState([])
   const [loading, setLoading] = useState(true)
-  const [tab, setTab] = useState('aes') // 'aes' | 'prestations'
+  const [tab, setTab] = useState('vision') // 'vision' | 'aes' | 'prestations'
   const [editing, setEditing] = useState(null)
   const [form, setForm] = useState(EMPTY_AE)
   const [saving, setSaving] = useState(false)
@@ -34,6 +34,7 @@ export default function PageAutoEntrepreneurs() {
 
   useEffect(() => {
     charger(true)  // autoSync au chargement
+    chargerVision(visionMois)
     // Realtime : rafraîchit si des missions sont ajoutées
     const channel = supabase.channel('ae-changes')
       .on('postgres_changes', { event: '*', schema: 'public', table: 'mission_menage' },
@@ -82,13 +83,24 @@ export default function PageAutoEntrepreneurs() {
 
   async function chargerVision(mois) {
     setLoadingVision(true)
-    const { data } = await supabase
-      .from('prestation_hors_forfait')
-      .select('id, ae_id, bien_id, date_prestation, montant, statut, description, reservation_id, bien:bien_id(code, hospitable_name), prestation_type:prestation_type_id(nom)')
-      .eq('mois', mois)
-      .not('ae_id', 'is', null)
-      .order('date_prestation')
-    setVisionData(data || [])
+    const [{ data: prestData }, { data: missionsData }] = await Promise.all([
+      supabase
+        .from('prestation_hors_forfait')
+        .select('id, ae_id, bien_id, date_prestation, montant, statut, description, bien:bien_id(code, hospitable_name), prestation_type:prestation_type_id(nom)')
+        .eq('mois', mois)
+        .not('ae_id', 'is', null)
+        .order('date_prestation'),
+      supabase
+        .from('mission_menage')
+        .select('id, ae_id, bien_id, date_mission, titre_ical, duree_heures, montant')
+        .eq('mois', mois)
+        .neq('statut', 'cancelled')
+        .neq('imputation', 'hors_compta_dcb')
+        .order('date_mission')
+    ])
+    const prests = (prestData || []).map(p => ({ ...p, _type: 'prestation', _date: p.date_prestation }))
+    const missions = (missionsData || []).map(m => ({ ...m, _type: 'mission', _date: m.date_mission }))
+    setVisionData([...prests, ...missions])
     setLoadingVision(false)
   }
 
@@ -253,9 +265,9 @@ export default function PageAutoEntrepreneurs() {
       {error && !editing && <div style={{ background: '#FEE2E2', borderRadius: 8, padding: '10px 16px', marginBottom: 14, fontSize: 13, color: '#B91C1C' }}>✕ {error}</div>}
 
       <div style={{ display: 'flex', gap: 8, marginBottom: 20 }}>
-        <button style={TAB_STYLE(tab === 'aes')} onClick={() => setTab('aes')}>🧹 Auto-entrepreneurs ({aes.length})</button>
-        <button style={TAB_STYLE(tab === 'prestations')} onClick={() => setTab('prestations')}>⚙️ Types de prestations ({prestationTypes.length})</button>
         <button style={TAB_STYLE(tab === 'vision')} onClick={() => { setTab('vision'); chargerVision(visionMois) }}>📊 Vision mensuelle</button>
+        <button style={TAB_STYLE(tab === 'aes')} onClick={() => setTab('aes')}>🧹 Staff & AE ({aes.length})</button>
+        <button style={TAB_STYLE(tab === 'prestations')} onClick={() => setTab('prestations')}>⚙️ Types de prestations ({prestationTypes.length})</button>
       </div>
 
       {loading ? <div style={{ textAlign: 'center', padding: 40, color: '#888' }}>Chargement...</div> : (
@@ -330,8 +342,11 @@ export default function PageAutoEntrepreneurs() {
               ...m,
               aeNom: (() => { const a = aes.find(x => x.id === m.ae_id); return a ? `${a.prenom || ''} ${a.nom}`.trim() : '—' })()
             }))
-            const valides = rowsFlat.filter(m => m.statut === 'valide')
-            const grandTotal = valides.reduce((s, m) => s + (m.montant || 0), 0)
+            const grandTotal = rowsFlat.reduce((s, m) => {
+              if (m._type === 'mission') return s + (m.montant || 0)
+              if (m._type === 'prestation' && m.statut === 'valide') return s + (m.montant || 0)
+              return s
+            }, 0)
             // Groupe par AE
             const parAe = {}
             for (const m of rowsFlat) {
@@ -347,9 +362,15 @@ export default function PageAutoEntrepreneurs() {
               <div>
                 {/* Sélecteur mois + export */}
                 <div style={{ display: 'flex', gap: 10, alignItems: 'center', marginBottom: 18, flexWrap: 'wrap' }}>
-                  <input type="month" value={visionMois}
-                    onChange={e => { setVisionMois(e.target.value); chargerVision(e.target.value) }}
-                    style={{ padding: '6px 10px', borderRadius: 7, border: '1.5px solid var(--border)', fontSize: 13 }} />
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 0 }}>
+                    <button onClick={() => { const [y,m] = visionMois.split('-').map(Number); const d = new Date(y, m-2, 1); const nm = `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}`; setVisionMois(nm); chargerVision(nm) }}
+                      style={{ background: 'var(--bg)', border: '1px solid var(--border)', borderRadius: '7px 0 0 7px', padding: '6px 10px', cursor: 'pointer', fontSize: 16, borderRight: 'none' }}>‹</button>
+                    <span style={{ fontWeight: 700, fontSize: 14, padding: '6px 14px', border: '1px solid var(--border)', minWidth: 140, textAlign: 'center' }}>
+                      {new Date(visionMois + '-01').toLocaleDateString('fr-FR', { month: 'long', year: 'numeric' })}
+                    </span>
+                    <button onClick={() => { const [y,m] = visionMois.split('-').map(Number); const d = new Date(y, m, 1); const nm = `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}`; setVisionMois(nm); chargerVision(nm) }}
+                      style={{ background: 'var(--bg)', border: '1px solid var(--border)', borderRadius: '0 7px 7px 0', padding: '6px 10px', cursor: 'pointer', fontSize: 16, borderLeft: 'none' }}>›</button>
+                  </div>
                   {loadingVision && <span style={{ fontSize: 13, color: '#888' }}>⏳ Chargement…</span>}
                   <button onClick={() => exportVisionCSV(visionMois, rowsFlat)}
                     style={{ background: '#16a34a', color: '#fff', border: 'none', borderRadius: 7, padding: '7px 14px', fontSize: 13, fontWeight: 600, cursor: 'pointer' }}>
@@ -357,7 +378,7 @@ export default function PageAutoEntrepreneurs() {
                   </button>
                   {grandTotal > 0 && (
                     <span style={{ fontSize: 14, fontWeight: 700, color: 'var(--text)', marginLeft: 8 }}>
-                      Total validé : {fmt(grandTotal)}
+                      Total : {fmt(grandTotal)}
                     </span>
                   )}
                 </div>
@@ -366,10 +387,15 @@ export default function PageAutoEntrepreneurs() {
                   <div style={{ textAlign: 'center', padding: 40, color: '#888' }}>Aucune mission ce mois.</div>
                 )}
                 {aeGroups.map(({ ae, missions }) => {
-                  const totalAe = missions.filter(m => m.statut === 'valide').reduce((s, m) => s + (m.montant || 0), 0)
-                  const nbValide = missions.filter(m => m.statut === 'valide').length
-                  const nbEnAttente = missions.filter(m => m.statut === 'en_attente').length
-                  const nbAnnule = missions.filter(m => m.statut === 'annule').length
+                  const totalAe = missions.reduce((s, m) => {
+                    if (m._type === 'mission') return s + (m.montant || 0)
+                    if (m._type === 'prestation' && m.statut === 'valide') return s + (m.montant || 0)
+                    return s
+                  }, 0)
+                  const nbMissions = missions.filter(m => m._type === 'mission').length
+                  const nbValide = missions.filter(m => m._type === 'prestation' && m.statut === 'valide').length
+                  const nbEnAttente = missions.filter(m => m._type === 'prestation' && m.statut === 'en_attente').length
+                  const nbAnnule = missions.filter(m => m._type === 'prestation' && m.statut === 'annule').length
                   const pct = grandTotal > 0 ? Math.round((totalAe / grandTotal) * 100) : 0
                   return (
                     <div key={ae?.id || 'inconnu'} style={{ background: '#fff', borderRadius: 12, border: '1px solid #e5e7eb', marginBottom: 14, overflow: 'hidden' }}>
@@ -381,9 +407,10 @@ export default function PageAutoEntrepreneurs() {
                         <div style={{ flex: 1 }}>
                           <div style={{ fontWeight: 700, fontSize: 15 }}>{ae ? `${ae.prenom || ''} ${ae.nom}`.trim() : '—'}</div>
                           <div style={{ fontSize: 12, color: '#888', marginTop: 1 }}>
-                            {nbValide} mission{nbValide !== 1 ? 's' : ''} validée{nbValide !== 1 ? 's' : ''}
-                            {nbEnAttente > 0 && <span style={{ color: '#d97706', marginLeft: 8 }}>{nbEnAttente} en attente</span>}
-                            {nbAnnule > 0 && <span style={{ color: '#9c8c7a', marginLeft: 8 }}>{nbAnnule} annulée{nbAnnule !== 1 ? 's' : ''}</span>}
+                            {nbMissions > 0 && <span>{nbMissions} ménage{nbMissions !== 1 ? 's' : ''}</span>}
+                            {nbValide > 0 && <span style={{ marginLeft: nbMissions > 0 ? 8 : 0 }}>{nbValide} extra validé{nbValide !== 1 ? 's' : ''}</span>}
+                            {nbEnAttente > 0 && <span style={{ color: '#d97706', marginLeft: 8 }}>{nbEnAttente} extra en attente</span>}
+                            {nbAnnule > 0 && <span style={{ color: '#9c8c7a', marginLeft: 8 }}>{nbAnnule} annulé{nbAnnule !== 1 ? 's' : ''}</span>}
                           </div>
                         </div>
                         <div style={{ textAlign: 'right' }}>
@@ -402,26 +429,36 @@ export default function PageAutoEntrepreneurs() {
                       <div style={{ padding: '0 0 4px' }}>
                         <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
                           <tbody>
-                            {missions.sort((a, b) => (a.date_prestation || '').localeCompare(b.date_prestation || '')).map(m => {
+                            {missions.sort((a, b) => (a._date || '').localeCompare(b._date || '')).map(m => {
                               const STATUT_C = { valide: '#16a34a', en_attente: '#d97706', annule: '#9c8c7a' }
+                              const isMission = m._type === 'mission'
+                              const date = isMission ? m.date_mission : m.date_prestation
+                              const label = isMission
+                                ? (m.titre_ical || 'Ménage')
+                                : (m.description || m.prestation_type?.nom || '—')
+                              const statutBadge = isMission
+                                ? (m.montant ? <span style={{ fontSize: 11, color: '#16a34a' }}>✓</span> : <span style={{ fontSize: 11, color: '#d97706' }}>à saisir</span>)
+                                : <span style={{ padding: '2px 8px', borderRadius: 10, fontSize: 11, fontWeight: 600, background: `${STATUT_C[m.statut]}20`, color: STATUT_C[m.statut] || '#888' }}>
+                                    {m.statut === 'valide' ? '✓' : m.statut === 'annule' ? '✕' : '⏳'}
+                                  </span>
                               return (
-                                <tr key={m.id} style={{ borderBottom: '1px solid #f3f4f6' }}>
+                                <tr key={`${m._type}-${m.id}`} style={{ borderBottom: '1px solid #f3f4f6', background: isMission ? 'transparent' : '#FFFBF0' }}>
                                   <td style={{ padding: '7px 18px', color: '#666', whiteSpace: 'nowrap', fontSize: 12 }}>
-                                    {m.date_prestation ? m.date_prestation.split('-').reverse().join('/') : '—'}
+                                    {date ? date.split('-').reverse().join('/') : '—'}
                                   </td>
                                   <td style={{ padding: '7px 8px', fontWeight: 600, color: 'var(--brand)', fontSize: 12 }}>
                                     {m.bien?.code || '—'}
                                   </td>
                                   <td style={{ padding: '7px 8px', color: 'var(--text)', flex: 1 }}>
-                                    {m.description || m.prestation_type?.nom || '—'}
+                                    {!isMission && <span style={{ fontSize: 10, background: '#FFF8EC', color: '#CC9933', border: '1px solid #E4A853', borderRadius: 3, padding: '1px 5px', marginRight: 5 }}>extra</span>}
+                                    {label}
+                                    {isMission && m.duree_heures && <span style={{ color: '#888', fontSize: 11, marginLeft: 6 }}>{m.duree_heures}h</span>}
                                   </td>
                                   <td style={{ padding: '7px 18px', textAlign: 'right', fontWeight: 600, whiteSpace: 'nowrap' }}>
                                     {fmt(m.montant)}
                                   </td>
                                   <td style={{ padding: '7px 18px', textAlign: 'right' }}>
-                                    <span style={{ padding: '2px 8px', borderRadius: 10, fontSize: 11, fontWeight: 600, background: `${STATUT_C[m.statut]}20`, color: STATUT_C[m.statut] || '#888' }}>
-                                      {m.statut === 'valide' ? '✓' : m.statut === 'annule' ? '✕' : '⏳'}
-                                    </span>
+                                    {statutBadge}
                                   </td>
                                 </tr>
                               )

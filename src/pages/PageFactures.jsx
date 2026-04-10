@@ -209,7 +209,11 @@ export default function PageFactures() {
     if (biens.some(b => b.groupe_facturation === 'MAITE')) return 'Maison Maïté'
     return biens.slice().sort((a,b)=>(a.code||'').localeCompare(b.code||''))[0]?.code || ''
   }
+  const isMaiteFacture = f => (f.proprietaire?.bien || []).some(b => b.groupe_facturation === 'MAITE')
   const facturesTries = [...facturesVisibles].sort((a, b) => {
+    const mA = isMaiteFacture(a) ? 0 : 1
+    const mB = isMaiteFacture(b) ? 0 : 1
+    if (mA !== mB) return mA - mB
     const c = labelFacture(a).localeCompare(labelFacture(b), 'fr', { numeric: true })
     if (c !== 0) return c
     return `${a.proprietaire?.nom}`.localeCompare(`${b.proprietaire?.nom}`, 'fr')

@@ -21,6 +21,7 @@ export default function PagePrestationsAE() {
   const [success, setSuccess] = useState(null)
   const [confirmModal, setConfirmModal] = useState(null)
   const [counts, setCounts] = useState({ en_attente: 0, valide: 0, annule: 0 })
+  const [totals, setTotals] = useState({ en_attente: 0, valide: 0, annule: 0 })
 
   useEffect(() => {
     charger()
@@ -58,13 +59,15 @@ export default function PagePrestationsAE() {
       const [{ data: aesData }, { data: biensData }, { data: allStatuts }] = await Promise.all([
         supabase.from('auto_entrepreneur').select('id, nom, prenom').order('nom'),
         supabase.from('bien').select('id, code, hospitable_name').eq('agence', 'dcb').eq('listed', true).order('code'),
-        supabase.from('prestation_hors_forfait').select('statut').eq('mois', mois)
+        supabase.from('prestation_hors_forfait').select('statut, montant').eq('mois', mois)
       ])
       setAes(aesData || [])
       setBiens(biensData || [])
       const c = { en_attente: 0, valide: 0, annule: 0 }
-      ;(allStatuts || []).forEach(p => { if (p.statut in c) c[p.statut]++ })
+      const t = { en_attente: 0, valide: 0, annule: 0 }
+      ;(allStatuts || []).forEach(p => { if (p.statut in c) { c[p.statut]++; t[p.statut] += p.montant || 0 } })
       setCounts(c)
+      setTotals(t)
     } catch (err) { setError(err.message) }
     finally { setLoading(false) }
   }
@@ -180,9 +183,9 @@ export default function PagePrestationsAE() {
       {/* Stats */}
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 14, marginBottom: 20 }}>
         {[
-          { label: 'En attente', val: totalEnAttente, count: counts.en_attente, color: '#f59e0b', bg: '#fffbeb' },
-          { label: 'Validées', val: totalValide, count: counts.valide, color: '#16a34a', bg: '#f0fdf4' },
-          { label: 'Annulées', val: prestations.filter(p=>p.statut==='annule').reduce((s,p)=>s+(p.montant||0),0), count: counts.annule, color: '#dc2626', bg: '#fef2f2' },
+          { label: 'En attente', val: totals.en_attente, count: counts.en_attente, color: '#f59e0b', bg: '#fffbeb' },
+          { label: 'Validées', val: totals.valide, count: counts.valide, color: '#16a34a', bg: '#f0fdf4' },
+          { label: 'Annulées', val: totals.annule, count: counts.annule, color: '#dc2626', bg: '#fef2f2' },
         ].map(s => (
           <div key={s.label} style={{ background: s.bg, borderRadius: 10, padding: '14px 18px', border: `1px solid ${s.color}33` }}>
             <div style={{ fontSize: 12, color: '#666', textTransform: 'uppercase', fontWeight: 600 }}>{s.label}</div>

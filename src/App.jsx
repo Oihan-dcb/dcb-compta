@@ -23,7 +23,7 @@ function ConfigDropdown() {
   const [open, setOpen] = useState(false)
   const ref = useRef(null)
   const location = useLocation()
-  const configPaths = ['/import', '/journal', '/auto-entrepreneurs', '/config', '/bugs']
+  const configPaths = ['/import', '/journal', '/config', '/bugs']
   const isActive = configPaths.some(p => location.pathname === p)
 
   useEffect(() => {
@@ -46,7 +46,6 @@ function ConfigDropdown() {
           {[
             { to: '/import', label: 'Import CSV' },
             { to: '/journal', label: 'Journal' },
-            { to: '/auto-entrepreneurs', label: 'AEs' },
             { to: '/bugs', label: '🐛 Bugs' },
             { to: '/config', label: 'Paramètres' },
           ].map(({ to, label }) => (
@@ -104,6 +103,7 @@ export default function App() {
               )}
             </NavLink>
             <NavLink to="/rapports" className={({isActive}) => isActive ? 'nav-link active' : 'nav-link'}>Rapports</NavLink>
+            <NavLink to="/auto-entrepreneurs" className={({isActive}) => isActive ? 'nav-link active' : 'nav-link'}>STAFF</NavLink>
             <NavLink to="/factures" className={({isActive}) => isActive ? 'nav-link active' : 'nav-link'}>Facturation</NavLink>
             <NavLink to="/comptabilite" className={({isActive}) => isActive ? 'nav-link active' : 'nav-link'}>Comptabilité</NavLink>
             <ConfigDropdown />

@@ -5,14 +5,14 @@ export const MOIS_FR = ['Jan','Fév','Mar','Avr','Mai','Jun','Jul','Aoû','Sep',
 export default function MoisSelector({ mois, setMois, moisDispos }) {
   const [open, setOpen] = useState(false)
   // Toujours inclure le mois actif même s'il n'a pas de données
-  const moisEffectifs = moisDispos.includes(mois) ? moisDispos : [...moisDispos, mois].sort((a, b) => b.localeCompare(a))
+  const moisEffectifs = moisDispos.includes(mois) ? moisDispos : [...moisDispos, mois].sort((a, b) => a.localeCompare(b))
   const parAnnee = {}
   for (const m of moisEffectifs) {
     const [y] = m.split('-')
     if (!parAnnee[y]) parAnnee[y] = []
     parAnnee[y].push(m)
   }
-  const annees = Object.keys(parAnnee).sort((a, b) => b - a)
+  const annees = Object.keys(parAnnee).sort((a, b) => a - b)
   const [anneeActive, setAnneeActive] = useState(() => mois.split('-')[0])
   useEffect(() => { setAnneeActive(mois.split('-')[0]) }, [mois])
   const [year, monthIdx] = mois.split('-')
