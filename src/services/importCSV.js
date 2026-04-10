@@ -95,6 +95,7 @@ export async function importHospitableCSV(rows, moisFiltres = null, onProgress =
       fin_revenue: toC(row.payout || row.revenue),
       fin_accommodation: toC(row.base_amount),
       fin_gross_revenue: toC(row.total_price),
+      fin_host_service_fee: row.host_service_fee ? -Math.abs(Math.round(parseFloat(row.host_service_fee) * 100)) : null,
       fin_discount: toC(row.guest_discount),
       fin_adjusted: toC(row.adjusted_amount),
     }

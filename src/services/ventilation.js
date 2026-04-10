@@ -290,11 +290,9 @@ export function _calculerLignes(resa) {
   const fmenBase = airbnbFallbackActif
     ? (bien.forfait_dcb_ref || 0) + (bien.provision_ae_ref || 0)
     : totalFeesAirbnb
-  const dueToOwner = (resa.platform === 'airbnb' && totalFeesForOwnerRate > 0)
+  const dueToOwner = ((resa.platform === 'airbnb' || resa.platform === 'booking') && totalFeesForOwnerRate > 0)
     ? Math.round(Math.abs(hostServiceFee) * fmenBase / totalFeesForOwnerRate * (1 - tauxCom))
-    : (resa.platform === 'booking')
-      ? Math.round(fmenBase * PLATFORM_CLEANING_RATES.booking)
-      : 0
+    : 0
   const fmenTTC = Math.max(0, fmenBase - dueToOwner - aeAmount)
   const fmenHT  = fmenTTC > 0 ? Math.round(fmenTTC / (1 + TVA_RATE)) : 0
 
