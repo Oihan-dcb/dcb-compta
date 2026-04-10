@@ -60,7 +60,6 @@ export async function calculerVentilationMois(mois) {
     `)
     .eq('mois_comptable', mois)
     .or('fin_revenue.gt.0,final_status.not.in.("cancelled","not_accepted","not accepted","declined","expired")')
-    .eq('owner_stay', false)
 
   if (error) throw error
 
