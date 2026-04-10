@@ -96,7 +96,7 @@ export default function PageRapports() {
   useEffect(() => {
     supabase
       .from('proprietaire')
-      .select('id, nom, email, bien!inner(id, hospitable_name, listed, agence, groupe_facturation, rapport_config)')
+      .select('id, nom, email, bien!inner(id, code, hospitable_name, listed, agence, groupe_facturation, rapport_config)')
       .eq('bien.agence', 'dcb')
       .eq('actif', true)
       .order('nom')
@@ -657,9 +657,17 @@ FORMAT :
   const isMaite = (proprio?.bien || []).some(b => b.groupe_facturation === 'MAITE')
   const maiteIds = (proprio?.bien || []).filter(b => b.groupe_facturation === 'MAITE').map(b => b.id)
   const biensActifsMaite = biensActifs.filter(b => b.groupe_facturation === 'MAITE')
-  const propsFiltres = bienIdsActifs === null
+  const propsFiltres = (bienIdsActifs === null
     ? proprietaires
     : proprietaires.filter(p => (p.bien || []).some(b => bienIdsActifs.has(b.id)))
+  ).map(p => ({
+    ...p,
+    bien: [...(p.bien || [])].sort((a, b) => (a.code || '').localeCompare(b.code || '')),
+  })).sort((a, b) => {
+    const codeA = (a.bien?.[0]?.code || '').toLowerCase()
+    const codeB = (b.bien?.[0]?.code || '').toLowerCase()
+    return codeA.localeCompare(codeB)
+  })
   const [year, monthIdx] = mois.split('-')
   const moisLabel = MOIS_FR[parseInt(monthIdx) - 1] + ' ' + year
 
@@ -721,9 +729,10 @@ FORMAT :
           style={{ padding: '8px 12px', border: '1px solid var(--border)', borderRadius: 8, fontSize: '0.95em', background: '#fff', color: 'var(--text)', minWidth: 200 }}>
           {propsFiltres.map(p => {
             const bienEnvoye = (p.bien || []).some(b => biensEnvoyes.has(b.id))
+            const codes = (p.bien || []).filter(b => b.listed && b.agence === 'dcb').map(b => b.code).filter(Boolean).join(', ')
             return (
               <option key={p.id} value={p.id} style={{ color: bienEnvoye ? '#9C8E7D' : 'inherit' }}>
-                {bienEnvoye ? '✓ ' : ''}{p.nom}
+                {bienEnvoye ? '✓ ' : ''}{codes ? `${codes} — ` : ''}{p.nom}
               </option>
             )
           })}
@@ -741,7 +750,7 @@ FORMAT :
         {modeMaite !== 'global' && biensActifs.length > 1 && (
           <select value={selectedBienId} onChange={e => setSelectedBienId(e.target.value)}
             style={{ padding: '8px 12px', border: '1px solid var(--border)', borderRadius: 8, fontSize: '0.95em', background: '#fff', color: 'var(--text)', minWidth: 200 }}>
-            {(isMaite && modeMaite !== 'global' ? biensActifsMaite : biensActifs).map(b => <option key={b.id} value={b.id}>{b.hospitable_name}</option>)}
+            {(isMaite && modeMaite !== 'global' ? biensActifsMaite : biensActifs).map(b => <option key={b.id} value={b.id}>{b.code ? `${b.code} — ` : ''}{b.hospitable_name}</option>)}
           </select>
         )}
         <button onClick={charger} disabled={loading}
