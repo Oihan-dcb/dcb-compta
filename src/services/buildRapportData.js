@@ -178,7 +178,9 @@ export async function buildRapportData(bienId, propId, mois, opts = {}) {
       vir:  virHt,
       fmen: v.FMEN?.montant_ttc || 0,
       taxe: Math.max(0, virHt - loyHt),
-      menage_voyageur: (v.FMEN?.montant_ttc || 0) + (v.AUTO?.montant_ht || 0),
+      // menage_voyageur = ménage collecté auprès du voyageur (normal resas only)
+      // Pour owner_stay : le ménage est dans DÉBOURS (FMEN+AUTO), pas dans les colonnes voyageur
+      menage_voyageur: r.owner_stay ? 0 : (v.FMEN?.montant_ttc || 0) + (v.AUTO?.montant_ht || 0),
     }
   })
 
@@ -242,10 +244,13 @@ export async function buildRapportData(bienId, propId, mois, opts = {}) {
     ? (allReviewsData.reduce((s, r) => s + (r.rating || 0), 0) / allReviewsData.length).toFixed(1) : null
 
   // ── KPIs ─────────────────────────────────────────────────────────────────
-  const nbResas = resasEnrichies.length
-  const caHeb = resasEnrichies.reduce((s, r) => s + (r.fin_revenue || 0), 0)
-  const baseCommTotal = resasEnrichies.reduce((s, r) => s + (r.base_comm || 0), 0)
-  const durees = resasEnrichies.map(r => r.nights || 0).filter(v => v > 0)
+  // Owner_stay exclus des KPIs hébergement : fin_revenue = ménage proprio (pas CA locatif)
+  // et leurs nuits ne sont pas des nuits voyageur
+  const resasGuest = resasEnrichies.filter(r => !r.owner_stay)
+  const nbResas = resasGuest.length
+  const caHeb = resasGuest.reduce((s, r) => s + (r.fin_revenue || 0), 0)
+  const baseCommTotal = resasGuest.reduce((s, r) => s + (r.base_comm || 0), 0)
+  const durees = resasGuest.map(r => r.nights || 0).filter(v => v > 0)
   const nuitsOccupees = durees.reduce((s, v) => s + v, 0)
   const dureeMoy = durees.length ? (durees.reduce((s, v) => s + v, 0) / durees.length).toFixed(1) : '0'
   const tauxOcc = nuitsDispos > 0 ? Math.round((nuitsOccupees / nuitsDispos) * 100) : 0
@@ -253,7 +258,7 @@ export async function buildRapportData(bienId, propId, mois, opts = {}) {
   // ventByResa déduplique implicitement (last-write-wins par code/resa)
   // → immunisé contre les lignes HON en doublon dans la table ventilation
   // honTotalVent (somme brute toutes lignes) est conservé pour _debug uniquement
-  const honTotal = resasEnrichies.reduce((s, r) => s + (r.hon || 0), 0)
+  const honTotal = resasGuest.reduce((s, r) => s + (r.hon || 0), 0)
 
   const resaN1Valid = resasN1 || []
   const caHebN1 = resaN1Valid.reduce((s, r) => s + (r.fin_revenue || 0), 0)
