@@ -39,7 +39,7 @@ export default function MoisSelector({ mois, setMois, moisDispos }) {
         ›
       </button>
       {open && (
-        <div style={{ position: 'absolute', top: '110%', left: 0, zIndex: 100, background: 'var(--bg-card)', border: '1px solid var(--border)', borderRadius: 10, boxShadow: '0 8px 24px rgba(0,0,0,0.15)', minWidth: 280, padding: 12 }}
+        <div style={{ position: 'absolute', top: '110%', left: 0, zIndex: 100, background: '#EAE3D4', border: '1px solid var(--border)', borderRadius: 10, boxShadow: '0 8px 24px rgba(0,0,0,0.18)', minWidth: 280, padding: 12 }}
           onMouseLeave={() => setOpen(false)}>
           <div style={{ display: 'flex', gap: 6, marginBottom: 10, flexWrap: 'wrap' }}>
             {annees.map(y => (
