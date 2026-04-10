@@ -160,6 +160,16 @@ Aucun invariant actif violé à l'issue de la session du 02 avril 2026.
 
 **Détail I-56** : `genererFactureDebours` ne marque pas les frais directs `statut='facture'` dans le chemin skipped (aucune donnée à facturer). Le `UPDATE` est placé exclusivement dans le bloc `if (factureId)` — après insertion des lignes Evoliz confirmée. Idem pour `deduire_loyer` dans `genererFactureProprietaire`.
 
+### Invariants ajoutés (avril 2026 — refactor architecture rapports)
+
+| Invariant | Description courte | Statut |
+|---|---|---|
+| I-80 | `buildRapportData.js` est la source de calcul unique pour toutes les surfaces rapport (UI, PDF, Statement) — aucun recalcul divergent ailleurs | ✅ Implémenté (session 08/04/2026) |
+| I-81 | `STATUTS_NON_VENTILABLES` est défini une seule fois dans `src/lib/constants.js` et importé partout — pas de redéfinition locale | ✅ Implémenté (session 08/04/2026) |
+| I-82 | `virementNet` utilise `facture.montant_reversement` si la facture est confirmée (statut hors `brouillon`/`calcul_en_cours`) — jamais recalculé depuis la ventilation quand une facture validée existe | ✅ Implémenté (BRANCHE 1 dans `buildRapportData.js`) |
+| I-83 | `ownerStayMenageTotal` est déduit du `montant_reversement` dans `facturesEvoliz.js` (génération de facture) et dans le calcul BRANCHE 2 de `virementNet` dans `buildRapportData.js` — cohérence génération ↔ affichage | ✅ Implémenté (session 08/04/2026) |
+| I-84 | `fraisDeductionLoy` suit la règle : `statut='facture' && statut_deduction≠'en_attente'` → `montant_deduit_loy` ; `statut='facture' && statut_deduction='en_attente'` → fallback `montant_ttc` ; `statut='a_facturer'` → `montant_ttc`. Cette règle est centralisée dans `buildRapportData.js` uniquement. | ✅ Implémenté (session 08/04/2026) |
+
 ### Invariants métier à formaliser (non encore implémentés dans V1)
 
 | Invariant | Description courte |
@@ -168,7 +178,7 @@ Aucun invariant actif violé à l'issue de la session du 02 avril 2026.
 | I-54 | Prestation validée doit produire une écriture EXTRA dans la ventilation |
 | I-73 | Modification après clôture doit être explicite et documentée |
 
-**Total actuel** : 0 invariants violés actifs (⚠ I-60 partiellement couvert), 17 corrigés, 9 nouveaux, sur 50 documentés.
+**Total actuel** : 0 invariants violés actifs (⚠ I-60 partiellement couvert), 17 corrigés, 14 nouveaux, sur 55 documentés.
 
 ---
 

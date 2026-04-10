@@ -479,5 +479,73 @@ Le frais a été avancé par DCB. Il est refacturé au propriétaire via la fact
 
 ---
 
+---
+
+## 15. Règles rapport mensuel propriétaire (implémentées avril 2026)
+
+> ✅ Session 08/04/2026 — source unique : `src/services/buildRapportData.js`
+> Ces règles s'appliquent à toutes les surfaces : UI (PageRapports), PDF (rapportProprietaire.js), Statement (rapportStatement.js), Factures (facturesEvoliz.js).
+
+### 15.1 gross_revenue et base_comm
+
+```
+gross_revenue = fin_accommodation + Σ reservation_fee WHERE fee_type='guest_fee'
+              [valeur brute Hospitable exacte — total voyageur hors taxe de séjour]
+
+base_comm     = fin_accommodation
+              [Hospitable "Commissionable base" — base de la commission DCB]
+```
+
+Ni `fin_revenue` (qui inclut host_service_fee négatif), ni le code VIR (LOY+taxes) ne sont utilisés pour ces colonnes.
+
+### 15.2 fraisDeductionLoy — règle complète
+
+Frais `mode_traitement='deduire_loyer'` du mois, accumulés avec la logique suivante :
+
+```
+si statut='facture' && statut_deduction ≠ 'en_attente' → montant_deduit_loy
+si statut='facture' && statut_deduction = 'en_attente'  → montant_ttc  (fallback)
+si statut='a_facturer'                                  → montant_ttc
+sinon                                                   → 0 (ignoré)
+```
+
+Le cas `statut='facture' && statut_deduction='en_attente'` correspond à un frais facturé mais dont la déduction du loyer n'a pas encore été traitée — on utilise le TTC complet comme estimé conservateur.
+
+### 15.3 virementNet — double branche
+
+```
+BRANCHE 1 (facture confirmée) :
+  si facture.montant_reversement > 0
+     && facture.statut ∉ ['brouillon', 'calcul_en_cours']
+  → virementNet = facture.montant_reversement
+  [le montant gelé à la génération est la vérité]
+
+BRANCHE 2 (estimation en temps réel) :
+  → virementNet = max(0, virTotal − totalDebours − totalHaowner
+                         − fraisDeductionLoy − ownerStayMenageTotal)
+  [virTotal = Σ VIR.montant_ht ventilation ; totalDebours, totalHaowner depuis prestation_hors_forfait]
+```
+
+La BRANCHE 1 court-circuite le recalcul dès qu'une facture validée existe. Le bypass `brouillon`/`calcul_en_cours` est intentionnel — ces statuts sont transitoires et ne reflètent pas un montant gelé.
+
+### 15.4 ownerStayMenageTotal
+
+Réservations `owner_stay=true && platform='manual'` du mois. Pour chacune :
+
+```
+montant = ventilation FMEN.montant_ttc + ventilation AUTO.montant_ht
+```
+
+Agrégé en `ownerStayMenageTotal` — déduit du `virementNet` BRANCHE 2 et du `montant_reversement` dans `facturesEvoliz.js`.
+
+Affiché comme liste `ownerStayList` dans le bloc "Débours et achats" des 3 surfaces (couleur `#4A3728`, label "Ménage proprio").
+
+### 15.5 honTotal KPIs
+
+```
+honTotal = facture.total_ttc  si facture présente (montant réel facturé)
+         = Σ ventilation HON.montant_ttc  sinon (estimation)
+```
+
 *Fichier généré dans le cadre de l'audit structurel DCB Compta — mars 2026.*
-*Mis à jour mars 2026 — ne pas modifier sans relecture de `src/services/ventilation.js` V1 et `src/services/facturesEvoliz.js`.*
+*Mis à jour avril 2026 — ne pas modifier sans relecture de `src/services/ventilation.js` V1, `src/services/facturesEvoliz.js` et `src/services/buildRapportData.js`.*

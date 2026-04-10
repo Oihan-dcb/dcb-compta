@@ -38,7 +38,7 @@ export async function buildRapportData(bienId, propId, mois, opts = {}) {
     (() => {
       let q = supabase
         .from('reservation')
-        .select('id, code, fin_revenue, fin_accommodation, fin_host_service_fee, nights, arrival_date, departure_date, final_status, platform, owner_stay, guest_name, bien:bien_id(hospitable_name, code), reservation_fee(fee_type, amount)')
+        .select('id, code, fin_revenue, fin_accommodation, fin_host_service_fee, fin_gross_revenue, nights, arrival_date, departure_date, final_status, platform, owner_stay, guest_name, bien:bien_id(hospitable_name, code), reservation_fee(fee_type, amount)')
         .eq('mois_comptable', mois)
         .order('arrival_date')
       return isGlobal ? q.in('bien_id', maiteIds) : q.eq('bien_id', bienId)
@@ -158,10 +158,11 @@ export async function buildRapportData(bienId, propId, mois, opts = {}) {
       ...r,
       vent: v,
       extra: extraByResa[r.id] || 0,
-      // gross_revenue = fin_accommodation + guest_fees (valeur brute Hospitable exacte)
-      // fin_accommodation = nuitées brutes (montant voyageur avant commission plateforme)
-      gross_revenue: (r.fin_accommodation || 0) +
-        (r.reservation_fee || []).filter(f => f.fee_type === 'guest_fee').reduce((s, f) => s + (f.amount || 0), 0),
+      // gross_revenue = total_price CSV (montant total payé par le voyageur, source directe)
+      // Fallback : fin_accommodation + guest_fees pour les resas importées avant la migration
+      gross_revenue: r.fin_gross_revenue ||
+        ((r.fin_accommodation || 0) +
+        (r.reservation_fee || []).filter(f => f.fee_type === 'guest_fee').reduce((s, f) => s + (f.amount || 0), 0)),
       // base_comm = fin_accommodation + fin_host_service_fee
       // = "Commissionable base" Hospitable (net de la commission hôte Airbnb/Booking/Direct)
       // fin_host_service_fee est négatif (commission retenue par la plateforme)

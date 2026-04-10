@@ -90,6 +90,9 @@ export async function importHospitableCSV(rows, moisFiltres = null, onProgress =
       final_status: mapStatus(row.status),
       fin_revenue: toC(row.payout || row.revenue),
       fin_accommodation: toC(row.base_amount),
+      fin_gross_revenue: toC(row.total_price),
+      fin_discount: toC(row.guest_discount),
+      fin_adjusted: toC(row.adjusted_amount),
     }
 
     if (resaMap[code]) {
@@ -206,6 +209,7 @@ function buildFees(resaId, row, cur, toC) {
   add('Other fee', row.other_fee, 'guest_fee', 'Guest fees')
   const hsf = parseFloat(row.host_service_fee || '0')
   if (hsf !== 0) fees.push({ reservation_id: resaId, label: 'Host Service Fee', amount: -Math.round(Math.abs(hsf) * 100), fee_type: 'host_fee', category: 'Service fees', currency: cur })
+  add('Guest Service Fee', row.guest_service_fee, 'guest_service_fee', 'Service fees')
   add('Pass-through taxes', row.pass_through_taxes, 'tax', 'Host Tax')
   add('Remitted taxes', row.remitted_taxes, 'tax', 'Host Tax')
   return fees

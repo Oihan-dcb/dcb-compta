@@ -144,9 +144,11 @@ PageFactures.jsx
       → genererFactureDebours(proprio, mois)   [NOUVEAU — mars 2026]
             → table: ventilation (SELECT code='AUTO' par bien)
             → table: prestation_hors_forfait (deduction_loy, haowner — pour calcul surplus dcb)
+            → table: reservation (owner_stay+manual → ventilation FMEN+AUTO → ownerStayMenageTotal)
             → table: facture_evoliz (INSERT/UPDATE, type_facture='debours')
             → table: facture_evoliz_ligne (DELETE + INSERT, code='DEB_AE', taux_tva=0)
             [montant_reversement=null — déclenchement si AUTO à facturer]
+            [✅ Session 08/04/2026 — ownerStayMenageTotal déduit de montant_reversement (P1)]
     getFacturesMois       → table: facture_evoliz (SELECT *, filtre: mois — inclut type_facture)
                           [✅ champ réel utilisé : `mois` — incohérence initiale corrigée (CF-F1)]
     validerFacture        → table: facture_evoliz (UPDATE statut)
@@ -208,17 +210,38 @@ PagePrestationsAE.jsx
 ### Module Rapports
 ```
 PageRapports.jsx
+  → buildRapportData.js  [NOUVEAU — source de vérité unique des calculs mensuels]
+      buildRapportData(bienId, propId, mois, opts)
+        → table: reservation (SELECT + reservation_fee)
+        → table: reservation (N-1 — même mois année précédente)
+        → table: frais_proprietaire (SELECT du mois)
+        → table: facture_evoliz (SELECT honoraires du mois — maybeSingle)
+        → table: bien (taux_commission_override + proprietaire.taux_commission)
+        → table: ventilation (SELECT HON, LOY, VIR, FMEN, AUTO, MEN)
+        → table: prestation_hors_forfait (deduction_loy, debours_proprio, haowner)
+        → table: reservation_review (du mois + toutes notes globales)
+      Retourne : resas, frais, facture, tauxCommission, extrasGlobaux, extrasParResa,
+                 haownerList, ownerStayList, ventByResa, reviews, noteMoisMoy,
+                 noteGlobaleMoy, nbReviewsGlobal, kpis, kpisN1
+      [✅ Session 08/04/2026 — élimine les recalculs divergents de PageRapports,
+       rapportProprietaire.js, rapportStatement.js]
+
+  PageRapports.jsx — buildRendererPayload() (assemblage payload renderer, état UI)
+    → injecte llmAnalyse, llmContexte, llmTendances, notes, ownerStayMenageList
+    → passe ownerStayMenageList: data.ownerStayList aux 3 surfaces (UI, PDF, Statement)
+
   → rapportProprietaire.js
-    getBienNote / saveBienNote → table: bien_notes (upsert onConflict bien_id,mois)
-    getReviewsMois             → table: reservation_review (SELECT + join reservation/bien)
-    getKPIsMois                → table: reservation (SELECT fin_revenue, nights par proprio)
-                               → table: ventilation (SELECT LOY)
-                               → table: bien (SELECT count actif dcb)
+    saveBienNote               → table: bien_notes (upsert onConflict bien_id,mois)
     genererRapportHTML         → (local, pas de DB) — génère HTML avec template DCB
                                  images hero/logo : import ?inline Vite (base64 au build)
                                  heroSrc ← src/assets/rapport-hero.jpg?inline
                                  logoSrc ← src/assets/rapport-logo.png?inline
+                                 [✅ ownerStayMenageList affiché dans "Débours et achats"]
     envoyerRapportEmail        → smtp-send (Edge Function) via fetch SUPABASE_URL
+  → rapportStatement.js
+    genererStatement           → (local, pas de DB) — génère HTML relevé de compte
+                                 [✅ ownerStayMenageList affiché dans charges]
+                                 [virementNet = data.kpis.virementNet — plus de recalcul]
   → /api/generate-pdf (Vercel Function Node.js)
       puppeteer-core + @sparticuz/chromium-min
       POST { html } → PDF A4 binaire (printBackground:true)
@@ -233,6 +256,7 @@ PageRapports.jsx
       Résultats sauvés dans bien_notes (note_analyse_llm, note_contexte, note_tendances)
   [rapports envoyés par email avec CC oihan@destinationcotebasque.com]
   [aperçu modal HTML via iframe srcDoc]
+  [bien_notes lues directement dans PageRapports.charger() — plus via rapportProprietaire.js]
 ```
 
 ### Module Config (dropdown dans la nav)

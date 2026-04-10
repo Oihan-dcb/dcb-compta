@@ -170,7 +170,11 @@ export function _calculerLignes(resa) {
   // Remises promotionnelles (Promotion Discount, Last Minute Discount, Ad-hoc fee...)
   // Tableau séparé dans hospitable_raw.financials.host.discounts (négatifs)
   const discountsRaw = resa.hospitable_raw?.financials?.host?.discounts || []
-  const discountsTotal = discountsRaw.reduce((s, d) => s + (d.amount || 0), 0)
+  const discountsFromApi = discountsRaw.reduce((s, d) => s + (d.amount || 0), 0)
+  // Fallback CSV si aucune remise API — fin_discount est positif dans le CSV, on le passe en négatif
+  const discountsTotal = discountsFromApi !== 0
+    ? discountsFromApi
+    : -(resa.fin_discount || 0)
 
   // Accommodation de base (nuitées seules, en centimes)
   const accommodation = resa.fin_accommodation || 0

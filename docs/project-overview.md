@@ -120,10 +120,14 @@ Les deux applications partagent la **même base Supabase**. Aucune des deux n'a 
 
 ### Module 11 — Rapports propriétaires
 **Rôle réel** : Génération et envoi par email des rapports mensuels propriétaires. KPIs, liste des réservations, avis voyageurs, notes de marché.
-**Données** : lit `reservation`, `ventilation` (LOY), `bien_notes`, `reservation_review` ; écrit `bien_notes`
+**Données** : lit `reservation`, `reservation_fee`, `ventilation`, `frais_proprietaire`, `facture_evoliz`, `bien_notes`, `reservation_review`, `prestation_hors_forfait` ; écrit `bien_notes`
 **Dépendances entrantes** : Données du mois (réservations, ventilation calculée), avis webhook (`reservation_review`), notes DCB (`bien_notes`)
 **Dépendances sortantes** : Email HTML via `smtp-send` Edge Function (Resend API) — from `rapports@mail.destinationcotebasque.com`, CC `oihan@destinationcotebasque.com`
-**Services** : `rapportProprietaire.js` (getBienNote, saveBienNote, getReviewsMois, getKPIsMois, genererRapportHTML, envoyerRapportEmail)
+**Services** :
+- `buildRapportData.js` (**source de vérité unique** — session 08/04/2026) : tous les calculs mensuels centralisés, retourne kpis, resas enrichies, ownerStayList, extrasGlobaux, haownerList, reviews
+- `rapportProprietaire.js` : genererRapportHTML, envoyerRapportEmail, saveBienNote — lit les données de buildRapportData uniquement
+- `rapportStatement.js` : genererStatement — lit virementNet depuis kpis, affiche ownerStayMenageList
+**Note** : `STATUTS_NON_VENTILABLES` partagé depuis `src/lib/constants.js` — plus de redéfinition locale dans les services
 
 ---
 
@@ -484,3 +488,31 @@ La logique de ventilation existe dans trois fichiers distincts. V2 est maintenan
 - Route `/config-smtp` et lien nav "Email SMTP" supprimés de `App.jsx`
 - Gestion `envoi_incertain` ajoutée dans `PageRapports.jsx` + `rapportProprietaire.js` : erreurs réseau post-envoi (Load failed, 502) affichent un avertissement avec actions "Marquer comme envoyé" / "Réessayer" au lieu d'un échec dur
 - Statement PDF : colonnes Brut/Net/base_comm corrigées (`gross_revenue = fin_revenue - fin_host_service_fee`, `base_comm = fin_accommodation + fin_host_service_fee`) — `buildRapportData()` recalcule depuis `ventByResa` à chaque appel
+
+## Fixes session 07-08 avril 2026 — Refactor architecture rapports (source de vérité unique)
+
+### Refactoring majeur — `buildRapportData.js` (source de vérité unique)
+
+**Problème** : les calculs mensuels propriétaires étaient dupliqués et divergents entre `PageRapports.jsx`, `rapportProprietaire.js`, `rapportStatement.js` et `facturesEvoliz.js`. En particulier :
+- `fraisDeductionLoy` : règle statut/statut_deduction incorrecte dans 2 surfaces
+- `virementNet` : recalcul divergent dans `rapportStatement.js` (bypass brouillon manquant)
+- `ownerStayMenageTotal` : non déduit du `montant_reversement` dans `facturesEvoliz.js`
+- `gross_revenue` / `base_comm` : définitions incohérentes selon la surface
+
+**Solution** : `src/services/buildRapportData.js` créé comme source de vérité unique.
+
+**Règles centralisées** :
+- `gross_revenue = fin_accommodation + Σ guest_fees` (Hospitable raw exact)
+- `base_comm = fin_accommodation` (Hospitable "Commissionable base")
+- `fraisDeductionLoy` : `statut='facture' && statut_deduction≠'en_attente'` → `montant_deduit_loy` ; `statut='facture' && statut_deduction='en_attente'` → fallback `montant_ttc` ; `statut='a_facturer'` → `montant_ttc`
+- `virementNet` BRANCHE 1 : `facture.montant_reversement` si statut hors brouillon/calcul_en_cours ; BRANCHE 2 : `virTotal − debours − haowner − fraisDeductionLoy − ownerStayMenageTotal`
+- `honTotal kpis` : `facture.total_ttc` si facture présente, sinon somme ventilation HON
+- `ownerStayList` : réservations `owner_stay=true && platform='manual'` avec FMEN+AUTO — affiché dans "Débours et achats" des 3 surfaces (UI, PDF, Statement)
+
+**Fichiers modifiés** :
+- `src/services/buildRapportData.js` — nouveau service (calculs centralisés)
+- `src/lib/constants.js` — nouveau : `STATUTS_NON_VENTILABLES` partagé
+- `src/pages/PageRapports.jsx` — `charger()` réduit à ~35 lignes ; local `buildRapportData()` renommé `buildRendererPayload()` ; ownerStayList injecté dans les 3 surfaces ; requête résiduelle `frais_proprietaire` supprimée
+- `src/services/rapportProprietaire.js` — suppression calcul fraisDeductionLoy local ; ownerStayMenageList affiché dans PDF
+- `src/services/rapportStatement.js` — virementNet = `kpis.virementNet` ; ownerStayMenageList affiché dans Statement
+- `src/services/facturesEvoliz.js` — `ownerStayMenageTotal` déduit de `montant_reversement` (P1 critique)
