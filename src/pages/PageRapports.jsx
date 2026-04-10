@@ -542,12 +542,15 @@ FORMAT :
 
   // Assemble le payload pour les renderers HTML (injecte les textes LLM/notes qui sont UI state)
   function buildRendererPayload() {
+    const bienEffectif = (isMaite && modeMaite === 'global')
+      ? { ...data.bien, hospitable_name: 'Maison Maïté' }
+      : data.bien
     return {
       kpis: data.kpis, resas: data.resas, reviews: data.reviews,
-      bien: data.bien, llmAnalyse, llmContexte, llmTendances, kpisN1: data.kpisN1,
+      bien: bienEffectif, llmAnalyse, llmContexte, llmTendances, kpisN1: data.kpisN1,
       noteMoisMoy: data.noteMoisMoy, noteGlobaleMoy: data.noteGlobaleMoy,
       nbReviewsGlobal: data.nbReviewsGlobal,
-      notes: [{ bienName: data.bien?.hospitable_name, note }],
+      notes: [{ bienName: bienEffectif?.hospitable_name, note }],
       noteContexte: note,
       noteReco,
       tauxCommission: data.tauxCommission || 0,
@@ -689,6 +692,9 @@ FORMAT :
     ...p,
     bien: [...(p.bien || [])].sort((a, b) => (a.code || '').localeCompare(b.code || '')),
   })).sort((a, b) => {
+    const aMaite = (a.bien || []).some(b => b.groupe_facturation === 'MAITE') ? 0 : 1
+    const bMaite = (b.bien || []).some(b => b.groupe_facturation === 'MAITE') ? 0 : 1
+    if (aMaite !== bMaite) return aMaite - bMaite
     const codeA = (a.bien?.[0]?.code || '').toLowerCase()
     const codeB = (b.bien?.[0]?.code || '').toLowerCase()
     return codeA.localeCompare(codeB)
