@@ -475,7 +475,23 @@ export async function lancerMatchingAuto(mois) {
             .from('payout_reservation')
             .select('reservation_id')
             .eq('payout_id', payoutExact.id)
-          const resaIds = (prLinks || []).map(r => r.reservation_id).filter(Boolean)
+          let resaIds = (prLinks || []).map(r => r.reservation_id).filter(Boolean)
+
+          // Fallback : payout_reservation vide → chercher par fin_revenue exact + platform + mois
+          // Contrainte triple pour éviter tout faux match (≠ ancien fallback VIR ±200)
+          if (!resaIds.length) {
+            const { data: resaFallback } = await supabase
+              .from('reservation')
+              .select('id')
+              .eq('platform', canal)
+              .eq('fin_revenue', payoutExact.amount)
+              .eq('mois_comptable', mois)
+            if (resaFallback?.length === 1) {
+              resaIds = resaFallback.map(r => r.id)
+              log.details.push({ type: canal + '_fallback_finrevenue', montant: mouv.credit / 100 })
+            }
+          }
+
           await _lierViaPayout(mouv.id, resaIds, mouv)
 
           payoutsCanal.splice(payoutsCanal.indexOf(payoutExact), 1)
@@ -508,7 +524,15 @@ export async function lancerMatchingAuto(mois) {
           for (const p of subsetPay) {
             const { data: prLinks } = await supabase
               .from('payout_reservation').select('reservation_id').eq('payout_id', p.id)
-            if (prLinks?.length) allResaIds.push(...prLinks.map(r => r.reservation_id))
+            if (prLinks?.length) {
+              allResaIds.push(...prLinks.map(r => r.reservation_id))
+            } else {
+              // Fallback par payout : fin_revenue exact + platform + mois
+              const { data: resaFb } = await supabase
+                .from('reservation').select('id')
+                .eq('platform', canal).eq('fin_revenue', p.amount).eq('mois_comptable', mois)
+              if (resaFb?.length === 1) allResaIds.push(resaFb[0].id)
+            }
           }
           const resaIds = [...new Set(allResaIds.filter(Boolean))]
           await _lierViaPayout(mouv.id, resaIds, mouv)
