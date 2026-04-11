@@ -40,7 +40,7 @@ export async function buildComptaMensuelle(mois) {
       .eq('agence', 'dcb'),
     supabase
       .from('reservation')
-      .select('id, bien_id, final_status, ventilation_calculee, rapprochee, owner_stay, fin_revenue')
+      .select('id, bien_id, final_status, ventilation_calculee, rapprochee, owner_stay, fin_revenue, code, arrival_date, departure_date')
       .eq('mois_comptable', mois),
     supabase
       .from('ventilation')
@@ -324,12 +324,39 @@ export async function buildComptaMensuelle(mois) {
           code: 'ECART_REVERSEMENT',
           message: `Écart reversement : ${sens}${(ecart_reversement_proprio / 100).toFixed(2)} € (facturé ${rev_facture_eur} € vs calculé ${rev_calcule_eur} €)`,
           bien_id: b.id,
+          details: {
+            vir_ht:           vir.ht,
+            frais_loy,
+            frais_direct,
+            prest_deduct,
+            haowner_ttc,
+            debours_prop,
+            owner_stay_absorb,
+            remboursements,
+            reversement_calcule,
+            reversement_facture: reversementFactureParProprio[propId] || 0,
+          },
         })
       }
     }
 
-    if (nb_non_rapprochees > 0)
-      rowAlerts.push({ level: 'warning', code: 'VIR_SANS_RAPPROCHEMENT', message: `${nb_non_rapprochees} virement(s) non rapproché(s)`, bien_id: b.id })
+    if (nb_non_rapprochees > 0) {
+      const resasNonRappr = resasGuest
+        .filter(r => !r.rapprochee)
+        .map(r => ({
+          code:          r.code || '—',
+          arrival_date:  r.arrival_date  || null,
+          departure_date: r.departure_date || null,
+          fin_revenue:   r.fin_revenue   || 0,
+        }))
+      rowAlerts.push({
+        level: 'warning',
+        code: 'VIR_SANS_RAPPROCHEMENT',
+        message: `${nb_non_rapprochees} virement(s) non rapproché(s)`,
+        bien_id: b.id,
+        details: { resas: resasNonRappr },
+      })
+    }
 
     if (!b.listed && (nb_resas > 0 || hon.ttc > 0 || loy.ht > 0))
       rowAlerts.push({ level: 'warning', code: 'BIEN_INACTIF_AVEC_MOUVEMENTS', message: 'Bien non listé avec mouvements', bien_id: b.id })

@@ -184,17 +184,46 @@ export default function PageComptabilite() {
                   {levelAlerts.map((a, i) => {
                     const row = data.rows.find(r => r.bien_id === a.bien_id)
                     return (
-                      <div key={i} style={{ display: 'flex', alignItems: 'baseline', gap: 8, fontSize: '0.82em', background: 'rgba(255,255,255,0.55)', border: `1px solid ${LEVEL_COLOR[level]}33`, borderRadius: 6, padding: '5px 10px' }}>
-                        {row && <span style={{ fontWeight: 700, color: 'var(--text)', minWidth: 120 }}>{row.bien_nom}</span>}
-                        <span style={{ color: 'var(--text)', flex: 1 }}>{a.message}</span>
-                        {row && a.code === 'VIR_SANS_RAPPROCHEMENT' && row.nb_non_rapprochees > 0 && (
-                          <span style={{ color: LEVEL_COLOR[level], fontWeight: 700, whiteSpace: 'nowrap' }}>{row.nb_non_rapprochees} non rappr.</span>
+                      <div key={i} style={{ fontSize: '0.82em', background: 'rgba(255,255,255,0.55)', border: `1px solid ${LEVEL_COLOR[level]}33`, borderRadius: 6, padding: '5px 10px' }}>
+                        <div style={{ display: 'flex', alignItems: 'baseline', gap: 8 }}>
+                          {row && <span style={{ fontWeight: 700, color: 'var(--text)', minWidth: 120 }}>{row.bien_nom}</span>}
+                          <span style={{ color: 'var(--text)', flex: 1 }}>{a.message}</span>
+                          {row && a.code === 'VIR_SANS_RAPPROCHEMENT' && row.nb_non_rapprochees > 0 && (
+                            <span style={{ color: LEVEL_COLOR[level], fontWeight: 700, whiteSpace: 'nowrap' }}>{row.nb_non_rapprochees} non rappr.</span>
+                          )}
+                          {row && a.code === 'NO_FACTURE' && row.hon_ttc > 0 && (
+                            <span style={{ color: LEVEL_COLOR[level], fontWeight: 700, whiteSpace: 'nowrap' }}>{fmt(row.hon_ttc)}</span>
+                          )}
+                          {row && a.code === 'NON_VENTILEES' && row.nb_non_ventilees > 0 && (
+                            <span style={{ color: LEVEL_COLOR[level], fontWeight: 700, whiteSpace: 'nowrap' }}>{row.nb_non_ventilees} non vent.</span>
+                          )}
+                        </div>
+                        {/* Détail ECART_REVERSEMENT */}
+                        {a.code === 'ECART_REVERSEMENT' && a.details && (
+                          <div style={{ marginTop: 6, paddingTop: 6, borderTop: `1px solid ${LEVEL_COLOR[level]}22`, display: 'flex', flexWrap: 'wrap', gap: '2px 14px', fontSize: '0.92em', color: '#6B5E4E' }}>
+                            <span>VIR <strong>{fmtN(a.details.vir_ht)}</strong></span>
+                            {a.details.frais_loy    > 0 && <span>− Frais LOY <strong>{fmtN(a.details.frais_loy)}</strong></span>}
+                            {a.details.frais_direct > 0 && <span>− Frais direct <strong>{fmtN(a.details.frais_direct)}</strong></span>}
+                            {a.details.prest_deduct > 0 && <span>− Prestations <strong>{fmtN(a.details.prest_deduct)}</strong></span>}
+                            {a.details.haowner_ttc  > 0 && <span>− HAOWNER <strong>{fmtN(a.details.haowner_ttc)}</strong></span>}
+                            {a.details.debours_prop > 0 && <span>− Débours <strong>{fmtN(a.details.debours_prop)}</strong></span>}
+                            {a.details.owner_stay_absorb > 0 && <span>− Séjour proprio <strong>{fmtN(a.details.owner_stay_absorb)}</strong></span>}
+                            {a.details.remboursements > 0 && <span>+ Remb. <strong>{fmtN(a.details.remboursements)}</strong></span>}
+                            <span style={{ marginLeft: 4, fontWeight: 700, color: 'var(--text)' }}>= <strong>{fmtN(a.details.reversement_calcule)}</strong></span>
+                            <span style={{ color: '#9C8E7D' }}>| facturé <strong>{fmtN(a.details.reversement_facture)}</strong></span>
+                          </div>
                         )}
-                        {row && a.code === 'FACTURE_MANQUANTE' && row.hon_ttc > 0 && (
-                          <span style={{ color: LEVEL_COLOR[level], fontWeight: 700, whiteSpace: 'nowrap' }}>{fmt(row.hon_ttc)}</span>
-                        )}
-                        {row && a.code === 'RESAS_NON_VENTILEES' && row.nb_non_ventilees > 0 && (
-                          <span style={{ color: LEVEL_COLOR[level], fontWeight: 700, whiteSpace: 'nowrap' }}>{row.nb_non_ventilees} non vent.</span>
+                        {/* Détail VIR_SANS_RAPPROCHEMENT */}
+                        {a.code === 'VIR_SANS_RAPPROCHEMENT' && a.details?.resas?.length > 0 && (
+                          <div style={{ marginTop: 6, paddingTop: 6, borderTop: `1px solid ${LEVEL_COLOR[level]}22`, display: 'flex', flexDirection: 'column', gap: 2 }}>
+                            {a.details.resas.map((r, ri) => (
+                              <div key={ri} style={{ display: 'flex', gap: 10, fontSize: '0.92em', color: '#6B5E4E' }}>
+                                <span style={{ fontWeight: 700, minWidth: 100 }}>{r.code}</span>
+                                <span>{r.arrival_date ? r.arrival_date.slice(0, 10) : '—'} → {r.departure_date ? r.departure_date.slice(0, 10) : '—'}</span>
+                                {r.fin_revenue > 0 && <span style={{ marginLeft: 'auto', fontWeight: 700 }}>{fmtN(r.fin_revenue)} €</span>}
+                              </div>
+                            ))}
+                          </div>
                         )}
                       </div>
                     )
