@@ -169,7 +169,7 @@ export default function PageRapprochement() {
       const virTTC = virSelData.reduce((s, v) => s + (v.montant_ttc || 0), 0)
 
       // Vérifier les paiements déjà reçus pour cette résa
-      const resaIds = [...new Set(virSelData.map(v => v.reservation?.id).filter(Boolean))]
+      const resaIds = [...new Set(virSelData.map(v => v.reservation_id || v.reservation?.id).filter(Boolean))]
       let dejaRecu = 0
       let typePaiement = 'total'
 
@@ -181,7 +181,7 @@ export default function PageRapprochement() {
         dejaRecu = (existing || []).reduce((s, p) => s + (p.montant || 0), 0)
         // Base = fin_revenue (total voyageur à DCB), pas VIR (loyer proprio)
         const finRevTotal = (resaData || []).reduce((s, r) => s + (r.fin_revenue || 0), 0)
-        const base = finRevTotal || virTTC
+        const base = finRevTotal
         const soldeRestant = base - dejaRecu
         const credit = mvt.credit || 0
 

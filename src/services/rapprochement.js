@@ -254,11 +254,12 @@ export async function getMouvementsMois(mois) {
             const bien = resa.bien?.hospitable_name
             if (bien && !info.biens.includes(bien)) info.biens.push(bien)
             if (resa.guest_name && !info.guests.includes(resa.guest_name)) info.guests.push(resa.guest_name)
-            if (!info.reservation_ids.includes(resa.id)) info.reservation_ids.push(resa.id)
+            const isNewResa = !info.reservation_ids.includes(resa.id)
+            if (isNewResa) info.reservation_ids.push(resa.id)
             if (!info.codes.includes(resa.code)) info.codes.push(resa.code)
             info.fin_revenue += (resa.fin_revenue || 0)
             info.nights += (resa.nights || 0)
-        if (isNewResa) info.nb_resas++
+            if (isNewResa) info.nb_resas++
             if (!info.arrival_date || resa.arrival_date < info.arrival_date) info.arrival_date = resa.arrival_date
             if (!info.departure_date || resa.departure_date > info.departure_date) info.departure_date = resa.departure_date
           } else if (line.guest_name && !info.guests.includes(line.guest_name)) {
@@ -375,7 +376,7 @@ export async function getVirNonRapproches(mois) {
   const { data, error } = await supabase
     .from('ventilation')
     .select(`
-      id, code, montant_ttc, mouvement_id, mois_comptable,
+      id, code, montant_ttc, mouvement_id, mois_comptable, reservation_id,
       reservation (id, code, platform, guest_name, arrival_date, departure_date, nights, fin_revenue, final_status,
         bien (code, hospitable_name, gestion_loyer, agence),
         ventilation (montant_ttc, mouvement_id, code, mouvement_bancaire(credit)))
