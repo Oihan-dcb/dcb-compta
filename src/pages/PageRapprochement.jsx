@@ -93,8 +93,8 @@ export default function PageRapprochement() {
       // Mois dispos
     const { data: md } = await supabase.from('mouvement_bancaire').select('mois_releve').not('mois_releve','is',null).not('mois_releve','is',null)
       if (md) {
-      const uniq = [...new Set(md.map(x => x.mois_releve))]
-        setMoisDispos([...new Set([...uniq, moisCourant])])
+      const uniq = [...new Set([...md.map(x => x.mois_releve), moisCourant])].sort((a, b) => b.localeCompare(a))
+        setMoisDispos(uniq)
       }
     } catch (err) {
       setError(err.message)
