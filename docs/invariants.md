@@ -51,7 +51,7 @@ Ces invariants ont la priorité absolue. Leur violation peut entraîner une fact
 | # | Invariant | État | Violation / Référence |
 |---|---|---|---|
 | I-20 | `reservation.rapprochee = true` implique l'existence d'au moins un `ventilation.mouvement_id` valide | ✅ **Corrigé** | `supprimerMouvement` et `supprimerMois` appellent `annulerRapprochement` avant DELETE — nettoyage complet (CF-BQ1, confirmé audit 30 mars) |
-| I-20b | `reservation.rapprochee = true` implique que `fin_revenue` est intégralement couvert par des virements bancaires liés (`Σ mouvement_bancaire.credit ≥ fin_revenue − 200`) | ✅ **Implémenté** | `_lier` vérifie le solde après chaque lien — si solde > 100 centimes : `rapprochee=false` + nouvelle ligne VIR résiduelle créée automatiquement (commit `2b1df6e`) |
+| I-20b | `reservation.rapprochee = true` implique que `fin_revenue` est intégralement couvert par des virements bancaires liés (`Σ mouvement_bancaire.credit ≥ fin_revenue − 200`) | ✅ **Corrigé** | `_lier` crée le VIR résiduel si solde > 100 centimes. `ventilation.js` recrée le VIR résiduel après recalcul si `fin_revenue − Σcredits_liés > 100` (session 11/04/2026) — précédemment le VIR résiduel était détruit par tout recalcul de ventilation. Fix données HMW5JNT3DZ. |
 | I-21 | `ventilation.mouvement_id` renseigné implique que le mouvement existe en base | ✅ **Corrigé** | `annulerRapprochement` remet `mouvement_id=null` sur toutes les lignes ventilation liées (CF-BQ1/BQ2) |
 | I-22 | `payout_hospitable.mouvement_id` renseigné implique que le mouvement existe en base | ✅ **Corrigé** | `annulerRapprochement` remet `mouvement_id=null` sur `payout_hospitable` (CF-BQ1) |
 | I-23 | Un mouvement `statut = 'rapproche'` a au moins une réservation liée via `ventilation.mouvement_id` | ✅ **Corrigé** | `annulerRapprochement` couvre VIR + payout sans VIR via `payout_reservation` join (CF-RAPP-4, commit `55ad751`) |
@@ -86,6 +86,7 @@ Ces invariants ont la priorité absolue. Leur violation peut entraîner une fact
 | # | Invariant | État | Violation / Référence |
 |---|---|---|---|
 | I-50 | Un AE avec `ae_user_id` non null peut se connecter au portail | ✅ **Corrigé** | `create-ae-user` et `reset-ae-password` sauvegardent `mdp_temporaire` — code path ✅ confirmé audit 30 mars (CF-PAE1/PAE2) |
+| I-56 | Les missions `mission_menage` synchronisées depuis les iCals AE sont lisibles par l'app dcb-compta (clé anon) | ✅ **Corrigé** | Migration `007_mission_menage_anon_select.sql` — policy `SELECT TO anon USING (true)`. Avant : seuls les AEs authentifiés voyaient leurs propres missions ; l'app admin voyait 0 lignes. Session 11/04/2026. |
 | I-51 | `ventilation.montant_reel` saisi par le portail correspond à la réservation du bon mois | ✅ **Corrigé** | `ventilation.js` V1 renseigne `mission_menage.ventilation_auto_id` via RPC `lier_ventilation_auto_mission` après calcul. La saisie silencieusement perdue est prévenue pour tous les cas avec ligne AUTO (CF-PAE3). |
 | I-52 | Une prestation `statut = 'valide'` a un impact sur la comptabilité (LOY, facture, ou débit DCB) | ⚠ **Majoritairement corrigé** | `deduction_loy` : déduit du reversement ✅. `haowner` : ligne HAOWNER TVA 20% ✅. AUTO : absorbé ou DEB_AE ✅. `debours_proprio` : absorption LOY après AUTO + ligne DEBP + surplus facturé (CF-P1-BC, commit `b7bedc1`) ✅. `dcb_direct` : suivi interne uniquement (`log.dcbDirectTotal`) par conception — pas de facturation propriétaire (CF-P1-A) ✅. Reste : code EXTRA dans `ventilation.js` non implémenté. |
 | I-53 | `auto_entrepreneur.mdp_temporaire` est synchronisé avec le mot de passe Supabase Auth | ✅ **Corrigé** | Edge Function `create-ae-user` sauvegarde `mdp_temporaire` — code path ✅ confirmé audit 30 mars (CF-PAE1) |
@@ -119,7 +120,7 @@ Ces invariants ont la priorité absolue. Leur violation peut entraîner une fact
 
 ### Invariants violés actifs
 
-Aucun invariant actif violé à l'issue de la session du 02 avril 2026.
+Aucun invariant actif violé à l'issue de la session du 11 avril 2026.
 
 > I-60 reste ⚠ partiellement couvert (~15 opérations non loguées) mais n'est plus considéré comme un invariant critique bloquant.
 

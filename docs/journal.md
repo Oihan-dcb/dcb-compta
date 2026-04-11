@@ -335,3 +335,40 @@ L'envoi d'emails via OVH SMTP (denomailer) provoquait des `Load failed` / `502` 
 - `PageFraisProprietaire.jsx` et `PagePrestationsAE.jsx` ajoutés à `useMoisPersisted`
 - Toutes les pages principales partagent maintenant `dcb_mois_courant` via localStorage
 
+
+---
+
+## Session fixes — 11/04/2026
+
+### Fixes déployés
+
+**1. Factures — frais facturés inclus dans la régénération** (bugs a75de0a5, 80a81fe5)
+- Cause : `facturesEvoliz.js` filtrait `.eq('statut', 'a_facturer')` sur les frais déductibles et directs. Un frais déjà facturé (`statut='facture'`) disparaissait de la facture régénérée.
+- Fix : `.in('statut', ['a_facturer', 'facture'])` pour `fraisDeduire` et `fraisDirect`
+- Cas concrets : étendoir ALAÏAPINONCELY (63,58€) et serpillère EKIAWALLAERT (21€) réapparus en 2026-03
+
+**2. Frais propriétaires — suppression accessible depuis statut `a_facturer`** (bug 1c48394a)
+- Avant : bouton 🗑 disponible uniquement pour `statut='brouillon'`
+- Fix : `PageFraisProprietaire.jsx` — delete autorisé pour `brouillon` ET `a_facturer`
+
+**3. Vision Staff — table récap + provision/réel par AE + export CSV** (bugs f02bd5b9, ce240b71)
+- `PageAutoEntrepreneurs.jsx` :
+  - Table récap globale : nb ménages, provision (duree×taux), réel (Σmontant), écart, % total
+  - Header de chaque card AE : provision/réel/écart affichés
+  - Bouton export CSV par AE (en plus du global)
+  - Bien joint sur la requête `mission_menage` (was: code bien affiché `—`)
+
+**4. Rapprochement — VIR résiduel préservé après recalcul ventilation** (bug f6202cdf)
+- Cause profonde : `ventilation.js` sauvegardait UN seul `mouvement_id` par code avant suppression. Après recalcul, le VIR résiduel (créé par `_lier` pour le solde partiel) était détruit ; la réservation se retrouvait `rapprochee=true` mais avec solde non encaissé.
+- Fix `ventilation.js` : après restauration du `mouvement_id` principal, si `fin_revenue - Σcredits_liés > 100`, un VIR résiduel est recréé automatiquement et `rapprochee=false`
+- Fix données : VIR résiduel 15€ inséré manuellement pour HMW5JNT3DZ (Marlène Noguez, 2026-03)
+
+**5. RLS `mission_menage` — ménages visibles dans dcb-compta**
+- Cause : la table avait uniquement une policy AE-auth (portail). La clé anon (dcb-compta) ne voyait aucune ligne même après sync réussie via service_role.
+- Fix : migration `007_mission_menage_anon_select.sql` — `CREATE POLICY "anon_can_select_mission_menage" ON mission_menage FOR SELECT TO anon USING (true)`
+- Vérifié : missions visibles immédiatement après `supabase db push`
+
+**6. Vision Staff — majuscules corrigées**
+- Cause : règle CSS globale `th { text-transform: uppercase }` (App.css l.42) s'appliquait aux `<th>` de la table récap inline
+- Fix : `textTransform: 'none'`, `fontSize: 13`, `color: var(--text)` en inline sur chaque `<th>`
+
