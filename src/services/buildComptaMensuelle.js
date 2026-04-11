@@ -44,7 +44,7 @@ export async function buildComptaMensuelle(mois) {
       .eq('mois_comptable', mois),
     supabase
       .from('ventilation')
-      .select('bien_id, code, montant_ht, montant_tva, montant_ttc')
+      .select('bien_id, code, montant_ht, montant_tva, montant_ttc, montant_reel, reservation_id')
       .eq('mois_comptable', mois)
       .in('code', ['HON', 'FMEN', 'AUTO', 'LOY', 'VIR', 'TAXE', 'COM']),
     supabase
@@ -203,25 +203,50 @@ export async function buildComptaMensuelle(mois) {
     deboursPropByBien[p.bien_id] = (deboursPropByBien[p.bien_id] || 0) + (p.montant_ht || 0)
   }
 
+  // Owner stay : FMEN TTC + AUTO HT par bien (depuis ventilation, réservations owner_stay)
+  // Identique à facturesEvoliz.js — absorbés par LOY résiduel, réduit le reversement
+  const osResaIds = new Set(resas.filter(r => r.owner_stay).map(r => r.id))
+  const osVentByBien = {}
+  if (osResaIds.size > 0) {
+    for (const v of ventils) {
+      if (!osResaIds.has(v.reservation_id)) continue
+      if (v.code !== 'FMEN' && v.code !== 'AUTO') continue
+      if (!osVentByBien[v.bien_id]) osVentByBien[v.bien_id] = { fmenTTC: 0, autoHT: 0 }
+      if (v.code === 'FMEN') osVentByBien[v.bien_id].fmenTTC += (v.montant_ttc || 0)
+      if (v.code === 'AUTO') osVentByBien[v.bien_id].autoHT += (v.montant_reel != null ? v.montant_reel : (v.montant_ht || 0))
+    }
+  }
+
   // Biens actifs ce mois (au moins une resa ou de la ventilation)
   const biensAvecResas   = new Set(resas.map(r => r.bien_id))
   const biensAvecVentil  = new Set(ventils.map(v => v.bien_id))
   const biensActifs = biens.filter(b => biensAvecResas.has(b.id) || biensAvecVentil.has(b.id))
 
-  // ── Phase 3 : Σ reversement_calcule par propriétaire ────────────────────────
-  // Formule identique à genererFactureProprietaire dans facturesEvoliz.js :
-  // reversement = max(0, VIR - fraisLoy - fraisDirect - prestDeduct - haowner - deboursProp) + remboursements
+  // ── Phase 3 : ownerStayAbsorbByBien + Σ reversement_calcule par proprio ────
+  // Formule alignée sur facturesEvoliz.js :
+  // reversement = max(0, VIR - fraisLoy - fraisDirect - prestDeduct - haowner - deboursProp - ownerStayAbsorb) + remboursements
   const loyParProprio = {}
+  const ownerStayAbsorbByBien = {}
   for (const b of biensActifs) {
+    // LOY résiduel après toutes les déductions standard (ordre = facturesEvoliz)
+    const loyHt      = vent(b.id, 'LOY').ht
+    const autoHt     = vent(b.id, 'AUTO').ht
+    const fraisLoy   = fraisLoyByBien[b.id]    || 0
+    const prestDeduct = prestDeductByBien[b.id] || 0
+    const haowner    = haownerByBien[b.id]      || 0
+    const deboursProp = deboursPropByBien[b.id] || 0
+    const loyDispo   = Math.max(0, loyHt - prestDeduct - haowner - fraisLoy - autoHt - deboursProp)
+    // Absorption owner stay AUTO puis FMEN sur LOY résiduel
+    const osData       = osVentByBien[b.id] || { fmenTTC: 0, autoHT: 0 }
+    const osAutoAbsorb = Math.min(osData.autoHT, loyDispo)
+    const osFmenAbsorb = Math.min(osData.fmenTTC, Math.max(0, loyDispo - osAutoAbsorb))
+    ownerStayAbsorbByBien[b.id] = osAutoAbsorb + osFmenAbsorb
+
     if (!b.proprietaire_id) continue
     const virHt       = vent(b.id, 'VIR').ht
-    const fraisLoy    = fraisLoyByBien[b.id]    || 0
     const fraisDirect = fraisDirectByBien[b.id] || 0
-    const prestDeduct = prestDeductByBien[b.id] || 0
-    const haowner     = haownerByBien[b.id]     || 0
-    const deboursProp = deboursPropByBien[b.id] || 0
     const rembours    = remboursParBien[b.id]   || 0
-    const virNet = Math.max(0, virHt - fraisLoy - fraisDirect - prestDeduct - haowner - deboursProp) + rembours
+    const virNet = Math.max(0, virHt - fraisLoy - fraisDirect - prestDeduct - haowner - deboursProp - ownerStayAbsorbByBien[b.id]) + rembours
     loyParProprio[b.proprietaire_id] = (loyParProprio[b.proprietaire_id] || 0) + virNet
   }
 
@@ -258,14 +283,15 @@ export async function buildComptaMensuelle(mois) {
     // Facture du bien : facture spécifique au bien, sinon facture globale du proprio
     const facture = honByBien[b.id] || (propId ? honByProprioGlobal[propId] : null)
 
-    // Reversement calculé par bien (même formule que facturesEvoliz.js)
-    const frais_loy    = fraisLoyByBien[b.id]    || 0
-    const frais_direct = fraisDirectByBien[b.id] || 0
-    const prest_deduct = prestDeductByBien[b.id] || 0
-    const haowner_ttc  = haownerByBien[b.id]     || 0
-    const debours_prop = deboursPropByBien[b.id] || 0
-    const remboursements = remboursParBien[b.id] || 0
-    const reversement_calcule = Math.max(0, vir.ht - frais_loy - frais_direct - prest_deduct - haowner_ttc - debours_prop) + remboursements
+    // Reversement calculé par bien — aligné sur facturesEvoliz.js
+    const frais_loy       = fraisLoyByBien[b.id]    || 0
+    const frais_direct    = fraisDirectByBien[b.id] || 0
+    const prest_deduct    = prestDeductByBien[b.id] || 0
+    const haowner_ttc     = haownerByBien[b.id]     || 0
+    const debours_prop    = deboursPropByBien[b.id] || 0
+    const remboursements  = remboursParBien[b.id]   || 0
+    const owner_stay_absorb = ownerStayAbsorbByBien[b.id] || 0
+    const reversement_calcule = Math.max(0, vir.ht - frais_loy - frais_direct - prest_deduct - haowner_ttc - debours_prop - owner_stay_absorb) + remboursements
 
     const ecart_vir_loy = (vir.ht > 0) ? vir.ht - reversement_calcule : null
 
@@ -337,6 +363,7 @@ export async function buildComptaMensuelle(mois) {
       prest_deduct,
       haowner_ttc,
       debours_prop,
+      owner_stay_absorb,
       remboursements,
       reversement_calcule,
       ecart_vir_loy,
