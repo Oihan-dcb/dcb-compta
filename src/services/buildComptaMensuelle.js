@@ -153,7 +153,7 @@ export async function buildComptaMensuelle(mois) {
 
   // Statut global par proprio : 'validee' si toutes validées, sinon le statut le plus "bas"
   const statutParProprio = {}
-  const STATUT_RANK = { validee: 3, envoye_evoliz: 2, brouillon: 1, calcul_en_cours: 0 }
+  const STATUT_RANK = { valide: 3, envoye_evoliz: 2, brouillon: 1, calcul_en_cours: 0 }
   for (const f of honFacts) {
     const prev = statutParProprio[f.proprietaire_id]
     const rank = STATUT_RANK[f.statut] ?? -1
