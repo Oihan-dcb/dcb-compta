@@ -83,7 +83,7 @@ export async function buildComptaMensuelle(mois) {
     // prestations déduits du loyer (type_imputation='deduction_loy')
     supabase
       .from('prestation_hors_forfait')
-      .select('bien_id, montant, type_prestation')
+      .select('bien_id, montant, ae:ae_id(type)')
       .eq('mois', mois)
       .eq('type_imputation', 'deduction_loy')
       .eq('statut', 'valide'),
@@ -187,16 +187,19 @@ export async function buildComptaMensuelle(mois) {
   // Prestations deduction_loy par bien_id (staff × 1.20 TVA, autres HT brut)
   const prestDeductByBien = {}
   for (const p of (prestDeductData || [])) {
-    const montant = p.type_prestation === 'staff'
-      ? Math.round((p.montant || 0) * 1.20)
-      : (p.montant || 0)
+    const isStaff = p.ae?.type === 'staff'
+    const montant = isStaff ? Math.round((p.montant || 0) * 1.20) : (p.montant || 0)
     prestDeductByBien[p.bien_id] = (prestDeductByBien[p.bien_id] || 0) + montant
   }
 
-  // Prestations haowner par bien_id (TTC = HT × 1.20)
-  const haownerByBien = {}
+  // Prestations haowner par bien_id — agréger HT puis TVA sur total (aligné facturesEvoliz)
+  const haownerHTByBien = {}
   for (const p of (prestHaownerData || [])) {
-    haownerByBien[p.bien_id] = (haownerByBien[p.bien_id] || 0) + Math.round((p.montant || 0) * 1.20)
+    haownerHTByBien[p.bien_id] = (haownerHTByBien[p.bien_id] || 0) + (p.montant || 0)
+  }
+  const haownerByBien = {}
+  for (const [bienId, ht] of Object.entries(haownerHTByBien)) {
+    haownerByBien[bienId] = ht + Math.round(ht * 0.20)
   }
 
   // Prestations débours proprio absorbés par bien_id
