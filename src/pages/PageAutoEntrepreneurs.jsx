@@ -556,6 +556,7 @@ export default function PageAutoEntrepreneurs() {
                   style={{ padding: '8px 10px', borderRadius: 7, border: '1.5px solid #e5e7eb', fontSize: 13 }}>
                   <option value="ae">🧹 Auto-entrepreneur</option>
                   <option value="staff">🌅 Staff DCB</option>
+                  <option value="assistante">🗂️ Assistante DCB</option>
                 </select>
               </div>
               {form.type !== 'staff' && (
