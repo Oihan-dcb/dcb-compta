@@ -40,7 +40,7 @@ export async function buildComptaMensuelle(mois) {
       .eq('agence', 'dcb'),
     supabase
       .from('reservation')
-      .select('id, bien_id, final_status, ventilation_calculee, rapprochee, owner_stay, fin_revenue, code, arrival_date, departure_date')
+      .select('id, bien_id, final_status, ventilation_calculee, rapprochee, owner_stay, fin_revenue, code, arrival_date, departure_date, guest_name')
       .eq('mois_comptable', mois),
     supabase
       .from('ventilation')
@@ -344,10 +344,11 @@ export async function buildComptaMensuelle(mois) {
       const resasNonRappr = resasGuest
         .filter(r => !r.rapprochee)
         .map(r => ({
-          code:          r.code || '—',
-          arrival_date:  r.arrival_date  || null,
+          code:           r.code          || '—',
+          arrival_date:   r.arrival_date  || null,
           departure_date: r.departure_date || null,
-          fin_revenue:   r.fin_revenue   || 0,
+          fin_revenue:    r.fin_revenue   || 0,
+          guest_name:     r.guest_name    || null,
         }))
       rowAlerts.push({
         level: 'warning',

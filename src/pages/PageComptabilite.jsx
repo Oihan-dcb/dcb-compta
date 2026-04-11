@@ -7,6 +7,7 @@ import { buildComptaMensuelle } from '../services/buildComptaMensuelle'
 const moisCourant = new Date().toISOString().slice(0, 7)
 const fmt = c => c != null ? ((c / 100).toFixed(2).replace('.', ',') + ' €') : '—'
 const fmtN = c => c != null ? ((c / 100).toFixed(2).replace('.', ',')) : '—'
+const fmtDate = d => d ? d.slice(0, 10).split('-').reverse().join('/') : '—'
 
 const LEVEL_COLOR  = { error: '#ef4444', warning: '#f59e0b', info: '#6b7280' }
 const LEVEL_BG     = { error: '#FEF2F2', warning: '#FFFBEB', info: '#F9FAFB' }
@@ -215,12 +216,13 @@ export default function PageComptabilite() {
                         )}
                         {/* Détail VIR_SANS_RAPPROCHEMENT */}
                         {a.code === 'VIR_SANS_RAPPROCHEMENT' && a.details?.resas?.length > 0 && (
-                          <div style={{ marginTop: 6, paddingTop: 6, borderTop: `1px solid ${LEVEL_COLOR[level]}22`, display: 'flex', flexDirection: 'column', gap: 2 }}>
+                          <div style={{ marginTop: 6, paddingTop: 6, borderTop: `1px solid ${LEVEL_COLOR[level]}22`, display: 'flex', flexDirection: 'column', gap: 3 }}>
                             {a.details.resas.map((r, ri) => (
-                              <div key={ri} style={{ display: 'flex', gap: 10, fontSize: '0.92em', color: '#6B5E4E' }}>
-                                <span style={{ fontWeight: 700, minWidth: 100 }}>{r.code}</span>
-                                <span>{r.arrival_date ? r.arrival_date.slice(0, 10) : '—'} → {r.departure_date ? r.departure_date.slice(0, 10) : '—'}</span>
-                                {r.fin_revenue > 0 && <span style={{ marginLeft: 'auto', fontWeight: 700 }}>{fmtN(r.fin_revenue)} €</span>}
+                              <div key={ri} style={{ display: 'flex', gap: 10, fontSize: '0.92em', color: '#6B5E4E', alignItems: 'baseline' }}>
+                                <span style={{ fontWeight: 700, minWidth: 110 }}>{r.code}</span>
+                                <span style={{ minWidth: 140 }}>{fmtDate(r.arrival_date)} → {fmtDate(r.departure_date)}</span>
+                                {r.guest_name && <span style={{ color: '#9C8E7D', flex: 1 }}>{r.guest_name}</span>}
+                                {r.fin_revenue > 0 && <span style={{ marginLeft: 'auto', fontWeight: 700, whiteSpace: 'nowrap' }}>{fmtN(r.fin_revenue)} €</span>}
                               </div>
                             ))}
                           </div>
