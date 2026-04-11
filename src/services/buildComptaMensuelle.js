@@ -194,8 +194,13 @@ export async function buildComptaMensuelle(mois) {
     if (hon.ttc > 0 && !facture)
       rowAlerts.push({ level: 'error', code: 'NO_FACTURE', message: `HON ${(hon.ttc/100).toFixed(2)} € sans facture`, bien_id: b.id })
 
-    if (ecart_reversement_proprio != null && Math.abs(ecart_reversement_proprio) > 100)
-      rowAlerts.push({ level: 'warning', code: 'ECART_REVERSEMENT', message: `Écart reversement : ${(ecart_reversement_proprio/100).toFixed(2)} €`, bien_id: b.id })
+    if (ecart_reversement_proprio != null && Math.abs(ecart_reversement_proprio) > 100) {
+      const factureTotal = reversementFactureParProprio[propId] || 0
+      const calculeTotal = loyParProprio[propId] || 0
+      rowAlerts.push({ level: 'warning', code: 'ECART_REVERSEMENT',
+        message: `Écart reversement : ${(ecart_reversement_proprio/100).toFixed(2)} € (factures ${(factureTotal/100).toFixed(2)} € vs calculé ${(calculeTotal/100).toFixed(2)} €)`,
+        bien_id: b.id })
+    }
 
     if (nb_non_rapprochees > 0)
       rowAlerts.push({ level: 'warning', code: 'VIR_SANS_RAPPROCHEMENT', message: `${nb_non_rapprochees} virement(s) non rapproché(s)`, bien_id: b.id })
