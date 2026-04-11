@@ -63,10 +63,24 @@ export default function PageComptabilite() {
     { key: 'reversement', label: 'Reversement',   def: true },
     { key: 'ecart',       label: 'Écart',         def: true },
   ]
-  const [colsVisible, setColsVisible] = useState(() =>
-    Object.fromEntries(COLS_DEFS.map(c => [c.key, c.def]))
-  )
+  const [colsVisible, setColsVisible] = useState(() => {
+    try {
+      const saved = localStorage.getItem('compta_cols_visible')
+      if (saved) {
+        const parsed = JSON.parse(saved)
+        // Fusionner avec les défauts pour les nouvelles colonnes éventuelles
+        const defaults = Object.fromEntries(COLS_DEFS.map(c => [c.key, c.def]))
+        return { ...defaults, ...parsed }
+      }
+    } catch (_) {}
+    return Object.fromEntries(COLS_DEFS.map(c => [c.key, c.def]))
+  })
   const col = k => colsVisible[k] ?? COLS_DEFS.find(c => c.key === k)?.def ?? true
+
+  // Persister les colonnes à chaque changement
+  useEffect(() => {
+    try { localStorage.setItem('compta_cols_visible', JSON.stringify(colsVisible)) } catch (_) {}
+  }, [colsVisible])
 
   // Chargement mois dispos — même logique que PageRapports
   useEffect(() => {
