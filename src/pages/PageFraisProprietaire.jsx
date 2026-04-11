@@ -318,7 +318,7 @@ export default function PageFraisProprietaire() {
                           ✏
                         </button>
                       )}
-                      {f.statut === 'brouillon' && (
+                      {(f.statut === 'brouillon' || f.statut === 'a_facturer') && (
                         <button className="btn btn-secondary" style={{ fontSize: 12, padding: '3px 8px', color: '#DC2626' }}
                           onClick={() => supprimerFraisHandler(f.id)}>
                           🗑

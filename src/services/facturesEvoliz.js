@@ -229,7 +229,7 @@ async function genererFactureGroupe(proprio, biens, mois) {
     .eq('mois_facturation', mois)
     .eq('mode_traitement', 'deduire_loyer')
     .eq('mode_encaissement', 'dcb')
-    .eq('statut', 'a_facturer')
+    .in('statut', ['a_facturer', 'facture'])
   const fraisDeduireTTC = (fraisDeduire || []).reduce((s, f) => s + (f.montant_ttc || 0), 0)
 
   // Remboursements propriétaire (HT, sans TVA) — augmentent le reversement
@@ -250,7 +250,7 @@ async function genererFactureGroupe(proprio, biens, mois) {
     .eq('mois_facturation', mois)
     .eq('mode_traitement', 'facturer_direct')
     .eq('mode_encaissement', 'dcb')
-    .eq('statut', 'a_facturer')
+    .in('statut', ['a_facturer', 'facture'])
   const fraisDirectTTC = (fraisDirect || []).reduce((s, f) => s + (f.montant_ttc || 0), 0)
   const fraisDirectHT  = Math.round(fraisDirectTTC / 1.20)
   const fraisDirectTVA = fraisDirectTTC - fraisDirectHT
