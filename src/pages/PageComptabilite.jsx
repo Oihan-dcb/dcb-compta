@@ -170,15 +170,28 @@ export default function PageComptabilite() {
             if (!levelAlerts.length) return null
             return (
               <div key={level} style={{ background: LEVEL_BG[level], border: `1px solid ${LEVEL_COLOR[level]}55`, borderRadius: 8, padding: '10px 14px', marginBottom: 8 }}>
-                <div style={{ fontWeight: 700, color: LEVEL_COLOR[level], fontSize: '0.85em', marginBottom: 6 }}>
+                <div style={{ fontWeight: 700, color: LEVEL_COLOR[level], fontSize: '0.85em', marginBottom: 8 }}>
                   {LEVEL_ICON[level]} {level === 'error' ? 'Erreurs bloquantes' : 'Avertissements'} ({levelAlerts.length})
                 </div>
-                <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
-                  {levelAlerts.map((a, i) => (
-                    <span key={i} style={{ fontSize: '0.8em', background: 'rgba(255,255,255,0.6)', border: `1px solid ${LEVEL_COLOR[level]}44`, borderRadius: 6, padding: '2px 8px', color: 'var(--text)' }}>
-                      {a.message}
-                    </span>
-                  ))}
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+                  {levelAlerts.map((a, i) => {
+                    const row = data.rows.find(r => r.bien_id === a.bien_id)
+                    return (
+                      <div key={i} style={{ display: 'flex', alignItems: 'baseline', gap: 8, fontSize: '0.82em', background: 'rgba(255,255,255,0.55)', border: `1px solid ${LEVEL_COLOR[level]}33`, borderRadius: 6, padding: '5px 10px' }}>
+                        {row && <span style={{ fontWeight: 700, color: 'var(--text)', minWidth: 120 }}>{row.bien_nom}</span>}
+                        <span style={{ color: 'var(--text)', flex: 1 }}>{a.message}</span>
+                        {row && a.code === 'VIR_SANS_RAPPROCHEMENT' && row.nb_non_rapprochees > 0 && (
+                          <span style={{ color: LEVEL_COLOR[level], fontWeight: 700, whiteSpace: 'nowrap' }}>{row.nb_non_rapprochees} non rappr.</span>
+                        )}
+                        {row && a.code === 'FACTURE_MANQUANTE' && row.hon_ttc > 0 && (
+                          <span style={{ color: LEVEL_COLOR[level], fontWeight: 700, whiteSpace: 'nowrap' }}>{fmt(row.hon_ttc)}</span>
+                        )}
+                        {row && a.code === 'RESAS_NON_VENTILEES' && row.nb_non_ventilees > 0 && (
+                          <span style={{ color: LEVEL_COLOR[level], fontWeight: 700, whiteSpace: 'nowrap' }}>{row.nb_non_ventilees} non vent.</span>
+                        )}
+                      </div>
+                    )
+                  })}
                 </div>
               </div>
             )
@@ -327,10 +340,15 @@ export default function PageComptabilite() {
                       : '—'}
                   </td>}
                   <td style={td}>
-                    <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap' }}>
-                      <AlertBadge level="error"   count={r.alerts.filter(a => a.level === 'error').length} />
-                      <AlertBadge level="warning" count={r.alerts.filter(a => a.level === 'warning').length} />
-                    </div>
+                    {r.alerts.length > 0 ? (
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: 3 }}>
+                        {r.alerts.map((a, i) => (
+                          <span key={i} style={{ display: 'inline-flex', alignItems: 'center', gap: 4, fontSize: '0.76em', color: LEVEL_COLOR[a.level], fontWeight: 600, whiteSpace: 'nowrap' }}>
+                            {LEVEL_ICON[a.level]} {a.message}
+                          </span>
+                        ))}
+                      </div>
+                    ) : null}
                   </td>
                 </tr>
               ))}

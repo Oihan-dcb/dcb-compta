@@ -61,6 +61,8 @@ export default function PageRapprochement() {
   const [filtreCanal, setFiltreCanal] = useState('tous')
   const [virSearch, setVirSearch] = useState('')
   const [virMoisFiltre, setVirMoisFiltre] = useState(mois) // filtre mois dans panneau Lier
+  const [filterVirBien, setFilterVirBien] = useState('')
+  const [filterVirPlat, setFilterVirPlat] = useState('')
   const [syncing, setSyncing] = useState(false)
   const [syncLog, setSyncLog] = useState(null)
 
@@ -508,7 +510,35 @@ export default function PageRapprochement() {
                 </button>
               </div>
             </div>
-            <input placeholder="Rechercher..." value={virSearch} onChange={e => setVirSearch(e.target.value)} style={{ width:'100%', padding:'7px 10px', borderRadius:8, border:'1px solid #e5e7eb', fontSize:12, marginBottom:10, boxSizing:'border-box' }} />            <div style={{ maxHeight: 380, overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: 6, marginBottom: 16 }}>
+            {/* Filtres bien + plateforme */}
+            {(() => {
+              const bienIds = [...new Set(virs.map(v => v.reservation?.bien?.id).filter(Boolean))]
+              const plateformes = [...new Set(virs.map(v => v.reservation?.platform).filter(Boolean))].sort()
+              if (bienIds.length < 2 && plateformes.length < 2) return null
+              return (
+                <div style={{ display: 'flex', gap: 6, marginBottom: 8, flexWrap: 'wrap' }}>
+                  {bienIds.length >= 2 && (
+                    <select value={filterVirBien} onChange={e => setFilterVirBien(e.target.value)}
+                      style={{ flex: 1, padding: '5px 8px', borderRadius: 7, border: '1px solid var(--border,#D9CEB8)', background: 'var(--bg,#F7F3EC)', color: 'var(--text,#2C2416)', fontSize: 12 }}>
+                      <option value="">Tous les biens</option>
+                      {bienIds.map(id => {
+                        const nom = virs.find(v => v.reservation?.bien?.id === id)?.reservation?.bien?.hospitable_name || id
+                        return <option key={id} value={id}>{nom}</option>
+                      })}
+                    </select>
+                  )}
+                  {plateformes.length >= 2 && (
+                    <select value={filterVirPlat} onChange={e => setFilterVirPlat(e.target.value)}
+                      style={{ flex: 1, padding: '5px 8px', borderRadius: 7, border: '1px solid var(--border,#D9CEB8)', background: 'var(--bg,#F7F3EC)', color: 'var(--text,#2C2416)', fontSize: 12 }}>
+                      <option value="">Toutes plateformes</option>
+                      {plateformes.map(p => <option key={p} value={p}>{p}</option>)}
+                    </select>
+                  )}
+                </div>
+              )
+            })()}
+            <input placeholder="Rechercher..." value={virSearch} onChange={e => setVirSearch(e.target.value)} style={{ width:'100%', padding:'7px 10px', borderRadius:8, border:'1px solid #e5e7eb', fontSize:12, marginBottom:10, boxSizing:'border-box' }} />
+            <div style={{ maxHeight: 380, overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: 6, marginBottom: 16 }}>
               {virs.length === 0 ? (
                 <div style={{ color: '#aaa', fontSize: 13, textAlign: 'center', padding: 16 }}>Tous les VIR sont déjà rapprochés</div>
               ) : (() => {
@@ -518,7 +548,12 @@ export default function PageRapprochement() {
                     .reduce((s, v) => s + (v.mouvement_bancaire?.credit || 0), 0)
                   return Math.max(0, (resa?.fin_revenue || 0) - dejaLie)
                 }
-                return virs.filter(v => virMoisFiltre === 'tous' || v.mois_comptable === virMoisFiltre).filter(v => !virSearch || v.reservation?.guest_name?.toLowerCase().includes(virSearch.toLowerCase()) || v.reservation?.bien?.hospitable_name?.toLowerCase().includes(virSearch.toLowerCase()) || v.reservation?.code?.toLowerCase().includes(virSearch.toLowerCase()) || v.reservation?.platform?.toLowerCase().includes(virSearch.toLowerCase())).map(v => {
+                return virs
+                  .filter(v => virMoisFiltre === 'tous' || v.mois_comptable === virMoisFiltre)
+                  .filter(v => !filterVirBien || v.reservation?.bien?.id === filterVirBien)
+                  .filter(v => !filterVirPlat || v.reservation?.platform === filterVirPlat)
+                  .filter(v => !virSearch || v.reservation?.guest_name?.toLowerCase().includes(virSearch.toLowerCase()) || v.reservation?.bien?.hospitable_name?.toLowerCase().includes(virSearch.toLowerCase()) || v.reservation?.code?.toLowerCase().includes(virSearch.toLowerCase()) || v.reservation?.platform?.toLowerCase().includes(virSearch.toLowerCase()))
+                  .map(v => {
                 const checked = virsSel.includes(v.id)
                 return (
                   <label key={v.id} style={{ display: 'flex', alignItems: 'flex-start', gap: 8, padding: '8px 10px', borderRadius: 8, border: `1.5px solid ${checked ? '#E4A853' : '#e5e7eb'}`, background: checked ? '#FFF8EC' : '#fff', cursor: 'pointer', fontSize: 12 }}>
