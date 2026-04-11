@@ -257,8 +257,8 @@ export async function getMouvementsMois(mois) {
             const isNewResa = !info.reservation_ids.includes(resa.id)
             if (isNewResa) info.reservation_ids.push(resa.id)
             if (!info.codes.includes(resa.code)) info.codes.push(resa.code)
-            info.fin_revenue += (resa.fin_revenue || 0)
-            info.nights += (resa.nights || 0)
+            info.fin_revenue += (line.montant_net || 0)  // montant réellement reçu dans ce payout, pas fin_revenue total
+            if (isNewResa) info.nights += (resa.nights || 0)
             if (isNewResa) info.nb_resas++
             if (!info.arrival_date || resa.arrival_date < info.arrival_date) info.arrival_date = resa.arrival_date
             if (!info.departure_date || resa.departure_date > info.departure_date) info.departure_date = resa.departure_date
