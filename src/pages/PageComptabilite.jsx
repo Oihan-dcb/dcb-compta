@@ -60,7 +60,7 @@ export default function PageComptabilite() {
     { key: 'frais_loy',            label: 'Frais LOY',     def: false },
     { key: 'reversement_calcule',  label: 'Reversement',   def: true },
     { key: 'vir_ht',               label: 'VIR HT',        def: true },
-    { key: 'ecart_vir_loy',        label: 'Écart VIR/LOY', def: true },
+    { key: 'ecart_vir_loy',        label: 'Écart VIR/LOY', def: false },
     { key: 'taxe',                 label: 'TAXE',          def: true },
     { key: 'facture',              label: 'Facture',       def: true },
     { key: 'reversement_facture',  label: 'Rev. facturé',  def: false },
@@ -110,7 +110,16 @@ export default function PageComptabilite() {
     }
   }, [mois])
 
-  useEffect(() => { charger() }, [charger])
+  useEffect(() => {
+    charger()
+    const channel = supabase.channel('compta-changes')
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'reservation' }, () => charger())
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'ventilation' }, () => charger())
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'facture_evoliz' }, () => charger())
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'frais_proprietaire' }, () => charger())
+      .subscribe()
+    return () => { supabase.removeChannel(channel) }
+  }, [charger])
 
   // Liste des propriétaires uniques pour le filtre
   const proprietaires = data
