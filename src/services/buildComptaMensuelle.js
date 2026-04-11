@@ -40,7 +40,7 @@ export async function buildComptaMensuelle(mois) {
       .eq('agence', 'dcb'),
     supabase
       .from('reservation')
-      .select('id, bien_id, final_status, ventilation_calculee, rapprochee, owner_stay, fin_revenue, code, arrival_date, departure_date, guest_name')
+      .select('id, bien_id, final_status, ventilation_calculee, rapprochee, owner_stay, fin_revenue, code, arrival_date, departure_date, guest_name, platform')
       .eq('mois_comptable', mois),
     supabase
       .from('ventilation')
@@ -379,6 +379,7 @@ export async function buildComptaMensuelle(mois) {
           departure_date: r.departure_date || null,
           fin_revenue:    r.fin_revenue   || 0,
           guest_name:     r.guest_name    || null,
+          platform:       r.platform      || null,
         }))
       rowAlerts.push({
         level: 'warning',

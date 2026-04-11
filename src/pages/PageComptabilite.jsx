@@ -230,6 +230,7 @@ export default function PageComptabilite() {
                                 <span style={{ fontWeight: 700, minWidth: 110 }}>{r.code}</span>
                                 <span style={{ minWidth: 140 }}>{fmtDate(r.arrival_date)} → {fmtDate(r.departure_date)}</span>
                                 {r.guest_name && <span style={{ color: '#9C8E7D', flex: 1 }}>{r.guest_name}</span>}
+                                {r.platform && <span style={{ color: '#B8860B', fontWeight: 600, textTransform: 'capitalize', whiteSpace: 'nowrap' }}>{r.platform}</span>}
                                 {r.fin_revenue > 0 && <span style={{ marginLeft: 'auto', fontWeight: 700, whiteSpace: 'nowrap' }}>{fmtN(r.fin_revenue)} €</span>}
                               </div>
                             ))}
