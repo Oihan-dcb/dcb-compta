@@ -118,6 +118,7 @@ export default function PageComptabilite() {
       .on('postgres_changes', { event: '*', schema: 'public', table: 'ventilation' }, () => charger())
       .on('postgres_changes', { event: '*', schema: 'public', table: 'facture_evoliz' }, () => charger())
       .on('postgres_changes', { event: '*', schema: 'public', table: 'frais_proprietaire' }, () => charger())
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'prestation_hors_forfait' }, () => charger())
       .subscribe()
     return () => { supabase.removeChannel(channel) }
   }, [charger])
