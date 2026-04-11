@@ -586,9 +586,19 @@ export function exportComptaCSV(data) {
     '', '', '', '',
   ])
 
-  const csv = [headers, ...rows]
+  let csv = [headers, ...rows]
     .map(row => row.map(v => `"${String(v ?? '').replace(/"/g, '""')}"`).join(','))
     .join('\n')
+
+  // Section frais Stripe en pied de fichier
+  if (data.fraisStripe) {
+    const fmtE = (c) => (c / 100).toFixed(2) + ' €'
+    csv += '\n'
+    csv += `\n"--- FRAIS STRIPE ---","${fmtE(data.fraisStripe.total)}","À virer compte courant → compte de gestion"`
+    for (const p of Object.values(data.fraisStripe.parPayout)) {
+      csv += `\n"Virement ${p.date}","${fmtE(p.credit)}","frais: ${fmtE(p.frais)}"`
+    }
+  }
 
   return '\uFEFF' + csv
 }

@@ -302,21 +302,13 @@ export default function PageRapprochement() {
       )}
 
       {/* STATS */}
-      {(alertes.virOrphelins > 0 || alertes.resasNonRapprochees > 0) && (
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 8, marginBottom: 16 }}>
-          {alertes.virOrphelins > 0 && (
-            <div style={{ background: '#FEF3C7', border: '1px solid #F59E0B', borderRadius: 8, padding: '10px 16px', display: 'flex', alignItems: 'center', gap: 10, fontSize: 13 }}>
-              <span>⚠️</span>
-              <span><strong>{alertes.virOrphelins} virement(s) sans réservation depuis +7j</strong> — en attente de rapprochement.</span>
-              <button onClick={() => handleFiltreChange('attente')} style={{ marginLeft: 'auto', background: '#F59E0B', color: '#fff', border: 'none', borderRadius: 6, padding: '4px 12px', cursor: 'pointer', fontSize: 12, fontWeight: 600 }}>Voir</button>
-            </div>
-          )}
-          {alertes.resasNonRapprochees > 0 && (
-            <div style={{ background: '#FEE2E2', border: '1px solid #EF4444', borderRadius: 8, padding: '10px 16px', display: 'flex', alignItems: 'center', gap: 10, fontSize: 13 }}>
-              <span>🔴</span>
-              <span><strong>{alertes.resasNonRapprochees} réservation(s) ventilée(s) sans virement identifié</strong> pour ce mois.</span>
-            </div>
-          )}
+      {alertes.virOrphelins > 0 && (
+        <div style={{ marginBottom: 16 }}>
+          <div style={{ background: '#FEF3C7', border: '1px solid #F59E0B', borderRadius: 8, padding: '10px 16px', display: 'flex', alignItems: 'center', gap: 10, fontSize: 13 }}>
+            <span>⚠️</span>
+            <span><strong>{alertes.virOrphelins} virement(s) sans réservation depuis +7j</strong> — en attente de rapprochement.</span>
+            <button onClick={() => handleFiltreChange('attente')} style={{ marginLeft: 'auto', background: '#F59E0B', color: '#fff', border: 'none', borderRadius: 6, padding: '4px 12px', cursor: 'pointer', fontSize: 12, fontWeight: 600 }}>Voir</button>
+          </div>
         </div>
       )}
       {stats && (
