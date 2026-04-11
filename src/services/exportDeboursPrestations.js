@@ -19,7 +19,7 @@ export async function exportDeboursPrestations(mois) {
     'Type prestation': p.prestation_type?.nom || '',
     'Description': p.description || '',
     'Date': p.date_prestation || '',
-    'Montant HT EUR': p.montant_ht ? (p.montant_ht / 100).toFixed(2) : '',
+    'Montant EUR': p.montant ? (p.montant / 100).toFixed(2) : '',
     'AE': p.auto_entrepreneur ? `${p.auto_entrepreneur.prenom} ${p.auto_entrepreneur.nom}`.trim() : '',
     'Statut': p.statut || '',
     'Type imputation': p.type_imputation || '',
@@ -29,7 +29,6 @@ export async function exportDeboursPrestations(mois) {
   const fraisRows = (frais || []).map(f => ({
     'Proprietaire': f.proprietaire ? `${f.proprietaire.prenom || ''} ${f.proprietaire.nom}`.trim() : '',
     'Libelle': f.libelle || '',
-    'Montant HT EUR': f.montant_ht ? (f.montant_ht / 100).toFixed(2) : '',
     'Montant TTC EUR': f.montant_ttc ? (f.montant_ttc / 100).toFixed(2) : '',
     'Mode traitement': f.mode_traitement || '',
     'Mode encaissement': f.mode_encaissement || '',

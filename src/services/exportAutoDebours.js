@@ -18,7 +18,7 @@ export async function exportAutoDebours(mois) {
       .select('reservation_id, ae_id, date_mission, duree_heures, montant, auto_entrepreneur:ae_id(prenom, nom)')
       .eq('mois', mois),
     supabase.from('prestation_hors_forfait')
-      .select('reservation_id, bien_id, montant_ht, type_imputation, prestation_type:prestation_type_id(nom), auto_entrepreneur:ae_id(prenom, nom)')
+      .select('reservation_id, bien_id, montant, type_imputation, prestation_type:prestation_type_id(nom), auto_entrepreneur:ae_id(prenom, nom)')
       .eq('mois', mois)
       .not('ae_id', 'is', null),
     supabase.from('frais_proprietaire')
@@ -89,11 +89,11 @@ export async function exportAutoDebours(mois) {
 
     const prestsResa = prestByResa[r.id] || []
     const prestStr = prestsResa.map(p =>
-      `${p.prestation_type?.nom || '?'}: ${((p.montant_ht || 0) / 100).toFixed(2)}€`
+      `${p.prestation_type?.nom || '?'}: ${((p.montant || 0) / 100).toFixed(2)}€`
     ).join(' | ')
-    const haowner = prestsResa.filter(p => p.type_imputation === 'haowner').reduce((s, p) => s + (p.montant_ht || 0), 0)
-    const debp    = prestsResa.filter(p => p.type_imputation === 'debours_proprio').reduce((s, p) => s + (p.montant_ht || 0), 0)
-    const debae   = prestsResa.filter(p => p.type_imputation === 'deduction_loy').reduce((s, p) => s + (p.montant_ht || 0), 0)
+    const haowner = prestsResa.filter(p => p.type_imputation === 'haowner').reduce((s, p) => s + (p.montant || 0), 0)
+    const debp    = prestsResa.filter(p => p.type_imputation === 'debours_proprio').reduce((s, p) => s + (p.montant || 0), 0)
+    const debae   = prestsResa.filter(p => p.type_imputation === 'deduction_loy').reduce((s, p) => s + (p.montant || 0), 0)
 
     const fraisBien = fraisByBien[r.bien?.id] || []
     const fraisStr = fraisBien.map(f =>
