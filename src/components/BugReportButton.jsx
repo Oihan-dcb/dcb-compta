@@ -35,7 +35,7 @@ export default function BugReportButton({ source = 'compta' }) {
         onClick={() => setOpen(o => !o)}
         title="Signaler un bug"
         style={{
-          position: 'fixed', bottom: 20, right: 20, zIndex: 999,
+          position: 'fixed', bottom: 20, left: 20, zIndex: 999,
           width: 40, height: 40, borderRadius: '50%',
           background: 'var(--brand, #CC9933)', color: '#fff',
           border: 'none', cursor: 'pointer',
@@ -53,7 +53,7 @@ export default function BugReportButton({ source = 'compta' }) {
       {/* Popover */}
       {open && (
         <div style={{
-          position: 'fixed', bottom: 68, right: 20, zIndex: 1000,
+          position: 'fixed', bottom: 68, left: 20, zIndex: 1000,
           background: 'var(--bg-card, #fff)', border: '1px solid var(--border, #D9CEB8)',
           borderRadius: 12, boxShadow: '0 8px 24px rgba(0,0,0,0.15)',
           width: 280, padding: 16,
