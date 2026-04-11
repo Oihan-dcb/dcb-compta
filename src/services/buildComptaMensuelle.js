@@ -83,21 +83,21 @@ export async function buildComptaMensuelle(mois) {
     // prestations déduits du loyer (type_imputation='deduction_loy')
     supabase
       .from('prestation_hors_forfait')
-      .select('bien_id, montant_ht, type_prestation')
+      .select('bien_id, montant, type_prestation')
       .eq('mois', mois)
       .eq('type_imputation', 'deduction_loy')
       .eq('statut', 'valide'),
     // prestations haowner (type_imputation='haowner', TTC = HT × 1.20)
     supabase
       .from('prestation_hors_forfait')
-      .select('bien_id, montant_ht')
+      .select('bien_id, montant')
       .eq('mois', mois)
       .eq('type_imputation', 'haowner')
       .eq('statut', 'valide'),
     // prestations débours proprio absorbés
     supabase
       .from('prestation_hors_forfait')
-      .select('bien_id, montant_ht')
+      .select('bien_id, montant')
       .eq('mois', mois)
       .eq('type_imputation', 'debours_proprio')
       .eq('statut', 'valide'),
@@ -188,21 +188,21 @@ export async function buildComptaMensuelle(mois) {
   const prestDeductByBien = {}
   for (const p of (prestDeductData || [])) {
     const montant = p.type_prestation === 'staff'
-      ? Math.round((p.montant_ht || 0) * 1.20)
-      : (p.montant_ht || 0)
+      ? Math.round((p.montant || 0) * 1.20)
+      : (p.montant || 0)
     prestDeductByBien[p.bien_id] = (prestDeductByBien[p.bien_id] || 0) + montant
   }
 
   // Prestations haowner par bien_id (TTC = HT × 1.20)
   const haownerByBien = {}
   for (const p of (prestHaownerData || [])) {
-    haownerByBien[p.bien_id] = (haownerByBien[p.bien_id] || 0) + Math.round((p.montant_ht || 0) * 1.20)
+    haownerByBien[p.bien_id] = (haownerByBien[p.bien_id] || 0) + Math.round((p.montant || 0) * 1.20)
   }
 
   // Prestations débours proprio absorbés par bien_id
   const deboursPropByBien = {}
   for (const p of (prestDeboursData || [])) {
-    deboursPropByBien[p.bien_id] = (deboursPropByBien[p.bien_id] || 0) + (p.montant_ht || 0)
+    deboursPropByBien[p.bien_id] = (deboursPropByBien[p.bien_id] || 0) + (p.montant || 0)
   }
 
   // Owner stay : FMEN TTC + AUTO HT par bien (depuis ventilation, réservations owner_stay)
