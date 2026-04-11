@@ -152,12 +152,14 @@ export async function buildComptaMensuelle(mois) {
     // Facture du proprio
     const facture = propId ? honByProprio[propId] : null
 
-    // Reversement calculé par bien (même logique que rapportStatement)
+    // Reversement calculé par bien : VIR est la base (LOY + taxes non-remittées)
+    // frais déductibles du loyer viennent en déduction
     const frais_loy = fraisLoyByBien[b.id] || 0
-    const reversement_calcule = loy.ht - frais_loy
+    const reversement_calcule = vir.ht - frais_loy
 
-    // Écart par bien : VIR reçu vs reversement dû
-    const ecart_vir_loy = (loy.ht > 0 || vir.ht > 0) ? vir.ht - reversement_calcule : null
+    // Écart : VIR - (VIR - frais) = frais → devrait être 0 quand frais=0
+    // Colonne masquée par défaut, utile uniquement pour détecter des incohérences
+    const ecart_vir_loy = (vir.ht > 0) ? vir.ht - reversement_calcule : null
 
     // Écart reversement au niveau proprio : facture Evoliz vs Σ reversement_calcule
     let ecart_reversement_proprio = null
