@@ -261,28 +261,11 @@ export default function PageComptabilite() {
           <StatCard label="VIR HT" value={fmt(data.totals.vir_ht)} />
           <StatCard label="TAXE HT" value={fmt(data.totals.taxe_ht)} />
           <StatCard label="Réservations" value={data.totals.nb_resas} sub={`${data.totals.nb_rapprochees} rappr. · ${data.totals.nb_non_rapprochees} non rappr.`} />
-        </div>
-      )}
-
-      {/* Bloc frais Stripe */}
-      {data?.fraisStripe && (
-        <div style={{ background: '#F5F3FF', border: '2px solid #635BFF', borderRadius: 12, padding: '18px 24px', marginBottom: 24 }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
-            <span style={{ fontSize: '1.1em', fontWeight: 700, color: '#635BFF' }}>Frais Stripe</span>
-            <span style={{ fontSize: '1.6em', fontWeight: 800, color: '#3730A3', letterSpacing: '-0.5px' }}>
-              {(data.fraisStripe.total / 100).toFixed(2)} €
-            </span>
-            <span style={{ fontSize: '0.9em', color: '#6B7280', borderLeft: '1px solid #C4B5FD', paddingLeft: 12 }}>
-              À virer du compte courant → compte de gestion
-            </span>
-          </div>
-          {Object.keys(data.fraisStripe.parPayout).length > 1 && (
-            <div style={{ marginTop: 12, display: 'flex', gap: 10, flexWrap: 'wrap' }}>
-              {Object.values(data.fraisStripe.parPayout).map((p, i) => (
-                <div key={i} style={{ background: '#EDE9FE', borderRadius: 7, padding: '4px 12px', fontSize: '0.82em', color: '#4C1D95' }}>
-                  {p.date} — virement {(p.credit / 100).toFixed(2)} € — frais {(p.frais / 100).toFixed(2)} €
-                </div>
-              ))}
+          {data.fraisStripe && (
+            <div style={{ background: '#F5F3FF', border: '1px solid #635BFF', borderRadius: 10, padding: '14px 18px', minWidth: 130 }}>
+              <div style={{ fontSize: '0.75em', color: '#635BFF', fontWeight: 600, marginBottom: 4, textTransform: 'uppercase', letterSpacing: '0.05em' }}>Frais Stripe</div>
+              <div style={{ fontSize: '1.25em', fontWeight: 700, color: '#3730A3' }}>{(data.fraisStripe.total / 100).toFixed(2)} €</div>
+              <div style={{ fontSize: '0.75em', color: '#635BFF', marginTop: 2 }}>→ virer vers cpt gestion</div>
             </div>
           )}
         </div>
