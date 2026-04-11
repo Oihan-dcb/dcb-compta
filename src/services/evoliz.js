@@ -142,13 +142,18 @@ export async function creerFactureEvoliz(facture) {
   const lignes = (facture.facture_evoliz_ligne || [])
     .sort((a, b) => a.ordre - b.ordre)
     .filter(l => l.montant_ht > 0)
-    .map(l => ({
-      designation: l.libelle,
-      reference: l.code,
-      quantity: 1,
-      unitPrice: l.montant_ht / 100,
-      vatRate: l.taux_tva ?? 20,
-    }))
+    .map(l => {
+      const htCentimes = Math.round(l.montant_ht)
+      if (!Number.isFinite(htCentimes) || htCentimes <= 0) return null
+      return {
+        designation: l.libelle || `Ligne ${l.code || 'facturation'}`,
+        reference: l.code,
+        quantity: 1,
+        unitPrice: htCentimes / 100,
+        vatRate: l.taux_tva ?? 20,
+      }
+    })
+    .filter(Boolean)
 
   if (lignes.length === 0) throw new Error('Aucune ligne non nulle dans la facture')
 
@@ -178,7 +183,7 @@ export async function creerFactureEvoliz(facture) {
     // Paiement automatique — virement compte de gestion DCB
     const montantTTC = (facture.facture_evoliz_ligne || [])
       .filter(l => l.montant_ttc > 0)
-      .reduce((s, l) => s + l.montant_ttc, 0) / 100
+      .reduce((s, l) => s + Math.round(l.montant_ttc), 0) / 100
     if (montantTTC > 0) {
       await evolizCall('createPayment', {
         invoiceId,
