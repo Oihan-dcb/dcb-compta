@@ -498,11 +498,41 @@ export async function buildComptaMensuelle(mois) {
     return a.code.localeCompare(b.code)
   })
 
+  // Frais Stripe du mois — agrégés depuis stripe_payout_line
+  let fraisStripe = null
+  const { data: mvtsStripe } = await supabase
+    .from('mouvement_bancaire')
+    .select('id, credit, date_operation')
+    .eq('canal', 'stripe')
+    .eq('mois_releve', mois)
+  if (mvtsStripe?.length) {
+    const mvtIds = mvtsStripe.map(m => m.id)
+    const { data: stripeLines } = await supabase
+      .from('stripe_payout_line')
+      .select('mouvement_id, montant_brut, montant_net')
+      .in('mouvement_id', mvtIds)
+    if (stripeLines?.length) {
+      const totalBrut = stripeLines.reduce((s, l) => s + (l.montant_brut || 0), 0)
+      const totalNet  = stripeLines.reduce((s, l) => s + (l.montant_net  || 0), 0)
+      const totalFrais = totalBrut - totalNet
+      const parPayout = {}
+      for (const m of mvtsStripe) {
+        const lignes = stripeLines.filter(l => l.mouvement_id === m.id)
+        if (!lignes.length) continue
+        const brut = lignes.reduce((s, l) => s + (l.montant_brut || 0), 0)
+        const net  = lignes.reduce((s, l) => s + (l.montant_net  || 0), 0)
+        parPayout[m.id] = { date: m.date_operation, credit: m.credit, frais: brut - net }
+      }
+      fraisStripe = { total: totalFrais, parPayout }
+    }
+  }
+
   return {
     mois,
     rows,
     totals,
     alerts,
+    fraisStripe,
     metadata: {
       generated_at:       new Date().toISOString(),
       nb_biens:           biens.length,

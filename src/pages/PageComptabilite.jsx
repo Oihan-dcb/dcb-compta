@@ -264,6 +264,30 @@ export default function PageComptabilite() {
         </div>
       )}
 
+      {/* Bloc frais Stripe */}
+      {data?.fraisStripe && (
+        <div style={{ background: '#F5F3FF', border: '2px solid #635BFF', borderRadius: 12, padding: '18px 24px', marginBottom: 24 }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
+            <span style={{ fontSize: '1.1em', fontWeight: 700, color: '#635BFF' }}>Frais Stripe</span>
+            <span style={{ fontSize: '1.6em', fontWeight: 800, color: '#3730A3', letterSpacing: '-0.5px' }}>
+              {(data.fraisStripe.total / 100).toFixed(2)} €
+            </span>
+            <span style={{ fontSize: '0.9em', color: '#6B7280', borderLeft: '1px solid #C4B5FD', paddingLeft: 12 }}>
+              À virer du compte courant → compte de gestion
+            </span>
+          </div>
+          {Object.keys(data.fraisStripe.parPayout).length > 1 && (
+            <div style={{ marginTop: 12, display: 'flex', gap: 10, flexWrap: 'wrap' }}>
+              {Object.values(data.fraisStripe.parPayout).map((p, i) => (
+                <div key={i} style={{ background: '#EDE9FE', borderRadius: 7, padding: '4px 12px', fontSize: '0.82em', color: '#4C1D95' }}>
+                  {p.date} — virement {(p.credit / 100).toFixed(2)} € — frais {(p.frais / 100).toFixed(2)} €
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
+
       {/* Filtres */}
       <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', marginBottom: 16, alignItems: 'center' }}>
         <select value={filterProprio} onChange={e => setFilterProprio(e.target.value)}
