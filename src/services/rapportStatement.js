@@ -12,6 +12,7 @@ export function genererStatementHTML(proprio, mois, data) {
   const haownerList = data.haownerList || []
   const ownerStayMenageList = data.ownerStayMenageList || []
   const fraisProprietaire = data.fraisProprietaire || []
+  const showNetPlat = data.colonnes?.net_plat ?? false
 
   const fmt = (centimes) => {
     if (centimes === null || centimes === undefined) return '—'
@@ -88,7 +89,7 @@ export function genererStatementHTML(proprio, mois, data) {
       <td style="padding:4px 5px;font-size:8.5px;white-space:nowrap">${fmtDate(r.arrival_date)} – ${fmtDate(r.departure_date)}</td>
       <td style="padding:4px 5px;font-size:9px;text-align:right">${r.nights || '—'}</td>
       <td style="padding:4px 5px;font-size:9px;text-align:right;white-space:nowrap">${r.owner_stay ? '—' : fmt(r.gross_revenue ?? r.fin_revenue)}</td>
-      <td style="padding:4px 5px;font-size:9px;text-align:right;white-space:nowrap;color:#4A3728">${r.owner_stay ? '—' : fmt(r.fin_revenue || 0)}</td>
+      ${showNetPlat ? `<td style="padding:4px 5px;font-size:9px;text-align:right;white-space:nowrap;color:#4A3728">${r.owner_stay ? '—' : fmt(r.fin_revenue || 0)}</td>` : ''}
       <td style="padding:4px 5px;font-size:9px;text-align:right;white-space:nowrap;color:#4A3728">${r.owner_stay ? '—' : (r.base_comm || 0) > 0 ? fmt(r.base_comm) : '—'}</td>
       <td style="padding:4px 5px;font-size:9px;text-align:right;white-space:nowrap;color:#9c8c7a">${honR > 0 ? fmt(honR) : '—'}</td>
       <td style="padding:4px 5px;font-size:9px;text-align:right;white-space:nowrap;color:#4A3728">${menR > 0 ? fmt(menR) : '—'}</td>
@@ -239,8 +240,7 @@ export function genererStatementHTML(proprio, mois, data) {
       <col style="width:7%">
       <col style="width:9%">
       <col style="width:4%">
-      <col style="width:9%">
-      <col style="width:9%">
+      ${showNetPlat ? '<col style="width:8%"><col style="width:8%">' : '<col style="width:9%">'}
       <col style="width:9%">
       <col style="width:8%">
       <col style="width:9%">
@@ -255,7 +255,7 @@ export function genererStatementHTML(proprio, mois, data) {
         <th style="padding:5px 5px;text-align:left;font-weight:400;font-size:8px;color:#9c8c7a">Dates</th>
         <th style="padding:5px 5px;text-align:right;font-weight:400;font-size:8px;color:#9c8c7a">Nuits</th>
         <th style="padding:5px 5px;text-align:right;font-weight:400;font-size:8px;color:#9c8c7a">Brut voyageur</th>
-        <th style="padding:5px 5px;text-align:right;font-weight:400;font-size:8px;color:#9c8c7a">Net plateforme</th>
+        ${showNetPlat ? '<th style="padding:5px 5px;text-align:right;font-weight:400;font-size:8px;color:#9c8c7a">Net plateforme</th>' : ''}
         <th style="padding:5px 5px;text-align:right;font-weight:400;font-size:8px;color:#9c8c7a">Base comm.</th>
         <th style="padding:5px 5px;text-align:right;font-weight:400;font-size:8px;color:#9c8c7a">HON TTC</th>
         <th style="padding:5px 5px;text-align:right;font-weight:400;font-size:8px;color:#9c8c7a">Ménage total</th>
@@ -268,7 +268,7 @@ export function genererStatementHTML(proprio, mois, data) {
       <tr style="background:#EDEBE5;border-top:2px solid #CC9933;font-weight:700">
         <td colspan="5" style="padding:5px 5px;font-size:9.5px">Total</td>
         <td style="padding:5px 5px;text-align:right;font-size:9.5px">${fmt(grossTotal)}</td>
-        <td style="padding:5px 5px;text-align:right;font-size:9.5px;color:#4A3728">${fmt(caHeb)}</td>
+        ${showNetPlat ? `<td style="padding:5px 5px;text-align:right;font-size:9.5px;color:#4A3728">${fmt(caHeb)}</td>` : ''}
         <td style="padding:5px 5px;text-align:right;font-size:9.5px;color:#4A3728">${baseCommTotal > 0 ? fmt(baseCommTotal) : '—'}</td>
         <td style="padding:5px 5px;text-align:right;font-size:9.5px;color:#9c8c7a">${fmt(honTotal)}</td>
         <td style="padding:5px 5px;text-align:right;font-size:9.5px;color:#4A3728">${menageTotal > 0 ? fmt(menageTotal) : '—'}</td>

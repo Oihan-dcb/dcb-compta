@@ -49,8 +49,12 @@ export default function PageComptabilite() {
     { key: 'rappr',       label: 'Rappr.',       def: true },
     { key: 'non_vent',    label: 'Non vent.',    def: false },
     { key: 'hon_ht',      label: 'HON HT',       def: false },
+    { key: 'hon_tva',     label: 'HON TVA',      def: false },
     { key: 'hon_ttc',     label: 'HON TTC',      def: true },
+    { key: 'com_ttc',     label: 'COM TTC',      def: true },
     { key: 'fmen_ht',     label: 'FMEN HT',      def: true },
+    { key: 'fmen_tva',    label: 'FMEN TVA',     def: false },
+    { key: 'fmen_ttc',    label: 'FMEN TTC',     def: false },
     { key: 'auto_ht',     label: 'AUTO HT',      def: true },
     { key: 'loy_ht',      label: 'LOY HT',       def: true },
     { key: 'vir_ht',      label: 'VIR HT',       def: true },
@@ -236,8 +240,12 @@ export default function PageComptabilite() {
                 {col('rappr')       && <th style={{ ...th, textAlign: 'right' }}>Rappr.</th>}
                 {col('non_vent')    && <th style={{ ...th, textAlign: 'right' }}>Non vent.</th>}
                 {col('hon_ht')      && <th style={{ ...th, textAlign: 'right' }}>HON HT</th>}
+                {col('hon_tva')     && <th style={{ ...th, textAlign: 'right' }}>HON TVA</th>}
                 {col('hon_ttc')     && <th style={{ ...th, textAlign: 'right' }}>HON TTC</th>}
+                {col('com_ttc')     && <th style={{ ...th, textAlign: 'right' }}>COM TTC</th>}
                 {col('fmen_ht')     && <th style={{ ...th, textAlign: 'right' }}>FMEN HT</th>}
+                {col('fmen_tva')    && <th style={{ ...th, textAlign: 'right' }}>FMEN TVA</th>}
+                {col('fmen_ttc')    && <th style={{ ...th, textAlign: 'right' }}>FMEN TTC</th>}
                 {col('auto_ht')     && <th style={{ ...th, textAlign: 'right' }}>AUTO HT</th>}
                 {col('loy_ht')      && <th style={{ ...th, textAlign: 'right' }}>LOY HT</th>}
                 {col('vir_ht')      && <th style={{ ...th, textAlign: 'right' }}>VIR HT</th>}
@@ -277,8 +285,12 @@ export default function PageComptabilite() {
                       : <span style={{ color: '#9C8E7D' }}>0</span>}
                   </td>}
                   {col('hon_ht')      && <td style={{ ...td, textAlign: 'right', fontVariantNumeric: 'tabular-nums' }}>{r.hon_ht ? fmtN(r.hon_ht) : '—'}</td>}
+                  {col('hon_tva')     && <td style={{ ...td, textAlign: 'right', fontVariantNumeric: 'tabular-nums' }}>{r.hon_tva ? fmtN(r.hon_tva) : '—'}</td>}
                   {col('hon_ttc')     && <td style={{ ...td, textAlign: 'right', fontVariantNumeric: 'tabular-nums', fontWeight: r.hon_ttc ? 600 : 400 }}>{r.hon_ttc ? fmtN(r.hon_ttc) : '—'}</td>}
+                  {col('com_ttc')     && <td style={{ ...td, textAlign: 'right', fontVariantNumeric: 'tabular-nums', fontWeight: r.com_ttc ? 600 : 400 }}>{r.com_ttc ? fmtN(r.com_ttc) : '—'}</td>}
                   {col('fmen_ht')     && <td style={{ ...td, textAlign: 'right', fontVariantNumeric: 'tabular-nums' }}>{r.fmen_ht ? fmtN(r.fmen_ht) : '—'}</td>}
+                  {col('fmen_tva')    && <td style={{ ...td, textAlign: 'right', fontVariantNumeric: 'tabular-nums' }}>{r.fmen_tva ? fmtN(r.fmen_tva) : '—'}</td>}
+                  {col('fmen_ttc')    && <td style={{ ...td, textAlign: 'right', fontVariantNumeric: 'tabular-nums' }}>{r.fmen_ttc ? fmtN(r.fmen_ttc) : '—'}</td>}
                   {col('auto_ht')     && <td style={{ ...td, textAlign: 'right', fontVariantNumeric: 'tabular-nums' }}>{r.auto_ht ? fmtN(r.auto_ht) : '—'}</td>}
                   {col('loy_ht')      && <td style={{ ...td, textAlign: 'right', fontVariantNumeric: 'tabular-nums' }}>{r.loy_ht ? fmtN(r.loy_ht) : '—'}</td>}
                   {col('vir_ht')      && <td style={{ ...td, textAlign: 'right', fontVariantNumeric: 'tabular-nums' }}>{r.vir_ht ? fmtN(r.vir_ht) : '—'}</td>}
@@ -319,8 +331,12 @@ export default function PageComptabilite() {
                   {col('rappr')       && <td style={{ ...td, textAlign: 'right' }}>{rowsFiltrees.reduce((s, r) => s + r.nb_rapprochees, 0)}</td>}
                   {col('non_vent')    && <td style={{ ...td, textAlign: 'right' }}>{rowsFiltrees.reduce((s, r) => s + r.nb_non_ventilees, 0)}</td>}
                   {col('hon_ht')      && <td style={{ ...td, textAlign: 'right' }}>{fmtN(rowsFiltrees.reduce((s, r) => s + r.hon_ht,   0))}</td>}
+                  {col('hon_tva')     && <td style={{ ...td, textAlign: 'right' }}>{fmtN(rowsFiltrees.reduce((s, r) => s + r.hon_tva,  0))}</td>}
                   {col('hon_ttc')     && <td style={{ ...td, textAlign: 'right' }}>{fmtN(rowsFiltrees.reduce((s, r) => s + r.hon_ttc,  0))}</td>}
+                  {col('com_ttc')     && <td style={{ ...td, textAlign: 'right' }}>{fmtN(rowsFiltrees.reduce((s, r) => s + r.com_ttc,  0))}</td>}
                   {col('fmen_ht')     && <td style={{ ...td, textAlign: 'right' }}>{fmtN(rowsFiltrees.reduce((s, r) => s + r.fmen_ht,  0))}</td>}
+                  {col('fmen_tva')    && <td style={{ ...td, textAlign: 'right' }}>{fmtN(rowsFiltrees.reduce((s, r) => s + r.fmen_tva, 0))}</td>}
+                  {col('fmen_ttc')    && <td style={{ ...td, textAlign: 'right' }}>{fmtN(rowsFiltrees.reduce((s, r) => s + r.fmen_ttc, 0))}</td>}
                   {col('auto_ht')     && <td style={{ ...td, textAlign: 'right' }}>{fmtN(rowsFiltrees.reduce((s, r) => s + r.auto_ht,  0))}</td>}
                   {col('loy_ht')      && <td style={{ ...td, textAlign: 'right' }}>{fmtN(rowsFiltrees.reduce((s, r) => s + r.loy_ht,   0))}</td>}
                   {col('vir_ht')      && <td style={{ ...td, textAlign: 'right' }}>{fmtN(rowsFiltrees.reduce((s, r) => s + r.vir_ht,   0))}</td>}

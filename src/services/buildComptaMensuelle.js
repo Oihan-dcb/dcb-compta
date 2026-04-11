@@ -40,7 +40,7 @@ export async function buildComptaMensuelle(mois) {
       .from('ventilation')
       .select('bien_id, code, montant_ht, montant_tva, montant_ttc')
       .eq('mois_comptable', mois)
-      .in('code', ['HON', 'FMEN', 'AUTO', 'LOY', 'VIR', 'TAXE']),
+      .in('code', ['HON', 'FMEN', 'AUTO', 'LOY', 'VIR', 'TAXE', 'COM']),
     supabase
       .from('facture_evoliz')
       .select('id, proprietaire_id, statut, total_ht, total_ttc, montant_reversement')
@@ -128,6 +128,7 @@ export async function buildComptaMensuelle(mois) {
     const loy  = vent(b.id, 'LOY')
     const vir  = vent(b.id, 'VIR')
     const taxe = vent(b.id, 'TAXE')
+    const com  = vent(b.id, 'COM')
 
     // Facture du proprio
     const facture = propId ? honByProprio[propId] : null
@@ -178,6 +179,9 @@ export async function buildComptaMensuelle(mois) {
       loy_ht:   loy.ht,
       vir_ht:   vir.ht,
       taxe_ht:  taxe.ht,
+      com_ht:   com.ht,
+      com_tva:  com.tva,
+      com_ttc:  com.ttc,
 
       facture_id:                  facture?.id                  ?? null,
       facture_statut:              facture?.statut              ?? null,
@@ -216,6 +220,9 @@ export async function buildComptaMensuelle(mois) {
     loy_ht:   rows.reduce((s, r) => s + r.loy_ht,   0),
     vir_ht:   rows.reduce((s, r) => s + r.vir_ht,   0),
     taxe_ht:  rows.reduce((s, r) => s + r.taxe_ht,  0),
+    com_ht:   rows.reduce((s, r) => s + r.com_ht,   0),
+    com_tva:  rows.reduce((s, r) => s + r.com_tva,  0),
+    com_ttc:  rows.reduce((s, r) => s + r.com_ttc,  0),
   }
 
   // ── Phase 6 : alertes globales (dédupliquées au niveau proprio) ───────────
