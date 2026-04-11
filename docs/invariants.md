@@ -50,11 +50,11 @@ Ces invariants ont la priorité absolue. Leur violation peut entraîner une fact
 
 | # | Invariant | État | Violation / Référence |
 |---|---|---|---|
-| I-20 | `reservation.rapprochee = true` implique l'existence d'au moins un `ventilation.mouvement_id` valide | ✅ **Corrigé** | `supprimerMouvement` et `supprimerMois` appellent `annulerRapprochement` avant DELETE — nettoyage complet (CF-BQ1, confirmé audit 30 mars) |
-| I-20b | `reservation.rapprochee = true` implique que `fin_revenue` est intégralement couvert par des virements bancaires liés (`Σ mouvement_bancaire.credit ≥ fin_revenue − 200`) | ✅ **Corrigé** | `_lier` crée le VIR résiduel si solde > 100 centimes. `ventilation.js` recrée le VIR résiduel après recalcul si `fin_revenue − Σcredits_liés > 100` (session 11/04/2026) — précédemment le VIR résiduel était détruit par tout recalcul de ventilation. Fix données HMW5JNT3DZ. |
-| I-21 | `ventilation.mouvement_id` renseigné implique que le mouvement existe en base | ✅ **Corrigé** | `annulerRapprochement` remet `mouvement_id=null` sur toutes les lignes ventilation liées (CF-BQ1/BQ2) |
-| I-22 | `payout_hospitable.mouvement_id` renseigné implique que le mouvement existe en base | ✅ **Corrigé** | `annulerRapprochement` remet `mouvement_id=null` sur `payout_hospitable` (CF-BQ1) |
-| I-23 | Un mouvement `statut = 'rapproche'` a au moins une réservation liée via `ventilation.mouvement_id` | ✅ **Corrigé** | `annulerRapprochement` couvre VIR + payout sans VIR via `payout_reservation` join (CF-RAPP-4, commit `55ad751`) |
+| I-20 | `reservation.rapprochee = true` implique l'existence d'un `payout_hospitable.mouvement_id` valide OU d'un `reservation_paiement` lié | ✅ **Corrigé** | Depuis la session 12/04/2026 : `reservation.rapprochee` est positionné directement via la chaîne `payout_hospitable → payout_reservation → reservation` (Flux 1 pur). Plus aucun lien via `ventilation.mouvement_id`. `annulerRapprochement` remet à `false` via payout + reservation_paiement. |
+| I-20b | Le rapprochement (Flux 1) et le reversement propriétaire (Flux 2) sont des flux strictement indépendants — `ventilation.mouvement_id` n'est jamais positionné par le moteur de rapprochement | ✅ **Implémenté** | Session 12/04/2026 — `_lierViaPayout` remplace `_lier`. Jamais de `ventilation.mouvement_id` ni de VIR résiduels créés par le rapprochement. Flux 1 : VIRSEPA distributeur/voyageur → DCB. Flux 2 : VIR = reversement DCB → propriétaire (indépendant). |
+| I-21 | `payout_hospitable.mouvement_id` renseigné implique que le mouvement existe en base | ✅ **Corrigé** | `annulerRapprochement` remet `mouvement_id=null` sur `payout_hospitable` (CF-BQ1, confirmé session 12/04/2026) |
+| I-22 | `reservation_paiement.mouvement_id` renseigné implique que le mouvement existe en base | ✅ **Corrigé** | `annulerRapprochement` supprime les `reservation_paiement` liés au mouvement annulé |
+| I-23 | Un mouvement `statut = 'rapproche'` a au moins une réservation liée via `payout_hospitable → payout_reservation → reservation` ou `reservation_paiement` | ✅ **Corrigé** | `_lierViaPayout` peuple `reservation.rapprochee` et `reservation_paiement` pour tous les canaux (Airbnb, Booking, Stripe, manuel). Session 12/04/2026. |
 | I-24 | Le résultat du matching est identique quel que soit le bouton utilisé (Config ou PageRapprochement) | ✅ **Corrigé** | Unified sur `lancerMatchingAuto` de `rapprochement.js` — PageConfig et PageMatching utilisent le même moteur (CF-C3) |
 
 ---
@@ -120,7 +120,7 @@ Ces invariants ont la priorité absolue. Leur violation peut entraîner une fact
 
 ### Invariants violés actifs
 
-Aucun invariant actif violé à l'issue de la session du 11 avril 2026 (suite incluse).
+Aucun invariant actif violé à l'issue de la session du 12 avril 2026.
 
 > I-60 reste ⚠ partiellement couvert (~15 opérations non loguées) mais n'est plus considéré comme un invariant critique bloquant.
 
@@ -205,7 +205,7 @@ Aucun invariant actif violé à l'issue de la session du 11 avril 2026 (suite in
 | I-54 | Prestation validée doit produire une écriture EXTRA dans la ventilation |
 | I-73 | Modification après clôture doit être explicite et documentée |
 
-**Total actuel** : 0 invariants violés actifs (⚠ I-60 partiellement couvert), 19 corrigés, 25 nouveaux, sur 66 documentés.
+**Total actuel** : 0 invariants violés actifs (⚠ I-60 partiellement couvert), 20 corrigés, 26 nouveaux, sur 67 documentés.
 
 ---
 

@@ -288,49 +288,54 @@ Ces règles ne sont pas documentées explicitement mais sont observées dans le 
 
 ---
 
-## 11bis. Règles de rapprochement (implémentées mars 2026)
+## 11bis. Règles de rapprochement (refactorisé 12/04/2026 — Flux 1 pur)
 
-### 11bis.1 Montant de référence — panneau Lier
+### 11bis.0 Deux flux distincts — ne jamais confondre
+
+| Flux | Description | Tables concernées |
+|---|---|---|
+| **Flux 1 — Rapprochement** | VIRSEPA distributeur (Airbnb, Booking, Stripe) OU voyageur direct → DCB. Vérifie que DCB a bien été payée. | `mouvement_bancaire` ↔ `payout_hospitable` ↔ `payout_reservation` ↔ `reservation` |
+| **Flux 2 — Reversement** | VIR = montant DCB → Propriétaire après déductions. Calculé depuis la ventilation (LOY + taxes). | `ventilation.code='VIR'`, `facture_evoliz` |
+
+**Règle absolue** : le moteur de rapprochement (Flux 1) ne touche **jamais** `ventilation.mouvement_id` et ne crée **jamais** de lignes VIR. Ces deux objets appartiennent au Flux 2 et sont produits exclusivement par `ventilation.js`.
+
+### 11bis.1 Montant de référence
 
 Le montant de référence pour le rapprochement est **`reservation.fin_revenue`** (ce qu'Airbnb/la plateforme verse réellement à DCB), pas `ventilation.montant_ttc` du code VIR (qui correspond au LOY = reversement propriétaire).
 
-- Montant affiché en jaune dans la liste VIR disponibles = `fin_revenue`
-- Somme de sélection = `Σ fin_revenue` des VIR sélectionnés
-- `soldeRestant = fin_revenue − Σ(mouvement_bancaire.credit des VIR déjà liés)`
+### 11bis.2 Chaîne de rapprochement — `_lierViaPayout`
 
-### 11bis.2 Multi-virements — lignes VIR dynamiques
-
-Un propriétaire peut payer en plusieurs virements (acompte + solde). La règle est gérée dans `_lier` (appelée par `matcherManuellement` et le matching auto) :
+Fonction centrale du moteur. Pour chaque mouvement rapproché :
 
 ```
-Après chaque lien :
-  totalLie = Σ(mouvement_bancaire.credit des VIR liés à cette résa)
-  solde    = fin_revenue − totalLie
-
-  si solde > 100 (centimes) :
-    → reservation.rapprochee = false  (pas encore couvert)
-    → INSERT ventilation: code='VIR', montant_ttc=solde, montant_ht=solde,
-        libelle='Virement propriétaire', mois_comptable et bien_id copiés du VIR original
-  sinon :
-    → reservation.rapprochee = true   (couverture complète)
+_lierViaPayout(mouvementId, resaIds, mouv) :
+  1. mouvement_bancaire.statut_matching = 'rapproche'
+  2. reservation.rapprochee = true  (pour chaque resaId)
+  3. INSERT reservation_paiement (traçabilité)
+  — ventilation.mouvement_id : jamais modifié
+  — VIR ventilation : jamais créés
 ```
 
-**Invariant** : une réservation ne passe à `rapprochee=true` que lorsque `fin_revenue` est intégralement couvert par des virements bancaires liés.
+`resaIds` proviennent de :
+- **Airbnb/Booking** : `payout_hospitable → payout_reservation → reservation`
+- **Stripe** : `stripe_payout_line.reservation_code → reservation.code`
+- **Manuel** : VIR sélectionnés par l'utilisateur → `ventilation.reservation_id`
 
-### 11bis.3 Garde-fou `matcherManuellement`
-
-Avant de lier un virement, `matcherManuellement` vérifie que le virement bancaire ne dépasse pas le solde restant :
+### 11bis.3 Annulation de rapprochement
 
 ```
-solde = fin_revenue − Σ(mouvement_bancaire.credit des VIR déjà liés)
-si mouv.credit > solde + 200 (centimes) → throw Error
+annulerRapprochement(mouvementId) :
+  resaIds = payout_hospitable → payout_reservation + reservation_paiement
+  reservation.rapprochee = false
+  payout_hospitable.mouvement_id = null
+  reservation_paiement supprimés
+  mouvement_bancaire.statut_matching = 'en_attente'
+  — ventilation.mouvement_id : jamais modifié
 ```
-
-Marge de 2€ pour les arrondis bancaires.
 
 ### 11bis.4 Matching Stripe
 
-Les virements Stripe (`mouvement_bancaire.canal='stripe'`) correspondent à des réservations `platform='direct'`. L'identification se fait via `stripe_payout_line.reservation_code` (pas via `reservation.platform='stripe'` qui n'existe pas en base).
+Les virements Stripe (`mouvement_bancaire.canal='stripe'`) correspondent à des réservations `platform='direct'`. L'identification se fait via `stripe_payout_line.reservation_code → reservation.code` (lookup direct, pas via VIR ventilation).
 
 ---
 

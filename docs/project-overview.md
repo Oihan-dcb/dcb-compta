@@ -71,11 +71,11 @@ Les deux applications partagent la **même base Supabase**. Aucune des deux n'a 
 **Note** : La suppression d'un mouvement appelle `annulerRapprochement` avant DELETE — nettoyage complet des tables liées (✅ CF-BQ1/BQ2 clos).
 
 ### Module 4 — Rapprochement
-**Rôle réel** : Association mouvements bancaires ↔ réservations via les payouts Hospitable. Met à jour `ventilation.mouvement_id` et `reservation.rapprochee`.
-**Données** : `payout_hospitable`, `payout_reservation`, `reservation_paiement`, liens `ventilation.mouvement_id`
-**Dépendances entrantes** : Mouvements bancaires (Module 3), Payouts Hospitable/Stripe (sync), VIR ventilés (Module 2)
-**Dépendances sortantes** : `reservation.rapprochee`, `ventilation.mouvement_id`, `payout_hospitable.mouvement_id`
-**Note** : Moteur unifié depuis CF-C3 — PageConfig et PageMatching utilisent `lancerMatchingAuto` de `rapprochement.js` (✅ CF-C3 clos).
+**Rôle réel** : Association mouvements bancaires (VIRSEPA distributeurs/voyageurs → DCB) ↔ réservations via les payouts Hospitable. Vérifie que DCB a bien été payée. **Ne touche jamais `ventilation.mouvement_id`** — le reversement propriétaire (VIR) est un flux indépendant.
+**Données** : `payout_hospitable`, `payout_reservation`, `reservation_paiement`, `stripe_payout_line`
+**Dépendances entrantes** : Mouvements bancaires (Module 3), Payouts Hospitable/Stripe (sync)
+**Dépendances sortantes** : `reservation.rapprochee`, `payout_hospitable.mouvement_id`, `reservation_paiement`
+**Note** : Moteur unifié `_lierViaPayout` depuis session 12/04/2026 (Flux 1 pur). Plus de lien ventilation VIR, plus de VIR résiduels créés. Moteur unifié `lancerMatchingAuto` depuis CF-C3 (✅).
 
 ### Module 5 — Factures
 **Rôle réel** : Génération des factures DCB → Propriétaires à partir de la ventilation calculée. Envoi vers Evoliz.
@@ -163,7 +163,7 @@ CLÔTURE MENSUELLE — session centralisée (cf. ordre de clôture §4.4)
   HAOWNER (achats proprio) ─────────────────────→ [cible] enrichissement ventilation
                                                    ↓
   Mouvements bancaires ────→ RAPPROCHEMENT ←── Payouts Hospitable/Booking/Stripe
-                                [⚠ 2 moteurs, cf. critique 2]
+                                [Flux 1 pur — ne touche pas ventilation VIR]
                                    ↓
   Ventilation finale ───────────────────────────→ FACTURES PROPRIÉTAIRES
                                                    [⚠ EXTRAS et HAOWNER non intégrés actuellement]
@@ -557,3 +557,27 @@ Réservations Booking importées en double à chaque sync → tous les calculs f
 - `guest_service_fee` → `fee_type='guest_fee'` (type valide en DB) avec label distinct
 
 **Commits** : `072f6dd` (label reservation_fee), migrations 004/005, corrections ventilation.js + importCSV.js
+
+## Fixes session 11-12 avril 2026 — Comptabilité, rapprochement Flux 1 pur, VIR fantôme
+
+### Colonnes HAOWNER TTC + Prest. déduit dans PageComptabilite
+
+- Colonnes `prest_deduct` et `haowner_ttc` ajoutées dans `buildComptaMensuelle.js` et `PageComptabilite.jsx` (colonnes optionnelles désactivées par défaut, affichées en rouge)
+- Fix requêtes prestation : `montant_ht` → `montant` (champ réel en base), `type_prestation` → join `ae:ae_id(type)` (champ inexistant dans schema)
+- Fix HAOWNER TVA : agrégation HT par bien en premier, puis TVA 20% sur le total (évite écart d'arrondi)
+- Réaltime `prestation_hors_forfait` + `visibilitychange` listener dans PageComptabilite et buildComptaMensuelle
+
+### Refactoring rapprochement — Flux 1 pur (commit `ad1b258`)
+
+**Problème root cause** : `_lier()` mélangeait Flux 1 (VIRSEPA distributeur → DCB) et Flux 2 (reversement propriétaire VIR). Pour les réservations annulées avec paiement (ex: HM2WM5CBDC 209,19€), `getVirNonRapproches` excluait les `cancelled` → virIds=[] → fallback ±200 centimes → match sur la mauvaise résa (HMNN9Q5YAE) → VIR résiduel fantôme 148,15€ créé.
+
+**Solution** : `_lier` remplacé par `_lierViaPayout` — ne touche **jamais** `ventilation.mouvement_id`, ne crée **jamais** de VIR résiduels.
+
+```
+Flux 1 (rapprochement) : mouvement_bancaire ↔ payout_hospitable ↔ reservation.rapprochee
+Flux 2 (reversement)   : ventilation.code='VIR' ↔ facture propriétaire (indépendant)
+```
+
+- Fallback VIR ±200 centimes supprimé
+- `annulerRapprochement` simplifié : resaIds depuis payout chain + reservation_paiement uniquement
+- VIR fantôme `88131ea4` (HMNN9Q5YAE, 148,15€) supprimé manuellement en base
