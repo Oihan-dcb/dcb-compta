@@ -113,6 +113,8 @@ export default function PageComptabilite() {
 
   useEffect(() => {
     charger()
+    const onVisible = () => { if (document.visibilityState === 'visible') charger() }
+    document.addEventListener('visibilitychange', onVisible)
     const channel = supabase.channel('compta-changes')
       .on('postgres_changes', { event: '*', schema: 'public', table: 'reservation' }, () => charger())
       .on('postgres_changes', { event: '*', schema: 'public', table: 'ventilation' }, () => charger())
@@ -120,7 +122,10 @@ export default function PageComptabilite() {
       .on('postgres_changes', { event: '*', schema: 'public', table: 'frais_proprietaire' }, () => charger())
       .on('postgres_changes', { event: '*', schema: 'public', table: 'prestation_hors_forfait' }, () => charger())
       .subscribe()
-    return () => { supabase.removeChannel(channel) }
+    return () => {
+      document.removeEventListener('visibilitychange', onVisible)
+      supabase.removeChannel(channel)
+    }
   }, [charger])
 
   // Liste des propriétaires uniques pour le filtre
