@@ -89,7 +89,7 @@ export default function PageRapprochement() {
       setStats(s)
       const cutoff = new Date(Date.now() - 7*86400000).toISOString().slice(0,10)
       const [{ count: virCount }, resasNrRes] = await Promise.all([
-        supabase.from('mouvement_bancaire').select('*', { count: 'exact', head: true }).eq('statut_matching', 'en_attente').gt('credit', 0).lt('date_operation', cutoff),
+        supabase.from('mouvement_bancaire').select('*', { count: 'exact', head: true }).eq('mois_releve', mois).eq('statut_matching', 'en_attente').gt('credit', 0).lt('date_operation', cutoff),
         supabase.from('reservation')
           .select('id, code, platform, guest_name, arrival_date, departure_date, fin_revenue, final_status, mois_comptable, ventilation_calculee, bien!inner(id, code, hospitable_name, agence)')
           .eq('mois_comptable', mois)
