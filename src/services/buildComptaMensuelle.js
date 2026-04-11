@@ -325,10 +325,31 @@ export async function buildComptaMensuelle(mois) {
     if (hon.ttc > 0 && !facture)
       rowAlerts.push({ level: 'error', code: 'NO_FACTURE', message: `HON ${(hon.ttc/100).toFixed(2)} € sans facture`, bien_id: b.id })
 
-    // Écart reversement au niveau proprio (même valeur sur tous les biens du proprio)
-    if (propId && reversementFactureParProprio[propId] != null && ecart_reversement_proprio != null) {
+    // Écart reversement : per-bien si facture per-bien, sinon per-proprio
+    const factureBien = honByBien[b.id]
+    if (factureBien?.montant_reversement != null) {
+      // Facture individuelle pour ce bien → comparaison per-bien
+      const ecartBien = factureBien.montant_reversement - reversement_calcule
+      const ecartAbs  = Math.abs(ecartBien)
+      if (ecartAbs > 100) {
+        const sens = ecartBien > 0 ? '+' : ''
+        rowAlerts.push({
+          level: 'warning',
+          code: 'ECART_REVERSEMENT',
+          message: `Écart reversement : ${sens}${(ecartBien / 100).toFixed(2)} € (facturé ${(factureBien.montant_reversement / 100).toFixed(2)} € vs calculé ${(reversement_calcule / 100).toFixed(2)} €)`,
+          bien_id: b.id,
+          details: {
+            vir_ht: vir.ht, frais_loy, frais_direct, prest_deduct,
+            haowner_ttc, debours_prop, owner_stay_absorb, remboursements,
+            reversement_calcule,
+            reversement_facture: factureBien.montant_reversement,
+          },
+        })
+      }
+    } else if (propId && reversementFactureParProprio[propId] != null && ecart_reversement_proprio != null) {
+      // Facture globale pour le proprio → comparaison per-proprio (dédupliquée en Phase 6)
       const ecartAbs = Math.abs(ecart_reversement_proprio)
-      if (ecartAbs > 100) { // seuil 1€ pour éviter les arrondis
+      if (ecartAbs > 100) {
         const sens = ecart_reversement_proprio > 0 ? '+' : ''
         const rev_facture_eur = (reversementFactureParProprio[propId] / 100).toFixed(2)
         const rev_calcule_eur = ((loyParProprio[propId] || 0) / 100).toFixed(2)
@@ -451,10 +472,15 @@ export async function buildComptaMensuelle(mois) {
   const seen = new Set()
   for (const row of rows) {
     for (const a of row.alerts) {
-      // NO_FACTURE et ECART_REVERSEMENT dédupliqués au niveau proprio (1 alerte par proprio)
-      const dedupeKey = (a.code === 'NO_FACTURE' || a.code === 'ECART_REVERSEMENT')
+      // ECART_REVERSEMENT : per-bien si facture per-bien, per-proprio si facture globale
+      // NO_FACTURE : toujours per-proprio
+      const dedupeKey = a.code === 'NO_FACTURE'
         ? `${a.code}::${row.proprietaire_id}`
-        : `${a.code}::${row.bien_id}`
+        : (a.code === 'ECART_REVERSEMENT' && honByBien[row.bien_id]?.montant_reversement != null)
+          ? `${a.code}::bien::${row.bien_id}`
+          : (a.code === 'ECART_REVERSEMENT')
+            ? `${a.code}::proprio::${row.proprietaire_id}`
+            : `${a.code}::${row.bien_id}`
       if (seen.has(dedupeKey)) continue
       seen.add(dedupeKey)
       alerts.push({ ...a })
