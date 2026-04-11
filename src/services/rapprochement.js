@@ -606,6 +606,17 @@ export async function marquerNonIdentifie(mouvementId) {
 export async function annulerRapprochement(mouvementId) {
   const { data: mvtLog } = await supabase.from('mouvement_bancaire').select('credit, date_operation, libelle').eq('id', mouvementId).single()
 
+  // Nettoyage résiduel : délier les VIR ventilation encore liés (données créées par l'ancien _lier)
+  // Dans le nouveau modèle on ne pose plus jamais ventilation.mouvement_id — ce bloc ne fait rien
+  // sur les nouveaux rapprochements mais nettoie les anciens liens legacy
+  const { data: virsLegacy } = await supabase
+    .from('ventilation')
+    .select('id')
+    .eq('mouvement_id', mouvementId)
+  if (virsLegacy?.length) {
+    await supabase.from('ventilation').update({ mouvement_id: null }).in('id', virsLegacy.map(v => v.id))
+  }
+
   // Réservations via payout_hospitable → payout_reservation
   const { data: payoutResas } = await supabase
     .from('payout_hospitable')
