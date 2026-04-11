@@ -422,6 +422,12 @@ async function genererFactureGroupe(proprio, biens, mois) {
   }
 
   // Supprimer et recrÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂ©er les lignes
+  // Sauvegarder les lignes existantes pour rollback si l'insert échoue (C6)
+  const { data: oldLignes } = await supabase
+    .from('facture_evoliz_ligne')
+    .select('facture_id, code, libelle, description, montant_ht, taux_tva, montant_tva, montant_ttc, ordre')
+    .eq('facture_id', factureId)
+
   await supabase.from('facture_evoliz_ligne').delete().eq('facture_id', factureId)
 
   const lignes = []
@@ -578,7 +584,14 @@ async function genererFactureGroupe(proprio, biens, mois) {
   }
 
   if (lignes.length > 0) {
-    await supabase.from('facture_evoliz_ligne').insert(lignes)
+    const { error: insertErr } = await supabase.from('facture_evoliz_ligne').insert(lignes)
+    if (insertErr) {
+      // Rollback best-effort : restaurer les anciennes lignes avant de remonter l'erreur
+      if (oldLignes && oldLignes.length > 0) {
+        await supabase.from('facture_evoliz_ligne').insert(oldLignes).catch(() => {})
+      }
+      throw new Error(`Échec insertion lignes facture : ${insertErr.message}`)
+    }
   }
 
   // Mettre à jour chaque frais deduire_loyer : deduit, reliquat, statut_deduction
