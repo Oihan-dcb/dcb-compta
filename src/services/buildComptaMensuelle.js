@@ -131,13 +131,13 @@ export async function buildComptaMensuelle(mois) {
   const biensAvecVentil  = new Set(ventils.map(v => v.bien_id))
   const biensActifs = biens.filter(b => biensAvecResas.has(b.id) || biensAvecVentil.has(b.id))
 
-  // ── Phase 3 : Σ (loy_ht − frais_déduction_loyer) par propriétaire ───────────
-  // Même logique que rapportStatement pour montant_reversement → pas de faux écart
+  // ── Phase 3 : Σ reversement_calcule par propriétaire ────────────────────────
+  // reversement_calcule = VIR.ht − frais (même base que facture.montant_reversement)
   const loyParProprio = {}
   for (const b of biensActifs) {
     if (!b.proprietaire_id) continue
-    const loyNet = vent(b.id, 'LOY').ht - (fraisLoyByBien[b.id] || 0)
-    loyParProprio[b.proprietaire_id] = (loyParProprio[b.proprietaire_id] || 0) + loyNet
+    const virNet = vent(b.id, 'VIR').ht - (fraisLoyByBien[b.id] || 0)
+    loyParProprio[b.proprietaire_id] = (loyParProprio[b.proprietaire_id] || 0) + virNet
   }
 
   // ── Phase 4 : construction des lignes ────────────────────────────────────
