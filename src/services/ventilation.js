@@ -472,14 +472,17 @@ export async function calculerVentilationResa(resa) {
     }).catch(() => {})
   }
 
-  // Sauvegarder les montant_reel saisis manuellement avant suppression
+  // Sauvegarder montant_reel et mouvement_id avant suppression (pour restauration après recalcul)
   const { data: existingLines } = await supabase
     .from('ventilation')
-    .select('code, montant_reel')
+    .select('code, montant_reel, mouvement_id')
     .eq('reservation_id', resa.id)
-    .not('montant_reel', 'is', null)
   const existingReels = {}
-  for (const l of existingLines || []) existingReels[l.code] = l.montant_reel
+  const existingMouvements = {}
+  for (const l of existingLines || []) {
+    if (l.montant_reel != null) existingReels[l.code] = l.montant_reel
+    if (l.mouvement_id != null) existingMouvements[l.code] = l.mouvement_id
+  }
 
   // Supprimer les ventilations existantes pour cette résa
   // (FK ON DELETE SET NULL gère automatiquement mission_menage.ventilation_auto_id)
@@ -492,12 +495,13 @@ export async function calculerVentilationResa(resa) {
     if (error) throw error
   }
 
-  // Restaurer les montant_reel saisis manuellement
-  for (const [code, reel] of Object.entries(existingReels)) {
-    await supabase.from('ventilation')
-      .update({ montant_reel: reel })
-      .eq('reservation_id', resa.id)
-      .eq('code', code)
+  // Restaurer montant_reel et mouvement_id (liens banque sur VIR préservés après recalcul)
+  const codesToRestore = new Set([...Object.keys(existingReels), ...Object.keys(existingMouvements)])
+  for (const code of codesToRestore) {
+    const patch = {}
+    if (existingReels[code] != null) patch.montant_reel = existingReels[code]
+    if (existingMouvements[code] != null) patch.mouvement_id = existingMouvements[code]
+    await supabase.from('ventilation').update(patch).eq('reservation_id', resa.id).eq('code', code)
   }
 
   // Marquer la résa comme ventilée
