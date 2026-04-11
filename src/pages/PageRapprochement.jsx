@@ -58,6 +58,8 @@ export default function PageRapprochement() {
   const [soldeInfo, setSoldeInfo] = useState(null)
   const [saving, setSaving] = useState(false)
   const [alertes, setAlertes] = useState({ virOrphelins: 0, resasNonRapprochees: 0 })
+  const [resasNonRappr, setResasNonRappr] = useState([])
+  const [resasNonRapprOpen, setResasNonRapprOpen] = useState(true)
   const [filtreCanal, setFiltreCanal] = useState('tous')
   const [virSearch, setVirSearch] = useState('')
   const [virMoisFiltre, setVirMoisFiltre] = useState(mois) // filtre mois dans panneau Lier
@@ -87,11 +89,22 @@ export default function PageRapprochement() {
       setVirs(v)
       setStats(s)
       const cutoff = new Date(Date.now() - 7*86400000).toISOString().slice(0,10)
-      const [{ count: virCount }, { count: resaCount }] = await Promise.all([
+      const [{ count: virCount }, resasNrRes] = await Promise.all([
         supabase.from('mouvement_bancaire').select('*', { count: 'exact', head: true }).eq('statut_matching', 'en_attente').gt('credit', 0).lt('date_operation', cutoff),
-        supabase.from('reservation').select('*', { count: 'exact', head: true }).eq('mois_comptable', mois).eq('ventilation_calculee', true).eq('rapprochee', false).eq('owner_stay', false).neq('final_status', 'cancelled').gt('fin_revenue', 0)
+        supabase.from('reservation')
+          .select('id, code, platform, guest_name, arrival_date, departure_date, fin_revenue, final_status, mois_comptable, ventilation_calculee, bien!inner(id, code, hospitable_name, agence)')
+          .eq('mois_comptable', mois)
+          .eq('rapprochee', false)
+          .eq('owner_stay', false)
+          .eq('bien.agence', 'dcb')
+          .neq('final_status', 'cancelled')
+          .neq('final_status', 'not accepted')
+          .gt('fin_revenue', 0)
+          .order('arrival_date', { ascending: true })
       ])
-      setAlertes({ virOrphelins: virCount || 0, resasNonRapprochees: resaCount || 0 })
+      const rnr = (resasNrRes.data || [])
+      setResasNonRappr(rnr)
+      setAlertes({ virOrphelins: virCount || 0, resasNonRapprochees: rnr.length })
       // Mois dispos
     const { data: md } = await supabase.from('mouvement_bancaire').select('mois_releve').not('mois_releve','is',null).not('mois_releve','is',null)
       if (md) {
@@ -339,6 +352,55 @@ export default function PageRapprochement() {
               <div style={{ fontSize: s.small ? 16 : 22, fontWeight: 700, color: s.color }}>{s.value}</div>
             </div>
           ))}
+        </div>
+      )}
+
+      {/* RÉSERVATIONS À RAPPROCHER */}
+      {resasNonRappr.length > 0 && (
+        <div style={{ background: '#FEF2F2', border: '1px solid #FECACA', borderRadius: 10, marginBottom: 20 }}>
+          <button onClick={() => setResasNonRapprOpen(o => !o)}
+            style={{ width: '100%', display: 'flex', alignItems: 'center', gap: 10, padding: '12px 16px', background: 'none', border: 'none', cursor: 'pointer', textAlign: 'left' }}>
+            <span style={{ fontSize: 15, fontWeight: 700, color: '#DC2626' }}>
+              🔴 {resasNonRappr.length} réservation{resasNonRappr.length > 1 ? 's' : ''} sans virement — {mois}
+            </span>
+            <span style={{ marginLeft: 'auto', fontSize: 12, color: '#DC2626' }}>{resasNonRapprOpen ? '▲' : '▼'}</span>
+          </button>
+          {resasNonRapprOpen && (
+            <div style={{ borderTop: '1px solid #FECACA', overflowX: 'auto' }}>
+              <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
+                <thead>
+                  <tr style={{ background: '#FEE2E2' }}>
+                    <th style={{ padding: '8px 14px', textAlign: 'left', fontWeight: 600, color: '#9B1C1C' }}>Bien</th>
+                    <th style={{ padding: '8px 14px', textAlign: 'left', fontWeight: 600, color: '#9B1C1C' }}>Voyageur</th>
+                    <th style={{ padding: '8px 14px', textAlign: 'left', fontWeight: 600, color: '#9B1C1C' }}>Plateforme</th>
+                    <th style={{ padding: '8px 14px', textAlign: 'left', fontWeight: 600, color: '#9B1C1C' }}>Séjour</th>
+                    <th style={{ padding: '8px 14px', textAlign: 'right', fontWeight: 600, color: '#9B1C1C' }}>Montant</th>
+                    <th style={{ padding: '8px 14px', textAlign: 'left', fontWeight: 600, color: '#9B1C1C' }}>Code</th>
+                    <th style={{ padding: '8px 14px', textAlign: 'left', fontWeight: 600, color: '#9B1C1C' }}>Statut vent.</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {resasNonRappr.map(r => (
+                    <tr key={r.id} style={{ borderTop: '1px solid #FECACA' }}>
+                      <td style={{ padding: '8px 14px', fontWeight: 600 }}>{r.bien?.hospitable_name || r.bien?.code || '—'}</td>
+                      <td style={{ padding: '8px 14px' }}>{r.guest_name || '—'}</td>
+                      <td style={{ padding: '8px 14px', textTransform: 'capitalize' }}>{r.platform || '—'}</td>
+                      <td style={{ padding: '8px 14px', whiteSpace: 'nowrap', color: '#555' }}>
+                        {r.arrival_date ? fmtDate(r.arrival_date) : '—'} → {r.departure_date ? fmtDate(r.departure_date) : '—'}
+                      </td>
+                      <td style={{ padding: '8px 14px', textAlign: 'right', fontWeight: 700, color: '#CC9933', whiteSpace: 'nowrap' }}>{fmt(r.fin_revenue)}</td>
+                      <td style={{ padding: '8px 14px', fontSize: 12, color: '#666' }}>{r.code}</td>
+                      <td style={{ padding: '8px 14px' }}>
+                        {r.ventilation_calculee
+                          ? <span style={{ color: '#D97706', fontWeight: 600, fontSize: 12 }}>✓ ventilée</span>
+                          : <span style={{ color: '#9CA3AF', fontSize: 12 }}>non ventilée</span>}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
         </div>
       )}
 
