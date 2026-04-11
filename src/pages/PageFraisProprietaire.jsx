@@ -56,6 +56,14 @@ export default function PageFraisProprietaire() {
 
   useEffect(() => { chargerBiens() }, [])
   useEffect(() => { charger() }, [mois])
+  useEffect(() => {
+    const channel = supabase.channel('frais-changes')
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'frais_proprietaire' },
+        () => charger()
+      )
+      .subscribe()
+    return () => { supabase.removeChannel(channel) }
+  }, [])
 
   async function chargerBiens() {
     const { data } = await supabase

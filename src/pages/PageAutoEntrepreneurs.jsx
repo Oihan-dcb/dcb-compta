@@ -35,9 +35,12 @@ export default function PageAutoEntrepreneurs() {
   useEffect(() => {
     charger(true)  // autoSync au chargement
     chargerVision(visionMois)
-    // Realtime : rafraîchit si des missions sont ajoutées
+    // Realtime : rafraîchit si des missions ou des AEs sont ajoutés/modifiés
     const channel = supabase.channel('ae-changes')
       .on('postgres_changes', { event: '*', schema: 'public', table: 'mission_menage' },
+        () => charger()
+      )
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'auto_entrepreneur' },
         () => charger()
       )
       .subscribe()
