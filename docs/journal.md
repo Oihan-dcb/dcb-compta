@@ -372,3 +372,20 @@ L'envoi d'emails via OVH SMTP (denomailer) provoquait des `Load failed` / `502` 
 - Cause : règle CSS globale `th { text-transform: uppercase }` (App.css l.42) s'appliquait aux `<th>` de la table récap inline
 - Fix : `textTransform: 'none'`, `fontSize: 13`, `color: var(--text)` en inline sur chaque `<th>`
 
+### Fixes déployés (suite session 11/04/2026)
+
+**7. VIR en doublon par réservation — rapport affichait 15€ au lieu de 132€** (bug fcdb37eb)
+- Cause : `buildRapportData.js` construisait `ventByResa` en last-write-wins pour tous les codes y compris VIR. Après le fix VIR résiduel (fix 4), HMW5JNT3DZ avait deux lignes VIR (11728 + 1500 centimes, chacune liée à un mouvement bancaire distinct). Seule la dernière (1500 = 15€) survivait dans `ventByResa`. `rapportStatement.js` calculait `virTotal` à partir de `r.vir` (ventByResa), donc affichait 15€ pour cette résa au lieu de 132.28€.
+- Fix : `buildRapportData.js` — la construction de `ventByResa` somme désormais les `montant_ht` et `montant_ttc` de plusieurs lignes VIR pour la même réservation (cas de paiements partiels liés à des mouvements bancaires distincts). Les autres codes restent last-write-wins.
+- Note : `virTotal` dans les KPIs (buildRapportData l.104) était déjà correct (somme brute de toutes les lignes VIR). La divergence n'existait que dans `r.vir` → `virTotal` de rapportStatement.
+
+**8. Frais déduction loyer non visibles dans le statement** (bugs 33cb7950, e2b933ed)
+- Cause : `rapportStatement.js` montrait VIR puis Total reversement sans ligne intermédiaire pour les frais `mode_traitement='deduire_loyer'`. L'utilisateur voyait VIR − Charges DCB ≠ Total reversement sans explication.
+- Fix : `rapportStatement.js` — ajout de la computation `fraisDeductionLoyList/Total` (même règle que `buildRapportData.fraisDeductionLoy`), puis affichage de chaque frais comme ligne individuelle de déduction (rouge, label libelle) dans le bloc Reversement, entre VIR et Total.
+
+**9. Factures brouillon EKIA/PINONCELY mars 2026 — frais absents** (bugs b3664558, afa21f2f)
+- Cause : Les brouillons (c2a3c0ce, 1b17711a) ont été générés AVANT le fix #1 (session 11/04/2026) qui ajoutait `statut='facture'` dans les requêtes `fraisDeduire`/`fraisDirect`. La serpillère EKIA (c42f2fb3, 21€) et l'étendoir PINONCELY (6ced0890, 63.58€) avaient déjà `statut='facture'` mais étaient exclus par le filtre `.eq('statut', 'a_facturer')`.
+- Confirmation : `mode_encaissement='dcb'`, `mois_facturation='2026-03'`, `statut='facture'` — les deux frais sont correctement qualifiés.
+- Fix requis : régénérer les brouillons via le bouton "Générer factures mars 2026" dans l'UI. La fonction `genererFactureGroupe` met à jour les brouillons existants (statut brouillon → UPDATE, pas re-création) et mettra à jour `montant_reversement` + ajoutera les lignes FRAIS. Après régénération, `frais_proprietaire.statut_deduction` passera de `en_attente` à `totalement_deduit` → affichage "déduit" en vert dans la section Débours du rapport.
+- Données actuelles : EKIA reversement actuel = 476.28€ (sans déduction), cible = 455.28€ ; PINONCELY reversement actuel = 74.79€ (sans déduction), cible = 11.21€.
+

@@ -120,7 +120,7 @@ Ces invariants ont la priorité absolue. Leur violation peut entraîner une fact
 
 ### Invariants violés actifs
 
-Aucun invariant actif violé à l'issue de la session du 11 avril 2026.
+Aucun invariant actif violé à l'issue de la session du 11 avril 2026 (suite incluse).
 
 > I-60 reste ⚠ partiellement couvert (~15 opérations non loguées) mais n'est plus considéré comme un invariant critique bloquant.
 
@@ -158,6 +158,8 @@ Aucun invariant actif violé à l'issue de la session du 11 avril 2026.
 | I-59 | genererFacturesMois ne facture que les propriétaires `actif=true` avec des biens `listed=true, agence='dcb'` | ✅ Implémenté (CF-F8, commit `cd8c20a`) |
 | I-60b | Réservation `STATUTS_NON_VENTILABLES` → `fin_revenue=0`, ventilation supprimée, `ventilation_calculee=true`. Badge "Ventilée" masqué dans UI. | ✅ Implémenté (commit `349ba88`, `9233c59`) |
 | I-61b | Le montant de référence pour le rapprochement bancaire est `fin_revenue` (pas `VIR.montant_ttc` = LOY). `soldeRestant` = `fin_revenue − Σ(bank_credits)`. | ✅ Implémenté (commits `f730a90`, `2b1df6e`) |
+| I-63 | Une réservation peut avoir plusieurs lignes VIR (paiements partiels liés à des mouvements bancaires distincts). `buildRapportData.ventByResa['VIR']` somme tous ces montants pour la réservation. | ✅ **Corrigé** (session 11/04/2026) — avant : last-write-wins gardait seulement la dernière ligne VIR ; `r.vir` et `virTotal` de rapportStatement étaient faux (bug fcdb37eb). |
+| I-64 | Le statement mensuel affiche une ligne de déduction explicite pour chaque frais `mode_traitement='deduire_loyer'` dans le bloc Reversement, avec le même calcul que `buildRapportData.fraisDeductionLoy`. | ✅ **Implémenté** (session 11/04/2026) — avant : la déduction était silencieuse (virementNet réduit sans ligne visible), créant un écart inexpliqué entre VIR et Total reversement (bug 33cb7950). |
 
 **Détail I-56** : `genererFactureDebours` ne marque pas les frais directs `statut='facture'` dans le chemin skipped (aucune donnée à facturer). Le `UPDATE` est placé exclusivement dans le bloc `if (factureId)` — après insertion des lignes Evoliz confirmée. Idem pour `deduire_loyer` dans `genererFactureProprietaire`.
 
@@ -203,7 +205,7 @@ Aucun invariant actif violé à l'issue de la session du 11 avril 2026.
 | I-54 | Prestation validée doit produire une écriture EXTRA dans la ventilation |
 | I-73 | Modification après clôture doit être explicite et documentée |
 
-**Total actuel** : 0 invariants violés actifs (⚠ I-60 partiellement couvert), 17 corrigés, 23 nouveaux, sur 64 documentés.
+**Total actuel** : 0 invariants violés actifs (⚠ I-60 partiellement couvert), 19 corrigés, 25 nouveaux, sur 66 documentés.
 
 ---
 

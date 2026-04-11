@@ -97,7 +97,16 @@ export async function buildRapportData(bienId, propId, mois, opts = {}) {
     const vents = ventsData || []
     for (const v of vents) {
       if (!ventByResa[v.reservation_id]) ventByResa[v.reservation_id] = {}
-      ventByResa[v.reservation_id][v.code] = v
+      if (v.code === 'VIR' && ventByResa[v.reservation_id]['VIR']) {
+        // Somme les VIR multiples (paiements partiels liés à des mouvements distincts)
+        ventByResa[v.reservation_id]['VIR'] = {
+          ...v,
+          montant_ht:  (ventByResa[v.reservation_id]['VIR'].montant_ht  || 0) + (v.montant_ht  || 0),
+          montant_ttc: (ventByResa[v.reservation_id]['VIR'].montant_ttc || 0) + (v.montant_ttc || 0),
+        }
+      } else {
+        ventByResa[v.reservation_id][v.code] = v
+      }
     }
     loyTotal     = vents.filter(v => v.code === 'LOY').reduce((s, v) => s + (v.montant_ht  || 0), 0)
     honTotalVent = vents.filter(v => v.code === 'HON').reduce((s, v) => s + (v.montant_ttc || 0), 0)

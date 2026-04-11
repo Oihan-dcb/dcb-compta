@@ -63,6 +63,14 @@ export function genererStatementHTML(proprio, mois, data) {
   // Remboursements visibles dans le bloc reversement
   const remboursementsList = fraisProprietaire.filter(f => f.mode_traitement === 'remboursement' && f.statut !== 'brouillon')
   const remboursementsTotal = remboursementsList.reduce((s, f) => s + (f.montant_ttc || 0), 0)
+  // Frais déduits du loyer — même règle que buildRapportData.fraisDeductionLoy
+  const fraisDeductionLoyList = fraisProprietaire.filter(f => f.mode_traitement === 'deduire_loyer')
+  const fraisDeductionLoyTotal = fraisDeductionLoyList.reduce((s, f) => {
+    if (f.statut === 'facture' && f.statut_deduction !== 'en_attente') return s + (f.montant_deduit_loy || 0)
+    if (f.statut === 'facture' && f.statut_deduction === 'en_attente')  return s + (f.montant_ttc || 0)
+    if (f.statut === 'a_facturer')                                       return s + (f.montant_ttc || 0)
+    return s
+  }, 0)
 
   const [annee, moisNum] = mois.split('-')
   const moisLabel = `${MOIS_FR[parseInt(moisNum) - 1]} ${annee}`
@@ -213,6 +221,15 @@ export function genererStatementHTML(proprio, mois, data) {
     <div style="display:flex;justify-content:space-between;padding:3px 0;border-bottom:1px solid #ece8e2;font-size:10px">
       <span style="color:#9c8c7a">VIR (LOY + taxes)</span><span>${fmt(virTotal)}</span>
     </div>
+    ${fraisDeductionLoyList.map(f => {
+      const montant = (f.statut === 'facture' && f.statut_deduction !== 'en_attente') ? (f.montant_deduit_loy || 0)
+        : (f.statut === 'facture' && f.statut_deduction === 'en_attente') ? (f.montant_ttc || 0)
+        : (f.statut === 'a_facturer') ? (f.montant_ttc || 0) : 0
+      if (montant <= 0) return ''
+      return `<div style="display:flex;justify-content:space-between;padding:3px 0;border-bottom:1px solid #ece8e2;font-size:10px">
+      <span style="color:#c2410c">${escapeNonAscii(f.libelle || 'Frais propr.')}</span><span style="color:#DC2626">&#8722; ${fmt(montant)}</span>
+    </div>`
+    }).join('')}
     ${remboursementsTotal > 0 ? remboursementsList.map(f => `<div style="display:flex;justify-content:space-between;padding:3px 0;border-bottom:1px solid #ece8e2;font-size:10px">
       <span style="color:#059669">${escapeNonAscii(f.libelle || 'Remboursement')}</span><span style="color:#059669">+ ${fmt(f.montant_ttc)}</span>
     </div>`).join('') : ''}
