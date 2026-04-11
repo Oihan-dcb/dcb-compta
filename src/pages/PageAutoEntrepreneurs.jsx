@@ -406,12 +406,12 @@ export default function PageAutoEntrepreneurs() {
                     <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
                       <thead>
                         <tr style={{ background: '#F7F4EF', borderBottom: '2px solid var(--brand)' }}>
-                          <th style={{ padding: '9px 16px', textAlign: 'left', fontWeight: 700 }}>Staff / AE</th>
-                          <th style={{ padding: '9px 8px', textAlign: 'right', fontWeight: 700 }}>Ménages</th>
-                          <th style={{ padding: '9px 8px', textAlign: 'right', fontWeight: 700 }}>Provision</th>
-                          <th style={{ padding: '9px 8px', textAlign: 'right', fontWeight: 700 }}>Réel</th>
-                          <th style={{ padding: '9px 8px', textAlign: 'right', fontWeight: 700 }}>Écart</th>
-                          <th style={{ padding: '9px 8px', textAlign: 'right', fontWeight: 700 }}>% total</th>
+                          <th style={{ padding: '9px 16px', textAlign: 'left', fontWeight: 700, textTransform: 'none', fontSize: 13, color: 'var(--text)' }}>Staff / AE</th>
+                          <th style={{ padding: '9px 8px', textAlign: 'right', fontWeight: 700, textTransform: 'none', fontSize: 13, color: 'var(--text)' }}>Ménages</th>
+                          <th style={{ padding: '9px 8px', textAlign: 'right', fontWeight: 700, textTransform: 'none', fontSize: 13, color: 'var(--text)' }}>Provision</th>
+                          <th style={{ padding: '9px 8px', textAlign: 'right', fontWeight: 700, textTransform: 'none', fontSize: 13, color: 'var(--text)' }}>Réel</th>
+                          <th style={{ padding: '9px 8px', textAlign: 'right', fontWeight: 700, textTransform: 'none', fontSize: 13, color: 'var(--text)' }}>Écart</th>
+                          <th style={{ padding: '9px 8px', textAlign: 'right', fontWeight: 700, textTransform: 'none', fontSize: 13, color: 'var(--text)' }}>% total</th>
                           <th style={{ padding: '9px 16px' }}></th>
                         </tr>
                       </thead>
