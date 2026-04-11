@@ -398,11 +398,12 @@ export async function getVirNonRapproches(mois) {
 }
 
 export async function getStatsRapprochement(mois) {
-  const [{ data: m }, { data: v }] = await Promise.all([
+  const [{ data: m }, { data: r }] = await Promise.all([
     supabase.from('mouvement_bancaire').select('statut_matching,credit,debit,canal').eq('mois_releve', mois),
-    supabase.from('ventilation').select('montant_ttc,mouvement_id').eq('mois_comptable', mois).eq('code', 'VIR').not('bien_id', 'is', null),
+    supabase.from('reservation').select('rapprochee,final_status').eq('mois_comptable', mois)
+      .not('final_status', 'in', '("not accepted","cancelled")').gt('fin_revenue', 0),
   ])
-  const mouvements = m || [], virs = v || []
+  const mouvements = m || [], resas = r || []
   return {
     total_mouvements: mouvements.length,
     rapproches: mouvements.filter(x => x.statut_matching === 'rapproche').length,
@@ -410,9 +411,8 @@ export async function getStatsRapprochement(mois) {
     non_identifie: mouvements.filter(x => x.statut_matching === 'non_identifie').length,
     total_entrees: mouvements.filter(x => x.credit > 0).reduce((s, x) => s + (x.credit || 0), 0),
     total_sorties: mouvements.filter(x => x.debit > 0).reduce((s, x) => s + (x.debit || 0), 0),
-    vir_total: virs.length,
-    vir_rapproches: virs.filter(x => x.mouvement_id !== null).length,
-    vir_montant_total: virs.reduce((s,v) => s + (v.montant_ttc || 0), 0),
+    resas_total: resas.length,
+    resas_rapprochees: resas.filter(x => x.rapprochee).length,
   }
 }
 

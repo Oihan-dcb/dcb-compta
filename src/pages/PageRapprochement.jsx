@@ -319,7 +319,7 @@ export default function PageRapprochement() {
             { label: 'En attente', value: stats.en_attente, color: '#E65100' },
             { label: 'Non géré', value: mouvements.filter(m => m._resa?.gestion_loyer === false).length, color: '#9CA3AF' },
             { label: 'Non identifiés', value: stats.non_identifie, color: '#B71C1C' },
-            { label: 'VIR ventilés', value: `${stats.vir_rapproches}/${stats.vir_total}`, color: '#7C3AED' },
+            { label: 'Resas rapprochées', value: `${stats.resas_rapprochees}/${stats.resas_total}`, color: '#7C3AED' },
             { label: 'Entrées', value: fmt(stats.total_entrees), color: '#2E7D32', small: true },
           ].map(s => (
             <div key={s.label} style={{ background: '#fff', border: '1px solid #e5e7eb', borderRadius: 10, padding: '14px 16px' }}>
