@@ -152,7 +152,14 @@ export async function buildComptaMensuelle(mois) {
     // Facture du proprio
     const facture = propId ? honByProprio[propId] : null
 
-    // Écart reversement au niveau proprio
+    // Reversement calculé par bien (même logique que rapportStatement)
+    const frais_loy = fraisLoyByBien[b.id] || 0
+    const reversement_calcule = loy.ht - frais_loy
+
+    // Écart par bien : VIR reçu vs reversement dû
+    const ecart_vir_loy = (loy.ht > 0 || vir.ht > 0) ? vir.ht - reversement_calcule : null
+
+    // Écart reversement au niveau proprio : facture Evoliz vs Σ reversement_calcule
     let ecart_reversement_proprio = null
     if (propId && facture && facture.montant_reversement != null) {
       ecart_reversement_proprio = facture.montant_reversement - (loyParProprio[propId] || 0)
@@ -201,6 +208,10 @@ export async function buildComptaMensuelle(mois) {
       com_ht:   com.ht,
       com_tva:  com.tva,
       com_ttc:  com.ttc,
+
+      frais_loy,
+      reversement_calcule,
+      ecart_vir_loy,
 
       facture_id:                  facture?.id                  ?? null,
       facture_statut:              facture?.statut              ?? null,
@@ -291,9 +302,8 @@ export function exportComptaCSV(data) {
     'Nb resas', 'Rapprochées', 'Non rapprochées', 'Non ventilées',
     'HON HT', 'HON TVA', 'HON TTC',
     'FMEN HT', 'FMEN TVA', 'FMEN TTC',
-    'AUTO HT', 'LOY HT', 'VIR HT', 'TAXE HT',
-    'Facture statut', 'Reversement facturé',
-    'Écart reversement', 'Alertes',
+    'AUTO HT', 'LOY HT', 'Frais LOY', 'Reversement calculé', 'VIR HT', 'Écart VIR/LOY', 'TAXE HT',
+    'Facture statut', 'Reversement facturé', 'Écart facture', 'Alertes',
   ]
   const rows = data.rows.map(r => [
     r.bien_code,
@@ -305,7 +315,9 @@ export function exportComptaCSV(data) {
     r.nb_non_ventilees,
     fmt(r.hon_ht), fmt(r.hon_tva), fmt(r.hon_ttc),
     fmt(r.fmen_ht), fmt(r.fmen_tva), fmt(r.fmen_ttc),
-    fmt(r.auto_ht), fmt(r.loy_ht), fmt(r.vir_ht), fmt(r.taxe_ht),
+    fmt(r.auto_ht), fmt(r.loy_ht), fmt(r.frais_loy), fmt(r.reversement_calcule), fmt(r.vir_ht),
+    r.ecart_vir_loy != null ? fmt(r.ecart_vir_loy) : '',
+    fmt(r.taxe_ht),
     r.facture_statut || '',
     fmt(r.facture_montant_reversement),
     r.ecart_reversement_proprio != null ? fmt(r.ecart_reversement_proprio) : '',
