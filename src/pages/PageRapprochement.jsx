@@ -258,8 +258,8 @@ export default function PageRapprochement() {
         <div style={{ display: 'flex', gap: 10, alignItems: 'center', flexWrap: 'wrap' }}>
           <MoisSelector mois={mois} setMois={setMois} moisDispos={moisDispos} />
           <button onClick={lancerSync} disabled={syncing || loading}
-            style={{ background: syncing ? '#aaa' : '#059669', color: '#fff', border: 'none', borderRadius: 8, padding: '8px 18px', fontWeight: 600, cursor: syncing ? 'not-allowed' : 'pointer', fontSize: 14 }}>
-            {syncing ? '⏳ Sync...' : '↻ Sync payouts'}
+            style={{ background: syncing ? '#aaa' : '#635BFF', color: '#fff', border: 'none', borderRadius: 8, padding: '8px 18px', fontWeight: 600, cursor: syncing ? 'not-allowed' : 'pointer', fontSize: 14 }}>
+            {syncing ? '⏳ Sync...' : '↻ Match Stripe'}
           </button>
           <button onClick={lancerAuto} disabled={matching || loading}
             style={{ background: matching ? '#aaa' : '#CC9933', color: '#fff', border: 'none', borderRadius: 8, padding: '8px 18px', fontWeight: 600, cursor: matching ? 'not-allowed' : 'pointer', fontSize: 14 }}>
