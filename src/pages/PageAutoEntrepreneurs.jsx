@@ -92,7 +92,7 @@ export default function PageAutoEntrepreneurs() {
         .order('date_prestation'),
       supabase
         .from('mission_menage')
-        .select('id, ae_id, bien_id, date_mission, titre_ical, duree_heures, montant')
+        .select('id, ae_id, bien_id, date_mission, titre_ical, duree_heures, montant, bien:bien_id(code, hospitable_name)')
         .eq('mois', mois)
         .neq('statut', 'cancelled')
         .neq('imputation', 'hors_compta_dcb')
@@ -104,19 +104,30 @@ export default function PageAutoEntrepreneurs() {
     setLoadingVision(false)
   }
 
-  function exportVisionCSV(mois, rows) {
-    const header = ['AE', 'Bien', 'Date', 'Description', 'Type', 'Montant €', 'Statut']
-    const lines = rows.map(r => [
-      r.aeNom, r.bien?.code || '', r.date_prestation || '',
-      `"${(r.description || r.prestation_type?.nom || '').replace(/"/g, '""')}"`,
-      r.prestation_type?.nom || '',
-      ((r.montant || 0) / 100).toFixed(2), r.statut
-    ].join(';'))
+  function exportVisionCSV(mois, rows, ae = null) {
+    const header = ['AE', 'Bien', 'Date', 'Description', 'Type', 'Provision €', 'Réel €', 'Statut']
+    const filtered = ae ? rows.filter(r => r.ae_id === ae.id) : rows
+    const lines = filtered.map(r => {
+      const isMission = r._type === 'mission'
+      const aeObj = aes.find(x => x.id === r.ae_id)
+      const provision = isMission && r.duree_heures ? ((r.duree_heures * (aeObj?.taux_horaire || 2500)) / 100).toFixed(2) : ''
+      const reel = isMission ? ((r.montant || 0) / 100).toFixed(2) : ((r.statut === 'valide' ? r.montant || 0 : 0) / 100).toFixed(2)
+      return [
+        r.aeNom,
+        r.bien?.code || '',
+        isMission ? (r.date_mission || '') : (r.date_prestation || ''),
+        `"${(r.titre_ical || r.description || r.prestation_type?.nom || '').replace(/"/g, '""')}"`,
+        isMission ? 'ménage' : 'extra',
+        provision,
+        reel,
+        isMission ? (r.montant ? '✓ saisi' : 'à saisir') : (r.statut || '')
+      ].join(';')
+    })
     const csv = [header.join(';'), ...lines].join('\n')
     const blob = new Blob(['\uFEFF' + csv], { type: 'text/csv;charset=utf-8' })
     const url = URL.createObjectURL(blob)
     const a = document.createElement('a')
-    a.href = url; a.download = `missions-ae-${mois}.csv`; a.click()
+    a.href = url; a.download = ae ? `missions-${ae.prenom}-${ae.nom}-${mois}.csv` : `missions-ae-${mois}.csv`; a.click()
     URL.revokeObjectURL(url)
   }
 
@@ -353,11 +364,18 @@ export default function PageAutoEntrepreneurs() {
               if (!parAe[m.ae_id]) parAe[m.ae_id] = { ae: aes.find(x => x.id === m.ae_id), missions: [] }
               parAe[m.ae_id].missions.push(m)
             }
-            const aeGroups = Object.values(parAe).sort((a, b) => {
-              const tA = a.missions.filter(m => m.statut === 'valide').reduce((s, m) => s + (m.montant || 0), 0)
-              const tB = b.missions.filter(m => m.statut === 'valide').reduce((s, m) => s + (m.montant || 0), 0)
-              return tB - tA
-            })
+            const aeGroups = Object.values(parAe).map(({ ae, missions }) => {
+              const aeObj = ae
+              const menages = missions.filter(m => m._type === 'mission')
+              const provision = menages.reduce((s, m) => s + (m.duree_heures || 0) * (aeObj?.taux_horaire || 2500), 0)
+              const reel = menages.filter(m => m.montant).reduce((s, m) => s + (m.montant || 0), 0)
+              const totalAeVal = missions.reduce((s, m) => {
+                if (m._type === 'mission') return s + (m.montant || 0)
+                if (m._type === 'prestation' && m.statut === 'valide') return s + (m.montant || 0)
+                return s
+              }, 0)
+              return { ae, missions, provision, reel, totalAeVal }
+            }).sort((a, b) => b.totalAeVal - a.totalAeVal)
             return (
               <div>
                 {/* Sélecteur mois + export */}
@@ -382,21 +400,74 @@ export default function PageAutoEntrepreneurs() {
                     </span>
                   )}
                 </div>
+                {/* Table récap globale */}
+                {aeGroups.length > 0 && (
+                  <div style={{ background: '#fff', borderRadius: 12, border: '1px solid #e5e7eb', marginBottom: 18, overflow: 'hidden' }}>
+                    <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
+                      <thead>
+                        <tr style={{ background: '#F7F4EF', borderBottom: '2px solid var(--brand)' }}>
+                          <th style={{ padding: '9px 16px', textAlign: 'left', fontWeight: 700 }}>Staff / AE</th>
+                          <th style={{ padding: '9px 8px', textAlign: 'right', fontWeight: 700 }}>Ménages</th>
+                          <th style={{ padding: '9px 8px', textAlign: 'right', fontWeight: 700 }}>Provision</th>
+                          <th style={{ padding: '9px 8px', textAlign: 'right', fontWeight: 700 }}>Réel</th>
+                          <th style={{ padding: '9px 8px', textAlign: 'right', fontWeight: 700 }}>Écart</th>
+                          <th style={{ padding: '9px 8px', textAlign: 'right', fontWeight: 700 }}>% total</th>
+                          <th style={{ padding: '9px 16px' }}></th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {aeGroups.map(({ ae, missions, provision, reel, totalAeVal }) => {
+                          const nb = missions.filter(m => m._type === 'mission').length
+                          const ecart = reel > 0 ? reel - provision : null
+                          const pctG = grandTotal > 0 ? Math.round((totalAeVal / grandTotal) * 100) : 0
+                          return (
+                            <tr key={ae?.id || 'inc'} style={{ borderBottom: '1px solid #f3f4f6' }}>
+                              <td style={{ padding: '8px 16px', fontWeight: 600 }}>{ae ? `${ae.prenom || ''} ${ae.nom}`.trim() : '—'}</td>
+                              <td style={{ padding: '8px', textAlign: 'right', color: '#666' }}>{nb}</td>
+                              <td style={{ padding: '8px', textAlign: 'right', color: '#888' }}>{provision > 0 ? fmt(provision) : '—'}</td>
+                              <td style={{ padding: '8px', textAlign: 'right', fontWeight: 600, color: reel > 0 ? '#16a34a' : '#888' }}>{reel > 0 ? fmt(reel) : '—'}</td>
+                              <td style={{ padding: '8px', textAlign: 'right', fontWeight: ecart != null ? 600 : 400, color: ecart == null ? '#888' : ecart > 0 ? '#dc2626' : ecart < 0 ? '#16a34a' : '#888' }}>
+                                {ecart == null ? '—' : (ecart >= 0 ? '+' : '') + fmt(ecart)}
+                              </td>
+                              <td style={{ padding: '8px', textAlign: 'right' }}>
+                                <span style={{ color: '#888', fontSize: 12 }}>{pctG}%</span>
+                                <span style={{ display: 'inline-block', width: 50, height: 4, background: '#e5e7eb', borderRadius: 2, marginLeft: 6, verticalAlign: 'middle' }}>
+                                  <span style={{ display: 'block', width: `${pctG}%`, height: '100%', background: 'var(--brand)', borderRadius: 2 }} />
+                                </span>
+                              </td>
+                              <td style={{ padding: '8px 16px', textAlign: 'right' }}>
+                                <button onClick={() => exportVisionCSV(visionMois, rowsFlat.map(r => ({ ...r, aeNom: aes.find(x => x.id === r.ae_id) ? `${aes.find(x => x.id === r.ae_id).prenom || ''} ${aes.find(x => x.id === r.ae_id).nom}`.trim() : '—' })), ae)}
+                                  style={{ background: '#f0fdf4', color: '#16a34a', border: '1px solid #bbf7d0', borderRadius: 6, padding: '4px 8px', fontSize: 11, cursor: 'pointer', fontWeight: 600 }}>
+                                  ⬇ CSV
+                                </button>
+                              </td>
+                            </tr>
+                          )
+                        })}
+                        <tr style={{ background: '#F7F4EF', borderTop: '2px solid var(--brand)', fontWeight: 700 }}>
+                          <td style={{ padding: '9px 16px' }}>TOTAL</td>
+                          <td style={{ padding: '9px 8px', textAlign: 'right' }}>{aeGroups.reduce((s, g) => s + g.missions.filter(m => m._type === 'mission').length, 0)}</td>
+                          <td style={{ padding: '9px 8px', textAlign: 'right', color: '#888' }}>{fmt(aeGroups.reduce((s, g) => s + g.provision, 0))}</td>
+                          <td style={{ padding: '9px 8px', textAlign: 'right', color: '#16a34a' }}>{fmt(aeGroups.reduce((s, g) => s + g.reel, 0))}</td>
+                          <td colSpan={3} style={{ padding: '9px 8px', textAlign: 'right', color: '#888', fontSize: 13 }}>{fmt(grandTotal)}</td>
+                        </tr>
+                      </tbody>
+                    </table>
+                  </div>
+                )}
+
                 {/* Cards par AE */}
                 {aeGroups.length === 0 && !loadingVision && (
                   <div style={{ textAlign: 'center', padding: 40, color: '#888' }}>Aucune mission ce mois.</div>
                 )}
-                {aeGroups.map(({ ae, missions }) => {
-                  const totalAe = missions.reduce((s, m) => {
-                    if (m._type === 'mission') return s + (m.montant || 0)
-                    if (m._type === 'prestation' && m.statut === 'valide') return s + (m.montant || 0)
-                    return s
-                  }, 0)
+                {aeGroups.map(({ ae, missions, provision, reel, totalAeVal }) => {
+                  const totalAe = totalAeVal
                   const nbMissions = missions.filter(m => m._type === 'mission').length
                   const nbValide = missions.filter(m => m._type === 'prestation' && m.statut === 'valide').length
                   const nbEnAttente = missions.filter(m => m._type === 'prestation' && m.statut === 'en_attente').length
                   const nbAnnule = missions.filter(m => m._type === 'prestation' && m.statut === 'annule').length
                   const pct = grandTotal > 0 ? Math.round((totalAe / grandTotal) * 100) : 0
+                  const ecartAe = reel > 0 ? reel - provision : null
                   return (
                     <div key={ae?.id || 'inconnu'} style={{ background: '#fff', borderRadius: 12, border: '1px solid #e5e7eb', marginBottom: 14, overflow: 'hidden' }}>
                       {/* Header AE */}
@@ -412,17 +483,28 @@ export default function PageAutoEntrepreneurs() {
                             {nbEnAttente > 0 && <span style={{ color: '#d97706', marginLeft: 8 }}>{nbEnAttente} extra en attente</span>}
                             {nbAnnule > 0 && <span style={{ color: '#9c8c7a', marginLeft: 8 }}>{nbAnnule} annulé{nbAnnule !== 1 ? 's' : ''}</span>}
                           </div>
+                          {provision > 0 && (
+                            <div style={{ fontSize: 11, marginTop: 3, display: 'flex', gap: 10 }}>
+                              <span style={{ color: '#888' }}>Provision : {fmt(provision)}</span>
+                              {reel > 0 && <span style={{ color: '#16a34a', fontWeight: 600 }}>Réel : {fmt(reel)}</span>}
+                              {ecartAe != null && <span style={{ color: ecartAe > 0 ? '#dc2626' : '#16a34a', fontWeight: 600 }}>Écart : {ecartAe >= 0 ? '+' : ''}{fmt(ecartAe)}</span>}
+                            </div>
+                          )}
                         </div>
-                        <div style={{ textAlign: 'right' }}>
+                        <div style={{ textAlign: 'right', display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 4 }}>
                           <div style={{ fontSize: 20, fontWeight: 700, color: '#16a34a' }}>{fmt(totalAe)}</div>
                           {grandTotal > 0 && (
-                            <div style={{ fontSize: 12, color: '#888', marginTop: 2 }}>
+                            <div style={{ fontSize: 12, color: '#888' }}>
                               {pct}% du total
                               <div style={{ marginTop: 4, height: 4, width: 80, background: '#e5e7eb', borderRadius: 2, display: 'inline-block', verticalAlign: 'middle', marginLeft: 6 }}>
                                 <div style={{ height: '100%', width: `${pct}%`, background: 'var(--brand)', borderRadius: 2 }} />
                               </div>
                             </div>
                           )}
+                          <button onClick={() => exportVisionCSV(visionMois, rowsFlat.map(r => ({ ...r, aeNom: aes.find(x => x.id === r.ae_id) ? `${aes.find(x => x.id === r.ae_id).prenom || ''} ${aes.find(x => x.id === r.ae_id).nom}`.trim() : '—' })), ae)}
+                            style={{ background: '#f0fdf4', color: '#16a34a', border: '1px solid #bbf7d0', borderRadius: 6, padding: '3px 8px', fontSize: 11, cursor: 'pointer' }}>
+                            ⬇ CSV
+                          </button>
                         </div>
                       </div>
                       {/* Missions */}
