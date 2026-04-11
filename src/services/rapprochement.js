@@ -286,6 +286,9 @@ export async function getMouvementsMois(mois) {
                 type_paiement: (finRev && montant >= finRev * 0.99) ? 'total' : 'acompte'
               }, { onConflict: 'reservation_id,mouvement_id', ignoreDuplicates: false }).then(() => {})
             }
+            if (info.reservation_ids.length) {
+              supabase.from('reservation').update({ rapprochee: true }).in('id', info.reservation_ids).then(() => {})
+            }
           }
         }
       }
