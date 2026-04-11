@@ -44,12 +44,12 @@ export async function buildComptaMensuelle(mois) {
       .in('code', ['HON', 'FMEN', 'AUTO', 'LOY', 'VIR', 'TAXE', 'COM']),
     supabase
       .from('facture_evoliz')
-      .select('id, proprietaire_id, statut, total_ht, total_ttc, montant_reversement')
+      .select('id, proprietaire_id, bien_id, statut, total_ht, total_ttc, montant_reversement')
       .eq('mois', mois)
       .eq('type_facture', 'honoraires'),
     supabase
       .from('facture_evoliz')
-      .select('id, proprietaire_id, statut, total_ht, total_ttc')
+      .select('id, proprietaire_id, bien_id, statut, total_ht, total_ttc')
       .eq('mois', mois)
       .eq('type_facture', 'debours'),
     supabase
@@ -91,9 +91,30 @@ export async function buildComptaMensuelle(mois) {
   }
   const vent = (bienId, code) => ventilAgg[`${bienId}::${code}`] || { ht: 0, tva: 0, ttc: 0 }
 
-  // Factures honoraires par proprietaire_id
-  const honByProprio = {}
-  for (const f of honFacts) honByProprio[f.proprietaire_id] = f
+  // Factures honoraires — une par bien (bien_id non null) ou une globale (bien_id null)
+  // Index par bien_id pour lookup rapide par ligne
+  const honByBien = {}
+  for (const f of honFacts) if (f.bien_id) honByBien[f.bien_id] = f
+
+  // Index global par proprio (bien_id null) comme fallback
+  const honByProprioGlobal = {}
+  for (const f of honFacts) if (!f.bien_id) honByProprioGlobal[f.proprietaire_id] = f
+
+  // Somme montant_reversement par proprio (pour l'écart au niveau proprio)
+  const reversementFactureParProprio = {}
+  for (const f of honFacts) {
+    if (f.montant_reversement != null)
+      reversementFactureParProprio[f.proprietaire_id] = (reversementFactureParProprio[f.proprietaire_id] || 0) + f.montant_reversement
+  }
+
+  // Statut global par proprio : 'validee' si toutes validées, sinon le statut le plus "bas"
+  const statutParProprio = {}
+  const STATUT_RANK = { validee: 3, envoye_evoliz: 2, brouillon: 1, calcul_en_cours: 0 }
+  for (const f of honFacts) {
+    const prev = statutParProprio[f.proprietaire_id]
+    const rank = STATUT_RANK[f.statut] ?? -1
+    if (!prev || rank < (STATUT_RANK[prev] ?? -1)) statutParProprio[f.proprietaire_id] = f.statut
+  }
 
   // Frais déduits du loyer, agrégés par bien_id (même formule que rapportStatement)
   const fraisLoyByBien = {}
@@ -149,22 +170,19 @@ export async function buildComptaMensuelle(mois) {
     const taxe = vent(b.id, 'TAXE')
     const com  = vent(b.id, 'COM')
 
-    // Facture du proprio
-    const facture = propId ? honByProprio[propId] : null
+    // Facture du bien : facture spécifique au bien, sinon facture globale du proprio
+    const facture = honByBien[b.id] || (propId ? honByProprioGlobal[propId] : null)
 
     // Reversement calculé par bien : VIR est la base (LOY + taxes non-remittées)
-    // frais déductibles du loyer viennent en déduction
     const frais_loy = fraisLoyByBien[b.id] || 0
     const reversement_calcule = vir.ht - frais_loy
 
-    // Écart : VIR - (VIR - frais) = frais → devrait être 0 quand frais=0
-    // Colonne masquée par défaut, utile uniquement pour détecter des incohérences
     const ecart_vir_loy = (vir.ht > 0) ? vir.ht - reversement_calcule : null
 
-    // Écart reversement au niveau proprio : facture Evoliz vs Σ reversement_calcule
+    // Écart reversement au niveau proprio : Σ factures vs Σ reversement_calcule tous biens
     let ecart_reversement_proprio = null
-    if (propId && facture && facture.montant_reversement != null) {
-      ecart_reversement_proprio = facture.montant_reversement - (loyParProprio[propId] || 0)
+    if (propId && reversementFactureParProprio[propId] != null) {
+      ecart_reversement_proprio = reversementFactureParProprio[propId] - (loyParProprio[propId] || 0)
     }
 
     // Alertes de la ligne
@@ -215,9 +233,9 @@ export async function buildComptaMensuelle(mois) {
       reversement_calcule,
       ecart_vir_loy,
 
-      facture_id:                  facture?.id                  ?? null,
-      facture_statut:              facture?.statut              ?? null,
-      facture_montant_reversement: facture?.montant_reversement ?? null,
+      facture_id:                  facture?.id                         ?? null,
+      facture_statut:              facture?.statut                      ?? (propId ? statutParProprio[propId] : null) ?? null,
+      facture_montant_reversement: facture?.montant_reversement         ?? null,
       ecart_reversement_proprio,
 
       alert_count: rowAlerts.length,
