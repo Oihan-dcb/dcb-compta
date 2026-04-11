@@ -125,11 +125,13 @@ export async function buildComptaMensuelle(mois) {
   }
 
   // Ventilation agrégée par bien_id + code
+  // Pour AUTO : montant_reel si disponible (C3 — reflète le coût AE réel vs estimé)
   const ventilAgg = {}
   for (const v of ventils) {
     const key = `${v.bien_id}::${v.code}`
     if (!ventilAgg[key]) ventilAgg[key] = { ht: 0, tva: 0, ttc: 0 }
-    ventilAgg[key].ht  += (v.montant_ht  || 0)
+    const ht = (v.code === 'AUTO' && v.montant_reel != null) ? v.montant_reel : (v.montant_ht || 0)
+    ventilAgg[key].ht  += ht
     ventilAgg[key].tva += (v.montant_tva || 0)
     ventilAgg[key].ttc += (v.montant_ttc || 0)
   }
