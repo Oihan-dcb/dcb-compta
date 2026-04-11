@@ -104,33 +104,6 @@ export default function PageAutoEntrepreneurs() {
     setLoadingVision(false)
   }
 
-  function exportVisionCSV(mois, rows, ae = null) {
-    const header = ['AE', 'Bien', 'Date', 'Description', 'Type', 'Provision €', 'Réel €', 'Statut']
-    const filtered = ae ? rows.filter(r => r.ae_id === ae.id) : rows
-    const lines = filtered.map(r => {
-      const isMission = r._type === 'mission'
-      const aeObj = aes.find(x => x.id === r.ae_id)
-      const provision = isMission && r.duree_heures ? ((r.duree_heures * (aeObj?.taux_horaire || 2500)) / 100).toFixed(2) : ''
-      const reel = isMission ? ((r.montant || 0) / 100).toFixed(2) : ((r.statut === 'valide' ? r.montant || 0 : 0) / 100).toFixed(2)
-      return [
-        r.aeNom,
-        r.bien?.code || '',
-        isMission ? (r.date_mission || '') : (r.date_prestation || ''),
-        `"${(r.titre_ical || r.description || r.prestation_type?.nom || '').replace(/"/g, '""')}"`,
-        isMission ? 'ménage' : 'extra',
-        provision,
-        reel,
-        isMission ? (r.montant ? '✓ saisi' : 'à saisir') : (r.statut || '')
-      ].join(';')
-    })
-    const csv = [header.join(';'), ...lines].join('\n')
-    const blob = new Blob(['\uFEFF' + csv], { type: 'text/csv;charset=utf-8' })
-    const url = URL.createObjectURL(blob)
-    const a = document.createElement('a')
-    a.href = url; a.download = ae ? `missions-${ae.prenom}-${ae.nom}-${mois}.csv` : `missions-ae-${mois}.csv`; a.click()
-    URL.revokeObjectURL(url)
-  }
-
   function ouvrir(ae) { setForm(ae ? { ...ae } : EMPTY_AE); setEditing(ae ? ae.id : 'new'); setError(null); setSuccess(null) }
   function fermer() { setEditing(null); setError(null) }
   function change(k, v) { setForm(f => ({ ...f, [k]: v })) }
@@ -390,10 +363,6 @@ export default function PageAutoEntrepreneurs() {
                       style={{ background: 'var(--bg)', border: '1px solid var(--border)', borderRadius: '0 7px 7px 0', padding: '6px 10px', cursor: 'pointer', fontSize: 16, borderLeft: 'none' }}>›</button>
                   </div>
                   {loadingVision && <span style={{ fontSize: 13, color: '#888' }}>⏳ Chargement…</span>}
-                  <button onClick={() => exportVisionCSV(visionMois, rowsFlat)}
-                    style={{ background: '#16a34a', color: '#fff', border: 'none', borderRadius: 7, padding: '7px 14px', fontSize: 13, fontWeight: 600, cursor: 'pointer' }}>
-                    ⬇ Export CSV
-                  </button>
                   {grandTotal > 0 && (
                     <span style={{ fontSize: 14, fontWeight: 700, color: 'var(--text)', marginLeft: 8 }}>
                       Total : {fmt(grandTotal)}
@@ -435,12 +404,7 @@ export default function PageAutoEntrepreneurs() {
                                   <span style={{ display: 'block', width: `${pctG}%`, height: '100%', background: 'var(--brand)', borderRadius: 2 }} />
                                 </span>
                               </td>
-                              <td style={{ padding: '8px 16px', textAlign: 'right' }}>
-                                <button onClick={() => exportVisionCSV(visionMois, rowsFlat.map(r => ({ ...r, aeNom: aes.find(x => x.id === r.ae_id) ? `${aes.find(x => x.id === r.ae_id).prenom || ''} ${aes.find(x => x.id === r.ae_id).nom}`.trim() : '—' })), ae)}
-                                  style={{ background: '#f0fdf4', color: '#16a34a', border: '1px solid #bbf7d0', borderRadius: 6, padding: '4px 8px', fontSize: 11, cursor: 'pointer', fontWeight: 600 }}>
-                                  ⬇ CSV
-                                </button>
-                              </td>
+                              <td style={{ padding: '8px 16px', textAlign: 'right' }}></td>
                             </tr>
                           )
                         })}
@@ -501,10 +465,6 @@ export default function PageAutoEntrepreneurs() {
                               </div>
                             </div>
                           )}
-                          <button onClick={() => exportVisionCSV(visionMois, rowsFlat.map(r => ({ ...r, aeNom: aes.find(x => x.id === r.ae_id) ? `${aes.find(x => x.id === r.ae_id).prenom || ''} ${aes.find(x => x.id === r.ae_id).nom}`.trim() : '—' })), ae)}
-                            style={{ background: '#f0fdf4', color: '#16a34a', border: '1px solid #bbf7d0', borderRadius: 6, padding: '3px 8px', fontSize: 11, cursor: 'pointer' }}>
-                            ⬇ CSV
-                          </button>
                         </div>
                       </div>
                       {/* Missions */}

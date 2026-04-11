@@ -3,7 +3,7 @@ import MoisSelector from '../components/MoisSelector'
 import { useMoisPersisted } from '../hooks/useMoisPersisted'
 import {
   getFacturesMois, genererFacturesMois, validerFacture,
-  getStatsFactures, exportCSVComptable, telechargerCSV,
+  getStatsFactures,
   getFactureCOM, genererFactureCOM, validerFactureCOM,
 } from '../services/facturesEvoliz'
 import { pousserFacturesMoisVersEvoliz, pingEvoliz, pousserFactureCOMVersEvoliz } from '../services/evoliz'
@@ -31,8 +31,7 @@ export default function PageFactures() {
   const [stats, setStats] = useState(null)
   const [loading, setLoading] = useState(false)
   const [generating, setGenerating] = useState(false)
-  const [exporting, setExporting] = useState(false)
-  const [pushing, setPushing] = useState(false)
+const [pushing, setPushing] = useState(false)
   const [showConfirmEvoliz, setShowConfirmEvoliz] = useState(false)
   const [pushResult, setPushResult] = useState(null)
   const [expanded, setExpanded] = useState(null)
@@ -169,18 +168,6 @@ export default function PageFactures() {
     await charger()
   }
 
-  async function exporterCSV() {
-    setExporting(true)
-    try {
-      const csv = await exportCSVComptable(mois)
-      telechargerCSV(csv, `DCB_Compta_${mois}_export.csv`)
-    } catch (err) {
-      setError(err.message)
-    } finally {
-      setExporting(false)
-    }
-  }
-
   async function executerPousserEvoliz() {
     setPushing(true)
     setPushResult(null)
@@ -231,9 +218,6 @@ export default function PageFactures() {
         <div style={{ display: 'flex', gap: 10, alignItems: 'center' }}>
           <MoisSelector mois={mois} setMois={setMois} moisDispos={moisDispos} />
           <button className="btn btn-secondary" onClick={charger} disabled={loading}>↺</button>
-          <button className="btn btn-secondary" onClick={exporterCSV} disabled={exporting || factures.length === 0}>
-            {exporting ? <><span className="spinner" /> Export…</> : '— Export comptable'}
-          </button>
           <button
             className="btn btn-secondary"
             onClick={validerTout}

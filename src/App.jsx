@@ -16,6 +16,7 @@ import PageJournal from './pages/PageJournal'
 import PageRapports from './pages/PageRapports'
 import PageComptabilite from './pages/PageComptabilite'
 import PageBugReports from './pages/PageBugReports'
+import PageExports from './pages/PageExports'
 import BugReportButton from './components/BugReportButton'
 import './App.css'
 
@@ -106,6 +107,7 @@ export default function App() {
             <NavLink to="/auto-entrepreneurs" className={({isActive}) => isActive ? 'nav-link active' : 'nav-link'}>Staff</NavLink>
             <NavLink to="/factures" className={({isActive}) => isActive ? 'nav-link active' : 'nav-link'}>Facturation</NavLink>
             <NavLink to="/comptabilite" className={({isActive}) => isActive ? 'nav-link active' : 'nav-link'}>Comptabilité</NavLink>
+            <NavLink to="/exports" className={({isActive}) => isActive ? 'nav-link active' : 'nav-link'}>Exports</NavLink>
             <ConfigDropdown />
           </nav>
         </header>
@@ -127,6 +129,7 @@ export default function App() {
             <Route path="/journal" element={<PageJournal />} />
             <Route path="/bugs" element={<PageBugReports />} />
             <Route path="/config" element={<PageConfig />} />
+            <Route path="/exports" element={<PageExports />} />
           </Routes>
         </main>
       </div>

@@ -22,12 +22,17 @@ import { STATUTS_NON_VENTILABLES } from '../lib/constants'
 export async function buildComptaMensuelle(mois) {
   // ── Phase 1 : chargement parallèle ──────────────────────────────────────
   const [
-    { data: biensData,   error: biensErr  },
-    { data: resasData,   error: resasErr  },
-    { data: ventilData,  error: ventilErr },
-    { data: facturesHon, error: honErr    },
-    { data: facturesDeb, error: debErr    },
-    { data: fraisData,   error: fraisErr  },
+    { data: biensData,         error: biensErr         },
+    { data: resasData,         error: resasErr         },
+    { data: ventilData,        error: ventilErr        },
+    { data: facturesHon,       error: honErr           },
+    { data: facturesDeb,       error: debErr           },
+    { data: fraisData,         error: fraisErr         },
+    { data: fraisDirectData,   error: fraisDirectErr   },
+    { data: remboursData,      error: remboursErr      },
+    { data: prestDeductData,   error: prestDeductErr   },
+    { data: prestHaownerData,  error: prestHaownerErr  },
+    { data: prestDeboursData,  error: prestDeboursErr  },
   ] = await Promise.all([
     supabase
       .from('bien')
@@ -52,11 +57,50 @@ export async function buildComptaMensuelle(mois) {
       .select('id, proprietaire_id, bien_id, statut, total_ht, total_ttc')
       .eq('mois', mois)
       .eq('type_facture', 'debours'),
+    // frais déduits du loyer — même filtre que facturesEvoliz.js
     supabase
       .from('frais_proprietaire')
       .select('bien_id, statut, statut_deduction, mode_traitement, montant_ttc, montant_deduit_loy')
-      .eq('mois_compta', mois)
+      .eq('mois_facturation', mois)
+      .eq('mode_encaissement', 'dcb')
+      .in('statut', ['a_facturer', 'facture'])
       .eq('mode_traitement', 'deduire_loyer'),
+    // frais facturés directement au proprio (déduits du reversement)
+    supabase
+      .from('frais_proprietaire')
+      .select('bien_id, statut, montant_ttc')
+      .eq('mois_facturation', mois)
+      .eq('mode_encaissement', 'dcb')
+      .in('statut', ['a_facturer', 'facture'])
+      .eq('mode_traitement', 'facturer_direct'),
+    // remboursements (ajoutés au reversement)
+    supabase
+      .from('frais_proprietaire')
+      .select('bien_id, statut, montant_ttc')
+      .eq('mois_facturation', mois)
+      .eq('mode_traitement', 'remboursement')
+      .neq('statut', 'brouillon'),
+    // prestations déduits du loyer (type_imputation='deduction_loy')
+    supabase
+      .from('prestation_hors_forfait')
+      .select('bien_id, montant_ht, type_prestation')
+      .eq('mois', mois)
+      .eq('type_imputation', 'deduction_loy')
+      .eq('statut', 'valide'),
+    // prestations haowner (type_imputation='haowner', TTC = HT × 1.20)
+    supabase
+      .from('prestation_hors_forfait')
+      .select('bien_id, montant_ht')
+      .eq('mois', mois)
+      .eq('type_imputation', 'haowner')
+      .eq('statut', 'valide'),
+    // prestations débours proprio absorbés
+    supabase
+      .from('prestation_hors_forfait')
+      .select('bien_id, montant_ht')
+      .eq('mois', mois)
+      .eq('type_imputation', 'debours_proprio')
+      .eq('statut', 'valide'),
   ])
 
   if (biensErr)  throw new Error(`buildComptaMensuelle — biens: ${biensErr.message}`)
@@ -64,7 +108,7 @@ export async function buildComptaMensuelle(mois) {
   if (ventilErr) throw new Error(`buildComptaMensuelle — ventilation: ${ventilErr.message}`)
   if (honErr)    throw new Error(`buildComptaMensuelle — factures honoraires: ${honErr.message}`)
   if (debErr)    throw new Error(`buildComptaMensuelle — factures débours: ${debErr.message}`)
-  // fraisErr non bloquant — on continue sans les frais si la requête échoue
+  // frais/prestations non bloquants — on continue sans si la requête échoue
 
   const biens    = biensData    || []
   const resas    = resasData    || []
@@ -116,7 +160,7 @@ export async function buildComptaMensuelle(mois) {
     if (!prev || rank < (STATUT_RANK[prev] ?? -1)) statutParProprio[f.proprietaire_id] = f.statut
   }
 
-  // Frais déduits du loyer, agrégés par bien_id (même formule que rapportStatement)
+  // Frais déduits du loyer, agrégés par bien_id (même formule que facturesEvoliz.js)
   const fraisLoyByBien = {}
   for (const f of (fraisData || [])) {
     let montant = 0
@@ -126,17 +170,58 @@ export async function buildComptaMensuelle(mois) {
     fraisLoyByBien[f.bien_id] = (fraisLoyByBien[f.bien_id] || 0) + montant
   }
 
+  // Frais facturés directement au proprio, agrégés par bien_id
+  const fraisDirectByBien = {}
+  for (const f of (fraisDirectData || [])) {
+    fraisDirectByBien[f.bien_id] = (fraisDirectByBien[f.bien_id] || 0) + (f.montant_ttc || 0)
+  }
+
+  // Remboursements, agrégés par bien_id
+  const remboursParBien = {}
+  for (const f of (remboursData || [])) {
+    remboursParBien[f.bien_id] = (remboursParBien[f.bien_id] || 0) + (f.montant_ttc || 0)
+  }
+
+  // Prestations deduction_loy par bien_id (staff × 1.20 TVA, autres HT brut)
+  const prestDeductByBien = {}
+  for (const p of (prestDeductData || [])) {
+    const montant = p.type_prestation === 'staff'
+      ? Math.round((p.montant_ht || 0) * 1.20)
+      : (p.montant_ht || 0)
+    prestDeductByBien[p.bien_id] = (prestDeductByBien[p.bien_id] || 0) + montant
+  }
+
+  // Prestations haowner par bien_id (TTC = HT × 1.20)
+  const haownerByBien = {}
+  for (const p of (prestHaownerData || [])) {
+    haownerByBien[p.bien_id] = (haownerByBien[p.bien_id] || 0) + Math.round((p.montant_ht || 0) * 1.20)
+  }
+
+  // Prestations débours proprio absorbés par bien_id
+  const deboursPropByBien = {}
+  for (const p of (prestDeboursData || [])) {
+    deboursPropByBien[p.bien_id] = (deboursPropByBien[p.bien_id] || 0) + (p.montant_ht || 0)
+  }
+
   // Biens actifs ce mois (au moins une resa ou de la ventilation)
   const biensAvecResas   = new Set(resas.map(r => r.bien_id))
   const biensAvecVentil  = new Set(ventils.map(v => v.bien_id))
   const biensActifs = biens.filter(b => biensAvecResas.has(b.id) || biensAvecVentil.has(b.id))
 
   // ── Phase 3 : Σ reversement_calcule par propriétaire ────────────────────────
-  // reversement_calcule = VIR.ht − frais (même base que facture.montant_reversement)
+  // Formule identique à genererFactureProprietaire dans facturesEvoliz.js :
+  // reversement = max(0, VIR - fraisLoy - fraisDirect - prestDeduct - haowner - deboursProp) + remboursements
   const loyParProprio = {}
   for (const b of biensActifs) {
     if (!b.proprietaire_id) continue
-    const virNet = vent(b.id, 'VIR').ht - (fraisLoyByBien[b.id] || 0)
+    const virHt       = vent(b.id, 'VIR').ht
+    const fraisLoy    = fraisLoyByBien[b.id]    || 0
+    const fraisDirect = fraisDirectByBien[b.id] || 0
+    const prestDeduct = prestDeductByBien[b.id] || 0
+    const haowner     = haownerByBien[b.id]     || 0
+    const deboursProp = deboursPropByBien[b.id] || 0
+    const rembours    = remboursParBien[b.id]   || 0
+    const virNet = Math.max(0, virHt - fraisLoy - fraisDirect - prestDeduct - haowner - deboursProp) + rembours
     loyParProprio[b.proprietaire_id] = (loyParProprio[b.proprietaire_id] || 0) + virNet
   }
 
@@ -173,9 +258,14 @@ export async function buildComptaMensuelle(mois) {
     // Facture du bien : facture spécifique au bien, sinon facture globale du proprio
     const facture = honByBien[b.id] || (propId ? honByProprioGlobal[propId] : null)
 
-    // Reversement calculé par bien : VIR est la base (LOY + taxes non-remittées)
-    const frais_loy = fraisLoyByBien[b.id] || 0
-    const reversement_calcule = vir.ht - frais_loy
+    // Reversement calculé par bien (même formule que facturesEvoliz.js)
+    const frais_loy    = fraisLoyByBien[b.id]    || 0
+    const frais_direct = fraisDirectByBien[b.id] || 0
+    const prest_deduct = prestDeductByBien[b.id] || 0
+    const haowner_ttc  = haownerByBien[b.id]     || 0
+    const debours_prop = deboursPropByBien[b.id] || 0
+    const remboursements = remboursParBien[b.id] || 0
+    const reversement_calcule = Math.max(0, vir.ht - frais_loy - frais_direct - prest_deduct - haowner_ttc - debours_prop) + remboursements
 
     const ecart_vir_loy = (vir.ht > 0) ? vir.ht - reversement_calcule : null
 
@@ -194,8 +284,21 @@ export async function buildComptaMensuelle(mois) {
     if (hon.ttc > 0 && !facture)
       rowAlerts.push({ level: 'error', code: 'NO_FACTURE', message: `HON ${(hon.ttc/100).toFixed(2)} € sans facture`, bien_id: b.id })
 
-    if (facture && facture.statut === 'brouillon' && hon.ttc > 0)
-      rowAlerts.push({ level: 'warning', code: 'FACTURE_BROUILLON', message: `Facture brouillon — à valider ou regénérer`, bien_id: b.id })
+    // Écart reversement au niveau proprio (même valeur sur tous les biens du proprio)
+    if (propId && reversementFactureParProprio[propId] != null && ecart_reversement_proprio != null) {
+      const ecartAbs = Math.abs(ecart_reversement_proprio)
+      if (ecartAbs > 100) { // seuil 1€ pour éviter les arrondis
+        const sens = ecart_reversement_proprio > 0 ? '+' : ''
+        const rev_facture_eur = (reversementFactureParProprio[propId] / 100).toFixed(2)
+        const rev_calcule_eur = ((loyParProprio[propId] || 0) / 100).toFixed(2)
+        rowAlerts.push({
+          level: 'warning',
+          code: 'ECART_REVERSEMENT',
+          message: `Écart reversement : ${sens}${(ecart_reversement_proprio / 100).toFixed(2)} € (facturé ${rev_facture_eur} € vs calculé ${rev_calcule_eur} €)`,
+          bien_id: b.id,
+        })
+      }
+    }
 
     if (nb_non_rapprochees > 0)
       rowAlerts.push({ level: 'warning', code: 'VIR_SANS_RAPPROCHEMENT', message: `${nb_non_rapprochees} virement(s) non rapproché(s)`, bien_id: b.id })
@@ -230,6 +333,11 @@ export async function buildComptaMensuelle(mois) {
       com_ttc:  com.ttc,
 
       frais_loy,
+      frais_direct,
+      prest_deduct,
+      haowner_ttc,
+      debours_prop,
+      remboursements,
       reversement_calcule,
       ecart_vir_loy,
 
@@ -280,7 +388,8 @@ export async function buildComptaMensuelle(mois) {
   const seen = new Set()
   for (const row of rows) {
     for (const a of row.alerts) {
-      const dedupeKey = a.code === 'NO_FACTURE'
+      // NO_FACTURE et ECART_REVERSEMENT dédupliqués au niveau proprio (1 alerte par proprio)
+      const dedupeKey = (a.code === 'NO_FACTURE' || a.code === 'ECART_REVERSEMENT')
         ? `${a.code}::${row.proprietaire_id}`
         : `${a.code}::${row.bien_id}`
       if (seen.has(dedupeKey)) continue
@@ -358,11 +467,16 @@ export function exportComptaCSV(data) {
     .map(row => row.map(v => `"${String(v ?? '').replace(/"/g, '""')}"`).join(','))
     .join('\n')
 
-  const blob = new Blob(['\uFEFF' + csv], { type: 'text/csv;charset=utf-8;' })
+  return '\uFEFF' + csv
+}
+
+export function downloadComptaCSV(data) {
+  const csv = exportComptaCSV(data)
+  const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' })
   const url  = URL.createObjectURL(blob)
   const a    = document.createElement('a')
   a.href     = url
-  a.download = `comptabilite-${data.mois}.csv`
+  a.download = `DCB_Comptabilite_${data.mois}.csv`
   a.click()
   URL.revokeObjectURL(url)
 }

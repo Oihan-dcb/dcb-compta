@@ -7,7 +7,6 @@ import {
 } from '../services/rapprochement'
 import { syncStripe } from '../services/syncStripe'
 import { setToken } from '../lib/hospitable'
-import { exportCSVComptable } from '../services/exportCSVComptable'
 
 import MoisSelector from '../components/MoisSelector'
 import ModalResa from '../components/ModalResa'
@@ -126,18 +125,6 @@ export default function PageRapprochement() {
       .subscribe()
     return () => { supabase.removeChannel(channel) }
   }, [charger])
-
-  
-  async function exportCSV() {
-    const csv  = await exportCSVComptable(mouvements, mois)
-    const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' })
-    const url  = URL.createObjectURL(blob)
-    const a    = document.createElement('a')
-    a.href     = url
-    a.download = 'Rapprochement_Comptable_' + mois + '.csv'
-    a.click()
-    URL.revokeObjectURL(url)
-  }
 
   async function lancerSync() {
     setSyncing(true)
@@ -281,10 +268,6 @@ export default function PageRapprochement() {
           <button onClick={charger} disabled={loading}
             style={{ background: '#f0f4ff', color: '#CC9933', border: '1.5px solid #CC9933', borderRadius: 8, padding: '8px 14px', fontWeight: 600, cursor: 'pointer', fontSize: 14 }}>
             ↻ Actualiser
-          </button>
-          <button onClick={exportCSV} disabled={loading || mouvements.length === 0}
-            style={{ padding: '8px 14px', borderRadius: 8, border: '1.5px solid var(--brand,#CC9933)', background: 'var(--bg,#F7F3EC)', color: 'var(--brand,#CC9933)', cursor: 'pointer', fontWeight: 600, fontSize: 13, display: 'flex', alignItems: 'center', gap: 6 }}>
-            &#8595; Export CSV
           </button>
         </div>
       </div>

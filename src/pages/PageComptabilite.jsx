@@ -2,7 +2,7 @@ import { useState, useEffect, useCallback } from 'react'
 import MoisSelector, { MOIS_FR } from '../components/MoisSelector'
 import { useMoisPersisted } from '../hooks/useMoisPersisted'
 import { supabase } from '../lib/supabase'
-import { buildComptaMensuelle, exportComptaCSV } from '../services/buildComptaMensuelle'
+import { buildComptaMensuelle } from '../services/buildComptaMensuelle'
 
 const moisCourant = new Date().toISOString().slice(0, 7)
 const fmt = c => c != null ? ((c / 100).toFixed(2).replace('.', ',') + ' €') : '—'
@@ -159,11 +159,6 @@ export default function PageComptabilite() {
           <button className="btn btn-secondary" onClick={charger} disabled={loading} style={{ padding: '6px 14px' }}>
             {loading ? '…' : '↺'}
           </button>
-          {data && (
-            <button className="btn btn-secondary" onClick={() => exportComptaCSV(data)} style={{ padding: '6px 14px', fontSize: '0.85em' }}>
-              ⬇ CSV
-            </button>
-          )}
         </div>
       </div>
 
