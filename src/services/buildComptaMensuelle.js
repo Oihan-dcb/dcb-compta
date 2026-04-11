@@ -229,6 +229,7 @@ export async function buildComptaMensuelle(mois) {
   // reversement = max(0, VIR - fraisLoy - fraisDirect - prestDeduct - haowner - deboursProp - ownerStayAbsorb) + remboursements
   const loyParProprio = {}
   const ownerStayAbsorbByBien = {}
+  const composantesParProprio = {}
   for (const b of biensActifs) {
     // LOY résiduel après toutes les déductions standard (ordre = facturesEvoliz)
     const loyHt      = vent(b.id, 'LOY').ht
@@ -250,6 +251,18 @@ export async function buildComptaMensuelle(mois) {
     const rembours    = remboursParBien[b.id]   || 0
     const virNet = Math.max(0, virHt - fraisLoy - fraisDirect - prestDeduct - haowner - deboursProp - ownerStayAbsorbByBien[b.id]) + rembours
     loyParProprio[b.proprietaire_id] = (loyParProprio[b.proprietaire_id] || 0) + virNet
+
+    // Accumuler les composantes par proprio pour le détail de l'alerte ECART_REVERSEMENT
+    const pid = b.proprietaire_id
+    if (!composantesParProprio[pid]) composantesParProprio[pid] = { vir_ht: 0, frais_loy: 0, frais_direct: 0, prest_deduct: 0, haowner_ttc: 0, debours_prop: 0, owner_stay_absorb: 0, remboursements: 0 }
+    composantesParProprio[pid].vir_ht           += virHt
+    composantesParProprio[pid].frais_loy        += fraisLoy
+    composantesParProprio[pid].frais_direct     += fraisDirect
+    composantesParProprio[pid].prest_deduct     += prestDeduct
+    composantesParProprio[pid].haowner_ttc      += haowner
+    composantesParProprio[pid].debours_prop     += deboursProp
+    composantesParProprio[pid].owner_stay_absorb += ownerStayAbsorbByBien[b.id]
+    composantesParProprio[pid].remboursements   += rembours
   }
 
   // ── Phase 4 : construction des lignes ────────────────────────────────────
@@ -325,15 +338,8 @@ export async function buildComptaMensuelle(mois) {
           message: `Écart reversement : ${sens}${(ecart_reversement_proprio / 100).toFixed(2)} € (facturé ${rev_facture_eur} € vs calculé ${rev_calcule_eur} €)`,
           bien_id: b.id,
           details: {
-            vir_ht:           vir.ht,
-            frais_loy,
-            frais_direct,
-            prest_deduct,
-            haowner_ttc,
-            debours_prop,
-            owner_stay_absorb,
-            remboursements,
-            reversement_calcule,
+            ...(composantesParProprio[propId] || {}),
+            reversement_calcule: loyParProprio[propId] || 0,
             reversement_facture: reversementFactureParProprio[propId] || 0,
           },
         })
