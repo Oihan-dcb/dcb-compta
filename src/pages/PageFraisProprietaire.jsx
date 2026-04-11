@@ -237,9 +237,9 @@ export default function PageFraisProprietaire() {
       {error && <div className="alert alert-error">{error}</div>}
       {success && <div className="alert alert-success">{success}</div>}
 
-      {loading ? (
+      {loading && frais.length === 0 ? (
         <div className="loading-state"><span className="spinner" /> Chargement…</div>
-      ) : frais.length === 0 ? (
+      ) : !loading && frais.length === 0 ? (
         <div className="empty-state">Aucun frais pour ce mois.</div>
       ) : (
         <div className="table-container">

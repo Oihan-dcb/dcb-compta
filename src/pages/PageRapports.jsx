@@ -794,7 +794,7 @@ FORMAT :
       </div>
 
       {error && <div style={{ background: '#FEE2E2', color: '#DC2626', padding: '10px 14px', borderRadius: 8, marginBottom: 16 }}>{error}</div>}
-      {loading && <div style={{ color: '#9C8E7D', marginBottom: 16 }}>Chargement…</div>}
+      {loading && !data && <div style={{ color: '#9C8E7D', marginBottom: 16 }}>Chargement…</div>}
 
       {data && (
         <div style={{ background: '#fff', border: '1px solid var(--border)', borderRadius: 12, overflow: 'hidden' }}>

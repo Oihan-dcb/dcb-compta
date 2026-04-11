@@ -367,7 +367,7 @@ export default function PageRapprochement() {
           ))}
         </div>
       )}
-      {loading ? (
+      {loading && mouvements.length === 0 ? (
             <div style={{ textAlign: 'center', padding: 40, color: '#888' }}>Chargement...</div>
           ) : (
             <div style={{ background: '#fff', borderRadius: 12, border: '1px solid #e5e7eb', overflow: 'hidden' }}>

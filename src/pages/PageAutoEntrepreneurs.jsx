@@ -281,7 +281,7 @@ export default function PageAutoEntrepreneurs() {
         <button style={TAB_STYLE(tab === 'prestations')} onClick={() => setTab('prestations')}>⚙️ Types de prestations ({prestationTypes.length})</button>
       </div>
 
-      {loading ? <div style={{ textAlign: 'center', padding: 40, color: '#888' }}>Chargement...</div> : (
+      {loading && aes.length === 0 ? <div style={{ textAlign: 'center', padding: 40, color: '#888' }}>Chargement...</div> : (
         <>
           {tab === 'aes' && (
             <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>

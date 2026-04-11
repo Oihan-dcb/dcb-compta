@@ -229,11 +229,11 @@ export default function PageBiens() {
       )}
 
       {/* Table */}
-      {loading ? (
+      {loading && biens.length === 0 ? (
         <div className="loading-state">
           <span className="spinner" /> Chargement des biens…
         </div>
-      ) : biens.length === 0 ? (
+      ) : !loading && biens.length === 0 ? (
         <div className="empty-state">
           <div className="empty-state-title">Aucun bien</div>
           <p>Lance une sync Hospitable pour importer les biens.</p>

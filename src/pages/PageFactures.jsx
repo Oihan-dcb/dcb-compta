@@ -370,9 +370,9 @@ export default function PageFactures() {
         </div>
       </div>
 
-      {loading ? (
+      {loading && factures.length === 0 ? (
         <div className="loading-state"><span className="spinner" /> Chargement…</div>
-      ) : factures.length === 0 ? (
+      ) : !loading && factures.length === 0 ? (
         <div className="empty-state">
           <div className="empty-state-title">Aucune facture pour ce mois</div>
           <p>Lance la génération après avoir synchronisé les réservations et calculé la ventilation.</p>
