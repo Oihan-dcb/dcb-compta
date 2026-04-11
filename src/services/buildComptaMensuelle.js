@@ -27,6 +27,7 @@ export async function buildComptaMensuelle(mois) {
     { data: ventilData,  error: ventilErr },
     { data: facturesHon, error: honErr    },
     { data: facturesDeb, error: debErr    },
+    { data: fraisData,   error: fraisErr  },
   ] = await Promise.all([
     supabase
       .from('bien')
@@ -51,6 +52,11 @@ export async function buildComptaMensuelle(mois) {
       .select('id, proprietaire_id, statut, total_ht, total_ttc')
       .eq('mois', mois)
       .eq('type_facture', 'debours'),
+    supabase
+      .from('frais_proprietaire')
+      .select('bien_id, statut, statut_deduction, mode_traitement, montant_ttc, montant_deduit_loy')
+      .eq('mois_compta', mois)
+      .eq('mode_traitement', 'deduire_loyer'),
   ])
 
   if (biensErr)  throw new Error(`buildComptaMensuelle — biens: ${biensErr.message}`)
@@ -58,6 +64,7 @@ export async function buildComptaMensuelle(mois) {
   if (ventilErr) throw new Error(`buildComptaMensuelle — ventilation: ${ventilErr.message}`)
   if (honErr)    throw new Error(`buildComptaMensuelle — factures honoraires: ${honErr.message}`)
   if (debErr)    throw new Error(`buildComptaMensuelle — factures débours: ${debErr.message}`)
+  // fraisErr non bloquant — on continue sans les frais si la requête échoue
 
   const biens    = biensData    || []
   const resas    = resasData    || []
@@ -88,16 +95,28 @@ export async function buildComptaMensuelle(mois) {
   const honByProprio = {}
   for (const f of honFacts) honByProprio[f.proprietaire_id] = f
 
+  // Frais déduits du loyer, agrégés par bien_id (même formule que rapportStatement)
+  const fraisLoyByBien = {}
+  for (const f of (fraisData || [])) {
+    let montant = 0
+    if (f.statut === 'facture' && f.statut_deduction !== 'en_attente') montant = f.montant_deduit_loy || 0
+    else if (f.statut === 'facture' && f.statut_deduction === 'en_attente') montant = f.montant_ttc || 0
+    else if (f.statut === 'a_facturer') montant = f.montant_ttc || 0
+    fraisLoyByBien[f.bien_id] = (fraisLoyByBien[f.bien_id] || 0) + montant
+  }
+
   // Biens actifs ce mois (au moins une resa ou de la ventilation)
   const biensAvecResas   = new Set(resas.map(r => r.bien_id))
   const biensAvecVentil  = new Set(ventils.map(v => v.bien_id))
   const biensActifs = biens.filter(b => biensAvecResas.has(b.id) || biensAvecVentil.has(b.id))
 
-  // ── Phase 3 : Σ loy_ht par propriétaire (pré-calcul pour ecart_reversement) ─
+  // ── Phase 3 : Σ (loy_ht − frais_déduction_loyer) par propriétaire ───────────
+  // Même logique que rapportStatement pour montant_reversement → pas de faux écart
   const loyParProprio = {}
   for (const b of biensActifs) {
     if (!b.proprietaire_id) continue
-    loyParProprio[b.proprietaire_id] = (loyParProprio[b.proprietaire_id] || 0) + vent(b.id, 'LOY').ht
+    const loyNet = vent(b.id, 'LOY').ht - (fraisLoyByBien[b.id] || 0)
+    loyParProprio[b.proprietaire_id] = (loyParProprio[b.proprietaire_id] || 0) + loyNet
   }
 
   // ── Phase 4 : construction des lignes ────────────────────────────────────
