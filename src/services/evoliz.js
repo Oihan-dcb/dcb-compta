@@ -172,10 +172,6 @@ export async function creerFactureEvoliz(facture) {
     })
     invoiceId = createdInvoice?.invoiceid
     if (!invoiceId) throw new Error('invoiceid non retourné après création')
-
-    // saveInvoice : passe de filled → create, numéro définitif attribué
-    const savedInvoice = await evolizCall('saveInvoice', { invoiceId })
-    invoiceNumber = savedInvoice?.document_number
   } catch (evolizErr) {
     // Evoliz a échoué — aucune facture finalisée côté Evoliz : reset à 'valide'
     await supabase.from('facture_evoliz')
@@ -320,16 +316,12 @@ export async function pousserFactureCOMVersEvoliz(factureId, totals, mois) {
     const invoiceId = createdInvoice?.invoiceid
     if (!invoiceId) throw new Error('invoiceid non retourné par Evoliz')
 
-    // 3. Sauvegarder (numéro définitif)
-    const savedInvoice = await evolizCall('saveInvoice', { invoiceId })
-    const invoiceNumber = savedInvoice?.document_number
     const dateEmission = new Date().toISOString().substring(0, 10)
 
     // 5. Mettre à jour Supabase
     await supabase.from('facture_evoliz').update({
       statut: 'envoye_evoliz',
       id_evoliz: String(invoiceId),
-      numero_facture: invoiceNumber || null,
       date_emission: dateEmission,
     }).eq('id', factureId)
 
