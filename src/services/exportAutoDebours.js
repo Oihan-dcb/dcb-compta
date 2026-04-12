@@ -4,202 +4,151 @@ import { fr } from 'date-fns/locale'
 
 export async function exportAutoDebours(mois) {
   const [
-    { data: ventilAuto },
     { data: missions },
     { data: prestations },
-    { data: frais },
-    { data: resas }
+    { data: aes },
   ] = await Promise.all([
-    supabase.from('ventilation')
-      .select('reservation_id, montant_ht, montant_reel')
-      .eq('mois_comptable', mois)
-      .eq('code', 'AUTO'),
     supabase.from('mission_menage')
-      .select('reservation_id, ae_id, date_mission, duree_heures, montant, auto_entrepreneur:ae_id(prenom, nom)')
-      .eq('mois', mois),
-    supabase.from('prestation_hors_forfait')
-      .select('reservation_id, bien_id, montant, type_imputation, prestation_type:prestation_type_id(nom), auto_entrepreneur:ae_id(prenom, nom)')
+      .select(`
+        id, reservation_id, ae_id, date_mission, duree_heures, montant, titre_ical,
+        bien:bien_id(code, hospitable_name, proprietaire:proprietaire_id(nom, prenom)),
+        auto_entrepreneur:ae_id(id, prenom, nom, taux_horaire, is_staff)
+      `)
       .eq('mois', mois)
-      .not('ae_id', 'is', null),
-    supabase.from('frais_proprietaire')
-      .select('bien_id, libelle, montant_ttc, mode_traitement, mode_encaissement, statut')
-      .eq('mois_facturation', mois)
-      .in('statut', ['a_facturer', 'facture']),
-    supabase.from('reservation')
-      .select('id, code, arrival_date, departure_date, bien:bien_id(id, code, hospitable_name)')
-      .eq('mois_comptable', mois)
+      .order('date_mission', { ascending: true }),
+    supabase.from('prestation_hors_forfait')
+      .select(`
+        id, mission_id, ae_id, montant,
+        prestation_type:prestation_type_id(nom)
+      `)
+      .eq('mois', mois)
+      .not('ae_id', 'is', null)
+      .eq('statut', 'valide'),
+    supabase.from('auto_entrepreneur')
+      .select('id, prenom, nom, taux_horaire, is_staff')
+      .eq('actif', true)
+      .order('nom'),
   ])
 
-  const ventilByResa = {}
-  for (const v of (ventilAuto || [])) ventilByResa[v.reservation_id] = v
-
-  const missionsByResa = {}
-  for (const m of (missions || [])) {
-    if (!missionsByResa[m.reservation_id]) missionsByResa[m.reservation_id] = []
-    missionsByResa[m.reservation_id].push(m)
-  }
-
-  // Prestations par réservation ET par bien (pour celles sans reservation_id — bug 8)
-  const prestByResa = {}
-  const prestByBienOnly = {}
-  for (const p of (prestations || [])) {
-    if (p.reservation_id) {
-      if (!prestByResa[p.reservation_id]) prestByResa[p.reservation_id] = []
-      prestByResa[p.reservation_id].push(p)
-    } else if (p.bien_id) {
-      if (!prestByBienOnly[p.bien_id]) prestByBienOnly[p.bien_id] = []
-      prestByBienOnly[p.bien_id].push(p)
-    }
-  }
-
-  const fraisByBien = {}
-  for (const f of (frais || [])) {
-    if (!fraisByBien[f.bien_id]) fraisByBien[f.bien_id] = []
-    fraisByBien[f.bien_id].push(f)
-  }
-
-  const now = new Date()
-  const dateExport = format(now, 'dd/MM/yyyy à HH:mm', { locale: fr })
   const moisLabel = format(new Date(mois + '-01'), 'MMMM yyyy', { locale: fr })
-  const moisLabelCap = moisLabel.charAt(0).toUpperCase() + moisLabel.slice(1)
+  const nomMois = moisLabel.charAt(0).toUpperCase() + moisLabel.slice(1)
 
-  const header = [
-    '"═══════════════════════════════════════════════════════════════"',
-    '"  DESTINATION COTE BASQUE"',
-    `"  Export AUTO & Debours · ${moisLabelCap}"`,
-    `"  Genere le ${dateExport}"`,
-    '"═══════════════════════════════════════════════════════════════"',
-    '""',
-  ].join('\n')
+  const sep = c => `"${String(c ?? '').replace(/"/g, '""')}"`
+  const row = cols => cols.map(sep).join(';')
 
-  const colonnes = [
-    'Code resa', 'Bien', 'Check-in', 'Check-out',
-    'AUTO Provision EUR', 'AUTO Reel EUR', 'Ecart EUR', 'Ecart %',
-    'AE', 'Mission date', 'Mission duree (h)',
-    'Prestations extras', 'HAOWNER EUR', 'DEBP EUR', 'DEB_AE EUR',
-    'Frais proprio'
-  ]
-
-  // Seules les réservations avec AUTO ou missions (bug 9 — exclut les resas sans activité)
-  const resasAvecAuto = (resas || []).filter(r => ventilByResa[r.id] || missionsByResa[r.id])
-
-  // Frais : afficher une seule fois par bien, sur la première réservation (bug 1)
-  const seenBienFrais = new Set()
-
-  const lignes = resasAvecAuto.map(r => {
-    const ventil = ventilByResa[r.id] || {}
-    const provision = ventil.montant_ht || 0
-    const reel = ventil.montant_reel ?? provision
-    const ecart = reel - provision
-    const ecartPct = provision > 0 ? ((ecart / provision) * 100).toFixed(1) + '%' : ''
-
-    const missionsResa = missionsByResa[r.id] || []
-    const aeNoms = [...new Set(missionsResa.map(m =>
-      m.auto_entrepreneur ? `${m.auto_entrepreneur.prenom} ${m.auto_entrepreneur.nom}`.trim() : ''
-    ))].filter(Boolean).join(' | ')
-    const missionDates = missionsResa.map(m => m.date_mission).filter(Boolean).join(' | ')
-    const missionDurees = missionsResa.map(m => m.duree_heures).filter(Boolean).join(' | ')
-
-    const bienId = r.bien?.id
-    const isFirstResa = bienId && !seenBienFrais.has(bienId)
-    if (bienId) seenBienFrais.add(bienId)
-
-    // Prestations liées à la résa + prestations bien-level sur la première résa (bug 8)
-    const prestsResa = prestByResa[r.id] || []
-    const prestsBien = isFirstResa ? (prestByBienOnly[bienId] || []) : []
-    const allPrests  = [...prestsResa, ...prestsBien]
-
-    const prestStr = allPrests.map(p =>
-      `${p.prestation_type?.nom || '?'}: ${((p.montant || 0) / 100).toFixed(2)}€`
-    ).join(' | ')
-    const haowner = allPrests.filter(p => p.type_imputation === 'haowner').reduce((s, p) => s + (p.montant || 0), 0)
-    const debp    = allPrests.filter(p => p.type_imputation === 'debours_proprio').reduce((s, p) => s + (p.montant || 0), 0)
-    const debae   = allPrests.filter(p => p.type_imputation === 'deduction_loy').reduce((s, p) => s + (p.montant || 0), 0)
-
-    // Frais proprio : une seule fois par bien (bug 1)
-    const fraisBien = fraisByBien[bienId] || []
-    const fraisStr = isFirstResa
-      ? fraisBien.map(f => `${f.libelle} (${f.mode_traitement}): ${((f.montant_ttc || 0) / 100).toFixed(2)}€`).join(' | ')
-      : ''
-
-    return [
-      r.code || '',
-      r.bien?.hospitable_name || '',
-      r.arrival_date ? format(new Date(r.arrival_date), 'dd/MM/yyyy', { locale: fr }) : '',
-      r.departure_date ? format(new Date(r.departure_date), 'dd/MM/yyyy', { locale: fr }) : '',
-      (provision / 100).toFixed(2),
-      (reel / 100).toFixed(2),
-      (ecart / 100).toFixed(2),
-      ecartPct,
-      aeNoms,
-      missionDates,
-      missionDurees,
-      prestStr,
-      (haowner / 100).toFixed(2),
-      (debp / 100).toFixed(2),
-      (debae / 100).toFixed(2),
-      fraisStr
-    ]
-  })
-
-  // Biens avec frais/prestations mais sans réservation avec AUTO (bug 1 + 8 — cas edge)
-  const lignesExtra = []
-  const allBienIdsAvecFraisOuPrest = new Set([
-    ...Object.keys(fraisByBien),
-    ...Object.keys(prestByBienOnly),
-  ])
-  for (const bienId of allBienIdsAvecFraisOuPrest) {
-    if (seenBienFrais.has(bienId)) continue
-    const resaBien = (resas || []).find(r => r.bien?.id === bienId)
-    const bienNom  = resaBien?.bien?.hospitable_name || bienId
-    const fraisBien = fraisByBien[bienId] || []
-    const fraisStr = fraisBien.map(f =>
-      `${f.libelle} (${f.mode_traitement}): ${((f.montant_ttc || 0) / 100).toFixed(2)}€`
-    ).join(' | ')
-    const prestsBien = prestByBienOnly[bienId] || []
-    const prestStr = prestsBien.map(p =>
-      `${p.prestation_type?.nom || '?'}: ${((p.montant || 0) / 100).toFixed(2)}€`
-    ).join(' | ')
-    const haowner = prestsBien.filter(p => p.type_imputation === 'haowner').reduce((s, p) => s + (p.montant || 0), 0)
-    const debp    = prestsBien.filter(p => p.type_imputation === 'debours_proprio').reduce((s, p) => s + (p.montant || 0), 0)
-    const debae   = prestsBien.filter(p => p.type_imputation === 'deduction_loy').reduce((s, p) => s + (p.montant || 0), 0)
-    lignesExtra.push([
-      '(sans AUTO)', bienNom, '', '',
-      '', '', '', '',
-      '', '', '',
-      prestStr,
-      (haowner / 100).toFixed(2),
-      (debp / 100).toFixed(2),
-      (debae / 100).toFixed(2),
-      fraisStr
-    ])
+  // Prestations indexées par mission_id
+  const prestByMission = {}
+  for (const p of (prestations || [])) {
+    if (!p.mission_id) continue
+    if (!prestByMission[p.mission_id]) prestByMission[p.mission_id] = []
+    prestByMission[p.mission_id].push(p)
   }
 
-  const allLignes = [...lignes, ...lignesExtra]
+  // Missions groupées par AE
+  const missionsByAe = {}
+  for (const m of (missions || [])) {
+    const aeId = m.ae_id
+    if (!missionsByAe[aeId]) missionsByAe[aeId] = { ae: m.auto_entrepreneur, missions: [] }
+    missionsByAe[aeId].missions.push(m)
+  }
 
-  const totalProvision = Object.values(ventilByResa).reduce((s, v) => s + (v.montant_ht || 0), 0)
-  const totalReel = Object.values(ventilByResa).reduce((s, v) => s + (v.montant_reel ?? (v.montant_ht || 0)), 0)
-  const totalEcart = totalReel - totalProvision
-  const nbAvecAuto = resasAvecAuto.length  // bug 2 fix : seulement celles avec AUTO
-  const nbEcartsSignificatifs = lignes.filter(l => Math.abs(parseFloat(l[6])) > 20).length
+  const lines = []
 
-  const footer = [
-    '""',
-    '"─────────────────────────────────────────────────────────────"',
-    '"TOTAUX & CONTROLES"',
-    '"─────────────────────────────────────────────────────────────"',
-    `"Total AUTO provision";"${(totalProvision / 100).toFixed(2)} EUR"`,
-    `"Total AUTO reel";"${(totalReel / 100).toFixed(2)} EUR"`,
-    `"Ecart total";"${(totalEcart / 100).toFixed(2)} EUR"`,
-    '""',
-    `"Reservations avec AUTO";"${nbAvecAuto}"`,
-    `"Ecarts > 20 EUR";"${nbEcartsSignificatifs}"`,
-    '"═══════════════════════════════════════════════════════════════"'
-  ].join('\n')
+  // ── En-tête document global ───────────────────────────────────────────────
+  lines.push(row(['DESTINATION COTE BASQUE', 'Export AUTO & Débours', nomMois, '', '', '']))
+  lines.push(row(['', '', '', '', '', '']))
 
-  const q = (v) => `"${String(v ?? '').replace(/"/g, '""')}"`
-  const lignesCSV = allLignes.map(row => row.map(q).join(';')).join('\n')
-  const colonnesCSV = colonnes.map(q).join(';')
+  // ── Une section par AE ────────────────────────────────────────────────────
+  for (const [aeId, { ae, missions: ms }] of Object.entries(missionsByAe)) {
+    const nomAE = ae ? `${ae.prenom || ''} ${ae.nom || ''}`.trim() : `AE ${aeId}`
+    const isStaff = ae?.is_staff ?? false
+    const tauxHoraire = ae?.taux_horaire ? (ae.taux_horaire / 100).toFixed(2) : '—'
 
-  return '\uFEFF' + header + '\n' + colonnesCSV + '\n' + lignesCSV + '\n' + footer
+    lines.push(row(['═══════════════════════════', '', '', '', '', '']))
+    lines.push(row(['RELEVE DE PRESTATIONS', nomAE, nomMois, '', '', '']))
+    if (!isStaff) lines.push(row(['Taux horaire', tauxHoraire + ' EUR/h', '', '', '', '']))
+    lines.push(row(['', '', '', '', '', '']))
+
+    const headers = isStaff
+      ? ['Date', 'Bien', 'Mission', 'Duree (h)', '']
+      : ['Date', 'Bien', 'Mission', 'Duree (h)', 'Montant EUR']
+    lines.push(row(headers))
+
+    // Regrouper par bien
+    const parBien = {}
+    for (const m of ms) {
+      const key = m.bien?.code || m.bien?.hospitable_name || 'Inconnu'
+      if (!parBien[key]) parBien[key] = { bien: m.bien, missions: [] }
+      parBien[key].missions.push(m)
+    }
+
+    let totalHeures = 0
+    let totalMontant = 0
+    let totalExtras = 0
+
+    for (const [key, { bien, missions: bienMs }] of Object.entries(parBien)) {
+      const proprio = bien?.proprietaire
+      const propNom = proprio ? `${proprio.prenom || ''} ${proprio.nom || ''}`.trim() : ''
+
+      lines.push(row(['', '', '', '', '']))
+      lines.push(row([`BIEN : ${bien?.hospitable_name || key}`, '', '', '', '']))
+      if (propNom) lines.push(row([`Proprietaire : ${propNom}`, '', '', '', '']))
+
+      let sousHeures = 0
+      let sousMontant = 0
+      let sousExtras = 0
+
+      for (const m of bienMs) {
+        const extras = (prestByMission[m.id] || [])
+        const extrasMontant = extras.reduce((s, p) => s + (p.montant || 0), 0)
+        const h = m.duree_heures || 0
+        const montant = isStaff ? '' : (m.montant ? (m.montant / 100).toFixed(2) : '')
+        sousHeures += h
+        if (!isStaff && m.montant) sousMontant += m.montant
+        sousExtras += extrasMontant
+
+        lines.push(row([
+          m.date_mission || '',
+          bien?.hospitable_name || key,
+          m.titre_ical || '',
+          h ? h.toString() : '',
+          montant,
+        ]))
+
+        for (const p of extras) {
+          lines.push(row([
+            '',
+            '',
+            '  → ' + (p.prestation_type?.nom || 'Extra'),
+            '',
+            !isStaff && p.montant ? (p.montant / 100).toFixed(2) : '',
+          ]))
+        }
+      }
+
+      lines.push(row([
+        `Sous-total ${key}`,
+        '',
+        '',
+        sousHeures ? sousHeures.toFixed(2) + ' h' : '',
+        !isStaff && (sousMontant + sousExtras) ? ((sousMontant + sousExtras) / 100).toFixed(2) + ' EUR' : '',
+      ]))
+
+      totalHeures += sousHeures
+      totalMontant += sousMontant
+      totalExtras += sousExtras
+    }
+
+    lines.push(row(['', '', '', '', '']))
+    lines.push(row([
+      'TOTAL GENERAL',
+      '',
+      '',
+      totalHeures ? totalHeures.toFixed(2) + ' h' : '',
+      !isStaff && (totalMontant + totalExtras) ? ((totalMontant + totalExtras) / 100).toFixed(2) + ' EUR' : '',
+    ]))
+    lines.push(row(['', '', '', '', '']))
+  }
+
+  return '\uFEFF' + lines.join('\n')
 }
