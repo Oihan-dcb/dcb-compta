@@ -127,20 +127,20 @@ serve(async (req) => {
         .select('reservation_id, payout_hospitable!inner(id, mouvement_id, mouvement_bancaire(id, credit, libelle, date_operation))')
         .in('reservation_id', resaIds),
 
-      // Chemin 4 : booking_payout_line (Booking sans payout_reservation ou reservation_paiement)
+      // Chemin 4 : booking_payout_line — utilise amount_cents (part de cette résa dans le virement groupé)
       bookingPlatformIds.length > 0
         ? supabase
             .from('booking_payout_line')
-            .select('mouvement_id, booking_ref, mouvement_bancaire(id, credit, libelle, date_operation)')
+            .select('mouvement_id, booking_ref, amount_cents, mouvement_bancaire(id, credit, libelle, date_operation)')
             .in('booking_ref', bookingPlatformIds)
             .not('mouvement_id', 'is', null)
         : Promise.resolve({ data: [] as any[], error: null }),
 
-      // Chemin 5 : stripe_payout_line (Direct/Stripe sans reservation_paiement créée)
+      // Chemin 5 : stripe_payout_line — utilise montant_net (part de cette résa dans le virement groupé Stripe)
       allResaCodes.length > 0
         ? supabase
             .from('stripe_payout_line')
-            .select('mouvement_id, reservation_code, mouvement_bancaire(id, credit, libelle, date_operation)')
+            .select('mouvement_id, reservation_code, montant_net, mouvement_bancaire(id, credit, libelle, date_operation)')
             .in('reservation_code', allResaCodes)
             .not('mouvement_id', 'is', null)
         : Promise.resolve({ data: [] as any[], error: null }),
@@ -216,17 +216,21 @@ serve(async (req) => {
       }
     }
 
-    // Chemin 4 : booking_payout_line (Booking sans payout_reservation)
+    // Chemin 4 : booking_payout_line
+    // Utilise amount_cents (montant par résa dans le virement groupé), pas mb.credit (total virement)
     for (const bpl of (bookingPayoutRes.data || [])) {
       const mb = bpl.mouvement_bancaire as any
-      if (!mb?.id || !(mb.credit > 0)) continue
+      if (!mb?.id) continue
       const resaId = resaIdByPlatformId[bpl.booking_ref]
       if (!resaId) continue
+      // amount_cents = part de cette résa dans le virement Booking (valeur CSV attribuable)
+      const credit = bpl.amount_cents ?? mb.credit
+      if (!(credit > 0)) continue
       const map = ensureResa(resaId)
       if (!map.has(mb.id)) {
         map.set(mb.id, {
           mb_id: mb.id,
-          credit: mb.credit,
+          credit,
           source: 'booking_payout_line',
           source_ref: bpl.mouvement_id,
           libelle: mb.libelle,
@@ -235,17 +239,21 @@ serve(async (req) => {
       }
     }
 
-    // Chemin 5 : stripe_payout_line (Direct/Stripe sans reservation_paiement)
+    // Chemin 5 : stripe_payout_line
+    // Utilise montant_net (montant par résa dans le virement groupé Stripe), pas mb.credit (total virement)
     for (const spl of (stripePayoutRes.data || [])) {
       const mb = spl.mouvement_bancaire as any
-      if (!mb?.id || !(mb.credit > 0)) continue
+      if (!mb?.id) continue
       const resaId = resaIdByCode[spl.reservation_code]
       if (!resaId) continue
+      // montant_net = part de cette résa dans le payout Stripe (valeur CSV attribuable)
+      const credit = spl.montant_net ?? mb.credit
+      if (!(credit > 0)) continue
       const map = ensureResa(resaId)
       if (!map.has(mb.id)) {
         map.set(mb.id, {
           mb_id: mb.id,
-          credit: mb.credit,
+          credit,
           source: 'stripe_payout_line',
           source_ref: spl.mouvement_id,
           libelle: mb.libelle,
