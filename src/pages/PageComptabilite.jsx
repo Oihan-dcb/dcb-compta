@@ -61,8 +61,6 @@ export default function PageComptabilite() {
     { key: 'frais_loy',            label: 'Frais HA proprio.', def: false },
     { key: 'prest_deduct',         label: 'Prest. déduit',    def: false },
     { key: 'reversement_calcule',  label: 'Reversement',   def: true },
-    { key: 'vir_ht',               label: 'VIR HT',        def: true },
-    { key: 'ecart_vir_loy',        label: 'Écart VIR/LOY', def: false },
     { key: 'taxe',                 label: 'TAXE',          def: true },
     { key: 'facture',              label: 'Facture',       def: true },
     { key: 'reversement_facture',  label: 'Rev. facturé',  def: false },
@@ -256,7 +254,6 @@ export default function PageComptabilite() {
           <StatCard label="FMEN TTC" value={fmt(data.totals.fmen_ttc)} sub={`HT ${fmt(data.totals.fmen_ht)}`} />
           <StatCard label="AUTO HT" value={fmt(data.totals.auto_ht)} />
           <StatCard label="LOY HT" value={fmt(data.totals.loy_ht)} />
-          <StatCard label="VIR HT" value={fmt(data.totals.vir_ht)} />
           <StatCard label="TAXE HT" value={fmt(data.totals.taxe_ht)} />
           <StatCard label="Réservations" value={data.totals.nb_resas} sub={`${data.totals.nb_rapprochees} rappr. · ${data.totals.nb_non_rapprochees} non rappr.`} />
           {data.fraisStripe && (
@@ -334,8 +331,6 @@ export default function PageComptabilite() {
                 {col('frais_loy')           && <th style={{ ...th, textAlign: 'right' }}>Frais HA proprio.</th>}
                 {col('prest_deduct')        && <th style={{ ...th, textAlign: 'right' }}>Prest. déduit</th>}
                 {col('reversement_calcule') && <th style={{ ...th, textAlign: 'right' }}>Reversement</th>}
-                {col('vir_ht')              && <th style={{ ...th, textAlign: 'right' }}>VIR HT</th>}
-                {col('ecart_vir_loy')       && <th style={{ ...th, textAlign: 'right' }}>Écart VIR/LOY</th>}
                 {col('taxe')                && <th style={{ ...th, textAlign: 'right' }}>TAXE</th>}
                 {col('facture')             && <th style={th}>Facture</th>}
                 {col('reversement_facture') && <th style={{ ...th, textAlign: 'right' }}>Rev. facturé</th>}
@@ -383,14 +378,6 @@ export default function PageComptabilite() {
                   {col('frais_loy')           && <td style={{ ...td, textAlign: 'right', fontVariantNumeric: 'tabular-nums' }}>{r.frais_loy ? <span style={{ color: '#E65100' }}>-{fmtN(r.frais_loy)}</span> : '—'}</td>}
                   {col('prest_deduct')        && <td style={{ ...td, textAlign: 'right', fontVariantNumeric: 'tabular-nums' }}>{r.prest_deduct ? <span style={{ color: '#E65100' }}>-{fmtN(r.prest_deduct)}</span> : '—'}</td>}
                   {col('reversement_calcule') && <td style={{ ...td, textAlign: 'right', fontVariantNumeric: 'tabular-nums', fontWeight: r.reversement_calcule ? 600 : 400 }}>{r.reversement_calcule ? fmtN(r.reversement_calcule) : '—'}</td>}
-                  {col('vir_ht')              && <td style={{ ...td, textAlign: 'right', fontVariantNumeric: 'tabular-nums' }}>{r.vir_ht ? fmtN(r.vir_ht) : '—'}</td>}
-                  {col('ecart_vir_loy')       && <td style={{ ...td, textAlign: 'right', fontVariantNumeric: 'tabular-nums' }}>
-                    {r.ecart_vir_loy != null
-                      ? <span style={{ color: Math.abs(r.ecart_vir_loy) > 100 ? '#f59e0b' : '#9C8E7D', fontWeight: Math.abs(r.ecart_vir_loy) > 100 ? 700 : 400 }}>
-                          {r.ecart_vir_loy >= 0 ? '+' : ''}{fmtN(r.ecart_vir_loy)}
-                        </span>
-                      : '—'}
-                  </td>}
                   {col('taxe')                && <td style={{ ...td, textAlign: 'right', fontVariantNumeric: 'tabular-nums' }}>{r.taxe_ht ? fmtN(r.taxe_ht) : '—'}</td>}
                   {col('facture')             && <td style={td}>
                     {r.facture_statut
@@ -444,8 +431,6 @@ export default function PageComptabilite() {
                   {col('frais_loy')           && <td style={{ ...td, textAlign: 'right', color: '#E65100' }}>{fmtN(rowsFiltrees.reduce((s, r) => s + r.frais_loy,          0))}</td>}
                   {col('prest_deduct')        && <td style={{ ...td, textAlign: 'right', color: '#E65100' }}>{fmtN(rowsFiltrees.reduce((s, r) => s + r.prest_deduct,        0))}</td>}
                   {col('reversement_calcule') && <td style={{ ...td, textAlign: 'right' }}>{fmtN(rowsFiltrees.reduce((s, r) => s + r.reversement_calcule, 0))}</td>}
-                  {col('vir_ht')              && <td style={{ ...td, textAlign: 'right' }}>{fmtN(rowsFiltrees.reduce((s, r) => s + r.vir_ht,              0))}</td>}
-                  {col('ecart_vir_loy')       && <td style={td} />}
                   {col('taxe')                && <td style={{ ...td, textAlign: 'right' }}>{fmtN(rowsFiltrees.reduce((s, r) => s + r.taxe_ht,             0))}</td>}
                   {col('facture')             && <td style={td} />}
                   {col('reversement_facture') && <td style={td} />}

@@ -230,10 +230,10 @@ export async function buildComptaMensuelle(mois) {
     ownerStayAbsorbByBien[b.id] = osAutoAbsorb + osFmenAbsorb
 
     if (!b.proprietaire_id) continue
-    const virHt       = vent(b.id, 'VIR').ht
+    const taxeHt2     = vent(b.id, 'TAXE').ht
     const fraisDirect = fraisDirectByBien[b.id] || 0
     const rembours    = remboursParBien[b.id]   || 0
-    const virNet = Math.max(0, virHt - fraisLoy - fraisDirect - prestDeduct - deboursProp - ownerStayAbsorbByBien[b.id]) + rembours
+    const virNet = Math.max(0, loyHt - fraisLoy - fraisDirect - prestDeduct - deboursProp - ownerStayAbsorbByBien[b.id]) + taxeHt2 + rembours
     loyParProprio[b.proprietaire_id] = (loyParProprio[b.proprietaire_id] || 0) + virNet
 
     // Accumuler les composantes par proprio pour le détail de l'alerte ECART_REVERSEMENT
@@ -288,9 +288,9 @@ export async function buildComptaMensuelle(mois) {
     const debours_prop    = deboursPropByBien[b.id] || 0
     const remboursements  = remboursParBien[b.id]   || 0
     const owner_stay_absorb = ownerStayAbsorbByBien[b.id] || 0
-    const reversement_calcule = Math.max(0, vir.ht - frais_loy - frais_direct - prest_deduct - debours_prop - owner_stay_absorb) + remboursements
-
-    const ecart_vir_loy = (vir.ht > 0) ? vir.ht - reversement_calcule : null
+    // reversement = max(0, LOY − déductions) + taxes passthrough + remboursements
+    // (déductions appliquées à LOY uniquement, taxes entièrement pass-through)
+    const reversement_calcule = Math.max(0, loy.ht - frais_loy - frais_direct - prest_deduct - debours_prop - owner_stay_absorb) + taxe.ht + remboursements
 
     // Écart reversement au niveau proprio : Σ factures vs Σ reversement_calcule tous biens
     let ecart_reversement_proprio = null
@@ -392,7 +392,6 @@ export async function buildComptaMensuelle(mois) {
       fmen_ttc: fmen.ttc,
       auto_ht:  auto.ht,
       loy_ht:   loy.ht,
-      vir_ht:   vir.ht,
       taxe_ht:  taxe.ht,
       com_ht:   com.ht,
       com_tva:  com.tva,
@@ -405,7 +404,6 @@ export async function buildComptaMensuelle(mois) {
       owner_stay_absorb,
       remboursements,
       reversement_calcule,
-      ecart_vir_loy,
 
       facture_id:                  facture?.id                         ?? null,
       facture_statut:              facture?.statut                      ?? (propId ? statutParProprio[propId] : null) ?? null,
@@ -442,7 +440,6 @@ export async function buildComptaMensuelle(mois) {
     fmen_ttc: rows.reduce((s, r) => s + r.fmen_ttc, 0),
     auto_ht:  rows.reduce((s, r) => s + r.auto_ht,  0),
     loy_ht:   rows.reduce((s, r) => s + r.loy_ht,   0),
-    vir_ht:   rows.reduce((s, r) => s + r.vir_ht,   0),
     taxe_ht:  rows.reduce((s, r) => s + r.taxe_ht,  0),
     com_ht:   rows.reduce((s, r) => s + r.com_ht,   0),
     com_tva:  rows.reduce((s, r) => s + r.com_tva,  0),
@@ -532,7 +529,7 @@ export function exportComptaCSV(data) {
     'Nb resas', 'Rapprochées', 'Non rapprochées', 'Non ventilées',
     'HON HT', 'HON TVA', 'HON TTC',
     'FMEN HT', 'FMEN TVA', 'FMEN TTC',
-    'AUTO HT', 'LOY HT', 'Frais HA proprio.', 'Reversement calculé', 'VIR HT', 'Écart VIR/LOY', 'TAXE HT',
+    'AUTO HT', 'LOY HT', 'Frais HA proprio.', 'Reversement calculé', 'TAXE HT',
     'Facture statut', 'Reversement facturé', 'Écart facture', 'Alertes',
   ]
   const rows = data.rows.map(r => [
@@ -545,9 +542,7 @@ export function exportComptaCSV(data) {
     r.nb_non_ventilees,
     fmt(r.hon_ht), fmt(r.hon_tva), fmt(r.hon_ttc),
     fmt(r.fmen_ht), fmt(r.fmen_tva), fmt(r.fmen_ttc),
-    fmt(r.auto_ht), fmt(r.loy_ht), fmt(r.frais_loy), fmt(r.reversement_calcule), fmt(r.vir_ht),
-    r.ecart_vir_loy != null ? fmt(r.ecart_vir_loy) : '',
-    fmt(r.taxe_ht),
+    fmt(r.auto_ht), fmt(r.loy_ht), fmt(r.frais_loy), fmt(r.reversement_calcule), fmt(r.taxe_ht),
     r.facture_statut || '',
     fmt(r.facture_montant_reversement),
     r.ecart_reversement_proprio != null ? fmt(r.ecart_reversement_proprio) : '',
@@ -560,7 +555,7 @@ export function exportComptaCSV(data) {
     t.nb_resas, t.nb_rapprochees, t.nb_non_rapprochees, t.nb_non_ventilees,
     fmt(t.hon_ht), fmt(t.hon_tva), fmt(t.hon_ttc),
     fmt(t.fmen_ht), fmt(t.fmen_tva), fmt(t.fmen_ttc),
-    fmt(t.auto_ht), fmt(t.loy_ht), fmt(t.vir_ht), fmt(t.taxe_ht),
+    fmt(t.auto_ht), fmt(t.loy_ht), fmt(t.taxe_ht),
     '', '', '', '',
   ])
 
