@@ -335,11 +335,23 @@ export default function PageExports() {
           />
           <ExportCard
             titre="AUTO & Débours"
-            description="Relevé de prestations par AE — missions + extras"
+            description="Relevé de prestations par AE — un onglet par AE"
             loading={loading.auto}
-            loadingPreview={loading.auto_preview}
-            onClick={() => telechargerCSV('auto', `DCB_AUTO_Debours_${mois}.csv`, exportAutoDebours)}
-            onPreview={() => consulterCSV('auto', 'AUTO & Débours', exportAutoDebours, `DCB_AUTO_Debours_${mois}.csv`)}
+            onClick={async () => {
+              setLoading(prev => ({ ...prev, auto: true }))
+              setError(null)
+              try {
+                const blob = await exportAutoDebours(mois)
+                const url = URL.createObjectURL(blob)
+                const a = document.createElement('a')
+                a.href = url
+                a.download = `DCB_AUTO_Debours_${mois}.xlsx`
+                a.click()
+                URL.revokeObjectURL(url)
+              } catch (err) { setError(err.message) }
+              finally { setLoading(prev => ({ ...prev, auto: false })) }
+            }}
+            format="XLSX"
           />
           <ExportCard
             titre="Factures Evoliz"
