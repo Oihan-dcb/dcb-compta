@@ -385,10 +385,11 @@ async function genererFactureGroupe(proprio, biens, mois) {
 
   // Ne pas ÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂ©craser une facture dÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂ©jÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂ  envoyÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂ©e ou payÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂ©e
   if (existingFacture && ['envoye_evoliz', 'payee'].includes(existingFacture.statut)) {
+    // Rafraîchir la ligne mémo AUTO même si la facture est déjà envoyée à Evoliz
     const autoTotal = autoAbsorbableTotal + autoSurplusTotal
+    await supabase.from('facture_evoliz_ligne').delete()
+      .eq('facture_id', existingFacture.id).eq('code', 'AUTO')
     if (autoTotal > 0) {
-      await supabase.from('facture_evoliz_ligne').delete()
-        .eq('facture_id', existingFacture.id).eq('code', 'AUTO')
       await supabase.from('facture_evoliz_ligne').insert({
         facture_id: existingFacture.id,
         code: 'AUTO',
@@ -401,31 +402,9 @@ async function genererFactureGroupe(proprio, biens, mois) {
         ordre: 99,
       })
     }
-    // Rafraîchir aussi la ligne RECAP
-    const recapData = {
-      vir: vir.ht,
-      hon_ht: com.ht,
-      fmen_ht: menConsolide.ht,
-      auto_ht: autoAbsorbableTotal + autoSurplusTotal,
-      haowner_ht: haownerHT,
-      prest_ht: totalPrestations,
-      debp_ht: deboursPropAbsorbTotal,
-      frais_ht: fraisDeduitTotal,
-      reversement: montantReversement,
-    }
+    // Supprimer l'ancienne ligne RECAP si elle existe (remplacée par le contrôle virements UI)
     await supabase.from('facture_evoliz_ligne').delete()
       .eq('facture_id', existingFacture.id).eq('code', 'RECAP')
-    await supabase.from('facture_evoliz_ligne').insert({
-      facture_id: existingFacture.id,
-      code: 'RECAP',
-      libelle: 'Récapitulatif rapprochement',
-      description: JSON.stringify(recapData),
-      montant_ht: vir.ht,
-      taux_tva: null,
-      montant_tva: 0,
-      montant_ttc: vir.ht,
-      ordre: 100,
-    })
     return { created: false, skipped: true, raison: 'Facture déjà envoyée' }
   }
 
@@ -640,30 +619,6 @@ async function genererFactureGroupe(proprio, biens, mois) {
     })
   }
 
-
-  // Ligne mémo RECAP : rapprochement complet (non envoyé à Evoliz, taux_tva=null)
-  const recapData = {
-    vir: vir.ht,
-    hon_ht: com.ht,
-    fmen_ht: menConsolide.ht,
-    auto_ht: autoAbsorbableTotal + autoSurplusTotal,
-    haowner_ht: haownerHT,
-    prest_ht: totalPrestations,
-    debp_ht: deboursPropAbsorbTotal,
-    frais_ht: fraisDeduitTotal,
-    reversement: montantReversement,
-  }
-  lignes.push({
-    facture_id: factureId,
-    code: 'RECAP',
-    libelle: 'Récapitulatif rapprochement',
-    description: JSON.stringify(recapData),
-    montant_ht: vir.ht,
-    taux_tva: null,
-    montant_tva: 0,
-    montant_ttc: vir.ht,
-    ordre: 100,
-  })
 
   if (lignes.length > 0) {
     const { error: insertErr } = await supabase.from('facture_evoliz_ligne').insert(lignes)

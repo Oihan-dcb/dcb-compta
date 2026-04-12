@@ -570,56 +570,6 @@ const [pushing, setPushing] = useState(false)
                       </table>
                     </div>
 
-                    {/* Rapprochement RECAP */}
-                    {(() => {
-                      const recapLigne = (f.facture_evoliz_ligne || []).find(l => l.code === 'RECAP')
-                      if (!recapLigne?.description) return null
-                      let r
-                      try { r = JSON.parse(recapLigne.description) } catch { return null }
-                      const ecart = (r.vir||0) - (r.hon_ht||0) - (r.fmen_ht||0) - (r.auto_ht||0)
-                        - (r.haowner_ht||0) - (r.prest_ht||0) - (r.debp_ht||0) - (r.frais_ht||0)
-                        - (r.reversement||0)
-                      const ok = Math.abs(ecart) <= 1
-                      const fm = v => v ? `${(v/100).toFixed(2)} €` : '—'
-                      const row = (label, val, neg = false) => val ? (
-                        <tr key={label}>
-                          <td style={{ padding: '2px 8px', fontSize: 12, color: 'var(--text-muted)' }}>{label}</td>
-                          <td style={{ padding: '2px 8px', fontSize: 12, textAlign: 'right', color: neg ? '#DC2626' : 'var(--text)', fontFamily: 'monospace' }}>
-                            {neg ? `− ${fm(val)}` : `+ ${fm(val)}`}
-                          </td>
-                        </tr>
-                      ) : null
-                      return (
-                        <div style={{ marginTop: 12, border: `1px solid ${ok ? '#D1FAE5' : '#FCA5A5'}`, borderRadius: 6, overflow: 'hidden' }}>
-                          <div style={{ padding: '6px 12px', background: ok ? '#D1FAE5' : '#FEE2E2', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                            <span style={{ fontSize: 12, fontWeight: 700, color: ok ? '#059669' : '#DC2626' }}>
-                              {ok ? '✓ Rapprochement OK' : `⚠ Écart détecté : ${(ecart/100).toFixed(2)} €`}
-                            </span>
-                            <span style={{ fontSize: 11, color: 'var(--text-muted)' }}>Envoi Evoliz {ok ? 'autorisé' : 'BLOQUÉ'}</span>
-                          </div>
-                          <table style={{ width: '100%', borderCollapse: 'collapse' }}>
-                            <tbody>
-                              {row('VIR reçu des plateformes', r.vir)}
-                              {r.hon_ht > 0 && row('− Honoraires DCB (HON HT)', r.hon_ht, true)}
-                              {r.fmen_ht > 0 && row('− Forfait ménage (FMEN HT)', r.fmen_ht, true)}
-                              {r.auto_ht > 0 && row('− Prestations AE (AUTO)', r.auto_ht, true)}
-                              {r.haowner_ht > 0 && row('− Achats avancés (HAOWNER HT)', r.haowner_ht, true)}
-                              {r.prest_ht > 0 && row('− Prestas déduites (PREST)', r.prest_ht, true)}
-                              {r.debp_ht > 0 && row('− Débours proprio (DEBP)', r.debp_ht, true)}
-                              {r.frais_ht > 0 && row('− Frais déduits (FRAIS)', r.frais_ht, true)}
-                              {row('− Réversement proprio', r.reversement, true)}
-                              <tr style={{ borderTop: '1px solid var(--border)', background: ok ? '#F0FDF4' : '#FEF2F2' }}>
-                                <td style={{ padding: '4px 8px', fontSize: 12, fontWeight: 700 }}>= Écart</td>
-                                <td style={{ padding: '4px 8px', fontSize: 13, fontWeight: 700, textAlign: 'right', fontFamily: 'monospace', color: ok ? '#059669' : '#DC2626' }}>
-                                  {ok ? '0,00 €  ✓' : `${(ecart/100).toFixed(2)} €  ⚠`}
-                                </td>
-                              </tr>
-                            </tbody>
-                          </table>
-                        </div>
-                      )
-                    })()}
-
                     {/* Info reversement et IBAN */}
                     {f.montant_reversement > 0 && (
                       <div style={{ marginTop: 12, padding: '10px 14px', background: 'var(--bg, #F7F3EC)', borderRadius: 6, fontSize: 13, border: '1px solid var(--border, #D9CEB8)' }}>
