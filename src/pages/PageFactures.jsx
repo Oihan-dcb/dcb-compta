@@ -51,6 +51,10 @@ const [pushing, setPushing] = useState(false)
   const [loadingVirements, setLoadingVirements] = useState(false)
   const [listeAE, setListeAE] = useState([]) // [{ nom, prenom }]
 
+  // Contrôle trésorerie (solde = VIRSEPA_credits - VIR - HON - FMEN - AUTOREEL - PREST - HAOWNER - COM)
+  const [soldesControle, setSoldesControle] = useState({}) // facture_id → { credits, vir, hon, fmen, autoreel, prest, haowner, com, solde }
+  const [loadingSoldes, setLoadingSoldes] = useState(false)
+
   useEffect(() => { charger(); chargerCOM(); chargerVirements() }, [mois])
 
   // Persistance localStorage pour liens et commentaires
@@ -160,6 +164,134 @@ const [pushing, setPushing] = useState(false)
     }
   }
 
+  async function chargerSoldesControle(facturesList) {
+    if (!facturesList?.length) return
+    setLoadingSoldes(true)
+    try {
+      const { supabase } = await import('../lib/supabase')
+
+      // Collect bien_ids per facture
+      const factureBienMap = {}
+      const allBienIds = new Set()
+      for (const f of facturesList) {
+        const bienIds = f.bien?.id
+          ? [f.bien.id]
+          : (f.proprietaire?.bien || []).map(b => b.id).filter(Boolean)
+        factureBienMap[f.id] = bienIds
+        bienIds.forEach(id => allBienIds.add(id))
+      }
+      const uniqueBienIds = [...allBienIds]
+      if (!uniqueBienIds.length) return
+
+      // ── 1. VIRSEPA credits per bien via payout chain ──
+      const { data: creditMvts } = await supabase
+        .from('mouvement_bancaire')
+        .select('id, credit')
+        .eq('mois_releve', mois)
+        .gt('credit', 0)
+
+      const creditByMvtId = {}
+      for (const m of (creditMvts || [])) creditByMvtId[m.id] = m.credit
+      const mvtIds = Object.keys(creditByMvtId)
+
+      const payoutsData = mvtIds.length
+        ? (await supabase.from('payout_hospitable').select('id, mouvement_id').in('mouvement_id', mvtIds)).data || []
+        : []
+      const mvtIdByPayoutId = {}
+      for (const p of payoutsData) mvtIdByPayoutId[p.id] = p.mouvement_id
+      const payoutIds = Object.keys(mvtIdByPayoutId)
+
+      // Fetch ALL reservations per payout (not filtered by bien_id) for correct proportional allocation
+      const payoutResasRaw = payoutIds.length
+        ? (await supabase.from('payout_reservation').select('payout_id, reservation!inner(id, bien_id, fin_revenue)').in('payout_id', payoutIds)).data || []
+        : []
+
+      // Proportional credit allocation per bien (by fin_revenue share within each payout)
+      const seenResaInPayout = new Set()
+      const resasByPayout = {}
+      for (const pr of payoutResasRaw) {
+        const r = pr.reservation
+        if (!r?.bien_id) continue
+        const key = `${pr.payout_id}-${r.id}`
+        if (seenResaInPayout.has(key)) continue
+        seenResaInPayout.add(key)
+        if (!resasByPayout[pr.payout_id]) resasByPayout[pr.payout_id] = []
+        resasByPayout[pr.payout_id].push({ bien_id: r.bien_id, fin_revenue: r.fin_revenue || 0 })
+      }
+
+      const creditsByBien = {}
+      for (const [payoutId, resas] of Object.entries(resasByPayout)) {
+        const mvtId = mvtIdByPayoutId[payoutId]
+        if (!mvtId) continue
+        const credit = creditByMvtId[mvtId] || 0
+        if (credit === 0) continue
+        const bienRev = {}
+        for (const r of resas) bienRev[r.bien_id] = (bienRev[r.bien_id] || 0) + r.fin_revenue
+        const totalRev = Object.values(bienRev).reduce((s, v) => s + v, 0)
+        for (const [bid, rev] of Object.entries(bienRev)) {
+          creditsByBien[bid] = (creditsByBien[bid] || 0) +
+            (totalRev > 0 ? Math.round(credit * rev / totalRev) : Math.round(credit / Object.keys(bienRev).length))
+        }
+      }
+
+      // ── 2. Ventilation per bien/mois (VIR, HON, FMEN, AUTOREEL, COM) ──
+      const { data: ventRows } = await supabase
+        .from('ventilation')
+        .select('bien_id, code, montant_ht, montant_reel')
+        .eq('mois', mois)
+        .in('bien_id', uniqueBienIds)
+        .in('code', ['VIR', 'HON', 'FMEN', 'AUTO', 'COM'])
+
+      const ventByBien = {}
+      for (const v of (ventRows || [])) {
+        if (!ventByBien[v.bien_id]) ventByBien[v.bien_id] = { VIR: 0, HON: 0, FMEN: 0, AUTOREEL: 0, COM: 0 }
+        const b = ventByBien[v.bien_id]
+        if (v.code === 'VIR') b.VIR += (v.montant_ht || 0)
+        else if (v.code === 'HON') b.HON += (v.montant_ht || 0)
+        else if (v.code === 'FMEN') b.FMEN += (v.montant_ht || 0)
+        else if (v.code === 'AUTO') b.AUTOREEL += (v.montant_reel != null ? v.montant_reel : (v.montant_ht || 0))
+        else if (v.code === 'COM') b.COM += (v.montant_ht || 0)
+      }
+
+      // ── 3. Prestations (PREST = deduction_loy, HAOWNER = haowner) ──
+      const { data: prestRows } = await supabase
+        .from('prestation_hors_forfait')
+        .select('bien_id, type_imputation, montant_ht')
+        .eq('mois', mois)
+        .in('bien_id', uniqueBienIds)
+        .in('type_imputation', ['deduction_loy', 'haowner'])
+
+      const prestByBien = {}
+      for (const p of (prestRows || [])) {
+        if (!prestByBien[p.bien_id]) prestByBien[p.bien_id] = { PREST: 0, HAOWNER: 0 }
+        if (p.type_imputation === 'deduction_loy') prestByBien[p.bien_id].PREST += (p.montant_ht || 0)
+        else if (p.type_imputation === 'haowner') prestByBien[p.bien_id].HAOWNER += (p.montant_ht || 0)
+      }
+
+      // ── Build per-facture solde ──
+      const result = {}
+      for (const f of facturesList) {
+        const bienIds = factureBienMap[f.id]
+        let credits = 0, vir = 0, hon = 0, fmen = 0, autoreel = 0, com = 0, prest = 0, haowner = 0
+        for (const bid of bienIds) {
+          credits += creditsByBien[bid] || 0
+          const bv = ventByBien[bid] || {}
+          vir += bv.VIR || 0; hon += bv.HON || 0; fmen += bv.FMEN || 0
+          autoreel += bv.AUTOREEL || 0; com += bv.COM || 0
+          const bp = prestByBien[bid] || {}
+          prest += bp.PREST || 0; haowner += bp.HAOWNER || 0
+        }
+        result[f.id] = { credits, vir, hon, fmen, autoreel, prest, haowner, com,
+          solde: credits - vir - hon - fmen - autoreel - prest - haowner - com }
+      }
+      setSoldesControle(result)
+    } catch (err) {
+      console.error('chargerSoldesControle:', err)
+    } finally {
+      setLoadingSoldes(false)
+    }
+  }
+
   async function charger() {
     setLoading(true)
     setError(null)
@@ -167,6 +299,7 @@ const [pushing, setPushing] = useState(false)
       const [f, s] = await Promise.all([getFacturesMois(mois), getStatsFactures(mois)])
       setFactures(f)
       setStats(s)
+      chargerSoldesControle(f)
     } catch (err) {
       setError(err.message)
     } finally {
@@ -570,45 +703,56 @@ const [pushing, setPushing] = useState(false)
                       </table>
                     </div>
 
-                    {/* Décomposition comptable */}
+                    {/* Contrôle trésorerie — VIRSEPA réels vs reversements */}
                     {(() => {
-                      const ls = f.facture_evoliz_ligne || []
-                      const sum = (code, field = 'montant_ttc') => ls.filter(l => l.code === code).reduce((s, l) => s + (l[field] || 0), 0)
-                      const honTTC   = sum('HON')
-                      const fmenTTC  = sum('FMEN')
-                      const autoHT   = sum('AUTO', 'montant_ht')
-                      const prestTTC = Math.abs(sum('PREST'))
-                      const haownerTTC = sum('HAOWNER')
-                      const debpHT   = Math.abs(sum('DEBP'))
-                      const fraisPos = ls.filter(l => l.code === 'FRAIS' && (l.montant_ttc || 0) < 0).reduce((s, l) => s + Math.abs(l.montant_ttc || 0), 0)
-                      const rev      = f.montant_reversement || 0
-                      const total    = honTTC + fmenTTC + autoHT + prestTTC + haownerTTC + debpHT + fraisPos + rev
-                      if (total === 0) return null
-                      const fm = v => (v / 100).toFixed(2) + ' €'
-                      const row = (label, val, color = 'var(--text)') => val > 0 ? (
+                      const sc = soldesControle[f.id]
+                      if (!sc) {
+                        return loadingSoldes ? (
+                          <div style={{ marginTop: 12, padding: '8px 12px', fontSize: 12, color: 'var(--text-muted)', border: '1px solid var(--border)', borderRadius: 6, display: 'flex', alignItems: 'center', gap: 8 }}>
+                            <span className="spinner" style={{ width: 12, height: 12 }} /> Chargement contrôle trésorerie…
+                          </div>
+                        ) : null
+                      }
+                      if (sc.credits === 0 && sc.vir === 0 && sc.hon === 0) return null
+                      const fm = v => (Math.abs(v) / 100).toFixed(2) + ' €'
+                      const solde = sc.solde
+                      const [soldeColor, soldeLabel] = solde === 0
+                        ? ['#059669', '✓ Équilibre — reversements couverts par encaissements réels']
+                        : solde > 0
+                          ? ['#D97706', `⚠ Excédent non affecté : ${fm(solde)}`]
+                          : ['#DC2626', `⛔ Déficit critique : ${fm(solde)} reversé sans encaissement`]
+                      const rs = { padding: '3px 10px', fontSize: 12 }
+                      const row = (label, val, isCredit = false) => val === 0 ? null : (
                         <tr key={label}>
-                          <td style={{ padding: '3px 10px', fontSize: 12, color: 'var(--text-muted)' }}>{label}</td>
-                          <td style={{ padding: '3px 10px', fontSize: 12, textAlign: 'right', fontFamily: 'monospace', color }}>{fm(val)}</td>
+                          <td style={{ ...rs, color: 'var(--text-muted)' }}>{label}</td>
+                          <td style={{ ...rs, textAlign: 'right', fontFamily: 'monospace', color: isCredit ? '#059669' : 'var(--text)' }}>
+                            {isCredit ? '+ ' : '− '}{fm(val)}
+                          </td>
                         </tr>
-                      ) : null
+                      )
                       return (
-                        <div style={{ marginTop: 12, border: '1px solid var(--border)', borderRadius: 6, overflow: 'hidden' }}>
+                        <div style={{ marginTop: 12, border: `1px solid ${solde < 0 ? '#FCA5A5' : 'var(--border)'}`, borderRadius: 6, overflow: 'hidden', background: solde < 0 ? '#FFF5F5' : undefined }}>
                           <div style={{ padding: '5px 10px', background: 'var(--bg)', borderBottom: '1px solid var(--border)', fontSize: 11, fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: 1 }}>
-                            Décomposition — Attendu plateforme
+                            Contrôle trésorerie
                           </div>
                           <table style={{ width: '100%', borderCollapse: 'collapse' }}>
                             <tbody>
-                              {row('Honoraires DCB (HON TTC)', honTTC)}
-                              {row('Forfait ménage (FMEN TTC)', fmenTTC)}
-                              {row('Prestations AE (AUTO — mémo)', autoHT, '#92400E')}
-                              {row('Prestas déduites (PREST)', prestTTC)}
-                              {row('Achats avancés (HAOWNER TTC)', haownerTTC)}
-                              {row('Débours proprio (DEBP)', debpHT)}
-                              {row('Frais déduits du loyer', fraisPos)}
-                              {row('Reversement propriétaire', rev)}
+                              {row('Encaissements VIRSEPA (compte DCB)', sc.credits, true)}
+                              {row('Reversement propriétaire (VIR)', sc.vir)}
+                              {row('Honoraires DCB (HON)', sc.hon)}
+                              {row('Forfait ménage (FMEN)', sc.fmen)}
+                              {row('Coûts AE réels (AUTOREEL)', sc.autoreel)}
+                              {row('Prestations déduites (PREST)', sc.prest)}
+                              {row('Achats proprio (HAOWNER)', sc.haowner)}
+                              {row('Commissions directes (COM)', sc.com)}
                               <tr style={{ borderTop: '2px solid var(--brand)', background: 'var(--bg)', fontWeight: 700 }}>
-                                <td style={{ padding: '5px 10px', fontSize: 12 }}>= Total attendu de la plateforme</td>
-                                <td style={{ padding: '5px 10px', fontSize: 13, textAlign: 'right', fontFamily: 'monospace', color: 'var(--brand)' }}>{fm(total)}</td>
+                                <td style={{ padding: '5px 10px', fontSize: 12, color: soldeColor }}>= Solde</td>
+                                <td style={{ padding: '5px 10px', fontSize: 13, textAlign: 'right', fontFamily: 'monospace', color: soldeColor }}>
+                                  {solde > 0 ? '+ ' : solde < 0 ? '− ' : ''}{fm(solde)}
+                                </td>
+                              </tr>
+                              <tr>
+                                <td colSpan={2} style={{ padding: '3px 10px 6px', fontSize: 11, color: soldeColor, fontStyle: 'italic' }}>{soldeLabel}</td>
                               </tr>
                             </tbody>
                           </table>
