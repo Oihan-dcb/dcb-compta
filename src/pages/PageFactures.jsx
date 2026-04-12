@@ -135,14 +135,13 @@ const [pushing, setPushing] = useState(false)
     setLoadingVirements(true)
     try {
       const { supabase } = await import('../lib/supabase')
-      const [y, m] = mois.split('-')
-      const dateMin = `${y}-${m}-01`
-      const lastDay = new Date(Number(y), Number(m), 0).getDate()
-      const dateMax = `${y}-${m}-${String(lastDay).padStart(2, '0')}`
+      // Les virements du mois M sont souvent exécutés en M+1 → chercher sur mois ET mois+1
+      const [y, m] = mois.split('-').map(Number)
+      const moisSuivant = m === 12 ? `${y + 1}-01` : `${y}-${String(m + 1).padStart(2, '0')}`
       const { data, error } = await supabase
         .from('mouvement_bancaire')
-        .select('id, libelle, detail, debit, date_operation, canal')
-        .eq('mois_releve', mois)
+        .select('id, libelle, detail, debit, date_operation, canal, mois_releve')
+        .in('mois_releve', [mois, moisSuivant])
         .gt('debit', 0)
         .order('date_operation', { ascending: true })
       if (error) throw error
