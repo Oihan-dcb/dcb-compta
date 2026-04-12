@@ -577,10 +577,13 @@ const [pushing, setPushing] = useState(false)
         // Normalisation pour matching
         const norm = s => (s || '').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/[^a-z0-9]/g, ' ').replace(/\s+/g, ' ').trim()
 
-        // Auto-match sur detail (ex: "Loyer Mars EKIA") puis libelle — code bien uniquement
+        // Auto-match sur detail (ex: "Loyer Mars EKIA") — code du bien de la facture uniquement
         function autoMatchVirement(f) {
-          const proprio = f.proprietaire
-          const tokens = (proprio?.bien || []).map(b => norm(b.code)).filter(t => t.length >= 2)
+          // Si la facture est liée à un bien précis, matcher sur ce code ; sinon sur tous les biens du proprio
+          const bienCode = f.bien?.code
+          const tokens = bienCode
+            ? [norm(bienCode)].filter(t => t.length >= 2)
+            : (f.proprietaire?.bien || []).map(b => norm(b.code)).filter(t => t.length >= 2)
 
           let best = null, bestScore = 0
           for (const vir of virementsSortants) {
@@ -592,9 +595,9 @@ const [pushing, setPushing] = useState(false)
           return bestScore >= 1 ? best : null
         }
 
-        // Résoudre le virement lié (manuel > auto)
+        // Résoudre le virement lié (manuel > auto) — clé = id facture
         function getVirementLie(f) {
-          const manuelId = liensVirements[f.proprietaire_id]
+          const manuelId = liensVirements[f.id]
           if (manuelId) return virementsSortants.find(v => v.id === manuelId) || null
           return autoMatchVirement(f)
         }
@@ -642,12 +645,12 @@ const [pushing, setPushing] = useState(false)
                     const vir = getVirementLie(f)
                     const ecart = vir ? f.montant_reversement - vir.debit : null
                     const ok = ecart !== null && Math.abs(ecart) <= 100 // tolérance 1€
-                    const manuelLien = liensVirements[f.proprietaire_id]
-                    const commentaire = commentairesCtrl[f.proprietaire_id] || ''
+                    const manuelLien = liensVirements[f.id]
+                    const commentaire = commentairesCtrl[f.id] || ''
 
                     // Options disponibles pour sélecteur manuel
                     const options = virementsSortants.filter(v =>
-                      !Object.entries(liensVirements).some(([pid, mid]) => mid === v.id && pid !== f.proprietaire_id)
+                      !Object.entries(liensVirements).some(([fid, mid]) => mid === v.id && fid !== f.id)
                     )
 
                     return (
@@ -663,8 +666,8 @@ const [pushing, setPushing] = useState(false)
                             onChange={e => {
                               const val = e.target.value || null
                               const newLiens = val
-                                ? { ...liensVirements, [f.proprietaire_id]: val }
-                                : Object.fromEntries(Object.entries(liensVirements).filter(([k]) => k !== f.proprietaire_id))
+                                ? { ...liensVirements, [f.id]: val }
+                                : Object.fromEntries(Object.entries(liensVirements).filter(([k]) => k !== f.id))
                               setLiensVirements(newLiens)
                               sauvegarderCtrl(newLiens, null)
                             }}
@@ -699,7 +702,7 @@ const [pushing, setPushing] = useState(false)
                             value={commentaire}
                             placeholder="Note…"
                             onChange={e => {
-                              const newComm = { ...commentairesCtrl, [f.proprietaire_id]: e.target.value }
+                              const newComm = { ...commentairesCtrl, [f.id]: e.target.value }
                               setCommentairesCtrl(newComm)
                               sauvegarderCtrl(null, newComm)
                             }}
