@@ -230,9 +230,8 @@ export async function getMouvementsMois(mois) {
     if (stripeIds.length > 0) {
       const { data: stripeLines } = await supabase
         .from('stripe_payout_line')
-        .select('mouvement_id, reservation_code, guest_name, montant_net, description')
+        .select('mouvement_id, reservation_code, guest_name, montant_net, description, type_ligne')
         .in('mouvement_id', stripeIds)
-        .eq('type_ligne', 'reservation')
 
       if (stripeLines?.length > 0) {
         // Charger les r?servations correspondantes
@@ -249,6 +248,13 @@ export async function getMouvementsMois(mois) {
           const mvtId = line.mouvement_id
           if (!infoStripe[mvtId]) infoStripe[mvtId] = { biens: [], guests: [], reservation_ids: [], codes: [], platform: 'direct', arrival_date: null, departure_date: null, nights: 0, fin_revenue: 0, nb_resas: 0 }
           const info = infoStripe[mvtId]
+
+          // Toutes les lignes contribuent au total (frais Stripe sont négatifs)
+          info.fin_revenue += (line.montant_net || 0)
+
+          // Seules les lignes réservation enrichissent le détail
+          if (line.type_ligne !== 'reservation') continue
+
           const resa = resaByCode[line.reservation_code]
           if (resa) {
             const bien = resa.bien?.hospitable_name
@@ -257,7 +263,6 @@ export async function getMouvementsMois(mois) {
             const isNewResa = !info.reservation_ids.includes(resa.id)
             if (isNewResa) info.reservation_ids.push(resa.id)
             if (!info.codes.includes(resa.code)) info.codes.push(resa.code)
-            info.fin_revenue += (line.montant_net || 0)  // montant réellement reçu dans ce payout, pas fin_revenue total
             if (isNewResa) info.nights += (resa.nights || 0)
             if (isNewResa) info.nb_resas++
             if (!info.arrival_date || resa.arrival_date < info.arrival_date) info.arrival_date = resa.arrival_date

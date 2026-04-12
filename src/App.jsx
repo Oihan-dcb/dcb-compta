@@ -45,7 +45,6 @@ function ConfigDropdown() {
         <div style={{ position: 'absolute', top: '110%', right: 0, zIndex: 200, background: '#EAE3D4', border: '1px solid var(--border)', borderRadius: 10, boxShadow: '0 8px 24px rgba(0,0,0,0.18)', minWidth: 150, padding: '6px 0' }}
           onMouseLeave={() => setOpen(false)}>
           {[
-            { to: '/exports', label: 'Exports' },
             { to: '/import', label: 'Import CSV' },
             { to: '/journal', label: 'Journal' },
             { to: '/bugs', label: '🐛 Bugs' },
@@ -108,6 +107,7 @@ export default function App() {
             <NavLink to="/auto-entrepreneurs" className={({isActive}) => isActive ? 'nav-link active' : 'nav-link'}>Staff</NavLink>
             <NavLink to="/factures" className={({isActive}) => isActive ? 'nav-link active' : 'nav-link'}>Facturation</NavLink>
             <NavLink to="/comptabilite" className={({isActive}) => isActive ? 'nav-link active' : 'nav-link'}>Comptabilité</NavLink>
+            <NavLink to="/exports" className={({isActive}) => isActive ? 'nav-link active' : 'nav-link'}>Exports</NavLink>
             <ConfigDropdown />
           </nav>
         </header>
