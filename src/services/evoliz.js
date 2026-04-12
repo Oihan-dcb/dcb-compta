@@ -110,6 +110,29 @@ export async function creerClientEvoliz(proprietaire) {
  */
 export async function creerFactureEvoliz(facture) {
   // CF-F2 niveau 1 - guard idempotence : ne pas recreer si deja envoye vers Evoliz
+  // GARDE-FOU : vérifier le rapprochement RECAP avant envoi
+  const recapLigne = (facture.facture_evoliz_ligne || []).find(l => l.code === 'RECAP')
+  if (recapLigne?.description) {
+    try {
+      const r = JSON.parse(recapLigne.description)
+      const ecart = (r.vir || 0) - (r.hon_ht || 0) - (r.fmen_ht || 0) - (r.auto_ht || 0)
+        - (r.haowner_ht || 0) - (r.prest_ht || 0) - (r.debp_ht || 0) - (r.frais_ht || 0)
+        - (r.reversement || 0)
+      if (Math.abs(ecart) > 1) {
+        throw new Error(
+          `RAPPROCHEMENT KO : écart de ${(ecart/100).toFixed(2)}€ détecté.
+` +
+          `  VIR=${r.vir} HON=${r.hon_ht} FMEN=${r.fmen_ht} AUTO=${r.auto_ht} HAOWNER=${r.haowner_ht} PREST=${r.prest_ht} DEBP=${r.debp_ht} FRAIS=${r.frais_ht} REV=${r.reversement}
+` +
+          `  Regeneere la facture pour corriger avant d'envoyer.`
+        )
+      }
+    } catch (e) {
+      if (e.message.startsWith('RAPPROCHEMENT KO')) throw e
+      // JSON parse error : ignorer
+    }
+  }
+
   if (facture.id_evoliz) {
     throw new Error(
       `CF-F2 : facture deja envoyee dans Evoliz - push ignore.\n` +
