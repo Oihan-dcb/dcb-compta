@@ -236,6 +236,8 @@ const [pushing, setPushing] = useState(false)
   // Exclure les factures sans rien à facturer (calcul_en_cours = total zéro)
   const facturesVisibles = factures.filter(f => f.statut !== 'calcul_en_cours')
 
+  const fmtDate = d => d ? d.split('-').reverse().join('/') : '—'
+
   // Tri : code bien direct, ou label groupe (Maison Maïté → "M..."), ou premier code proprio
   function labelFacture(f) {
     if (f.bien?.code) return f.bien.code
@@ -671,7 +673,7 @@ const [pushing, setPushing] = useState(false)
                             <option value="">— non lié</option>
                             {options.map(v => (
                               <option key={v.id} value={v.id}>
-                                {(v.libelle || '').substring(0, 40)} · {(v.debit / 100).toFixed(2)} € · {v.date_operation}
+                                {(v.libelle || '').substring(0, 40)} · {(v.debit / 100).toFixed(2)} € · {fmtDate(v.date_operation)}
                               </option>
                             ))}
                           </select>
@@ -743,7 +745,7 @@ const [pushing, setPushing] = useState(false)
                 <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
                   {virementsNonLiés.map(v => (
                     <div key={v.id} style={{ fontSize: 12, color: 'var(--text-muted)', fontFamily: 'monospace' }}>
-                      {v.date_operation} · <strong>{(v.debit / 100).toFixed(2)} €</strong> · {v.libelle}
+                      {fmtDate(v.date_operation)} · <strong>{(v.debit / 100).toFixed(2)} €</strong> · {v.libelle}
                       {v.canal && <span style={{ marginLeft: 8, color: '#9CA3AF' }}>[{v.canal}]</span>}
                     </div>
                   ))}
