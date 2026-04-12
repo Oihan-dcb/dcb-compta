@@ -176,20 +176,6 @@ export async function creerFactureEvoliz(facture) {
     // saveInvoice : passe de filled → create, numéro définitif attribué
     const savedInvoice = await evolizCall('saveInvoice', { invoiceId })
     invoiceNumber = savedInvoice?.document_number
-
-    // Paiement automatique — virement compte de gestion DCB
-    const montantTTC = (facture.facture_evoliz_ligne || [])
-      .filter(l => l.montant_ttc > 0)
-      .reduce((s, l) => s + Math.round(l.montant_ttc), 0) / 100
-    if (montantTTC > 0) {
-      await evolizCall('createPayment', {
-        invoiceId,
-        paydate: dateEmission,
-        label: 'Virement compte de gestion DCB',
-        paytypeid: 4,
-        amount: montantTTC,
-      })
-    }
   } catch (evolizErr) {
     // Evoliz a échoué — aucune facture finalisée côté Evoliz : reset à 'valide'
     await supabase.from('facture_evoliz')
@@ -206,7 +192,7 @@ export async function creerFactureEvoliz(facture) {
       .update({
         id_evoliz: String(invoiceId),
         numero_facture: invoiceNumber || null,
-        statut: 'payee',
+        statut: 'envoye_evoliz',
         date_emission: dateEmission,
       })
       .eq('id', facture.id)
@@ -339,21 +325,9 @@ export async function pousserFactureCOMVersEvoliz(factureId, totals, mois) {
     const invoiceNumber = savedInvoice?.document_number
     const dateEmission = new Date().toISOString().substring(0, 10)
 
-    // 4. Solder automatiquement — virement compte de gestion DCB
-    const montantTTC = totals.ttc / 100
-    if (montantTTC > 0) {
-      await evolizCall('createPayment', {
-        invoiceId,
-        paydate: dateEmission,
-        label: 'Règlement compte gestion vers compte courant',
-        paytypeid: 4,
-        amount: montantTTC,
-      })
-    }
-
     // 5. Mettre à jour Supabase
     await supabase.from('facture_evoliz').update({
-      statut: 'payee',
+      statut: 'envoye_evoliz',
       id_evoliz: String(invoiceId),
       numero_facture: invoiceNumber || null,
       date_emission: dateEmission,
