@@ -230,10 +230,10 @@ export async function buildComptaMensuelle(mois) {
     ownerStayAbsorbByBien[b.id] = osAutoAbsorb + osFmenAbsorb
 
     if (!b.proprietaire_id) continue
-    const taxeHt2     = vent(b.id, 'TAXE').ht
+    const virHt2      = vent(b.id, 'VIR').ht
     const fraisDirect = fraisDirectByBien[b.id] || 0
     const rembours    = remboursParBien[b.id]   || 0
-    const virNet = Math.max(0, loyHt - fraisLoy - fraisDirect - prestDeduct - deboursProp - ownerStayAbsorbByBien[b.id]) + taxeHt2 + rembours
+    const virNet = Math.max(0, virHt2 - fraisLoy - fraisDirect - prestDeduct - deboursProp - ownerStayAbsorbByBien[b.id]) + rembours
     loyParProprio[b.proprietaire_id] = (loyParProprio[b.proprietaire_id] || 0) + virNet
 
     // Accumuler les composantes par proprio pour le détail de l'alerte ECART_REVERSEMENT
@@ -288,9 +288,9 @@ export async function buildComptaMensuelle(mois) {
     const debours_prop    = deboursPropByBien[b.id] || 0
     const remboursements  = remboursParBien[b.id]   || 0
     const owner_stay_absorb = ownerStayAbsorbByBien[b.id] || 0
-    // reversement = max(0, LOY − déductions) + taxes passthrough + remboursements
-    // (déductions appliquées à LOY uniquement, taxes entièrement pass-through)
-    const reversement_calcule = Math.max(0, loy.ht - frais_loy - frais_direct - prest_deduct - debours_prop - owner_stay_absorb) + taxe.ht + remboursements
+    // reversement = max(0, VIR − déductions) + remboursements
+    // Aligné sur facturesEvoliz.js — VIR est la base (inclut taxes passthrough le cas échéant)
+    const reversement_calcule = Math.max(0, vir.ht - frais_loy - frais_direct - prest_deduct - debours_prop - owner_stay_absorb) + remboursements
 
     // Écart reversement au niveau proprio : Σ factures vs Σ reversement_calcule tous biens
     let ecart_reversement_proprio = null
