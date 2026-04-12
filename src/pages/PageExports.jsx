@@ -3,7 +3,7 @@ import MoisSelector from '../components/MoisSelector'
 import { useMoisPersisted } from '../hooks/useMoisPersisted'
 import { supabase } from '../lib/supabase'
 import { exportRapprochementBancaire } from '../services/exportRapprochementBancaire'
-import { exportAutoDebours } from '../services/exportAutoDebours'
+import { exportAutoDebours, exportAutoDeboursCombined } from '../services/exportAutoDebours'
 import { exportFacturesEvoliz } from '../services/exportFacturesEvoliz'
 import { exportReservationsDetaillees } from '../services/exportReservationsDetaillees'
 import { exportDeboursPrestations } from '../services/exportDeboursPrestations'
@@ -337,6 +337,8 @@ export default function PageExports() {
             titre="AUTO & Débours"
             description="Relevé de prestations par AE — un onglet par AE"
             loading={loading.auto}
+            loadingPreview={loading.auto_preview}
+            onPreview={() => consulterCSV('auto', 'AUTO & Débours', exportAutoDeboursCombined, `DCB_AUTO_Debours_${mois}.csv`)}
             onClick={async () => {
               setLoading(prev => ({ ...prev, auto: true }))
               setError(null)
