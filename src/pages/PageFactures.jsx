@@ -572,21 +572,23 @@ const [pushing, setPushing] = useState(false)
       {/* ── Contrôle virements propriétaires ── */}
       {(() => {
         const facturesAvecReversement = facturesTries.filter(f => f.montant_reversement > 0)
-        if (facturesAvecReversement.length === 0) return null
+        if (facturesAvecReversement.length === 0 && !comFacture) return null
+
+        // Exclure virements AE (auto-entrepreneurs) — pas des reversements proprio
+        const virsTableau = virementsSortants.filter(v => v.canal !== 'sortant_ae')
 
         // Normalisation pour matching
         const norm = s => (s || '').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/[^a-z0-9]/g, ' ').replace(/\s+/g, ' ').trim()
 
         // Auto-match sur detail (ex: "Loyer Mars EKIA") — code du bien de la facture uniquement
         function autoMatchVirement(f) {
-          // Si la facture est liée à un bien précis, matcher sur ce code ; sinon sur tous les biens du proprio
           const bienCode = f.bien?.code
           const tokens = bienCode
             ? [norm(bienCode)].filter(t => t.length >= 2)
             : (f.proprietaire?.bien || []).map(b => norm(b.code)).filter(t => t.length >= 2)
 
           let best = null, bestScore = 0
-          for (const vir of virementsSortants) {
+          for (const vir of virsTableau) {
             if (Object.values(liensVirements).includes(vir.id)) continue
             const lib = norm((vir.detail || '') + ' ' + (vir.libelle || ''))
             const score = tokens.reduce((s, t) => s + (lib.includes(t) ? 1 : 0), 0)
@@ -596,19 +598,24 @@ const [pushing, setPushing] = useState(false)
         }
 
         // Résoudre le virement lié (manuel > auto) — clé = id facture
-        // liensVirements[f.id] = 'none' → explicitement non lié (bloque l'auto-match)
-        // liensVirements[f.id] = mouvement_id → lien manuel
-        // absent → auto-match
-        function getVirementLie(f) {
-          const manuelId = liensVirements[f.id]
+        // liensVirements[id] = 'none' → explicitement non lié ; id → lien manuel ; absent → auto-match
+        function getVirementLie(id, autoMatchFn) {
+          const manuelId = liensVirements[id]
           if (manuelId === 'none') return null
-          if (manuelId) return virementsSortants.find(v => v.id === manuelId) || null
-          return autoMatchVirement(f)
+          if (manuelId) return virsTableau.find(v => v.id === manuelId) || null
+          return autoMatchFn ? autoMatchFn() : null
         }
 
+        const COM_KEY = comFacture ? `com-${comFacture.id}` : null
+        const virComLie = COM_KEY ? getVirementLie(COM_KEY, null) : null
+
+        const allLiés = new Set([
+          ...facturesAvecReversement.map(f => getVirementLie(f.id, () => autoMatchVirement(f))?.id),
+          virComLie?.id,
+        ].filter(Boolean))
+
         const totalAttendu = facturesAvecReversement.reduce((s, f) => s + f.montant_reversement, 0)
-        const virementsDejàLiés = new Set(facturesAvecReversement.map(f => getVirementLie(f)?.id).filter(Boolean))
-        const virementsNonLiés = virementsSortants.filter(v => !virementsDejàLiés.has(v.id))
+        const virementsNonLiés = virsTableau.filter(v => !allLiés.has(v.id))
 
         return (
           <div style={{ marginTop: 32, border: '1px solid var(--border)', borderRadius: 'var(--radius)', background: 'var(--white)', overflow: 'hidden' }}>
@@ -639,6 +646,68 @@ const [pushing, setPushing] = useState(false)
                   </tr>
                 </thead>
                 <tbody>
+                  {/* Ligne COM */}
+                  {comFacture && COM_KEY && (
+                    (() => {
+                      const manuelLienCOM = liensVirements[COM_KEY]
+                      const commentaireCOM = commentairesCtrl[COM_KEY] || ''
+                      const ecartCOM = virComLie ? comFacture.total_ttc - virComLie.debit : null
+                      const okCOM = ecartCOM !== null && Math.abs(ecartCOM) <= 100
+                      const optionsCOM = virsTableau.filter(v => !allLiés.has(v.id) || virComLie?.id === v.id)
+                      return (
+                        <tr key="com" style={{ background: '#F0EBE1' }}>
+                          <td>
+                            <span style={{ fontFamily: 'monospace', color: 'var(--brand)', fontSize: 12, marginRight: 6 }}>COM</span>
+                            <span style={{ fontWeight: 500 }}>Commissions Web Directes — CLI-RESA-WEB-DCB</span>
+                          </td>
+                          <td className="right montant" style={{ fontWeight: 600 }}>{(comFacture.total_ttc / 100).toFixed(2)} €</td>
+                          <td style={{ fontSize: 13, maxWidth: 220 }}>
+                            <select
+                              value={manuelLienCOM === 'none' ? '' : (manuelLienCOM || virComLie?.id || '')}
+                              onChange={e => {
+                                const val = e.target.value === '' ? 'none' : e.target.value
+                                const newLiens = { ...liensVirements, [COM_KEY]: val }
+                                setLiensVirements(newLiens)
+                                sauvegarderCtrl(newLiens, null)
+                              }}
+                              style={{ fontSize: 12, width: '100%', padding: '3px 6px', border: '1px solid var(--border)', borderRadius: 4, background: 'white' }}
+                            >
+                              <option value="">— non lié</option>
+                              {optionsCOM.map(v => (
+                                <option key={v.id} value={v.id}>
+                                  {(v.detail || v.libelle || '').substring(0, 45)} · {(v.debit / 100).toFixed(2)} € · {fmtDate(v.date_operation)}
+                                </option>
+                              ))}
+                            </select>
+                          </td>
+                          <td className="right montant" style={{ color: virComLie ? 'var(--text)' : 'var(--text-muted)' }}>
+                            {virComLie ? `${(virComLie.debit / 100).toFixed(2)} €` : '—'}
+                          </td>
+                          <td className="right montant" style={{ fontWeight: 600, color: ecartCOM === null ? 'var(--text-muted)' : okCOM ? '#059669' : '#DC2626' }}>
+                            {ecartCOM === null ? '—' : ecartCOM === 0 ? '✓ 0' : `${ecartCOM > 0 ? '+' : ''}${(ecartCOM / 100).toFixed(2)} €`}
+                          </td>
+                          <td>
+                            {virComLie === null
+                              ? <span style={{ padding: '3px 10px', borderRadius: 100, fontSize: 11, fontWeight: 600, background: '#FEF3C7', color: '#D97706' }}>Non trouvé</span>
+                              : okCOM
+                                ? <span style={{ padding: '3px 10px', borderRadius: 100, fontSize: 11, fontWeight: 600, background: '#D1FAE5', color: '#059669' }}>✓ OK</span>
+                                : <span style={{ padding: '3px 10px', borderRadius: 100, fontSize: 11, fontWeight: 600, background: '#FEE2E2', color: '#DC2626' }}>Écart</span>
+                            }
+                          </td>
+                          <td>
+                            <input type="text" value={commentaireCOM} placeholder="Note…"
+                              onChange={e => {
+                                const newComm = { ...commentairesCtrl, [COM_KEY]: e.target.value }
+                                setCommentairesCtrl(newComm)
+                                sauvegarderCtrl(null, newComm)
+                              }}
+                              style={{ fontSize: 12, width: '100%', padding: '3px 6px', border: '1px solid var(--border)', borderRadius: 4, background: 'white' }}
+                            />
+                          </td>
+                        </tr>
+                      )
+                    })()
+                  )}
                   {facturesAvecReversement.map(f => {
                     const proprio = f.proprietaire
                     const bienCodes = f.bien?.code
@@ -646,15 +715,15 @@ const [pushing, setPushing] = useState(false)
                       : (proprio?.bien || []).some(b => b.groupe_facturation === 'MAITE')
                         ? 'Maison Maïté'
                         : (proprio?.bien || []).slice().sort((a,b)=>(a.code||'').localeCompare(b.code||'')).map(b=>b.code).filter(Boolean).join(', ')
-                    const vir = getVirementLie(f)
+                    const vir = getVirementLie(f.id, () => autoMatchVirement(f))
                     const ecart = vir ? f.montant_reversement - vir.debit : null
-                    const ok = ecart !== null && Math.abs(ecart) <= 100 // tolérance 1€
+                    const ok = ecart !== null && Math.abs(ecart) <= 100
                     const manuelLien = liensVirements[f.id]
                     const commentaire = commentairesCtrl[f.id] || ''
 
                     // Options : exclure les virements déjà pris par une autre facture (manuel ou auto)
-                    const options = virementsSortants.filter(v =>
-                      !virementsDejàLiés.has(v.id) || vir?.id === v.id
+                    const options = virsTableau.filter(v =>
+                      !allLiés.has(v.id) || vir?.id === v.id
                     )
 
                     return (
