@@ -54,16 +54,9 @@ export function genererStatementHTML(proprio, mois, data) {
   const haownerTotal  = haownerList.reduce((s, p) => s + (p.montant_ttc || p.montant || 0), 0)
   const deboursSeuls  = extrasGlobaux.reduce((s, p) => s + (p.montant_ttc || p.montant || 0), 0)
     + resas.reduce((s, r) => s + (r.extra || 0), 0)
-  const deboursTotal  = deboursSeuls + haownerTotal + ownerStayMenageTotal
-  const totalManager  = honTotal + menageTotal + deboursTotal + fraisDeductionLoyTotal
-  // virementNet vient de buildRapportData (source de vérité unique) — inclut déjà les remboursements
-  const virementNet   = data.kpis?.virementNet ?? 0
-  const netProprio    = virementNet
-  const totalDuOwner  = virementNet
-  // Remboursements visibles dans le bloc reversement
+  // Frais déduits du loyer — déclarés avant deboursTotal/totalManager (évite TDZ)
   const remboursementsList = fraisProprietaire.filter(f => f.mode_traitement === 'remboursement' && f.statut !== 'brouillon')
   const remboursementsTotal = remboursementsList.reduce((s, f) => s + (f.montant_ttc || 0), 0)
-  // Frais déduits du loyer — même règle que buildRapportData.fraisDeductionLoy
   const fraisDeductionLoyList = fraisProprietaire.filter(f => f.mode_traitement === 'deduire_loyer')
   const fraisDeductionLoyTotal = fraisDeductionLoyList.reduce((s, f) => {
     if (f.statut === 'facture' && f.statut_deduction !== 'en_attente') return s + (f.montant_deduit_loy || 0)
@@ -71,6 +64,12 @@ export function genererStatementHTML(proprio, mois, data) {
     if (f.statut === 'a_facturer')                                       return s + (f.montant_ttc || 0)
     return s
   }, 0)
+  const deboursTotal  = deboursSeuls + haownerTotal + ownerStayMenageTotal
+  const totalManager  = honTotal + menageTotal + deboursTotal + fraisDeductionLoyTotal
+  // virementNet vient de buildRapportData (source de vérité unique) — inclut déjà les remboursements
+  const virementNet   = data.kpis?.virementNet ?? 0
+  const netProprio    = virementNet
+  const totalDuOwner  = virementNet
 
   const [annee, moisNum] = mois.split('-')
   const moisLabel = `${MOIS_FR[parseInt(moisNum) - 1]} ${annee}`
