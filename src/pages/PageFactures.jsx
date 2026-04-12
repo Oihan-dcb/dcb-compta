@@ -596,8 +596,12 @@ const [pushing, setPushing] = useState(false)
         }
 
         // Résoudre le virement lié (manuel > auto) — clé = id facture
+        // liensVirements[f.id] = 'none' → explicitement non lié (bloque l'auto-match)
+        // liensVirements[f.id] = mouvement_id → lien manuel
+        // absent → auto-match
         function getVirementLie(f) {
           const manuelId = liensVirements[f.id]
+          if (manuelId === 'none') return null
           if (manuelId) return virementsSortants.find(v => v.id === manuelId) || null
           return autoMatchVirement(f)
         }
@@ -662,12 +666,10 @@ const [pushing, setPushing] = useState(false)
                         <td className="right montant" style={{ fontWeight: 600 }}>{(f.montant_reversement / 100).toFixed(2)} €</td>
                         <td style={{ fontSize: 13, maxWidth: 220 }}>
                           <select
-                            value={manuelLien || (vir?.id || '')}
+                            value={manuelLien === 'none' ? '' : (manuelLien || vir?.id || '')}
                             onChange={e => {
-                              const val = e.target.value || null
-                              const newLiens = val
-                                ? { ...liensVirements, [f.id]: val }
-                                : Object.fromEntries(Object.entries(liensVirements).filter(([k]) => k !== f.id))
+                              const val = e.target.value === '' ? 'none' : e.target.value
+                              const newLiens = { ...liensVirements, [f.id]: val }
                               setLiensVirements(newLiens)
                               sauvegarderCtrl(newLiens, null)
                             }}
