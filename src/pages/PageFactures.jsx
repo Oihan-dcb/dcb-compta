@@ -223,14 +223,19 @@ const [pushing, setPushing] = useState(false)
           ).data || []
         : []
 
-      // Crédit par payout : mouvement_bancaire.credit si lié, sinon payout_hospitable.amount
+      // Crédit par payout : proven (mouvement_bancaire.credit via mouvement_id) ou fallback (payout.amount)
       const creditByPayoutId = {}
+      const payoutIsProven = {} // true = tracé jusqu'à un mouvement_bancaire réel
       for (const pr of payoutResasRaw) {
         const ph = pr.payout_hospitable
         if (!ph) continue
-        const credit = ph.mouvement_bancaire?.credit ?? ph.amount
+        const hasBankLink = ph.mouvement_id != null && ph.mouvement_bancaire?.credit != null
+        const credit = hasBankLink ? ph.mouvement_bancaire.credit : ph.amount
         if (!credit) continue
-        if (!creditByPayoutId[pr.payout_id]) creditByPayoutId[pr.payout_id] = credit
+        if (!creditByPayoutId[pr.payout_id]) {
+          creditByPayoutId[pr.payout_id] = credit
+          payoutIsProven[pr.payout_id] = hasBankLink
+        }
       }
 
       // Grouper toutes les réservations par payout pour le calcul de proportion
@@ -255,15 +260,17 @@ const [pushing, setPushing] = useState(false)
         targetBiensByPayout[pr.payout_id].add(resa.bien_id)
       }
 
-      // Allocation proportionnelle du crédit bancaire par bien (via fin_revenue)
-      const creditsByBien = {}
+      // Allocation proportionnelle — séparé en proven / fallback
+      const creditsProuvesByBien = {}
+      const creditsFallbackByBien = {}
+      function addCredit(target, bid, amount) { target[bid] = (target[bid] || 0) + amount }
+
       for (const [payoutId, targetBiens] of Object.entries(targetBiensByPayout)) {
         const credit = creditByPayoutId[payoutId] || 0
         if (credit === 0) continue
+        const target = payoutIsProven[payoutId] ? creditsProuvesByBien : creditsFallbackByBien
         const allResas = allResasByPayout[payoutId] || []
-        // fin_revenue total de toutes les réservations de ce payout (dénominateur)
         const totalRev = allResas.reduce((s, r) => s + r.fin_revenue, 0)
-        // fin_revenue par bien cible (numérateur)
         const bienRev = {}
         for (const bid of targetBiens) bienRev[bid] = 0
         for (const pr of payoutResasRaw.filter(p => p.payout_id === payoutId)) {
@@ -271,17 +278,43 @@ const [pushing, setPushing] = useState(false)
           if (resa && bienRev[resa.bien_id] !== undefined) bienRev[resa.bien_id] += resa.fin_revenue
         }
         for (const [bid, rev] of Object.entries(bienRev)) {
-          creditsByBien[bid] = (creditsByBien[bid] || 0) +
-            (totalRev > 0 ? Math.round(credit * rev / totalRev) : Math.round(credit / Object.keys(bienRev).length))
+          addCredit(target, bid,
+            totalRev > 0 ? Math.round(credit * rev / totalRev) : Math.round(credit / Object.keys(bienRev).length))
         }
       }
 
-      // Fallback pour les réservations sans payout_reservation (ex. direct/Stripe)
-      // Ces paiements arrivent en banque hors chaîne payout_hospitable → utiliser fin_revenue
+      // Réservations sans payout_reservation : chercher dans reservation_paiement, sinon fin_revenue fallback
       const resasAvecPayout = new Set(payoutResasRaw.map(pr => pr.reservation_id))
-      for (const resa of (resasMois || [])) {
-        if (!resasAvecPayout.has(resa.id) && resa.fin_revenue > 0) {
-          creditsByBien[resa.bien_id] = (creditsByBien[resa.bien_id] || 0) + resa.fin_revenue
+      const resasSansPayout = (resasMois || []).filter(r => !resasAvecPayout.has(r.id))
+
+      if (resasSansPayout.length > 0) {
+        const { data: resPaiements } = await supabase
+          .from('reservation_paiement')
+          .select('reservation_id, mouvement_id, montant, mouvement_bancaire(credit)')
+          .in('reservation_id', resasSansPayout.map(r => r.id))
+
+        const resPaiByResa = {}
+        for (const rp of (resPaiements || [])) {
+          if (!resPaiByResa[rp.reservation_id]) resPaiByResa[rp.reservation_id] = []
+          resPaiByResa[rp.reservation_id].push(rp)
+        }
+
+        for (const resa of resasSansPayout) {
+          const paiements = resPaiByResa[resa.id] || []
+          // Proven : reservation_paiement avec mouvement_bancaire tracé
+          const provenAmt = paiements
+            .filter(rp => rp.mouvement_id && rp.mouvement_bancaire?.credit)
+            .reduce((s, rp) => s + rp.mouvement_bancaire.credit, 0)
+          // Soft : reservation_paiement sans lien bancaire (migration ou Stripe non tracé)
+          const softAmt = paiements
+            .filter(rp => !rp.mouvement_id)
+            .reduce((s, rp) => s + (rp.montant || 0), 0)
+
+          if (provenAmt > 0) addCredit(creditsProuvesByBien, resa.bien_id, provenAmt)
+          if (softAmt > 0) addCredit(creditsFallbackByBien, resa.bien_id, softAmt)
+          // Rien du tout : fallback fin_revenue (non prouvé par banque)
+          if (paiements.length === 0 && resa.fin_revenue > 0)
+            addCredit(creditsFallbackByBien, resa.bien_id, resa.fin_revenue)
         }
       }
 
@@ -323,16 +356,20 @@ const [pushing, setPushing] = useState(false)
       const result = {}
       for (const f of facturesList) {
         const bienIds = factureBienMap[f.id]
-        let credits = 0, vir = 0, hon = 0, fmen = 0, autoreel = 0, com = 0, prest = 0, haowner = 0
+        let creditsProuves = 0, creditsFallback = 0
+        let vir = 0, hon = 0, fmen = 0, autoreel = 0, com = 0, prest = 0, haowner = 0
         for (const bid of bienIds) {
-          credits += creditsByBien[bid] || 0
+          creditsProuves += creditsProuvesByBien[bid] || 0
+          creditsFallback += creditsFallbackByBien[bid] || 0
           const bv = ventByBien[bid] || {}
           vir += bv.VIR || 0; hon += bv.HON || 0; fmen += bv.FMEN || 0
           autoreel += bv.AUTOREEL || 0; com += bv.COM || 0
           const bp = prestByBien[bid] || {}
           prest += bp.PREST || 0; haowner += bp.HAOWNER || 0
         }
-        result[f.id] = { credits, vir, hon, fmen, autoreel, prest, haowner, com,
+        const credits = creditsProuves + creditsFallback
+        result[f.id] = { creditsProuves, creditsFallback, credits,
+          vir, hon, fmen, autoreel, prest, haowner, com,
           solde: credits - vir - hon - fmen - autoreel - prest - haowner - com }
       }
       setSoldesControle(result)
@@ -774,7 +811,18 @@ const [pushing, setPushing] = useState(false)
                           </div>
                           <table style={{ width: '100%', borderCollapse: 'collapse' }}>
                             <tbody>
-                              {row('Encaissements VIRSEPA (compte DCB)', sc.credits, true)}
+                              {sc.creditsProuves > 0 && (
+                                <tr key="proven">
+                                  <td style={{ ...rs, color: 'var(--text-muted)' }}>Encaissements prouvés (payout/banque)</td>
+                                  <td style={{ ...rs, textAlign: 'right', fontFamily: 'monospace', color: '#059669' }}>+ {fm(sc.creditsProuves)}</td>
+                                </tr>
+                              )}
+                              {sc.creditsFallback > 0 && (
+                                <tr key="fallback">
+                                  <td style={{ ...rs, color: '#D97706' }}>⚠ Estimés (fin_revenue — non prouvés en banque)</td>
+                                  <td style={{ ...rs, textAlign: 'right', fontFamily: 'monospace', color: '#D97706' }}>+ {fm(sc.creditsFallback)}</td>
+                                </tr>
+                              )}
                               {row('Reversement propriétaire (VIR)', sc.vir)}
                               {row('Honoraires DCB (HON)', sc.hon)}
                               {row('Forfait ménage (FMEN)', sc.fmen)}
