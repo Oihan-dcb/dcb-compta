@@ -58,9 +58,8 @@ export default function PageComptabilite() {
     { key: 'fmen_ttc',    label: 'FMEN TTC',     def: false },
     { key: 'auto_ht',     label: 'AUTO HT',      def: true },
     { key: 'loy_ht',               label: 'LOY HT',        def: true },
-    { key: 'frais_loy',            label: 'Frais LOY',     def: false },
-    { key: 'prest_deduct',         label: 'Prest. déduit', def: false },
-    { key: 'haowner_ttc',          label: 'HAOWNER TTC',   def: false },
+    { key: 'frais_loy',            label: 'Frais HA proprio.', def: false },
+    { key: 'prest_deduct',         label: 'Prest. déduit',    def: false },
     { key: 'reversement_calcule',  label: 'Reversement',   def: true },
     { key: 'vir_ht',               label: 'VIR HT',        def: true },
     { key: 'ecart_vir_loy',        label: 'Écart VIR/LOY', def: false },
@@ -211,10 +210,9 @@ export default function PageComptabilite() {
                         {a.code === 'ECART_REVERSEMENT' && a.details && (
                           <div style={{ marginTop: 6, paddingTop: 6, borderTop: `1px solid ${LEVEL_COLOR[level]}22`, display: 'flex', flexWrap: 'wrap', gap: '2px 14px', fontSize: '0.92em', color: '#6B5E4E' }}>
                             <span>VIR <strong>{fmtN(a.details.vir_ht)}</strong></span>
-                            {a.details.frais_loy    > 0 && <span>− Frais LOY <strong>{fmtN(a.details.frais_loy)}</strong></span>}
-                            {a.details.frais_direct > 0 && <span>− Frais direct <strong>{fmtN(a.details.frais_direct)}</strong></span>}
+                            {a.details.frais_loy    > 0 && <span>− Frais HA proprio. <strong>{fmtN(a.details.frais_loy)}</strong></span>}
+                            {a.details.frais_direct > 0 && <span>− Frais HA fact. direct <strong>{fmtN(a.details.frais_direct)}</strong></span>}
                             {a.details.prest_deduct > 0 && <span>− Prestations <strong>{fmtN(a.details.prest_deduct)}</strong></span>}
-                            {a.details.haowner_ttc  > 0 && <span>− HAOWNER <strong>{fmtN(a.details.haowner_ttc)}</strong></span>}
                             {a.details.debours_prop > 0 && <span>− Débours <strong>{fmtN(a.details.debours_prop)}</strong></span>}
                             {a.details.owner_stay_absorb > 0 && <span>− Séjour proprio <strong>{fmtN(a.details.owner_stay_absorb)}</strong></span>}
                             {a.details.remboursements > 0 && <span>+ Remb. <strong>{fmtN(a.details.remboursements)}</strong></span>}
@@ -333,9 +331,8 @@ export default function PageComptabilite() {
                 {col('fmen_ttc')    && <th style={{ ...th, textAlign: 'right' }}>FMEN TTC</th>}
                 {col('auto_ht')     && <th style={{ ...th, textAlign: 'right' }}>AUTO HT</th>}
                 {col('loy_ht')              && <th style={{ ...th, textAlign: 'right' }}>LOY HT</th>}
-                {col('frais_loy')           && <th style={{ ...th, textAlign: 'right' }}>Frais LOY</th>}
+                {col('frais_loy')           && <th style={{ ...th, textAlign: 'right' }}>Frais HA proprio.</th>}
                 {col('prest_deduct')        && <th style={{ ...th, textAlign: 'right' }}>Prest. déduit</th>}
-                {col('haowner_ttc')         && <th style={{ ...th, textAlign: 'right' }}>HAOWNER TTC</th>}
                 {col('reversement_calcule') && <th style={{ ...th, textAlign: 'right' }}>Reversement</th>}
                 {col('vir_ht')              && <th style={{ ...th, textAlign: 'right' }}>VIR HT</th>}
                 {col('ecart_vir_loy')       && <th style={{ ...th, textAlign: 'right' }}>Écart VIR/LOY</th>}
@@ -385,7 +382,6 @@ export default function PageComptabilite() {
                   {col('loy_ht')              && <td style={{ ...td, textAlign: 'right', fontVariantNumeric: 'tabular-nums' }}>{r.loy_ht ? fmtN(r.loy_ht) : '—'}</td>}
                   {col('frais_loy')           && <td style={{ ...td, textAlign: 'right', fontVariantNumeric: 'tabular-nums' }}>{r.frais_loy ? <span style={{ color: '#E65100' }}>-{fmtN(r.frais_loy)}</span> : '—'}</td>}
                   {col('prest_deduct')        && <td style={{ ...td, textAlign: 'right', fontVariantNumeric: 'tabular-nums' }}>{r.prest_deduct ? <span style={{ color: '#E65100' }}>-{fmtN(r.prest_deduct)}</span> : '—'}</td>}
-                  {col('haowner_ttc')         && <td style={{ ...td, textAlign: 'right', fontVariantNumeric: 'tabular-nums' }}>{r.haowner_ttc ? <span style={{ color: '#E65100' }}>-{fmtN(r.haowner_ttc)}</span> : '—'}</td>}
                   {col('reversement_calcule') && <td style={{ ...td, textAlign: 'right', fontVariantNumeric: 'tabular-nums', fontWeight: r.reversement_calcule ? 600 : 400 }}>{r.reversement_calcule ? fmtN(r.reversement_calcule) : '—'}</td>}
                   {col('vir_ht')              && <td style={{ ...td, textAlign: 'right', fontVariantNumeric: 'tabular-nums' }}>{r.vir_ht ? fmtN(r.vir_ht) : '—'}</td>}
                   {col('ecart_vir_loy')       && <td style={{ ...td, textAlign: 'right', fontVariantNumeric: 'tabular-nums' }}>
@@ -447,7 +443,6 @@ export default function PageComptabilite() {
                   {col('loy_ht')              && <td style={{ ...td, textAlign: 'right' }}>{fmtN(rowsFiltrees.reduce((s, r) => s + r.loy_ht,              0))}</td>}
                   {col('frais_loy')           && <td style={{ ...td, textAlign: 'right', color: '#E65100' }}>{fmtN(rowsFiltrees.reduce((s, r) => s + r.frais_loy,          0))}</td>}
                   {col('prest_deduct')        && <td style={{ ...td, textAlign: 'right', color: '#E65100' }}>{fmtN(rowsFiltrees.reduce((s, r) => s + r.prest_deduct,        0))}</td>}
-                  {col('haowner_ttc')         && <td style={{ ...td, textAlign: 'right', color: '#E65100' }}>{fmtN(rowsFiltrees.reduce((s, r) => s + r.haowner_ttc,         0))}</td>}
                   {col('reversement_calcule') && <td style={{ ...td, textAlign: 'right' }}>{fmtN(rowsFiltrees.reduce((s, r) => s + r.reversement_calcule, 0))}</td>}
                   {col('vir_ht')              && <td style={{ ...td, textAlign: 'right' }}>{fmtN(rowsFiltrees.reduce((s, r) => s + r.vir_ht,              0))}</td>}
                   {col('ecart_vir_loy')       && <td style={td} />}

@@ -31,7 +31,6 @@ export async function buildComptaMensuelle(mois) {
     { data: fraisDirectData,   error: fraisDirectErr   },
     { data: remboursData,      error: remboursErr      },
     { data: prestDeductData,   error: prestDeductErr   },
-    { data: prestHaownerData,  error: prestHaownerErr  },
     { data: prestDeboursData,  error: prestDeboursErr  },
   ] = await Promise.all([
     supabase
@@ -86,13 +85,6 @@ export async function buildComptaMensuelle(mois) {
       .select('bien_id, montant, ae:ae_id(type)')
       .eq('mois', mois)
       .eq('type_imputation', 'deduction_loy')
-      .eq('statut', 'valide'),
-    // prestations haowner (type_imputation='haowner', TTC = HT × 1.20)
-    supabase
-      .from('prestation_hors_forfait')
-      .select('bien_id, montant')
-      .eq('mois', mois)
-      .eq('type_imputation', 'haowner')
       .eq('statut', 'valide'),
     // prestations débours proprio absorbés
     supabase
@@ -192,16 +184,6 @@ export async function buildComptaMensuelle(mois) {
     prestDeductByBien[p.bien_id] = (prestDeductByBien[p.bien_id] || 0) + montant
   }
 
-  // Prestations haowner par bien_id — agréger HT puis TVA sur total (aligné facturesEvoliz)
-  const haownerHTByBien = {}
-  for (const p of (prestHaownerData || [])) {
-    haownerHTByBien[p.bien_id] = (haownerHTByBien[p.bien_id] || 0) + (p.montant || 0)
-  }
-  const haownerByBien = {}
-  for (const [bienId, ht] of Object.entries(haownerHTByBien)) {
-    haownerByBien[bienId] = ht + Math.round(ht * 0.20)
-  }
-
   // Prestations débours proprio absorbés par bien_id
   const deboursPropByBien = {}
   for (const p of (prestDeboursData || [])) {
@@ -239,9 +221,8 @@ export async function buildComptaMensuelle(mois) {
     const autoHt     = vent(b.id, 'AUTO').ht
     const fraisLoy   = fraisLoyByBien[b.id]    || 0
     const prestDeduct = prestDeductByBien[b.id] || 0
-    const haowner    = haownerByBien[b.id]      || 0
     const deboursProp = deboursPropByBien[b.id] || 0
-    const loyDispo   = Math.max(0, loyHt - prestDeduct - haowner - fraisLoy - autoHt - deboursProp)
+    const loyDispo   = Math.max(0, loyHt - prestDeduct - fraisLoy - autoHt - deboursProp)
     // Absorption owner stay AUTO puis FMEN sur LOY résiduel
     const osData       = osVentByBien[b.id] || { fmenTTC: 0, autoHT: 0 }
     const osAutoAbsorb = Math.min(osData.autoHT, loyDispo)
@@ -252,17 +233,16 @@ export async function buildComptaMensuelle(mois) {
     const virHt       = vent(b.id, 'VIR').ht
     const fraisDirect = fraisDirectByBien[b.id] || 0
     const rembours    = remboursParBien[b.id]   || 0
-    const virNet = Math.max(0, virHt - fraisLoy - fraisDirect - prestDeduct - haowner - deboursProp - ownerStayAbsorbByBien[b.id]) + rembours
+    const virNet = Math.max(0, virHt - fraisLoy - fraisDirect - prestDeduct - deboursProp - ownerStayAbsorbByBien[b.id]) + rembours
     loyParProprio[b.proprietaire_id] = (loyParProprio[b.proprietaire_id] || 0) + virNet
 
     // Accumuler les composantes par proprio pour le détail de l'alerte ECART_REVERSEMENT
     const pid = b.proprietaire_id
-    if (!composantesParProprio[pid]) composantesParProprio[pid] = { vir_ht: 0, frais_loy: 0, frais_direct: 0, prest_deduct: 0, haowner_ttc: 0, debours_prop: 0, owner_stay_absorb: 0, remboursements: 0 }
+    if (!composantesParProprio[pid]) composantesParProprio[pid] = { vir_ht: 0, frais_loy: 0, frais_direct: 0, prest_deduct: 0, debours_prop: 0, owner_stay_absorb: 0, remboursements: 0 }
     composantesParProprio[pid].vir_ht           += virHt
     composantesParProprio[pid].frais_loy        += fraisLoy
     composantesParProprio[pid].frais_direct     += fraisDirect
     composantesParProprio[pid].prest_deduct     += prestDeduct
-    composantesParProprio[pid].haowner_ttc      += haowner
     composantesParProprio[pid].debours_prop     += deboursProp
     composantesParProprio[pid].owner_stay_absorb += ownerStayAbsorbByBien[b.id]
     composantesParProprio[pid].remboursements   += rembours
@@ -305,11 +285,10 @@ export async function buildComptaMensuelle(mois) {
     const frais_loy       = fraisLoyByBien[b.id]    || 0
     const frais_direct    = fraisDirectByBien[b.id] || 0
     const prest_deduct    = prestDeductByBien[b.id] || 0
-    const haowner_ttc     = haownerByBien[b.id]     || 0
     const debours_prop    = deboursPropByBien[b.id] || 0
     const remboursements  = remboursParBien[b.id]   || 0
     const owner_stay_absorb = ownerStayAbsorbByBien[b.id] || 0
-    const reversement_calcule = Math.max(0, vir.ht - frais_loy - frais_direct - prest_deduct - haowner_ttc - debours_prop - owner_stay_absorb) + remboursements
+    const reversement_calcule = Math.max(0, vir.ht - frais_loy - frais_direct - prest_deduct - debours_prop - owner_stay_absorb) + remboursements
 
     const ecart_vir_loy = (vir.ht > 0) ? vir.ht - reversement_calcule : null
 
@@ -422,7 +401,6 @@ export async function buildComptaMensuelle(mois) {
       frais_loy,
       frais_direct,
       prest_deduct,
-      haowner_ttc,
       debours_prop,
       owner_stay_absorb,
       remboursements,
@@ -554,7 +532,7 @@ export function exportComptaCSV(data) {
     'Nb resas', 'Rapprochées', 'Non rapprochées', 'Non ventilées',
     'HON HT', 'HON TVA', 'HON TTC',
     'FMEN HT', 'FMEN TVA', 'FMEN TTC',
-    'AUTO HT', 'LOY HT', 'Frais LOY', 'Reversement calculé', 'VIR HT', 'Écart VIR/LOY', 'TAXE HT',
+    'AUTO HT', 'LOY HT', 'Frais HA proprio.', 'Reversement calculé', 'VIR HT', 'Écart VIR/LOY', 'TAXE HT',
     'Facture statut', 'Reversement facturé', 'Écart facture', 'Alertes',
   ]
   const rows = data.rows.map(r => [
