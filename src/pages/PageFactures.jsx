@@ -51,9 +51,11 @@ const [pushing, setPushing] = useState(false)
   const [loadingVirements, setLoadingVirements] = useState(false)
   const [listeAE, setListeAE] = useState([]) // [{ nom, prenom }]
 
-  // Contrôle trésorerie (solde = VIRSEPA_credits - VIR - HON - FMEN - AUTOREEL - PREST - HAOWNER - COM)
-  const [soldesControle, setSoldesControle] = useState({}) // facture_id → { credits, vir, hon, fmen, autoreel, prest, haowner, com, solde }
+  // Contrôle trésorerie — lit encaissement_allocation (source de vérité persistée)
+  const [soldesControle, setSoldesControle] = useState({})
   const [loadingSoldes, setLoadingSoldes] = useState(false)
+  const [computingAlloc, setComputingAlloc] = useState(false)
+  const [allocResult, setAllocResult] = useState(null)
 
   useEffect(() => { charger(); chargerCOM(); chargerVirements() }, [mois])
 
@@ -170,7 +172,7 @@ const [pushing, setPushing] = useState(false)
     try {
       const { supabase } = await import('../lib/supabase')
 
-      // Collect bien_ids per facture
+      // Construire la map facture → bien_ids
       const factureBienMap = {}
       const allBienIds = new Set()
       for (const f of facturesList) {
@@ -183,168 +185,91 @@ const [pushing, setPushing] = useState(false)
       const uniqueBienIds = [...allBienIds]
       if (!uniqueBienIds.length) return
 
-      // ── 1. VIRSEPA credits per bien via payout chain ──
-      // Partir des réservations du mois comptable → payout → mouvement_bancaire
-      // (peu importe quand le virement est arrivé en banque)
-      const { data: resasMois } = await supabase
-        .from('reservation')
-        .select('id, bien_id, fin_revenue')
-        .in('bien_id', uniqueBienIds)
-        .eq('mois_comptable', mois)
-        .eq('owner_stay', false)
-        .neq('final_status', 'cancelled')
-        .gt('fin_revenue', 0)
+      // ── Lecture source de vérité : encaissement_allocation ──
+      // Cette table est alimentée par l'Edge Function allocate-encaissements.
+      // Aucun calcul à la volée ici — si la table est vide, le bloc affiche l'état "à calculer".
+      const [
+        { data: allocRows },
+        { data: anomalieRows },
+        { data: resasRows },
+        { data: ventRows },
+        { data: prestRows },
+      ] = await Promise.all([
+        supabase
+          .from('encaissement_allocation')
+          .select('reservation_id, bien_id, montant_alloue, preuve_niveau, mode_allocation, can_be_used_for_reversement, mouvement_bancaire_id')
+          .eq('mois_comptable', mois)
+          .in('bien_id', uniqueBienIds),
+        supabase
+          .from('encaissement_anomalie')
+          .select('reservation_id, bien_id, code_anomalie, description')
+          .eq('mois_comptable', mois)
+          .eq('resolu', false)
+          .in('bien_id', uniqueBienIds),
+        // Total réservations pour stats de couverture
+        supabase
+          .from('reservation')
+          .select('id, bien_id')
+          .eq('mois_comptable', mois)
+          .eq('owner_stay', false)
+          .neq('final_status', 'cancelled')
+          .gt('fin_revenue', 0)
+          .in('bien_id', uniqueBienIds),
+        // Ventilation — TTC pour HON/FMEN/COM (Airbnb paie TVA incluse), HT pour VIR
+        supabase
+          .from('ventilation')
+          .select('bien_id, code, montant_ht, montant_ttc, montant_reel')
+          .eq('mois_comptable', mois)
+          .in('bien_id', uniqueBienIds)
+          .in('code', ['VIR', 'HON', 'FMEN', 'AUTO', 'COM']),
+        supabase
+          .from('prestation_hors_forfait')
+          .select('bien_id, type_imputation, montant_ht')
+          .eq('mois', mois)
+          .in('bien_id', uniqueBienIds)
+          .in('type_imputation', ['deduction_loy', 'haowner']),
+      ])
 
-      const resaIds = (resasMois || []).map(r => r.id)
-      const resaById = {}
-      for (const r of (resasMois || [])) resaById[r.id] = r
-
-      // reservation → payout_reservation → payout_hospitable
-      // Pas de filtre sur mouvement_id : certains payouts sont rapprochés sans que
-      // payout_hospitable.mouvement_id soit renseigné (ex. BGH : mouvement marqué
-      // 'rapproche' côté mouvement_bancaire mais payout_hospitable.mouvement_id = null).
-      // Fallback : payout_hospitable.amount quand mouvement_bancaire absent.
-      const payoutResasRaw = resaIds.length
-        ? (await supabase
-            .from('payout_reservation')
-            .select('payout_id, reservation_id, payout_hospitable!inner(id, mouvement_id, amount, mouvement_bancaire(credit))')
-            .in('reservation_id', resaIds)
-          ).data || []
-        : []
-
-      // Pour l'allocation proportionnelle : récupérer TOUTES les réservations de chaque payout
-      // (y compris celles hors uniqueBienIds) pour avoir le bon dénominateur
-      const allPayoutIds = [...new Set(payoutResasRaw.map(pr => pr.payout_id))]
-      const allPayoutResas = allPayoutIds.length
-        ? (await supabase
-            .from('payout_reservation')
-            .select('payout_id, reservation_id, reservation!inner(bien_id, fin_revenue)')
-            .in('payout_id', allPayoutIds)
-          ).data || []
-        : []
-
-      // Crédit par payout : proven (mouvement_bancaire.credit via mouvement_id) ou fallback (payout.amount)
-      const creditByPayoutId = {}
-      const payoutIsProven = {} // true = tracé jusqu'à un mouvement_bancaire réel
-      for (const pr of payoutResasRaw) {
-        const ph = pr.payout_hospitable
-        if (!ph) continue
-        const hasBankLink = ph.mouvement_id != null && ph.mouvement_bancaire?.credit != null
-        const credit = hasBankLink ? ph.mouvement_bancaire.credit : ph.amount
-        if (!credit) continue
-        if (!creditByPayoutId[pr.payout_id]) {
-          creditByPayoutId[pr.payout_id] = credit
-          payoutIsProven[pr.payout_id] = hasBankLink
+      // Agréger allocations par bien
+      const allocByBien = {}           // bien_id → { prouve, approxime, resaIds_prouve, resaIds_approx }
+      for (const a of (allocRows || [])) {
+        if (!allocByBien[a.bien_id]) allocByBien[a.bien_id] = { prouve: 0, approxime: 0, resaIdsProuve: new Set(), resaIdsApprox: new Set() }
+        const b = allocByBien[a.bien_id]
+        if (a.can_be_used_for_reversement) {
+          b.prouve += a.montant_alloue
+          b.resaIdsProuve.add(a.reservation_id)
+        } else {
+          b.approxime += a.montant_alloue
+          b.resaIdsApprox.add(a.reservation_id)
         }
       }
 
-      // Grouper toutes les réservations par payout pour le calcul de proportion
-      const allResasByPayout = {}
-      const seenPR = new Set()
-      for (const pr of allPayoutResas) {
-        const r = pr.reservation
-        if (!r?.bien_id) continue
-        const key = `${pr.payout_id}-${pr.reservation_id}`
-        if (seenPR.has(key)) continue
-        seenPR.add(key)
-        if (!allResasByPayout[pr.payout_id]) allResasByPayout[pr.payout_id] = []
-        allResasByPayout[pr.payout_id].push({ bien_id: r.bien_id, fin_revenue: r.fin_revenue || 0 })
+      // Anomalies par bien — réservations distinctes non prouvées
+      const anomaliesByBien = {}
+      for (const a of (anomalieRows || [])) {
+        if (!anomaliesByBien[a.bien_id]) anomaliesByBien[a.bien_id] = new Set()
+        anomaliesByBien[a.bien_id].add(a.reservation_id)
       }
 
-      // Identifier les biens cibles dans chaque payout (ceux du mois comptable)
-      const targetBiensByPayout = {}
-      for (const pr of payoutResasRaw) {
-        const resa = resaById[pr.reservation_id]
-        if (!resa) continue
-        if (!targetBiensByPayout[pr.payout_id]) targetBiensByPayout[pr.payout_id] = new Set()
-        targetBiensByPayout[pr.payout_id].add(resa.bien_id)
+      // Total réservations par bien
+      const totalResasByBien = {}
+      for (const r of (resasRows || [])) {
+        totalResasByBien[r.bien_id] = (totalResasByBien[r.bien_id] || 0) + 1
       }
 
-      // Allocation proportionnelle — séparé en proven / fallback
-      const creditsProuvesByBien = {}
-      const creditsFallbackByBien = {}
-      function addCredit(target, bid, amount) { target[bid] = (target[bid] || 0) + amount }
-
-      for (const [payoutId, targetBiens] of Object.entries(targetBiensByPayout)) {
-        const credit = creditByPayoutId[payoutId] || 0
-        if (credit === 0) continue
-        const target = payoutIsProven[payoutId] ? creditsProuvesByBien : creditsFallbackByBien
-        const allResas = allResasByPayout[payoutId] || []
-        const totalRev = allResas.reduce((s, r) => s + r.fin_revenue, 0)
-        const bienRev = {}
-        for (const bid of targetBiens) bienRev[bid] = 0
-        for (const pr of payoutResasRaw.filter(p => p.payout_id === payoutId)) {
-          const resa = resaById[pr.reservation_id]
-          if (resa && bienRev[resa.bien_id] !== undefined) bienRev[resa.bien_id] += resa.fin_revenue
-        }
-        for (const [bid, rev] of Object.entries(bienRev)) {
-          addCredit(target, bid,
-            totalRev > 0 ? Math.round(credit * rev / totalRev) : Math.round(credit / Object.keys(bienRev).length))
-        }
-      }
-
-      // Réservations sans payout_reservation : chercher dans reservation_paiement, sinon fin_revenue fallback
-      const resasAvecPayout = new Set(payoutResasRaw.map(pr => pr.reservation_id))
-      const resasSansPayout = (resasMois || []).filter(r => !resasAvecPayout.has(r.id))
-
-      if (resasSansPayout.length > 0) {
-        const { data: resPaiements } = await supabase
-          .from('reservation_paiement')
-          .select('reservation_id, mouvement_id, montant, mouvement_bancaire(credit)')
-          .in('reservation_id', resasSansPayout.map(r => r.id))
-
-        const resPaiByResa = {}
-        for (const rp of (resPaiements || [])) {
-          if (!resPaiByResa[rp.reservation_id]) resPaiByResa[rp.reservation_id] = []
-          resPaiByResa[rp.reservation_id].push(rp)
-        }
-
-        for (const resa of resasSansPayout) {
-          const paiements = resPaiByResa[resa.id] || []
-          // Proven : reservation_paiement avec mouvement_bancaire tracé
-          const provenAmt = paiements
-            .filter(rp => rp.mouvement_id && rp.mouvement_bancaire?.credit)
-            .reduce((s, rp) => s + rp.mouvement_bancaire.credit, 0)
-          // Soft : reservation_paiement sans lien bancaire (migration ou Stripe non tracé)
-          const softAmt = paiements
-            .filter(rp => !rp.mouvement_id)
-            .reduce((s, rp) => s + (rp.montant || 0), 0)
-
-          if (provenAmt > 0) addCredit(creditsProuvesByBien, resa.bien_id, provenAmt)
-          if (softAmt > 0) addCredit(creditsFallbackByBien, resa.bien_id, softAmt)
-          // Rien du tout : fallback fin_revenue (non prouvé par banque)
-          if (paiements.length === 0 && resa.fin_revenue > 0)
-            addCredit(creditsFallbackByBien, resa.bien_id, resa.fin_revenue)
-        }
-      }
-
-      // ── 2. Ventilation per bien/mois (VIR, HON, FMEN, AUTOREEL, COM) ──
-      const { data: ventRows } = await supabase
-        .from('ventilation')
-        .select('bien_id, code, montant_ht, montant_ttc, montant_reel')
-        .eq('mois_comptable', mois)
-        .in('bien_id', uniqueBienIds)
-        .in('code', ['VIR', 'HON', 'FMEN', 'AUTO', 'COM'])
-
+      // Ventilation par bien
       const ventByBien = {}
       for (const v of (ventRows || [])) {
         if (!ventByBien[v.bien_id]) ventByBien[v.bien_id] = { VIR: 0, HON: 0, FMEN: 0, AUTOREEL: 0, COM: 0 }
         const b = ventByBien[v.bien_id]
         if (v.code === 'VIR') b.VIR += (v.montant_ht || 0)
-        else if (v.code === 'HON') b.HON += (v.montant_ttc || 0)   // TTC : Airbnb paie TVA incluse
-        else if (v.code === 'FMEN') b.FMEN += (v.montant_ttc || 0) // TTC : idem
+        else if (v.code === 'HON') b.HON += (v.montant_ttc || 0)
+        else if (v.code === 'FMEN') b.FMEN += (v.montant_ttc || 0)
         else if (v.code === 'AUTO') b.AUTOREEL += (v.montant_reel != null ? v.montant_reel : (v.montant_ht || 0))
-        else if (v.code === 'COM') b.COM += (v.montant_ttc || 0)   // TTC : idem
+        else if (v.code === 'COM') b.COM += (v.montant_ttc || 0)
       }
 
-      // ── 3. Prestations (PREST = deduction_loy, HAOWNER = haowner) ──
-      const { data: prestRows } = await supabase
-        .from('prestation_hors_forfait')
-        .select('bien_id, type_imputation, montant_ht')
-        .eq('mois', mois)
-        .in('bien_id', uniqueBienIds)
-        .in('type_imputation', ['deduction_loy', 'haowner'])
-
+      // Prestations par bien
       const prestByBien = {}
       for (const p of (prestRows || [])) {
         if (!prestByBien[p.bien_id]) prestByBien[p.bien_id] = { PREST: 0, HAOWNER: 0 }
@@ -352,31 +277,78 @@ const [pushing, setPushing] = useState(false)
         else if (p.type_imputation === 'haowner') prestByBien[p.bien_id].HAOWNER += (p.montant_ht || 0)
       }
 
-      // ── Build per-facture solde ──
+      // Construire le résultat par facture
       const result = {}
       for (const f of facturesList) {
         const bienIds = factureBienMap[f.id]
-        let creditsProuves = 0, creditsFallback = 0
+        let creditsProuves = 0, creditsApproximes = 0
         let vir = 0, hon = 0, fmen = 0, autoreel = 0, com = 0, prest = 0, haowner = 0
+        let totalResas = 0, resasProuvees = new Set(), resasApprox = new Set(), resasAnomalie = new Set()
+
         for (const bid of bienIds) {
-          creditsProuves += creditsProuvesByBien[bid] || 0
-          creditsFallback += creditsFallbackByBien[bid] || 0
+          const ba = allocByBien[bid] || {}
+          creditsProuves += ba.prouve || 0
+          creditsApproximes += ba.approxime || 0
+          ;(ba.resaIdsProuve || new Set()).forEach(id => resasProuvees.add(id))
+          ;(ba.resaIdsApprox || new Set()).forEach(id => resasApprox.add(id))
+          ;(anomaliesByBien[bid] || new Set()).forEach(id => resasAnomalie.add(id))
+          totalResas += totalResasByBien[bid] || 0
+
           const bv = ventByBien[bid] || {}
           vir += bv.VIR || 0; hon += bv.HON || 0; fmen += bv.FMEN || 0
           autoreel += bv.AUTOREEL || 0; com += bv.COM || 0
+
           const bp = prestByBien[bid] || {}
           prest += bp.PREST || 0; haowner += bp.HAOWNER || 0
         }
-        const credits = creditsProuves + creditsFallback
-        result[f.id] = { creditsProuves, creditsFallback, credits,
+
+        const credits = creditsProuves + creditsApproximes
+        const emplois = vir + hon + fmen + autoreel + prest + haowner + com
+        const solde = credits - emplois
+        // Facture safe : solde exact + toutes réservations prouvées (aucun approxime, aucune anomalie)
+        const isSafe = solde === 0 && creditsApproximes === 0 && resasAnomalie.size === 0
+          && totalResas > 0 && resasProuvees.size === totalResas
+
+        result[f.id] = {
+          creditsProuves, creditsApproximes, credits,
           vir, hon, fmen, autoreel, prest, haowner, com,
-          solde: credits - vir - hon - fmen - autoreel - prest - haowner - com }
+          emplois, solde,
+          totalResas,
+          countProuvees: resasProuvees.size,
+          countApprox: resasApprox.size,
+          countAnomalies: resasAnomalie.size,
+          isSafe,
+          // Table non calculée : si aucune allocation ET aucune réservation → vide attendu
+          notComputed: (allocRows || []).length === 0 && (resasRows || []).length > 0,
+        }
       }
       setSoldesControle(result)
     } catch (err) {
       console.error('chargerSoldesControle:', err)
     } finally {
       setLoadingSoldes(false)
+    }
+  }
+
+  async function calculerEncaissements() {
+    setComputingAlloc(true)
+    setAllocResult(null)
+    setError(null)
+    try {
+      const { supabase } = await import('../lib/supabase')
+      const { data, error } = await supabase.functions.invoke('allocate-encaissements', {
+        body: { mois },
+      })
+      if (error) throw new Error(`Edge Function: ${error.message}`)
+      if (data?.error) throw new Error(data.error)
+      setAllocResult(data)
+      // Recharger le contrôle trésorerie avec les nouvelles allocations
+      const f = await getFacturesMois(mois)
+      chargerSoldesControle(f)
+    } catch (err) {
+      setError(`Calcul encaissements : ${err.message}`)
+    } finally {
+      setComputingAlloc(false)
     }
   }
 
@@ -497,6 +469,14 @@ const [pushing, setPushing] = useState(false)
           <button className="btn btn-secondary" onClick={charger} disabled={loading}>↺</button>
           <button
             className="btn btn-secondary"
+            onClick={calculerEncaissements}
+            disabled={computingAlloc || loading}
+            title="Calcule et persiste les encaissements alloués par réservation (source de vérité)"
+          >
+            {computingAlloc ? <><span className="spinner" /> Calcul…</> : '⚡ Encaissements'}
+          </button>
+          <button
+            className="btn btn-secondary"
             onClick={validerTout}
             disabled={generating || pushing || !stats?.brouillons}
             title={!stats?.brouillons ? 'Aucun brouillon à valider' : `Valider ${stats?.brouillons} brouillon(s)`}
@@ -572,6 +552,16 @@ const [pushing, setPushing] = useState(false)
         </div>
       )}
       {success && <div className="alert alert-success">✓ {success}</div>}
+      {allocResult && (
+        <div className="alert alert-success" style={{ fontSize: 13 }}>
+          ⚡ Encaissements calculés — {allocResult.message}
+          {allocResult.anomalies > 0 && (
+            <span style={{ marginLeft: 8, color: '#D97706', fontWeight: 600 }}>
+              · {allocResult.anomalies} anomalie(s) à traiter
+            </span>
+          )}
+        </div>
+      )}
       {stats?.brouillons > 0 && (
         <div className="alert alert-warning">
           ⚠ {stats.brouillons} facture(s) en brouillon — à valider avant envoi dans Evoliz.
@@ -777,52 +767,81 @@ const [pushing, setPushing] = useState(false)
                       </table>
                     </div>
 
-                    {/* Contrôle trésorerie — VIRSEPA réels vs reversements */}
+                    {/* Contrôle trésorerie — source de vérité : encaissement_allocation */}
                     {(() => {
                       const sc = soldesControle[f.id]
                       if (!sc) {
                         return loadingSoldes ? (
                           <div style={{ marginTop: 12, padding: '8px 12px', fontSize: 12, color: 'var(--text-muted)', border: '1px solid var(--border)', borderRadius: 6, display: 'flex', alignItems: 'center', gap: 8 }}>
-                            <span className="spinner" style={{ width: 12, height: 12 }} /> Chargement contrôle trésorerie…
+                            <span className="spinner" style={{ width: 12, height: 12 }} /> Chargement…
                           </div>
                         ) : null
                       }
-                      if (sc.credits === 0 && sc.vir === 0 && sc.hon === 0) return null
+
+                      // Si aucune allocation calculée alors qu'il y a des réservations → inviter à calculer
+                      if (sc.notComputed) {
+                        return (
+                          <div style={{ marginTop: 12, padding: '10px 14px', border: '1px solid #D97706', borderRadius: 6, background: '#FFFBEB', fontSize: 13 }}>
+                            <strong style={{ color: '#D97706' }}>⚠ Encaissements non calculés</strong>
+                            <span style={{ marginLeft: 8, color: 'var(--text-muted)' }}>
+                              Clique sur "⚡ Encaissements" pour calculer et persister les allocations.
+                            </span>
+                          </div>
+                        )
+                      }
+
+                      if (sc.credits === 0 && sc.emplois === 0) return null
+
                       const fm = v => (Math.abs(v) / 100).toFixed(2) + ' €'
                       const solde = sc.solde
-                      const [soldeColor, soldeLabel] = solde === 0
-                        ? ['#059669', '✓ Équilibre — reversements couverts par encaissements réels']
-                        : solde > 0
-                          ? ['#D97706', `⚠ Excédent non affecté : ${fm(solde)}`]
-                          : ['#DC2626', `⛔ Déficit critique : ${fm(solde)} reversé sans encaissement`]
+                      const borderColor = sc.isSafe ? '#86EFAC' : solde < 0 ? '#FCA5A5' : 'var(--border)'
+                      const bgColor = sc.isSafe ? '#F0FDF4' : solde < 0 ? '#FFF5F5' : undefined
+                      const [soldeColor, soldeLabel] = sc.isSafe
+                        ? ['#059669', '✓ Équilibre — encaissements prouvés, couverture complète']
+                        : solde === 0 && !sc.isSafe
+                          ? ['#D97706', `⚠ Solde nul mais couverture incomplète (${sc.countAnomalies} anomalie(s))`]
+                          : solde > 0
+                            ? ['#D97706', `⚠ Excédent : ${fm(solde)}`]
+                            : ['#DC2626', `⛔ Déficit : ${fm(Math.abs(solde))} reversé sans encaissement prouvé`]
                       const rs = { padding: '3px 10px', fontSize: 12 }
-                      const row = (label, val, isCredit = false) => val === 0 ? null : (
+                      const row = (label, val) => val === 0 ? null : (
                         <tr key={label}>
                           <td style={{ ...rs, color: 'var(--text-muted)' }}>{label}</td>
-                          <td style={{ ...rs, textAlign: 'right', fontFamily: 'monospace', color: isCredit ? '#059669' : 'var(--text)' }}>
-                            {isCredit ? '+ ' : '− '}{fm(val)}
-                          </td>
+                          <td style={{ ...rs, textAlign: 'right', fontFamily: 'monospace' }}>− {fm(val)}</td>
                         </tr>
                       )
                       return (
-                        <div style={{ marginTop: 12, border: `1px solid ${solde < 0 ? '#FCA5A5' : 'var(--border)'}`, borderRadius: 6, overflow: 'hidden', background: solde < 0 ? '#FFF5F5' : undefined }}>
-                          <div style={{ padding: '5px 10px', background: 'var(--bg)', borderBottom: '1px solid var(--border)', fontSize: 11, fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: 1 }}>
-                            Contrôle trésorerie
+                        <div style={{ marginTop: 12, border: `1px solid ${borderColor}`, borderRadius: 6, overflow: 'hidden', background: bgColor }}>
+                          <div style={{ padding: '5px 10px', background: 'var(--bg)', borderBottom: '1px solid var(--border)', fontSize: 11, fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: 1, display: 'flex', justifyContent: 'space-between' }}>
+                            <span>Contrôle trésorerie</span>
+                            <span style={{ fontSize: 10, fontWeight: 400, color: sc.isSafe ? '#059669' : '#D97706' }}>
+                              {sc.totalResas > 0 && `${sc.countProuvees}/${sc.totalResas} résa(s) prouvée(s)`}
+                              {sc.countApprox > 0 && ` · ${sc.countApprox} approximée(s)`}
+                              {sc.countAnomalies > 0 && ` · ${sc.countAnomalies} anomalie(s)`}
+                            </span>
                           </div>
                           <table style={{ width: '100%', borderCollapse: 'collapse' }}>
                             <tbody>
                               {sc.creditsProuves > 0 && (
-                                <tr key="proven">
-                                  <td style={{ ...rs, color: 'var(--text-muted)' }}>Encaissements prouvés (payout/banque)</td>
-                                  <td style={{ ...rs, textAlign: 'right', fontFamily: 'monospace', color: '#059669' }}>+ {fm(sc.creditsProuves)}</td>
+                                <tr>
+                                  <td style={{ ...rs, color: 'var(--text-muted)' }}>Encaissements prouvés (payout → banque)</td>
+                                  <td style={{ ...rs, textAlign: 'right', fontFamily: 'monospace', color: '#059669', fontWeight: 600 }}>+ {fm(sc.creditsProuves)}</td>
                                 </tr>
                               )}
-                              {sc.creditsFallback > 0 && (
-                                <tr key="fallback">
-                                  <td style={{ ...rs, color: '#D97706' }}>⚠ Estimés (fin_revenue — non prouvés en banque)</td>
-                                  <td style={{ ...rs, textAlign: 'right', fontFamily: 'monospace', color: '#D97706' }}>+ {fm(sc.creditsFallback)}</td>
+                              {sc.creditsApproximes > 0 && (
+                                <tr>
+                                  <td style={{ ...rs, color: '#D97706' }}>⚠ Approximés (payout.amount — mouvement non lié)</td>
+                                  <td style={{ ...rs, textAlign: 'right', fontFamily: 'monospace', color: '#D97706' }}>+ {fm(sc.creditsApproximes)}</td>
                                 </tr>
                               )}
+                              {sc.countAnomalies > 0 && (
+                                <tr>
+                                  <td colSpan={2} style={{ ...rs, color: '#DC2626', fontStyle: 'italic' }}>
+                                    ⛔ {sc.countAnomalies} réservation(s) sans encaissement prouvé — voir table encaissement_anomalie
+                                  </td>
+                                </tr>
+                              )}
+                              <tr><td colSpan={2} style={{ height: 1, background: 'var(--border)' }} /></tr>
                               {row('Reversement propriétaire (VIR)', sc.vir)}
                               {row('Honoraires DCB (HON)', sc.hon)}
                               {row('Forfait ménage (FMEN)', sc.fmen)}
