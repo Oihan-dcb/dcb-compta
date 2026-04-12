@@ -196,8 +196,8 @@ const [pushing, setPushing] = useState(false)
         { data: prestRows },
       ] = await Promise.all([
         supabase
-          .from('encaissement_allocation')
-          .select('reservation_id, bien_id, montant_alloue, preuve_niveau, mode_allocation, can_be_used_for_reversement, mouvement_bancaire_id')
+          .from('reservation_mouvement')
+          .select('reservation_id, bien_id, credit_retenu_centimes')
           .eq('mois_comptable', mois)
           .in('bien_id', uniqueBienIds),
         supabase
@@ -230,12 +230,12 @@ const [pushing, setPushing] = useState(false)
           .in('type_imputation', ['deduction_loy', 'haowner']),
       ])
 
-      // Agréger allocations par bien (toutes sont prouvées, plus d'approxime)
+      // Agréger depuis reservation_mouvement (vue métier — encaissements prouvés uniquement)
       const allocByBien = {}           // bien_id → { prouve, resaIdsProuve }
       for (const a of (allocRows || [])) {
         if (!allocByBien[a.bien_id]) allocByBien[a.bien_id] = { prouve: 0, resaIdsProuve: new Set() }
         const b = allocByBien[a.bien_id]
-        b.prouve += a.montant_alloue
+        b.prouve += a.credit_retenu_centimes
         b.resaIdsProuve.add(a.reservation_id)
       }
 
