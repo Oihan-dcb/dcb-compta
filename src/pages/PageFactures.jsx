@@ -276,6 +276,15 @@ const [pushing, setPushing] = useState(false)
         }
       }
 
+      // Fallback pour les réservations sans payout_reservation (ex. direct/Stripe)
+      // Ces paiements arrivent en banque hors chaîne payout_hospitable → utiliser fin_revenue
+      const resasAvecPayout = new Set(payoutResasRaw.map(pr => pr.reservation_id))
+      for (const resa of (resasMois || [])) {
+        if (!resasAvecPayout.has(resa.id) && resa.fin_revenue > 0) {
+          creditsByBien[resa.bien_id] = (creditsByBien[resa.bien_id] || 0) + resa.fin_revenue
+        }
+      }
+
       // ── 2. Ventilation per bien/mois (VIR, HON, FMEN, AUTOREEL, COM) ──
       const { data: ventRows } = await supabase
         .from('ventilation')
