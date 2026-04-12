@@ -184,50 +184,87 @@ const [pushing, setPushing] = useState(false)
       if (!uniqueBienIds.length) return
 
       // ── 1. VIRSEPA credits per bien via payout chain ──
-      const { data: creditMvts } = await supabase
-        .from('mouvement_bancaire')
-        .select('id, credit')
-        .eq('mois_releve', mois)
-        .gt('credit', 0)
+      // Partir des réservations du mois comptable → payout → mouvement_bancaire
+      // (peu importe quand le virement est arrivé en banque)
+      const { data: resasMois } = await supabase
+        .from('reservation')
+        .select('id, bien_id, fin_revenue')
+        .in('bien_id', uniqueBienIds)
+        .eq('mois_comptable', mois)
+        .eq('owner_stay', false)
+        .neq('final_status', 'cancelled')
+        .gt('fin_revenue', 0)
 
-      const creditByMvtId = {}
-      for (const m of (creditMvts || [])) creditByMvtId[m.id] = m.credit
-      const mvtIds = Object.keys(creditByMvtId)
+      const resaIds = (resasMois || []).map(r => r.id)
+      const resaById = {}
+      for (const r of (resasMois || [])) resaById[r.id] = r
 
-      const payoutsData = mvtIds.length
-        ? (await supabase.from('payout_hospitable').select('id, mouvement_id').in('mouvement_id', mvtIds)).data || []
+      // reservation → payout_reservation → payout_hospitable (avec mouvement_bancaire rattaché)
+      const payoutResasRaw = resaIds.length
+        ? (await supabase
+            .from('payout_reservation')
+            .select('payout_id, reservation_id, payout_hospitable!inner(id, mouvement_id, mouvement_bancaire(credit))')
+            .in('reservation_id', resaIds)
+            .not('payout_hospitable.mouvement_id', 'is', null)
+          ).data || []
         : []
-      const mvtIdByPayoutId = {}
-      for (const p of payoutsData) mvtIdByPayoutId[p.id] = p.mouvement_id
-      const payoutIds = Object.keys(mvtIdByPayoutId)
 
-      // Fetch ALL reservations per payout (not filtered by bien_id) for correct proportional allocation
-      const payoutResasRaw = payoutIds.length
-        ? (await supabase.from('payout_reservation').select('payout_id, reservation!inner(id, bien_id, fin_revenue)').in('payout_id', payoutIds)).data || []
+      // Pour l'allocation proportionnelle : récupérer TOUTES les réservations de chaque payout
+      // (y compris celles hors uniqueBienIds) pour avoir le bon dénominateur
+      const allPayoutIds = [...new Set(payoutResasRaw.map(pr => pr.payout_id))]
+      const allPayoutResas = allPayoutIds.length
+        ? (await supabase
+            .from('payout_reservation')
+            .select('payout_id, reservation_id, reservation!inner(bien_id, fin_revenue)')
+            .in('payout_id', allPayoutIds)
+          ).data || []
         : []
 
-      // Proportional credit allocation per bien (by fin_revenue share within each payout)
-      const seenResaInPayout = new Set()
-      const resasByPayout = {}
+      // Calculer le crédit réel par payout (depuis mouvement_bancaire)
+      const creditByPayoutId = {}
       for (const pr of payoutResasRaw) {
-        const r = pr.reservation
-        if (!r?.bien_id) continue
-        const key = `${pr.payout_id}-${r.id}`
-        if (seenResaInPayout.has(key)) continue
-        seenResaInPayout.add(key)
-        if (!resasByPayout[pr.payout_id]) resasByPayout[pr.payout_id] = []
-        resasByPayout[pr.payout_id].push({ bien_id: r.bien_id, fin_revenue: r.fin_revenue || 0 })
+        const ph = pr.payout_hospitable
+        if (!ph?.mouvement_id || !ph.mouvement_bancaire?.credit) continue
+        if (!creditByPayoutId[pr.payout_id]) creditByPayoutId[pr.payout_id] = ph.mouvement_bancaire.credit
       }
 
+      // Grouper toutes les réservations par payout pour le calcul de proportion
+      const allResasByPayout = {}
+      const seenPR = new Set()
+      for (const pr of allPayoutResas) {
+        const r = pr.reservation
+        if (!r?.bien_id) continue
+        const key = `${pr.payout_id}-${pr.reservation_id}`
+        if (seenPR.has(key)) continue
+        seenPR.add(key)
+        if (!allResasByPayout[pr.payout_id]) allResasByPayout[pr.payout_id] = []
+        allResasByPayout[pr.payout_id].push({ bien_id: r.bien_id, fin_revenue: r.fin_revenue || 0 })
+      }
+
+      // Identifier les biens cibles dans chaque payout (ceux du mois comptable)
+      const targetBiensByPayout = {}
+      for (const pr of payoutResasRaw) {
+        const resa = resaById[pr.reservation_id]
+        if (!resa) continue
+        if (!targetBiensByPayout[pr.payout_id]) targetBiensByPayout[pr.payout_id] = new Set()
+        targetBiensByPayout[pr.payout_id].add(resa.bien_id)
+      }
+
+      // Allocation proportionnelle du crédit bancaire par bien (via fin_revenue)
       const creditsByBien = {}
-      for (const [payoutId, resas] of Object.entries(resasByPayout)) {
-        const mvtId = mvtIdByPayoutId[payoutId]
-        if (!mvtId) continue
-        const credit = creditByMvtId[mvtId] || 0
+      for (const [payoutId, targetBiens] of Object.entries(targetBiensByPayout)) {
+        const credit = creditByPayoutId[payoutId] || 0
         if (credit === 0) continue
+        const allResas = allResasByPayout[payoutId] || []
+        // fin_revenue total de toutes les réservations de ce payout (dénominateur)
+        const totalRev = allResas.reduce((s, r) => s + r.fin_revenue, 0)
+        // fin_revenue par bien cible (numérateur)
         const bienRev = {}
-        for (const r of resas) bienRev[r.bien_id] = (bienRev[r.bien_id] || 0) + r.fin_revenue
-        const totalRev = Object.values(bienRev).reduce((s, v) => s + v, 0)
+        for (const bid of targetBiens) bienRev[bid] = 0
+        for (const pr of payoutResasRaw.filter(p => p.payout_id === payoutId)) {
+          const resa = resaById[pr.reservation_id]
+          if (resa && bienRev[resa.bien_id] !== undefined) bienRev[resa.bien_id] += resa.fin_revenue
+        }
         for (const [bid, rev] of Object.entries(bienRev)) {
           creditsByBien[bid] = (creditsByBien[bid] || 0) +
             (totalRev > 0 ? Math.round(credit * rev / totalRev) : Math.round(credit / Object.keys(bienRev).length))
