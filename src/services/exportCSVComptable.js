@@ -479,7 +479,7 @@ function serializeRow(rowObj, headers) {
 
 function buildSingleRow({
   m, resa, resaIds, codes, resaDetails,
-  ventByResa, factureByProprio, payoutByMouv,
+  ventByResa, factureByProprio, factureByBien, payoutByMouv,
   montantAcompte, typePmt, descPmt,
   mois, exportedAt,
 }) {
@@ -499,9 +499,12 @@ function buildSingleRow({
   const ecartVsBancaire = normalizeAmount(totalTtc - montantBancaire)
 
   const firstDetail = resaDetails[0] || {}
-  const proprioId   = firstDetail?.bien?.proprietaire_id
-  const facture     = proprioId ? (factureByProprio[proprioId] || null) : null
-  const loyHt       = agg['LOY']?.ht || 0
+  const bienId    = firstDetail?.bien?.id
+  const proprioId = firstDetail?.bien?.proprietaire_id
+  // Priorité : facture per-bien, sinon facture globale du proprio (bug 5)
+  const facture   = (bienId && factureByBien?.[bienId])
+                 || (proprioId ? (factureByProprio[proprioId] || null) : null)
+  const loyHt     = agg['LOY']?.ht || 0
 
   const statusNorm = normalizeStatus(firstDetail.final_status)
   const moisResa   = firstDetail.mois_comptable || ''
@@ -568,7 +571,7 @@ export async function exportCSVComptable(mouvements, mois) {
 
       // Factures honoraires du mois — tous propriétaires
       supabase.from('facture_evoliz')
-        .select('proprietaire_id, id_evoliz, numero_facture, statut, montant_reversement')
+        .select('bien_id, proprietaire_id, id_evoliz, numero_facture, statut, montant_reversement')
         .eq('mois', mois)
         .eq('type_facture', 'honoraires'),
 
@@ -620,8 +623,12 @@ export async function exportCSVComptable(mouvements, mois) {
   const resaById = {}
   for (const r of resaData) resaById[r.id] = r
 
+  // Factures indexées par bien_id (per-bien) ET par proprio (global fallback)
+  // Si un proprio a plusieurs factures, bien_id prioritaire pour éviter écrasement (bug 5)
+  const factureByBien    = {}
   const factureByProprio = {}
   for (const f of factData) {
+    if (f.bien_id) factureByBien[f.bien_id] = f
     if (f.proprietaire_id) factureByProprio[f.proprietaire_id] = f
   }
 
@@ -678,7 +685,7 @@ export async function exportCSVComptable(mouvements, mois) {
           buildSingleRow({
             m, resa: resaLike, resaIds, codes,
             resaDetails:    [resaEnrichi],
-            ventByResa, factureByProprio, payoutByMouv,
+            ventByResa, factureByProprio, factureByBien, payoutByMouv,
             montantAcompte: p.montant || 0,
             typePmt:        p.type_paiement       || '',
             descPmt:        p.description_paiement|| '',
@@ -697,7 +704,7 @@ export async function exportCSVComptable(mouvements, mois) {
       rows.push(serializeRow(
         buildSingleRow({
           m, resa: r, resaIds, codes, resaDetails,
-          ventByResa, factureByProprio, payoutByMouv,
+          ventByResa, factureByProprio, factureByBien, payoutByMouv,
           montantAcompte,
           typePmt: r.type_paiement || '',
           descPmt: '',

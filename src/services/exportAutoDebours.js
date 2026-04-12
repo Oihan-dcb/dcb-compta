@@ -39,10 +39,17 @@ export async function exportAutoDebours(mois) {
     missionsByResa[m.reservation_id].push(m)
   }
 
+  // Prestations par réservation ET par bien (pour celles sans reservation_id — bug 8)
   const prestByResa = {}
+  const prestByBienOnly = {}
   for (const p of (prestations || [])) {
-    if (!prestByResa[p.reservation_id]) prestByResa[p.reservation_id] = []
-    prestByResa[p.reservation_id].push(p)
+    if (p.reservation_id) {
+      if (!prestByResa[p.reservation_id]) prestByResa[p.reservation_id] = []
+      prestByResa[p.reservation_id].push(p)
+    } else if (p.bien_id) {
+      if (!prestByBienOnly[p.bien_id]) prestByBienOnly[p.bien_id] = []
+      prestByBienOnly[p.bien_id].push(p)
+    }
   }
 
   const fraisByBien = {}
@@ -73,7 +80,13 @@ export async function exportAutoDebours(mois) {
     'Frais proprio'
   ]
 
-  const lignes = (resas || []).map(r => {
+  // Seules les réservations avec AUTO ou missions (bug 9 — exclut les resas sans activité)
+  const resasAvecAuto = (resas || []).filter(r => ventilByResa[r.id] || missionsByResa[r.id])
+
+  // Frais : afficher une seule fois par bien, sur la première réservation (bug 1)
+  const seenBienFrais = new Set()
+
+  const lignes = resasAvecAuto.map(r => {
     const ventil = ventilByResa[r.id] || {}
     const provision = ventil.montant_ht || 0
     const reel = ventil.montant_reel ?? provision
@@ -87,18 +100,27 @@ export async function exportAutoDebours(mois) {
     const missionDates = missionsResa.map(m => m.date_mission).filter(Boolean).join(' | ')
     const missionDurees = missionsResa.map(m => m.duree_heures).filter(Boolean).join(' | ')
 
+    const bienId = r.bien?.id
+    const isFirstResa = bienId && !seenBienFrais.has(bienId)
+    if (bienId) seenBienFrais.add(bienId)
+
+    // Prestations liées à la résa + prestations bien-level sur la première résa (bug 8)
     const prestsResa = prestByResa[r.id] || []
-    const prestStr = prestsResa.map(p =>
+    const prestsBien = isFirstResa ? (prestByBienOnly[bienId] || []) : []
+    const allPrests  = [...prestsResa, ...prestsBien]
+
+    const prestStr = allPrests.map(p =>
       `${p.prestation_type?.nom || '?'}: ${((p.montant || 0) / 100).toFixed(2)}€`
     ).join(' | ')
-    const haowner = prestsResa.filter(p => p.type_imputation === 'haowner').reduce((s, p) => s + (p.montant || 0), 0)
-    const debp    = prestsResa.filter(p => p.type_imputation === 'debours_proprio').reduce((s, p) => s + (p.montant || 0), 0)
-    const debae   = prestsResa.filter(p => p.type_imputation === 'deduction_loy').reduce((s, p) => s + (p.montant || 0), 0)
+    const haowner = allPrests.filter(p => p.type_imputation === 'haowner').reduce((s, p) => s + (p.montant || 0), 0)
+    const debp    = allPrests.filter(p => p.type_imputation === 'debours_proprio').reduce((s, p) => s + (p.montant || 0), 0)
+    const debae   = allPrests.filter(p => p.type_imputation === 'deduction_loy').reduce((s, p) => s + (p.montant || 0), 0)
 
-    const fraisBien = fraisByBien[r.bien?.id] || []
-    const fraisStr = fraisBien.map(f =>
-      `${f.libelle} (${f.mode_traitement}): ${((f.montant_ttc || 0) / 100).toFixed(2)}€`
-    ).join(' | ')
+    // Frais proprio : une seule fois par bien (bug 1)
+    const fraisBien = fraisByBien[bienId] || []
+    const fraisStr = isFirstResa
+      ? fraisBien.map(f => `${f.libelle} (${f.mode_traitement}): ${((f.montant_ttc || 0) / 100).toFixed(2)}€`).join(' | ')
+      : ''
 
     return [
       r.code || '',
@@ -120,9 +142,45 @@ export async function exportAutoDebours(mois) {
     ]
   })
 
+  // Biens avec frais/prestations mais sans réservation avec AUTO (bug 1 + 8 — cas edge)
+  const lignesExtra = []
+  const allBienIdsAvecFraisOuPrest = new Set([
+    ...Object.keys(fraisByBien),
+    ...Object.keys(prestByBienOnly),
+  ])
+  for (const bienId of allBienIdsAvecFraisOuPrest) {
+    if (seenBienFrais.has(bienId)) continue
+    const resaBien = (resas || []).find(r => r.bien?.id === bienId)
+    const bienNom  = resaBien?.bien?.hospitable_name || bienId
+    const fraisBien = fraisByBien[bienId] || []
+    const fraisStr = fraisBien.map(f =>
+      `${f.libelle} (${f.mode_traitement}): ${((f.montant_ttc || 0) / 100).toFixed(2)}€`
+    ).join(' | ')
+    const prestsBien = prestByBienOnly[bienId] || []
+    const prestStr = prestsBien.map(p =>
+      `${p.prestation_type?.nom || '?'}: ${((p.montant || 0) / 100).toFixed(2)}€`
+    ).join(' | ')
+    const haowner = prestsBien.filter(p => p.type_imputation === 'haowner').reduce((s, p) => s + (p.montant || 0), 0)
+    const debp    = prestsBien.filter(p => p.type_imputation === 'debours_proprio').reduce((s, p) => s + (p.montant || 0), 0)
+    const debae   = prestsBien.filter(p => p.type_imputation === 'deduction_loy').reduce((s, p) => s + (p.montant || 0), 0)
+    lignesExtra.push([
+      '(sans AUTO)', bienNom, '', '',
+      '', '', '', '',
+      '', '', '',
+      prestStr,
+      (haowner / 100).toFixed(2),
+      (debp / 100).toFixed(2),
+      (debae / 100).toFixed(2),
+      fraisStr
+    ])
+  }
+
+  const allLignes = [...lignes, ...lignesExtra]
+
   const totalProvision = Object.values(ventilByResa).reduce((s, v) => s + (v.montant_ht || 0), 0)
   const totalReel = Object.values(ventilByResa).reduce((s, v) => s + (v.montant_reel ?? (v.montant_ht || 0)), 0)
   const totalEcart = totalReel - totalProvision
+  const nbAvecAuto = resasAvecAuto.length  // bug 2 fix : seulement celles avec AUTO
   const nbEcartsSignificatifs = lignes.filter(l => Math.abs(parseFloat(l[6])) > 20).length
 
   const footer = [
@@ -134,13 +192,13 @@ export async function exportAutoDebours(mois) {
     `"Total AUTO reel";"${(totalReel / 100).toFixed(2)} EUR"`,
     `"Ecart total";"${(totalEcart / 100).toFixed(2)} EUR"`,
     '""',
-    `"Reservations avec AUTO";"${lignes.length}"`,
+    `"Reservations avec AUTO";"${nbAvecAuto}"`,
     `"Ecarts > 20 EUR";"${nbEcartsSignificatifs}"`,
     '"═══════════════════════════════════════════════════════════════"'
   ].join('\n')
 
   const q = (v) => `"${String(v ?? '').replace(/"/g, '""')}"`
-  const lignesCSV = lignes.map(row => row.map(q).join(';')).join('\n')
+  const lignesCSV = allLignes.map(row => row.map(q).join(';')).join('\n')
   const colonnesCSV = colonnes.map(q).join(';')
 
   return '\uFEFF' + header + '\n' + colonnesCSV + '\n' + lignesCSV + '\n' + footer

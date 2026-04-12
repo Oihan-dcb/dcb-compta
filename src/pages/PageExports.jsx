@@ -1,6 +1,7 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import MoisSelector from '../components/MoisSelector'
 import { useMoisPersisted } from '../hooks/useMoisPersisted'
+import { supabase } from '../lib/supabase'
 import { exportRapprochementBancaire } from '../services/exportRapprochementBancaire'
 import { exportAutoDebours } from '../services/exportAutoDebours'
 import { exportFacturesEvoliz } from '../services/exportFacturesEvoliz'
@@ -9,11 +10,25 @@ import { exportDeboursPrestations } from '../services/exportDeboursPrestations'
 import { buildComptaMensuelle, downloadComptaCSV } from '../services/buildComptaMensuelle'
 import { envoyerExportsComptable } from '../services/envoyerExportsComptable'
 
+const moisCourant = new Date().toISOString().slice(0, 7)
+
 export default function PageExports() {
   const [mois, setMois] = useMoisPersisted()
+  const [moisDispos, setMoisDispos] = useState([moisCourant])
   const [loading, setLoading] = useState({})
   const [error, setError] = useState(null)
   const [success, setSuccess] = useState(null)
+
+  useEffect(() => {
+    supabase.from('reservation').select('mois_comptable').then(({ data: res }) => {
+      const [cy, cm] = moisCourant.split('-').map(Number)
+      const thisYearMonths = Array.from({ length: cm }, (_, i) =>
+        `${cy}-${String(i + 1).padStart(2, '0')}`)
+      const uniq = [...new Set([...thisYearMonths, ...(res || []).map(d => d.mois_comptable).filter(Boolean)])]
+        .sort((a, b) => b.localeCompare(a))
+      setMoisDispos(uniq)
+    })
+  }, [])
 
   const [showEmailForm, setShowEmailForm] = useState(false)
   const [emailDest, setEmailDest] = useState('')
@@ -102,7 +117,7 @@ export default function PageExports() {
           <h1 style={{ margin: 0, fontSize: '1.4em', fontWeight: 700, color: 'var(--text)' }}>Exports</h1>
           <div style={{ fontSize: '0.82em', color: '#9C8E7D', marginTop: 2 }}>Téléchargements et envoi comptable</div>
         </div>
-        <MoisSelector mois={mois} setMois={setMois} moisDispos={[mois]} />
+        <MoisSelector mois={mois} setMois={setMois} moisDispos={moisDispos} />
       </div>
 
       {error && (

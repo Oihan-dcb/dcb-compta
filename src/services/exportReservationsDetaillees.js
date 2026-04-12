@@ -9,7 +9,7 @@ export async function exportReservationsDetaillees(mois) {
       .eq('mois_comptable', mois)
       .order('arrival_date', { ascending: true }),
     supabase.from('ventilation')
-      .select('reservation_id, code, montant_ht, montant_ttc')
+      .select('reservation_id, code, montant_ht, montant_tva, montant_ttc, montant_reel')
       .eq('mois_comptable', mois)
       .in('code', ['HON', 'FMEN', 'AUTO', 'LOY', 'VIR', 'TAXE', 'COM'])
   ])
@@ -63,7 +63,7 @@ export async function exportReservationsDetaillees(mois) {
       r.final_status || '',
       vent.HON  ? (vent.HON.montant_ttc  / 100).toFixed(2) : '',
       vent.FMEN ? (vent.FMEN.montant_ttc / 100).toFixed(2) : '',
-      vent.AUTO ? (vent.AUTO.montant_ht  / 100).toFixed(2) : '',
+      vent.AUTO ? ((vent.AUTO.montant_reel ?? vent.AUTO.montant_ht) / 100).toFixed(2) : '',
       vent.LOY  ? (vent.LOY.montant_ht   / 100).toFixed(2) : '',
       vent.VIR  ? (vent.VIR.montant_ht   / 100).toFixed(2) : '',
       vent.TAXE ? (vent.TAXE.montant_ht  / 100).toFixed(2) : '',

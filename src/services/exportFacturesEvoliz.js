@@ -6,6 +6,7 @@ export async function exportFacturesEvoliz(mois) {
   const { data: factures } = await supabase
     .from('facture_evoliz')
     .select(`*, proprietaire:proprietaire_id(nom, prenom),
+      bien:bien_id(hospitable_name),
       lignes:facture_evoliz_ligne(code, montant_ht, montant_ttc, quantite, libelle)`)
     .eq('mois', mois)
     .order('date_creation', { ascending: true })
@@ -25,7 +26,7 @@ export async function exportFacturesEvoliz(mois) {
   ].join('\n')
 
   const colonnes = [
-    'Proprietaire', 'Type facture', 'Numero facture', 'Statut',
+    'Proprietaire', 'Bien', 'Type facture', 'Numero facture', 'Statut',
     'Date generation', 'Date push Evoliz', 'ID Evoliz',
     'Total HT EUR', 'Total TTC EUR', 'Montant reversement EUR',
     'Lignes detaillees'
@@ -47,6 +48,7 @@ export async function exportFacturesEvoliz(mois) {
 
     return [
       proprioNom,
+      f.bien?.hospitable_name || '',
       typeLabels[f.type_facture] || f.type_facture,
       f.numero_facture || '',
       statutLabels[f.statut] || f.statut || '',
