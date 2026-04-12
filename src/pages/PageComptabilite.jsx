@@ -207,7 +207,7 @@ export default function PageComptabilite() {
                         {/* Détail ECART_REVERSEMENT */}
                         {a.code === 'ECART_REVERSEMENT' && a.details && (
                           <div style={{ marginTop: 6, paddingTop: 6, borderTop: `1px solid ${LEVEL_COLOR[level]}22`, display: 'flex', flexWrap: 'wrap', gap: '2px 14px', fontSize: '0.92em', color: '#6B5E4E' }}>
-                            <span>VIR <strong>{fmtN(a.details.vir_ht)}</strong></span>
+                            <span>LOY <strong>{fmtN(a.details.loy_ht)}</strong></span>
                             {a.details.frais_loy    > 0 && <span>− Frais HA proprio. <strong>{fmtN(a.details.frais_loy)}</strong></span>}
                             {a.details.frais_direct > 0 && <span>− Frais HA fact. direct <strong>{fmtN(a.details.frais_direct)}</strong></span>}
                             {a.details.prest_deduct > 0 && <span>− Prestations <strong>{fmtN(a.details.prest_deduct)}</strong></span>}

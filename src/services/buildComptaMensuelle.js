@@ -238,8 +238,8 @@ export async function buildComptaMensuelle(mois) {
 
     // Accumuler les composantes par proprio pour le détail de l'alerte ECART_REVERSEMENT
     const pid = b.proprietaire_id
-    if (!composantesParProprio[pid]) composantesParProprio[pid] = { vir_ht: 0, frais_loy: 0, frais_direct: 0, prest_deduct: 0, debours_prop: 0, owner_stay_absorb: 0, remboursements: 0 }
-    composantesParProprio[pid].vir_ht           += virHt
+    if (!composantesParProprio[pid]) composantesParProprio[pid] = { loy_ht: 0, frais_loy: 0, frais_direct: 0, prest_deduct: 0, debours_prop: 0, owner_stay_absorb: 0, remboursements: 0 }
+    composantesParProprio[pid].loy_ht           += loyHt
     composantesParProprio[pid].frais_loy        += fraisLoy
     composantesParProprio[pid].frais_direct     += fraisDirect
     composantesParProprio[pid].prest_deduct     += prestDeduct
@@ -321,8 +321,8 @@ export async function buildComptaMensuelle(mois) {
           message: `Écart reversement : ${sens}${(ecartBien / 100).toFixed(2)} € (facturé ${(factureBien.montant_reversement / 100).toFixed(2)} € vs calculé ${(reversement_calcule / 100).toFixed(2)} €)`,
           bien_id: b.id,
           details: {
-            vir_ht: vir.ht, frais_loy, frais_direct, prest_deduct,
-            haowner_ttc, debours_prop, owner_stay_absorb, remboursements,
+            loy_ht: loy.ht, frais_loy, frais_direct, prest_deduct,
+            debours_prop, owner_stay_absorb, remboursements,
             reversement_calcule,
             reversement_facture: factureBien.montant_reversement,
           },
