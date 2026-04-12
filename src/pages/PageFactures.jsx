@@ -577,7 +577,7 @@ const [pushing, setPushing] = useState(false)
         // Normalisation pour matching
         const norm = s => (s || '').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/[^a-z0-9]/g, ' ').replace(/\s+/g, ' ').trim()
 
-        // Auto-match : uniquement sur le libellé — codes biens présents dans "Loyer Mois BIEN"
+        // Auto-match sur detail (ex: "Loyer Mars EKIA") puis libelle — code bien uniquement
         function autoMatchVirement(f) {
           const proprio = f.proprietaire
           const tokens = (proprio?.bien || []).map(b => norm(b.code)).filter(t => t.length >= 2)
@@ -585,7 +585,7 @@ const [pushing, setPushing] = useState(false)
           let best = null, bestScore = 0
           for (const vir of virementsSortants) {
             if (Object.values(liensVirements).includes(vir.id)) continue
-            const lib = norm(vir.libelle || '')
+            const lib = norm((vir.detail || '') + ' ' + (vir.libelle || ''))
             const score = tokens.reduce((s, t) => s + (lib.includes(t) ? 1 : 0), 0)
             if (score > bestScore) { bestScore = score; best = vir }
           }
@@ -673,7 +673,7 @@ const [pushing, setPushing] = useState(false)
                             <option value="">— non lié</option>
                             {options.map(v => (
                               <option key={v.id} value={v.id}>
-                                {(v.libelle || '').substring(0, 40)} · {(v.debit / 100).toFixed(2)} € · {fmtDate(v.date_operation)}
+                                {(v.detail || v.libelle || '').substring(0, 45)} · {(v.debit / 100).toFixed(2)} € · {fmtDate(v.date_operation)}
                               </option>
                             ))}
                           </select>
