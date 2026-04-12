@@ -197,7 +197,7 @@ const [pushing, setPushing] = useState(false)
       ] = await Promise.all([
         supabase
           .from('reservation_mouvement')
-          .select('reservation_id, bien_id, credit_retenu_centimes')
+          .select('reservation_id, bien_id, mouvement_bancaire_id, credit_retenu_centimes')
           .eq('mois_comptable', mois)
           .in('bien_id', uniqueBienIds),
         supabase
@@ -231,11 +231,16 @@ const [pushing, setPushing] = useState(false)
       ])
 
       // Agréger depuis reservation_mouvement (vue métier — encaissements prouvés uniquement)
-      const allocByBien = {}           // bien_id → { prouve, resaIdsProuve }
+      // Déduplication par mouvement_bancaire_id par bien : un payout Airbnb peut couvrir N réservations
+      // → compter le crédit UNE SEULE fois par mouvement, pas N fois
+      const allocByBien = {}           // bien_id → { prouve, resaIdsProuve, mbIds }
       for (const a of (allocRows || [])) {
-        if (!allocByBien[a.bien_id]) allocByBien[a.bien_id] = { prouve: 0, resaIdsProuve: new Set() }
+        if (!allocByBien[a.bien_id]) allocByBien[a.bien_id] = { prouve: 0, resaIdsProuve: new Set(), mbIds: new Set() }
         const b = allocByBien[a.bien_id]
-        b.prouve += a.credit_retenu_centimes
+        if (!b.mbIds.has(a.mouvement_bancaire_id)) {
+          b.mbIds.add(a.mouvement_bancaire_id)
+          b.prouve += a.credit_retenu_centimes
+        }
         b.resaIdsProuve.add(a.reservation_id)
       }
 

@@ -37,8 +37,8 @@ function jsonResp(data: object, status = 200) {
 interface MbLink {
   mb_id: string
   credit: number
-  source: 'ventilation' | 'reservation_paiement' | 'payout_hospitable'
-  source_ref: string   // mouvement_id (ventilation), rp.id, ph.id
+  source: 'ventilation' | 'reservation_paiement' | 'payout_hospitable' | 'booking_payout_line' | 'stripe_payout_line'
+  source_ref: string   // mouvement_id (ventilation), rp.id, ph.id, bpl.mouvement_id, spl.mouvement_id
   libelle?: string
   date_operation?: string
 }
@@ -61,7 +61,7 @@ serve(async (req) => {
     // ── 1. Réservations du mois ───────────────────────────────────────────────
     const { data: resas, error: resasErr } = await supabase
       .from('reservation')
-      .select('id, bien_id, fin_revenue, platform, mois_comptable')
+      .select('id, bien_id, fin_revenue, platform, mois_comptable, platform_id, code')
       .eq('mois_comptable', mois)
       .eq('owner_stay', false)
       .neq('final_status', 'cancelled')
@@ -77,36 +77,65 @@ serve(async (req) => {
 
     const resaIds = resas.map(r => r.id)
     const resaById: Record<string, typeof resas[0]> = {}
-    for (const r of resas) resaById[r.id] = r
+    // Maps inverses pour chemins 4 et 5
+    const resaIdByPlatformId: Record<string, string> = {}  // booking_ref → reservation_id
+    const resaIdByCode: Record<string, string> = {}        // reservation.code → reservation_id
+    for (const r of resas) {
+      resaById[r.id] = r
+      if (r.platform === 'booking' && r.platform_id) resaIdByPlatformId[r.platform_id] = r.id
+      if (r.code) resaIdByCode[r.code] = r.id
+    }
+    const bookingPlatformIds = Object.keys(resaIdByPlatformId)
+    const allResaCodes = Object.keys(resaIdByCode)
 
     // ── 2. Récupérer tous les liens bancaires en parallèle ────────────────────
 
-    const [ventilationRes, rpRes, payoutRes] = await Promise.all([
+    const [ventilationRes, rpRes, payoutRes, bookingPayoutRes, stripePayoutRes] = await Promise.all([
 
-      // Chemin 1 : ventilation
+      // Chemin 1 : ventilation.mouvement_id (legacy + reversements manuels)
       supabase
         .from('ventilation')
         .select('reservation_id, mouvement_id, mouvement_bancaire(id, credit, libelle, date_operation)')
         .in('reservation_id', resaIds)
         .not('mouvement_id', 'is', null),
 
-      // Chemin 2 : reservation_paiement
+      // Chemin 2 : reservation_paiement.mouvement_id (SEPA manuel, Stripe, Booking via _lierViaPayout)
       supabase
         .from('reservation_paiement')
         .select('id, reservation_id, mouvement_id, mouvement_bancaire(id, credit, libelle, date_operation)')
         .in('reservation_id', resaIds)
         .not('mouvement_id', 'is', null),
 
-      // Chemin 3 : payout_hospitable (via payout_reservation)
+      // Chemin 3 : payout_hospitable via payout_reservation (Airbnb, Booking)
       supabase
         .from('payout_reservation')
         .select('reservation_id, payout_hospitable!inner(id, mouvement_id, mouvement_bancaire(id, credit, libelle, date_operation))')
         .in('reservation_id', resaIds),
+
+      // Chemin 4 : booking_payout_line (Booking sans payout_reservation ou reservation_paiement)
+      bookingPlatformIds.length > 0
+        ? supabase
+            .from('booking_payout_line')
+            .select('mouvement_id, booking_ref, mouvement_bancaire(id, credit, libelle, date_operation)')
+            .in('booking_ref', bookingPlatformIds)
+            .not('mouvement_id', 'is', null)
+        : Promise.resolve({ data: [] as any[], error: null }),
+
+      // Chemin 5 : stripe_payout_line (Direct/Stripe sans reservation_paiement créée)
+      allResaCodes.length > 0
+        ? supabase
+            .from('stripe_payout_line')
+            .select('mouvement_id, reservation_code, mouvement_bancaire(id, credit, libelle, date_operation)')
+            .in('reservation_code', allResaCodes)
+            .not('mouvement_id', 'is', null)
+        : Promise.resolve({ data: [] as any[], error: null }),
     ])
 
     if (ventilationRes.error) throw new Error(`Erreur ventilation: ${ventilationRes.error.message}`)
     if (rpRes.error) throw new Error(`Erreur reservation_paiement: ${rpRes.error.message}`)
     if (payoutRes.error) throw new Error(`Erreur payout_reservation: ${payoutRes.error.message}`)
+    if (bookingPayoutRes.error) throw new Error(`Erreur booking_payout_line: ${bookingPayoutRes.error.message}`)
+    if (stripePayoutRes.error) throw new Error(`Erreur stripe_payout_line: ${stripePayoutRes.error.message}`)
 
     // ── 3. Construire la map : reservation_id → liens dédupliqués par mb_id ──
     // Ordre de priorité : ventilation > reservation_paiement > payout_hospitable
@@ -172,6 +201,44 @@ serve(async (req) => {
       }
     }
 
+    // Chemin 4 : booking_payout_line (Booking sans payout_reservation)
+    for (const bpl of (bookingPayoutRes.data || [])) {
+      const mb = bpl.mouvement_bancaire as any
+      if (!mb?.id || !(mb.credit > 0)) continue
+      const resaId = resaIdByPlatformId[bpl.booking_ref]
+      if (!resaId) continue
+      const map = ensureResa(resaId)
+      if (!map.has(mb.id)) {
+        map.set(mb.id, {
+          mb_id: mb.id,
+          credit: mb.credit,
+          source: 'booking_payout_line',
+          source_ref: bpl.mouvement_id,
+          libelle: mb.libelle,
+          date_operation: mb.date_operation,
+        })
+      }
+    }
+
+    // Chemin 5 : stripe_payout_line (Direct/Stripe sans reservation_paiement)
+    for (const spl of (stripePayoutRes.data || [])) {
+      const mb = spl.mouvement_bancaire as any
+      if (!mb?.id || !(mb.credit > 0)) continue
+      const resaId = resaIdByCode[spl.reservation_code]
+      if (!resaId) continue
+      const map = ensureResa(resaId)
+      if (!map.has(mb.id)) {
+        map.set(mb.id, {
+          mb_id: mb.id,
+          credit: mb.credit,
+          source: 'stripe_payout_line',
+          source_ref: spl.mouvement_id,
+          libelle: mb.libelle,
+          date_operation: mb.date_operation,
+        })
+      }
+    }
+
     // ── 4. Construire allocations et anomalies ────────────────────────────────
 
     const allocations: Record<string, any>[] = []
@@ -213,6 +280,8 @@ serve(async (req) => {
           ventilation: `ventilation → mb ${link.mb_id}`,
           reservation_paiement: `reservation_paiement ${link.source_ref} → mb ${link.mb_id}`,
           payout_hospitable: `payout_hospitable ${link.source_ref} → mb ${link.mb_id}`,
+          booking_payout_line: `booking_payout_line → mb ${link.mb_id}`,
+          stripe_payout_line: `stripe_payout_line → mb ${link.mb_id}`,
         }[link.source]
 
         allocations.push({
