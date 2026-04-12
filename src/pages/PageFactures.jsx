@@ -570,6 +570,52 @@ const [pushing, setPushing] = useState(false)
                       </table>
                     </div>
 
+                    {/* Décomposition comptable */}
+                    {(() => {
+                      const ls = f.facture_evoliz_ligne || []
+                      const sum = (code, field = 'montant_ttc') => ls.filter(l => l.code === code).reduce((s, l) => s + (l[field] || 0), 0)
+                      const honTTC   = sum('HON')
+                      const fmenTTC  = sum('FMEN')
+                      const autoHT   = sum('AUTO', 'montant_ht')
+                      const prestTTC = Math.abs(sum('PREST'))
+                      const haownerTTC = sum('HAOWNER')
+                      const debpHT   = Math.abs(sum('DEBP'))
+                      const fraisPos = ls.filter(l => l.code === 'FRAIS' && (l.montant_ttc || 0) < 0).reduce((s, l) => s + Math.abs(l.montant_ttc || 0), 0)
+                      const rev      = f.montant_reversement || 0
+                      const total    = honTTC + fmenTTC + autoHT + prestTTC + haownerTTC + debpHT + fraisPos + rev
+                      if (total === 0) return null
+                      const fm = v => (v / 100).toFixed(2) + ' €'
+                      const row = (label, val, color = 'var(--text)') => val > 0 ? (
+                        <tr key={label}>
+                          <td style={{ padding: '3px 10px', fontSize: 12, color: 'var(--text-muted)' }}>{label}</td>
+                          <td style={{ padding: '3px 10px', fontSize: 12, textAlign: 'right', fontFamily: 'monospace', color }}>{fm(val)}</td>
+                        </tr>
+                      ) : null
+                      return (
+                        <div style={{ marginTop: 12, border: '1px solid var(--border)', borderRadius: 6, overflow: 'hidden' }}>
+                          <div style={{ padding: '5px 10px', background: 'var(--bg)', borderBottom: '1px solid var(--border)', fontSize: 11, fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: 1 }}>
+                            Décomposition — Attendu plateforme
+                          </div>
+                          <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+                            <tbody>
+                              {row('Honoraires DCB (HON TTC)', honTTC)}
+                              {row('Forfait ménage (FMEN TTC)', fmenTTC)}
+                              {row('Prestations AE (AUTO — mémo)', autoHT, '#92400E')}
+                              {row('Prestas déduites (PREST)', prestTTC)}
+                              {row('Achats avancés (HAOWNER TTC)', haownerTTC)}
+                              {row('Débours proprio (DEBP)', debpHT)}
+                              {row('Frais déduits du loyer', fraisPos)}
+                              {row('Reversement propriétaire', rev)}
+                              <tr style={{ borderTop: '2px solid var(--brand)', background: 'var(--bg)', fontWeight: 700 }}>
+                                <td style={{ padding: '5px 10px', fontSize: 12 }}>= Total attendu de la plateforme</td>
+                                <td style={{ padding: '5px 10px', fontSize: 13, textAlign: 'right', fontFamily: 'monospace', color: 'var(--brand)' }}>{fm(total)}</td>
+                              </tr>
+                            </tbody>
+                          </table>
+                        </div>
+                      )
+                    })()}
+
                     {/* Info reversement et IBAN */}
                     {f.montant_reversement > 0 && (
                       <div style={{ marginTop: 12, padding: '10px 14px', background: 'var(--bg, #F7F3EC)', borderRadius: 6, fontSize: 13, border: '1px solid var(--border, #D9CEB8)' }}>
