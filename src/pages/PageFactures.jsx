@@ -279,7 +279,7 @@ const [pushing, setPushing] = useState(false)
       // ── 2. Ventilation per bien/mois (VIR, HON, FMEN, AUTOREEL, COM) ──
       const { data: ventRows } = await supabase
         .from('ventilation')
-        .select('bien_id, code, montant_ht, montant_reel')
+        .select('bien_id, code, montant_ht, montant_ttc, montant_reel')
         .eq('mois_comptable', mois)
         .in('bien_id', uniqueBienIds)
         .in('code', ['VIR', 'HON', 'FMEN', 'AUTO', 'COM'])
@@ -289,10 +289,10 @@ const [pushing, setPushing] = useState(false)
         if (!ventByBien[v.bien_id]) ventByBien[v.bien_id] = { VIR: 0, HON: 0, FMEN: 0, AUTOREEL: 0, COM: 0 }
         const b = ventByBien[v.bien_id]
         if (v.code === 'VIR') b.VIR += (v.montant_ht || 0)
-        else if (v.code === 'HON') b.HON += (v.montant_ht || 0)
-        else if (v.code === 'FMEN') b.FMEN += (v.montant_ht || 0)
+        else if (v.code === 'HON') b.HON += (v.montant_ttc || 0)   // TTC : Airbnb paie TVA incluse
+        else if (v.code === 'FMEN') b.FMEN += (v.montant_ttc || 0) // TTC : idem
         else if (v.code === 'AUTO') b.AUTOREEL += (v.montant_reel != null ? v.montant_reel : (v.montant_ht || 0))
-        else if (v.code === 'COM') b.COM += (v.montant_ht || 0)
+        else if (v.code === 'COM') b.COM += (v.montant_ttc || 0)   // TTC : idem
       }
 
       // ── 3. Prestations (PREST = deduction_loy, HAOWNER = haowner) ──
