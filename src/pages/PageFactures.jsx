@@ -199,13 +199,16 @@ const [pushing, setPushing] = useState(false)
       const resaById = {}
       for (const r of (resasMois || [])) resaById[r.id] = r
 
-      // reservation → payout_reservation → payout_hospitable (avec mouvement_bancaire rattaché)
+      // reservation → payout_reservation → payout_hospitable
+      // Pas de filtre sur mouvement_id : certains payouts sont rapprochés sans que
+      // payout_hospitable.mouvement_id soit renseigné (ex. BGH : mouvement marqué
+      // 'rapproche' côté mouvement_bancaire mais payout_hospitable.mouvement_id = null).
+      // Fallback : payout_hospitable.amount quand mouvement_bancaire absent.
       const payoutResasRaw = resaIds.length
         ? (await supabase
             .from('payout_reservation')
-            .select('payout_id, reservation_id, payout_hospitable!inner(id, mouvement_id, mouvement_bancaire(credit))')
+            .select('payout_id, reservation_id, payout_hospitable!inner(id, mouvement_id, amount, mouvement_bancaire(credit))')
             .in('reservation_id', resaIds)
-            .not('payout_hospitable.mouvement_id', 'is', null)
           ).data || []
         : []
 
@@ -220,12 +223,14 @@ const [pushing, setPushing] = useState(false)
           ).data || []
         : []
 
-      // Calculer le crédit réel par payout (depuis mouvement_bancaire)
+      // Crédit par payout : mouvement_bancaire.credit si lié, sinon payout_hospitable.amount
       const creditByPayoutId = {}
       for (const pr of payoutResasRaw) {
         const ph = pr.payout_hospitable
-        if (!ph?.mouvement_id || !ph.mouvement_bancaire?.credit) continue
-        if (!creditByPayoutId[pr.payout_id]) creditByPayoutId[pr.payout_id] = ph.mouvement_bancaire.credit
+        if (!ph) continue
+        const credit = ph.mouvement_bancaire?.credit ?? ph.amount
+        if (!credit) continue
+        if (!creditByPayoutId[pr.payout_id]) creditByPayoutId[pr.payout_id] = credit
       }
 
       // Grouper toutes les réservations par payout pour le calcul de proportion
