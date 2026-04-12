@@ -58,7 +58,21 @@ serve(async (req) => {
       { auth: { persistSession: false } }
     )
 
-    // ── 1. Réservations du mois ───────────────────────────────────────────────
+    // ── 1. Réservations du mois (DCB uniquement — exclut Lauian) ─────────────
+    // Récupérer d'abord les bien_ids DCB pour filtrer
+    const { data: biensDcb, error: biensErr } = await supabase
+      .from('bien')
+      .select('id')
+      .eq('agence', 'dcb')
+    if (biensErr) throw biensErr
+    const biensDcbIds = (biensDcb || []).map(b => b.id)
+    if (!biensDcbIds.length) {
+      return jsonResp({
+        reservations_total: 0, prouvees: 0, non_prouvees: 0, anomalies: 0,
+        message: 'Aucun bien DCB trouvé',
+      })
+    }
+
     const { data: resas, error: resasErr } = await supabase
       .from('reservation')
       .select('id, bien_id, fin_revenue, platform, mois_comptable, platform_id, code')
@@ -66,6 +80,7 @@ serve(async (req) => {
       .eq('owner_stay', false)
       .neq('final_status', 'cancelled')
       .gt('fin_revenue', 0)
+      .in('bien_id', biensDcbIds)
 
     if (resasErr) throw resasErr
     if (!resas?.length) {
