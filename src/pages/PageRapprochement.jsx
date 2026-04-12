@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect, useCallback, useRef } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
 import {
@@ -117,14 +117,21 @@ export default function PageRapprochement() {
     }
   }, [mois])
 
+  // Chargement des données quand le mois change
   useEffect(() => {
     charger()
-    const channel = supabase.channel('rapproch-changes')
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'mouvement_bancaire' }, () => charger())
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'reservation' }, () => charger())
+  }, [mois]) // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Subscription Supabase créée UNE SEULE FOIS au mount — utilise une ref pour toujours appeler le charger courant
+  const chargerRef = useRef(charger)
+  chargerRef.current = charger
+  useEffect(() => {
+    const channel = supabase.channel(`rapproch-${Date.now()}`)
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'mouvement_bancaire' }, () => chargerRef.current?.())
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'reservation' }, () => chargerRef.current?.())
       .subscribe()
     return () => { supabase.removeChannel(channel) }
-  }, [charger])
+  }, []) // eslint-disable-line react-hooks/exhaustive-deps
 
   async function lancerSync() {
     setSyncing(true)
