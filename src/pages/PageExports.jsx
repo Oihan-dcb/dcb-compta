@@ -6,7 +6,7 @@ import { exportRapprochementBancaire } from '../services/exportRapprochementBanc
 import { exportAutoDebours, exportAutoDeboursCombined } from '../services/exportAutoDebours'
 import { exportFacturesEvoliz } from '../services/exportFacturesEvoliz'
 import { exportReservationsDetaillees } from '../services/exportReservationsDetaillees'
-import { exportDeboursPrestations } from '../services/exportDeboursPrestations'
+import { exportDeboursPrestations, exportDeboursPrestationsCombined } from '../services/exportDeboursPrestations'
 import { buildComptaMensuelle, downloadComptaCSV, exportComptaCSV } from '../services/buildComptaMensuelle'
 import { envoyerExportsComptable } from '../services/envoyerExportsComptable'
 
@@ -447,7 +447,9 @@ export default function PageExports() {
             titre="Débours & Prestations"
             description="Prestations hors forfait + frais propriétaire (2 onglets)"
             loading={loading.debours}
+            loadingPreview={loading.debours_preview}
             onClick={telechargerXLSX}
+            onPreview={() => consulterCSV('debours', 'Débours & Prestations', exportDeboursPrestationsCombined, `DCB_Debours_Prestations_${mois}.csv`)}
             format="XLSX"
           />
         </div>
