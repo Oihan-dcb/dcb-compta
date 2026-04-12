@@ -26,12 +26,9 @@ async function evolizCall(action, payload = {}) {
 
   if (error) throw new Error(`Edge Function: ${error.message}`)
   if (data?.error) throw new Error(`Evoliz API: ${data.error}`)
-  if (data?.data?.error) throw new Error(`Evoliz: ${JSON.stringify(data.data.error)}`)
-
-  // VÃÂ©rifier le status HTTP retournÃÂ© par la Edge Function
+  // Retourner le corps complet Evoliz pour faciliter le débogage
   if (data?.status && data.status >= 400) {
-    const msg = data.data?.message || data.data?.error || `HTTP ${data.status}`
-    throw new Error(`Evoliz ${data.status}: ${typeof msg === 'object' ? JSON.stringify(msg) : msg}`)
+    throw new Error(`Evoliz ${data.status}: ${JSON.stringify(data.data)}`)
   }
 
   return data?.data
