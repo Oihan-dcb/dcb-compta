@@ -24,6 +24,10 @@ export default function PageAutoEntrepreneurs() {
   const [visionMois, setVisionMois] = useState(() => new Date().toISOString().slice(0, 7))
   const [visionData, setVisionData] = useState([])
   const [loadingVision, setLoadingVision] = useState(false)
+  const [virementsAE, setVirementsAE] = useState([])
+  const [liensVirementsAE, setLiensVirementsAE] = useState({})
+  const [commentairesAE, setCommentairesAE] = useState({})
+  const [loadingVirementsAE, setLoadingVirementsAE] = useState(false)
   const [error, setError] = useState(null)
   const [success, setSuccess] = useState(null)
   const [confirmModal, setConfirmModal] = useState(null)
@@ -105,6 +109,44 @@ export default function PageAutoEntrepreneurs() {
     const missions = (missionsData || []).map(m => ({ ...m, _type: 'mission', _date: m.date_mission }))
     setVisionData([...prests, ...missions])
     setLoadingVision(false)
+  }
+
+  async function chargerVirementsAE(mois) {
+    setLoadingVirementsAE(true)
+    try {
+      const [y, m] = mois.split('-').map(Number)
+      const d2 = new Date(y, m, 1)
+      const moisSuivant = `${d2.getFullYear()}-${String(d2.getMonth()+1).padStart(2,'0')}`
+      const { data } = await supabase
+        .from('mouvement_bancaire')
+        .select('id, date_operation, libelle, detail, debit, credit, canal, mois_releve')
+        .in('mois_releve', [mois, moisSuivant])
+        .gt('debit', 0)
+        .order('date_operation')
+      setVirementsAE(data || [])
+      const saved = localStorage.getItem(`dcb_ctrl_vir_ae_${mois}`)
+      if (saved) {
+        const { liens, commentaires } = JSON.parse(saved)
+        setLiensVirementsAE(liens || {})
+        setCommentairesAE(commentaires || {})
+      } else {
+        setLiensVirementsAE({})
+        setCommentairesAE({})
+      }
+    } catch (err) { setError(err.message) }
+    finally { setLoadingVirementsAE(false) }
+  }
+
+  function sauvegarderCtrlAE(newLiens, newComm) {
+    localStorage.setItem(`dcb_ctrl_vir_ae_${visionMois}`, JSON.stringify({ liens: newLiens, commentaires: newComm }))
+  }
+
+  function autoMatchVirementAE(ae, virsDispos) {
+    const tokens = [ae.nom?.toLowerCase(), ae.prenom?.toLowerCase()].filter(t => t && t.length > 2)
+    return virsDispos.find(v => {
+      const hay = ((v.detail || '') + ' ' + (v.libelle || '')).toLowerCase()
+      return tokens.some(t => hay.includes(t))
+    }) || null
   }
 
   function ouvrir(ae) { setForm(ae ? { ...ae } : EMPTY_AE); setEditing(ae ? ae.id : 'new'); setError(null); setSuccess(null) }
@@ -255,6 +297,7 @@ export default function PageAutoEntrepreneurs() {
         <button style={TAB_STYLE(tab === 'vision')} onClick={() => { setTab('vision'); chargerVision(visionMois) }}>📊 Vision mensuelle</button>
         <button style={TAB_STYLE(tab === 'aes')} onClick={() => setTab('aes')}>🧹 Staff & AE ({aes.length})</button>
         <button style={TAB_STYLE(tab === 'prestations')} onClick={() => setTab('prestations')}>⚙️ Types de prestations ({prestationTypes.length})</button>
+        <button style={TAB_STYLE(tab === 'controle')} onClick={() => { setTab('controle'); chargerVirementsAE(visionMois); chargerVision(visionMois) }}>🔍 Contrôle virements</button>
       </div>
 
       {loading && aes.length === 0 ? <div style={{ textAlign: 'center', padding: 40, color: '#888' }}>Chargement...</div> : (
@@ -514,6 +557,194 @@ export default function PageAutoEntrepreneurs() {
                     </div>
                   )
                 })}
+              </div>
+            )
+          })()}
+
+          {tab === 'controle' && (() => {
+            const fmtDate = d => d ? d.split('-').reverse().join('/') : '—'
+            const fmt = v => ((v || 0) / 100).toFixed(2) + ' €'
+
+            // Montant attendu par AE : missions + prestations validées du mois
+            const montantAttendu = aeId => visionData
+              .filter(m => m.ae_id === aeId && (m._type === 'mission' || (m._type === 'prestation' && m.statut === 'valide')))
+              .reduce((s, m) => s + (m.montant || 0), 0)
+
+            // Pré-calcul allLiés pour exclure des autres dropdowns
+            const allLiesAE = new Set()
+            for (const ae of aes) {
+              const manualId = liensVirementsAE[ae.id]
+              if (manualId && manualId !== 'none') {
+                allLiesAE.add(manualId)
+              } else if (!manualId) {
+                const auto = autoMatchVirementAE(ae, virementsAE)
+                if (auto) allLiesAE.add(auto.id)
+              }
+            }
+
+            const getVirLie = ae => {
+              const val = liensVirementsAE[ae.id]
+              if (val === 'none') return null
+              if (val) return virementsAE.find(v => v.id === val) || null
+              return autoMatchVirementAE(ae, virementsAE)
+            }
+
+            const aesActifs = aes.filter(ae => ae.actif !== false)
+            const totalAttendu = aesActifs.reduce((s, ae) => s + montantAttendu(ae.id), 0)
+            const totalVire = aesActifs.reduce((s, ae) => {
+              const v = getVirLie(ae)
+              return s + (v ? (v.debit || 0) : 0)
+            }, 0)
+
+            return (
+              <div>
+                {/* Sélecteur mois */}
+                <div style={{ display: 'flex', gap: 10, alignItems: 'center', marginBottom: 18, flexWrap: 'wrap' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 0 }}>
+                    <button onClick={() => { const [y,m] = visionMois.split('-').map(Number); const d = new Date(y, m-2, 1); const nm = `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}`; setVisionMois(nm); chargerVirementsAE(nm); chargerVision(nm) }}
+                      style={{ background: 'var(--bg)', border: '1px solid var(--border)', borderRadius: '7px 0 0 7px', padding: '6px 10px', cursor: 'pointer', fontSize: 16, borderRight: 'none' }}>‹</button>
+                    <span style={{ fontWeight: 700, fontSize: 14, padding: '6px 14px', border: '1px solid var(--border)', minWidth: 140, textAlign: 'center' }}>
+                      {new Date(visionMois + '-01').toLocaleDateString('fr-FR', { month: 'long', year: 'numeric' })}
+                    </span>
+                    <button onClick={() => { const [y,m] = visionMois.split('-').map(Number); const d = new Date(y, m, 1); const nm = `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}`; setVisionMois(nm); chargerVirementsAE(nm); chargerVision(nm) }}
+                      style={{ background: 'var(--bg)', border: '1px solid var(--border)', borderRadius: '0 7px 7px 0', padding: '6px 10px', cursor: 'pointer', fontSize: 16, borderLeft: 'none' }}>›</button>
+                  </div>
+                  <button onClick={() => chargerVirementsAE(visionMois)} disabled={loadingVirementsAE}
+                    style={{ background: loadingVirementsAE ? '#94a3b8' : 'var(--brand)', color: '#fff', border: 'none', borderRadius: 7, padding: '6px 14px', fontSize: 13, fontWeight: 600, cursor: loadingVirementsAE ? 'not-allowed' : 'pointer' }}>
+                    {loadingVirementsAE ? '⏳' : '↺ Actualiser'}
+                  </button>
+                  <span style={{ fontSize: 13, color: '#888' }}>{virementsAE.length} virement(s) sortant(s) trouvé(s)</span>
+                </div>
+
+                {/* Table contrôle */}
+                <div style={{ background: '#fff', borderRadius: 12, border: '1px solid #e5e7eb', overflow: 'hidden', marginBottom: 18 }}>
+                  <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
+                    <thead>
+                      <tr style={{ background: '#F7F4EF', borderBottom: '2px solid var(--brand)' }}>
+                        <th style={{ padding: '9px 16px', textAlign: 'left', fontWeight: 700, color: 'var(--text)' }}>Staff / AE</th>
+                        <th style={{ padding: '9px 8px', textAlign: 'right', fontWeight: 700, color: 'var(--text)' }}>Attendu</th>
+                        <th style={{ padding: '9px 8px', textAlign: 'left', fontWeight: 700, color: 'var(--text)', minWidth: 260 }}>Virement rapproché</th>
+                        <th style={{ padding: '9px 8px', textAlign: 'right', fontWeight: 700, color: 'var(--text)' }}>Viré</th>
+                        <th style={{ padding: '9px 8px', textAlign: 'right', fontWeight: 700, color: 'var(--text)' }}>Écart</th>
+                        <th style={{ padding: '9px 16px', textAlign: 'left', fontWeight: 700, color: 'var(--text)' }}>Commentaire</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {aesActifs.map(ae => {
+                        const attendu = montantAttendu(ae.id)
+                        const virLie = getVirLie(ae)
+                        const vire = virLie ? (virLie.debit || 0) : 0
+                        const ecart = attendu > 0 || vire > 0 ? vire - attendu : null
+                        const isAuto = !liensVirementsAE[ae.id] && !!virLie
+                        const isNone = liensVirementsAE[ae.id] === 'none'
+                        const statut = attendu === 0 && vire === 0 ? 'inactif'
+                          : isNone ? 'non_lie'
+                          : ecart === null ? 'attente'
+                          : Math.abs(ecart) <= 1 ? 'ok'
+                          : ecart > 0 ? 'surplus'
+                          : 'manque'
+
+                        // Options dropdown : virements non liés à d'autres AEs + celui déjà lié ici
+                        const opts = virementsAE.filter(v => !allLiesAE.has(v.id) || virLie?.id === v.id)
+
+                        return (
+                          <tr key={ae.id} style={{ borderBottom: '1px solid #f3f4f6', background: statut === 'ok' ? '#f0fdf4' : statut === 'inactif' ? '#fafafa' : 'transparent' }}>
+                            <td style={{ padding: '8px 16px', fontWeight: 600 }}>
+                              {ae.prenom ? `${ae.prenom} ${ae.nom}` : ae.nom}
+                              {ae.type === 'staff' && <span style={{ fontSize: 10, background: '#fef3c7', color: '#92400e', borderRadius: 4, padding: '1px 5px', marginLeft: 6, fontWeight: 700 }}>staff</span>}
+                            </td>
+                            <td style={{ padding: '8px', textAlign: 'right', color: attendu > 0 ? 'var(--text)' : '#aaa', fontWeight: attendu > 0 ? 600 : 400 }}>
+                              {attendu > 0 ? fmt(attendu) : '—'}
+                            </td>
+                            <td style={{ padding: '8px' }}>
+                              <select
+                                value={liensVirementsAE[ae.id] || ''}
+                                onChange={e => {
+                                  const val = e.target.value === '' ? undefined : e.target.value
+                                  // '' = reset (auto), 'none' = non lié explicite, id = manuel
+                                  const newVal = e.target.value === '' ? undefined : e.target.value
+                                  const newLiens = { ...liensVirementsAE }
+                                  if (newVal === undefined) delete newLiens[ae.id]
+                                  else newLiens[ae.id] = newVal
+                                  setLiensVirementsAE(newLiens)
+                                  sauvegarderCtrlAE(newLiens, commentairesAE)
+                                }}
+                                style={{ width: '100%', padding: '5px 8px', borderRadius: 6, border: `1.5px solid ${isAuto ? '#d97706' : virLie ? '#16a34a' : '#e5e7eb'}`, fontSize: 12, background: isAuto ? '#FFFBF0' : '#fff' }}
+                              >
+                                <option value="">— auto —</option>
+                                <option value="none">✕ Non lié</option>
+                                {opts.map(v => (
+                                  <option key={v.id} value={v.id}>
+                                    {(v.detail || v.libelle || '').substring(0, 40)} · {fmt(v.debit)} · {fmtDate(v.date_operation)}
+                                  </option>
+                                ))}
+                              </select>
+                              {isAuto && virLie && <div style={{ fontSize: 10, color: '#d97706', marginTop: 2 }}>auto-détecté</div>}
+                            </td>
+                            <td style={{ padding: '8px', textAlign: 'right', fontWeight: 600, color: vire > 0 ? '#16a34a' : '#aaa' }}>
+                              {vire > 0 ? fmt(vire) : isNone ? <span style={{ color: '#9c8c7a', fontSize: 11 }}>non lié</span> : '—'}
+                            </td>
+                            <td style={{ padding: '8px', textAlign: 'right' }}>
+                              {statut === 'ok' && <span style={{ color: '#16a34a', fontWeight: 700 }}>✓ OK</span>}
+                              {statut === 'manque' && <span style={{ color: '#dc2626', fontWeight: 700 }}>{(ecart / 100).toFixed(2)} €</span>}
+                              {statut === 'surplus' && <span style={{ color: '#d97706', fontWeight: 700 }}>+{(ecart / 100).toFixed(2)} €</span>}
+                              {statut === 'attente' && <span style={{ color: '#888', fontSize: 11 }}>—</span>}
+                              {statut === 'non_lie' && <span style={{ color: '#9c8c7a', fontSize: 11 }}>—</span>}
+                              {statut === 'inactif' && <span style={{ color: '#ccc', fontSize: 11 }}>—</span>}
+                            </td>
+                            <td style={{ padding: '8px 16px' }}>
+                              <input
+                                value={commentairesAE[ae.id] || ''}
+                                onChange={e => {
+                                  const newComm = { ...commentairesAE, [ae.id]: e.target.value }
+                                  setCommentairesAE(newComm)
+                                  sauvegarderCtrlAE(liensVirementsAE, newComm)
+                                }}
+                                placeholder="Note…"
+                                style={{ width: '100%', padding: '4px 8px', borderRadius: 5, border: '1px solid #e5e7eb', fontSize: 12 }}
+                              />
+                            </td>
+                          </tr>
+                        )
+                      })}
+                      {/* Ligne totaux */}
+                      <tr style={{ background: '#F7F4EF', borderTop: '2px solid var(--brand)', fontWeight: 700 }}>
+                        <td style={{ padding: '9px 16px' }}>TOTAL</td>
+                        <td style={{ padding: '9px 8px', textAlign: 'right' }}>{fmt(totalAttendu)}</td>
+                        <td style={{ padding: '9px 8px' }}></td>
+                        <td style={{ padding: '9px 8px', textAlign: 'right', color: '#16a34a' }}>{fmt(totalVire)}</td>
+                        <td style={{ padding: '9px 8px', textAlign: 'right', color: Math.abs(totalVire - totalAttendu) <= 1 ? '#16a34a' : '#dc2626', fontWeight: 700 }}>
+                          {totalAttendu > 0 || totalVire > 0
+                            ? (Math.abs(totalVire - totalAttendu) <= 1
+                              ? '✓ Équilibré'
+                              : `${((totalVire - totalAttendu) / 100).toFixed(2)} €`)
+                            : '—'}
+                        </td>
+                        <td style={{ padding: '9px 16px' }}></td>
+                      </tr>
+                    </tbody>
+                  </table>
+                </div>
+
+                {/* Virements sortants non rapprochés */}
+                {(() => {
+                  const nonRapr = virementsAE.filter(v => !allLiesAE.has(v.id))
+                  if (!nonRapr.length) return null
+                  return (
+                    <div style={{ background: '#FFFBF0', borderRadius: 10, border: '1px solid #E4A853', padding: '12px 16px' }}>
+                      <div style={{ fontWeight: 700, fontSize: 13, color: '#d97706', marginBottom: 8 }}>
+                        ⚠ {nonRapr.length} virement(s) sortant(s) non rapproché(s)
+                      </div>
+                      {nonRapr.map(v => (
+                        <div key={v.id} style={{ fontSize: 12, color: '#78350f', display: 'flex', gap: 12, padding: '3px 0', borderBottom: '1px solid #fde68a' }}>
+                          <span style={{ color: '#888' }}>{fmtDate(v.date_operation)}</span>
+                          <span style={{ flex: 1 }}>{v.detail || v.libelle}</span>
+                          <span style={{ fontWeight: 700 }}>{fmt(v.debit)}</span>
+                        </div>
+                      ))}
+                    </div>
+                  )
+                })()}
               </div>
             )
           })()}
