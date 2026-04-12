@@ -385,6 +385,22 @@ async function genererFactureGroupe(proprio, biens, mois) {
 
   // Ne pas ÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂ©craser une facture dÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂ©jÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂ  envoyÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂ©e ou payÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂ©e
   if (existingFacture && ['envoye_evoliz', 'payee'].includes(existingFacture.statut)) {
+    const autoTotal = autoAbsorbableTotal + autoSurplusTotal
+    if (autoTotal > 0) {
+      await supabase.from('facture_evoliz_ligne').delete()
+        .eq('facture_id', existingFacture.id).eq('code', 'AUTO')
+      await supabase.from('facture_evoliz_ligne').insert({
+        facture_id: existingFacture.id,
+        code: 'AUTO',
+        libelle: 'Prestations AE — mémo',
+        description: 'Total coûts AE du mois. Non facturé Evoliz.',
+        montant_ht: autoTotal,
+        taux_tva: null,
+        montant_tva: 0,
+        montant_ttc: autoTotal,
+        ordre: 99,
+      })
+    }
     return { created: false, skipped: true, raison: 'Facture déjà envoyée' }
   }
 
