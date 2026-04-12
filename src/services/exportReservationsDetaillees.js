@@ -35,9 +35,9 @@ export async function exportReservationsDetaillees(mois) {
   ].join('\n')
 
   const colonnes = [
-    'Code resa', 'Bien', 'Proprietaire', 'Plateforme', 'Voyageur',
-    'Check-in', 'Check-out', 'Nuits', 'Fin Revenue EUR',
-    'Ventilation calculee', 'Rapprochee', 'Owner stay', 'Statut',
+    'Code résa', 'Bien', 'Propriétaire', 'Plateforme', 'Voyageur',
+    'Arrivée', 'Départ', 'Nuits', 'Revenu net EUR',
+    'Ventilation calculée', 'Rapprochée', 'Séjour propriétaire', 'Statut',
     'HON EUR', 'FMEN EUR', 'AUTO EUR', 'LOY EUR', 'VIR EUR', 'TAXE EUR', 'COM EUR'
   ]
 

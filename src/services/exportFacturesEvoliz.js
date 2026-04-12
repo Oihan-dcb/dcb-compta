@@ -25,17 +25,17 @@ export async function exportFacturesEvoliz(mois) {
   ].join('\n')
 
   const colonnes = [
-    'Proprietaire', 'Bien', 'Type facture', 'Numero facture', 'Statut',
-    'Date generation', 'Date push Evoliz', 'ID Evoliz',
+    'Propriétaire', 'Bien', 'Type facture', 'Numéro facture', 'Statut',
+    'Date génération', 'Date envoi Evoliz', 'ID Evoliz',
     'Total HT EUR', 'Total TTC EUR', 'Montant reversement EUR',
-    'Lignes detaillees'
+    'Lignes détaillées'
   ]
 
-  const typeLabels = { 'honoraires': 'Honoraires', 'debours': 'Debours', 'com': 'Commission' }
+  const typeLabels = { 'honoraires': 'Honoraires', 'debours': 'Débours', 'com': 'Commission' }
   const statutLabels = {
     'brouillon': 'Brouillon', 'calcul_en_cours': 'Calcul en cours',
-    'valide': 'Validee', 'envoi_en_cours': 'Envoi en cours',
-    'envoye_evoliz': 'Envoyee Evoliz', 'payee': 'Payee'
+    'valide': 'Validée', 'envoi_en_cours': 'Envoi en cours',
+    'envoye_evoliz': 'Envoyée Evoliz', 'payee': 'Payée'
   }
 
   const lignes = (factures || []).map(f => {
