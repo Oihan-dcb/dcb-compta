@@ -55,7 +55,7 @@ export function genererStatementHTML(proprio, mois, data) {
   const deboursSeuls  = extrasGlobaux.reduce((s, p) => s + (p.montant_ttc || p.montant || 0), 0)
     + resas.reduce((s, r) => s + (r.extra || 0), 0)
   const deboursTotal  = deboursSeuls + haownerTotal + ownerStayMenageTotal
-  const totalManager  = honTotal + menageTotal + deboursTotal
+  const totalManager  = honTotal + menageTotal + deboursTotal + fraisDeductionLoyTotal
   // virementNet vient de buildRapportData (source de vérité unique) — inclut déjà les remboursements
   const virementNet   = data.kpis?.virementNet ?? 0
   const netProprio    = virementNet
@@ -200,6 +200,15 @@ export function genererStatementHTML(proprio, mois, data) {
     <div style="display:flex;justify-content:space-between;padding:3px 0;border-bottom:1px solid #ece8e2;font-size:10px">
       <span style="color:#9c8c7a">Débours / Achats</span><span>${deboursTotal > 0 ? fmt(deboursTotal) : '—'}</span>
     </div>
+    ${fraisDeductionLoyList.map(f => {
+      const montant = (f.statut === 'facture' && f.statut_deduction !== 'en_attente') ? (f.montant_deduit_loy || 0)
+        : (f.statut === 'facture' && f.statut_deduction === 'en_attente') ? (f.montant_ttc || 0)
+        : (f.statut === 'a_facturer') ? (f.montant_ttc || 0) : 0
+      if (montant <= 0) return ''
+      return `<div style="display:flex;justify-content:space-between;padding:3px 0;border-bottom:1px solid #ece8e2;font-size:10px">
+      <span style="color:#9c8c7a">${escapeNonAscii(f.libelle || 'Frais HA proprio.')}</span><span>${fmt(montant)}</span>
+    </div>`
+    }).join('')}
     <div style="display:flex;justify-content:space-between;padding:6px 0 0;font-weight:700;font-size:10.5px">
       <span>Total dû à DCB</span><span style="color:#CC9933">${fmt(totalManager)}</span>
     </div>
