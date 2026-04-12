@@ -528,6 +528,7 @@ const [pushing, setPushing] = useState(false)
                         </thead>
                         <tbody>
                           {(f.facture_evoliz_ligne || [])
+                            .filter(l => l.code !== 'AUTO')
                             .sort((a, b) => a.ordre - b.ordre)
                             .map(l => (
                               <tr key={l.id}>
@@ -546,11 +547,25 @@ const [pushing, setPushing] = useState(false)
                               </tr>
                             ))}
                           <tr style={{ background: 'var(--brand-pale)', borderTop: '2px solid var(--border)' }}>
-                            <td colSpan={3} style={{ fontWeight: 600 }}>Total</td>
+                            <td colSpan={3} style={{ fontWeight: 600 }}>Total Evoliz</td>
                             <td className="right montant" style={{ fontWeight: 700 }}>{formatMontant(f.total_ht)}</td>
                             <td className="right montant" style={{ fontWeight: 700, color: 'var(--text-muted)' }}>{formatMontant(f.total_tva)}</td>
                             <td className="right montant" style={{ fontWeight: 700 }}>{formatMontant(f.total_ttc)}</td>
                           </tr>
+                          {/* Ligne mémo AUTO — non envoyée à Evoliz */}
+                          {(f.facture_evoliz_ligne || []).filter(l => l.code === 'AUTO').map(l => (
+                            <tr key={l.id} style={{ background: '#FFFBEB', borderTop: '1px dashed #D97706' }}>
+                              <td>
+                                <span className="code-AUTO" style={{ opacity: 0.7 }}>AUTO</span>
+                                <span style={{ fontSize: 10, color: '#B45309', marginLeft: 4, fontWeight: 600 }}>mémo</span>
+                              </td>
+                              <td style={{ fontWeight: 500, color: '#92400E' }}>{l.libelle}</td>
+                              <td style={{ fontSize: 12, color: '#B45309' }}>Non facturé Evoliz — vérification uniquement</td>
+                              <td className="right montant" style={{ color: '#92400E', fontWeight: 600 }}>{formatMontant(l.montant_ht)}</td>
+                              <td className="right montant" style={{ color: 'var(--text-muted)' }}>—</td>
+                              <td className="right montant" style={{ color: '#92400E', fontWeight: 600 }}>{formatMontant(l.montant_ttc)}</td>
+                            </tr>
+                          ))}
                         </tbody>
                       </table>
                     </div>

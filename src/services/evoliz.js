@@ -138,7 +138,7 @@ export async function creerFactureEvoliz(facture) {
   // Evoliz attend les prix en euros HT, on convertit depuis centimes
   const lignes = (facture.facture_evoliz_ligne || [])
     .sort((a, b) => a.ordre - b.ordre)
-    .filter(l => l.montant_ht > 0)
+    .filter(l => l.montant_ht > 0 && l.code !== 'AUTO')
     .map(l => {
       const htCentimes = Math.round(l.montant_ht)
       if (!Number.isFinite(htCentimes) || htCentimes <= 0) return null

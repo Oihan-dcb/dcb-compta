@@ -583,6 +583,22 @@ async function genererFactureGroupe(proprio, biens, mois) {
     })
   }
 
+  // Ligne mémo AUTO : total AE payé ce mois (non envoyé à Evoliz, taux_tva=null)
+  const autoTotal = autoAbsorbableTotal + autoSurplusTotal
+  if (autoTotal > 0) {
+    lignes.push({
+      facture_id: factureId,
+      code: 'AUTO',
+      libelle: 'Prestations AE — mémo',
+      description: 'Total coûts AE du mois. Non facturé Evoliz.',
+      montant_ht: autoTotal,
+      taux_tva: null,
+      montant_tva: 0,
+      montant_ttc: autoTotal,
+      ordre: 99,
+    })
+  }
+
   if (lignes.length > 0) {
     const { error: insertErr } = await supabase.from('facture_evoliz_ligne').insert(lignes)
     if (insertErr) {
