@@ -44,7 +44,32 @@ const [pushing, setPushing] = useState(false)
   const [generatingCOM, setGeneratingCOM] = useState(false)
   const [pushingCOM, setPushingCOM] = useState(false)
 
-  useEffect(() => { charger(); chargerCOM() }, [mois])
+  // Contrôle virements propriétaires
+  const [virementsSortants, setVirementsSortants] = useState([])
+  const [liensVirements, setLiensVirements] = useState({})   // proprio_id → mouvement_id
+  const [commentairesCtrl, setCommentairesCtrl] = useState({}) // proprio_id → string
+  const [loadingVirements, setLoadingVirements] = useState(false)
+
+  useEffect(() => { charger(); chargerCOM(); chargerVirements() }, [mois])
+
+  // Persistance localStorage pour liens et commentaires
+  useEffect(() => {
+    try {
+      const saved = JSON.parse(localStorage.getItem(`dcb_ctrl_vir_${mois}`) || '{}')
+      if (saved.liens) setLiensVirements(saved.liens)
+      if (saved.commentaires) setCommentairesCtrl(saved.commentaires)
+    } catch {}
+  }, [mois])
+
+  function sauvegarderCtrl(newLiens, newCommentaires) {
+    try {
+      localStorage.setItem(`dcb_ctrl_vir_${mois}`, JSON.stringify({
+        liens: newLiens ?? liensVirements,
+        commentaires: newCommentaires ?? commentairesCtrl,
+      }))
+    } catch {}
+  }
+
   useEffect(() => {
     import('../lib/supabase').then(function(mod) {
       mod.supabase.from('facture_evoliz').select('mois').then(function(res) {
@@ -103,6 +128,29 @@ const [pushing, setPushing] = useState(false)
       setError(err.message)
     } finally {
       setPushingCOM(false)
+    }
+  }
+
+  async function chargerVirements() {
+    setLoadingVirements(true)
+    try {
+      const { supabase } = await import('../lib/supabase')
+      const [y, m] = mois.split('-')
+      const dateMin = `${y}-${m}-01`
+      const lastDay = new Date(Number(y), Number(m), 0).getDate()
+      const dateMax = `${y}-${m}-${String(lastDay).padStart(2, '0')}`
+      const { data, error } = await supabase
+        .from('mouvement_bancaire')
+        .select('id, libelle, detail, debit, date_operation, canal')
+        .eq('mois_releve', mois)
+        .gt('debit', 0)
+        .order('date_operation', { ascending: true })
+      if (error) throw error
+      setVirementsSortants(data || [])
+    } catch (err) {
+      console.error('chargerVirements:', err)
+    } finally {
+      setLoadingVirements(false)
     }
   }
 
@@ -519,6 +567,197 @@ const [pushing, setPushing] = useState(false)
           })}
         </div>
       )}
+
+      {/* ── Contrôle virements propriétaires ── */}
+      {(() => {
+        const facturesAvecReversement = facturesTries.filter(f => f.montant_reversement > 0)
+        if (facturesAvecReversement.length === 0) return null
+
+        // Normalisation pour matching
+        const norm = s => (s || '').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/[^a-z0-9]/g, ' ').replace(/\s+/g, ' ').trim()
+
+        // Auto-match : trouver le virement le plus probable pour un proprio
+        function autoMatchVirement(f) {
+          const proprio = f.proprietaire
+          const tokens = [
+            ...(proprio?.nom || '').split(/\s+/),
+            ...(proprio?.prenom || '').split(/\s+/),
+            ...(proprio?.bien || []).map(b => b.code),
+          ].map(norm).filter(t => t.length >= 3)
+
+          let best = null, bestScore = 0
+          for (const vir of virementsSortants) {
+            if (Object.values(liensVirements).includes(vir.id)) continue // déjà lié à un autre
+            const lib = norm((vir.libelle || '') + ' ' + (vir.detail || ''))
+            const score = tokens.reduce((s, t) => s + (lib.includes(t) ? 1 : 0), 0)
+            if (score > bestScore) { bestScore = score; best = vir }
+          }
+          return bestScore >= 1 ? best : null
+        }
+
+        // Résoudre le virement lié (manuel > auto)
+        function getVirementLie(f) {
+          const manuelId = liensVirements[f.proprietaire_id]
+          if (manuelId) return virementsSortants.find(v => v.id === manuelId) || null
+          return autoMatchVirement(f)
+        }
+
+        const totalAttendu = facturesAvecReversement.reduce((s, f) => s + f.montant_reversement, 0)
+        const virementsDejàLiés = new Set(facturesAvecReversement.map(f => getVirementLie(f)?.id).filter(Boolean))
+        const virementsNonLiés = virementsSortants.filter(v => !virementsDejàLiés.has(v.id))
+
+        return (
+          <div style={{ marginTop: 32, border: '1px solid var(--border)', borderRadius: 'var(--radius)', background: 'var(--white)', overflow: 'hidden' }}>
+            <div style={{ padding: '14px 18px', background: '#F0EBE1', borderBottom: '2px solid var(--brand)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+              <div>
+                <div style={{ fontWeight: 700, fontSize: 15 }}>Contrôle virements propriétaires</div>
+                <div style={{ fontSize: 12, color: 'var(--text-muted)', marginTop: 2 }}>
+                  Rapprochement sorties de compte vs réversements attendus — {mois}
+                  {loadingVirements && <span style={{ marginLeft: 8 }}><span className="spinner" /></span>}
+                </div>
+              </div>
+              <div style={{ fontSize: 13, color: 'var(--text-muted)' }}>
+                {virementsSortants.length} virement(s) sortant(s) · attendu : <strong>{(totalAttendu / 100).toFixed(2)} €</strong>
+              </div>
+            </div>
+
+            <div className="table-container">
+              <table>
+                <thead>
+                  <tr>
+                    <th>Propriétaire</th>
+                    <th className="right">Attendu</th>
+                    <th>Virement trouvé</th>
+                    <th className="right">Montant virement</th>
+                    <th className="right">Écart</th>
+                    <th>Statut</th>
+                    <th>Commentaires Oihan</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {facturesAvecReversement.map(f => {
+                    const proprio = f.proprietaire
+                    const bienCodes = f.bien?.code
+                      ? f.bien.code
+                      : (proprio?.bien || []).some(b => b.groupe_facturation === 'MAITE')
+                        ? 'Maison Maïté'
+                        : (proprio?.bien || []).slice().sort((a,b)=>(a.code||'').localeCompare(b.code||'')).map(b=>b.code).filter(Boolean).join(', ')
+                    const vir = getVirementLie(f)
+                    const ecart = vir ? f.montant_reversement - vir.debit : null
+                    const ok = ecart !== null && Math.abs(ecart) <= 100 // tolérance 1€
+                    const manuelLien = liensVirements[f.proprietaire_id]
+                    const commentaire = commentairesCtrl[f.proprietaire_id] || ''
+
+                    // Options disponibles pour sélecteur manuel
+                    const options = virementsSortants.filter(v =>
+                      !Object.entries(liensVirements).some(([pid, mid]) => mid === v.id && pid !== f.proprietaire_id)
+                    )
+
+                    return (
+                      <tr key={f.id}>
+                        <td>
+                          {bienCodes && <span style={{ fontFamily: 'monospace', color: 'var(--brand)', fontSize: 12, marginRight: 6 }}>{bienCodes}</span>}
+                          <span style={{ fontWeight: 500 }}>{proprio?.nom} {proprio?.prenom || ''}</span>
+                        </td>
+                        <td className="right montant" style={{ fontWeight: 600 }}>{(f.montant_reversement / 100).toFixed(2)} €</td>
+                        <td style={{ fontSize: 13, maxWidth: 220 }}>
+                          <select
+                            value={manuelLien || (vir?.id || '')}
+                            onChange={e => {
+                              const val = e.target.value || null
+                              const newLiens = val
+                                ? { ...liensVirements, [f.proprietaire_id]: val }
+                                : Object.fromEntries(Object.entries(liensVirements).filter(([k]) => k !== f.proprietaire_id))
+                              setLiensVirements(newLiens)
+                              sauvegarderCtrl(newLiens, null)
+                            }}
+                            style={{ fontSize: 12, width: '100%', padding: '3px 6px', border: '1px solid var(--border)', borderRadius: 4, background: 'white' }}
+                          >
+                            <option value="">— non lié</option>
+                            {options.map(v => (
+                              <option key={v.id} value={v.id}>
+                                {v.date_operation} · {(v.debit / 100).toFixed(2)} € · {(v.libelle || '').substring(0, 35)}
+                              </option>
+                            ))}
+                          </select>
+                          {!manuelLien && vir && <div style={{ fontSize: 11, color: 'var(--text-muted)', marginTop: 2 }}>auto-match</div>}
+                        </td>
+                        <td className="right montant" style={{ color: vir ? 'var(--text)' : 'var(--text-muted)' }}>
+                          {vir ? `${(vir.debit / 100).toFixed(2)} €` : '—'}
+                        </td>
+                        <td className="right montant" style={{ fontWeight: 600, color: ecart === null ? 'var(--text-muted)' : ok ? '#059669' : '#DC2626' }}>
+                          {ecart === null ? '—' : ecart === 0 ? '✓ 0' : `${ecart > 0 ? '+' : ''}${(ecart / 100).toFixed(2)} €`}
+                        </td>
+                        <td>
+                          {vir === null
+                            ? <span style={{ padding: '3px 10px', borderRadius: 100, fontSize: 11, fontWeight: 600, background: '#FEF3C7', color: '#D97706' }}>Non trouvé</span>
+                            : ok
+                              ? <span style={{ padding: '3px 10px', borderRadius: 100, fontSize: 11, fontWeight: 600, background: '#D1FAE5', color: '#059669' }}>✓ OK</span>
+                              : <span style={{ padding: '3px 10px', borderRadius: 100, fontSize: 11, fontWeight: 600, background: '#FEE2E2', color: '#DC2626' }}>Écart</span>
+                          }
+                        </td>
+                        <td>
+                          <input
+                            type="text"
+                            value={commentaire}
+                            placeholder="Note…"
+                            onChange={e => {
+                              const newComm = { ...commentairesCtrl, [f.proprietaire_id]: e.target.value }
+                              setCommentairesCtrl(newComm)
+                              sauvegarderCtrl(null, newComm)
+                            }}
+                            style={{ fontSize: 12, width: '100%', padding: '3px 6px', border: '1px solid var(--border)', borderRadius: 4, background: 'white' }}
+                          />
+                        </td>
+                      </tr>
+                    )
+                  })}
+                </tbody>
+                <tfoot>
+                  <tr style={{ background: 'var(--brand-pale)', borderTop: '2px solid var(--border)' }}>
+                    <td style={{ fontWeight: 700 }}>Total</td>
+                    <td className="right montant" style={{ fontWeight: 700 }}>{(totalAttendu / 100).toFixed(2)} €</td>
+                    <td colSpan={2} className="right montant" style={{ fontWeight: 700 }}>
+                      {(() => {
+                        const totalVir = facturesAvecReversement.reduce((s, f) => s + (getVirementLie(f)?.debit || 0), 0)
+                        return totalVir > 0 ? `${(totalVir / 100).toFixed(2)} €` : '—'
+                      })()}
+                    </td>
+                    <td className="right montant" style={{ fontWeight: 700 }}>
+                      {(() => {
+                        const totalVir = facturesAvecReversement.reduce((s, f) => s + (getVirementLie(f)?.debit || 0), 0)
+                        if (!totalVir) return '—'
+                        const diff = totalAttendu - totalVir
+                        return <span style={{ color: Math.abs(diff) <= 100 ? '#059669' : '#DC2626' }}>
+                          {diff === 0 ? '✓ 0' : `${diff > 0 ? '+' : ''}${(diff / 100).toFixed(2)} €`}
+                        </span>
+                      })()}
+                    </td>
+                    <td colSpan={2} />
+                  </tr>
+                </tfoot>
+              </table>
+            </div>
+
+            {/* Virements non liés */}
+            {virementsNonLiés.length > 0 && (
+              <div style={{ padding: '12px 18px', borderTop: '1px solid var(--border)', background: '#FFFBEB' }}>
+                <div style={{ fontSize: 12, fontWeight: 600, color: '#B45309', marginBottom: 6 }}>
+                  ⚠ {virementsNonLiés.length} virement(s) sortant(s) non rapproché(s) :
+                </div>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+                  {virementsNonLiés.map(v => (
+                    <div key={v.id} style={{ fontSize: 12, color: 'var(--text-muted)', fontFamily: 'monospace' }}>
+                      {v.date_operation} · <strong>{(v.debit / 100).toFixed(2)} €</strong> · {v.libelle}
+                      {v.canal && <span style={{ marginLeft: 8, color: '#9CA3AF' }}>[{v.canal}]</span>}
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+          </div>
+        )
+      })()}
 
       {/* Modal confirmation Evoliz */}
       {showConfirmEvoliz && (
