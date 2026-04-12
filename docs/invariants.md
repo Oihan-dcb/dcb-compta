@@ -197,6 +197,16 @@ Aucun invariant actif violé à l'issue de la session du 12 avril 2026.
 | I-97 | `prestation_hors_forfait.mois` est mis à jour en cascade quand `date_prestation` change dans `PagePrestationsAE`. | ✅ Session 10/04/2026 |
 | I-98 | `MoisSelector` inclut toujours le mois actif dans les options, même s'il n'a pas de données dans `moisDispos`. | ✅ Session 10/04/2026 |
 
+### Invariants ajoutés (12 avril 2026 — Contrôle trésorerie v2)
+
+| Invariant | Description courte | Statut |
+|---|---|---|
+| I-99 | `encaissement_allocation` ne contient que des valeurs `mouvement_bancaire.credit` réelles (CSV importé). Aucun fallback `payout_hospitable.amount`. La catégorie `approxime` est abandonnée — toute ligne a `preuve_niveau='prouve'` et `can_be_used_for_reversement=true`. | ✅ Session 12/04/2026 — Edge Function v2 |
+| I-100 | La vue `reservation_mouvement` expose uniquement les encaissements prouvés (`mouvement_bancaire_id IS NOT NULL`). Elle ne retourne jamais de valeurs estimées ou théoriques. | ✅ Session 12/04/2026 — Migration 011 |
+| I-101 | `PageFactures` lit `reservation_mouvement` pour les encaissements prouvés — jamais `encaissement_allocation` directement. | ✅ Session 12/04/2026 |
+| I-102 | Déduplication par `mouvement_bancaire.id` dans `allocate-encaissements` : un même mouvement bancaire ne peut être compté qu'une seule fois par réservation, même s'il est accessible par plusieurs chemins (ventilation + payout_hospitable). | ✅ Session 12/04/2026 |
+| I-103 | L'anomalie `MOUVEMENT_BANCAIRE_MISSING` est le seul code d'anomalie produit par `allocate-encaissements` v2. Les anciens codes (`PAYOUT_MISSING`, `MOUVEMENT_ID_NULL`, etc.) sont obsolètes. | ✅ Session 12/04/2026 |
+
 ### Invariants métier à formaliser (non encore implémentés dans V1)
 
 | Invariant | Description courte |

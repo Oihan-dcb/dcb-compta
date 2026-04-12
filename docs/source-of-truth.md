@@ -126,7 +126,35 @@ En amont du flux pour la correction : `CSV Hospitable (référence clôture) > H
 
 ---
 
-## 5. Lien mouvement bancaire ↔ réservation (rapprochement)
+## 5. Encaissements prouvés par réservation (`reservation_mouvement`)
+
+**Donnée** : montant réel encaissé (CSV bancaire) rapproché à une réservation, par bien et mois comptable.
+
+| Étape | Source | Mécanisme |
+|---|---|---|
+| Calcul et persistance | Edge Function `allocate-encaissements` v2 | Déclenché par `⚡ Contrôle trésorerie` — DELETE + INSERT dans `encaissement_allocation` |
+| Lecture | Vue `reservation_mouvement` | SELECT direct, filtre `mouvement_bancaire_id IS NOT NULL` |
+
+**Chemins de preuve autorisés (dans cet ordre, déduplication par mb_id)** :
+1. `ventilation.mouvement_id → mouvement_bancaire.credit`
+2. `reservation_paiement.mouvement_id → mouvement_bancaire.credit`
+3. `payout_reservation → payout_hospitable.mouvement_id → mouvement_bancaire.credit`
+
+**Source de vérité finale** : `reservation_mouvement` (vue sur `encaissement_allocation`) — **uniquement des valeurs `mouvement_bancaire.credit` réelles**. Aucun fallback théorique.
+
+**Règle absolue** : `payout_hospitable.amount` n'est jamais utilisé comme montant d'encaissement. Si aucun des 3 chemins ne trouve un mouvement bancaire → `NON_PROUVEE` → anomalie `MOUVEMENT_BANCAIRE_MISSING`.
+
+**Requête type** :
+```sql
+SELECT bien_id, SUM(credit_retenu_centimes)
+FROM reservation_mouvement
+WHERE mois_comptable = '2026-03'
+GROUP BY bien_id;
+```
+
+---
+
+## 6. Lien mouvement bancaire ↔ réservation (rapprochement — Flux 1)
 
 **Donnée** : association entre un virement Caisse d'Épargne et une ou plusieurs réservations.
 

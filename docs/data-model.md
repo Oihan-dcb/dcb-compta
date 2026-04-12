@@ -593,6 +593,84 @@ Avis voyageurs reçus via Hospitable webhook. Associés à une réservation.
 
 ---
 
+---
+
+## Tables encaissement (migration 009–011, avril 2026)
+
+### `encaissement_allocation`
+
+Table technique source — persistée par `⚡ Contrôle trésorerie` (Edge Function `allocate-encaissements`). Une ligne par `(reservation_id × mouvement_bancaire_id)`.
+
+| Champ | Type | Description |
+|---|---|---|
+| `id` | uuid PK | |
+| `reservation_id` | uuid FK → reservation | |
+| `bien_id` | uuid FK → bien | |
+| `mois_comptable` | text YYYY-MM | Mois comptable de la réservation |
+| `mouvement_bancaire_id` | uuid FK → mouvement_bancaire nullable | NULL = non prouvé |
+| `montant_alloue` | integer | Valeur CSV réelle en centimes (`mouvement_bancaire.credit`) |
+| `preuve_niveau` | text | `'prouve'` uniquement depuis v2 — `'approxime'` abandonné |
+| `mode_allocation` | text | `'exact'` \| `'proportional'` \| `'manual'` |
+| `can_be_used_for_reversement` | boolean | `true` si et seulement si prouvé par banque |
+| `source_type` | text | `'ventilation'` \| `'reservation_paiement'` \| `'payout_hospitable'` \| `'manual'` |
+| `source_ref` | text | ID de l'objet source |
+| `source_line_id` | text | Clé d'idempotence — format `mb:{mb_id}:r:{resa_id}` |
+| `allocation_group_key` | text | `mb:{mb_id}` — groupe par mouvement |
+| `justification` | text | Trace lisible du chemin de preuve |
+| `computed_by` | text | `'auto'` \| `'manual'` |
+| `created_at`, `updated_at` | timestamptz | |
+
+Index : `(mois_comptable, bien_id)`, `(reservation_id)`, `(mouvement_bancaire_id) WHERE NOT NULL`
+Unicité partielle : `source_line_id` WHERE `computed_by != 'manual'`
+
+**Logique de persistance** : DELETE auto lignes du mois + INSERT (pas d'UPSERT — index partiel non supporté par PostgREST). Les lignes `computed_by='manual'` ne sont jamais supprimées.
+
+---
+
+### `encaissement_anomalie`
+
+Anomalies persistées — réservations sans aucun lien bancaire détecté.
+
+| Champ | Type | Description |
+|---|---|---|
+| `id` | uuid PK | |
+| `reservation_id` | uuid FK → reservation | |
+| `bien_id` | uuid FK → bien | |
+| `mois_comptable` | text YYYY-MM | |
+| `code_anomalie` | text | `MOUVEMENT_BANCAIRE_MISSING` (code unique depuis v2) |
+| `description` | text | Contexte lisible |
+| `contexte` | jsonb | `{platform, fin_revenue}` |
+| `resolu` | boolean | Résolu manuellement ? |
+| `resolu_at`, `resolu_note` | timestamptz/text | |
+| `created_at`, `updated_at` | timestamptz | |
+
+Unicité : `(reservation_id, code_anomalie)` — sans filtre `WHERE` (couvre toutes lignes resolu=true et false)
+
+---
+
+### Vue `reservation_mouvement` (migration 011)
+
+**Source de vérité métier pour les encaissements prouvés.** Vue lecture seule sur `encaissement_allocation`.
+
+```sql
+SELECT reservation_id, mouvement_bancaire_id, bien_id, mois_comptable,
+       montant_alloue AS credit_retenu_centimes,
+       source_type AS source_rapprochement,
+       created_at, updated_at
+FROM encaissement_allocation
+WHERE mouvement_bancaire_id IS NOT NULL;
+```
+
+Usage type :
+```sql
+SELECT bien_id, SUM(credit_retenu_centimes) FROM reservation_mouvement
+WHERE mois_comptable = '2026-03' GROUP BY bien_id;
+```
+
+**Règle** : toute surface qui affiche des encaissements prouvés doit lire cette vue, pas `encaissement_allocation` directement.
+
+---
+
 ## Tables critiques
 
 Les quatre tables suivantes sont les plus sensibles du système. Toute opération d'écriture sur ces tables doit être effectuée avec précaution — une erreur se propage silencieusement jusqu'aux factures et aux reversements propriétaires.

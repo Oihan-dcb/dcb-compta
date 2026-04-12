@@ -1,3 +1,66 @@
+# DCB Compta — Journal session 12 avril 2026 — Contrôle trésorerie
+
+## Architecture encaissement — refonte complète
+
+### Contexte
+Remplacement de l'ancien système de "contrôle trésorerie" basé sur des calculs à la volée par une architecture persistée avec source de vérité unique.
+
+### Migration 009 — Tables `encaissement_allocation` et `encaissement_anomalie`
+- `encaissement_allocation` : table technique — une ligne par (reservation × mouvement_bancaire)
+- `encaissement_anomalie` : anomalies persistées, réservations sans preuve bancaire
+- Index : `(mois_comptable, bien_id)`, `(reservation_id)`, `(mouvement_bancaire_id)`
+
+### Edge Function `allocate-encaissements` v1 → v2
+
+**v1 (abandonnée)** : utilisait `payout_hospitable.amount` comme fallback si `mouvement_id = null` → catégorie `approxime` (valeur théorique Hospitable, pas la valeur CSV réelle)
+
+**v2 (déployée)** :
+- Source unique : `mouvement_bancaire.credit` (valeur CSV réelle importée)
+- 3 chemins autorisés dans cet ordre :
+  1. `ventilation.mouvement_id → mouvement_bancaire.credit`
+  2. `reservation_paiement.mouvement_id → mouvement_bancaire.credit`
+  3. `payout_reservation → payout_hospitable.mouvement_id → mouvement_bancaire.credit`
+- Déduplication par `mouvement_bancaire.id`
+- Si lien trouvé → `PROUVEE` ; sinon → `NON_PROUVEE` + anomalie `MOUVEMENT_BANCAIRE_MISSING`
+- Catégorie `APPROXIMEE` supprimée — plus de fallback `payout_hospitable.amount`
+- `can_be_used_for_reversement = true` pour toutes les lignes (prouvé = safe)
+
+### Résultats 2026-03 avec v2
+- 26 prouvées (24 via payout_hospitable + 2 via ventilation)
+- 0 approximées (catégorie supprimée)
+- 24 non prouvées (8 Airbnb + 5 Booking + 11 Direct) → anomalie MOUVEMENT_BANCAIRE_MISSING
+
+### Migration 010 — Contrainte `source_type`
+Ajout de `'ventilation'` dans le CHECK `source_type IN ('payout_hospitable', 'reservation_paiement', 'ventilation', 'manual')`
+
+### Migration 011 — Vue `reservation_mouvement`
+Vue métier simple sur `encaissement_allocation` :
+```sql
+CREATE OR REPLACE VIEW reservation_mouvement AS
+SELECT reservation_id, mouvement_bancaire_id, bien_id, mois_comptable,
+       montant_alloue AS credit_retenu_centimes, source_type AS source_rapprochement,
+       created_at, updated_at
+FROM encaissement_allocation
+WHERE mouvement_bancaire_id IS NOT NULL;
+```
+- Source de vérité pour les encaissements prouvés
+- Filtre `mouvement_bancaire_id IS NOT NULL` : prouvés uniquement
+- Requête type : `SUM(credit_retenu_centimes) GROUP BY bien_id, mois_comptable`
+- 27 lignes / 26 réservations distinctes / 12 biens (2026-03)
+
+### Front PageFactures
+- Bouton renommé `⚡ Encaissements` → `⚡ Contrôle trésorerie`
+- Lecture encaissements : `encaissement_allocation` → **`reservation_mouvement`** directement
+- Suppression de toute logique `approxime` / `creditsApproximes` / `countApprox`
+- Safe strict : solde = 0 ET 100% réservations prouvées ET 0 anomalie
+
+### Bugs fixes de session
+- `mois_comptable` manquant dans INSERT anomalies → `null` constraint violation
+- Contrainte unique `(reservation_id, code_anomalie)` sur anomalies existantes `resolu=true` bloquait le re-INSERT → DELETE ALL (pas seulement `resolu=false`) avant INSERT
+- Catch error 500 → 200 pour que les erreurs Edge Function soient lisibles côté client
+
+---
+
 # DCB Compta — Journal session 07 avril 2026
 
 ## Formules ventilation Direct — correction majeure
