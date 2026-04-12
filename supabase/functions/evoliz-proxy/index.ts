@@ -168,6 +168,7 @@ serve(async (req) => {
           term: {
             paytermid: payload.paytermid || 1, // 1 = comptant
             paytypeid: payload.paytypeid || undefined,
+            recovery_indemnity: false, // indemnité forfaitaire recouvrement — requis pour clients pro (SCI, etc.)
           },
           items: (payload.items || []).map((l: any) => ({
             type: 'article',
