@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect, useCallback, useMemo } from 'react'
 import MoisSelector, { MOIS_FR } from '../components/MoisSelector'
 import { useMoisPersisted } from '../hooks/useMoisPersisted'
 import { supabase } from '../lib/supabase'
@@ -149,6 +149,67 @@ export default function PageComptabilite() {
     return true
   }) : []
 
+  // Groupement Maison Maïté (groupe_facturation non null)
+  const GROUPE_LABELS = { MAITE: 'Maison Maïté' }
+  const [collapsedGroups, setCollapsedGroups] = useState(new Set())
+  const toggleGroup = key => setCollapsedGroups(s => {
+    const next = new Set(s)
+    next.has(key) ? next.delete(key) : next.add(key)
+    return next
+  })
+
+  const groupedView = useMemo(() => {
+    const groupsMap = {}
+    for (const r of rowsFiltrees) {
+      if (r.groupe_facturation) {
+        if (!groupsMap[r.groupe_facturation]) groupsMap[r.groupe_facturation] = []
+        groupsMap[r.groupe_facturation].push(r)
+      }
+    }
+    const seenGroups = new Set()
+    const result = []
+    for (const r of rowsFiltrees) {
+      if (r.groupe_facturation) {
+        const gk = r.groupe_facturation
+        if (!seenGroups.has(gk)) {
+          seenGroups.add(gk)
+          const children = groupsMap[gk]
+          const nsum = key => children.reduce((s, c) => s + (c[key] || 0), 0)
+          const first = children[0]
+          const allAlerts = children.flatMap(c => c.alerts)
+          const parent = {
+            _isGroup: true,
+            _groupKey: gk,
+            bien_id: `group_${gk}`,
+            bien_code: null,
+            bien_nom: GROUPE_LABELS[gk] || gk,
+            proprietaire_id: first.proprietaire_id,
+            proprietaire_nom: first.proprietaire_nom,
+            nb_resas: nsum('nb_resas'), nb_rapprochees: nsum('nb_rapprochees'),
+            nb_non_rapprochees: nsum('nb_non_rapprochees'), nb_non_ventilees: nsum('nb_non_ventilees'),
+            hon_ht: nsum('hon_ht'), hon_tva: nsum('hon_tva'), hon_ttc: nsum('hon_ttc'),
+            com_ttc: nsum('com_ttc'),
+            fmen_ht: nsum('fmen_ht'), fmen_tva: nsum('fmen_tva'), fmen_ttc: nsum('fmen_ttc'),
+            auto_ht: nsum('auto_ht'), loy_ht: nsum('loy_ht'),
+            frais_loy: nsum('frais_loy'), prest_deduct: nsum('prest_deduct'),
+            reversement_calcule: nsum('reversement_calcule'), taxe_ht: nsum('taxe_ht'),
+            facture_statut: first.facture_statut,
+            facture_montant_reversement: nsum('facture_montant_reversement'),
+            ecart_reversement_proprio: first.ecart_reversement_proprio,
+            alerts: allAlerts,
+            alert_count: allAlerts.length,
+            alert_level: allAlerts.some(a => a.level === 'error') ? 'error' : allAlerts.some(a => a.level === 'warning') ? 'warning' : null,
+            alert_codes: [...new Set(allAlerts.map(a => a.code))],
+          }
+          result.push({ type: 'group', key: gk, parent, children })
+        }
+      } else {
+        result.push({ type: 'single', row: r })
+      }
+    }
+    return result
+  }, [rowsFiltrees])
+
   const [year, monthIdx] = mois.split('-')
   const moisLabel = `${MOIS_FR[parseInt(monthIdx) - 1]} ${year}`
 
@@ -290,6 +351,7 @@ export default function PageComptabilite() {
           </button>
         )}
         {data && <span style={{ marginLeft: 'auto', fontSize: '0.8em', color: '#9C8E7D' }}>{rowsFiltrees.length} bien(s)</span>}
+
       </div>
 
       {/* Sélecteur colonnes */}
@@ -346,25 +408,15 @@ export default function PageComptabilite() {
                   </td>
                 </tr>
               )}
-              {rowsFiltrees.map((r, i) => (
-                <tr key={r.bien_id}
-                  style={{ background: r.alert_level === 'error' ? '#FFF8F8' : i % 2 === 0 ? 'var(--bg-card)' : 'var(--bg)', borderBottom: '1px solid var(--border)' }}>
-                  <td style={td}>
-                    <span style={{ fontWeight: 600 }}>{r.bien_code || '—'}</span>
-                    {r.bien_nom && <div style={{ fontSize: '0.85em', color: '#9C8E7D', maxWidth: 140, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{r.bien_nom}</div>}
-                  </td>
-                  <td style={td}>{r.proprietaire_nom || <span style={{ color: '#9C8E7D', fontStyle: 'italic' }}>—</span>}</td>
-                  {col('resas')    && <td style={{ ...td, textAlign: 'right' }}>{r.nb_resas}</td>}
+              {groupedView.flatMap((item, i) => {
+                const renderCells = (r, isChild) => <>
+                  {col('resas')    && <td style={{ ...td, textAlign: 'right', opacity: isChild ? 0.8 : 1 }}>{r.nb_resas}</td>}
                   {col('rappr')    && <td style={{ ...td, textAlign: 'right' }}>
-                    {r.nb_rapprochees > 0
-                      ? <span style={{ color: '#059669', fontWeight: 600 }}>{r.nb_rapprochees}</span>
-                      : <span style={{ color: '#9C8E7D' }}>0</span>}
+                    {r.nb_rapprochees > 0 ? <span style={{ color: '#059669', fontWeight: 600 }}>{r.nb_rapprochees}</span> : <span style={{ color: '#9C8E7D' }}>0</span>}
                     {r.nb_non_rapprochees > 0 && <span style={{ color: '#f59e0b', marginLeft: 4 }}>({r.nb_non_rapprochees})</span>}
                   </td>}
                   {col('non_vent') && <td style={{ ...td, textAlign: 'right' }}>
-                    {r.nb_non_ventilees > 0
-                      ? <span style={{ color: '#ef4444', fontWeight: 600 }}>{r.nb_non_ventilees}</span>
-                      : <span style={{ color: '#9C8E7D' }}>0</span>}
+                    {r.nb_non_ventilees > 0 ? <span style={{ color: '#ef4444', fontWeight: 600 }}>{r.nb_non_ventilees}</span> : <span style={{ color: '#9C8E7D' }}>0</span>}
                   </td>}
                   {col('hon_ht')      && <td style={{ ...td, textAlign: 'right', fontVariantNumeric: 'tabular-nums' }}>{r.hon_ht ? fmtN(r.hon_ht) : '—'}</td>}
                   {col('hon_tva')     && <td style={{ ...td, textAlign: 'right', fontVariantNumeric: 'tabular-nums' }}>{r.hon_tva ? fmtN(r.hon_tva) : '—'}</td>}
@@ -380,35 +432,83 @@ export default function PageComptabilite() {
                   {col('reversement_calcule') && <td style={{ ...td, textAlign: 'right', fontVariantNumeric: 'tabular-nums', fontWeight: r.reversement_calcule ? 600 : 400 }}>{r.reversement_calcule ? fmtN(r.reversement_calcule) : '—'}</td>}
                   {col('taxe')                && <td style={{ ...td, textAlign: 'right', fontVariantNumeric: 'tabular-nums' }}>{r.taxe_ht ? fmtN(r.taxe_ht) : '—'}</td>}
                   {col('facture')             && <td style={td}>
-                    {r.facture_statut
-                      ? <span style={{ padding: '2px 7px', borderRadius: 10, fontSize: '0.8em', fontWeight: 600, background: r.facture_statut === 'validee' ? '#D1FAE5' : '#FEF3C7', color: r.facture_statut === 'validee' ? '#059669' : '#92400E' }}>{r.facture_statut}</span>
-                      : r.hon_ttc > 0
-                        ? <span style={{ color: '#ef4444', fontWeight: 600, fontSize: '0.8em' }}>manquante</span>
-                        : <span style={{ color: '#9C8E7D', fontSize: '0.8em' }}>—</span>}
+                    {isChild ? <span style={{ color: '#9C8E7D', fontSize: '0.8em' }}>—</span>
+                      : r.facture_statut
+                        ? <span style={{ padding: '2px 7px', borderRadius: 10, fontSize: '0.8em', fontWeight: 600, background: r.facture_statut === 'validee' ? '#D1FAE5' : '#FEF3C7', color: r.facture_statut === 'validee' ? '#059669' : '#92400E' }}>{r.facture_statut}</span>
+                        : r.hon_ttc > 0
+                          ? <span style={{ color: '#ef4444', fontWeight: 600, fontSize: '0.8em' }}>manquante</span>
+                          : <span style={{ color: '#9C8E7D', fontSize: '0.8em' }}>—</span>}
                   </td>}
                   {col('reversement_facture') && <td style={{ ...td, textAlign: 'right', fontVariantNumeric: 'tabular-nums', color: '#9C8E7D' }}>
-                    {r.facture_montant_reversement != null ? fmtN(r.facture_montant_reversement) : '—'}
+                    {!isChild && r.facture_montant_reversement != null ? fmtN(r.facture_montant_reversement) : '—'}
                   </td>}
-                  {col('ecart_facture')       && <td style={{ ...td, textAlign: 'right', fontVariantNumeric: 'tabular-nums' }}>
-                    {r.ecart_reversement_proprio != null
+                  {col('ecart_facture') && <td style={{ ...td, textAlign: 'right', fontVariantNumeric: 'tabular-nums' }}>
+                    {!isChild && r.ecart_reversement_proprio != null
                       ? <span style={{ color: Math.abs(r.ecart_reversement_proprio) > 100 ? '#f59e0b' : '#059669', fontWeight: Math.abs(r.ecart_reversement_proprio) > 100 ? 700 : 400 }}>
                           {r.ecart_reversement_proprio >= 0 ? '+' : ''}{fmtN(r.ecart_reversement_proprio)}
                         </span>
                       : '—'}
                   </td>}
                   <td style={td}>
-                    {r.alerts.length > 0 ? (
+                    {r.alerts.length > 0 && (
                       <div style={{ display: 'flex', flexDirection: 'column', gap: 3 }}>
-                        {r.alerts.map((a, i) => (
-                          <span key={i} style={{ display: 'inline-flex', alignItems: 'center', gap: 4, fontSize: '0.76em', color: LEVEL_COLOR[a.level], fontWeight: 600, whiteSpace: 'nowrap' }}>
+                        {r.alerts.map((a, ai) => (
+                          <span key={ai} style={{ display: 'inline-flex', alignItems: 'center', gap: 4, fontSize: '0.76em', color: LEVEL_COLOR[a.level], fontWeight: 600, whiteSpace: 'nowrap' }}>
                             {LEVEL_ICON[a.level]} {a.message}
                           </span>
                         ))}
                       </div>
-                    ) : null}
+                    )}
                   </td>
-                </tr>
-              ))}
+                </>
+
+                if (item.type === 'single') {
+                  const r = item.row
+                  return [
+                    <tr key={r.bien_id} style={{ background: r.alert_level === 'error' ? '#FFF8F8' : i % 2 === 0 ? 'var(--bg-card)' : 'var(--bg)', borderBottom: '1px solid var(--border)' }}>
+                      <td style={td}>
+                        <span style={{ fontWeight: 600 }}>{r.bien_code || '—'}</span>
+                        {r.bien_nom && <div style={{ fontSize: '0.85em', color: '#9C8E7D', maxWidth: 140, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{r.bien_nom}</div>}
+                      </td>
+                      <td style={td}>{r.proprietaire_nom || <span style={{ color: '#9C8E7D', fontStyle: 'italic' }}>—</span>}</td>
+                      {renderCells(r, false)}
+                    </tr>
+                  ]
+                }
+
+                // Groupe parent + enfants
+                const { key, parent, children } = item
+                const expanded = !collapsedGroups.has(key)
+                return [
+                  // Ligne parent
+                  <tr key={`group_${key}`} style={{ background: '#FBF7EE', borderBottom: '1px solid var(--border)', borderLeft: '3px solid var(--brand)' }}>
+                    <td style={{ ...td, fontWeight: 700 }}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                        <button onClick={() => toggleGroup(key)} style={{ background: 'none', border: 'none', cursor: 'pointer', padding: '0 2px', color: 'var(--brand)', fontSize: '0.9em', lineHeight: 1 }}>
+                          {expanded ? '▼' : '▶'}
+                        </button>
+                        <div>
+                          <span style={{ color: 'var(--brand)' }}>{parent.bien_nom}</span>
+                          <div style={{ fontSize: '0.75em', color: '#9C8E7D', fontWeight: 400 }}>{children.length} chambres</div>
+                        </div>
+                      </div>
+                    </td>
+                    <td style={td}>{parent.proprietaire_nom}</td>
+                    {renderCells(parent, false)}
+                  </tr>,
+                  // Lignes enfants (si dépliées)
+                  ...(!expanded ? [] : children.map(r => (
+                    <tr key={r.bien_id} style={{ background: '#FAF8F4', borderBottom: '1px solid var(--border)' }}>
+                      <td style={{ ...td, paddingLeft: 28 }}>
+                        <span style={{ fontWeight: 600, fontSize: '0.9em' }}>{r.bien_code || '—'}</span>
+                        {r.bien_nom && <div style={{ fontSize: '0.8em', color: '#9C8E7D', maxWidth: 130, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{r.bien_nom}</div>}
+                      </td>
+                      <td style={{ ...td, color: '#9C8E7D', fontSize: '0.85em' }}>—</td>
+                      {renderCells(r, true)}
+                    </tr>
+                  ))),
+                ]
+              })}
             </tbody>
             {/* Ligne totaux */}
             {data && rowsFiltrees.length > 0 && (

@@ -35,7 +35,7 @@ export async function buildComptaMensuelle(mois) {
   ] = await Promise.all([
     supabase
       .from('bien')
-      .select('id, code, hospitable_name, listed, proprietaire_id, proprietaire:proprietaire_id(id, nom, prenom)')
+      .select('id, code, hospitable_name, listed, proprietaire_id, groupe_facturation, proprietaire:proprietaire_id(id, nom, prenom)')
       .eq('agence', 'dcb'),
     supabase
       .from('reservation')
@@ -405,6 +405,8 @@ export async function buildComptaMensuelle(mois) {
       remboursements,
       reversement_calcule,
 
+      groupe_facturation: b.groupe_facturation || null,
+
       facture_id:                  facture?.id                         ?? null,
       facture_statut:              facture?.statut                      ?? (propId ? statutParProprio[propId] : null) ?? null,
       facture_montant_reversement: facture?.montant_reversement         ?? null,
@@ -532,22 +534,67 @@ export function exportComptaCSV(data) {
     'AUTO HT', 'LOY HT', 'Frais HA proprio.', 'Reversement calculé', 'TAXE HT',
     'Facture statut', 'Reversement facturé', 'Écart facture', 'Alertes',
   ]
-  const rows = data.rows.map(r => [
-    r.bien_code,
-    r.bien_nom,
-    r.proprietaire_nom,
-    r.nb_resas,
-    r.nb_rapprochees,
-    r.nb_non_rapprochees,
-    r.nb_non_ventilees,
-    fmt(r.hon_ht), fmt(r.hon_tva), fmt(r.hon_ttc),
-    fmt(r.fmen_ht), fmt(r.fmen_tva), fmt(r.fmen_ttc),
-    fmt(r.auto_ht), fmt(r.loy_ht), fmt(r.frais_loy), fmt(r.reversement_calcule), fmt(r.taxe_ht),
-    r.facture_statut || '',
-    fmt(r.facture_montant_reversement),
-    r.ecart_reversement_proprio != null ? fmt(r.ecart_reversement_proprio) : '',
-    r.alert_codes.join(' | '),
-  ])
+  // Regrouper les biens par groupe_facturation pour le CSV
+  const GROUPE_LABELS = { MAITE: 'Maison Maïté' }
+  const groupsMap = {}
+  const csvRows = []
+  const seenGroups = new Set()
+  for (const r of data.rows) {
+    if (r.groupe_facturation) {
+      if (!groupsMap[r.groupe_facturation]) groupsMap[r.groupe_facturation] = []
+      groupsMap[r.groupe_facturation].push(r)
+    }
+  }
+  for (const r of data.rows) {
+    if (r.groupe_facturation) {
+      const gk = r.groupe_facturation
+      if (!seenGroups.has(gk)) {
+        seenGroups.add(gk)
+        const children = groupsMap[gk]
+        const nsum = key => children.reduce((s, c) => s + (c[key] || 0), 0)
+        const first = children[0]
+        const glabel = GROUPE_LABELS[gk] || gk
+        // Ligne parent agrégée
+        csvRows.push([
+          glabel,
+          '(groupe)',
+          first.proprietaire_nom,
+          nsum('nb_resas'), nsum('nb_rapprochees'), nsum('nb_non_rapprochees'), nsum('nb_non_ventilees'),
+          fmt(nsum('hon_ht')), fmt(nsum('hon_tva')), fmt(nsum('hon_ttc')),
+          fmt(nsum('fmen_ht')), fmt(nsum('fmen_tva')), fmt(nsum('fmen_ttc')),
+          fmt(nsum('auto_ht')), fmt(nsum('loy_ht')), fmt(nsum('frais_loy')), fmt(nsum('reversement_calcule')), fmt(nsum('taxe_ht')),
+          first.facture_statut || '',
+          fmt(nsum('facture_montant_reversement')),
+          first.ecart_reversement_proprio != null ? fmt(first.ecart_reversement_proprio) : '',
+          [...new Set(children.flatMap(c => c.alert_codes))].join(' | '),
+        ])
+      }
+      // Ligne enfant indentée
+      csvRows.push([
+        '  ' + (r.bien_code || ''),
+        '  ' + (r.bien_nom || ''),
+        r.proprietaire_nom,
+        r.nb_resas, r.nb_rapprochees, r.nb_non_rapprochees, r.nb_non_ventilees,
+        fmt(r.hon_ht), fmt(r.hon_tva), fmt(r.hon_ttc),
+        fmt(r.fmen_ht), fmt(r.fmen_tva), fmt(r.fmen_ttc),
+        fmt(r.auto_ht), fmt(r.loy_ht), fmt(r.frais_loy), fmt(r.reversement_calcule), fmt(r.taxe_ht),
+        '', '', '', r.alert_codes.join(' | '),
+      ])
+    } else {
+      csvRows.push([
+        r.bien_code, r.bien_nom, r.proprietaire_nom,
+        r.nb_resas, r.nb_rapprochees, r.nb_non_rapprochees, r.nb_non_ventilees,
+        fmt(r.hon_ht), fmt(r.hon_tva), fmt(r.hon_ttc),
+        fmt(r.fmen_ht), fmt(r.fmen_tva), fmt(r.fmen_ttc),
+        fmt(r.auto_ht), fmt(r.loy_ht), fmt(r.frais_loy), fmt(r.reversement_calcule), fmt(r.taxe_ht),
+        r.facture_statut || '',
+        fmt(r.facture_montant_reversement),
+        r.ecart_reversement_proprio != null ? fmt(r.ecart_reversement_proprio) : '',
+        r.alert_codes.join(' | '),
+      ])
+    }
+  }
+  const rows = csvRows
   // Ligne totaux
   const t = data.totals
   rows.push([
