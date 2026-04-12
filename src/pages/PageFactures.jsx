@@ -575,19 +575,15 @@ const [pushing, setPushing] = useState(false)
         // Normalisation pour matching
         const norm = s => (s || '').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/[^a-z0-9]/g, ' ').replace(/\s+/g, ' ').trim()
 
-        // Auto-match : trouver le virement le plus probable pour un proprio
+        // Auto-match : uniquement sur le libellé — codes biens présents dans "Loyer Mois BIEN"
         function autoMatchVirement(f) {
           const proprio = f.proprietaire
-          const tokens = [
-            ...(proprio?.nom || '').split(/\s+/),
-            ...(proprio?.prenom || '').split(/\s+/),
-            ...(proprio?.bien || []).map(b => b.code),
-          ].map(norm).filter(t => t.length >= 3)
+          const tokens = (proprio?.bien || []).map(b => norm(b.code)).filter(t => t.length >= 2)
 
           let best = null, bestScore = 0
           for (const vir of virementsSortants) {
-            if (Object.values(liensVirements).includes(vir.id)) continue // déjà lié à un autre
-            const lib = norm((vir.libelle || '') + ' ' + (vir.detail || ''))
+            if (Object.values(liensVirements).includes(vir.id)) continue
+            const lib = norm(vir.libelle || '')
             const score = tokens.reduce((s, t) => s + (lib.includes(t) ? 1 : 0), 0)
             if (score > bestScore) { bestScore = score; best = vir }
           }
@@ -675,7 +671,7 @@ const [pushing, setPushing] = useState(false)
                             <option value="">— non lié</option>
                             {options.map(v => (
                               <option key={v.id} value={v.id}>
-                                {v.date_operation} · {(v.debit / 100).toFixed(2)} € · {(v.libelle || '').substring(0, 35)}
+                                {(v.libelle || '').substring(0, 40)} · {(v.debit / 100).toFixed(2)} € · {v.date_operation}
                               </option>
                             ))}
                           </select>
