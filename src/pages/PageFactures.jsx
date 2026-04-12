@@ -46,9 +46,10 @@ const [pushing, setPushing] = useState(false)
 
   // Contrôle virements propriétaires
   const [virementsSortants, setVirementsSortants] = useState([])
-  const [liensVirements, setLiensVirements] = useState({})   // proprio_id → mouvement_id
-  const [commentairesCtrl, setCommentairesCtrl] = useState({}) // proprio_id → string
+  const [liensVirements, setLiensVirements] = useState({})   // facture_id → mouvement_id
+  const [commentairesCtrl, setCommentairesCtrl] = useState({}) // facture_id → string
   const [loadingVirements, setLoadingVirements] = useState(false)
+  const [listeAE, setListeAE] = useState([]) // [{ nom, prenom }]
 
   useEffect(() => { charger(); chargerCOM(); chargerVirements() }, [mois])
 
@@ -135,17 +136,23 @@ const [pushing, setPushing] = useState(false)
     setLoadingVirements(true)
     try {
       const { supabase } = await import('../lib/supabase')
-      // Les virements du mois M sont souvent exécutés en M+1 → chercher sur mois ET mois+1
       const [y, m] = mois.split('-').map(Number)
       const moisSuivant = m === 12 ? `${y + 1}-01` : `${y}-${String(m + 1).padStart(2, '0')}`
-      const { data, error } = await supabase
-        .from('mouvement_bancaire')
-        .select('id, libelle, detail, debit, date_operation, canal, mois_releve')
-        .in('mois_releve', [mois, moisSuivant])
-        .gt('debit', 0)
-        .order('date_operation', { ascending: true })
+      const [{ data: mouvements, error }, { data: aes }] = await Promise.all([
+        supabase
+          .from('mouvement_bancaire')
+          .select('id, libelle, detail, debit, date_operation, canal, mois_releve')
+          .in('mois_releve', [mois, moisSuivant])
+          .gt('debit', 0)
+          .order('date_operation', { ascending: true }),
+        supabase
+          .from('auto_entrepreneur')
+          .select('nom, prenom')
+          .eq('actif', true),
+      ])
       if (error) throw error
-      setVirementsSortants(data || [])
+      setVirementsSortants(mouvements || [])
+      setListeAE(aes || [])
     } catch (err) {
       console.error('chargerVirements:', err)
     } finally {
@@ -574,8 +581,17 @@ const [pushing, setPushing] = useState(false)
         const facturesAvecReversement = facturesTries.filter(f => f.montant_reversement > 0)
         if (facturesAvecReversement.length === 0 && !comFacture) return null
 
-        // Exclure virements AE (auto-entrepreneurs) — pas des reversements proprio
-        const virsTableau = virementsSortants.filter(v => v.canal !== 'sortant_ae')
+        // Exclure virements AE : canal sortant_ae OU libellé contient nom/prénom d'un AE
+        const normAE = s => (s || '').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/[^a-z0-9]/g, ' ').trim()
+        const tokensAE = listeAE.flatMap(ae =>
+          [ae.nom, ae.prenom].filter(Boolean).map(normAE).filter(t => t.length >= 3)
+        )
+        const estVirementAE = v => {
+          if (v.canal === 'sortant_ae') return true
+          const lib = normAE((v.detail || '') + ' ' + (v.libelle || ''))
+          return tokensAE.some(t => lib.includes(t))
+        }
+        const virsTableau = virementsSortants.filter(v => !estVirementAE(v))
 
         // Normalisation pour matching
         const norm = s => (s || '').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/[^a-z0-9]/g, ' ').replace(/\s+/g, ' ').trim()
