@@ -238,7 +238,7 @@ const [pushing, setPushing] = useState(false)
       const { data: ventRows } = await supabase
         .from('ventilation')
         .select('bien_id, code, montant_ht, montant_reel')
-        .eq('mois', mois)
+        .eq('mois_comptable', mois)
         .in('bien_id', uniqueBienIds)
         .in('code', ['VIR', 'HON', 'FMEN', 'AUTO', 'COM'])
 
