@@ -325,17 +325,34 @@ serve(async (req) => {
       }
     }
 
-    // ── 4. UPSERT allocations (idempotent sur source_line_id) ────────────────
+    // ── 4. Persistance allocations : DELETE auto existantes du mois + INSERT ──
+    // On supprime les lignes auto du mois pour les biens concernés, puis on réinsère.
+    // Évite le onConflict sur index partiel (non supporté par PostgREST).
+    // Les lignes manuelles (computed_by='manual') ne sont jamais supprimées.
+    const uniqueBienIds = [...new Set(allocations.map((a: any) => a.bien_id))]
+    if (uniqueBienIds.length > 0) {
+      const { error: delErr } = await supabase
+        .from('encaissement_allocation')
+        .delete()
+        .eq('mois_comptable', mois)
+        .eq('computed_by', 'auto')
+        .in('bien_id', uniqueBienIds)
+      if (delErr) {
+        console.error('DELETE allocation error:', JSON.stringify(delErr))
+        throw new Error(`Erreur DELETE allocations: ${delErr.message}`)
+      }
+    }
+
     let allocOk = 0
     const BATCH = 50
     for (let i = 0; i < allocations.length; i += BATCH) {
       const batch = allocations.slice(i, i + BATCH)
       const { error } = await supabase
         .from('encaissement_allocation')
-        .upsert(batch, { onConflict: 'source_line_id', ignoreDuplicates: false })
+        .insert(batch)
       if (error) {
-        console.error('UPSERT allocation error:', JSON.stringify(error))
-        throw new Error(`Erreur UPSERT allocations batch ${i}: ${error.message}`)
+        console.error('INSERT allocation error:', JSON.stringify(error))
+        throw new Error(`Erreur INSERT allocations batch ${i}: ${error.message}`)
       }
       allocOk += batch.length
     }
