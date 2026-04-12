@@ -342,17 +342,20 @@ export async function getMouvementsMois(mois) {
             info.bien_name  = info.biens.join(' | ')
             info.guest_name = info.guests.length === 1 ? info.guests[0] : (info.nb_resas + ' résa(s)')
             m._resa = info
-            // Alimenter reservation_paiement (automatique pour les prochains virements)
+            // Alimenter reservation_paiement + marquer rapprochee
             for (const resaId of info.reservation_ids) {
               const bRef = Object.keys(resaByRef).find(k => resaByRef[k]?.id === resaId)
               const line = bookingLines?.find(l => l.booking_ref === bRef)
-              const montant = line ? line.amount_cents : m.credit
+              const montant = line ? line.amount_cents / 100 : m.credit  // amount_cents → euros
               const finRev = resaByRef[bRef]?.fin_revenue || 0
               supabase.from('reservation_paiement').upsert({
                 reservation_id: resaId, mouvement_id: m.id,
                 montant, date_paiement: m.date_operation,
                 type_paiement: (finRev && montant >= finRev * 0.99) ? 'total' : 'acompte'
               }, { onConflict: 'reservation_id,mouvement_id', ignoreDuplicates: true }).then(() => {})
+            }
+            if (info.reservation_ids.length) {
+              supabase.from('reservation').update({ rapprochee: true }).in('id', info.reservation_ids).then(() => {})
             }
           }
         }

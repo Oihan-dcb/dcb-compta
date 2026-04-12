@@ -57,7 +57,8 @@ export function parseBookingCSV(text) {
   const lines = text.split('\n').map(l => l.trim()).filter(Boolean)
   if (!lines.length) throw new Error('Fichier vide')
 
-  const sep = lines[0].includes(';') ? ';' : ','
+  // Booking.com exporte parfois en TSV (onglets) malgré l'extension .csv
+  const sep = lines[0].includes('\t') ? '\t' : lines[0].includes(';') ? ';' : ','
   const headers = parseCSVLine(lines[0], sep)
 
   const colIdx = (name) => headers.findIndex(h => h.toLowerCase().includes(name.toLowerCase()))
@@ -74,6 +75,16 @@ export function parseBookingCSV(text) {
   const iComm       = col('Commission',                     'Commission')
   const iStatus     = col('Statut de la réservation',       'Reservation status')
   const iType       = col('Type/Type de transaction',        'Type')
+  // Numéro de réservation individuel (col distincte du ref payout)
+  const iResaRef    = (() => {
+    for (const name of ['Numéro de réservation', 'Reservation number', 'Confirmation number', 'Booking number']) {
+      const i = colIdx(name)
+      if (i >= 0 && i !== iRef) return i
+    }
+    // Fallback positionnel : colonne entre payout ref et check-in
+    if (iRef >= 0 && iCheckin > iRef + 1) return iRef + 1
+    return -1
+  })()
 
   if (iPayoutDate < 0) throw new Error('Colonne "Payout date" / "Date du versement" introuvable')
   if (iAmount < 0)     throw new Error('Colonne "Payable amount" / "Montant du versement" introuvable')
@@ -89,11 +100,22 @@ export function parseBookingCSV(text) {
   for (let i = 1; i < lines.length; i++) {
     const cols = parseCSVLine(lines[i], sep)
     const rowType = iType >= 0 ? (cols[iType] || '') : null
-    if (rowType !== null && !isPayoutRow(rowType)) continue
+    const isPayout = isPayoutRow(rowType)
+    const isResa   = isReservationRow(rowType)
+    // Traiter les lignes Payout (résumé) ET les lignes Reservation (détail par résa)
+    if (rowType !== null && !isPayout && !isResa) continue
     const pdate = parseDate(cols[iPayoutDate])
     if (!pdate) continue
 
-    const ref = cols[iRef] ? cols[iRef].replace(/^-$/, '').trim() || null : null
+    // Pour les lignes Reservation : utiliser le numéro de réservation comme booking_ref
+    // Pour les lignes Payout : utiliser le ref payout (compatibilité anciens fichiers)
+    let ref
+    if (isResa && iResaRef >= 0) {
+      ref = cols[iResaRef] ? cols[iResaRef].replace(/^-$/, '').trim() || null : null
+    } else {
+      ref = cols[iRef] ? cols[iRef].replace(/^-$/, '').trim() || null : null
+    }
+
     const status = cols[iStatus] && cols[iStatus] !== '-' ? cols[iStatus] : null
 
     if (!rowsByPayoutDate[pdate]) rowsByPayoutDate[pdate] = []
