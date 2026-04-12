@@ -230,18 +230,13 @@ const [pushing, setPushing] = useState(false)
           .in('type_imputation', ['deduction_loy', 'haowner']),
       ])
 
-      // Agréger allocations par bien
-      const allocByBien = {}           // bien_id → { prouve, approxime, resaIds_prouve, resaIds_approx }
+      // Agréger allocations par bien (toutes sont prouvées, plus d'approxime)
+      const allocByBien = {}           // bien_id → { prouve, resaIdsProuve }
       for (const a of (allocRows || [])) {
-        if (!allocByBien[a.bien_id]) allocByBien[a.bien_id] = { prouve: 0, approxime: 0, resaIdsProuve: new Set(), resaIdsApprox: new Set() }
+        if (!allocByBien[a.bien_id]) allocByBien[a.bien_id] = { prouve: 0, resaIdsProuve: new Set() }
         const b = allocByBien[a.bien_id]
-        if (a.can_be_used_for_reversement) {
-          b.prouve += a.montant_alloue
-          b.resaIdsProuve.add(a.reservation_id)
-        } else {
-          b.approxime += a.montant_alloue
-          b.resaIdsApprox.add(a.reservation_id)
-        }
+        b.prouve += a.montant_alloue
+        b.resaIdsProuve.add(a.reservation_id)
       }
 
       // Anomalies par bien — réservations distinctes non prouvées
@@ -281,16 +276,14 @@ const [pushing, setPushing] = useState(false)
       const result = {}
       for (const f of facturesList) {
         const bienIds = factureBienMap[f.id]
-        let creditsProuves = 0, creditsApproximes = 0
+        let creditsProuves = 0
         let vir = 0, hon = 0, fmen = 0, autoreel = 0, com = 0, prest = 0, haowner = 0
-        let totalResas = 0, resasProuvees = new Set(), resasApprox = new Set(), resasAnomalie = new Set()
+        let totalResas = 0, resasProuvees = new Set(), resasAnomalie = new Set()
 
         for (const bid of bienIds) {
           const ba = allocByBien[bid] || {}
           creditsProuves += ba.prouve || 0
-          creditsApproximes += ba.approxime || 0
           ;(ba.resaIdsProuve || new Set()).forEach(id => resasProuvees.add(id))
-          ;(ba.resaIdsApprox || new Set()).forEach(id => resasApprox.add(id))
           ;(anomaliesByBien[bid] || new Set()).forEach(id => resasAnomalie.add(id))
           totalResas += totalResasByBien[bid] || 0
 
@@ -302,23 +295,20 @@ const [pushing, setPushing] = useState(false)
           prest += bp.PREST || 0; haowner += bp.HAOWNER || 0
         }
 
-        const credits = creditsProuves + creditsApproximes
         const emplois = vir + hon + fmen + autoreel + prest + haowner + com
-        const solde = credits - emplois
-        // Facture safe : solde exact + toutes réservations prouvées (aucun approxime, aucune anomalie)
-        const isSafe = solde === 0 && creditsApproximes === 0 && resasAnomalie.size === 0
+        const solde = creditsProuves - emplois
+        // Safe : solde = 0, toutes réservations prouvées, aucune anomalie
+        const isSafe = solde === 0 && resasAnomalie.size === 0
           && totalResas > 0 && resasProuvees.size === totalResas
 
         result[f.id] = {
-          creditsProuves, creditsApproximes, credits,
+          creditsProuves, credits: creditsProuves,
           vir, hon, fmen, autoreel, prest, haowner, com,
           emplois, solde,
           totalResas,
           countProuvees: resasProuvees.size,
-          countApprox: resasApprox.size,
           countAnomalies: resasAnomalie.size,
           isSafe,
-          // Table non calculée : si aucune allocation ET aucune réservation → vide attendu
           notComputed: (allocRows || []).length === 0 && (resasRows || []).length > 0,
         }
       }
@@ -816,7 +806,6 @@ const [pushing, setPushing] = useState(false)
                             <span>Contrôle trésorerie</span>
                             <span style={{ fontSize: 10, fontWeight: 400, color: sc.isSafe ? '#059669' : '#D97706' }}>
                               {sc.totalResas > 0 && `${sc.countProuvees}/${sc.totalResas} résa(s) prouvée(s)`}
-                              {sc.countApprox > 0 && ` · ${sc.countApprox} approximée(s)`}
                               {sc.countAnomalies > 0 && ` · ${sc.countAnomalies} anomalie(s)`}
                             </span>
                           </div>
@@ -824,14 +813,8 @@ const [pushing, setPushing] = useState(false)
                             <tbody>
                               {sc.creditsProuves > 0 && (
                                 <tr>
-                                  <td style={{ ...rs, color: 'var(--text-muted)' }}>Encaissements prouvés (payout → banque)</td>
+                                  <td style={{ ...rs, color: 'var(--text-muted)' }}>Encaissements prouvés (virement CSV rapproché)</td>
                                   <td style={{ ...rs, textAlign: 'right', fontFamily: 'monospace', color: '#059669', fontWeight: 600 }}>+ {fm(sc.creditsProuves)}</td>
-                                </tr>
-                              )}
-                              {sc.creditsApproximes > 0 && (
-                                <tr>
-                                  <td style={{ ...rs, color: '#D97706' }}>⚠ Approximés (payout.amount — mouvement non lié)</td>
-                                  <td style={{ ...rs, textAlign: 'right', fontFamily: 'monospace', color: '#D97706' }}>+ {fm(sc.creditsApproximes)}</td>
                                 </tr>
                               )}
                               {sc.countAnomalies > 0 && (

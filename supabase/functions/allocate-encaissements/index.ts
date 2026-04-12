@@ -1,21 +1,22 @@
 /**
- * Edge Function — allocate-encaissements
+ * Edge Function — allocate-encaissements (v2)
  *
- * Calcule et persiste les allocations d'encaissement par réservation/bien/mois.
- * Source de vérité : table encaissement_allocation.
+ * Source de vérité unique : mouvement_bancaire.credit (valeur CSV réelle importée)
  *
- * Règle absolue :
- *   - fin_revenue n'est JAMAIS une preuve d'encaissement
- *   - aucun fallback silencieux
- *   - hiérarchie stricte : exact > proportional > manual
- *   - can_be_used_for_reversement = false si preuve_niveau = 'approxime'
+ * Chemins autorisés pour prouver un encaissement (dans cet ordre) :
+ *   1. ventilation.mouvement_id → mouvement_bancaire.credit
+ *   2. reservation_paiement.mouvement_id → mouvement_bancaire.credit
+ *   3. payout_reservation → payout_hospitable.mouvement_id → mouvement_bancaire.credit
  *
- * Canaux traités :
- *   Airbnb/Booking → payout_reservation → payout_hospitable → mouvement_bancaire
- *   Direct/Stripe  → reservation_paiement → mouvement_bancaire
+ * Règles absolues :
+ *   - Déduplication par mouvement_bancaire.id (un mb ne compte qu'une fois par résa)
+ *   - Crédits entrants uniquement (credit > 0)
+ *   - Si au moins un lien → PROUVEE (preuve_niveau='prouve')
+ *   - Si aucun lien → NON_PROUVEE → anomalie MOUVEMENT_BANCAIRE_MISSING
+ *   - Aucun fallback sur payout_hospitable.amount
+ *   - Aucune catégorie APPROXIMEE
  *
  * Body attendu : { mois: "YYYY-MM" }
- * Retourne : { reservations_total, prouvees, approximees, non_prouvees, anomalies }
  */
 
 import { serve } from 'https://deno.land/std@0.168.0/http/server.ts'
@@ -33,6 +34,15 @@ function jsonResp(data: object, status = 200) {
   })
 }
 
+interface MbLink {
+  mb_id: string
+  credit: number
+  source: 'ventilation' | 'reservation_paiement' | 'payout_hospitable'
+  source_ref: string   // mouvement_id (ventilation), rp.id, ph.id
+  libelle?: string
+  date_operation?: string
+}
+
 serve(async (req) => {
   if (req.method === 'OPTIONS') return new Response('ok', { headers: CORS })
 
@@ -48,9 +58,7 @@ serve(async (req) => {
       { auth: { persistSession: false } }
     )
 
-    // ── 1. Réservations du mois comptable ────────────────────────────────────
-    // Base : mois_comptable = mois (la date de la résa compte, pas celle du virement)
-    // Exclusions : annulées, owner_stay, fin_revenue = 0
+    // ── 1. Réservations du mois ───────────────────────────────────────────────
     const { data: resas, error: resasErr } = await supabase
       .from('reservation')
       .select('id, bien_id, fin_revenue, platform, mois_comptable')
@@ -61,275 +69,177 @@ serve(async (req) => {
 
     if (resasErr) throw resasErr
     if (!resas?.length) {
-      return jsonResp({ reservations_total: 0, prouvees: 0, approximees: 0, non_prouvees: 0, anomalies: 0, message: 'Aucune réservation pour ce mois' })
+      return jsonResp({
+        reservations_total: 0, prouvees: 0, non_prouvees: 0, anomalies: 0,
+        message: 'Aucune réservation pour ce mois',
+      })
     }
 
     const resaIds = resas.map(r => r.id)
-    const resaById: Record<string, { id: string; bien_id: string; fin_revenue: number; platform: string }> = {}
+    const resaById: Record<string, typeof resas[0]> = {}
     for (const r of resas) resaById[r.id] = r
 
-    const allocations: Record<string, any>[] = []
-    const detectedAnomalies: { reservation_id: string; bien_id: string; code_anomalie: string; description: string; contexte: object }[] = []
-    const resasTraitees = new Set<string>()
+    // ── 2. Récupérer tous les liens bancaires en parallèle ────────────────────
 
-    // ── 2. Canal Airbnb/Booking via chaîne payout ────────────────────────────
-    const { data: payoutResas } = await supabase
-      .from('payout_reservation')
-      .select(`
-        payout_id,
-        reservation_id,
-        payout_hospitable!inner(id, mouvement_id, amount, mouvement_bancaire(id, credit))
-      `)
-      .in('reservation_id', resaIds)
+    const [ventilationRes, rpRes, payoutRes] = await Promise.all([
 
-    if (payoutResas?.length) {
-      // Regrouper par payout_hospitable.id
-      const payoutMap: Record<string, {
-        ph: { id: string; mouvement_id: string | null; amount: number | null; mouvement_bancaire: { id: string; credit: number } | null }
-        payout_id: string
-        targetResaIds: string[]
-      }> = {}
+      // Chemin 1 : ventilation
+      supabase
+        .from('ventilation')
+        .select('reservation_id, mouvement_id, mouvement_bancaire(id, credit, libelle, date_operation)')
+        .in('reservation_id', resaIds)
+        .not('mouvement_id', 'is', null),
 
-      for (const pr of payoutResas) {
-        const ph = pr.payout_hospitable as any
-        if (!ph) {
-          const resa = resaById[pr.reservation_id]
-          if (resa) {
-            detectedAnomalies.push({
-              reservation_id: pr.reservation_id,
-              bien_id: resa.bien_id,
-              code_anomalie: 'PAYOUT_HOSPITABLE_MISSING',
-              description: `payout_reservation trouvé (payout_id=${pr.payout_id}) mais payout_hospitable absent`,
-              contexte: { payout_id: pr.payout_id },
-            })
-          }
-          continue
-        }
-        const phId = ph.id
-        if (!payoutMap[phId]) {
-          payoutMap[phId] = { ph, payout_id: pr.payout_id, targetResaIds: [] }
-        }
-        payoutMap[phId].targetResaIds.push(pr.reservation_id)
-      }
+      // Chemin 2 : reservation_paiement
+      supabase
+        .from('reservation_paiement')
+        .select('id, reservation_id, mouvement_id, mouvement_bancaire(id, credit, libelle, date_operation)')
+        .in('reservation_id', resaIds)
+        .not('mouvement_id', 'is', null),
 
-      // Récupérer TOUTES les réservations de chaque payout (dénominateur proportionnel correct)
-      const allPayoutIds = [...new Set(Object.values(payoutMap).map(p => p.payout_id))]
-      const { data: allPayoutResas } = await supabase
+      // Chemin 3 : payout_hospitable (via payout_reservation)
+      supabase
         .from('payout_reservation')
-        .select('payout_id, reservation_id, reservation!inner(id, bien_id, fin_revenue)')
-        .in('payout_id', allPayoutIds)
+        .select('reservation_id, payout_hospitable!inner(id, mouvement_id, mouvement_bancaire(id, credit, libelle, date_operation))')
+        .in('reservation_id', resaIds),
+    ])
 
-      // Index : payout_id → toutes ses réservations
-      const allResasByPayoutId: Record<string, Array<{ reservation_id: string; bien_id: string; fin_revenue: number }>> = {}
-      const seenPR = new Set<string>()
-      for (const pr of (allPayoutResas || [])) {
-        const key = `${pr.payout_id}:${pr.reservation_id}`
-        if (seenPR.has(key)) continue
-        seenPR.add(key)
-        const r = pr.reservation as any
-        if (!r) continue
-        if (!allResasByPayoutId[pr.payout_id]) allResasByPayoutId[pr.payout_id] = []
-        allResasByPayoutId[pr.payout_id].push({
-          reservation_id: pr.reservation_id,
-          bien_id: r.bien_id,
-          fin_revenue: r.fin_revenue || 0,
+    if (ventilationRes.error) throw new Error(`Erreur ventilation: ${ventilationRes.error.message}`)
+    if (rpRes.error) throw new Error(`Erreur reservation_paiement: ${rpRes.error.message}`)
+    if (payoutRes.error) throw new Error(`Erreur payout_reservation: ${payoutRes.error.message}`)
+
+    // ── 3. Construire la map : reservation_id → liens dédupliqués par mb_id ──
+    // Ordre de priorité : ventilation > reservation_paiement > payout_hospitable
+    // Si le même mb_id arrive par deux chemins, on garde la source la plus haute
+
+    const linksByResa = new Map<string, Map<string, MbLink>>()
+
+    function ensureResa(resaId: string): Map<string, MbLink> {
+      if (!linksByResa.has(resaId)) linksByResa.set(resaId, new Map())
+      return linksByResa.get(resaId)!
+    }
+
+    // Chemin 1 : ventilation
+    for (const v of (ventilationRes.data || [])) {
+      const mb = v.mouvement_bancaire as any
+      if (!mb?.id || !(mb.credit > 0)) continue
+      const map = ensureResa(v.reservation_id)
+      if (!map.has(mb.id)) {
+        map.set(mb.id, {
+          mb_id: mb.id,
+          credit: mb.credit,
+          source: 'ventilation',
+          source_ref: v.mouvement_id,
+          libelle: mb.libelle,
+          date_operation: mb.date_operation,
         })
-      }
-
-      // Traiter chaque payout
-      for (const [phId, { ph, payout_id, targetResaIds }] of Object.entries(payoutMap)) {
-        const mb = ph.mouvement_bancaire as any
-        const hasBankLink = ph.mouvement_id != null && mb?.id != null && mb?.credit != null
-        const credit: number = hasBankLink ? mb.credit : (ph.amount ?? 0)
-
-        if (!credit) {
-          for (const rid of targetResaIds) {
-            const resa = resaById[rid]
-            if (!resa) continue
-            detectedAnomalies.push({
-              reservation_id: rid,
-              bien_id: resa.bien_id,
-              code_anomalie: 'PAYOUT_SANS_MONTANT',
-              description: `payout_hospitable ${phId} sans montant (mouvement_id=null et amount=null)`,
-              contexte: { payout_hospitable_id: phId, payout_id },
-            })
-          }
-          continue
-        }
-
-        // Si mouvement_id null : c'est une anomalie, mais on peut quand même allouer en approxime
-        if (!hasBankLink) {
-          for (const rid of targetResaIds) {
-            const resa = resaById[rid]
-            if (!resa) continue
-            detectedAnomalies.push({
-              reservation_id: rid,
-              bien_id: resa.bien_id,
-              code_anomalie: 'MOUVEMENT_ID_NULL',
-              description: `payout_hospitable ${phId} : mouvement_id non renseigné — encaissement approximé depuis payout.amount=${ph.amount} ct. Rattacher le mouvement bancaire pour passer en "prouvé".`,
-              contexte: { payout_hospitable_id: phId, payout_id, amount: ph.amount },
-            })
-          }
-        }
-
-        const allResasOfPayout = allResasByPayoutId[payout_id] || []
-        const totalRev = allResasOfPayout.reduce((s, r) => s + r.fin_revenue, 0)
-        const isMultiResa = allResasOfPayout.length > 1
-
-        for (const rid of targetResaIds) {
-          const resa = resaById[rid]
-          if (!resa) continue
-
-          // Hiérarchie : exact si payout mono-résa, proportional sinon
-          let modeAllocation: string
-          let montant: number
-          let proportionalReason: string | null = null
-
-          if (!isMultiResa) {
-            // exact : le payout ne couvre qu'une seule réservation
-            modeAllocation = 'exact'
-            montant = credit
-          } else {
-            // proportional : seul mode disponible pour les multi-réservations
-            modeAllocation = 'proportional'
-            const thisRev = resa.fin_revenue || 0
-            montant = totalRev > 0
-              ? Math.round(credit * thisRev / totalRev)
-              : Math.round(credit / allResasOfPayout.length)
-            proportionalReason = (
-              `Payout ${phId} regroupe ${allResasOfPayout.length} réservations ` +
-              `(fin_revenue total=${totalRev} ct) — ` +
-              `cette résa contribue ${thisRev}/${totalRev} = ` +
-              `${totalRev > 0 ? Math.round(thisRev / totalRev * 10000) / 100 : 'N/A'}%`
-            )
-          }
-
-          if (montant <= 0) continue
-
-          allocations.push({
-            reservation_id: rid,
-            bien_id: resa.bien_id,
-            mois_comptable: mois,
-            mouvement_bancaire_id: hasBankLink ? mb.id : null,
-            montant_alloue: montant,
-            preuve_niveau: hasBankLink ? 'prouve' : 'approxime',
-            mode_allocation: modeAllocation,
-            proportional_reason: proportionalReason,
-            allocation_group_key: `payout:${phId}`,
-            can_be_used_for_reversement: hasBankLink,
-            source_type: 'payout_hospitable',
-            source_ref: phId,
-            source_line_id: `ph:${phId}:r:${rid}`,
-            justification: hasBankLink
-              ? `Payout rapproché — mouvement_bancaire ${mb.id}, credit=${mb.credit} ct`
-              : `Payout non rapproché — montant estimé depuis payout_hospitable.amount=${ph.amount} ct`,
-            payout_total: credit,
-            payout_resa_count: allResasOfPayout.length,
-            computed_by: 'auto',
-            updated_at: new Date().toISOString(),
-          })
-          resasTraitees.add(rid)
-        }
       }
     }
 
-    // Anomalies pour réservations Airbnb/Booking sans payout_reservation
-    const resasAvecPayoutResa = new Set((payoutResas || []).map(pr => pr.reservation_id))
+    // Chemin 2 : reservation_paiement
+    for (const rp of (rpRes.data || [])) {
+      const mb = rp.mouvement_bancaire as any
+      if (!mb?.id || !(mb.credit > 0)) continue
+      const map = ensureResa(rp.reservation_id)
+      if (!map.has(mb.id)) {
+        map.set(mb.id, {
+          mb_id: mb.id,
+          credit: mb.credit,
+          source: 'reservation_paiement',
+          source_ref: rp.id,
+          libelle: mb.libelle,
+          date_operation: mb.date_operation,
+        })
+      }
+    }
+
+    // Chemin 3 : payout_hospitable
+    for (const pr of (payoutRes.data || [])) {
+      const ph = pr.payout_hospitable as any
+      if (!ph?.mouvement_id) continue
+      const mb = ph.mouvement_bancaire as any
+      if (!mb?.id || !(mb.credit > 0)) continue
+      const map = ensureResa(pr.reservation_id)
+      if (!map.has(mb.id)) {
+        map.set(mb.id, {
+          mb_id: mb.id,
+          credit: mb.credit,
+          source: 'payout_hospitable',
+          source_ref: ph.id,
+          libelle: mb.libelle,
+          date_operation: mb.date_operation,
+        })
+      }
+    }
+
+    // ── 4. Construire allocations et anomalies ────────────────────────────────
+
+    const allocations: Record<string, any>[] = []
+    const detectedAnomalies: Record<string, any>[] = []
+    let prouvees = 0
+    let nonProuvees = 0
+
     for (const resa of resas) {
-      const isAirbnbChannel = resa.platform !== 'direct' && resa.platform !== 'other'
-      if (isAirbnbChannel && !resasAvecPayoutResa.has(resa.id)) {
+      const mbMap = linksByResa.get(resa.id)
+      const links = mbMap ? [...mbMap.values()] : []
+
+      if (links.length === 0) {
+        nonProuvees++
         detectedAnomalies.push({
           reservation_id: resa.id,
           bien_id: resa.bien_id,
-          code_anomalie: 'PAYOUT_MISSING',
-          description: `Réservation ${resa.platform} sans payout_reservation (fin_revenue=${resa.fin_revenue} ct)`,
-          contexte: { reservation_id: resa.id, platform: resa.platform, fin_revenue: resa.fin_revenue },
+          mois_comptable: mois,
+          code_anomalie: 'MOUVEMENT_BANCAIRE_MISSING',
+          description: (
+            `Aucun mouvement bancaire rapproché (platform=${resa.platform}, ` +
+            `fin_revenue=${resa.fin_revenue} ct). ` +
+            `Vérifier le rapprochement via ventilation, reservation_paiement ou payout_hospitable.`
+          ),
+          contexte: {
+            platform: resa.platform,
+            fin_revenue: resa.fin_revenue,
+          },
+          resolu: false,
+          updated_at: new Date().toISOString(),
+        })
+        continue
+      }
+
+      prouvees++
+
+      // Une ligne d'allocation par mouvement_bancaire (acompte + solde = 2 lignes)
+      for (const link of links) {
+        const sourceLabel = {
+          ventilation: `ventilation → mb ${link.mb_id}`,
+          reservation_paiement: `reservation_paiement ${link.source_ref} → mb ${link.mb_id}`,
+          payout_hospitable: `payout_hospitable ${link.source_ref} → mb ${link.mb_id}`,
+        }[link.source]
+
+        allocations.push({
+          reservation_id: resa.id,
+          bien_id: resa.bien_id,
+          mois_comptable: mois,
+          mouvement_bancaire_id: link.mb_id,
+          montant_alloue: link.credit,
+          preuve_niveau: 'prouve',
+          mode_allocation: 'exact',
+          proportional_reason: null,
+          allocation_group_key: `mb:${link.mb_id}`,
+          can_be_used_for_reversement: true,
+          source_type: link.source,
+          source_ref: link.source_ref,
+          source_line_id: `mb:${link.mb_id}:r:${resa.id}`,
+          justification: `${sourceLabel}, credit=${link.credit} ct${link.libelle ? ` (${link.libelle})` : ''}`,
+          payout_total: null,
+          payout_resa_count: null,
+          computed_by: 'auto',
+          updated_at: new Date().toISOString(),
         })
       }
     }
 
-    // ── 3. Canal Direct / Stripe via reservation_paiement ────────────────────
-    const resasSansPayout = resas.filter(r => !resasTraitees.has(r.id))
-
-    if (resasSansPayout.length > 0) {
-      const { data: resPaiements } = await supabase
-        .from('reservation_paiement')
-        .select('id, reservation_id, mouvement_id, type_paiement, montant, mouvement_bancaire(id, credit)')
-        .in('reservation_id', resasSansPayout.map(r => r.id))
-
-      const rpByResa: Record<string, any[]> = {}
-      for (const rp of (resPaiements || [])) {
-        if (!rpByResa[rp.reservation_id]) rpByResa[rp.reservation_id] = []
-        rpByResa[rp.reservation_id].push(rp)
-      }
-
-      for (const resa of resasSansPayout) {
-        const paiements = rpByResa[resa.id] || []
-
-        if (paiements.length === 0) {
-          detectedAnomalies.push({
-            reservation_id: resa.id,
-            bien_id: resa.bien_id,
-            code_anomalie: 'RESERVATION_PAIEMENT_MISSING',
-            description: `Réservation directe sans paiement enregistré (platform=${resa.platform}, fin_revenue=${resa.fin_revenue} ct). Rattacher un mouvement bancaire via reservation_paiement.`,
-            contexte: { reservation_id: resa.id, platform: resa.platform, fin_revenue: resa.fin_revenue },
-          })
-          continue
-        }
-
-        let anyAllocated = false
-        for (const rp of paiements) {
-          const mb = rp.mouvement_bancaire as any
-          const isLinked = rp.mouvement_id != null && mb?.id != null && mb?.credit != null
-          const credit: number = mb?.credit ?? 0
-
-          if (!isLinked || credit <= 0) {
-            detectedAnomalies.push({
-              reservation_id: resa.id,
-              bien_id: resa.bien_id,
-              code_anomalie: 'RESERVATION_PAIEMENT_NOT_LINKED',
-              description: (
-                rp.mouvement_id == null
-                  ? `Paiement (id=${rp.id}, montant=${rp.montant} ct, type=${rp.type_paiement}) sans mouvement_id — aucune preuve bancaire`
-                  : `Paiement (id=${rp.id}) lié à mouvement ${rp.mouvement_id} mais credit=null ou 0`
-              ),
-              contexte: { reservation_paiement_id: rp.id, type_paiement: rp.type_paiement, montant: rp.montant, mouvement_id: rp.mouvement_id },
-            })
-            // Pas d'allocation — fin_revenue ne peut pas compenser
-            continue
-          }
-
-          allocations.push({
-            reservation_id: resa.id,
-            bien_id: resa.bien_id,
-            mois_comptable: mois,
-            mouvement_bancaire_id: mb.id,
-            montant_alloue: credit,
-            preuve_niveau: 'prouve',
-            mode_allocation: 'exact',
-            proportional_reason: null,
-            allocation_group_key: `direct:mb:${mb.id}`,
-            can_be_used_for_reversement: true,
-            source_type: 'reservation_paiement',
-            source_ref: rp.id,
-            source_line_id: `rp:${rp.id}`,
-            justification: `Paiement direct rapproché — mouvement_bancaire ${mb.id}, credit=${credit} ct, type=${rp.type_paiement}`,
-            payout_total: null,
-            payout_resa_count: null,
-            computed_by: 'auto',
-            updated_at: new Date().toISOString(),
-          })
-          anyAllocated = true
-          resasTraitees.add(resa.id)
-        }
-      }
-    }
-
-    // ── 4. Persistance allocations : DELETE auto existantes du mois + INSERT ──
-    // On supprime les lignes auto du mois pour les biens concernés, puis on réinsère.
-    // Évite le onConflict sur index partiel (non supporté par PostgREST).
-    // Les lignes manuelles (computed_by='manual') ne sont jamais supprimées.
-    const uniqueBienIds = [...new Set(allocations.map((a: any) => a.bien_id))]
+    // ── 5. Persistance allocations : DELETE auto + INSERT ─────────────────────
+    const uniqueBienIds = [...new Set(resas.map(r => r.bien_id))]
     if (uniqueBienIds.length > 0) {
       const { error: delErr } = await supabase
         .from('encaissement_allocation')
@@ -337,80 +247,45 @@ serve(async (req) => {
         .eq('mois_comptable', mois)
         .eq('computed_by', 'auto')
         .in('bien_id', uniqueBienIds)
-      if (delErr) {
-        console.error('DELETE allocation error:', JSON.stringify(delErr))
-        throw new Error(`Erreur DELETE allocations: ${delErr.message}`)
-      }
+      if (delErr) throw new Error(`Erreur DELETE allocations: ${delErr.message}`)
     }
 
-    let allocOk = 0
     const BATCH = 50
+    let allocOk = 0
     for (let i = 0; i < allocations.length; i += BATCH) {
-      const batch = allocations.slice(i, i + BATCH)
-      const { error } = await supabase
-        .from('encaissement_allocation')
-        .insert(batch)
-      if (error) {
-        console.error('INSERT allocation error:', JSON.stringify(error))
-        throw new Error(`Erreur INSERT allocations batch ${i}: ${error.message}`)
-      }
-      allocOk += batch.length
+      const { error } = await supabase.from('encaissement_allocation').insert(allocations.slice(i, i + BATCH))
+      if (error) throw new Error(`Erreur INSERT allocations batch ${i}: ${error.message}`)
+      allocOk += Math.min(BATCH, allocations.length - i)
     }
 
-    // ── 5. Persistance anomalies : DELETE toutes (resolu ou non) + INSERT ────
-    // DELETE ALL (y compris resolu=true) pour éviter la contrainte unique
-    // (reservation_id, code_anomalie) lors du re-INSERT.
-    // L'historique de résolution n'est pas conservé — seul l'état courant compte.
-    let autoResolues = 0
+    // ── 6. Persistance anomalies : DELETE toutes + INSERT ─────────────────────
     if (resaIds.length > 0) {
       const { error: delAnoErr } = await supabase
         .from('encaissement_anomalie')
         .delete()
         .in('reservation_id', resaIds)
-      if (delAnoErr) {
-        console.error('DELETE anomalie error:', JSON.stringify(delAnoErr))
-        throw new Error(`Erreur DELETE anomalies: ${delAnoErr.message}`)
-      }
+      if (delAnoErr) throw new Error(`Erreur DELETE anomalies: ${delAnoErr.message}`)
 
       if (detectedAnomalies.length > 0) {
-        const anomalieRows = detectedAnomalies.map(a => ({
-          ...a,
-          mois_comptable: mois,
-          resolu: false,
-          updated_at: new Date().toISOString(),
-        }))
-        for (let i = 0; i < anomalieRows.length; i += BATCH) {
-          const batch = anomalieRows.slice(i, i + BATCH)
-          const { error: insAnoErr } = await supabase
-            .from('encaissement_anomalie')
-            .insert(batch)
-          if (insAnoErr) {
-            console.error('INSERT anomalie error:', JSON.stringify(insAnoErr))
-            throw new Error(`Erreur INSERT anomalies batch ${i}: ${insAnoErr.message}`)
-          }
+        for (let i = 0; i < detectedAnomalies.length; i += BATCH) {
+          const { error } = await supabase.from('encaissement_anomalie').insert(detectedAnomalies.slice(i, i + BATCH))
+          if (error) throw new Error(`Erreur INSERT anomalies batch ${i}: ${error.message}`)
         }
       }
     }
 
-    // ── 6. Résumé ─────────────────────────────────────────────────────────────
-    const prouvees = allocations.filter(a => a.preuve_niveau === 'prouve').length
-    const approximees = allocations.filter(a => a.preuve_niveau === 'approxime').length
-    const nonProuvees = resas.length - resasTraitees.size
-
+    // ── 7. Résumé ──────────────────────────────────────────────────────────────
     return jsonResp({
       reservations_total: resas.length,
       prouvees,
-      approximees,
       non_prouvees: nonProuvees,
       anomalies: detectedAnomalies.length,
-      auto_resolues: autoResolues,
-      message: `${prouvees} prouvées · ${approximees} approximées · ${nonProuvees} sans preuve · ${detectedAnomalies.length} anomalie(s)`,
+      allocations_lignes: allocOk,
+      message: `${prouvees} prouvées · ${nonProuvees} sans preuve · ${detectedAnomalies.length} anomalie(s)`,
     })
 
   } catch (err: any) {
     console.error('allocate-encaissements fatal:', err.message)
-    // Retourner 200 avec { error } pour que le client React puisse lire le message
-    // (Supabase JS lève une exception opaque sur les non-2xx, masquant le détail)
     return new Response(
       JSON.stringify({ error: err.message }),
       { headers: { ...CORS, 'Content-Type': 'application/json' }, status: 200 }
