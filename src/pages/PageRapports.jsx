@@ -122,7 +122,8 @@ export default function PageRapports() {
     if (!selectedPropId) return
     const proprio = proprietaires.find(p => p.id === selectedPropId)
     const biens = (proprio?.bien || []).filter(b => b.listed && b.agence === 'dcb')
-    setSelectedBienId(biens[0]?.id || '')
+    const maiteFirst = biens.find(b => b.groupe_facturation === 'MAITE')
+    setSelectedBienId((maiteFirst || biens[0])?.id || '')
     setData(null)
     setColsConfig({})
     setEmail('')
