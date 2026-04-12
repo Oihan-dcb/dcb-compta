@@ -528,11 +528,11 @@ export function exportComptaCSV(data) {
   const fmt = (c) => c != null ? (c / 100).toFixed(2) : '0.00'
   const headers = [
     'Bien code', 'Bien nom', 'Propriétaire',
-    'Nb resas', 'Rapprochées', 'Non rapprochées', 'Non ventilées',
+    'Nb réservations', 'Rapprochées', 'Non rapprochées', 'Non ventilées',
     'HON HT', 'HON TVA', 'HON TTC',
     'FMEN HT', 'FMEN TVA', 'FMEN TTC',
-    'AUTO HT', 'LOY HT', 'Frais HA proprio.', 'Reversement calculé', 'TAXE HT',
-    'Facture statut', 'Reversement facturé', 'Écart facture', 'Alertes',
+    'AUTO HT', 'LOY HT', 'Frais HA proprio.', 'Réversement calculé', 'TAXE HT',
+    'Statut facture', 'Réversement facturé', 'Écart facture', 'Alertes',
   ]
   // Regrouper les biens par groupe_facturation pour le CSV
   const GROUPE_LABELS = { MAITE: 'Maison Maïté' }

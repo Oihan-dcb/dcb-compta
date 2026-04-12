@@ -38,19 +38,19 @@ function formatDateFR(d) {
 }
 
 /**
- * Normalise final_status → enum stable
+ * Normalise final_status → enum stable (valeurs FR)
  * Source : reservation.final_status (text brut Hospitable)
- * Fallback : 'unknown'
+ * Fallback : 'inconnu'
  */
 function normalizeStatus(s) {
-  if (!s) return 'unknown'
+  if (!s) return 'inconnu'
   const l = s.toLowerCase().replace(/_/g, ' ')
-  if (l === 'accepted' || l === 'confirmed') return 'confirmed'
-  if (l === 'cancelled')                     return 'cancelled'
-  if (l === 'not accepted')                  return 'not_accepted'
-  if (l === 'declined')                      return 'declined'
-  if (l === 'expired')                       return 'expired'
-  return 'unknown'
+  if (l === 'accepted' || l === 'confirmed') return 'confirmee'
+  if (l === 'cancelled')                     return 'annulee'
+  if (l === 'not accepted')                  return 'non_acceptee'
+  if (l === 'declined')                      return 'refusee'
+  if (l === 'expired')                       return 'expiree'
+  return 'inconnu'
 }
 
 /** Sérialiseur CSV : guillemets doubles, échappe les guillemets internes */
@@ -96,13 +96,13 @@ function aggregateVent(resaIds, ventByResa) {
  */
 function buildBlocA(mouv, resaIds, codes, mois, exportedAt) {
   return {
-    export_version:   'rapprochement_v2_eclate',
-    exported_at:      exportedAt,
+    version_export:   'rapprochement_v2',
+    date_export:      exportedAt,
     mois_comptable:   mois,
-    ligne_uuid:       crypto.randomUUID(),
-    source_record_id: mouv.id   || '',
-    reservation_id:   resaIds.join(' | '),
-    reservation_code: codes.join(' | '),
+    uuid_ligne:       crypto.randomUUID(),
+    id_mouvement:     mouv.id   || '',
+    id_reservations:  resaIds.join(' | '),
+    code_reservations: codes.join(' | '),
   }
 }
 
@@ -152,7 +152,7 @@ function buildBlocC(mouv, resa, resaIds, codes, resaDetails, payoutByMouv) {
     'Code résa':                  codes.join(' | '),
     statut_resa_normalise:        statusNorm,
     sejour_proprietaire:          first.owner_stay           ?? false,
-    annulee:                      statusNorm === 'cancelled',
+    annulee:                      statusNorm === 'annulee',
     import_manuel:                platform   === 'manual',
     reservation_directe:          platform   === 'direct',
     payout_groupe:                nbResas    >  1,
@@ -298,13 +298,13 @@ function buildBlocH(mouv, resaDetails, resa, finRevenue, montantAcompte, nbVirLi
     statutRapprochement = Math.abs(solde) <= 200 ? 'rapproche_total' : 'rapproche_partiel'
   } else if (statut === 'en_attente')  statutRapprochement = 'en_attente'
   else if (statut === 'non_gere')      statutRapprochement = 'non_gere'
-  else if (firstSt === 'cancelled')    statutRapprochement = 'annule'
+  else if (firstSt === 'annulee')       statutRapprochement = 'annule'
 
   // rapprochement_mode
   let rapprochementMode = 'aucun'
   if (statut === 'rapproche' || statut === 'matche_auto') {
-    if (canal === 'airbnb')                         rapprochementMode = 'auto'
-    else if (['booking', 'stripe'].includes(canal)) rapprochementMode = 'import_booking'
+    if (canal === 'airbnb')                         rapprochementMode = 'automatique'
+    else if (['booking', 'stripe'].includes(canal)) rapprochementMode = 'import_csv'
     else                                            rapprochementMode = 'manuel'
   } else if (statut === 'matche_manuel') {
     rapprochementMode = 'manuel'
@@ -315,11 +315,11 @@ function buildBlocH(mouv, resaDetails, resa, finRevenue, montantAcompte, nbVirLi
     (statut === 'rapproche' || statut === 'matche_auto' || statut === 'matche_manuel')
 
   let motif  = ''
-  let niveau = 'info'
-  if (statut === 'non_identifie')                       { motif = 'mouvement_sans_resa'; niveau = 'warning'  }
-  else if (statutRapprochement === 'rapproche_partiel') { motif = 'solde_restant';       niveau = 'warning'  }
-  else if (mouvOrphelin)                                { motif = 'credit_orphelin';      niveau = 'critique' }
-  else if (resaSansVirement)                            { motif = 'rapproche_sans_vir';  niveau = 'warning'  }
+  let niveau = 'information'
+  if (statut === 'non_identifie')                       { motif = 'mouvement_sans_reservation'; niveau = 'alerte'   }
+  else if (statutRapprochement === 'rapproche_partiel') { motif = 'solde_restant';               niveau = 'alerte'   }
+  else if (mouvOrphelin)                                { motif = 'credit_orphelin';              niveau = 'critique' }
+  else if (resaSansVirement)                            { motif = 'rapproche_sans_virement';      niveau = 'alerte'   }
 
   return {
     statut_rapprochement:      statutRapprochement,
@@ -327,7 +327,7 @@ function buildBlocH(mouv, resaDetails, resa, finRevenue, montantAcompte, nbVirLi
     nb_virements_lies:         nbVirLies,
     mouvement_orphelin:        mouvOrphelin,
     reservation_sans_virement: resaSansVirement,
-    besoin_revue_humaine:      niveau !== 'info',
+    besoin_revue_humaine:      niveau !== 'information',
     motif_anomalie:            motif,
     niveau_anomalie:           niveau,
   }
@@ -410,7 +410,7 @@ function buildControls(agg, finRevenue, montantBancaire, statusNorm, moisResa, m
   const bankRevOk = rev > 0 ? Math.abs(bank - rev) <= 200 : true
 
   // ctrl 4 : résa annulée → pas de flux bancaire entrant
-  const statutOk = statusNorm !== 'cancelled' || bank === 0
+  const statutOk = statusNorm !== 'annulee' || bank === 0
 
   // ctrl 5 : mois_comptable résa = mois export
   const moisOk = !moisResa || moisResa === moisExport
@@ -435,8 +435,8 @@ function buildHeaders() {
   const ventCols = CODES_VENTIL.flatMap(c => [`${c} HT`, `${c} TVA`, `${c} TTC`])
   return [
     // BLOC A (7)
-    'export_version', 'exported_at', 'mois_comptable', 'ligne_uuid',
-    'source_record_id', 'reservation_id', 'reservation_code',
+    'version_export', 'date_export', 'mois_comptable', 'uuid_ligne',
+    'id_mouvement', 'id_reservations', 'code_reservations',
     // BLOC B (10)
     'Date opération', 'Libellé virement', 'Référence', 'Entrée EUR', 'Sortie EUR',
     'Statut', 'canal_bancaire_detecte', 'date_operation_iso', 'montant_signe_eur', 'sens_mouvement',

@@ -19,7 +19,7 @@ export async function exportFacturesEvoliz(mois) {
     '"═══════════════════════════════════════════════════════════════"',
     '"  DESTINATION COTE BASQUE"',
     `"  Export Factures Evoliz · ${moisLabelCap}"`,
-    `"  Genere le ${dateExport}"`,
+    `"  Généré le ${dateExport}"`,
     '"═══════════════════════════════════════════════════════════════"',
     '""',
   ].join('\n')
@@ -72,15 +72,15 @@ export async function exportFacturesEvoliz(mois) {
   const footer = [
     '""',
     '"─────────────────────────────────────────────────────────────"',
-    '"TOTAUX & CONTROLES"',
+    '"TOTAUX & CONTRÔLES"',
     '"─────────────────────────────────────────────────────────────"',
     `"Total HT";"${(totalHT / 100).toFixed(2)} EUR"`,
     `"Total TTC";"${(totalTTC / 100).toFixed(2)} EUR"`,
-    `"Total reversements";"${(totalReversement / 100).toFixed(2)} EUR"`,
+    `"Total réversements";"${(totalReversement / 100).toFixed(2)} EUR"`,
     '""',
     `"Factures honoraires";"${nbHonoraires}"`,
-    `"Factures debours";"${nbDebours}"`,
-    `"Envoyees Evoliz";"${nbEnvoyees}"`,
+    `"Factures débours";"${nbDebours}"`,
+    `"Envoyées Evoliz";"${nbEnvoyees}"`,
     `"Brouillons restants";"${nbBrouillon}"`,
     '"═══════════════════════════════════════════════════════════════"'
   ].join('\n')

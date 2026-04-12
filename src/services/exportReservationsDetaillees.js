@@ -28,11 +28,17 @@ export async function exportReservationsDetaillees(mois) {
   const header = [
     '"═══════════════════════════════════════════════════════════════"',
     '"  DESTINATION COTE BASQUE"',
-    `"  Export Reservations Detaillees · ${moisLabelCap}"`,
-    `"  Genere le ${dateExport}"`,
+    `"  Export Réservations Détaillées · ${moisLabelCap}"`,
+    `"  Généré le ${dateExport}"`,
     '"═══════════════════════════════════════════════════════════════"',
     '""',
   ].join('\n')
+
+  const STATUS_FR = {
+    confirmed: 'Confirmée', accepted: 'Confirmée',
+    cancelled: 'Annulée', not_accepted: 'Non acceptée',
+    declined: 'Refusée', expired: 'Expirée',
+  }
 
   const colonnes = [
     'Code résa', 'Bien', 'Propriétaire', 'Plateforme', 'Voyageur',
@@ -60,7 +66,7 @@ export async function exportReservationsDetaillees(mois) {
       r.ventilation_calculee ? 'Oui' : 'Non',
       r.rapprochee ? 'Oui' : 'Non',
       r.owner_stay ? 'Oui' : 'Non',
-      r.final_status || '',
+      STATUS_FR[r.final_status?.toLowerCase()] || r.final_status || '',
       vent.HON  ? (vent.HON.montant_ttc  / 100).toFixed(2) : '',
       vent.FMEN ? (vent.FMEN.montant_ttc / 100).toFixed(2) : '',
       vent.AUTO ? ((vent.AUTO.montant_reel ?? vent.AUTO.montant_ht) / 100).toFixed(2) : '',
@@ -81,17 +87,17 @@ export async function exportReservationsDetaillees(mois) {
   const footer = [
     '""',
     '"─────────────────────────────────────────────────────────────"',
-    '"TOTAUX & CONTROLES"',
+    '"TOTAUX & CONTRÔLES"',
     '"─────────────────────────────────────────────────────────────"',
-    `"Total reservations";"${nbTotal}"`,
-    `"Ventilees";"${nbVentilees}"`,
-    `"Rapprochees";"${nbRapprochees}"`,
-    `"Owner stay";"${nbOwnerStay}"`,
-    `"Annulees";"${nbCancelled}"`,
+    `"Total réservations";"${nbTotal}"`,
+    `"Ventilées";"${nbVentilees}"`,
+    `"Rapprochées";"${nbRapprochees}"`,
+    `"Séjour propriétaire";"${nbOwnerStay}"`,
+    `"Annulées";"${nbCancelled}"`,
     '""',
-    `"Total fin_revenue";"${(totalRevenue / 100).toFixed(2)} EUR"`,
-    `"Non ventilees";"${nbTotal - nbVentilees}"`,
-    `"Non rapprochees";"${nbTotal - nbRapprochees}"`,
+    `"Total revenu net";"${(totalRevenue / 100).toFixed(2)} EUR"`,
+    `"Non ventilées";"${nbTotal - nbVentilees}"`,
+    `"Non rapprochées";"${nbTotal - nbRapprochees}"`,
     '"═══════════════════════════════════════════════════════════════"'
   ].join('\n')
 

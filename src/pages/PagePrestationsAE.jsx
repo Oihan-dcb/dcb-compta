@@ -170,12 +170,12 @@ export default function PagePrestationsAE() {
           <p style={{ margin: '4px 0 0', color: '#666', fontSize: 14 }}>Soumises par les AEs — à valider avant imputation</p>
         </div>
         <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-          <button onClick={() => { const d = new Date(mois + '-01'); d.setMonth(d.getMonth()-1); setMois(d.toISOString().slice(0,7)) }}
+          <button onClick={() => { const [y, m] = mois.split('-').map(Number); setMois(m === 1 ? `${y-1}-12` : `${y}-${String(m-1).padStart(2,'0')}`) }}
             style={{ background: '#fff', border: '1px solid #e5e7eb', borderRadius: 7, padding: '6px 12px', cursor: 'pointer' }}>‹</button>
           <span style={{ fontWeight: 700, fontSize: 15, minWidth: 110, textAlign: 'center' }}>
-            {new Date(mois + '-01').toLocaleDateString('fr-FR', { month: 'long', year: 'numeric' })}
+            {new Date(mois + '-15').toLocaleDateString('fr-FR', { month: 'long', year: 'numeric' })}
           </span>
-          <button onClick={() => { const d = new Date(mois + '-01'); d.setMonth(d.getMonth()+1); setMois(d.toISOString().slice(0,7)) }}
+          <button onClick={() => { const [y, m] = mois.split('-').map(Number); setMois(m === 12 ? `${y+1}-01` : `${y}-${String(m+1).padStart(2,'0')}`) }}
             style={{ background: '#fff', border: '1px solid #e5e7eb', borderRadius: 7, padding: '6px 12px', cursor: 'pointer' }}>›</button>
         </div>
       </div>
