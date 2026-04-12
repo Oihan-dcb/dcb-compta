@@ -357,38 +357,64 @@ serve(async (req) => {
       allocOk += batch.length
     }
 
-    // ── 5. UPSERT anomalies + auto-résolution des anomalies disparues ────────
-    // Récupérer les anomalies non résolues existantes pour ce mois
-    const { data: existingAnomalies } = await supabase
-      .from('encaissement_anomalie')
-      .select('id, reservation_id, code_anomalie')
-      .eq('mois_comptable', mois)
-      .eq('resolu', false)
-
-    const newAnomalieKeys = new Set(detectedAnomalies.map(a => `${a.reservation_id}:${a.code_anomalie}`))
-
-    // Auto-résoudre les anomalies qui n'existent plus
-    const toResolve = (existingAnomalies || []).filter(
-      ea => !newAnomalieKeys.has(`${ea.reservation_id}:${ea.code_anomalie}`)
-    )
-    if (toResolve.length > 0) {
-      await supabase
+    // ── 5. Persistance anomalies : DELETE pour ces réservations + INSERT ─────
+    // Même pattern que les allocations : évite onConflict sur index unique.
+    // On supprime uniquement les anomalies non résolues (resolu=false) pour ne pas
+    // écraser les résolutions manuelles. Si un problème resolu réapparaît, il sera
+    // ré-inséré et le conflit unique sera géré par suppression préalable des resolu=false.
+    let autoResolues = 0
+    if (resaIds.length > 0) {
+      // Récupérer les anomalies non résolues existantes pour détecter les auto-résolutions
+      const { data: existingAnomalies } = await supabase
         .from('encaissement_anomalie')
-        .update({ resolu: true, resolu_at: new Date().toISOString(), resolu_note: 'Auto-résolu — problème détecté corrigé depuis dernier calcul', updated_at: new Date().toISOString() })
-        .in('id', toResolve.map(a => a.id))
-    }
+        .select('id, reservation_id, code_anomalie')
+        .in('reservation_id', resaIds)
+        .eq('resolu', false)
 
-    // Upsert nouvelles anomalies
-    if (detectedAnomalies.length > 0) {
-      const anomalieRows = detectedAnomalies.map(a => ({
-        ...a,
-        resolu: false,
-        updated_at: new Date().toISOString(),
-      }))
-      const { error: anomErr } = await supabase
+      const newAnomalieKeys = new Set(detectedAnomalies.map(a => `${a.reservation_id}:${a.code_anomalie}`))
+
+      // Anomalies disparues → auto-résoudre
+      const toResolve = (existingAnomalies || []).filter(
+        ea => !newAnomalieKeys.has(`${ea.reservation_id}:${ea.code_anomalie}`)
+      )
+      if (toResolve.length > 0) {
+        const { error: resolveErr } = await supabase
+          .from('encaissement_anomalie')
+          .update({ resolu: true, resolu_at: new Date().toISOString(), resolu_note: 'Auto-résolu — problème corrigé depuis dernier calcul', updated_at: new Date().toISOString() })
+          .in('id', toResolve.map(a => a.id))
+        if (resolveErr) console.error('UPDATE resolve error:', JSON.stringify(resolveErr))
+        autoResolues = toResolve.length
+      }
+
+      // Supprimer les anomalies non résolues des réservations du mois (sera remplacé)
+      const { error: delAnoErr } = await supabase
         .from('encaissement_anomalie')
-        .upsert(anomalieRows, { onConflict: 'reservation_id,code_anomalie', ignoreDuplicates: false })
-      if (anomErr) console.error('UPSERT anomalies error:', JSON.stringify(anomErr))
+        .delete()
+        .in('reservation_id', resaIds)
+        .eq('resolu', false)
+      if (delAnoErr) {
+        console.error('DELETE anomalie error:', JSON.stringify(delAnoErr))
+        throw new Error(`Erreur DELETE anomalies: ${delAnoErr.message}`)
+      }
+
+      // Insérer les nouvelles anomalies
+      if (detectedAnomalies.length > 0) {
+        const anomalieRows = detectedAnomalies.map(a => ({
+          ...a,
+          resolu: false,
+          updated_at: new Date().toISOString(),
+        }))
+        for (let i = 0; i < anomalieRows.length; i += BATCH) {
+          const batch = anomalieRows.slice(i, i + BATCH)
+          const { error: insAnoErr } = await supabase
+            .from('encaissement_anomalie')
+            .insert(batch)
+          if (insAnoErr) {
+            console.error('INSERT anomalie error:', JSON.stringify(insAnoErr))
+            throw new Error(`Erreur INSERT anomalies batch ${i}: ${insAnoErr.message}`)
+          }
+        }
+      }
     }
 
     // ── 6. Résumé ─────────────────────────────────────────────────────────────
@@ -402,7 +428,7 @@ serve(async (req) => {
       approximees,
       non_prouvees: nonProuvees,
       anomalies: detectedAnomalies.length,
-      auto_resolues: toResolve.length,
+      auto_resolues: autoResolues,
       message: `${prouvees} prouvées · ${approximees} approximées · ${nonProuvees} sans preuve · ${detectedAnomalies.length} anomalie(s)`,
     })
 
