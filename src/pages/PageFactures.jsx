@@ -652,9 +652,9 @@ const [pushing, setPushing] = useState(false)
                     const manuelLien = liensVirements[f.id]
                     const commentaire = commentairesCtrl[f.id] || ''
 
-                    // Options disponibles pour sélecteur manuel
+                    // Options : exclure les virements déjà pris par une autre facture (manuel ou auto)
                     const options = virementsSortants.filter(v =>
-                      !Object.entries(liensVirements).some(([fid, mid]) => mid === v.id && fid !== f.id)
+                      !virementsDejàLiés.has(v.id) || vir?.id === v.id
                     )
 
                     return (
