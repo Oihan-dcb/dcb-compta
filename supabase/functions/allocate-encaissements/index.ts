@@ -357,50 +357,25 @@ serve(async (req) => {
       allocOk += batch.length
     }
 
-    // ── 5. Persistance anomalies : DELETE pour ces réservations + INSERT ─────
-    // Même pattern que les allocations : évite onConflict sur index unique.
-    // On supprime uniquement les anomalies non résolues (resolu=false) pour ne pas
-    // écraser les résolutions manuelles. Si un problème resolu réapparaît, il sera
-    // ré-inséré et le conflit unique sera géré par suppression préalable des resolu=false.
+    // ── 5. Persistance anomalies : DELETE toutes (resolu ou non) + INSERT ────
+    // DELETE ALL (y compris resolu=true) pour éviter la contrainte unique
+    // (reservation_id, code_anomalie) lors du re-INSERT.
+    // L'historique de résolution n'est pas conservé — seul l'état courant compte.
     let autoResolues = 0
     if (resaIds.length > 0) {
-      // Récupérer les anomalies non résolues existantes pour détecter les auto-résolutions
-      const { data: existingAnomalies } = await supabase
-        .from('encaissement_anomalie')
-        .select('id, reservation_id, code_anomalie')
-        .in('reservation_id', resaIds)
-        .eq('resolu', false)
-
-      const newAnomalieKeys = new Set(detectedAnomalies.map(a => `${a.reservation_id}:${a.code_anomalie}`))
-
-      // Anomalies disparues → auto-résoudre
-      const toResolve = (existingAnomalies || []).filter(
-        ea => !newAnomalieKeys.has(`${ea.reservation_id}:${ea.code_anomalie}`)
-      )
-      if (toResolve.length > 0) {
-        const { error: resolveErr } = await supabase
-          .from('encaissement_anomalie')
-          .update({ resolu: true, resolu_at: new Date().toISOString(), resolu_note: 'Auto-résolu — problème corrigé depuis dernier calcul', updated_at: new Date().toISOString() })
-          .in('id', toResolve.map(a => a.id))
-        if (resolveErr) console.error('UPDATE resolve error:', JSON.stringify(resolveErr))
-        autoResolues = toResolve.length
-      }
-
-      // Supprimer les anomalies non résolues des réservations du mois (sera remplacé)
       const { error: delAnoErr } = await supabase
         .from('encaissement_anomalie')
         .delete()
         .in('reservation_id', resaIds)
-        .eq('resolu', false)
       if (delAnoErr) {
         console.error('DELETE anomalie error:', JSON.stringify(delAnoErr))
         throw new Error(`Erreur DELETE anomalies: ${delAnoErr.message}`)
       }
 
-      // Insérer les nouvelles anomalies
       if (detectedAnomalies.length > 0) {
         const anomalieRows = detectedAnomalies.map(a => ({
           ...a,
+          mois_comptable: mois,
           resolu: false,
           updated_at: new Date().toISOString(),
         }))
@@ -434,9 +409,11 @@ serve(async (req) => {
 
   } catch (err: any) {
     console.error('allocate-encaissements fatal:', err.message)
+    // Retourner 200 avec { error } pour que le client React puisse lire le message
+    // (Supabase JS lève une exception opaque sur les non-2xx, masquant le détail)
     return new Response(
       JSON.stringify({ error: err.message }),
-      { headers: { ...CORS, 'Content-Type': 'application/json' }, status: 500 }
+      { headers: { ...CORS, 'Content-Type': 'application/json' }, status: 200 }
     )
   }
 })

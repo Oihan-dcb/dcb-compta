@@ -473,7 +473,7 @@ const [pushing, setPushing] = useState(false)
             disabled={computingAlloc || loading}
             title="Calcule et persiste les encaissements alloués par réservation (source de vérité)"
           >
-            {computingAlloc ? <><span className="spinner" /> Calcul…</> : '⚡ Encaissements'}
+            {computingAlloc ? <><span className="spinner" /> Calcul…</> : '⚡ Contrôle trésorerie'}
           </button>
           <button
             className="btn btn-secondary"
