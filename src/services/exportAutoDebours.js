@@ -6,13 +6,12 @@ export async function exportAutoDebours(mois) {
   const [
     { data: missions },
     { data: prestations },
-    { data: aes },
   ] = await Promise.all([
     supabase.from('mission_menage')
       .select(`
         id, reservation_id, ae_id, date_mission, duree_heures, montant, titre_ical,
         bien:bien_id(code, hospitable_name, proprietaire:proprietaire_id(nom, prenom)),
-        auto_entrepreneur:ae_id(id, prenom, nom, taux_horaire, is_staff)
+        auto_entrepreneur:ae_id(id, prenom, nom, taux_horaire, type)
       `)
       .eq('mois', mois)
       .order('date_mission', { ascending: true }),
@@ -22,12 +21,7 @@ export async function exportAutoDebours(mois) {
         prestation_type:prestation_type_id(nom)
       `)
       .eq('mois', mois)
-      .not('ae_id', 'is', null)
-      .eq('statut', 'valide'),
-    supabase.from('auto_entrepreneur')
-      .select('id, prenom, nom, taux_horaire, is_staff')
-      .eq('actif', true)
-      .order('nom'),
+      .not('ae_id', 'is', null),
   ])
 
   const moisLabel = format(new Date(mois + '-01'), 'MMMM yyyy', { locale: fr })
@@ -61,7 +55,7 @@ export async function exportAutoDebours(mois) {
   // ── Une section par AE ────────────────────────────────────────────────────
   for (const [aeId, { ae, missions: ms }] of Object.entries(missionsByAe)) {
     const nomAE = ae ? `${ae.prenom || ''} ${ae.nom || ''}`.trim() : `AE ${aeId}`
-    const isStaff = ae?.is_staff ?? false
+    const isStaff = ae?.type === 'staff_dcb'
     const tauxHoraire = ae?.taux_horaire ? (ae.taux_horaire / 100).toFixed(2) : '—'
 
     lines.push(row(['═══════════════════════════', '', '', '', '', '']))
