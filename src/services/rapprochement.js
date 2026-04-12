@@ -325,7 +325,9 @@ export async function getMouvementsMois(mois) {
             if (resa.guest_name && !info.guests.includes(resa.guest_name)) info.guests.push(resa.guest_name)
             if (!info.reservation_ids.includes(resa.id)) info.reservation_ids.push(resa.id)
             if (!info.codes.includes(resa.code)) info.codes.push(resa.code)
-            info.fin_revenue += (resa.fin_revenue || 0)
+            // amount_cents = montant réel Booking pour cette résa (inclut taxe de séjour)
+            // Fallback sur fin_revenue si amount_cents absent
+            info.fin_revenue += (line.amount_cents ?? resa.fin_revenue ?? 0)
             info.nights += (resa.nights || 0)
             info.nb_resas++
           } else {
