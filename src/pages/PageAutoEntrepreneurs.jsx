@@ -101,7 +101,7 @@ export default function PageAutoEntrepreneurs() {
         .order('date_prestation'),
       supabase
         .from('mission_menage')
-        .select('id, ae_id, bien_id, date_mission, titre_ical, duree_heures, montant, bien:bien_id!inner(code, hospitable_name, agence)')
+        .select('id, ae_id, bien_id, date_mission, titre_ical, duree_heures, montant, bien:bien_id!inner(code, hospitable_name, agence, provision_ae_ref)')
         .eq('mois', mois)
         .eq('bien.agence', 'dcb')
         .neq('statut', 'cancelled')
@@ -388,7 +388,7 @@ export default function PageAutoEntrepreneurs() {
             const aeGroups = Object.values(parAe).map(({ ae, missions }) => {
               const aeObj = ae
               const menages = missions.filter(m => m._type === 'mission')
-              const provision = menages.reduce((s, m) => s + (m.duree_heures || 0) * (aeObj?.taux_horaire || 2500), 0)
+              const provision = menages.reduce((s, m) => s + (m.bien?.provision_ae_ref || 0), 0)
               const reel = menages.filter(m => m.montant).reduce((s, m) => s + (m.montant || 0), 0)
               const totalAeVal = missions.reduce((s, m) => {
                 if (m._type === 'mission') return s + (m.montant || 0)
