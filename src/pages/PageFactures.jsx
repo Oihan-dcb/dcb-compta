@@ -197,7 +197,7 @@ const [pushing, setPushing] = useState(false)
       ] = await Promise.all([
         supabase
           .from('reservation_mouvement')
-          .select('reservation_id, bien_id, mouvement_bancaire_id, credit_retenu_centimes')
+          .select('reservation_id, bien_id, mouvement_bancaire_id, credit_retenu_centimes, source_rapprochement')
           .eq('mois_comptable', mois)
           .in('bien_id', uniqueBienIds),
         supabase
@@ -216,12 +216,15 @@ const [pushing, setPushing] = useState(false)
           .gt('fin_revenue', 0)
           .in('bien_id', uniqueBienIds),
         // Ventilation — TTC pour HON/FMEN/COM (Airbnb paie TVA incluse), HT pour VIR
+        // Exclure les séjours propriétaires (owner_stay=true) : ils ont des ventilations FMEN/AUTO
+        // mais pas d'encaissement prouvé, ce qui crée un solde négatif artificiel
         supabase
           .from('ventilation')
-          .select('bien_id, code, montant_ht, montant_ttc, montant_reel')
+          .select('bien_id, code, montant_ht, montant_ttc, montant_reel, reservation!inner(owner_stay)')
           .eq('mois_comptable', mois)
           .in('bien_id', uniqueBienIds)
-          .in('code', ['VIR', 'HON', 'FMEN', 'AUTO', 'COM']),
+          .in('code', ['VIR', 'HON', 'FMEN', 'AUTO', 'COM'])
+          .eq('reservation.owner_stay', false),
         supabase
           .from('prestation_hors_forfait')
           .select('bien_id, type_imputation, montant_ht')
@@ -231,14 +234,21 @@ const [pushing, setPushing] = useState(false)
       ])
 
       // Agréger depuis reservation_mouvement (vue métier — encaissements prouvés uniquement)
-      // Déduplication par mouvement_bancaire_id par bien : un payout Airbnb peut couvrir N réservations
-      // → compter le crédit UNE SEULE fois par mouvement, pas N fois
+      // Déduplication par mouvement_bancaire_id uniquement pour payout_hospitable :
+      // Airbnb verse un payout groupé (mb.credit = total payout), chaque resa partage le même mb_id
+      // → compter le crédit UNE SEULE fois pour ce mouvement
+      // Pour stripe_payout_line / booking_payout_line / ventilation / reservation_paiement :
+      // credit_retenu_centimes est déjà le montant par réservation → sommer directement
       const allocByBien = {}           // bien_id → { prouve, resaIdsProuve, mbIds }
       for (const a of (allocRows || [])) {
         if (!allocByBien[a.bien_id]) allocByBien[a.bien_id] = { prouve: 0, resaIdsProuve: new Set(), mbIds: new Set() }
         const b = allocByBien[a.bien_id]
-        if (!b.mbIds.has(a.mouvement_bancaire_id)) {
-          b.mbIds.add(a.mouvement_bancaire_id)
+        if (a.source_rapprochement === 'payout_hospitable') {
+          if (!b.mbIds.has(a.mouvement_bancaire_id)) {
+            b.mbIds.add(a.mouvement_bancaire_id)
+            b.prouve += a.credit_retenu_centimes
+          }
+        } else {
           b.prouve += a.credit_retenu_centimes
         }
         b.resaIdsProuve.add(a.reservation_id)
