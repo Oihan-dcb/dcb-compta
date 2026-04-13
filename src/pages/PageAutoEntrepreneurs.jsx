@@ -90,6 +90,7 @@ export default function PageAutoEntrepreneurs() {
 
   async function chargerVision(mois) {
     setLoadingVision(true)
+    setMoisBalance(mois)
     chargerBalance(mois)
     const [{ data: prestData }, { data: missionsData }] = await Promise.all([
       supabase
