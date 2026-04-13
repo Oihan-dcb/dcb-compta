@@ -702,6 +702,7 @@ const [pushing, setPushing] = useState(false)
 
                     {/* Badge trésorerie */}
                     {(() => {
+                      if (f.type_facture === 'debours') return null
                       const sc = soldesControle[f.id]
                       if (!sc) return null
                       if (sc.isSafe) return (
@@ -794,7 +795,7 @@ const [pushing, setPushing] = useState(false)
                     </div>
 
                     {/* Contrôle trésorerie — source de vérité : encaissement_allocation */}
-                    {(() => {
+                    {f.type_facture !== 'debours' && (() => {
                       const sc = soldesControle[f.id]
                       if (!sc) {
                         return loadingSoldes ? (
