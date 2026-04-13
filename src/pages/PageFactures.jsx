@@ -339,10 +339,8 @@ const [pushing, setPushing] = useState(false)
     }
   }
 
-  async function calculerEncaissements() {
+  async function calculerEncaissements(facturesList) {
     setComputingAlloc(true)
-    setAllocResult(null)
-    setError(null)
     try {
       const { supabase } = await import('../lib/supabase')
       const { data, error } = await supabase.functions.invoke('allocate-encaissements', {
@@ -351,11 +349,12 @@ const [pushing, setPushing] = useState(false)
       if (error) throw new Error(`Edge Function: ${error.message}`)
       if (data?.error) throw new Error(data.error)
       setAllocResult(data)
-      // Recharger le contrôle trésorerie avec les nouvelles allocations
-      const f = await getFacturesMois(mois)
+      // Utiliser la liste fournie ou recharger depuis la DB
+      const f = facturesList || await getFacturesMois(mois)
       chargerSoldesControle(f)
     } catch (err) {
-      setError(`Calcul encaissements : ${err.message}`)
+      // Silencieux si appelé en arrière-plan depuis charger()
+      if (!facturesList) setError(`Calcul encaissements : ${err.message}`)
     } finally {
       setComputingAlloc(false)
     }
@@ -368,7 +367,10 @@ const [pushing, setPushing] = useState(false)
       const [f, s] = await Promise.all([getFacturesMois(mois), getStatsFactures(mois)])
       setFactures(f)
       setStats(s)
+      // Afficher les données existantes immédiatement
       chargerSoldesControle(f)
+      // Recalculer les encaissements en arrière-plan puis rafraîchir
+      calculerEncaissements(f)
     } catch (err) {
       setError(err.message)
     } finally {
@@ -476,14 +478,7 @@ const [pushing, setPushing] = useState(false)
         <div style={{ display: 'flex', gap: 10, alignItems: 'center' }}>
           <MoisSelector mois={mois} setMois={setMois} moisDispos={moisDispos} />
           <button className="btn btn-secondary" onClick={charger} disabled={loading}>↺</button>
-          <button
-            className="btn btn-secondary"
-            onClick={calculerEncaissements}
-            disabled={computingAlloc || loading}
-            title="Calcule et persiste les encaissements alloués par réservation (source de vérité)"
-          >
-            {computingAlloc ? <><span className="spinner" /> Calcul…</> : '⚡ Contrôle trésorerie'}
-          </button>
+          {computingAlloc && <span style={{ fontSize: 12, color: 'var(--text-muted)' }}><span className="spinner" /> Trésorerie…</span>}
           <button
             className="btn btn-secondary"
             onClick={validerTout}
