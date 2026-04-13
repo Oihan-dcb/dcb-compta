@@ -705,6 +705,28 @@ const [pushing, setPushing] = useState(false)
                       </div>
                     )}
 
+                    {/* Badge trésorerie */}
+                    {(() => {
+                      const sc = soldesControle[f.id]
+                      if (!sc) return null
+                      if (sc.isSafe) return (
+                        <span style={{ padding: '4px 10px', borderRadius: 100, fontSize: 11, fontWeight: 600, background: '#DCFCE7', color: '#15803D' }}>
+                          Tréso ✓
+                        </span>
+                      )
+                      if (sc.solde < 0) return (
+                        <span style={{ padding: '4px 10px', borderRadius: 100, fontSize: 11, fontWeight: 600, background: '#FEE2E2', color: '#DC2626' }}>
+                          Tréso ⚠
+                        </span>
+                      )
+                      if (sc.countAnomalies > 0 || sc.countProuvees < sc.totalResas) return (
+                        <span style={{ padding: '4px 10px', borderRadius: 100, fontSize: 11, fontWeight: 600, background: '#FEF3C7', color: '#B45309' }}>
+                          Non prouvé
+                        </span>
+                      )
+                      return null
+                    })()}
+
                     {/* Statut */}
                     <span style={{
                       padding: '4px 12px', borderRadius: 100,
