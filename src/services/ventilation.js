@@ -311,10 +311,16 @@ export function _calculerLignes(resa) {
     : 0
 
   // LOY Direct  : commissionableBase - HON + ownerFees (aligné statement Hospitable)
+  //               Si stripe_montant_net fourni : déduire les frais de traitement Stripe
+  //               (payout net Stripe < fin_revenue brut Hospitable)
   // LOY Airbnb  : variable de balance (absorbe ajustements, communityFee, hospitable fee)
   // LOY Booking : variable de balance depuis fin_revenue net (remitted taxes déduites)
   if (isDirect) {
     loyAmount = commissionableBase - honTTC + ownerFees
+    if (resa.stripe_montant_net != null) {
+      const fraisStripe = Math.max(0, revenue - resa.stripe_montant_net)
+      loyAmount = Math.max(0, loyAmount - fraisStripe)
+    }
   } else {
     loyAmount = revenue - honTTC - fmenTTC - aeAmount - taxesTotal
   }
@@ -449,8 +455,21 @@ export async function calculerVentilationResa(resa) {
     return []
   }
 
+  // Pour les directes Stripe : récupérer montant_net pour déduire les frais de transaction
+  let resaForCalc = resa
+  if (resa.platform === 'direct' && resa.code) {
+    const { data: spl } = await supabase
+      .from('stripe_payout_line')
+      .select('montant_net')
+      .eq('reservation_code', resa.code)
+      .maybeSingle()
+    if (spl?.montant_net != null) {
+      resaForCalc = { ...resa, stripe_montant_net: spl.montant_net }
+    }
+  }
+
   // Calcul pur — délégué à _calculerLignes
-  const { lignes, fallbackAirbnb } = _calculerLignes(resa)
+  const { lignes, fallbackAirbnb } = _calculerLignes(resaForCalc)
 
   // Traçabilité : log explicite si fallback Airbnb activé
   if (fallbackAirbnb) {
