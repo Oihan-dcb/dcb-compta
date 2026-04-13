@@ -303,13 +303,17 @@ const [pushing, setPushing] = useState(false)
           totalResas += totalResasByBien[bid] || 0
 
           const bv = ventByBien[bid] || {}
-          vir += bv.VIR || 0; hon += bv.HON || 0; fmen += bv.FMEN || 0
+          hon += bv.HON || 0; fmen += bv.FMEN || 0
           autoreel += bv.AUTOREEL || 0; com += bv.COM || 0
 
           const bp = prestByBien[bid] || {}
           prest += bp.PREST || 0; haowner += bp.HAOWNER || 0
         }
 
+        // VIR trésorerie = résiduel net des encaissements réels après retenues DCB
+        // Les encaissements sont déjà nets de frais plateforme (Stripe montant_net, etc.)
+        // → VIR = ce qui reste réellement à virer au propriétaire
+        vir = Math.max(0, creditsProuves - hon - fmen - autoreel - prest - haowner - com)
         const emplois = vir + hon + fmen + autoreel + prest + haowner + com
         const solde = creditsProuves - emplois
         // Safe : solde = 0, toutes réservations prouvées, aucune anomalie
