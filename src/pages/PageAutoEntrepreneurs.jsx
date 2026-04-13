@@ -90,19 +90,21 @@ export default function PageAutoEntrepreneurs() {
 
   async function chargerVision(mois) {
     setLoadingVision(true)
+    chargerBalance(mois)
     const [{ data: prestData }, { data: missionsData }] = await Promise.all([
       supabase
         .from('prestation_hors_forfait')
-        .select('id, ae_id, bien_id, date_prestation, montant, statut, description, bien:bien_id(code, hospitable_name), prestation_type:prestation_type_id(nom)')
+        .select('id, ae_id, bien_id, date_prestation, montant, statut, description, bien:bien_id!inner(code, hospitable_name, agence), prestation_type:prestation_type_id(nom)')
         .eq('mois', mois)
+        .eq('bien.agence', 'dcb')
         .not('ae_id', 'is', null)
         .order('date_prestation'),
       supabase
         .from('mission_menage')
-        .select('id, ae_id, bien_id, date_mission, titre_ical, duree_heures, montant, bien:bien_id(code, hospitable_name)')
+        .select('id, ae_id, bien_id, date_mission, titre_ical, duree_heures, montant, bien:bien_id!inner(code, hospitable_name, agence)')
         .eq('mois', mois)
+        .eq('bien.agence', 'dcb')
         .neq('statut', 'cancelled')
-        .neq('imputation', 'hors_compta_dcb')
         .order('date_mission')
     ])
     const prests = (prestData || []).map(p => ({ ...p, _type: 'prestation', _date: p.date_prestation }))
@@ -434,6 +436,7 @@ export default function PageAutoEntrepreneurs() {
                         {aeGroups.map(({ ae, missions, provision, reel, totalAeVal }) => {
                           const nb = missions.filter(m => m._type === 'mission').length
                           const ecart = reel > 0 ? reel - provision : null
+                          const ecartMissing = reel === 0 && provision > 0
                           const pctG = grandTotal > 0 ? Math.round((totalAeVal / grandTotal) * 100) : 0
                           return (
                             <tr key={ae?.id || 'inc'} style={{ borderBottom: '1px solid #f3f4f6' }}>
@@ -441,8 +444,8 @@ export default function PageAutoEntrepreneurs() {
                               <td style={{ padding: '8px', textAlign: 'right', color: '#666' }}>{nb}</td>
                               <td style={{ padding: '8px', textAlign: 'right', color: '#888' }}>{provision > 0 ? fmt(provision) : '—'}</td>
                               <td style={{ padding: '8px', textAlign: 'right', fontWeight: 600, color: reel > 0 ? '#16a34a' : '#888' }}>{reel > 0 ? fmt(reel) : '—'}</td>
-                              <td style={{ padding: '8px', textAlign: 'right', fontWeight: ecart != null ? 600 : 400, color: ecart == null ? '#888' : ecart > 0 ? '#dc2626' : ecart < 0 ? '#16a34a' : '#888' }}>
-                                {ecart == null ? '—' : (ecart >= 0 ? '+' : '') + fmt(ecart)}
+                              <td style={{ padding: '8px', textAlign: 'right', fontWeight: ecart != null || ecartMissing ? 600 : 400, color: ecartMissing ? '#d97706' : ecart == null ? '#888' : ecart > 0 ? '#dc2626' : ecart < 0 ? '#16a34a' : '#888' }}>
+                                {ecartMissing ? 'À saisir' : ecart == null ? '—' : (ecart >= 0 ? '+' : '') + fmt(ecart)}
                               </td>
                               <td style={{ padding: '8px', textAlign: 'right' }}>
                                 <span style={{ color: '#888', fontSize: 12 }}>{pctG}%</span>
@@ -478,6 +481,7 @@ export default function PageAutoEntrepreneurs() {
                   const nbAnnule = missions.filter(m => m._type === 'prestation' && m.statut === 'annule').length
                   const pct = grandTotal > 0 ? Math.round((totalAe / grandTotal) * 100) : 0
                   const ecartAe = reel > 0 ? reel - provision : null
+                  const ecartAeMissing = reel === 0 && provision > 0
                   return (
                     <div key={ae?.id || 'inconnu'} style={{ background: '#fff', borderRadius: 12, border: '1px solid #e5e7eb', marginBottom: 14, overflow: 'hidden' }}>
                       {/* Header AE */}
@@ -497,6 +501,7 @@ export default function PageAutoEntrepreneurs() {
                             <div style={{ fontSize: 11, marginTop: 3, display: 'flex', gap: 10 }}>
                               <span style={{ color: '#888' }}>Provision : {fmt(provision)}</span>
                               {reel > 0 && <span style={{ color: '#16a34a', fontWeight: 600 }}>Réel : {fmt(reel)}</span>}
+                              {ecartAeMissing && <span style={{ color: '#d97706', fontWeight: 600 }}>À saisir</span>}
                               {ecartAe != null && <span style={{ color: ecartAe > 0 ? '#dc2626' : '#16a34a', fontWeight: 600 }}>Écart : {ecartAe >= 0 ? '+' : ''}{fmt(ecartAe)}</span>}
                             </div>
                           )}
