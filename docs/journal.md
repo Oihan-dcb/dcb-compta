@@ -452,3 +452,74 @@ L'envoi d'emails via OVH SMTP (denomailer) provoquait des `Load failed` / `502` 
 - Fix requis : régénérer les brouillons via le bouton "Générer factures mars 2026" dans l'UI. La fonction `genererFactureGroupe` met à jour les brouillons existants (statut brouillon → UPDATE, pas re-création) et mettra à jour `montant_reversement` + ajoutera les lignes FRAIS. Après régénération, `frais_proprietaire.statut_deduction` passera de `en_attente` à `totalement_deduit` → affichage "déduit" en vert dans la section Débours du rapport.
 - Données actuelles : EKIA reversement actuel = 476.28€ (sans déduction), cible = 455.28€ ; PINONCELY reversement actuel = 74.79€ (sans déduction), cible = 11.21€.
 
+---
+
+## Session fixes — 13/04/2026 — Trésorerie complète, audit CERES, Booking/Stripe
+
+### Contexte
+Audit des soldes trésorerie mars 2026 après la mise en place de l'architecture encaissement (session 12/04). Plusieurs biens affichaient des soldes négatifs inexpliqués. Objectif : identifier et corriger les causes réelles.
+
+### 1. Chemins d'encaissement manquants — Booking et Direct/Stripe
+
+**Problème** : `allocate-encaissements` ne couvrait que 3 chemins (ventilation, reservation_paiement, payout_hospitable). Les réservations Booking sans `payout_hospitable.mouvement_id` et les Direct/Stripe sans `reservation_paiement` restaient non prouvées.
+
+**Correction** :
+- Chemin 4 (`booking_payout_line`) : `booking_payout_line.booking_ref → reservation.platform_id`, montant = `amount_cents`
+- Chemin 5 (`stripe_payout_line`) : `stripe_payout_line.reservation_code → reservation.code`, montant = `montant_net`
+- Migration 012 : ajout de `booking_payout_line` et `stripe_payout_line` dans le CHECK de `encaissement_allocation.source_type`
+
+**Règle critique** : pour les payouts groupés (Stripe = un virement pour N réservations), utiliser le montant par ligne (`montant_net` / `amount_cents`) et non `mb.credit` (total du payout) — sinon inflation ×N.
+
+### 2. Exclusion des biens Lauian
+
+**Problème** : `allocate-encaissements` n'avait aucun filtre `agence`. Les réservations Lauian (MIRAMARVEL, ENEKO) remontaient dans les anomalies DCB.
+
+**Fix** : pré-requête `bien.agence = 'dcb'`, puis `.in('bien_id', biensDcbIds)` sur la requête réservations.
+
+### 3. Correction de 3 anomalies orphelines (HM8C9CM5YZ, HM9AFK2238, HMMSNWSDK5)
+
+Ces réservations étaient rapprochées dans l'UI mais les liens n'étaient pas persistés en base. Résolution par insertion manuelle dans `reservation_paiement` + `UPDATE reservation SET rapprochee = true`.
+
+**Résultat final** : 44 prouvées · 0 sans preuve · 0 anomalies pour mars 2026. ✓
+
+### 4. Fix déduplication Stripe dans PageFactures (bug CERES)
+
+**Problème** : `PageFactures` dédupliquait par `mouvement_bancaire_id` pour TOUS les sources. Pour Stripe, plusieurs réservations d'un même bien peuvent partager le même virement (ex: CERES HOST-5P1YXJ + HOST-JF44MV → même mouvement 9ef76892). La déduplication effaçait HOST-JF44MV → −991.40€ d'encaissements.
+
+**Règle** : la déduplication par `mouvement_bancaire_id` n'est valide que pour `source_rapprochement = 'payout_hospitable'` (où `mb.credit` = total payout partagé entre N réservations). Pour `stripe_payout_line` et `booking_payout_line`, `credit_retenu_centimes` = montant par réservation → sommer directement.
+
+**Fix** : `PageFactures.jsx` — déduplication conditionnelle sur `source_rapprochement === 'payout_hospitable'`.
+
+### 5. Exclusion des réservations owner_stay des emplois trésorerie (bug CERES)
+
+**Problème** : des réservations `owner_stay = true` (ex: CERES 3L98P7, 43Q1IS) généraient des lignes FMEN et AUTO dans la ventilation, comptées dans les emplois de la trésorerie sans encaissement en contrepartie (logique — pas de paiement voyageur pour un séjour propriétaire).
+
+**Fix** : requête ventilation dans `PageFactures` filtrée avec `reservation!inner(owner_stay)` + `.eq('reservation.owner_stay', false)`.
+
+### 6. VIR trésorerie = résiduel net des encaissements réels
+
+**Problème résiduel** : même après les fixes 4 et 5, CERES affichait −43.67€. Le VIR lu depuis la ventilation était calculé sur `fin_revenue` brut (montant Hospitable), alors que les encaissements Stripe sont nets de frais de traitement (Stripe prend ~1.5%). Écart structurel pour tous les biens Direct/Stripe.
+
+**Décision** : ne pas modifier `ventilation.js` (logique comptable des factures inchangée). Modifier uniquement la matrice de contrôle trésorerie dans `PageFactures` :
+
+```
+VIR_trésorerie = max(0, creditsProuves − HON − FMEN − AUTO − COM − PREST − HAOWNER)
+```
+
+Le VIR trésorerie est le résiduel réel disponible après les retenues DCB, calculé sur les encaissements réels (Stripe net). La ventilation (et les factures) restent basées sur `fin_revenue`. Le solde trésorerie est 0 si toutes les réservations sont prouvées et les retenues correctes.
+
+**Résultat CERES** : VIR passe de −1364.15€ à −1320.48€, solde 0.00€. ✓
+
+### 7. Badge trésorerie + chargement automatique
+
+- Badge ajouté dans l'en-tête de chaque facture : **Tréso ✓** (vert) / **Tréso ⚠** (rouge) / **Non prouvé** (orange)
+- Le bouton "⚡ Contrôle trésorerie" est supprimé — le recalcul `allocate-encaissements` se déclenche automatiquement à chaque visite de la page ou changement de mois (en arrière-plan, indicateur discret "Trésorerie…")
+- Badge et bloc trésorerie masqués pour les factures `type_facture = 'debours'`
+
+### Commits clés
+- `8d0494e` : fix déduplication Stripe + exclusion owner_stay
+- `8d6c1bb` : VIR trésorerie = résiduel net
+- `2e8e718` : badge trésorerie en-tête facture
+- `399f686` : chargement auto trésorerie, suppression bouton
+- `23fac37` : masquer tréso sur Débours AE
+

@@ -207,6 +207,19 @@ Aucun invariant actif violé à l'issue de la session du 12 avril 2026.
 | I-102 | Déduplication par `mouvement_bancaire.id` dans `allocate-encaissements` : un même mouvement bancaire ne peut être compté qu'une seule fois par réservation, même s'il est accessible par plusieurs chemins (ventilation + payout_hospitable). | ✅ Session 12/04/2026 |
 | I-103 | L'anomalie `MOUVEMENT_BANCAIRE_MISSING` est le seul code d'anomalie produit par `allocate-encaissements` v2. Les anciens codes (`PAYOUT_MISSING`, `MOUVEMENT_ID_NULL`, etc.) sont obsolètes. | ✅ Session 12/04/2026 |
 
+### Invariants ajoutés (13 avril 2026 — Trésorerie complète, Booking/Stripe)
+
+| ID | Description | Statut |
+|---|---|---|
+| I-104 | `allocate-encaissements` couvre 5 chemins dans l'ordre : ventilation → reservation_paiement → payout_hospitable → booking_payout_line → stripe_payout_line. Déduplication par `mouvement_bancaire.id` par réservation. | ✅ Session 13/04/2026 |
+| I-105 | Pour `booking_payout_line` et `stripe_payout_line`, le montant retenu est `amount_cents` / `montant_net` (par réservation), jamais `mouvement_bancaire.credit` (total payout). Évite l'inflation ×N pour les payouts groupés. | ✅ Session 13/04/2026 |
+| I-106 | `allocate-encaissements` ne traite que les biens `agence='dcb'`. Les biens Lauian sont exclus via pré-requête `bien.agence='dcb'`. | ✅ Session 13/04/2026 |
+| I-107 | Dans `PageFactures`, la déduplication par `mouvement_bancaire_id` n'est active que pour `source_rapprochement = 'payout_hospitable'`. Pour `stripe_payout_line` / `booking_payout_line`, `credit_retenu_centimes` est déjà par réservation — sommation directe. | ✅ Session 13/04/2026 |
+| I-108 | La requête ventilation dans `PageFactures` exclut les réservations `owner_stay = true` (jointure `reservation!inner` + filtre). Les séjours propriétaires ne génèrent pas d'emplois dans la matrice de contrôle trésorerie. | ✅ Session 13/04/2026 |
+| I-109 | **VIR trésorerie = résiduel** : `max(0, creditsProuves − HON − FMEN − AUTO − COM − PREST − HAOWNER)`. La ventilation VIR (basée sur `fin_revenue`) n'est PAS utilisée dans la matrice de contrôle. Le solde = 0 signifie que les encaissements nets couvrent exactement les retenues DCB + reversement réel. | ✅ Session 13/04/2026 |
+| I-110 | Badge trésorerie et bloc Contrôle Trésorerie masqués pour `type_facture = 'debours'`. | ✅ Session 13/04/2026 |
+| I-111 | Le recalcul `allocate-encaissements` se déclenche automatiquement à chaque visite de la page Factures (arrière-plan). Aucun bouton manuel. | ✅ Session 13/04/2026 |
+
 ### Invariants métier à formaliser (non encore implémentés dans V1)
 
 | Invariant | Description courte |
@@ -215,7 +228,7 @@ Aucun invariant actif violé à l'issue de la session du 12 avril 2026.
 | I-54 | Prestation validée doit produire une écriture EXTRA dans la ventilation |
 | I-73 | Modification après clôture doit être explicite et documentée |
 
-**Total actuel** : 0 invariants violés actifs (⚠ I-60 partiellement couvert), 20 corrigés, 26 nouveaux, sur 67 documentés.
+**Total actuel** : 0 invariants violés actifs (⚠ I-60 partiellement couvert), 20 corrigés, 34 nouveaux, sur 75 documentés.
 
 ---
 

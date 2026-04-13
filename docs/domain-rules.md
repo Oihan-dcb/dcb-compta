@@ -620,5 +620,42 @@ honTotal = facture.total_ttc  si facture présente (montant réel facturé)
          = Σ ventilation HON.montant_ttc  sinon (estimation)
 ```
 
+## 16. Contrôle trésorerie — matrice PageFactures (avril 2026)
+
+### 16.1 Source des encaissements
+
+Les encaissements prouvés sont lus depuis `reservation_mouvement` (vue métier, source de vérité). Le champ `credit_retenu_centimes` représente le montant réel par réservation :
+- **payout_hospitable** : `mouvement_bancaire.credit` (total payout Airbnb — un seul mouvement pour N réservations)
+- **stripe_payout_line** : `stripe_payout_line.montant_net` (montant net Stripe par réservation)
+- **booking_payout_line** : `booking_payout_line.amount_cents` (montant par réservation Booking)
+- **reservation_paiement / ventilation** : montant spécifique au paiement
+
+### 16.2 Déduplication dans PageFactures
+
+Pour `payout_hospitable` uniquement : déduplication par `mouvement_bancaire_id` au niveau du bien (un seul mb.credit comptabilisé même si N réservations partagent le payout).
+
+Pour `stripe_payout_line`, `booking_payout_line`, `ventilation`, `reservation_paiement` : sommation directe sans déduplication (le montant est déjà par réservation).
+
+### 16.3 Calcul VIR trésorerie
+
+Le VIR affiché dans la matrice de contrôle trésorerie est un **résiduel**, pas la ventilation VIR :
+
+```
+VIR_trésorerie = max(0, creditsProuves − HON_ttc − FMEN_ttc − AUTOREEL − COM_ttc − PREST − HAOWNER)
+```
+
+**Pourquoi** : les encaissements Stripe sont nets de frais de traitement bancaire (~1-2% selon le canal). Le VIR ventilation est calculé sur `fin_revenue` brut (Hospitable), créant un écart structurel. Le VIR trésorerie représente ce que DCB peut réellement virer au propriétaire après ses retenues, basé sur les fonds effectivement reçus.
+
+**Solde trésorerie = 0** signifie : encaissements nets = VIR réel + toutes les retenues DCB. C'est l'état sain.
+
+### 16.4 Exclusions
+
+- Réservations `owner_stay = true` : exclues de la requête ventilation (pas d'encaissement, pas d'emplois)
+- Factures `type_facture = 'debours'` : pas de bloc trésorerie ni de badge
+
+### 16.5 Chargement automatique
+
+L'Edge Function `allocate-encaissements` est déclenchée automatiquement à chaque visite de la page Factures (en arrière-plan). Le badge trésorerie (Tréso ✓ / Tréso ⚠ / Non prouvé) s'affiche dans l'en-tête de chaque facture dès que le calcul est disponible.
+
 *Fichier généré dans le cadre de l'audit structurel DCB Compta — mars 2026.*
-*Mis à jour avril 2026 — ne pas modifier sans relecture de `src/services/ventilation.js` V1, `src/services/facturesEvoliz.js` et `src/services/buildRapportData.js`.*
+*Mis à jour avril 2026 — ne pas modifier sans relecture de `src/services/ventilation.js` V1, `src/services/facturesEvoliz.js`, `src/services/buildRapportData.js` et `src/pages/PageFactures.jsx`.*

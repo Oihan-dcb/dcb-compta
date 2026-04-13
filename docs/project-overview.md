@@ -581,3 +581,34 @@ Flux 2 (reversement)   : ventilation.code='VIR' ↔ facture propriétaire (indé
 - Fallback VIR ±200 centimes supprimé
 - `annulerRapprochement` simplifié : resaIds depuis payout chain + reservation_paiement uniquement
 - VIR fantôme `88131ea4` (HMNN9Q5YAE, 148,15€) supprimé manuellement en base
+
+## Fixes session 13 avril 2026 — Trésorerie complète, Booking/Stripe, audit CERES
+
+### Chemins encaissement Booking et Stripe (migration 012)
+- 5e chemin `booking_payout_line` : matching `booking_ref → reservation.platform_id`, montant = `amount_cents`
+- 5e chemin `stripe_payout_line` : matching `reservation_code → reservation.code`, montant = `montant_net`
+- **Règle critique** : pour Stripe/Booking groupés, utiliser le montant par ligne, jamais `mb.credit` total
+- Migration 012 : CHECK étendu sur `encaissement_allocation.source_type`
+- Résultat mars 2026 : **44 prouvées · 0 sans preuve · 0 anomalies** ✓
+
+### Exclusion biens Lauian
+- Pré-requête `bien.agence='dcb'` ajoutée dans `allocate-encaissements` avant le traitement des réservations
+
+### Fix déduplication Stripe dans PageFactures
+- Déduplication par `mouvement_bancaire_id` limitée à `source_rapprochement='payout_hospitable'`
+- Pour Stripe/Booking, `credit_retenu_centimes` = montant par réservation → sommation directe
+
+### Fix owner_stay dans les emplois trésorerie
+- Requête ventilation filtrée avec `reservation!inner(owner_stay)` + `.eq('reservation.owner_stay', false)`
+- Les séjours propriétaires ne génèrent plus d'emplois fantômes sans encaissement
+
+### VIR trésorerie = résiduel net (audit CERES −1265.07€ → 0.00€)
+- Le VIR ventilation (basé sur `fin_revenue` brut) est remplacé dans la matrice de contrôle par un résiduel :
+  `VIR_tréso = max(0, creditsProuves − HON − FMEN − AUTO − COM − PREST − HAOWNER)`
+- Évite l'écart structurel dû aux frais de traitement Stripe (~38€ sur CERES mars 2026)
+- La ventilation.js et les factures ne sont pas modifiées
+
+### Badge trésorerie + chargement automatique
+- Badge `Tréso ✓` (vert) / `Tréso ⚠` (rouge) / `Non prouvé` (orange) dans l'en-tête de chaque facture
+- `allocate-encaissements` déclenché automatiquement à chaque visite de la page Factures
+- Badge et bloc trésorerie masqués pour `type_facture='debours'`
