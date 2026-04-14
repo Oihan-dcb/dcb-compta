@@ -283,5 +283,111 @@ async function handleReview(supabase: any, event: string, data: any): Promise<st
 
   if (error) throw new Error('INSERT reservation_review failed: ' + error.message)
 
+  // Envoi SMS de remerciement si avis 5 étoiles
+  if (rating >= 5) {
+    await sendReviewSMS(supabase, resaHospId, data, rating).catch((err: any) =>
+      console.error('sendReviewSMS error (non-fatal):', err?.message)
+    )
+  }
+
   return `review ${event} resa:${resaHospId} note:${rating}`
+}
+
+// ============================================================
+// SMS — remerciement avis 5 étoiles
+// ============================================================
+async function sendReviewSMS(supabase: any, resaHospId: string, data: any, rating: number): Promise<void> {
+  const twilioSid   = Deno.env.get('TWILIO_ACCOUNT_SID')
+  const twilioToken = Deno.env.get('TWILIO_AUTH_TOKEN')
+  const twilioFrom  = Deno.env.get('TWILIO_FROM_NUMBER')
+  const googleUrl   = Deno.env.get('GOOGLE_REVIEW_URL')
+
+  if (!twilioSid || !twilioToken || !twilioFrom || !googleUrl) {
+    console.log('SMS skipped: Twilio secrets not configured')
+    return
+  }
+
+  const guestPhone = data.guest?.phone || data.guest?.phone_number || null
+  const guestFirst = data.guest?.first_name
+    || (typeof data.reviewer_name === 'string' ? data.reviewer_name.split(' ')[0] : null)
+    || 'cher client'
+  const country      = data.guest?.country || data.guest?.nationality || null
+  const propertyName = data.property?.name || data.listing?.name || 'notre villa'
+
+  if (!guestPhone) {
+    console.log('SMS skipped: no guest phone in payload for', resaHospId)
+    await supabase.from('sms_logs').insert({
+      hospitable_reservation_id: resaHospId,
+      guest_name:    data.reviewer_name || null,
+      guest_phone:   null,
+      language:      'FR',
+      rating,
+      sms_body:      null,
+      status:        'no_phone',
+      error_message: 'No guest phone in webhook payload',
+    })
+    return
+  }
+
+  const lang = detectSmsLang(country)
+  const body = buildSmsBody(guestFirst, propertyName, lang, googleUrl)
+
+  let status        = 'error'
+  let twilioSidOut  = null
+  let errorMessage  = null
+
+  try {
+    const res = await fetch(
+      `https://api.twilio.com/2010-04-01/Accounts/${twilioSid}/Messages.json`,
+      {
+        method: 'POST',
+        headers: {
+          'Authorization': 'Basic ' + btoa(`${twilioSid}:${twilioToken}`),
+          'Content-Type': 'application/x-www-form-urlencoded',
+        },
+        body: new URLSearchParams({ From: twilioFrom, To: guestPhone, Body: body }).toString(),
+      }
+    )
+    const json = await res.json()
+    if (res.ok) {
+      status       = 'sent'
+      twilioSidOut = json.sid || null
+      console.log('Review SMS sent:', guestPhone, json.sid)
+    } else {
+      errorMessage = JSON.stringify(json)
+      console.error('Twilio error:', errorMessage)
+    }
+  } catch (err: any) {
+    errorMessage = err?.message || String(err)
+    console.error('SMS fetch error:', errorMessage)
+  }
+
+  await supabase.from('sms_logs').insert({
+    hospitable_reservation_id: resaHospId,
+    guest_name:    data.reviewer_name || null,
+    guest_phone:   guestPhone,
+    language:      lang,
+    rating,
+    sms_body:      body,
+    status,
+    twilio_sid:    twilioSidOut,
+    error_message: errorMessage,
+  })
+}
+
+function detectSmsLang(country: string | null): string {
+  if (!country) return 'FR'
+  const c = country.toLowerCase()
+  if (['united kingdom', 'uk', 'ireland', 'united states', 'usa', 'us', 'australia', 'canada', 'new zealand'].includes(c)) return 'EN'
+  if (['spain', 'españa', 'es', 'mexico', 'méxico', 'argentina', 'colombia', 'chile'].includes(c)) return 'ES'
+  return 'FR'
+}
+
+function buildSmsBody(firstName: string, property: string, lang: string, googleUrl: string): string {
+  const templates: Record<string, string> = {
+    FR: `Bonjour ${firstName} ! Merci pour votre avis 5⭐ sur ${property}. Votre retour compte beaucoup pour nous ! Partager aussi sur Google : ${googleUrl} — L'équipe DCB. Rép. STOP pour se désabonner.`,
+    EN: `Hello ${firstName}! Thank you for your 5-star review of ${property}. Your feedback means a lot to us! Share on Google too: ${googleUrl} — DCB Team. Reply STOP to unsubscribe.`,
+    ES: `¡Hola ${firstName}! Gracias por tu reseña 5⭐ de ${property}. ¡Tu opinión es muy importante para nosotros! Comparte también en Google: ${googleUrl} — Equipo DCB. Responde STOP para darse de baja.`,
+  }
+  return templates[lang] ?? templates['FR']
 }
