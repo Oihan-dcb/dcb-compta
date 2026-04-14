@@ -423,7 +423,7 @@ Un voyageur vient de laisser un avis 5⭐ sur Airbnb pour "${property}". Son com
 Rédige un SMS de remerciement en ${langLabel} qui :
 - Remercie chaleureusement en mentionnant un élément précis du commentaire
 - Reste entre 160 et 220 caractères (sans compter le lien Google)
-- Se termine par "— L'équipe DCB" (ou "— DCB Team" / "— Equipo DCB" selon la langue)
+- Se termine par "— Destination Côte Basque" (quelle que soit la langue)
 - N'inclut PAS le lien Google (il sera ajouté automatiquement)
 - Ne commence PAS par "Bonjour ${firstName}" (déjà connu)
 
@@ -457,9 +457,9 @@ Réponds uniquement avec le texte du SMS, sans guillemets ni balises.`
 
   // Fallback template statique
   const templates: Record<string, string> = {
-    FR: `Bonjour ${firstName} ! Merci pour votre avis 5⭐ sur ${property}. Votre retour compte beaucoup pour nous ! Partager aussi sur Google : ${googleUrl} — L'équipe DCB. Rép. STOP pour se désabonner.`,
-    EN: `Hello ${firstName}! Thank you for your 5-star review of ${property}. Your feedback means a lot! Share on Google too: ${googleUrl} — DCB Team. Reply STOP to unsubscribe.`,
-    ES: `¡Hola ${firstName}! Gracias por tu reseña 5⭐ de ${property}. ¡Tu opinión nos importa! Comparte en Google: ${googleUrl} — Equipo DCB. STOP para darse de baja.`,
+    FR: `Bonjour ${firstName} ! Merci pour votre avis 5⭐ sur ${property}. Votre retour compte beaucoup pour nous ! Partager aussi sur Google : ${googleUrl} — Destination Côte Basque. Rép. STOP pour se désabonner.`,
+    EN: `Hello ${firstName}! Thank you for your 5-star review of ${property}. Your feedback means a lot! Share on Google too: ${googleUrl} — Destination Côte Basque. Reply STOP to unsubscribe.`,
+    ES: `¡Hola ${firstName}! Gracias por tu reseña 5⭐ de ${property}. ¡Tu opinión nos importa! Comparte en Google: ${googleUrl} — Destination Côte Basque. STOP para darse de baja.`,
   }
   return templates[lang] ?? templates['FR']
 }
