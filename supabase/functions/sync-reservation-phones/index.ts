@@ -20,7 +20,8 @@ function json(body: unknown, status = 200) {
 async function apiFetch(path: string, params: Record<string, any> = {}) {
   const url = new URL(`${BASE_URL}${path}`)
   Object.entries(params).forEach(([k, v]) => {
-    if (v !== undefined && v !== null) url.searchParams.set(k, String(v))
+    if (Array.isArray(v)) v.forEach(x => url.searchParams.append(`${k}[]`, x))
+    else if (v !== undefined && v !== null) url.searchParams.set(k, String(v))
   })
   const res = await fetch(url.toString(), {
     headers: { Authorization: `Bearer ${HOSP_TOKEN}`, Accept: 'application/json' },
@@ -32,51 +33,91 @@ async function apiFetch(path: string, params: Record<string, any> = {}) {
   return res.json()
 }
 
+async function fetchAll(path: string, params: Record<string, any> = {}) {
+  let page = 1, all: any[] = []
+  while (true) {
+    const data = await apiFetch(path, { ...params, limit: 50, page })
+    const items: any[] = data.data || []
+    all = all.concat(items)
+    const meta = data.meta || {}
+    if (page >= (meta.last_page || 1) || items.length < 50) break
+    page++
+    await new Promise(r => setTimeout(r, 150))
+  }
+  return all
+}
+
 Deno.serve(async (req) => {
   if (req.method === 'OPTIONS') return new Response('ok', { headers: cors })
 
   const sb = createClient(SUPABASE_URL, SERVICE_KEY)
 
-  // Récupérer les réservations sans guest_phone
-  const { data: resas, error: resaErr } = await sb
-    .from('reservation')
-    .select('id, hospitable_id, guest_name')
-    .is('guest_phone', null)
+  // Récupérer tous les biens avec hospitable_id
+  const { data: biens } = await sb
+    .from('bien')
+    .select('id, hospitable_id, hospitable_name')
     .not('hospitable_id', 'is', null)
-    .limit(500)
 
-  if (resaErr) return json({ error: resaErr.message }, 500)
-  if (!resas?.length) return json({ ok: true, updated: 0, message: 'Toutes les réservations ont déjà un téléphone' })
+  if (!biens?.length) return json({ ok: true, updated: 0, message: 'Aucun bien avec hospitable_id' })
 
-  let updated = 0, notFound = 0, errors = 0
+  const propertyIds = biens.map((b: any) => b.hospitable_id)
 
-  for (const resa of resas) {
-    try {
-      const data = await apiFetch(`/reservations/${resa.hospitable_id}`)
-      const reservation = data.data || data
-
-      const phone   = reservation.guest?.phone || reservation.guest?.phone_number || null
-      const country = reservation.guest?.country || reservation.guest?.nationality || null
-
-      if (phone) {
-        const { error } = await sb
-          .from('reservation')
-          .update({ guest_phone: phone, guest_country: country })
-          .eq('id', resa.id)
-
-        if (error) { errors++; continue }
-        updated++
-      } else {
-        notFound++
-      }
-    } catch (e: any) {
-      console.error(`Error for ${resa.hospitable_id}:`, e.message)
-      errors++
-    }
-
-    await new Promise(r => setTimeout(r, 80))  // rate limiting
+  // Récupérer les réservations depuis Hospitable en bulk (avec guests)
+  let hospResas: any[]
+  try {
+    hospResas = await fetchAll('/reservations', {
+      properties: propertyIds,
+      include: 'guests',
+    })
+  } catch (e: any) {
+    console.error('Hospitable fetch error:', e.message)
+    return json({ ok: false, error: e.message }, 500)
   }
 
-  console.log(`sync-reservation-phones: ${updated} updated, ${notFound} no phone, ${errors} errors / ${resas.length} reservations`)
-  return json({ ok: true, updated, notFound, errors, total: resas.length })
+  if (!hospResas.length) return json({ ok: true, updated: 0, message: 'Aucune réservation retournée par Hospitable' })
+
+  // Construire un map hospitable_id → phone/country
+  const phoneMap: Record<string, { phone: string | null, country: string | null }> = {}
+  for (const r of hospResas) {
+    const hospId = r.id || r.uuid
+    if (!hospId) continue
+    const phone   = r.guest?.phone || r.guest?.phone_number || r.guests?.[0]?.phone || null
+    const country = r.guest?.country || r.guest?.nationality || r.guests?.[0]?.country_code || null
+    if (phone || country) phoneMap[hospId] = { phone, country }
+  }
+
+  const withPhone = Object.values(phoneMap).filter(v => v.phone).length
+  console.log(`Hospitable returned ${hospResas.length} reservations, ${withPhone} with phone`)
+
+  if (!withPhone) {
+    return json({
+      ok: true,
+      updated: 0,
+      hospitable_total: hospResas.length,
+      message: "Hospitable n'expose pas les téléphones via l'API publique"
+    })
+  }
+
+  // Mettre à jour les réservations dans notre DB
+  let updated = 0, errors = 0
+  const hospIds = Object.keys(phoneMap)
+
+  // Traiter par lots de 100 pour éviter le timeout
+  for (let i = 0; i < hospIds.length; i += 100) {
+    const batch = hospIds.slice(i, i + 100)
+    for (const hospId of batch) {
+      const { phone, country } = phoneMap[hospId]
+      if (!phone) continue
+      const { error } = await sb
+        .from('reservation')
+        .update({ guest_phone: phone, ...(country ? { guest_country: country } : {}) })
+        .eq('hospitable_id', hospId)
+        .is('guest_phone', null)  // ne pas écraser les données existantes
+      if (error) errors++
+      else updated++
+    }
+  }
+
+  console.log(`sync-reservation-phones: ${updated} updated, ${errors} errors`)
+  return json({ ok: true, updated, errors, hospitable_total: hospResas.length })
 })
