@@ -57,15 +57,15 @@ export default function PageSmsReviews() {
 
       if (!reviews?.length) { setCandidats([]); return }
 
-      // 2. Réservations correspondantes (phone) — match par hospitable_id
-      const hospIds = reviews.map(r => r.hospitable_reservation_id).filter(Boolean)
+      // 2. Réservations correspondantes — join via review_id (UUID review = hospitable_reservation_id)
+      const reviewIds = reviews.map(r => r.hospitable_reservation_id).filter(Boolean)
       const { data: resas } = await supabase
         .from('reservation')
-        .select('hospitable_id, guest_name, guest_phone, guest_country')
-        .in('hospitable_id', hospIds)
+        .select('review_id, guest_name, guest_phone, guest_country, guest_locale')
+        .in('review_id', reviewIds)
 
       const resaMap = {}
-      ;(resas || []).forEach(r => { resaMap[r.hospitable_id] = r })
+      ;(resas || []).forEach(r => { if (r.review_id) resaMap[r.review_id] = r })
 
       // 3. SMS déjà envoyés
       const { data: sentLogs } = await supabase
@@ -86,6 +86,7 @@ export default function PageSmsReviews() {
             guest_name:     resa?.guest_name || r.reviewer_name || '—',
             guest_phone:    resa?.guest_phone || null,
             guest_country:  resa?.guest_country || null,
+            guest_locale:   resa?.guest_locale  || null,
             property_name:  r.bien?.hospitable_name || resa?.bien?.hospitable_name || '—',
             rating:         r.rating,
             comment:        r.comment || null,

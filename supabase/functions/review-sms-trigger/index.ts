@@ -55,7 +55,7 @@ Deno.serve(async (req) => {
     const results = []
 
     for (const r of reservations) {
-      const lang       = detectSmsLang(r.guest_country)
+      const lang       = detectSmsLang(r.guest_country, r.guest_locale)
       const firstName  = (r.guest_name || 'cher client').split(' ')[0]
       const smsBody    = await generateSmsBody(firstName, r.property_name || 'notre villa', lang, googleUrl, r.comment || null)
       const result     = await sendSMS(twilioSid, twilioToken, twilioFrom, r.guest_phone, smsBody)
@@ -101,7 +101,15 @@ async function sendSMS(sid: string, token: string, from: string, to: string, bod
   }
 }
 
-function detectSmsLang(country: string | null): string {
+function detectSmsLang(country: string | null, locale: string | null = null): string {
+  // Locale is more reliable than country (e.g. "en", "en-US", "de", "fr", "es-ES")
+  if (locale) {
+    const l = locale.toLowerCase().split('-')[0]
+    if (l === 'en') return 'EN'
+    if (l === 'es') return 'ES'
+    if (l === 'fr') return 'FR'
+    if (['de', 'nl', 'it', 'pt', 'pl', 'ru', 'zh', 'ja', 'ko', 'ar', 'sv', 'da', 'no', 'fi'].includes(l)) return 'EN'
+  }
   if (!country) return 'FR'
   const c = country.toLowerCase()
   if (['united kingdom', 'uk', 'ireland', 'united states', 'usa', 'us', 'australia', 'canada', 'new zealand'].includes(c)) return 'EN'
