@@ -17,9 +17,29 @@ export default function PageSmsReviews() {
   const [expandedLog, setExpandedLog] = useState(null)
 
   // Test
-  const [testPhone, setTestPhone]   = useState('')
-  const [testLang, setTestLang]     = useState('FR')
-  const [testResult, setTestResult] = useState(null)
+  const [testPhone, setTestPhone]       = useState('')
+  const [testLang, setTestLang]         = useState('FR')
+  const [testResult, setTestResult]     = useState(null)
+  const [testComment, setTestComment]   = useState(null) // { comment, property_name }
+  const [loadingComment, setLoadingComment] = useState(false)
+
+  const piocherCommentaire = useCallback(async () => {
+    setLoadingComment(true)
+    try {
+      const { data } = await supabase
+        .from('reservation_review')
+        .select('comment, bien(hospitable_name)')
+        .gte('rating', 5)
+        .not('comment', 'is', null)
+        .limit(100)
+      if (data?.length) {
+        const pick = data[Math.floor(Math.random() * data.length)]
+        setTestComment({ comment: pick.comment, property_name: pick.bien?.hospitable_name || 'Villa DCB' })
+      }
+    } finally {
+      setLoadingComment(false)
+    }
+  }, [])
 
   // Campagnes
   const [candidats, setCandidats]     = useState([])
@@ -118,7 +138,8 @@ export default function PageSmsReviews() {
 
   useEffect(() => {
     if (tab === 'Campagnes') chargerCandidats()
-  }, [tab, chargerCandidats])
+    if (tab === 'Test' && !testComment) piocherCommentaire()
+  }, [tab, chargerCandidats, piocherCommentaire, testComment])
 
   const callEdgeFn = async (body) => {
     const { data: { session } } = await supabase.auth.getSession()
@@ -138,7 +159,13 @@ export default function PageSmsReviews() {
     setLoading(true)
     setTestResult(null)
     try {
-      const data = await callEdgeFn({ mode: 'test', phone: testPhone, language: testLang })
+      const data = await callEdgeFn({
+        mode: 'test',
+        phone: testPhone,
+        language: testLang,
+        comment: testComment?.comment || null,
+        property: testComment?.property_name || 'Villa DCB',
+      })
       setTestResult(data)
       if (data.ok) chargerLogs()
     } catch (e) {
@@ -322,7 +349,7 @@ export default function PageSmsReviews() {
 
       {/* ── TEST ── */}
       {tab === 'Test' && (
-        <div style={{ maxWidth: 480 }}>
+        <div style={{ maxWidth: 520 }}>
           <div style={{ background: 'var(--bg)', border: '1px solid var(--border)', borderRadius: 10, padding: '1.5rem', display: 'flex', flexDirection: 'column', gap: '1rem' }}>
             <div>
               <label style={{ display: 'block', fontWeight: 600, marginBottom: '0.4rem', fontSize: '0.875rem' }}>
@@ -351,6 +378,25 @@ export default function PageSmsReviews() {
                   </button>
                 ))}
               </div>
+            </div>
+            <div>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.4rem' }}>
+                <label style={{ fontWeight: 600, fontSize: '0.875rem' }}>Commentaire Airbnb utilisé</label>
+                <button onClick={piocherCommentaire} disabled={loadingComment} style={{
+                  fontSize: '0.78rem', padding: '0.2rem 0.6rem', borderRadius: 6,
+                  border: '1px solid var(--border)', background: 'transparent', cursor: 'pointer', color: 'var(--text)',
+                }}>
+                  {loadingComment ? '…' : '↻ Autre'}
+                </button>
+              </div>
+              {testComment ? (
+                <div style={{ background: '#fff', border: '1px solid var(--border)', borderRadius: 8, padding: '0.6rem 0.75rem', fontSize: '0.82rem', color: '#555', fontStyle: 'italic', lineHeight: 1.5 }}>
+                  <span style={{ fontWeight: 600, fontStyle: 'normal', color: 'var(--text)', fontSize: '0.78rem' }}>{testComment.property_name} — </span>
+                  "{testComment.comment}"
+                </div>
+              ) : (
+                <div style={{ color: '#aaa', fontSize: '0.82rem' }}>Chargement…</div>
+              )}
             </div>
             <button
               onClick={handleTest}

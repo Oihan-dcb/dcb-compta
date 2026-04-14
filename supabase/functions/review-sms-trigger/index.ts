@@ -25,10 +25,10 @@ Deno.serve(async (req) => {
 
   // ─── TEST ───────────────────────────────────────────────
   if (mode === 'test') {
-    const { phone, language = 'FR' } = body
+    const { phone, language = 'FR', comment = null, property = 'Villa DCB' } = body
     if (!phone) return json({ error: 'phone requis' }, 400)
 
-    const smsBody = await generateSmsBody('Test', 'Villa DCB', language, googleUrl, null)
+    const smsBody = await generateSmsBody('Test', property, language, googleUrl, comment)
     const result  = await sendSMS(twilioSid, twilioToken, twilioFrom, phone, smsBody)
 
     const { error: dbErr } = await supabase.from('sms_logs').insert({
