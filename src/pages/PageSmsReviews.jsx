@@ -25,6 +25,7 @@ export default function PageSmsReviews() {
   const [selected, setSelected]       = useState(new Set())
   const [campResult, setCampResult]   = useState(null)
   const [loadingCamp, setLoadingCamp] = useState(false)
+  const [rowStatus, setRowStatus]     = useState({}) // hospitable_id → 'sending'|'sent'|'error'
 
   const chargerLogs = useCallback(async () => {
     const { data } = await supabase
@@ -150,22 +151,46 @@ export default function PageSmsReviews() {
     if (!selected.size) return
     setLoadingCamp(true)
     setCampResult(null)
-    const reservations = candidats.filter(c => selected.has(c.hospitable_id))
-    try {
-      const data = await callEdgeFn({ mode: 'campaign', reservations })
-      setCampResult(data)
-      chargerLogs()
-      chargerCandidats()
-    } catch (e) {
-      setCampResult({ error: e.message })
-    } finally {
-      setLoadingCamp(false)
+    setRowStatus({})
+    const toSend = candidats.filter(c => selected.has(c.hospitable_id))
+    const results = []
+
+    for (const r of toSend) {
+      setRowStatus(prev => ({ ...prev, [r.hospitable_id]: 'sending' }))
+      try {
+        const data = await callEdgeFn({ mode: 'campaign', reservations: [r] })
+        const res = data.results?.[0]
+        setRowStatus(prev => ({ ...prev, [r.hospitable_id]: res?.ok ? 'sent' : 'error' }))
+        results.push({ ...res, hospitable_id: r.hospitable_id })
+      } catch (e) {
+        setRowStatus(prev => ({ ...prev, [r.hospitable_id]: 'error' }))
+        results.push({ hospitable_id: r.hospitable_id, ok: false, error: e.message })
+      }
     }
+
+    setCampResult({ results })
+    setLoadingCamp(false)
+    chargerLogs()
+    chargerCandidats()
   }
 
+  const smsCost = (phone) => {
+    if (!phone) return 0.095
+    const p = phone.replace(/\s/g, '')
+    if (/^\+33/.test(p) || /^\+32/.test(p)) return 0.075
+    if (/^\+34/.test(p) || /^\+52/.test(p)) return 0.085
+    if (/^\+44/.test(p) || /^\+1/.test(p))  return 0.085
+    return 0.095
+  }
+
+  const totalCost = candidats
+    .filter(c => selected.has(c.hospitable_id))
+    .reduce((sum, c) => sum + smsCost(c.guest_phone), 0)
+
   const toggleAll = () => {
-    if (selected.size === candidats.length) setSelected(new Set())
-    else setSelected(new Set(candidats.map(c => c.hospitable_id)))
+    const selectable = candidats.filter(c => c.guest_phone && !c.already_sent)
+    if (selected.size === selectable.length) setSelected(new Set())
+    else setSelected(new Set(selectable.map(c => c.hospitable_id)))
   }
 
   const toggleOne = (id) => {
@@ -342,7 +367,9 @@ export default function PageSmsReviews() {
             </div>
             <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
               {selected.size > 0 && (
-                <span style={{ color: '#888', fontSize: '0.875rem' }}>{selected.size} sélectionné{selected.size > 1 ? 's' : ''}</span>
+                <span style={{ color: '#888', fontSize: '0.875rem' }}>
+                  {selected.size} SMS · <span style={{ color: 'var(--brand)', fontWeight: 600 }}>~{totalCost.toFixed(2)} €</span>
+                </span>
               )}
               <button onClick={chargerCandidats} style={{ padding: '0.4rem 0.75rem', background: 'transparent', border: '1px solid var(--border)', borderRadius: 8, cursor: 'pointer', fontSize: '0.8rem' }}>
                 ↻ Rafraîchir
@@ -377,7 +404,7 @@ export default function PageSmsReviews() {
                     <input type="checkbox" checked={selected.size === candidats.length && candidats.length > 0}
                       onChange={toggleAll} style={{ cursor: 'pointer' }} />
                   </th>
-                  {['Client', 'Propriété', 'Téléphone', 'Pays', 'Date avis'].map(h => (
+                  {['Client', 'Propriété', 'Téléphone', 'Pays', 'Date avis', 'Statut'].map(h => (
                     <th key={h} style={{ padding: '0.65rem 1rem', textAlign: 'left', fontWeight: 600, color: 'var(--text)' }}>{h}</th>
                   ))}
                 </tr>
@@ -389,16 +416,22 @@ export default function PageSmsReviews() {
                 {!loadingCamp && candidats.length === 0 && (
                   <tr><td colSpan={6} style={{ padding: '2rem', textAlign: 'center', color: '#999' }}>Aucun candidat — tous les avis 5⭐ ont déjà été contactés ou le téléphone est manquant.</td></tr>
                 )}
-                {candidats.map((c, i) => {
-                  const selectable = !!c.guest_phone && !c.already_sent
+                {[...candidats].sort((a, b) => new Date(b.submitted_at) - new Date(a.submitted_at)).map((c, i) => {
+                  const status     = rowStatus[c.hospitable_id]
+                  const selectable = !!c.guest_phone && !c.already_sent && !status
                   const isSelected = selected.has(c.hospitable_id)
+                  const statusBadge = status === 'sending' ? { label: '⏳', color: '#8a7a4a' }
+                    : status === 'sent'    ? { label: '✓ envoyé',  color: '#5a8a5a' }
+                    : status === 'error'   ? { label: '✗ erreur',  color: '#b94a4a' }
+                    : c.already_sent       ? { label: '✓ déjà envoyé', color: '#999' }
+                    : null
                   return (
                     <tr key={c.hospitable_id}
                       onClick={() => selectable && toggleOne(c.hospitable_id)}
                       style={{
                         borderBottom: '1px solid var(--border)',
                         cursor: selectable ? 'pointer' : 'default',
-                        opacity: selectable ? 1 : 0.4,
+                        opacity: !c.guest_phone ? 0.35 : 1,
                         background: isSelected ? 'rgba(204,153,51,0.08)' : i % 2 === 0 ? 'transparent' : '#faf8f4',
                       }}>
                       <td style={{ padding: '0.6rem 1rem' }}>
@@ -409,11 +442,18 @@ export default function PageSmsReviews() {
                       <td style={{ padding: '0.6rem 1rem', fontWeight: 600 }}>{c.guest_name}</td>
                       <td style={{ padding: '0.6rem 1rem' }}>{c.property_name}</td>
                       <td style={{ padding: '0.6rem 1rem', fontFamily: 'monospace', color: c.guest_phone ? 'inherit' : '#aaa' }}>
-                        {c.already_sent ? '✓ envoyé' : (c.guest_phone || 'pas de tél.')}
+                        {c.guest_phone || 'pas de tél.'}
                       </td>
                       <td style={{ padding: '0.6rem 1rem' }}>{c.guest_country || '—'}</td>
                       <td style={{ padding: '0.6rem 1rem', color: '#888' }}>
                         {c.submitted_at ? new Date(c.submitted_at).toLocaleDateString('fr-FR') : '—'}
+                      </td>
+                      <td style={{ padding: '0.6rem 1rem' }}>
+                        {statusBadge && (
+                          <span style={{ fontSize: '0.78rem', fontWeight: 600, color: statusBadge.color }}>
+                            {statusBadge.label}
+                          </span>
+                        )}
                       </td>
                     </tr>
                   )
