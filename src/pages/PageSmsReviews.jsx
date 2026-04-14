@@ -50,7 +50,7 @@ export default function PageSmsReviews() {
       // 1. Avis 5 étoiles
       const { data: reviews } = await supabase
         .from('reservation_review')
-        .select('hospitable_reservation_id, reviewer_name, rating, submitted_at')
+        .select('hospitable_reservation_id, reviewer_name, rating, comment, submitted_at')
         .gte('rating', 5)
         .order('submitted_at', { ascending: false })
         .limit(500)
@@ -91,6 +91,7 @@ export default function PageSmsReviews() {
             guest_country:  resa.guest_country,
             property_name:  resa.bien?.hospitable_name || '—',
             rating:         r.rating,
+            comment:        r.comment || null,
             submitted_at:   r.submitted_at,
           }
         })

@@ -27,7 +27,7 @@ Deno.serve(async (req) => {
     const { phone, language = 'FR' } = body
     if (!phone) return json({ error: 'phone requis' }, 400)
 
-    const smsBody = buildSmsBody('Test', 'Villa DCB', language, googleUrl)
+    const smsBody = await generateSmsBody('Test', 'Villa DCB', language, googleUrl, null)
     const result  = await sendSMS(twilioSid, twilioToken, twilioFrom, phone, smsBody)
 
     await supabase.from('sms_logs').insert({
@@ -57,7 +57,7 @@ Deno.serve(async (req) => {
     for (const r of reservations) {
       const lang       = detectSmsLang(r.guest_country)
       const firstName  = (r.guest_name || 'cher client').split(' ')[0]
-      const smsBody    = buildSmsBody(firstName, r.property_name || 'notre villa', lang, googleUrl)
+      const smsBody    = await generateSmsBody(firstName, r.property_name || 'notre villa', lang, googleUrl, r.comment || null)
       const result     = await sendSMS(twilioSid, twilioToken, twilioFrom, r.guest_phone, smsBody)
 
       await supabase.from('sms_logs').insert({
@@ -109,10 +109,54 @@ function detectSmsLang(country: string | null): string {
   return 'FR'
 }
 
-function buildSmsBody(firstName: string, property: string, lang: string, googleUrl: string): string {
+async function generateSmsBody(
+  firstName: string, property: string, lang: string, googleUrl: string, comment: string | null
+): Promise<string> {
+  const anthropicKey = Deno.env.get('ANTHROPIC_API_KEY')
+  const langLabel = lang === 'FR' ? 'français' : lang === 'EN' ? 'anglais' : 'espagnol'
+
+  if (anthropicKey && comment) {
+    try {
+      const prompt = `Tu es l'assistant de Destination Côte Basque (DCB), agence de location de villas de luxe au Pays Basque français.
+
+Un voyageur vient de laisser un avis 5⭐ sur Airbnb pour "${property}". Son commentaire :
+"${comment}"
+
+Rédige un SMS de remerciement en ${langLabel} qui :
+- Remercie chaleureusement en mentionnant un élément précis du commentaire
+- Reste entre 160 et 220 caractères (sans compter le lien Google)
+- Se termine par "— L'équipe DCB" (ou "— DCB Team" / "— Equipo DCB" selon la langue)
+- N'inclut PAS le lien Google (il sera ajouté automatiquement)
+
+Réponds uniquement avec le texte du SMS, sans guillemets ni balises.`
+
+      const res = await fetch('https://api.anthropic.com/v1/messages', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'x-api-key': anthropicKey,
+          'anthropic-version': '2023-06-01',
+        },
+        body: JSON.stringify({
+          model: 'claude-haiku-4-5-20251001',
+          max_tokens: 150,
+          messages: [{ role: 'user', content: prompt }],
+        }),
+      })
+
+      if (res.ok) {
+        const data = await res.json()
+        const text = data.content?.[0]?.text?.trim()
+        if (text) return `${firstName}, ${text}\n${googleUrl}\nSTOP pour se désabonner.`
+      }
+    } catch (err: any) {
+      console.error('Claude API error, fallback:', err?.message)
+    }
+  }
+
   const t: Record<string, string> = {
-    FR: `Bonjour ${firstName} ! Merci pour votre avis 5⭐ sur ${property}. Votre retour compte beaucoup pour nous ! Partager aussi sur Google : ${googleUrl} — L'équipe DCB. Rép. STOP pour se désabonner.`,
-    EN: `Hello ${firstName}! Thank you for your 5-star review of ${property}. Your feedback means a lot! Share on Google too: ${googleUrl} — DCB Team. Reply STOP to unsubscribe.`,
+    FR: `Bonjour ${firstName} ! Merci pour votre avis 5⭐ sur ${property}. Votre retour compte beaucoup ! Partager sur Google : ${googleUrl} — L'équipe DCB. STOP pour se désabonner.`,
+    EN: `Hello ${firstName}! Thank you for your 5-star review of ${property}. Your feedback means a lot! Share on Google: ${googleUrl} — DCB Team. Reply STOP to unsubscribe.`,
     ES: `¡Hola ${firstName}! Gracias por tu reseña 5⭐ de ${property}. ¡Tu opinión nos importa! Comparte en Google: ${googleUrl} — Equipo DCB. STOP para darse de baja.`,
   }
   return t[lang] ?? t['FR']
