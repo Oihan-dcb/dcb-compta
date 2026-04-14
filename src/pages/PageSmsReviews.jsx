@@ -226,7 +226,14 @@ export default function PageSmsReviews() {
       </div>
 
       {/* ── DASHBOARD ── */}
-      {tab === 'Dashboard' && stats && (
+      {tab === 'Dashboard' && stats && stats.total === 0 && (
+        <div style={{ background: 'var(--bg)', border: '1px solid var(--border)', borderRadius: 10, padding: '2rem', textAlign: 'center', color: '#999' }}>
+          <div style={{ fontSize: '2.5rem', marginBottom: '0.75rem' }}>📭</div>
+          <div style={{ fontWeight: 600, color: 'var(--text)', marginBottom: '0.5rem' }}>Aucun SMS envoyé pour le moment</div>
+          <div style={{ fontSize: '0.875rem' }}>Utilisez l'onglet <strong>Test</strong> pour envoyer un premier SMS, ou l'onglet <strong>Campagnes</strong> pour contacter vos clients.</div>
+        </div>
+      )}
+      {tab === 'Dashboard' && stats && stats.total > 0 && (
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '1rem', marginBottom: '2rem' }}>
           {[
             { label: 'SMS envoyés',   value: stats.sent,    sub: 'total' },
@@ -242,7 +249,7 @@ export default function PageSmsReviews() {
           ))}
         </div>
       )}
-      {tab === 'Dashboard' && stats && (
+      {tab === 'Dashboard' && stats && stats.total > 0 && (
         <div style={{ background: 'var(--bg)', border: '1px solid var(--border)', borderRadius: 10, padding: '1.25rem' }}>
           <div style={{ fontWeight: 600, marginBottom: '1rem' }}>Envois par langue</div>
           <div style={{ display: 'flex', gap: '2rem' }}>
@@ -263,7 +270,7 @@ export default function PageSmsReviews() {
           <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.85rem' }}>
             <thead>
               <tr style={{ background: '#EAE3D4', borderBottom: '2px solid var(--border)' }}>
-                {['Date', 'Client', 'Téléphone', 'Propriété', 'Langue', 'Statut'].map(h => (
+                {['Date', 'Client', 'Téléphone', 'Message envoyé', 'Langue', 'Statut'].map(h => (
                   <th key={h} style={{ padding: '0.65rem 1rem', textAlign: 'left', fontWeight: 600, color: 'var(--text)' }}>{h}</th>
                 ))}
               </tr>
@@ -275,9 +282,15 @@ export default function PageSmsReviews() {
                     {l.sent_at ? new Date(l.sent_at).toLocaleDateString('fr-FR', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' }) : '—'}
                   </td>
                   <td style={{ padding: '0.6rem 1rem' }}>{l.guest_name || '—'}</td>
-                  <td style={{ padding: '0.6rem 1rem', fontFamily: 'monospace' }}>{l.guest_phone || '—'}</td>
-                  <td style={{ padding: '0.6rem 1rem', maxWidth: 180, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                    {l.sms_body ? l.sms_body.split(' sur ')[1]?.split('.')[0] || '—' : '—'}
+                  <td style={{ padding: '0.6rem 1rem', fontFamily: 'monospace', whiteSpace: 'nowrap' }}>{l.guest_phone || '—'}</td>
+                  <td style={{ padding: '0.6rem 1rem', maxWidth: 320 }}>
+                    {l.sms_body ? (
+                      <span title={l.sms_body} style={{ display: 'block', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', color: l.status === 'error' ? '#b94a4a' : 'inherit', fontSize: '0.82rem' }}>
+                        {l.status === 'error' ? (l.error_message || l.sms_body) : l.sms_body}
+                      </span>
+                    ) : l.error_message ? (
+                      <span style={{ color: '#b94a4a', fontSize: '0.82rem' }}>{l.error_message}</span>
+                    ) : '—'}
                   </td>
                   <td style={{ padding: '0.6rem 1rem' }}>{LANG_FLAG[l.language] || '—'} {l.language || '—'}</td>
                   <td style={{ padding: '0.6rem 1rem' }}>
