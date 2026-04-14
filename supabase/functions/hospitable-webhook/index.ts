@@ -287,10 +287,10 @@ async function handleReview(supabase: any, event: string, data: any): Promise<st
 
   if (error) throw new Error('INSERT reservation_review failed: ' + error.message)
 
-  // Envoi SMS de remerciement si avis 5 étoiles
+  // Mise en file d'attente SMS si avis 5 étoiles (envoi différé 28 min)
   if (rating >= 5) {
-    await sendReviewSMS(supabase, resaHospId, data, rating).catch((err: any) =>
-      console.error('sendReviewSMS error (non-fatal):', err?.message)
+    await queueReviewSMS(supabase, resaHospId, data, rating).catch((err: any) =>
+      console.error('queueReviewSMS error (non-fatal):', err?.message)
     )
   }
 
@@ -298,29 +298,18 @@ async function handleReview(supabase: any, event: string, data: any): Promise<st
 }
 
 // ============================================================
-// SMS — remerciement avis 5 étoiles
+// SMS — mise en file d'attente (délai 28 min)
 // ============================================================
-async function sendReviewSMS(supabase: any, resaHospId: string, data: any, rating: number): Promise<void> {
-  const twilioSid   = Deno.env.get('TWILIO_ACCOUNT_SID')
-  const twilioToken = Deno.env.get('TWILIO_AUTH_TOKEN')
-  const twilioFrom  = Deno.env.get('TWILIO_FROM_NUMBER')
-  const googleUrl   = Deno.env.get('GOOGLE_REVIEW_URL')
-
-  if (!twilioSid || !twilioToken || !twilioFrom || !googleUrl) {
-    console.log('SMS skipped: Twilio secrets not configured')
-    return
-  }
-
+async function queueReviewSMS(supabase: any, resaHospId: string, data: any, rating: number): Promise<void> {
   // Tenter d'abord le payload review, puis fallback sur la table reservation
   let guestPhone   = data.guest?.phone || data.guest?.phone_number || null
   let guestCountry = data.guest?.country || data.guest?.nationality || null
-  let guestFirst   = data.guest?.first_name
-    || (typeof data.reviewer_name === 'string' ? data.reviewer_name.split(' ')[0] : null)
+  let guestName    = data.guest?.first_name
+    || (typeof data.reviewer_name === 'string' ? data.reviewer_name : null)
     || null
-  const propertyName = data.property?.name || data.listing?.name || 'notre villa'
+  const propertyName = data.property?.name || data.listing?.name || null
 
-  if (!guestPhone || !guestFirst || !guestCountry) {
-    // Fallback : lire depuis reservation (stocké au moment du webhook de réservation)
+  if (!guestPhone || !guestName || !guestCountry) {
     const { data: resaRow } = await supabase
       .from('reservation')
       .select('guest_phone, guest_country, guest_name')
@@ -329,74 +318,43 @@ async function sendReviewSMS(supabase: any, resaHospId: string, data: any, ratin
     if (resaRow) {
       if (!guestPhone)   guestPhone   = resaRow.guest_phone   || null
       if (!guestCountry) guestCountry = resaRow.guest_country || null
-      if (!guestFirst && resaRow.guest_name) {
-        guestFirst = resaRow.guest_name.split(' ')[0]
-      }
+      if (!guestName)    guestName    = resaRow.guest_name    || null
     }
   }
 
-  guestFirst = guestFirst || 'cher client'
+  const comment = data.comment || data.review || data.body || null
+  const sendAt  = new Date(Date.now() + 28 * 60 * 1000).toISOString()
 
   if (!guestPhone) {
-    console.log('SMS skipped: no guest phone for', resaHospId)
+    console.log('SMS queue skipped: no guest phone for', resaHospId)
     await supabase.from('sms_logs').insert({
       hospitable_reservation_id: resaHospId,
-      guest_name:    data.reviewer_name || null,
+      guest_name:    guestName,
       guest_phone:   null,
       language:      'FR',
       rating,
-      sms_body:      null,
       status:        'no_phone',
       error_message: 'No guest phone in webhook payload or reservation table',
     })
     return
   }
 
-  const lang    = detectSmsLang(guestCountry, guestPhone)
-  const comment = data.comment || data.review || data.body || null
-  const body    = await generateSmsBody(guestFirst, propertyName, lang, googleUrl, comment)
-
-  let status        = 'error'
-  let twilioSidOut  = null
-  let errorMessage  = null
-
-  try {
-    const res = await fetch(
-      `https://api.twilio.com/2010-04-01/Accounts/${twilioSid}/Messages.json`,
-      {
-        method: 'POST',
-        headers: {
-          'Authorization': 'Basic ' + btoa(`${twilioSid}:${twilioToken}`),
-          'Content-Type': 'application/x-www-form-urlencoded',
-        },
-        body: new URLSearchParams({ From: twilioFrom, To: guestPhone, Body: body }).toString(),
-      }
-    )
-    const json = await res.json()
-    if (res.ok) {
-      status       = 'sent'
-      twilioSidOut = json.sid || null
-      console.log('Review SMS sent:', guestPhone, json.sid)
-    } else {
-      errorMessage = JSON.stringify(json)
-      console.error('Twilio error:', errorMessage)
-    }
-  } catch (err: any) {
-    errorMessage = err?.message || String(err)
-    console.error('SMS fetch error:', errorMessage)
-  }
-
-  await supabase.from('sms_logs').insert({
+  const { error } = await supabase.from('sms_queue').insert({
     hospitable_reservation_id: resaHospId,
-    guest_name:    data.reviewer_name || null,
+    guest_name:    guestName,
     guest_phone:   guestPhone,
-    language:      lang,
+    guest_country: guestCountry,
+    property_name: propertyName,
+    comment,
     rating,
-    sms_body:      body,
-    status,
-    twilio_sid:    twilioSidOut,
-    error_message: errorMessage,
+    send_at:       sendAt,
   })
+
+  if (error) {
+    console.error('sms_queue insert error:', JSON.stringify(error))
+  } else {
+    console.log('SMS queued for', guestPhone, 'at', sendAt)
+  }
 }
 
 function detectSmsLang(country: string | null, phone: string | null = null): string {
@@ -431,10 +389,12 @@ Un voyageur vient de laisser un avis 5⭐ sur Airbnb pour "${property}". Son com
 "${comment}"
 
 Rédige un SMS de remerciement en ${langLabel} qui :
+- Mentionne que l'avis a été laissé sur Airbnb
 - Remercie chaleureusement en mentionnant un élément précis du commentaire
 - Reste entre 160 et 220 caractères (sans compter le lien Google)
 - Se termine par "— Destination Côte Basque" (quelle que soit la langue)
 - N'inclut PAS le lien Google (il sera ajouté automatiquement)
+- N'inclut PAS de mention STOP ou désabonnement
 - Ne commence PAS par "Bonjour ${firstName}" (déjà connu)
 
 Réponds uniquement avec le texte du SMS, sans guillemets ni balises.`
@@ -457,7 +417,7 @@ Réponds uniquement avec le texte du SMS, sans guillemets ni balises.`
         const data = await res.json()
         const text = data.content?.[0]?.text?.trim()
         if (text) {
-          return `${firstName}, ${text}\n${googleUrl}\nSTOP pour se désabonner.`
+          return `${firstName}, ${text}\n${googleUrl}`
         }
       }
     } catch (err: any) {
@@ -467,9 +427,9 @@ Réponds uniquement avec le texte du SMS, sans guillemets ni balises.`
 
   // Fallback template statique
   const templates: Record<string, string> = {
-    FR: `Bonjour ${firstName} ! Merci pour votre avis 5⭐ sur ${property}. Votre retour compte beaucoup pour nous ! Partager aussi sur Google : ${googleUrl} — Destination Côte Basque. Rép. STOP pour se désabonner.`,
-    EN: `Hello ${firstName}! Thank you for your 5-star review of ${property}. Your feedback means a lot! Share on Google too: ${googleUrl} — Destination Côte Basque. Reply STOP to unsubscribe.`,
-    ES: `¡Hola ${firstName}! Gracias por tu reseña 5⭐ de ${property}. ¡Tu opinión nos importa! Comparte en Google: ${googleUrl} — Destination Côte Basque. STOP para darse de baja.`,
+    FR: `Bonjour ${firstName} ! Merci pour votre avis 5⭐ Airbnb sur ${property}. Votre retour nous touche beaucoup ! Partagez-le aussi sur Google : ${googleUrl} — Destination Côte Basque`,
+    EN: `Hello ${firstName}! Thank you for your 5-star Airbnb review of ${property}. Your feedback means so much to us! Share it on Google too: ${googleUrl} — Destination Côte Basque`,
+    ES: `¡Hola ${firstName}! Gracias por tu reseña 5⭐ de Airbnb sobre ${property}. ¡Tu opinión nos llena de alegría! Compártela también en Google: ${googleUrl} — Destination Côte Basque`,
   }
   return templates[lang] ?? templates['FR']
 }
