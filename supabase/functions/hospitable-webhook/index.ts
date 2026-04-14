@@ -393,7 +393,7 @@ Rédige un SMS de remerciement en ${langLabel} qui :
 - Remercie chaleureusement en mentionnant un élément précis du commentaire
 - Reste entre 160 et 220 caractères (sans compter le lien Google)
 - Se termine par "— Destination Côte Basque" (quelle que soit la langue)
-- N'inclut PAS le lien Google (il sera ajouté automatiquement)
+- Se termine par une invitation claire à laisser un avis Google (ex: "Laissez-nous un avis Google ici ↓" ou "Leave us a Google review here ↓") — le lien sera ajouté automatiquement après
 - N'inclut PAS de mention STOP ou désabonnement
 - Ne commence PAS par "Bonjour ${firstName}" (déjà connu)
 
@@ -427,9 +427,9 @@ Réponds uniquement avec le texte du SMS, sans guillemets ni balises.`
 
   // Fallback template statique
   const templates: Record<string, string> = {
-    FR: `Bonjour ${firstName} ! Merci pour votre avis 5⭐ Airbnb sur ${property}. Votre retour nous touche beaucoup ! Partagez-le aussi sur Google : ${googleUrl} — Destination Côte Basque`,
-    EN: `Hello ${firstName}! Thank you for your 5-star Airbnb review of ${property}. Your feedback means so much to us! Share it on Google too: ${googleUrl} — Destination Côte Basque`,
-    ES: `¡Hola ${firstName}! Gracias por tu reseña 5⭐ de Airbnb sobre ${property}. ¡Tu opinión nos llena de alegría! Compártela también en Google: ${googleUrl} — Destination Côte Basque`,
+    FR: `Bonjour ${firstName} ! Merci pour votre avis 5⭐ Airbnb sur ${property}. Votre retour nous touche beaucoup ! Laissez-nous aussi un avis Google (1 clic) : ${googleUrl} — Destination Côte Basque`,
+    EN: `Hello ${firstName}! Thank you for your 5-star Airbnb review of ${property}. Your feedback means so much to us! Leave us a Google review too (1 click): ${googleUrl} — Destination Côte Basque`,
+    ES: `¡Hola ${firstName}! Gracias por tu reseña 5⭐ de Airbnb sobre ${property}. ¡Tu opinión nos llena de alegría! Déjanos también una reseña en Google (1 clic): ${googleUrl} — Destination Côte Basque`,
   }
   return templates[lang] ?? templates['FR']
 }
