@@ -352,7 +352,7 @@ async function sendReviewSMS(supabase: any, resaHospId: string, data: any, ratin
     return
   }
 
-  const lang    = detectSmsLang(guestCountry)
+  const lang    = detectSmsLang(guestCountry, guestPhone)
   const comment = data.comment || data.review || data.body || null
   const body    = await generateSmsBody(guestFirst, propertyName, lang, googleUrl, comment)
 
@@ -399,11 +399,21 @@ async function sendReviewSMS(supabase: any, resaHospId: string, data: any, ratin
   })
 }
 
-function detectSmsLang(country: string | null): string {
-  if (!country) return 'FR'
-  const c = country.toLowerCase()
-  if (['united kingdom', 'uk', 'ireland', 'united states', 'usa', 'us', 'australia', 'canada', 'new zealand'].includes(c)) return 'EN'
-  if (['spain', 'españa', 'es', 'mexico', 'méxico', 'argentina', 'colombia', 'chile'].includes(c)) return 'ES'
+function detectSmsLang(country: string | null, phone: string | null = null): string {
+  // 1. Indicatif téléphonique — le plus fiable
+  if (phone) {
+    const p = phone.replace(/\s/g, '')
+    if (/^\+33/.test(p) || /^\+32/.test(p) || /^\+41/.test(p) || /^\+352/.test(p)) return 'FR'
+    if (/^\+34/.test(p) || /^\+52/.test(p) || /^\+54/.test(p) || /^\+57/.test(p) || /^\+56/.test(p)) return 'ES'
+    if (/^\+1/.test(p)  || /^\+44/.test(p) || /^\+61/.test(p) || /^\+64/.test(p) || /^\+353/.test(p)) return 'EN'
+    if (/^\+/.test(p)) return 'EN'
+  }
+  // 2. Pays (fallback)
+  if (country) {
+    const c = country.toLowerCase()
+    if (['united kingdom', 'uk', 'ireland', 'united states', 'usa', 'us', 'australia', 'canada', 'new zealand'].includes(c)) return 'EN'
+    if (['spain', 'españa', 'mexico', 'méxico', 'argentina', 'colombia', 'chile'].includes(c)) return 'ES'
+  }
   return 'FR'
 }
 

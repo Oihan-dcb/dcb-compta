@@ -55,7 +55,7 @@ Deno.serve(async (req) => {
     const results = []
 
     for (const r of reservations) {
-      const lang       = detectSmsLang(r.guest_country, r.guest_locale)
+      const lang       = detectSmsLang(r.guest_country, r.guest_locale, r.guest_phone)
       const firstName  = (r.guest_name || 'cher client').split(' ')[0]
       const smsBody    = await generateSmsBody(firstName, r.property_name || 'notre villa', lang, googleUrl, r.comment || null)
       const result     = await sendSMS(twilioSid, twilioToken, twilioFrom, r.guest_phone, smsBody)
@@ -101,19 +101,30 @@ async function sendSMS(sid: string, token: string, from: string, to: string, bod
   }
 }
 
-function detectSmsLang(country: string | null, locale: string | null = null): string {
-  // Locale is more reliable than country (e.g. "en", "en-US", "de", "fr", "es-ES")
+function detectSmsLang(country: string | null, locale: string | null = null, phone: string | null = null): string {
+  // 1. Indicatif téléphonique — le plus fiable
+  if (phone) {
+    const p = phone.replace(/\s/g, '')
+    if (/^\+33/.test(p) || /^\+32/.test(p) || /^\+41/.test(p) || /^\+352/.test(p)) return 'FR'
+    if (/^\+34/.test(p) || /^\+52/.test(p) || /^\+54/.test(p) || /^\+57/.test(p) || /^\+56/.test(p)) return 'ES'
+    if (/^\+1/.test(p)  || /^\+44/.test(p) || /^\+61/.test(p) || /^\+64/.test(p) || /^\+353/.test(p)) return 'EN'
+    // Tout autre indicatif → EN (DE, NL, IT, PT, PL, etc.)
+    if (/^\+/.test(p)) return 'EN'
+  }
+  // 2. Locale CSV (ex: "fr", "en-US", "de")
   if (locale) {
     const l = locale.toLowerCase().split('-')[0]
-    if (l === 'en') return 'EN'
-    if (l === 'es') return 'ES'
     if (l === 'fr') return 'FR'
+    if (l === 'es') return 'ES'
+    if (l === 'en') return 'EN'
     if (['de', 'nl', 'it', 'pt', 'pl', 'ru', 'zh', 'ja', 'ko', 'ar', 'sv', 'da', 'no', 'fi'].includes(l)) return 'EN'
   }
-  if (!country) return 'FR'
-  const c = country.toLowerCase()
-  if (['united kingdom', 'uk', 'ireland', 'united states', 'usa', 'us', 'australia', 'canada', 'new zealand'].includes(c)) return 'EN'
-  if (['spain', 'españa', 'es', 'mexico', 'méxico', 'argentina', 'colombia', 'chile'].includes(c)) return 'ES'
+  // 3. Pays (fallback)
+  if (country) {
+    const c = country.toLowerCase()
+    if (['united kingdom', 'uk', 'ireland', 'united states', 'usa', 'us', 'australia', 'canada', 'new zealand'].includes(c)) return 'EN'
+    if (['spain', 'españa', 'mexico', 'méxico', 'argentina', 'colombia', 'chile'].includes(c)) return 'ES'
+  }
   return 'FR'
 }
 
