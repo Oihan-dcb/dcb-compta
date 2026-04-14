@@ -85,11 +85,22 @@ Deno.serve(async (req) => {
 
       total++
 
+      // review.reservation_id = ID Hospitable de la réservation (pour jointure)
+      // review.id = ID du review lui-même (fallback si pas de reservation_id)
+      const resaHospId = review.reservation_id || review.reservation?.id || review.id
+
+      // Résoudre reservation_id interne depuis hospitable_id
+      const { data: resaRow } = await sb
+        .from('reservation')
+        .select('id, guest_phone, guest_country, guest_name')
+        .eq('hospitable_id', resaHospId)
+        .maybeSingle()
+
       const row = {
-        reservation_id:            null,
+        reservation_id:            resaRow?.id || null,
         bien_id:                   bien.id,
-        hospitable_reservation_id: review.id,
-        reviewer_name:             null,
+        hospitable_reservation_id: resaHospId,
+        reviewer_name:             review.reviewer?.name || review.guest?.name || null,
         rating:                    review.public?.rating ?? null,
         comment:                   review.public?.review ?? null,
         submitted_at:              review.reviewed_at ?? null,
