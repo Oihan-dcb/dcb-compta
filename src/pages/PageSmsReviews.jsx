@@ -11,9 +11,10 @@ const LANG_FLAG   = { FR: '🇫🇷', EN: '🇬🇧', ES: '🇪🇸' }
 
 export default function PageSmsReviews() {
   const [tab, setTab]         = useState('Dashboard')
-  const [logs, setLogs]       = useState([])
-  const [stats, setStats]     = useState(null)
-  const [loading, setLoading] = useState(false)
+  const [logs, setLogs]         = useState([])
+  const [stats, setStats]       = useState(null)
+  const [loading, setLoading]   = useState(false)
+  const [expandedLog, setExpandedLog] = useState(null)
 
   // Test
   const [testPhone, setTestPhone]   = useState('')
@@ -283,9 +284,20 @@ export default function PageSmsReviews() {
                   </td>
                   <td style={{ padding: '0.6rem 1rem' }}>{l.guest_name || '—'}</td>
                   <td style={{ padding: '0.6rem 1rem', fontFamily: 'monospace', whiteSpace: 'nowrap' }}>{l.guest_phone || '—'}</td>
-                  <td style={{ padding: '0.6rem 1rem', maxWidth: 320 }}>
+                  <td style={{ padding: '0.6rem 1rem', maxWidth: 340 }}
+                    onClick={() => setExpandedLog(expandedLog === l.id ? null : l.id)}
+                    title={expandedLog === l.id ? 'Cliquer pour réduire' : 'Cliquer pour voir le message complet'}
+                    style={{ padding: '0.6rem 1rem', maxWidth: 340, cursor: 'pointer' }}>
                     {l.sms_body ? (
-                      <span title={l.sms_body} style={{ display: 'block', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', color: l.status === 'error' ? '#b94a4a' : 'inherit', fontSize: '0.82rem' }}>
+                      <span style={{
+                        display: 'block',
+                        overflow: expandedLog === l.id ? 'visible' : 'hidden',
+                        textOverflow: expandedLog === l.id ? 'unset' : 'ellipsis',
+                        whiteSpace: expandedLog === l.id ? 'pre-wrap' : 'nowrap',
+                        color: l.status === 'error' ? '#b94a4a' : 'inherit',
+                        fontSize: '0.82rem',
+                        lineHeight: expandedLog === l.id ? 1.5 : 'inherit',
+                      }}>
                         {l.status === 'error' ? (l.error_message || l.sms_body) : l.sms_body}
                       </span>
                     ) : l.error_message ? (
