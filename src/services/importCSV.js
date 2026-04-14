@@ -85,7 +85,9 @@ export async function importHospitableCSV(rows, moisFiltres = null, onProgress =
     const bienId = bienByName[row.property_name?.trim()?.toLowerCase()] || bienById[row.property_id]
     if (!bienId && !resaMap[code]) { log.skipped++; continue }
 
-    const guestName = [row.guest_first_name, row.guest_last_name].filter(Boolean).join(' ') || null
+    const guestName  = [row.guest_first_name, row.guest_last_name].filter(Boolean).join(' ') || null
+    const guestPhone = row.guest_phone || row.phone || row.contact_phone || null
+    const guestCountry = row.guest_country || row.country || row.guest_nationality || null
     const toC = v => v && parseFloat(v) !== 0 ? Math.round(parseFloat(v) * 100) : null
 
     const base = {
@@ -98,6 +100,8 @@ export async function importHospitableCSV(rows, moisFiltres = null, onProgress =
       fin_host_service_fee: row.host_service_fee ? -Math.abs(Math.round(parseFloat(row.host_service_fee) * 100)) : null,
       fin_discount: toC(row.guest_discount),
       fin_adjusted: toC(row.adjusted_amount),
+      ...(guestPhone   ? { guest_phone:   guestPhone }   : {}),
+      ...(guestCountry ? { guest_country: guestCountry } : {}),
     }
 
     const existingId = resaMap[code] || resaMapByHospId[row.uuid]
