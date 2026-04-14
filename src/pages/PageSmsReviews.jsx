@@ -353,12 +353,16 @@ export default function PageSmsReviews() {
             {testResult && (
               <div style={{
                 padding: '0.75rem', borderRadius: 8,
-                background: testResult.ok ? '#5a8a5a22' : '#b94a4a22',
-                color: testResult.ok ? '#5a8a5a' : '#b94a4a',
-                border: `1px solid ${testResult.ok ? '#5a8a5a55' : '#b94a4a55'}`,
+                background: testResult.ok && !testResult.db_error ? '#5a8a5a22' : '#b94a4a22',
+                color: testResult.ok && !testResult.db_error ? '#5a8a5a' : '#b94a4a',
+                border: `1px solid ${testResult.ok && !testResult.db_error ? '#5a8a5a55' : '#b94a4a55'}`,
                 fontWeight: 600, fontSize: '0.875rem',
               }}>
-                {testResult.ok ? '✓ SMS envoyé avec succès !' : `✗ Erreur : ${testResult.error}`}
+                {testResult.ok && !testResult.db_error
+                  ? '✓ SMS envoyé et loggé avec succès !'
+                  : testResult.ok && testResult.db_error
+                  ? `✓ SMS envoyé (Twilio OK) mais erreur log : ${testResult.db_error}`
+                  : `✗ Erreur : ${testResult.error}`}
               </div>
             )}
           </div>

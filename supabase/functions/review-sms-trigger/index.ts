@@ -1,7 +1,8 @@
 import { createClient } from 'npm:@supabase/supabase-js@2'
 
 const SUPABASE_URL      = Deno.env.get('SUPABASE_URL')!
-const SUPABASE_SERVICE_KEY = Deno.env.get('SERVICE_ROLE_KEY')!
+// Supabase injecte automatiquement SUPABASE_SERVICE_ROLE_KEY dans les Edge Functions
+const SUPABASE_SERVICE_KEY = Deno.env.get('SERVICE_ROLE_KEY') ?? Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!
 
 Deno.serve(async (req) => {
   if (req.method === 'OPTIONS') return new Response('ok', { headers: corsHeaders() })
@@ -30,7 +31,7 @@ Deno.serve(async (req) => {
     const smsBody = await generateSmsBody('Test', 'Villa DCB', language, googleUrl, null)
     const result  = await sendSMS(twilioSid, twilioToken, twilioFrom, phone, smsBody)
 
-    await supabase.from('sms_logs').insert({
+    const { error: dbErr } = await supabase.from('sms_logs').insert({
       hospitable_reservation_id: null,
       guest_name:    'TEST',
       guest_phone:   phone,
@@ -41,8 +42,9 @@ Deno.serve(async (req) => {
       twilio_sid:    result.sid || null,
       error_message: result.ok ? null : result.error,
     })
+    if (dbErr) console.error('sms_logs insert error (test):', JSON.stringify(dbErr))
 
-    return json({ ok: result.ok, error: result.error || null })
+    return json({ ok: result.ok, error: result.error || null, db_error: dbErr?.message || null })
   }
 
   // ─── CAMPAGNE ────────────────────────────────────────────
@@ -60,7 +62,7 @@ Deno.serve(async (req) => {
       const smsBody    = await generateSmsBody(firstName, r.property_name || 'notre villa', lang, googleUrl, r.comment || null)
       const result     = await sendSMS(twilioSid, twilioToken, twilioFrom, r.guest_phone, smsBody)
 
-      await supabase.from('sms_logs').insert({
+      const { error: dbErr } = await supabase.from('sms_logs').insert({
         hospitable_reservation_id: r.hospitable_id || null,
         guest_name:    r.guest_name || null,
         guest_phone:   r.guest_phone,
@@ -71,8 +73,9 @@ Deno.serve(async (req) => {
         twilio_sid:    result.sid || null,
         error_message: result.ok ? null : result.error,
       })
+      if (dbErr) console.error('sms_logs insert error (campaign):', JSON.stringify(dbErr))
 
-      results.push({ hospitable_id: r.hospitable_id, ok: result.ok, error: result.error || null })
+      results.push({ hospitable_id: r.hospitable_id, ok: result.ok, error: result.error || null, db_error: dbErr?.message || null })
     }
 
     return json({ results })
