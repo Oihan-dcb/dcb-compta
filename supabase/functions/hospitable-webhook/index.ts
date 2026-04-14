@@ -135,8 +135,12 @@ async function handleReservation(supabase: any, event: string, data: any): Promi
     synced_at:           new Date().toISOString(),
   }
 
-  // Ne pas \u00e9craser guest_name si null
+  // Ne pas écraser guest_name/phone/country si null (préserver les données existantes)
   if (guestName) resaRow.guest_name = guestName
+  const guestPhone   = data.guest?.phone || data.guest?.phone_number || null
+  const guestCountry = data.guest?.country || data.guest?.nationality || null
+  if (guestPhone)   resaRow.guest_phone   = guestPhone
+  if (guestCountry) resaRow.guest_country = guestCountry
 
   const { data: upserted, error } = await supabase
     .from('reservation')
@@ -307,15 +311,34 @@ async function sendReviewSMS(supabase: any, resaHospId: string, data: any, ratin
     return
   }
 
-  const guestPhone = data.guest?.phone || data.guest?.phone_number || null
-  const guestFirst = data.guest?.first_name
+  // Tenter d'abord le payload review, puis fallback sur la table reservation
+  let guestPhone   = data.guest?.phone || data.guest?.phone_number || null
+  let guestCountry = data.guest?.country || data.guest?.nationality || null
+  let guestFirst   = data.guest?.first_name
     || (typeof data.reviewer_name === 'string' ? data.reviewer_name.split(' ')[0] : null)
-    || 'cher client'
-  const country      = data.guest?.country || data.guest?.nationality || null
+    || null
   const propertyName = data.property?.name || data.listing?.name || 'notre villa'
 
+  if (!guestPhone || !guestFirst || !guestCountry) {
+    // Fallback : lire depuis reservation (stocké au moment du webhook de réservation)
+    const { data: resaRow } = await supabase
+      .from('reservation')
+      .select('guest_phone, guest_country, guest_name')
+      .eq('hospitable_id', resaHospId)
+      .maybeSingle()
+    if (resaRow) {
+      if (!guestPhone)   guestPhone   = resaRow.guest_phone   || null
+      if (!guestCountry) guestCountry = resaRow.guest_country || null
+      if (!guestFirst && resaRow.guest_name) {
+        guestFirst = resaRow.guest_name.split(' ')[0]
+      }
+    }
+  }
+
+  guestFirst = guestFirst || 'cher client'
+
   if (!guestPhone) {
-    console.log('SMS skipped: no guest phone in payload for', resaHospId)
+    console.log('SMS skipped: no guest phone for', resaHospId)
     await supabase.from('sms_logs').insert({
       hospitable_reservation_id: resaHospId,
       guest_name:    data.reviewer_name || null,
@@ -324,12 +347,12 @@ async function sendReviewSMS(supabase: any, resaHospId: string, data: any, ratin
       rating,
       sms_body:      null,
       status:        'no_phone',
-      error_message: 'No guest phone in webhook payload',
+      error_message: 'No guest phone in webhook payload or reservation table',
     })
     return
   }
 
-  const lang = detectSmsLang(country)
+  const lang = detectSmsLang(guestCountry)
   const body = buildSmsBody(guestFirst, propertyName, lang, googleUrl)
 
   let status        = 'error'
