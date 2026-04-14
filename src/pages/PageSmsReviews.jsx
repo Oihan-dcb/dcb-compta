@@ -47,52 +47,61 @@ export default function PageSmsReviews() {
   const chargerCandidats = useCallback(async () => {
     setLoadingCamp(true)
     try {
-      // 1. Avis 5 étoiles avec bien joint directement via bien_id
-      const { data: reviews } = await supabase
-        .from('reservation_review')
-        .select('hospitable_reservation_id, bien_id, reviewer_name, rating, comment, submitted_at, bien(hospitable_name)')
-        .gte('rating', 5)
-        .order('submitted_at', { ascending: false })
-        .limit(500)
-
-      if (!reviews?.length) { setCandidats([]); return }
-
-      // 2. Réservations correspondantes — join via review_id (UUID review = hospitable_reservation_id)
-      const reviewIds = reviews.map(r => r.hospitable_reservation_id).filter(Boolean)
+      // Source : reservation (review_rating + guest_phone depuis CSV Hospitable)
       const { data: resas } = await supabase
         .from('reservation')
-        .select('review_id, guest_name, guest_phone, guest_country, guest_locale')
-        .in('review_id', reviewIds)
+        .select('hospitable_id, guest_name, guest_phone, guest_country, guest_locale, review_rating, departure_date, bien_id, bien(hospitable_name)')
+        .gte('review_rating', 5)
+        .order('departure_date', { ascending: false })
+        .limit(500)
 
-      const resaMap = {}
-      ;(resas || []).forEach(r => { if (r.review_id) resaMap[r.review_id] = r })
+      if (!resas?.length) { setCandidats([]); return }
 
-      // 3. SMS déjà envoyés
-      const { data: sentLogs } = await supabase
-        .from('sms_logs')
-        .select('hospitable_reservation_id')
-        .eq('status', 'sent')
-        .in('hospitable_reservation_id', hospIds)
+      // Dédup par guest_phone — SMS déjà envoyés
+      const phones = [...new Set(resas.map(r => r.guest_phone).filter(Boolean))]
+      const { data: sentLogs } = phones.length
+        ? await supabase.from('sms_logs').select('guest_phone').eq('status', 'sent').in('guest_phone', phones)
+        : { data: [] }
+      const sentPhones = new Set((sentLogs || []).map(l => l.guest_phone))
 
-      const sentIds = new Set((sentLogs || []).map(l => l.hospitable_reservation_id))
+      // Commentaires depuis reservation_review par bien_id + proximité date départ
+      const bienIds = [...new Set(resas.map(r => r.bien_id).filter(Boolean))]
+      const { data: revRows } = await supabase
+        .from('reservation_review')
+        .select('bien_id, comment, submitted_at')
+        .in('bien_id', bienIds)
+        .gte('rating', 5)
+        .not('comment', 'is', null)
 
-      // 4. Construire la liste des candidats (tous les 5⭐, même sans téléphone)
-      const liste = reviews
-        .filter(r => !sentIds.has(r.hospitable_reservation_id))
-        .map(r => {
-          const resa = resaMap[r.hospitable_reservation_id]
-          return {
-            hospitable_id:  r.hospitable_reservation_id,
-            guest_name:     resa?.guest_name || r.reviewer_name || '—',
-            guest_phone:    resa?.guest_phone || null,
-            guest_country:  resa?.guest_country || null,
-            guest_locale:   resa?.guest_locale  || null,
-            property_name:  r.bien?.hospitable_name || resa?.bien?.hospitable_name || '—',
-            rating:         r.rating,
-            comment:        r.comment || null,
-            submitted_at:   r.submitted_at,
-          }
-        })
+      const commentsByBien = {}
+      ;(revRows || []).forEach(r => {
+        if (!commentsByBien[r.bien_id]) commentsByBien[r.bien_id] = []
+        commentsByBien[r.bien_id].push(r)
+      })
+
+      const liste = resas.map(r => {
+        const depTs = r.departure_date ? new Date(r.departure_date).getTime() : null
+        let comment = null
+        if (depTs && commentsByBien[r.bien_id]) {
+          const match = commentsByBien[r.bien_id]
+            .map(rev => ({ ...rev, diff: new Date(rev.submitted_at).getTime() - depTs }))
+            .filter(rev => rev.diff >= 0 && rev.diff < 30 * 86400_000)
+            .sort((a, b) => a.diff - b.diff)[0]
+          comment = match?.comment || null
+        }
+        return {
+          hospitable_id: r.hospitable_id,
+          guest_name:    r.guest_name || '—',
+          guest_phone:   r.guest_phone || null,
+          guest_country: r.guest_country || null,
+          guest_locale:  r.guest_locale  || null,
+          property_name: r.bien?.hospitable_name || '—',
+          rating:        r.review_rating,
+          comment,
+          submitted_at:  r.departure_date,
+          already_sent:  sentPhones.has(r.guest_phone),
+        }
+      })
 
       setCandidats(liste)
       setSelected(new Set())
@@ -326,9 +335,9 @@ export default function PageSmsReviews() {
         <div>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem' }}>
             <div>
-              <span style={{ fontWeight: 600 }}>{candidats.length} avis 5⭐ </span>
+              <span style={{ fontWeight: 600 }}>{candidats.filter(c => !c.already_sent).length} avis 5⭐ </span>
               <span style={{ color: '#888', fontSize: '0.875rem' }}>
-                non encore contactés ({candidats.filter(c => c.guest_phone).length} avec téléphone)
+                non encore contactés ({candidats.filter(c => c.guest_phone && !c.already_sent).length} avec téléphone)
               </span>
             </div>
             <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
@@ -381,26 +390,26 @@ export default function PageSmsReviews() {
                   <tr><td colSpan={6} style={{ padding: '2rem', textAlign: 'center', color: '#999' }}>Aucun candidat — tous les avis 5⭐ ont déjà été contactés ou le téléphone est manquant.</td></tr>
                 )}
                 {candidats.map((c, i) => {
-                  const hasPhone = !!c.guest_phone
+                  const selectable = !!c.guest_phone && !c.already_sent
                   const isSelected = selected.has(c.hospitable_id)
                   return (
                     <tr key={c.hospitable_id}
-                      onClick={() => hasPhone && toggleOne(c.hospitable_id)}
+                      onClick={() => selectable && toggleOne(c.hospitable_id)}
                       style={{
                         borderBottom: '1px solid var(--border)',
-                        cursor: hasPhone ? 'pointer' : 'default',
-                        opacity: hasPhone ? 1 : 0.45,
+                        cursor: selectable ? 'pointer' : 'default',
+                        opacity: selectable ? 1 : 0.4,
                         background: isSelected ? 'rgba(204,153,51,0.08)' : i % 2 === 0 ? 'transparent' : '#faf8f4',
                       }}>
                       <td style={{ padding: '0.6rem 1rem' }}>
-                        <input type="checkbox" checked={isSelected} disabled={!hasPhone}
-                          onChange={() => hasPhone && toggleOne(c.hospitable_id)}
-                          style={{ cursor: hasPhone ? 'pointer' : 'not-allowed' }} />
+                        <input type="checkbox" checked={isSelected} disabled={!selectable}
+                          onChange={() => selectable && toggleOne(c.hospitable_id)}
+                          style={{ cursor: selectable ? 'pointer' : 'not-allowed' }} />
                       </td>
                       <td style={{ padding: '0.6rem 1rem', fontWeight: 600 }}>{c.guest_name}</td>
                       <td style={{ padding: '0.6rem 1rem' }}>{c.property_name}</td>
-                      <td style={{ padding: '0.6rem 1rem', fontFamily: 'monospace', color: hasPhone ? 'inherit' : '#aaa' }}>
-                        {c.guest_phone || 'pas de tél.'}
+                      <td style={{ padding: '0.6rem 1rem', fontFamily: 'monospace', color: c.guest_phone ? 'inherit' : '#aaa' }}>
+                        {c.already_sent ? '✓ envoyé' : (c.guest_phone || 'pas de tél.')}
                       </td>
                       <td style={{ padding: '0.6rem 1rem' }}>{c.guest_country || '—'}</td>
                       <td style={{ padding: '0.6rem 1rem', color: '#888' }}>
