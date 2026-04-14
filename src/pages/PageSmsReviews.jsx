@@ -76,20 +76,17 @@ export default function PageSmsReviews() {
 
       const sentIds = new Set((sentLogs || []).map(l => l.hospitable_reservation_id))
 
-      // 4. Construire la liste des candidats
+      // 4. Construire la liste des candidats (tous les 5⭐, même sans téléphone)
       const liste = reviews
-        .filter(r => {
-          const resa = resaMap[r.hospitable_reservation_id]
-          return resa?.guest_phone && !sentIds.has(r.hospitable_reservation_id)
-        })
+        .filter(r => !sentIds.has(r.hospitable_reservation_id))
         .map(r => {
           const resa = resaMap[r.hospitable_reservation_id]
           return {
             hospitable_id:  r.hospitable_reservation_id,
-            guest_name:     resa.guest_name || r.reviewer_name || '—',
-            guest_phone:    resa.guest_phone,
-            guest_country:  resa.guest_country,
-            property_name:  resa.bien?.hospitable_name || '—',
+            guest_name:     resa?.guest_name || r.reviewer_name || '—',
+            guest_phone:    resa?.guest_phone || null,
+            guest_country:  resa?.guest_country || null,
+            property_name:  resa?.bien?.hospitable_name || '—',
             rating:         r.rating,
             comment:        r.comment || null,
             submitted_at:   r.submitted_at,
@@ -329,7 +326,9 @@ export default function PageSmsReviews() {
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem' }}>
             <div>
               <span style={{ fontWeight: 600 }}>{candidats.length} avis 5⭐ </span>
-              <span style={{ color: '#888', fontSize: '0.875rem' }}>non encore contactés (avec téléphone)</span>
+              <span style={{ color: '#888', fontSize: '0.875rem' }}>
+                non encore contactés ({candidats.filter(c => c.guest_phone).length} avec téléphone)
+              </span>
             </div>
             <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
               {selected.size > 0 && (
@@ -380,21 +379,35 @@ export default function PageSmsReviews() {
                 {!loadingCamp && candidats.length === 0 && (
                   <tr><td colSpan={6} style={{ padding: '2rem', textAlign: 'center', color: '#999' }}>Aucun candidat — tous les avis 5⭐ ont déjà été contactés ou le téléphone est manquant.</td></tr>
                 )}
-                {candidats.map((c, i) => (
-                  <tr key={c.hospitable_id} onClick={() => toggleOne(c.hospitable_id)}
-                    style={{ borderBottom: '1px solid var(--border)', cursor: 'pointer', background: selected.has(c.hospitable_id) ? 'rgba(204,153,51,0.08)' : i % 2 === 0 ? 'transparent' : '#faf8f4' }}>
-                    <td style={{ padding: '0.6rem 1rem' }}>
-                      <input type="checkbox" checked={selected.has(c.hospitable_id)} onChange={() => toggleOne(c.hospitable_id)} style={{ cursor: 'pointer' }} />
-                    </td>
-                    <td style={{ padding: '0.6rem 1rem', fontWeight: 600 }}>{c.guest_name}</td>
-                    <td style={{ padding: '0.6rem 1rem' }}>{c.property_name}</td>
-                    <td style={{ padding: '0.6rem 1rem', fontFamily: 'monospace' }}>{c.guest_phone}</td>
-                    <td style={{ padding: '0.6rem 1rem' }}>{c.guest_country || '—'}</td>
-                    <td style={{ padding: '0.6rem 1rem', color: '#888' }}>
-                      {c.submitted_at ? new Date(c.submitted_at).toLocaleDateString('fr-FR') : '—'}
-                    </td>
-                  </tr>
-                ))}
+                {candidats.map((c, i) => {
+                  const hasPhone = !!c.guest_phone
+                  const isSelected = selected.has(c.hospitable_id)
+                  return (
+                    <tr key={c.hospitable_id}
+                      onClick={() => hasPhone && toggleOne(c.hospitable_id)}
+                      style={{
+                        borderBottom: '1px solid var(--border)',
+                        cursor: hasPhone ? 'pointer' : 'default',
+                        opacity: hasPhone ? 1 : 0.45,
+                        background: isSelected ? 'rgba(204,153,51,0.08)' : i % 2 === 0 ? 'transparent' : '#faf8f4',
+                      }}>
+                      <td style={{ padding: '0.6rem 1rem' }}>
+                        <input type="checkbox" checked={isSelected} disabled={!hasPhone}
+                          onChange={() => hasPhone && toggleOne(c.hospitable_id)}
+                          style={{ cursor: hasPhone ? 'pointer' : 'not-allowed' }} />
+                      </td>
+                      <td style={{ padding: '0.6rem 1rem', fontWeight: 600 }}>{c.guest_name}</td>
+                      <td style={{ padding: '0.6rem 1rem' }}>{c.property_name}</td>
+                      <td style={{ padding: '0.6rem 1rem', fontFamily: 'monospace', color: hasPhone ? 'inherit' : '#aaa' }}>
+                        {c.guest_phone || 'pas de tél.'}
+                      </td>
+                      <td style={{ padding: '0.6rem 1rem' }}>{c.guest_country || '—'}</td>
+                      <td style={{ padding: '0.6rem 1rem', color: '#888' }}>
+                        {c.submitted_at ? new Date(c.submitted_at).toLocaleDateString('fr-FR') : '—'}
+                      </td>
+                    </tr>
+                  )
+                })}
               </tbody>
             </table>
           </div>
