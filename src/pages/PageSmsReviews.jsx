@@ -47,21 +47,21 @@ export default function PageSmsReviews() {
   const chargerCandidats = useCallback(async () => {
     setLoadingCamp(true)
     try {
-      // 1. Avis 5 étoiles
+      // 1. Avis 5 étoiles avec bien joint directement via bien_id
       const { data: reviews } = await supabase
         .from('reservation_review')
-        .select('hospitable_reservation_id, reviewer_name, rating, comment, submitted_at')
+        .select('hospitable_reservation_id, bien_id, reviewer_name, rating, comment, submitted_at, bien(hospitable_name)')
         .gte('rating', 5)
         .order('submitted_at', { ascending: false })
         .limit(500)
 
       if (!reviews?.length) { setCandidats([]); return }
 
-      // 2. Réservations correspondantes (phone + bien)
+      // 2. Réservations correspondantes (phone) — match par hospitable_id
       const hospIds = reviews.map(r => r.hospitable_reservation_id).filter(Boolean)
       const { data: resas } = await supabase
         .from('reservation')
-        .select('hospitable_id, guest_name, guest_phone, guest_country, bien(hospitable_name)')
+        .select('hospitable_id, guest_name, guest_phone, guest_country')
         .in('hospitable_id', hospIds)
 
       const resaMap = {}
@@ -86,7 +86,7 @@ export default function PageSmsReviews() {
             guest_name:     resa?.guest_name || r.reviewer_name || '—',
             guest_phone:    resa?.guest_phone || null,
             guest_country:  resa?.guest_country || null,
-            property_name:  resa?.bien?.hospitable_name || '—',
+            property_name:  r.bien?.hospitable_name || resa?.bien?.hospitable_name || '—',
             rating:         r.rating,
             comment:        r.comment || null,
             submitted_at:   r.submitted_at,

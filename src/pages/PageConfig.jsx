@@ -199,6 +199,8 @@ export default function PageConfig() {
   const [syncProprioResult, setSyncProprioResult] = useState(null)
   const [syncingReviews, setSyncingReviews] = useState(false)
   const [reviewsResult, setReviewsResult] = useState(null)
+  const [syncingPhones, setSyncingPhones] = useState(false)
+  const [phonesResult, setPhonesResult] = useState(null)
   const [rematchRunning, setRematchRunning] = useState(false)
   const [rematchDone, setRematchDone] = useState(false)
   const [rematchSteps, setRematchSteps] = useState([])
@@ -237,6 +239,28 @@ export default function PageConfig() {
       setReviewsResult({ ok: false, error: err.message })
     } finally {
       setSyncingReviews(false)
+    }
+  }
+
+  async function syncPhones() {
+    setSyncingPhones(true)
+    setPhonesResult(null)
+    try {
+      const res = await fetch(`${supabaseUrl}/functions/v1/sync-reservation-phones`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${import.meta.env.VITE_SUPABASE_ANON_KEY}`,
+        },
+        body: JSON.stringify({}),
+      })
+      const data = await res.json()
+      if (!res.ok) throw new Error(data.error || `HTTP ${res.status}`)
+      setPhonesResult({ ok: true, ...data })
+    } catch (err) {
+      setPhonesResult({ ok: false, error: err.message })
+    } finally {
+      setSyncingPhones(false)
     }
   }
 
@@ -398,6 +422,36 @@ export default function PageConfig() {
               </div>
             ) : (
               <div className="alert alert-error">✗ {reviewsResult.error}</div>
+            )}
+          </div>
+        )}
+      </div>
+
+      {/* Sync téléphones réservations */}
+      <div className="card" style={{ marginBottom: 24 }}>
+        <div className="card-header" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+          <div>
+            <h3 style={{ margin: 0 }}>Sync téléphones voyageurs</h3>
+            <p style={{ margin: '4px 0 0', color: 'var(--text-muted)', fontSize: '0.9em' }}>
+              Remplit guest_phone pour les réservations existantes (500 par lot) — nécessaire pour les campagnes SMS
+            </p>
+          </div>
+          <button
+            className="btn btn-primary"
+            onClick={syncPhones}
+            disabled={syncingPhones}
+            style={{ minWidth: 180 }}>
+            {syncingPhones ? '⏳ Sync…' : '📞 Sync téléphones'}
+          </button>
+        </div>
+        {phonesResult && (
+          <div style={{ padding: '12px 16px' }}>
+            {phonesResult.ok ? (
+              <div className="alert alert-success">
+                ✓ {phonesResult.updated} téléphones récupérés · {phonesResult.notFound} sans tél. · {phonesResult.errors} erreurs (lot de {phonesResult.total})
+              </div>
+            ) : (
+              <div className="alert alert-error">✗ {phonesResult.error}</div>
             )}
           </div>
         )}
