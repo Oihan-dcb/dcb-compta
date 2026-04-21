@@ -308,12 +308,19 @@ async function genererFactureGroupe(proprio, biens, mois, ctx) {
     const autoBien = ventilation
       .filter(function(l) { return l.bien_id === bien.id && l.code === 'AUTO' })
       .reduce(function(s, l) { return s + (l.montant_reel !== null ? l.montant_reel : (l.montant_ht || 0)) }, 0)
+    // MEN de ce bien : AUTO est deja deduit du MEN pour donner FMEN
+    // La part AUTO couverte par MEN ne touche pas le LOY du proprio (CAS DCB)
+    const menBien = ventilation
+      .filter(function(l) { return l.bien_id === bien.id && l.code === 'MEN' })
+      .reduce(function(s, l) { return s + l.montant_ht }, 0)
+    const autoCouvertMen = Math.min(autoBien, menBien)
+    const autoNetMen     = Math.max(0, autoBien - autoCouvertMen)
 
-    // LOY disponible après déduction de tous les frais de ce bien
     const loyBienDisponible = loyDispoPrealable
     // Absorption et surplus bien par bien
-    const autoAbsorbableBien = Math.min(autoBien, loyBienDisponible)
-    const autoSurplusBien    = Math.max(0, autoBien - autoAbsorbableBien)
+    // Seul le surplus AUTO au-dela du MEN absorbe du LOY
+    const autoAbsorbableBien = Math.min(autoNetMen, loyBienDisponible)
+    const autoSurplusBien    = Math.max(0, autoNetMen - autoAbsorbableBien)
 
     // debours_proprio : absorbe le LOY résiduel après AUTO
     const deboursPropBien = (prestationsDeboursProprio || [])
@@ -715,6 +722,12 @@ async function genererFactureDebours(proprio, biens, mois, ctx) {
     const autoBien = bienVentil
       .filter(function(l) { return l.code === 'AUTO' })
       .reduce(function(s, l) { return s + (l.montant_reel !== null ? l.montant_reel : (l.montant_ht || 0)) }, 0)
+    // MEN de ce bien : AUTO couvert par MEN ne genere pas de DEB_AE (CAS DCB)
+    const menBienDeb = bienVentil
+      .filter(function(l) { return l.code === 'MEN' })
+      .reduce(function(s, l) { return s + l.montant_ht }, 0)
+    const autoNetMenDeb = Math.max(0, autoBien - menBienDeb)
+
     const osAutoHT = osAutoByBien.get(bien.id) || 0
 
     if (autoBien === 0 && osAutoHT === 0) continue
@@ -740,8 +753,8 @@ async function genererFactureDebours(proprio, biens, mois, ctx) {
         .reduce(function(s, p) { return s + (p.montant || 0) }, 0)
       const haownerBienTTC = haownerBienHT + Math.round(haownerBienHT * 0.20)
       const loyBienDisponible = Math.max(0, loyBien - prestBien - haownerBienTTC)
-      const autoAbsorbable    = Math.min(autoBien, loyBienDisponible)
-      montantAFacturer        = Math.max(0, autoBien - autoAbsorbable)
+      const autoAbsorbable    = Math.min(autoNetMenDeb, loyBienDisponible)
+      montantAFacturer        = Math.max(0, autoNetMenDeb - autoAbsorbable)
 
       // debours_proprio : absorbe le LOY résiduel après AUTO
       debPropItems = bienPrest.filter(function(p){ return p.type_imputation === 'debours_proprio' })
