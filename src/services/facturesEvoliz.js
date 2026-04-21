@@ -670,7 +670,7 @@ async function genererFactureDebours(proprio, biens, mois, ctx) {
 
   // Données lues depuis le contexte préchargé (pas de requêtes Supabase ici)
   const ventilAuto = ctx.ventilationGlobale.filter(
-    v => bienIds.includes(v.bien_id) && (v.code === 'AUTO' || v.code === 'LOY')
+    v => bienIds.includes(v.bien_id) && (v.code === 'AUTO' || v.code === 'LOY' || v.code === 'MEN')
   )
 
   const osResasDebours = ctx.ownerStayGlobal.filter(r => bienIds.includes(r.bien_id))
