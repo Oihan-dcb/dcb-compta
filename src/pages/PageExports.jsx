@@ -2,6 +2,7 @@ import { useState, useEffect, useMemo } from 'react'
 import MoisSelector from '../components/MoisSelector'
 import { useMoisPersisted } from '../hooks/useMoisPersisted'
 import { supabase } from '../lib/supabase'
+import { AGENCE } from '../lib/agence'
 import { exportRapprochementBancaire } from '../services/exportRapprochementBancaire'
 import { exportAutoDebours, exportAutoDeboursCombined } from '../services/exportAutoDebours'
 import { exportFacturesEvoliz } from '../services/exportFacturesEvoliz'
@@ -267,6 +268,23 @@ export default function PageExports() {
     }
   }
 
+  async function genererBilanLLD() {
+    setLoading(prev => ({ ...prev, bilan_lld: true }))
+    setError(null)
+    try {
+      const { data, error } = await supabase.functions.invoke('bilan-lld', {
+        body: { mois, agence: AGENCE, envoyer_email: false },
+      })
+      if (error) throw error
+      if (data?.pdf_url) window.open(data.pdf_url, '_blank')
+      else throw new Error('URL PDF non retournée')
+    } catch (err) {
+      setError(err.message)
+    } finally {
+      setLoading(prev => ({ ...prev, bilan_lld: false }))
+    }
+  }
+
   async function envoyerEmail() {
     if (!emailDest.trim()) { setError('Email destinataire requis'); return }
     const exportsSelectionnes = Object.entries(emailExports)
@@ -370,6 +388,13 @@ export default function PageExports() {
             loadingPreview={loading.compta_preview}
             onClick={telechargerCompta}
             onPreview={consulterCompta}
+          />
+          <ExportCard
+            titre="Bilan étudiants (LLD)"
+            description="Loyers, virements propriétaires et soldes du mois — PDF généré"
+            loading={loading.bilan_lld}
+            onClick={genererBilanLLD}
+            format="PDF"
           />
         </div>
 
