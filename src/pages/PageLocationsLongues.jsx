@@ -862,7 +862,7 @@ export default function PageLocationsLongues() {
               <option value="">— Sélectionner un étudiant —</option>
               {etudiants.map(e => (
                 <option key={e.id} value={e.id}>
-                  {e.nom}{e.prenom ? ' ' + e.prenom : ''} {e.statut !== 'actif' ? `(${e.statut})` : ''}
+                  {e.bien?.code ? `[${e.bien.code}] ` : ''}{e.nom}{e.prenom ? ' ' + e.prenom : ''}{e.statut !== 'actif' ? ` (${e.statut})` : ''}
                 </option>
               ))}
             </select>
