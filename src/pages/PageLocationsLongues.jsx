@@ -421,12 +421,6 @@ export default function PageLocationsLongues() {
                                 ✓ Reçu
                               </button>
                             )}
-                            {l.statut === 'attendu' && (
-                              <button className="btn btn-secondary" style={{ fontSize: 12, padding: '3px 8px', color: '#DC2626' }}
-                                onClick={() => changerStatutLoyer(l.id, 'en_retard')}>
-                                ⚠ Retard
-                              </button>
-                            )}
                             {l.statut === 'recu' && !l.quittance_envoyee_at && (
                               <button className="btn btn-secondary" style={{ fontSize: 12, padding: '3px 8px', color: '#059669' }}
                                 onClick={() => envoyerQuittance(l.id)}
