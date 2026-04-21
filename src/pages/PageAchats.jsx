@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react'
+import React, { useState, useEffect, useCallback } from 'react'
 import { supabase } from '../lib/supabase'
 import { AGENCE } from '../lib/agence'
 
@@ -219,7 +219,8 @@ export default function PageAchats() {
       categorie:             form.categorie || null,
       statut:                form.statut,
       notes:                 form.notes || null,
-      mouvement_bancaire_id: scanResult?.mouvementSuggere?.id || null,
+      mouvement_bancaire_id: scanResult?.mouvementSuggere?.id
+        ?? (modal !== 'new' ? (modal.mouvement_bancaire_id || null) : null),
       updated_at:            new Date().toISOString(),
     }
     if (modal === 'new') {
@@ -485,8 +486,8 @@ Si anomalie (montant très différent, catégorie suspecte) → ok:false, messag
               const sc = STATUT_COLORS[f.statut] || STATUT_COLORS.a_valider
               const analyse = analyses[f.id]
               return (
-                <>
-                <tr key={f.id}>
+                <React.Fragment key={f.id}>
+                <tr key={f.id + '-row'}>
                   <td style={{ fontWeight: 600 }}>{f.fournisseur}</td>
                   <td>
                     {f.categorie ? (
@@ -535,7 +536,7 @@ Si anomalie (montant très différent, catégorie suspecte) → ok:false, messag
                     </td>
                   </tr>
                 )}
-                </>
+                </React.Fragment>
               )
             })}
           </tbody>
