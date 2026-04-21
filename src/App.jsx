@@ -39,6 +39,7 @@ import PageSmsReviews from './pages/PageSmsReviews'
 import PageLocationsLongues from './pages/PageLocationsLongues'
 import PageAchats from './pages/PageAchats'
 import PageAgence from './pages/PageAgence'
+import PageTaxeSejour from './pages/PageTaxeSejour'
 import BugReportButton from './components/BugReportButton'
 import './App.css'
 
@@ -46,7 +47,7 @@ function ConfigDropdown() {
   const [open, setOpen] = useState(false)
   const ref = useRef(null)
   const location = useLocation()
-  const configPaths = ['/import', '/journal', '/config', '/bugs', '/exports', '/agence']
+  const configPaths = ['/import', '/journal', '/config', '/bugs', '/exports', '/agence', '/taxe-sejour']
   const isActive = configPaths.some(p => location.pathname === p)
 
   useEffect(() => {
@@ -68,6 +69,7 @@ function ConfigDropdown() {
           onMouseLeave={() => setOpen(false)}>
           {[
             { to: '/agence', label: 'Agence' },
+            { to: '/taxe-sejour', label: 'Taxe de séjour' },
             { to: '/import', label: 'Import CSV' },
             { to: '/journal', label: 'Journal' },
             { to: '/bugs', label: '🐛 Bugs' },
@@ -87,6 +89,8 @@ function ConfigDropdown() {
 
 export default function App() {
   const [nbEnAttente, setNbEnAttente] = useState(0)
+  const jourDuMois = new Date().getDate()
+  const showNavetteBadge = jourDuMois >= 25
 
   useEffect(() => {
     const mois = new Date().toISOString().slice(0, 7)
@@ -136,7 +140,12 @@ export default function App() {
               )}
             </NavLink>
             <NavLink to="/rapports" className={({isActive}) => isActive ? 'nav-link active' : 'nav-link'}>Rapports</NavLink>
-            <NavLink to="/auto-entrepreneurs" className={({isActive}) => isActive ? 'nav-link active' : 'nav-link'}>Staff</NavLink>
+            <NavLink to="/auto-entrepreneurs" className={({isActive}) => isActive ? 'nav-link active' : 'nav-link'} style={{ position: 'relative' }}>
+              Staff
+              {showNavetteBadge && (
+                <span style={{ position: 'absolute', top: -6, right: -8, background: '#ef4444', color: '#fff', borderRadius: '50%', width: 8, height: 8, display: 'block' }} />
+              )}
+            </NavLink>
             <NavLink to="/factures" className={({isActive}) => isActive ? 'nav-link active' : 'nav-link'}>Facturation</NavLink>
             <NavLink to="/comptabilite" className={({isActive}) => isActive ? 'nav-link active' : 'nav-link'}>Comptabilité</NavLink>
             <NavLink to="/exports" className={({isActive}) => isActive ? 'nav-link active' : 'nav-link'}>Exports</NavLink>
@@ -169,6 +178,7 @@ export default function App() {
             <Route path="/locations-longues" element={<PageLocationsLongues />} />
             <Route path="/achats" element={<PageAchats />} />
             <Route path="/agence" element={<PageAgence />} />
+            <Route path="/taxe-sejour" element={<PageTaxeSejour />} />
           </Routes>
         </main>
       </div>
