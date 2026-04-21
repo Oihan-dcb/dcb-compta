@@ -57,10 +57,12 @@ function genererHtmlQuittance(data: {
   agence_adresse2?: string,
   agence_siret?: string,
   charges_nature?: string,
+  proprietaire_nom?: string,
 }): string {
   const { etudiant: e, loyer: l, mois, agence_label,
           agence_adresse1, agence_adresse2, agence_siret,
-          charges_nature = 'forfaitaires' } = data
+          charges_nature = 'forfaitaires',
+          proprietaire_nom } = data
   const total = (e.loyer_nu || 0) + (e.supplement_loyer || 0) +
                 (e.charges_eau || 0) + (e.charges_copro || 0) + (e.charges_internet || 0)
   const dateReception = l.date_reception ? formatDate(l.date_reception) : formatDate(new Date().toISOString().slice(0, 10))
@@ -115,12 +117,15 @@ function genererHtmlQuittance(data: {
 
 <div class="parties">
   <div class="bloc">
-    <div class="bloc-label">Bailleur (mandataire)</div>
+    <div class="bloc-label">Bailleur</div>
     <div class="bloc-value">
-      ${agence_label}<br>
-      ${agence_adresse1 ? `<span style="font-weight:400;color:#555">${agence_adresse1}</span><br>` : ''}
-      ${agence_adresse2 ? `<span style="font-weight:400;color:#555">${agence_adresse2}</span>` : ''}
-      ${agence_siret ? `<br><span style="font-weight:400;color:#555;font-size:11px">SIRET ${agence_siret}</span>` : ''}
+      ${proprietaire_nom || '— propriétaire non renseigné —'}<br>
+      <span style="font-weight:400;color:#555;font-size:11px">
+        Représenté par ${agence_label} (mandataire)<br>
+        ${agence_adresse1 ? `${agence_adresse1}<br>` : ''}
+        ${agence_adresse2 ? `${agence_adresse2}<br>` : ''}
+        ${agence_siret ? `SIRET ${agence_siret}` : ''}
+      </span>
     </div>
   </div>
   <div class="bloc">
@@ -158,8 +163,8 @@ function genererHtmlQuittance(data: {
 </div>
 
 <div class="mention">
-  Je soussigné(e), représentant(e) de ${agence_label}, mandataire du bailleur,<br>
-  déclare avoir reçu de ${locataire} la somme de <strong>${formatEuros(l.montant_recu || total)}</strong><br>
+  Je soussigné(e), représentant(e) de ${agence_label}, mandataire de ${proprietaire_nom || 'le bailleur'},<br>
+  déclare avoir reçu de <strong>${locataire}</strong> la somme de <strong>${formatEuros(l.montant_recu || total)}</strong><br>
   au titre du loyer (${formatEuros(e.loyer_nu)}) et des charges ${charges_nature} (${formatEuros(total - (e.loyer_nu || 0))})<br>
   pour la période indiquée ci-dessus, conformément à l'article 21 de la loi n° 89-462 du 6 juillet 1989.<br><br>
   <strong>Cette quittance annule tous les reçus qui auraient pu être établis précédemment en règlement du loyer du même mois.</strong>
@@ -197,7 +202,7 @@ serve(async (req) => {
 
     const supabase = createClient(SUPABASE_URL, SERVICE_KEY)
 
-    // ── 1. Fetch loyer_suivi + étudiant ──────────────────────────────────
+    // ── 1. Fetch loyer_suivi + étudiant + propriétaire ───────────────────
     const { data: loyer, error: errLoyer } = await supabase
       .from('loyer_suivi')
       .select(`
@@ -205,7 +210,8 @@ serve(async (req) => {
         etudiant (
           id, agence, nom, prenom, email, adresse_complete,
           loyer_nu, supplement_loyer, charges_eau, charges_copro, charges_internet,
-          honoraires_dcb
+          honoraires_dcb, proprietaire_id,
+          proprietaire ( nom, prenom )
         )
       `)
       .eq('id', loyer_suivi_id)
@@ -242,6 +248,11 @@ serve(async (req) => {
     const agence_label = agenceData?.label || 'Destination Côte Basque'
 
     // ── 3. Générer HTML ──────────────────────────────────────────────────
+    const proprio = etudiant.proprietaire
+    const proprietaire_nom = proprio
+      ? `${proprio.prenom ? proprio.prenom + ' ' : ''}${proprio.nom}`.trim()
+      : undefined
+
     const html = genererHtmlQuittance({
       etudiant,
       loyer,
@@ -251,6 +262,7 @@ serve(async (req) => {
       agence_adresse2:  agenceData?.adresse_ligne2 || undefined,
       agence_siret:     agenceData?.siret || undefined,
       charges_nature:   agenceData?.charges_nature || 'forfaitaires',
+      proprietaire_nom,
     })
 
     // ── 4. Appel Vercel generate-pdf ─────────────────────────────────────
