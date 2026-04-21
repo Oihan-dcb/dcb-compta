@@ -34,6 +34,9 @@ export default function PageAchats() {
   const [fournisseurs, setFournisseurs] = useState([]) // suggestions autocomplete
   const [detections, setDetections]   = useState([])  // fournisseurs récurrents × mouvements
   const [analyses, setAnalyses]       = useState({})  // id → { loading, ok, message }
+  const [scanning, setScanning]       = useState(false)
+  const [scanResult, setScanResult]   = useState(null) // résultat du scan + mouvement suggéré
+  const [dragOver, setDragOver]       = useState(false)
 
   const charger = useCallback(async () => {
     setLoading(true)
@@ -56,6 +59,85 @@ export default function PageAchats() {
       .order('nom')
     setFournisseurs(data || [])
   }, [])
+
+  const scannerFichier = async (file) => {
+    setScanning(true)
+    setScanResult(null)
+    try {
+      // Convertir en base64
+      const base64 = await new Promise((resolve, reject) => {
+        const reader = new FileReader()
+        reader.onload = () => resolve(reader.result.split(',')[1])
+        reader.onerror = reject
+        reader.readAsDataURL(file)
+      })
+
+      const { data: { session } } = await supabase.auth.getSession()
+      const token = session?.access_token || import.meta.env.VITE_SUPABASE_ANON_KEY
+
+      // Appel edge function parse-invoice
+      const res = await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/parse-invoice`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+        body: JSON.stringify({ file_base64: base64, media_type: file.type }),
+      })
+      const parsed = await res.json()
+      if (!parsed.ok) { setScanResult({ error: parsed.error || parsed.raw }); setScanning(false); return }
+
+      // Chercher le mouvement bancaire correspondant
+      const moisFacture = parsed.date_facture
+        ? parsed.date_facture.slice(0, 7)
+        : moisFiltre
+
+      let mouvementSuggere = null
+      if (parsed.fournisseur || parsed.montant_ttc) {
+        const { data: mouvements } = await supabase
+          .from('mouvement_bancaire')
+          .select('id, libelle, debit, date_operation')
+          .eq('agence', AGENCE)
+          .eq('mois_releve', moisFacture)
+          .gt('debit', 0)
+
+        if (mouvements?.length && parsed.fournisseur) {
+          const pattern = parsed.fournisseur.toUpperCase().split(' ')[0] // premier mot
+          const montant = parsed.montant_ttc ? parseFloat(parsed.montant_ttc) : null
+          mouvementSuggere = mouvements.find(m => {
+            const libelleOk = (m.libelle || '').toUpperCase().includes(pattern)
+            const montantOk = !montant || Math.abs(Number(m.debit) - montant) < montant * 0.05
+            return libelleOk && montantOk
+          }) || mouvements.find(m => (m.libelle || '').toUpperCase().includes(pattern)) || null
+        }
+      }
+
+      setScanResult({ ...parsed, mouvementSuggere, fichier: file })
+
+      // Pré-remplir le modal
+      const moisForm = parsed.date_facture ? parsed.date_facture.slice(0, 7) : moisFiltre
+      setForm(prev => ({
+        ...prev,
+        mois:          moisForm,
+        fournisseur:   parsed.fournisseur || prev.fournisseur,
+        montant_ttc:   parsed.montant_ttc ?? prev.montant_ttc,
+        montant_ht:    parsed.montant_ht ?? prev.montant_ht,
+        type_paiement: parsed.type_paiement || prev.type_paiement,
+        notes:         parsed.numero_facture ? `Facture ${parsed.numero_facture}` : prev.notes,
+      }))
+      setModal('new')
+    } catch (e) {
+      setScanResult({ error: e.message })
+    }
+    setScanning(false)
+  }
+
+  const onDrop = (e) => {
+    e.preventDefault()
+    setDragOver(false)
+    const file = e.dataTransfer?.files?.[0] || e.target?.files?.[0]
+    if (!file) return
+    const ok = ['application/pdf', 'image/jpeg', 'image/png', 'image/webp'].includes(file.type)
+    if (!ok) { alert('Format accepté : PDF, JPG, PNG'); return }
+    scannerFichier(file)
+  }
 
   const chargerDetections = useCallback(async () => {
     // Mouvements débiteurs du mois
@@ -122,22 +204,23 @@ export default function PageAchats() {
     }
   }
 
-  const fermer = () => { setModal(null); setForm(MODAL_VIDE) }
+  const fermer = () => { setModal(null); setForm(MODAL_VIDE); setScanResult(null) }
 
   const sauvegarder = async () => {
     if (!form.fournisseur || !form.montant_ttc) return
     setSaving(true)
     const payload = {
-      agence:        AGENCE,
-      mois:          form.mois,
-      fournisseur:   form.fournisseur.trim(),
-      montant_ttc:   parseFloat(form.montant_ttc),
-      montant_ht:    form.montant_ht ? parseFloat(form.montant_ht) : null,
-      type_paiement: form.type_paiement,
-      categorie:     form.categorie || null,
-      statut:        form.statut,
-      notes:         form.notes || null,
-      updated_at:    new Date().toISOString(),
+      agence:                AGENCE,
+      mois:                  form.mois,
+      fournisseur:           form.fournisseur.trim(),
+      montant_ttc:           parseFloat(form.montant_ttc),
+      montant_ht:            form.montant_ht ? parseFloat(form.montant_ht) : null,
+      type_paiement:         form.type_paiement,
+      categorie:             form.categorie || null,
+      statut:                form.statut,
+      notes:                 form.notes || null,
+      mouvement_bancaire_id: scanResult?.mouvementSuggere?.id || null,
+      updated_at:            new Date().toISOString(),
     }
     if (modal === 'new') {
       await supabase.from('facture_achat').insert(payload)
@@ -255,7 +338,46 @@ Si anomalie (montant très différent, catégorie suspecte) → ok:false, messag
           <h1 className="page-title">Achats</h1>
           <p className="page-subtitle">Factures d'achat mensuel — remplace le Word doc</p>
         </div>
-        <button className="btn btn-primary" onClick={() => ouvrir()}>+ Ajouter facture</button>
+        <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+          <button className="btn btn-primary" onClick={() => ouvrir()}>+ Ajouter facture</button>
+        </div>
+      </div>
+
+      {/* Drop zone scan */}
+      <div
+        onDragOver={e => { e.preventDefault(); setDragOver(true) }}
+        onDragLeave={() => setDragOver(false)}
+        onDrop={onDrop}
+        style={{
+          border: `2px dashed ${dragOver ? 'var(--brand)' : 'var(--border)'}`,
+          borderRadius: 10, padding: '18px 24px', marginBottom: 20,
+          background: dragOver ? 'var(--brand-pale)' : 'var(--bg)',
+          display: 'flex', alignItems: 'center', gap: 16,
+          transition: 'all 0.15s', cursor: 'pointer',
+        }}
+        onClick={() => document.getElementById('scan-input').click()}
+      >
+        <input id="scan-input" type="file" accept=".pdf,image/*" style={{ display: 'none' }} onChange={onDrop} />
+        {scanning ? (
+          <>
+            <div className="spinner" />
+            <span style={{ color: 'var(--text-muted)', fontSize: 14 }}>Analyse de la facture en cours…</span>
+          </>
+        ) : scanResult?.error ? (
+          <span style={{ color: '#dc2626', fontSize: 13 }}>✕ Erreur : {scanResult.error}</span>
+        ) : (
+          <>
+            <span style={{ fontSize: 24 }}>📄</span>
+            <div>
+              <div style={{ fontWeight: 600, fontSize: 14, color: 'var(--text)' }}>
+                Déposer une facture ici pour scan automatique
+              </div>
+              <div style={{ fontSize: 12, color: 'var(--text-muted)' }}>
+                PDF, JPG ou PNG — Claude extrait fournisseur, montant et rapproche le paiement
+              </div>
+            </div>
+          </>
+        )}
       </div>
 
       {/* Navigation mois */}
@@ -424,9 +546,24 @@ Si anomalie (montant très différent, catégorie suspecte) → ok:false, messag
       {modal && (
         <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.4)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000, padding: 16 }}>
           <div style={{ background: '#fff', borderRadius: 12, padding: 28, width: '100%', maxWidth: 520, boxShadow: '0 8px 32px rgba(0,0,0,0.2)' }}>
-            <h2 style={{ fontSize: 18, fontWeight: 700, marginBottom: 20, color: 'var(--text)' }}>
+            <h2 style={{ fontSize: 18, fontWeight: 700, marginBottom: 12, color: 'var(--text)' }}>
               {modal === 'new' ? 'Nouvelle facture' : 'Modifier la facture'}
             </h2>
+
+            {/* Résultat scan + paiement suggéré */}
+            {scanResult && modal === 'new' && (
+              <div style={{ marginBottom: 16 }}>
+                <div style={{ background: 'var(--brand-pale)', border: '1px solid var(--border)', borderRadius: 8, padding: '10px 14px', fontSize: 12, color: 'var(--text)', marginBottom: scanResult.mouvementSuggere ? 8 : 0 }}>
+                  ✓ Facture scannée — données pré-remplies. Vérifiez et corrigez si nécessaire.
+                </div>
+                {scanResult.mouvementSuggere && (
+                  <div style={{ background: '#EFF6FF', border: '1px solid #BFDBFE', borderRadius: 8, padding: '10px 14px', fontSize: 12, color: '#1E40AF' }}>
+                    💳 Paiement détecté : <strong>{scanResult.mouvementSuggere.libelle}</strong> — {Number(scanResult.mouvementSuggere.debit).toFixed(2)} € le {new Date(scanResult.mouvementSuggere.date_operation).toLocaleDateString('fr-FR')}
+                    <div style={{ color: '#6B7280', marginTop: 2 }}>Ce mouvement sera associé à la facture à l'enregistrement.</div>
+                  </div>
+                )}
+              </div>
+            )}
 
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
               {/* Mois */}
