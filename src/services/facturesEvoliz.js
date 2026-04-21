@@ -693,6 +693,17 @@ async function genererFactureDebours(proprio, biens, mois, ctx) {
     .eq('mode_encaissement', 'dcb')
     .eq('statut', 'a_facturer')
 
+  const ventilByBien = new Map()
+  const prestByBien  = new Map()
+  ;(ventilAuto || []).forEach(function(l) {
+    if (!ventilByBien.has(l.bien_id)) ventilByBien.set(l.bien_id, [])
+    ventilByBien.get(l.bien_id).push(l)
+  })
+  ;(prestationsAll || []).forEach(function(p) {
+    if (!prestByBien.has(p.bien_id)) prestByBien.set(p.bien_id, [])
+    prestByBien.get(p.bien_id).push(p)
+  })
+
   const fraisDirectsByBien = new Map()
   ;(fraisDirectsAll || []).forEach(function(f) {
     if (!fraisDirectsByBien.has(f.bien_id)) fraisDirectsByBien.set(f.bien_id, [])
