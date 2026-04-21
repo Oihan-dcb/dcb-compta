@@ -177,7 +177,7 @@ export default function PageBiens() {
         <div>
           <h1 className="page-title">Biens</h1>
           <p className="page-subtitle">
-            {biensActifs.length} biens DCB actifs · {biensAvecProprio.length} avec propriétaire
+            {biensActifs.length} biens {AGENCE.toUpperCase()} actifs · {biensAvecProprio.length} avec propriétaire
           </p>
         </div>
         <div style={{ display: 'flex', gap: 10 }}>
