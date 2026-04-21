@@ -50,6 +50,10 @@ export async function genererFacturesMois(mois) {
     propMap.get(p.id).biens.push(...p.bien)
   }
 
+  const allBienIds      = [...propMap.values()].flatMap(p => p.biens.map(b => b.id))
+  const proprietaireIds = [...propMap.keys()]
+  const ctx = await prechargerDonneesFacturation(mois, allBienIds, proprietaireIds)
+
   for (const [propId, proprio] of propMap) {
     // Grouper les biens : groupe_facturation non null → 1 facture par groupe, null → 1 facture par bien
     const groupes = {}
@@ -60,13 +64,13 @@ export async function genererFacturesMois(mois) {
     }
     for (const [key, biens] of Object.entries(groupes)) {
       try {
-        const facture = await genererFactureGroupe(proprio, biens, mois)
+        const facture = await genererFactureGroupe(proprio, biens, mois, ctx)
         if (facture.skipped) log.skipped++
         else if (facture.created) log.created++
         else log.updated++
         if ((facture.resteAPayer || 0) > 0) log.resteAPayer += facture.resteAPayer
 
-        const debours = await genererFactureDebours(proprio, biens, mois)
+        const debours = await genererFactureDebours(proprio, biens, mois, ctx)
         if (debours && !debours.skipped) {
           if (debours.created) log.deboursCreated++
           else log.deboursUpdated++
@@ -79,7 +83,7 @@ export async function genererFacturesMois(mois) {
   }
 
   // CF-P1 dcb_direct : récap interne uniquement (pas de facturation propriétaire)
-  const allBienIds = [...propMap.values()].flatMap(function(p){ return p.biens.map(function(b){ return b.id }) })
+  // allBienIds déjà calculé avant le préchargement
   const { data: dcbDirectItems } = await supabase
     .from('prestation_hors_forfait')
     .select('montant')
@@ -102,7 +106,69 @@ export async function genererFacturesMois(mois) {
 /**
  * GÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂ©nÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂ¨re ou met ÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂ  jour la facture mensuelle d'un propriÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂ©taire
  */
-async function genererFactureGroupe(proprio, biens, mois) {
+async function prechargerDonneesFacturation(mois, bienIds, proprietaireIds) {
+  const [
+    { data: ventilData },
+    { data: resaData },
+    { data: osResaData },
+    { data: prestData },
+    { data: fraisData },
+    { data: expenseData },
+    { data: facturesData },
+  ] = await Promise.all([
+    supabase.from('ventilation')
+      .select('bien_id, code, montant_ht, montant_tva, montant_ttc, montant_reel, reservation_id')
+      .in('bien_id', bienIds).eq('mois_comptable', mois),
+
+    supabase.from('reservation')
+      .select('id, bien_id, code, platform, fin_revenue, mois_comptable, reservation_fee(fee_type, label, amount, category)')
+      .in('bien_id', bienIds).eq('mois_comptable', mois)
+      .eq('owner_stay', false).neq('final_status', 'cancelled').gt('fin_revenue', 0),
+
+    supabase.from('reservation')
+      .select('id, bien_id')
+      .in('bien_id', bienIds).eq('mois_comptable', mois)
+      .eq('owner_stay', true).eq('platform', 'manual'),
+
+    supabase.from('prestation_hors_forfait')
+      .select('bien_id, montant, type_imputation, description, prestation_type:prestation_type_id(nom), ae:ae_id(type)')
+      .in('bien_id', bienIds).eq('mois', mois).eq('statut', 'valide')
+      .in('type_imputation', ['deduction_loy', 'haowner', 'debours_proprio']),
+
+    supabase.from('frais_proprietaire')
+      .select('id, bien_id, montant_ttc, libelle, mode_traitement, mode_encaissement, statut')
+      .in('bien_id', bienIds).eq('mois_facturation', mois)
+      .in('mode_traitement', ['deduire_loyer', 'remboursement', 'facturer_direct']),
+
+    supabase.from('expense')
+      .select('bien_id, amount, description, type_expense')
+      .in('bien_id', bienIds).eq('mois_comptable', mois)
+      .eq('type_expense', 'DCB').eq('validee', true),
+
+    supabase.from('facture_evoliz')
+      .select('id, statut, proprietaire_id, bien_id, type_facture')
+      .in('proprietaire_id', proprietaireIds).eq('mois', mois)
+      .in('type_facture', ['honoraires', 'debours']),
+  ])
+
+  const facturesExistantes = new Map()
+  for (const f of (facturesData || [])) {
+    const key = `${f.proprietaire_id}__${f.bien_id ?? 'null'}__${f.type_facture}`
+    facturesExistantes.set(key, { id: f.id, statut: f.statut })
+  }
+
+  return {
+    ventilationGlobale:   ventilData    || [],
+    reservationsGlobales: resaData      || [],
+    ownerStayGlobal:      osResaData    || [],
+    prestationsGlobales:  prestData     || [],
+    fraisGlobaux:         fraisData     || [],
+    expensesGlobales:     expenseData   || [],
+    facturesExistantes,
+  }
+}
+
+async function genererFactureGroupe(proprio, biens, mois, ctx) {
   const bienIds = biens.map(b => b.id)
   const bienId = biens.length === 1 ? biens[0].id : null
   const libelleGroupe = biens.length === 1
@@ -110,147 +176,47 @@ async function genererFactureGroupe(proprio, biens, mois) {
     : (biens[0].groupe_facturation === 'MAITE' ? 'Maison Maïté' : biens.map(b => b.code).join(', '))
 
   // RÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂ©cupÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂ©rer les rÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂ©servations du mois pour ces biens
-  const { data: reservations, error: resaErr } = await supabase
-    .from('reservation')
-    .select(`
-      id, code, platform, fin_revenue, mois_comptable,
-      reservation_fee (fee_type, label, amount, category)
-    `)
-    .in('bien_id', bienIds)
-    .eq('mois_comptable', mois)
-    .eq('owner_stay', false)
-    .neq('final_status', 'cancelled')
-    .gt('fin_revenue', 0)
+  const reservations  = ctx.reservationsGlobales.filter(r => bienIds.includes(r.bien_id))
+  const expenses       = ctx.expensesGlobales.filter(e => bienIds.includes(e.bien_id))
+  const ventilation    = ctx.ventilationGlobale.filter(v => bienIds.includes(v.bien_id))
+  const ownerStayResas = ctx.ownerStayGlobal.filter(r => bienIds.includes(r.bien_id))
 
-  if (resaErr) throw resaErr
-
-  // RÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂ©cupÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂ©rer les expenses [DCB] du mois pour ces biens
-  const { data: expenses, error: expErr } = await supabase
-    .from('expense')
-    .select('amount, description, type_expense')
-    .in('bien_id', bienIds)
-    .eq('mois_comptable', mois)
-    .eq('type_expense', 'DCB')
-    .eq('validee', true)
-
-  if (expErr) throw expErr
-
-  // CF-FACAE : facture_ae non implÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂ©mentÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂ© ÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂ¢ÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂ aeParBien = Map vide (table absente en base)
   const aeParBien = new Map()
 
-  // --- Calculer les 3 lignes ---
-
-  // COM : ÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂ£ ventilation COM du mois
-  const { data: lignesVentil } = await supabase
-    .from('ventilation')
-    .select('code, montant_ht, montant_tva, montant_ttc, montant_reel, bien_id, reservation_id')
-    .in('bien_id', bienIds)
-    .eq('mois_comptable', mois)
-
-  const ventilation = lignesVentil || []
-
-  // Owner stay reservations — query avant sumByCode pour exclure FMEN du calcul normal
-  const { data: ownerStayResas } = await supabase
-    .from('reservation')
-    .select('id, bien_id')
-    .in('bien_id', bienIds)
-    .eq('mois_comptable', mois)
-    .eq('owner_stay', true)
-    .eq('platform', 'manual')
-
-  const osResaIds = new Set((ownerStayResas || []).map(r => r.id))
-
-  // FMEN + AUTO owner stay par bien (depuis ventilation déjà chargée)
-  const osVentByBien = new Map()
-  if (osResaIds.size > 0) {
-    for (const v of ventilation.filter(l => osResaIds.has(l.reservation_id) && (l.code === 'FMEN' || l.code === 'AUTO'))) {
-      if (!osVentByBien.has(v.bien_id)) osVentByBien.set(v.bien_id, { fmenTTC: 0, autoHT: 0 })
-      const e = osVentByBien.get(v.bien_id)
-      if (v.code === 'FMEN') e.fmenTTC += (v.montant_ttc || 0)
-      if (v.code === 'AUTO') e.autoHT += (v.montant_ht || 0)
-    }
-  }
-
-  // sumByCode exclut les owner stay pour FMEN (traités séparément per-bien)
-  const sumByCode = (code) => ventilation
-    .filter(l => l.code === code && !(code === 'FMEN' && osResaIds.has(l.reservation_id)))
-    .reduce((s, l) => ({
-      ht: s.ht + l.montant_ht,
-      tva: s.tva + l.montant_tva,
-      ttc: s.ttc + l.montant_ttc,
-    }), { ht: 0, tva: 0, ttc: 0 })
-
-  const com = sumByCode('HON')
-  const men = sumByCode('FMEN')
-  const mgt = sumByCode('MGT')
-  const ae  = sumByCode('AE')
-  const loy = sumByCode('LOY')
-  const vir = sumByCode('VIR')
-
-  // CF-P1 : prestations hors forfait deduction_loy validees -- deduction directe sur reversement
-  const { data: prestationsDeduction } = await supabase
-    .from('prestation_hors_forfait')
-    .select('montant, bien_id, description, prestation_type:prestation_type_id(nom), ae:ae_id(type)')
-    .in('bien_id', bienIds)
-    .eq('mois', mois)
-    .eq('statut', 'valide')
-    .eq('type_imputation', 'deduction_loy')
+  const prestationsDeduction = ctx.prestationsGlobales.filter(p => bienIds.includes(p.bien_id) && p.type_imputation === 'deduction_loy')
   const totalPrestations = (prestationsDeduction || []).reduce((s, p) => {
     const isStaff = p.ae?.type === 'staff'
     return s + (isStaff ? Math.round((p.montant || 0) * 1.20) : (p.montant || 0))
   }, 0)
 
-  // CF-P1 HAOWNER : frais avances DCB refactures au proprietaire (TVA 20%)
-  const { data: prestationsHaowner } = await supabase
-    .from('prestation_hors_forfait')
-    .select('montant, bien_id, description, prestation_type:prestation_type_id(nom)')
-    .in('bien_id', bienIds)
-    .eq('mois', mois)
-    .eq('statut', 'valide')
-    .eq('type_imputation', 'haowner')
+  const prestationsHaowner = ctx.prestationsGlobales.filter(p => bienIds.includes(p.bien_id) && p.type_imputation === 'haowner')
   const haownerHT  = (prestationsHaowner || []).reduce((s, p) => s + (p.montant || 0), 0)
   const haownerTVA = Math.round(haownerHT * 0.20)
   const haownerTTC = haownerHT + haownerTVA
 
-  // CF-P1 debours_proprio : absorption LOY (après AUTO), surplus → facture DEBP
-  const { data: prestationsDeboursProprio } = await supabase
-    .from('prestation_hors_forfait')
-    .select('montant, bien_id, description, prestation_type:prestation_type_id(nom), ae:ae_id(type)')
-    .in('bien_id', bienIds)
-    .eq('mois', mois)
-    .eq('statut', 'valide')
-    .eq('type_imputation', 'debours_proprio')
+  const prestationsDeboursProprio = ctx.prestationsGlobales.filter(p => bienIds.includes(p.bien_id) && p.type_imputation === 'debours_proprio')
 
-  // Frais propriétaire à déduire du loyer (mode_traitement = 'deduire_loyer')
-  const { data: fraisDeduire } = await supabase
-    .from('frais_proprietaire')
-    .select('id, montant_ttc, bien_id, libelle')
-    .in('bien_id', bienIds)
-    .eq('mois_facturation', mois)
-    .eq('mode_traitement', 'deduire_loyer')
-    .eq('mode_encaissement', 'dcb')
-    .in('statut', ['a_facturer', 'facture'])
+  const fraisDeduire = ctx.fraisGlobaux.filter(f =>
+    bienIds.includes(f.bien_id) &&
+    f.mode_traitement === 'deduire_loyer' &&
+    f.mode_encaissement === 'dcb' &&
+    ['a_facturer', 'facture'].includes(f.statut)
+  )
   const fraisDeduireTTC = (fraisDeduire || []).reduce((s, f) => s + (f.montant_ttc || 0), 0)
 
-  // Remboursements propriétaire (HT, sans TVA) — augmentent le reversement
-  const { data: remboursements } = await supabase
-    .from('frais_proprietaire')
-    .select('id, montant_ttc, bien_id, libelle')
-    .in('bien_id', bienIds)
-    .eq('mois_facturation', mois)
-    .eq('mode_traitement', 'remboursement')
-    .neq('statut', 'brouillon')
+  const remboursements = ctx.fraisGlobaux.filter(f =>
+    bienIds.includes(f.bien_id) &&
+    f.mode_traitement === 'remboursement' &&
+    f.statut !== 'brouillon'
+  )
   const remboursementsTotal = (remboursements || []).reduce((s, f) => s + (f.montant_ttc || 0), 0)
 
-  // Frais refacturés directement au propriétaire (sans absorption LOY)
-  const { data: fraisDirect } = await supabase
-    .from('frais_proprietaire')
-    .select('id, montant_ttc, bien_id, libelle')
-    .in('bien_id', bienIds)
-    .eq('mois_facturation', mois)
-    .eq('mode_traitement', 'facturer_direct')
-    .eq('mode_encaissement', 'dcb')
-    .in('statut', ['a_facturer', 'facture'])
+  const fraisDirect = ctx.fraisGlobaux.filter(f =>
+    bienIds.includes(f.bien_id) &&
+    f.mode_traitement === 'facturer_direct' &&
+    f.mode_encaissement === 'dcb' &&
+    ['a_facturer', 'facture'].includes(f.statut)
+  )
   const fraisDirectTTC = (fraisDirect || []).reduce((s, f) => s + (f.montant_ttc || 0), 0)
   const fraisDirectHT  = Math.round(fraisDirectTTC / 1.20)
   const fraisDirectTVA = fraisDirectTTC - fraisDirectHT
@@ -374,15 +340,9 @@ async function genererFactureGroupe(proprio, biens, mois) {
   const soldeNegatif = totalHT === 0 && div.ht > 0
 
   // VÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂ©rifier si facture existante
-  let existingFactureQuery = supabase
-    .from('facture_evoliz')
-    .select('id, statut')
-    .eq('proprietaire_id', proprio.id)
-    .eq('mois', mois)
-    .eq('type_facture', 'honoraires')
-  if (bienId) existingFactureQuery = existingFactureQuery.eq('bien_id', bienId)
-  else existingFactureQuery = existingFactureQuery.is('bien_id', null)
-  const { data: existingFacture } = await existingFactureQuery.maybeSingle()
+  const existingFacture = ctx.facturesExistantes.get(
+    `${proprio.id}__${bienId ?? 'null'}__honoraires`
+  ) ?? null
 
   // Ne pas ÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂ©craser une facture dÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂ©jÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂ  envoyÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂ©e ou payÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂ©e
   if (existingFacture && ['envoye_evoliz', 'payee'].includes(existingFacture.statut)) {
@@ -667,51 +627,36 @@ async function genererFactureGroupe(proprio, biens, mois) {
 /**
  * RÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂ©cupÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂ¨re toutes les factures d'un mois avec les dÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂ©tails
  */
-async function genererFactureDebours(proprio, biens, mois) {
+async function genererFactureDebours(proprio, biens, mois, ctx) {
   const lignes = []
   let ordre = 1
 
   const bienIds = biens.map(function(b) { return b.id })
   const bienId = biens.length === 1 ? biens[0].id : null
 
-  // Batch 1 : ventilation AUTO + LOY
-  const { data: ventilAuto } = await supabase
-    .from('ventilation').select('bien_id, code, montant_ht, montant_reel')
-    .in('bien_id', bienIds).eq('mois_comptable', mois).in('code', ['AUTO', 'LOY'])
+  // Données lues depuis le contexte préchargé (pas de requêtes Supabase ici)
+  const ventilAuto = ctx.ventilationGlobale.filter(
+    v => bienIds.includes(v.bien_id) && (v.code === 'AUTO' || v.code === 'LOY')
+  )
 
-  // Batch 1b : owner stay AUTO — surplus non couvert par LOY → DEB_AE
-  const { data: osResasDebours } = await supabase
-    .from('reservation').select('id, bien_id')
-    .in('bien_id', bienIds).eq('mois_comptable', mois).eq('owner_stay', true).eq('platform', 'manual')
+  const osResasDebours = ctx.ownerStayGlobal.filter(r => bienIds.includes(r.bien_id))
   const osAutoByBien = new Map()
   if ((osResasDebours || []).length > 0) {
-    const osIds = osResasDebours.map(function(r) { return r.id })
-    const { data: osAutoVent } = await supabase
-      .from('ventilation').select('bien_id, montant_ht')
-      .in('reservation_id', osIds).eq('code', 'AUTO')
+    const osIdsSet = new Set(osResasDebours.map(function(r) { return r.id }))
+    const osAutoVent = ctx.ventilationGlobale.filter(
+      v => osIdsSet.has(v.reservation_id) && v.code === 'AUTO'
+    )
     ;(osAutoVent || []).forEach(function(v) {
       osAutoByBien.set(v.bien_id, (osAutoByBien.get(v.bien_id) || 0) + (v.montant_ht || 0))
     })
   }
 
-  // Batch 2 : prestations deduction_loy + haowner + debours_proprio
-  const { data: prestationsAll } = await supabase
-    .from('prestation_hors_forfait').select('bien_id, montant, type_imputation, ae:ae_id(type)')
-    .in('bien_id', bienIds).eq('mois', mois).eq('statut', 'valide')
-    .in('type_imputation', ['deduction_loy', 'haowner', 'debours_proprio'])
-
-  const ventilByBien = new Map()
-  const prestByBien  = new Map()
-  ;(ventilAuto || []).forEach(function(l) {
-    if (!ventilByBien.has(l.bien_id)) ventilByBien.set(l.bien_id, [])
-    ventilByBien.get(l.bien_id).push(l)
-  })
-  ;(prestationsAll || []).forEach(function(p) {
-    if (!prestByBien.has(p.bien_id)) prestByBien.set(p.bien_id, [])
-    prestByBien.get(p.bien_id).push(p)
+  const prestationsAll = ctx.prestationsGlobales.filter(function(p) {
+    return bienIds.includes(p.bien_id) &&
+      ['deduction_loy', 'haowner', 'debours_proprio'].includes(p.type_imputation)
   })
 
-  // Batch 3 : frais_propriétaire à facturer directement
+  // fraisDirectsAll : query DB maintenue intentionnellement (dépendance d'ordre avec genererFactureGroupe)
   const { data: fraisDirectsAll } = await supabase
     .from('frais_proprietaire')
     .select('bien_id, id, montant_ttc, libelle')
@@ -834,15 +779,9 @@ async function genererFactureDebours(proprio, biens, mois) {
     }
   }
 
-  let existingDebQuery = supabase
-    .from('facture_evoliz')
-    .select('id, statut')
-    .eq('proprietaire_id', proprio.id)
-    .eq('mois', mois)
-    .eq('type_facture', 'debours')
-  if (bienId) existingDebQuery = existingDebQuery.eq('bien_id', bienId)
-  else existingDebQuery = existingDebQuery.is('bien_id', null)
-  const { data: existing } = await existingDebQuery.maybeSingle()
+  const existing = ctx.facturesExistantes.get(
+    `${proprio.id}__${bienId ?? 'null'}__debours`
+  ) ?? null
 
   if (lignes.length === 0) {
     // Plus rien à facturer : supprimer le brouillon s'il existe, sinon rien
