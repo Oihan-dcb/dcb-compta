@@ -630,8 +630,8 @@ export default function PageLocationsLongues() {
 
       {/* Modal étudiant (ajout / édition) */}
       {showModalEtudiant && (
-        <div className="modal-overlay" onClick={() => setShowModalEtudiant(false)}>
-          <div className="modal" onClick={e => e.stopPropagation()} style={{ maxWidth: 560 }}>
+        <div className="modal-overlay">
+          <div className="modal" style={{ maxWidth: 560 }}>
             <div className="modal-header">
               <h2>{editingEtudiant ? 'Modifier l\'étudiant' : 'Ajouter un étudiant'}</h2>
               <button className="modal-close" onClick={() => setShowModalEtudiant(false)}>✗</button>
