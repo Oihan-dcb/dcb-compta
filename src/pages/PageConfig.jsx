@@ -1,3 +1,4 @@
+import { AGENCE } from '../lib/agence'
 import { useState, useEffect } from 'react'
 import { pingEvoliz, getPaytermsEvoliz } from '../services/evoliz'
 import { syncProprietairesEvoliz } from '../services/syncProprietaires'
@@ -149,7 +150,7 @@ export default function PageConfig() {
         const resp = await fetch(`${SUPABASE_URL}/functions/v1/global-sync`, {
           method: 'POST',
           headers: { 'Authorization': `Bearer ${ANON_KEY}`, 'Content-Type': 'application/json' },
-          body: JSON.stringify({ mois_debut: debut, mois_fin: fin })
+          body: JSON.stringify({ mois_debut: debut, mois_fin: fin, agence: AGENCE })
         })
         if (resp.ok) {
           const result = await resp.json()

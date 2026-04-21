@@ -199,7 +199,7 @@ async function handleProperty(supabase: any, event: string, data: any): Promise<
         ville:           data.address?.city,
         listed:          data.listed ?? true,
         has_ae:          true,
-        agence:          'dcb',
+        agence:          Deno.env.get('AGENCE') || 'dcb',
         gestion_loyer:   true,
         derniere_sync:   new Date().toISOString(),
       })

@@ -248,13 +248,13 @@ function ligneHorsTVA(code, libelle, montant, bien, resa) {
 /**
  * RÃ©cupÃ¨re la ventilation d'un mois, groupÃ©e par propriÃ©taire
  */
-async function calculerVentilationResa(resa) {
+async function calculerVentilationResa(resa, agence = 'dcb') {
   const bien = resa.bien
 
   if (!bien) throw new Error(`Bien manquant pour rÃ©sa ${resa.code}`)
 
   if (bien.gestion_loyer === false) return []  // Proprio gere le loyer
-  if ((bien.agence || 'dcb') !== 'dcb') return []  // Bien Lauian - comptabilite separee - pas de ventilation
+  if ((bien.agence || agence) !== agence) return []  // Bien d'une autre agence - comptabilite separee
 
   // Revenue = montant net reÃ§u en banque (en centimes)
   const revenue = resa.fin_revenue || 0
@@ -510,7 +510,7 @@ async function calculerVentilationResa(resa) {
     .eq('id', resa.id)
 }
 
-async function calculerVentilationMois(mois) {
+async function calculerVentilationMois(mois, agence = 'dcb') {
   // RÃ©cupÃ©rer les rÃ©servations non ventilÃ©es du mois
   const { data: reservations, error } = await supabase
     .from('reservation')
@@ -536,9 +536,9 @@ async function calculerVentilationMois(mois) {
   let total = 0
   let errors = 0
 
-  for (const resa of (reservations || []).filter(r => r.bien?.gestion_loyer !== false && (r.bien?.agence || 'dcb') === 'dcb')) {
+  for (const resa of (reservations || []).filter(r => r.bien?.gestion_loyer !== false && (r.bien?.agence || agence) === agence)) {
     try {
-      await calculerVentilationResa(resa)
+      await calculerVentilationResa(resa, agence)
       total++
     } catch (err) {
       console.error(`Erreur ventilation rÃ©sa ${resa.code}:`, err)
@@ -1170,6 +1170,7 @@ Deno.serve(async (req) => {
   const body = await req.json().catch(() => ({}))
   const moisDebut = body.mois_debut || '2022-01'
   const moisFin   = body.mois_fin   || new Date().toISOString().slice(0,7)
+  const agence    = body.agence     || 'dcb'
   const allMois = allMoisDepuis2022().filter(m => m >= moisDebut && m <= moisFin)
 
   try {
@@ -1188,7 +1189,7 @@ Deno.serve(async (req) => {
       .from('bien')
       .select('id, hospitable_id, hospitable_name, proprietaire_id, provision_ae_ref, forfait_dcb_ref, has_ae, taux_commission_override, gestion_loyer, agence, proprietaire(id, taux_commission)')
       .not('hospitable_id', 'is', null)
-      .eq('agence', 'dcb')
+      .eq('agence', agence)
 
     const bienByHospId = Object.fromEntries((biens || []).map(b => [b.hospitable_id, b]))
     const hospIds = (biens || []).map(b => b.hospitable_id).filter(Boolean)
@@ -1250,7 +1251,7 @@ Deno.serve(async (req) => {
         .eq('ventilation_calculee', false)
         .neq('final_status', 'cancelled')
       for (const resa of (resas || [])) {
-        try { await calculerVentilationResa(resa); ventTotal++ }
+        try { await calculerVentilationResa(resa, agence); ventTotal++ }
         catch(e) { ventErrors++; log.errors.push('vent:' + resa.code + ':' + e.message) }
       }
     }
