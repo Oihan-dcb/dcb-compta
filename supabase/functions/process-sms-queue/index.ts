@@ -129,11 +129,13 @@ Un voyageur vient de laisser un avis 5⭐ sur Airbnb pour "${property}". Son com
 "${comment}"
 
 Rédige un SMS de remerciement en ${langLabel} qui :
-- Mentionne que l'avis a été laissé sur Airbnb
 - Remercie chaleureusement en mentionnant un élément précis du commentaire
 - Reste entre 160 et 220 caractères (sans compter le lien Google)
-- Se termine par "— Destination Côte Basque" (quelle que soit la langue)
-- Se termine par une invitation claire à laisser un avis Google (ex: "Laissez-nous un avis Google ici ↓" ou "Leave us a Google review here ↓") — le lien sera ajouté automatiquement après
+- Se termine OBLIGATOIREMENT par cette phrase d'invitation Google, puis la signature, dans cet ordre exact :
+  FR : "Laissez-nous aussi un avis Google (1 clic) ↓ — Destination Côte Basque"
+  EN : "Leave us a Google review too (1 click) ↓ — Destination Côte Basque"
+  ES : "Déjanos también una reseña en Google (1 clic) ↓ — Destination Côte Basque"
+- Le lien Google sera ajouté automatiquement après la signature, ne l'inclus pas
 - N'inclut PAS de mention STOP ou désabonnement
 
 Réponds uniquement avec le texte du SMS, sans guillemets ni balises.`
@@ -163,9 +165,9 @@ Réponds uniquement avec le texte du SMS, sans guillemets ni balises.`
   }
 
   const t: Record<string, string> = {
-    FR: `Bonjour ${firstName} ! Merci pour votre avis 5⭐ Airbnb sur ${property}. Votre retour nous touche beaucoup ! Laissez-nous aussi un avis Google (1 clic) : ${googleUrl} — Destination Côte Basque`,
-    EN: `Hello ${firstName}! Thank you for your 5-star Airbnb review of ${property}. Your feedback means so much to us! Leave us a Google review too (1 click): ${googleUrl} — Destination Côte Basque`,
-    ES: `¡Hola ${firstName}! Gracias por tu reseña 5⭐ de Airbnb sobre ${property}. ¡Tu opinión nos llena de alegría! Déjanos también una reseña en Google (1 clic): ${googleUrl} — Destination Côte Basque`,
+    FR: `${firstName}, merci pour votre avis 5⭐ Airbnb sur ${property} ! Votre retour nous touche beaucoup. Laissez-nous aussi un avis Google (1 clic) ↓ — Destination Côte Basque\n${googleUrl}`,
+    EN: `${firstName}, thank you for your 5-star Airbnb review of ${property}! Your feedback means so much to us. Leave us a Google review too (1 click) ↓ — Destination Côte Basque\n${googleUrl}`,
+    ES: `${firstName}, ¡gracias por tu reseña 5⭐ de Airbnb sobre ${property}! Tu opinión nos llena de alegría. Déjanos también una reseña en Google (1 clic) ↓ — Destination Côte Basque\n${googleUrl}`,
   }
   return t[lang] ?? t['FR']
 }
