@@ -219,3 +219,21 @@ export async function getSignedUrl(filePath) {
   if (error) throw error
   return data.signedUrl
 }
+
+// ── Journal d'activité ────────────────────────────────────────────────────
+
+export async function listerLogsEtudiant(etudiantId, agence = AGENCE) {
+  const { data, error } = await supabase
+    .from('lld_log')
+    .select('*')
+    .eq('agence', agence)
+    .eq('etudiant_id', etudiantId)
+    .order('created_at', { ascending: false })
+  if (error) throw error
+  return data || []
+}
+
+export async function ajouterLog(payload) {
+  const { error } = await supabase.from('lld_log').insert(payload)
+  if (error) throw error
+}

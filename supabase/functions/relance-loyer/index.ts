@@ -56,8 +56,8 @@ function nomMois(mois: string): string {
   return noms[parseInt(m) - 1]
 }
 
-function formatEuros(euros: number): string {
-  return euros.toFixed(2).replace('.', ',') + ' €'
+function formatEuros(centimes: number): string {
+  return (centimes / 100).toFixed(2).replace('.', ',') + ' €'
 }
 
 function texteSMS(prenom: string, mois: string, montant: number, nbRelances: number): string {
@@ -215,12 +215,49 @@ serve(async (req) => {
           nb_relances: nbRelances + 1,
           date_derniere_relance: maintenant,
         }
-        // Après 3 relances → escalade Oihan
-        if (isLastRelance) {
-          updates.statut = 'en_retard'
-        }
-
+        if (isLastRelance) updates.statut = 'en_retard'
         await supabase.from('loyer_suivi').update(updates).eq('id', loyer.id)
+
+        // ── Écrire dans lld_log ─────────────────────────────────────────
+        const logEntries: any[] = []
+        if (emailOk && e.email) {
+          logEntries.push({
+            agence: e.agence, etudiant_id: e.id, loyer_suivi_id: loyer.id,
+            type: forceManuel ? 'relance_manuelle' : 'email_relance',
+            canal: 'email', destinataire: e.email, statut: 'ok', mois: loyer.mois,
+            details: { nb_relance: nbRelances + 1, montant: montantTotal },
+          })
+        } else if (e.email) {
+          logEntries.push({
+            agence: e.agence, etudiant_id: e.id, loyer_suivi_id: loyer.id,
+            type: forceManuel ? 'relance_manuelle' : 'email_relance',
+            canal: 'email', destinataire: e.email, statut: 'erreur', mois: loyer.mois,
+            details: { nb_relance: nbRelances + 1, montant: montantTotal },
+          })
+        }
+        if (smsOk && e.telephone) {
+          logEntries.push({
+            agence: e.agence, etudiant_id: e.id, loyer_suivi_id: loyer.id,
+            type: forceManuel ? 'relance_manuelle' : 'sms_relance',
+            canal: 'sms', destinataire: e.telephone, statut: 'ok', mois: loyer.mois,
+            details: { nb_relance: nbRelances + 1, montant: montantTotal },
+          })
+        } else if (e.telephone && TWILIO_SID) {
+          logEntries.push({
+            agence: e.agence, etudiant_id: e.id, loyer_suivi_id: loyer.id,
+            type: forceManuel ? 'relance_manuelle' : 'sms_relance',
+            canal: 'sms', destinataire: e.telephone, statut: 'erreur', mois: loyer.mois,
+            details: { nb_relance: nbRelances + 1, montant: montantTotal },
+          })
+        }
+        if (isLastRelance) {
+          logEntries.push({
+            agence: e.agence, etudiant_id: e.id, loyer_suivi_id: loyer.id,
+            type: 'relance_escalade', canal: 'ui', statut: 'ok', mois: loyer.mois,
+            details: { message: 'Loyer passé en retard — escalade Oihan' },
+          })
+        }
+        if (logEntries.length) await supabase.from('lld_log').insert(logEntries)
       }
 
       resultats.push({

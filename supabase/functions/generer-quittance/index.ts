@@ -26,8 +26,8 @@ const corsHeaders = {
 
 // ── Helpers ────────────────────────────────────────────────────────────────
 
-function formatEuros(euros: number): string {
-  return euros.toLocaleString('fr-FR', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) + ' €'
+function formatEuros(centimes: number): string {
+  return (centimes / 100).toLocaleString('fr-FR', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) + ' €'
 }
 
 function formatDate(isoDate: string): string {
@@ -319,11 +319,12 @@ serve(async (req) => {
     }
 
     // ── 7. Mettre à jour loyer_suivi ─────────────────────────────────────
+    const now = new Date().toISOString()
     const { error: errUpdate } = await supabase
       .from('loyer_suivi')
       .update({
         quittance_pdf_url:    publicUrl,
-        quittance_envoyee_at: new Date().toISOString(),
+        quittance_envoyee_at: now,
       })
       .eq('id', loyer_suivi_id)
 
@@ -333,6 +334,22 @@ serve(async (req) => {
         { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       )
     }
+
+    // ── 8. Écrire dans lld_log ────────────────────────────────────────────
+    await supabase.from('lld_log').insert({
+      agence:         etudiant.agence,
+      etudiant_id:    etudiant.id,
+      loyer_suivi_id,
+      type:           'quittance_envoyee',
+      canal:          envoyer_email && etudiant.email ? 'email' : 'pdf',
+      destinataire:   etudiant.email || null,
+      statut:         'ok',
+      mois:           loyer.mois,
+      details: {
+        pdf_url: publicUrl,
+        email_envoye: envoyer_email && !!etudiant.email,
+      },
+    })
 
     return new Response(
       JSON.stringify({

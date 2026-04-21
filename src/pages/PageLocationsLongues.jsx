@@ -24,6 +24,8 @@ import {
   getSignedUrl,
   listerLoyersEtudiant,
   listerVirementsEtudiant,
+  listerLogsEtudiant,
+  ajouterLog,
 } from '../services/locationsLongues'
 
 const moisCourant = new Date().toISOString().slice(0, 7)
@@ -109,6 +111,7 @@ export default function PageLocationsLongues() {
   const [suiviVirements, setSuiviVirements] = useState([])
   const [suiviCautionData, setSuiviCautionData] = useState(null)
   const [suiviDocs, setSuiviDocs] = useState([])
+  const [suiviLogs, setSuiviLogs] = useState([])
   const [suiviLoading, setSuiviLoading] = useState(false)
 
   // Dossier étudiant
@@ -202,9 +205,21 @@ export default function PageLocationsLongues() {
     const loyerId    = loyerModal.id
     const hasEmail   = !!loyerModal.etudiant?.email
     try {
+      const montantCentimes = Math.round(parseFloat(montantRecu) * 100)
       await marquerLoyerRecu(loyerId, {
-        montant_recu:   Math.round(parseFloat(montantRecu) * 100),
+        montant_recu:   montantCentimes,
         date_reception: dateReception,
+      })
+      // Log loyer reçu
+      await ajouterLog({
+        agence:         AGENCE,
+        etudiant_id:    loyerModal.etudiant_id,
+        loyer_suivi_id: loyerId,
+        type:           'loyer_recu',
+        canal:          'ui',
+        statut:         'ok',
+        mois:           loyerModal.mois,
+        details:        { montant: montantCentimes, date_reception: dateReception },
       })
       setLoyerModal(null)
       await chargerMensuel()
@@ -286,16 +301,18 @@ export default function PageLocationsLongues() {
   async function chargerSuivi(etudiantId) {
     setSuiviLoading(true)
     try {
-      const [l, v, c, d] = await Promise.all([
+      const [l, v, c, d, logs] = await Promise.all([
         listerLoyersEtudiant(etudiantId, AGENCE),
         listerVirementsEtudiant(etudiantId, AGENCE),
         getCautionEtudiant(etudiantId),
         listerDocuments(etudiantId),
+        listerLogsEtudiant(etudiantId, AGENCE),
       ])
       setSuiviLoyers(l)
       setSuiviVirements(v)
       setSuiviCautionData(c)
       setSuiviDocs(d)
+      setSuiviLogs(logs)
     } catch (e) {
       setError(e.message)
     } finally {
@@ -533,7 +550,7 @@ export default function PageLocationsLongues() {
 
       {/* Onglets */}
       <div style={{ display: 'flex', gap: 4, marginBottom: 20, borderBottom: '2px solid var(--border)' }}>
-        {[['mensuel', 'Mensuel'], ['etudiants', 'Étudiants'], ['suivi', 'Suivi']].map(([key, label]) => (
+        {[['mensuel', 'Mensuel'], ['suivi', 'Suivi'], ['etudiants', 'Étudiants']].map(([key, label]) => (
           <button key={key} onClick={() => setOnglet(key)}
             style={{
               padding: '8px 18px', border: 'none', cursor: 'pointer', fontSize: 14, fontWeight: 600,
@@ -995,6 +1012,57 @@ export default function PageLocationsLongues() {
                         </table>
                       </div>
                     )}
+                </div>
+
+                {/* Journal d'activité */}
+                <div style={{ marginTop: 8 }}>
+                  <h2 style={{ fontSize: 14, fontWeight: 700, margin: '0 0 10px' }}>
+                    Journal d'activité — {suiviLogs.length} entrée{suiviLogs.length !== 1 ? 's' : ''}
+                  </h2>
+                  {suiviLogs.length === 0 ? (
+                    <div className="empty-state" style={{ padding: '20px' }}>Aucune activité enregistrée</div>
+                  ) : (
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+                      {suiviLogs.map(log => {
+                        const icons = {
+                          sms_relance:       { icon: '📱', color: '#B45309', label: 'SMS relance' },
+                          email_relance:     { icon: '📧', color: '#B45309', label: 'Email relance' },
+                          relance_manuelle:  { icon: '📨', color: '#7C3AED', label: 'Relance manuelle' },
+                          relance_escalade:  { icon: '🚨', color: '#DC2626', label: 'Escalade' },
+                          quittance_envoyee: { icon: '📄', color: '#059669', label: 'Quittance envoyée' },
+                          loyer_recu:        { icon: '✅', color: '#059669', label: 'Loyer reçu' },
+                          virement_effectue: { icon: '💸', color: '#059669', label: 'Virement effectué' },
+                        }
+                        const meta = icons[log.type] || { icon: '•', color: '#6B7280', label: log.type }
+                        const date = new Date(log.created_at).toLocaleString('fr-FR', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' })
+                        return (
+                          <div key={log.id} style={{
+                            display: 'flex', alignItems: 'flex-start', gap: 10,
+                            background: log.statut === 'erreur' ? '#FEF2F2' : '#F7F3EC',
+                            border: `1px solid ${log.statut === 'erreur' ? '#FCA5A5' : 'var(--border)'}`,
+                            borderRadius: 6, padding: '8px 12px', fontSize: 13,
+                          }}>
+                            <span style={{ fontSize: 16, lineHeight: 1.3 }}>{meta.icon}</span>
+                            <div style={{ flex: 1 }}>
+                              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', gap: 8 }}>
+                                <span style={{ fontWeight: 600, color: meta.color }}>{meta.label}</span>
+                                <span style={{ fontSize: 11, color: 'var(--text-muted)', whiteSpace: 'nowrap' }}>{date}</span>
+                              </div>
+                              <div style={{ color: '#555', fontSize: 12, marginTop: 2 }}>
+                                {log.mois && <span style={{ marginRight: 8 }}>Mois : <strong>{log.mois}</strong></span>}
+                                {log.canal && <span style={{ marginRight: 8 }}>Canal : {log.canal}</span>}
+                                {log.destinataire && <span style={{ marginRight: 8 }}>→ {log.destinataire}</span>}
+                                {log.details?.montant && <span>Montant : {formatMontant(log.details.montant)}</span>}
+                                {log.details?.nb_relance && <span style={{ marginLeft: 8 }}>Relance #{log.details.nb_relance}</span>}
+                                {log.details?.message && <span style={{ marginLeft: 8, fontStyle: 'italic' }}>{log.details.message}</span>}
+                                {log.statut === 'erreur' && <span style={{ color: '#DC2626', marginLeft: 8, fontWeight: 600 }}>✗ Erreur</span>}
+                              </div>
+                            </div>
+                          </div>
+                        )
+                      })}
+                    </div>
+                  )}
                 </div>
 
               </div>
