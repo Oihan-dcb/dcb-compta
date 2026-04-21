@@ -2,6 +2,14 @@
 import { BrowserRouter, Routes, Route, NavLink, useLocation } from 'react-router-dom'
 import { useState, useEffect, useRef } from 'react'
 import { supabase } from './lib/supabase'
+import { AGENCE } from './lib/agence'
+
+const AGENCE_LABELS = {
+  dcb:     { icon: 'DCB',    text: 'Compta' },
+  lauian:  { icon: 'Lauian', text: 'Immo'   },
+  bordeaux:{ icon: 'DBX',    text: 'Immo'   },
+}
+const agenceLabel = AGENCE_LABELS[AGENCE] || AGENCE_LABELS.dcb
 import PageBiens from './pages/PageBiens'
 import PageReservations from './pages/PageReservations'
 import PageBanque from './pages/PageBanque'
@@ -88,8 +96,8 @@ export default function App() {
       <div className="app">
         <header className="app-header">
           <div className="header-logo">
-            <span className="logo-icon">DCB</span>
-            <span className="logo-text">Compta</span>
+            <span className="logo-icon">{agenceLabel.icon}</span>
+            <span className="logo-text">{agenceLabel.text}</span>
           </div>
           <nav className="app-nav">
             <NavLink to="/" end className={({isActive}) => isActive ? 'nav-link active' : 'nav-link'}>Biens</NavLink>
