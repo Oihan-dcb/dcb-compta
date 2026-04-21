@@ -38,6 +38,7 @@ export default function PageAutoEntrepreneurs() {
   const [heures, setHeures] = useState({})
   const [loadingHeures, setLoadingHeures] = useState(false)
   const [sendingNavette, setSendingNavette] = useState(false)
+  const [showAperçuNavette, setShowAperçuNavette] = useState(false)
   // Prestation type form
   const [editingPT, setEditingPT] = useState(null)
   const [formPT, setFormPT] = useState({ nom: '', description: '', taux_defaut: 25, unite: 'heure' })
@@ -112,9 +113,9 @@ export default function PageAutoEntrepreneurs() {
     if (!e && data) setHeures(prev => ({ ...prev, [date]: data }))
   }
 
-  async function envoyerNavette() {
+  function genererHtmlNavette() {
     const ae = aes.find(a => a.id === heuresAeId)
-    if (!ae) return
+    if (!ae) return null
     const days = getDaysOfMonth(heuresMois)
     const moisLabel = new Date(heuresMois + '-01').toLocaleDateString('fr-FR', { month: 'long', year: 'numeric' })
     const moisLabelCap = moisLabel.charAt(0).toUpperCase() + moisLabel.slice(1)
@@ -139,7 +140,9 @@ export default function PageAutoEntrepreneurs() {
         <td style="padding:5px 8px;border:1px solid #e5e7eb;font-size:11px;color:#6b7280">${row?.notes || ''}</td>
       </tr>`
     }
-    const html = `<div style="font-family:Arial,sans-serif;max-width:680px;margin:0 auto">
+    return {
+      ae, moisLabelCap, totalHeures,
+      html: `<div style="font-family:Arial,sans-serif;max-width:680px;margin:0 auto">
       <div style="background:#1a3a6e;color:white;padding:20px">
         <h2 style="margin:0;font-size:18px">Navette paie — ${ae.prenom} ${ae.nom}</h2>
         <p style="margin:4px 0 0;opacity:.8;font-size:14px">${moisLabelCap}</p>
@@ -162,6 +165,13 @@ export default function PageAutoEntrepreneurs() {
       </table>
       <p style="color:#9ca3af;font-size:11px;padding:12px">Généré depuis DCB Compta</p>
     </div>`
+    }
+  }
+
+  async function envoyerNavette() {
+    const result = genererHtmlNavette()
+    if (!result) return
+    const { ae, moisLabelCap, html } = result
 
     setSendingNavette(true)
     setError(null)
@@ -892,15 +902,27 @@ export default function PageAutoEntrepreneurs() {
                     <option value="">— Sélectionner un membre —</option>
                     {staffList.map(a => <option key={a.id} value={a.id}>{a.prenom} {a.nom}</option>)}
                   </select>
-                  <input type="month" value={heuresMois}
-                    onChange={e => { setHeuresMois(e.target.value); setHeures({}); if (heuresAeId) chargerHeures(heuresAeId, e.target.value) }}
-                    style={{ padding: '8px 12px', borderRadius: 8, border: '1.5px solid #e5e7eb', fontSize: 13 }} />
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                    <button onClick={() => { const d = new Date(heuresMois + '-01'); d.setMonth(d.getMonth()-1); const m = d.toISOString().slice(0,7); setHeuresMois(m); setHeures({}); if (heuresAeId) chargerHeures(heuresAeId, m) }}
+                      style={{ background: 'var(--white)', border: '1px solid #e5e7eb', borderRadius: 8, padding: '6px 12px', cursor: 'pointer', fontSize: 16 }}>‹</button>
+                    <span style={{ fontWeight: 700, fontSize: 15, minWidth: 130, textAlign: 'center' }}>
+                      {new Date(heuresMois + '-01').toLocaleDateString('fr-FR', { month: 'long', year: 'numeric' })}
+                    </span>
+                    <button onClick={() => { const d = new Date(heuresMois + '-01'); d.setMonth(d.getMonth()+1); const m = d.toISOString().slice(0,7); setHeuresMois(m); setHeures({}); if (heuresAeId) chargerHeures(heuresAeId, m) }}
+                      style={{ background: 'var(--white)', border: '1px solid #e5e7eb', borderRadius: 8, padding: '6px 12px', cursor: 'pointer', fontSize: 16 }}>›</button>
+                  </div>
                   {loadingHeures && <span style={{ fontSize: 13, color: '#888' }}>Chargement…</span>}
                   {heuresAeId && (
-                    <button onClick={envoyerNavette} disabled={sendingNavette}
-                      style={{ marginLeft: 'auto', padding: '8px 18px', borderRadius: 8, background: '#1a3a6e', color: '#fff', border: 'none', cursor: 'pointer', fontSize: 13, fontWeight: 600 }}>
-                      {sendingNavette ? 'Envoi…' : '📤 Navette Compact'}
-                    </button>
+                    <div style={{ marginLeft: 'auto', display: 'flex', gap: 8 }}>
+                      <button onClick={() => setShowAperçuNavette(v => !v)}
+                        style={{ padding: '8px 14px', borderRadius: 8, background: showAperçuNavette ? '#EAE3D4' : 'var(--white)', color: '#2C2416', border: '1px solid #D9CEB8', cursor: 'pointer', fontSize: 13, fontWeight: 600 }}>
+                        👁 Aperçu
+                      </button>
+                      <button onClick={envoyerNavette} disabled={sendingNavette}
+                        style={{ padding: '8px 18px', borderRadius: 8, background: '#1a3a6e', color: '#fff', border: 'none', cursor: 'pointer', fontSize: 13, fontWeight: 600 }}>
+                        {sendingNavette ? 'Envoi…' : '📤 Navette Compact'}
+                      </button>
+                    </div>
                   )}
                 </div>
 
@@ -992,6 +1014,20 @@ export default function PageAutoEntrepreneurs() {
                     </tfoot>
                   </table>
                 )}
+
+                {showAperçuNavette && heuresAeId && (() => {
+                  const result = genererHtmlNavette()
+                  if (!result) return null
+                  return (
+                    <div style={{ marginTop: 24, border: '2px solid #D9CEB8', borderRadius: 10, overflow: 'hidden' }}>
+                      <div style={{ background: '#EAE3D4', padding: '8px 16px', fontSize: 12, fontWeight: 600, color: '#2C2416', borderBottom: '1px solid #D9CEB8' }}>
+                        👁 Aperçu — email vers anne@compact.fr
+                      </div>
+                      <div style={{ padding: 16, background: '#fff' }}
+                        dangerouslySetInnerHTML={{ __html: result.html }} />
+                    </div>
+                  )
+                })()}
               </div>
             )
           })()}
