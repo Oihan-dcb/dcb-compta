@@ -17,6 +17,7 @@
  */
 
 import { supabase } from '../lib/supabase'
+import { AGENCE } from '../lib/agence'
 import { STATUTS_NON_VENTILABLES } from '../lib/constants'
 
 export async function buildComptaMensuelle(mois) {
@@ -36,7 +37,7 @@ export async function buildComptaMensuelle(mois) {
     supabase
       .from('bien')
       .select('id, code, hospitable_name, listed, proprietaire_id, groupe_facturation, proprietaire:proprietaire_id(id, nom, prenom)')
-      .eq('agence', 'dcb'),
+      .eq('agence', AGENCE),
     supabase
       .from('reservation')
       .select('id, bien_id, final_status, ventilation_calculee, rapprochee, owner_stay, fin_revenue, code, arrival_date, departure_date, guest_name, platform')

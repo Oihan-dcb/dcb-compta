@@ -1,3 +1,4 @@
+import { AGENCE } from '../lib/agence'
 import { useState, useEffect } from 'react'
 import { getAutoEntrepreneurs, saveAutoEntrepreneur, deleteAutoEntrepreneur, createAEWithAuth, createAEAccess, resetAEPassword } from '../services/autoEntrepreneurs'
 import { supabase } from '../lib/supabase'
@@ -97,14 +98,14 @@ export default function PageAutoEntrepreneurs() {
         .from('prestation_hors_forfait')
         .select('id, ae_id, bien_id, date_prestation, montant, statut, description, bien:bien_id!inner(code, hospitable_name, agence), prestation_type:prestation_type_id(nom)')
         .eq('mois', mois)
-        .eq('bien.agence', 'dcb')
+        .eq('bien.agence', AGENCE)
         .not('ae_id', 'is', null)
         .order('date_prestation'),
       supabase
         .from('mission_menage')
         .select('id, ae_id, bien_id, date_mission, titre_ical, duree_heures, montant, bien:bien_id!inner(code, hospitable_name, agence, provision_ae_ref)')
         .eq('mois', mois)
-        .eq('bien.agence', 'dcb')
+        .eq('bien.agence', AGENCE)
         .neq('statut', 'cancelled')
         .order('date_mission')
     ])

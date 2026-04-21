@@ -1,3 +1,4 @@
+import { AGENCE } from '../lib/agence'
 import { useState, useEffect } from 'react'
 import { supabase } from '../lib/supabase'
 import MoisSelector from '../components/MoisSelector'
@@ -93,8 +94,8 @@ export default function PageLocationsLongues() {
 
   async function chargerReferentiels() {
     const [{ data: b }, { data: p }] = await Promise.all([
-      supabase.from('bien').select('id, code, hospitable_name').eq('agence', 'dcb').eq('listed', true).order('code'),
-      supabase.from('proprietaire').select('id, nom, prenom').eq('agence', 'dcb').order('nom'),
+      supabase.from('bien').select('id, code, hospitable_name').eq('agence', AGENCE).eq('listed', true).order('code'),
+      supabase.from('proprietaire').select('id, nom, prenom').eq('agence', AGENCE).order('nom'),
     ])
     setBiens(b || [])
     setProprios(p || [])
@@ -228,7 +229,7 @@ export default function PageLocationsLongues() {
     setError(null)
     try {
       const payload = {
-        agence:                'dcb',
+        agence:                AGENCE,
         nom:                   formEtudiant.nom.trim(),
         prenom:                formEtudiant.prenom.trim() || null,
         email:                 formEtudiant.email.trim() || null,

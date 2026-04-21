@@ -1,3 +1,4 @@
+import { AGENCE } from '../lib/agence'
 import { useState, useEffect } from 'react'
 import { supabase } from '../lib/supabase'
 import MoisSelector from '../components/MoisSelector'
@@ -69,7 +70,7 @@ export default function PageFraisProprietaire() {
     const { data } = await supabase
       .from('bien')
       .select('id, code, hospitable_name, proprietaire_id, proprietaire (id, nom, prenom)')
-      .eq('agence', 'dcb')
+      .eq('agence', AGENCE)
       .eq('listed', true)
       .order('code')
     setBiens(data || [])

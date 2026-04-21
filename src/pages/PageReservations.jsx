@@ -1,3 +1,4 @@
+import { AGENCE } from '../lib/agence'
 import { useState, useEffect } from 'react'
 import { useSearchParams } from 'react-router-dom'
 import MoisSelector from '../components/MoisSelector'
@@ -39,7 +40,7 @@ export default function PageReservations() {
       const PAGE = 1000
       let all = [], page = 0
       while (true) {
-        const { data } = await supabase.from('reservation').select('mois_comptable, bien!inner(agence)').not('mois_comptable', 'is', null).eq('bien.agence', 'dcb').range(page * PAGE, (page + 1) * PAGE - 1)
+        const { data } = await supabase.from('reservation').select('mois_comptable, bien!inner(agence)').not('mois_comptable', 'is', null).eq('bien.agence', AGENCE).range(page * PAGE, (page + 1) * PAGE - 1)
         if (!data || data.length === 0) break
         all = all.concat(data)
         if (data.length < PAGE) break

@@ -1,8 +1,9 @@
 import { supabase } from '../lib/supabase'
+import { AGENCE } from '../lib/agence'
 
 // ── Étudiants ──────────────────────────────────────────────────────────────
 
-export async function listerEtudiants(agence = 'dcb', statut = null) {
+export async function listerEtudiants(agence = AGENCE, statut = null) {
   let q = supabase
     .from('etudiant')
     .select('*, bien (id, code, hospitable_name), proprietaire (id, nom, prenom)')
@@ -23,7 +24,7 @@ export async function creerEtudiant(payload) {
   if (error) throw error
   // Créer automatiquement la caution_suivi associée
   await supabase.from('caution_suivi').insert({
-    agence:      payload.agence || 'dcb',
+    agence:      payload.agence || AGENCE,
     etudiant_id: data.id,
     statut:      'en_cours',
   })
@@ -51,7 +52,7 @@ export function montantVirementProprio(e) {
 
 // ── Loyers du mois ────────────────────────────────────────────────────────
 
-export async function listerLoyersMois(mois, agence = 'dcb') {
+export async function listerLoyersMois(mois, agence = AGENCE) {
   const { data, error } = await supabase
     .from('loyer_suivi')
     .select('*, etudiant (id, nom, prenom, email, telephone, loyer_nu, supplement_loyer, charges_eau, charges_copro, charges_internet, honoraires_dcb, bien_id, proprietaire_id, jour_paiement_attendu, bien (code))')
@@ -62,7 +63,7 @@ export async function listerLoyersMois(mois, agence = 'dcb') {
   return data
 }
 
-export async function initialiserLoyersMois(mois, agence = 'dcb') {
+export async function initialiserLoyersMois(mois, agence = AGENCE) {
   // Récupérer tous les étudiants actifs
   const etudiants = await listerEtudiants(agence, 'actif')
   if (!etudiants.length) return []
@@ -114,7 +115,7 @@ export async function marquerLoyerStatut(id, statut) {
 
 // ── Virements proprio ─────────────────────────────────────────────────────
 
-export async function listerVirementsMois(mois, agence = 'dcb') {
+export async function listerVirementsMois(mois, agence = AGENCE) {
   const { data, error } = await supabase
     .from('virement_proprio_suivi')
     .select('*, etudiant (id, nom, prenom, loyer_nu, supplement_loyer, charges_eau, charges_copro, charges_internet, honoraires_dcb, proprietaire (nom, prenom))')

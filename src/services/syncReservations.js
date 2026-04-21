@@ -4,6 +4,7 @@
  */
 
 import { supabase } from '../lib/supabase'
+import { AGENCE } from '../lib/agence'
 import { fetchReservations } from '../lib/hospitable'
 import { format, parseISO } from 'date-fns'
 
@@ -28,7 +29,7 @@ export async function syncReservations(mois) {
       .from('bien')
       .select('id, hospitable_id, hospitable_name, proprietaire_id, provision_ae_ref, forfait_dcb_ref, has_ae, agence')
       .eq('listed', true)
-    .eq('agence', 'dcb') // Biens DCB uniquement - exclure Lauian
+    .eq('agence', AGENCE)
 
     if (biensError) throw biensError
     if (!biens || biens.length === 0) throw new Error('Aucun bien actif trouvé')
@@ -321,6 +322,5 @@ export async function getReservationsMois(mois) {
     .order('arrival_date')
 
   if (error) throw error
-  // Exclure les réservations des biens Lauian
-  return (data || []).filter(r => (r.bien?.agence || 'dcb') === 'dcb')
+  return (data || []).filter(r => (r.bien?.agence || AGENCE) === AGENCE)
 }
