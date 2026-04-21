@@ -56,8 +56,8 @@ function nomMois(mois: string): string {
   return noms[parseInt(m) - 1]
 }
 
-function formatEuros(centimes: number): string {
-  return (centimes / 100).toFixed(2).replace('.', ',') + ' €'
+function formatEuros(euros: number): string {
+  return euros.toFixed(2).replace('.', ',') + ' €'
 }
 
 function texteSMS(prenom: string, mois: string, montant: number, nbRelances: number): string {
@@ -101,9 +101,11 @@ serve(async (req) => {
 
   try {
     let dry_run = false
+    let loyer_suivi_id: string | null = null
     try {
       const body = await req.json()
       dry_run = !!body.dry_run
+      loyer_suivi_id = body.loyer_suivi_id || null
     } catch { /* cron n'envoie pas de body */ }
 
     const SUPABASE_URL  = Deno.env.get('SUPABASE_URL')!
@@ -121,14 +123,11 @@ serve(async (req) => {
     const maintenant = now.toISOString()
 
     // ── 1. Trouver les loyers à relancer ────────────────────────────────
-    // Critères :
-    //   - mois courant, statut 'attendu'
-    //   - nb_relances < 3
-    //   - jour >= etudiant.jour_paiement_attendu (le loyer est en retard)
-    //   - dernière relance > 3 jours ago (ou jamais relancé)
     const troisiersJoursAvant = new Date(now.getTime() - 3 * 24 * 60 * 60 * 1000).toISOString()
+    // Si loyer_suivi_id fourni : relance forcée sur un seul loyer (bypass délais)
+    const forceManuel = !!loyer_suivi_id
 
-    const { data: loyers, error: errLoyers } = await supabase
+    let loyersQuery = supabase
       .from('loyer_suivi')
       .select(`
         id, mois, statut, nb_relances, date_derniere_relance,
@@ -138,10 +137,19 @@ serve(async (req) => {
           honoraires_dcb, jour_paiement_attendu, statut
         )
       `)
-      .eq('mois', mois)
-      .eq('statut', 'attendu')
-      .lt('nb_relances', 3)
 
+    if (forceManuel) {
+      // Relance manuelle — un seul loyer, pas de filtre statut/mois
+      loyersQuery = loyersQuery.eq('id', loyer_suivi_id!)
+    } else {
+      // Batch cron — loyers attendu du mois courant, < 3 relances
+      loyersQuery = loyersQuery
+        .eq('mois', mois)
+        .eq('statut', 'attendu')
+        .lt('nb_relances', 3)
+    }
+
+    const { data: loyers, error: errLoyers } = await loyersQuery
     if (errLoyers) throw errLoyers
 
     const resultats: any[] = []
@@ -150,16 +158,17 @@ serve(async (req) => {
       const e = loyer.etudiant
       if (!e || e.statut !== 'actif') continue
 
-      // Vérifier si le loyer est en retard (jour actuel >= jour_paiement)
-      if (jourDuMois < e.jour_paiement_attendu) {
-        resultats.push({ etudiant: `${e.nom} ${e.prenom || ''}`.trim(), action: 'skip', raison: 'pas encore dû' })
-        continue
-      }
-
-      // Vérifier délai minimum entre relances (3 jours)
-      if (loyer.date_derniere_relance && loyer.date_derniere_relance > troisiersJoursAvant) {
-        resultats.push({ etudiant: `${e.nom} ${e.prenom || ''}`.trim(), action: 'skip', raison: 'relance trop récente' })
-        continue
+      if (!forceManuel) {
+        // Vérifier si le loyer est en retard (jour actuel >= jour_paiement)
+        if (jourDuMois < e.jour_paiement_attendu) {
+          resultats.push({ etudiant: `${e.nom} ${e.prenom || ''}`.trim(), action: 'skip', raison: 'pas encore dû' })
+          continue
+        }
+        // Vérifier délai minimum entre relances (3 jours)
+        if (loyer.date_derniere_relance && loyer.date_derniere_relance > troisiersJoursAvant) {
+          resultats.push({ etudiant: `${e.nom} ${e.prenom || ''}`.trim(), action: 'skip', raison: 'relance trop récente' })
+          continue
+        }
       }
 
       const montantTotal = (e.loyer_nu || 0) + (e.supplement_loyer || 0) +

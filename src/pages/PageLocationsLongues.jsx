@@ -250,6 +250,27 @@ export default function PageLocationsLongues() {
     }
   }
 
+  // ── Relance SMS manuelle ──────────────────────────────────────────────
+  async function envoyerRelanceManuelle(loyerSuiviId) {
+    setSuccess(null)
+    setError(null)
+    try {
+      const { data, error } = await supabase.functions.invoke('relance-loyer', {
+        body: { loyer_suivi_id: loyerSuiviId },
+      })
+      if (error) throw error
+      const detail = data?.detail?.[0]
+      if (detail?.sms_ok || detail?.email_ok) {
+        setSuccess(`Relance envoyée — SMS: ${detail.sms_ok ? '✓' : '✗'} Email: ${detail.email_ok ? '✓' : '✗'}`)
+      } else {
+        setSuccess('Relance traitée (vérifier les coordonnées de l\'étudiant)')
+      }
+      await chargerSuivi(suiviEtudiantId)
+    } catch (e) {
+      setError('Erreur relance : ' + e.message)
+    }
+  }
+
   // ── Quittance PDF — signed URL ────────────────────────────────────────
   async function ouvrirQuittancePdf(etudiantId, mois) {
     const path = `quittances/${etudiantId}/${mois}.pdf`
@@ -917,12 +938,19 @@ export default function PageLocationsLongues() {
                                       <span style={{ color: 'var(--text-muted)' }}>—</span>
                                     )}
                                   </td>
-                                  <td>
+                                  <td style={{ whiteSpace: 'nowrap' }}>
                                     {l.statut === 'recu' && (
                                       <button className="btn btn-secondary" style={{ fontSize: 11, padding: '2px 7px', color: '#6B7280' }}
                                         onClick={() => envoyerQuittance(l.id)}
                                         title={l.quittance_envoyee_at ? 'Renvoyer la quittance' : 'Envoyer la quittance'}>
-                                        {l.quittance_envoyee_at ? '↺' : '📄'}
+                                        {l.quittance_envoyee_at ? '↺ quittance' : '📄 quittance'}
+                                      </button>
+                                    )}
+                                    {(l.statut === 'attendu' || l.statut === 'en_retard') && (
+                                      <button className="btn btn-secondary" style={{ fontSize: 11, padding: '2px 7px', color: '#B45309', marginLeft: 4 }}
+                                        onClick={() => envoyerRelanceManuelle(l.id)}
+                                        title="Envoyer une relance SMS + email maintenant">
+                                        📨 relancer
                                       </button>
                                     )}
                                   </td>
