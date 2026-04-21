@@ -262,9 +262,10 @@ async function handleReview(supabase: any, event: string, data: any): Promise<st
   const resaHospId = data.reservation_id || data.reservation?.id
   if (!resaHospId) return 'no reservation_id'
 
-  const rating   = data.rating || data.overall_rating || null
-  const comment  = data.comment || data.review || data.body || null
-  const reviewer = data.reviewer_name || data.guest?.name || null
+  const rating   = data.rating || data.overall_rating || data.public?.rating || null
+  const comment  = data.comment || data.review || data.body || data.public?.review || null
+  const reviewer = data.reviewer_name || data.guest?.name
+    || [data.guest?.first_name, data.guest?.last_name].filter(Boolean).join(' ') || null
   const submittedAt = data.submitted_at || data.created_at || null
 
   console.log('Review reçue:', resaHospId, 'note:', rating, reviewer)
@@ -272,12 +273,13 @@ async function handleReview(supabase: any, event: string, data: any): Promise<st
   // Résoudre reservation_id interne depuis hospitable_id
   const { data: resa } = await supabase
     .from('reservation')
-    .select('id')
+    .select('id, bien_id')
     .eq('hospitable_id', resaHospId)
     .maybeSingle()
 
   const { error } = await supabase.from('reservation_review').upsert({
     reservation_id:              resa?.id || null,
+    bien_id:                     resa?.bien_id || null,
     hospitable_reservation_id:   resaHospId,
     reviewer_name:               reviewer,
     rating,
@@ -286,6 +288,13 @@ async function handleReview(supabase: any, event: string, data: any): Promise<st
   }, { onConflict: 'hospitable_reservation_id' })
 
   if (error) throw new Error('INSERT reservation_review failed: ' + error.message)
+
+  // Mettre à jour review_rating sur la reservation
+  if (resa?.id && rating !== null) {
+    await supabase.from('reservation')
+      .update({ review_rating: rating })
+      .eq('id', resa.id)
+  }
 
   // Mise en file d'attente SMS si avis 5 étoiles (envoi différé 28 min)
   if (rating >= 5) {

@@ -3,7 +3,7 @@ import { supabase } from '../lib/supabase'
 
 const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL
 
-const TABS = ['Dashboard', 'Logs', 'Test', 'Campagnes']
+const TABS = ['Dashboard', 'Queue', 'Logs', 'Test', 'Campagnes']
 
 const STATUS_LABEL = { sent: 'Envoyé', error: 'Erreur', no_phone: 'Pas de tél.', skipped: 'Ignoré' }
 const STATUS_COLOR = { sent: '#5a8a5a', error: '#b94a4a', no_phone: '#8a7a4a', skipped: '#888' }
@@ -40,6 +40,42 @@ export default function PageSmsReviews() {
       setLoadingComment(false)
     }
   }, [])
+
+  // Queue
+  const [queue, setQueue]             = useState([])
+  const [loadingQueue, setLoadingQueue] = useState(false)
+  const [flushResult, setFlushResult] = useState(null)
+
+  const chargerQueue = useCallback(async () => {
+    setLoadingQueue(true)
+    try {
+      const { data } = await supabase
+        .from('sms_queue')
+        .select('*')
+        .order('created_at', { ascending: false })
+        .limit(100)
+      setQueue(data || [])
+    } finally {
+      setLoadingQueue(false)
+    }
+  }, [])
+
+  const flushQueue = async () => {
+    setFlushResult(null)
+    const { data: { session } } = await supabase.auth.getSession()
+    const res = await fetch(`${SUPABASE_URL}/functions/v1/process-sms-queue`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${session?.access_token || import.meta.env.VITE_SUPABASE_ANON_KEY}`,
+      },
+      body: JSON.stringify({}),
+    })
+    const data = await res.json()
+    setFlushResult(data)
+    chargerQueue()
+    chargerLogs()
+  }
 
   // Campagnes
   const [candidats, setCandidats]     = useState([])
@@ -139,7 +175,8 @@ export default function PageSmsReviews() {
   useEffect(() => {
     if (tab === 'Campagnes') chargerCandidats()
     if (tab === 'Test' && !testComment) piocherCommentaire()
-  }, [tab, chargerCandidats, piocherCommentaire, testComment])
+    if (tab === 'Queue') chargerQueue()
+  }, [tab, chargerCandidats, piocherCommentaire, testComment, chargerQueue])
 
   const callEdgeFn = async (body) => {
     const { data: { session } } = await supabase.auth.getSession()
@@ -288,6 +325,73 @@ export default function PageSmsReviews() {
                 <div style={{ color: '#888', fontSize: '0.75rem' }}>{lang}</div>
               </div>
             ))}
+          </div>
+        </div>
+      )}
+
+      {/* ── QUEUE ── */}
+      {tab === 'Queue' && (
+        <div>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem' }}>
+            <div style={{ color: '#888', fontSize: '0.875rem' }}>
+              SMS en attente d'envoi ({queue.filter(q => q.status === 'pending').length} pending,{' '}
+              {queue.filter(q => q.status === 'error').length} erreurs)
+            </div>
+            <div style={{ display: 'flex', gap: '0.5rem' }}>
+              <button onClick={chargerQueue} style={{ padding: '0.4rem 0.75rem', background: 'transparent', border: '1px solid var(--border)', borderRadius: 8, cursor: 'pointer', fontSize: '0.8rem' }}>
+                ↻ Rafraîchir
+              </button>
+              <button onClick={flushQueue} style={{ padding: '0.4rem 1rem', background: 'var(--brand)', color: '#fff', border: 'none', borderRadius: 8, cursor: 'pointer', fontSize: '0.8rem', fontWeight: 700 }}>
+                ▶ Traiter maintenant
+              </button>
+            </div>
+          </div>
+          {flushResult && (
+            <div style={{ marginBottom: '1rem', padding: '0.65rem 1rem', borderRadius: 8, fontSize: '0.875rem', fontWeight: 600,
+              background: flushResult.error ? '#b94a4a22' : '#5a8a5a22',
+              color: flushResult.error ? '#b94a4a' : '#5a8a5a',
+              border: `1px solid ${flushResult.error ? '#b94a4a55' : '#5a8a5a55'}` }}>
+              {flushResult.error ? `Erreur : ${flushResult.error}` : `Traité : ${flushResult.processed} · Envoyés : ${flushResult.sent} · Erreurs : ${flushResult.failed}`}
+            </div>
+          )}
+          <div style={{ background: 'var(--bg)', border: '1px solid var(--border)', borderRadius: 10, overflow: 'hidden' }}>
+            <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.85rem' }}>
+              <thead>
+                <tr style={{ background: '#EAE3D4', borderBottom: '2px solid var(--border)' }}>
+                  {['Créé le', 'Envoi prévu', 'Client', 'Téléphone', 'Propriété', 'Note', 'Statut'].map(h => (
+                    <th key={h} style={{ padding: '0.65rem 1rem', textAlign: 'left', fontWeight: 600, color: 'var(--text)' }}>{h}</th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody>
+                {loadingQueue && <tr><td colSpan={7} style={{ padding: '2rem', textAlign: 'center', color: '#999' }}>Chargement…</td></tr>}
+                {!loadingQueue && queue.length === 0 && <tr><td colSpan={7} style={{ padding: '2rem', textAlign: 'center', color: '#999' }}>Queue vide</td></tr>}
+                {queue.map((q, i) => {
+                  const isPending = q.status === 'pending'
+                  const isReady   = isPending && new Date(q.send_at) <= new Date()
+                  const color     = q.status === 'sent' ? '#5a8a5a' : q.status === 'error' ? '#b94a4a' : isReady ? 'var(--brand)' : '#888'
+                  const label     = q.status === 'sent' ? 'Envoyé' : q.status === 'error' ? 'Erreur' : isReady ? 'Prêt' : 'En attente'
+                  return (
+                    <tr key={q.id} style={{ borderBottom: '1px solid var(--border)', background: i % 2 === 0 ? 'transparent' : '#faf8f4' }}>
+                      <td style={{ padding: '0.6rem 1rem', color: '#888', whiteSpace: 'nowrap' }}>
+                        {new Date(q.created_at).toLocaleDateString('fr-FR', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' })}
+                      </td>
+                      <td style={{ padding: '0.6rem 1rem', color: isReady ? 'var(--brand)' : '#888', whiteSpace: 'nowrap', fontWeight: isReady ? 700 : 400 }}>
+                        {new Date(q.send_at).toLocaleDateString('fr-FR', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' })}
+                      </td>
+                      <td style={{ padding: '0.6rem 1rem' }}>{q.guest_name || '—'}</td>
+                      <td style={{ padding: '0.6rem 1rem', fontFamily: 'monospace' }}>{q.guest_phone || '—'}</td>
+                      <td style={{ padding: '0.6rem 1rem' }}>{q.property_name || '—'}</td>
+                      <td style={{ padding: '0.6rem 1rem' }}>{q.rating ? '⭐'.repeat(Math.min(q.rating, 5)) : '—'}</td>
+                      <td style={{ padding: '0.6rem 1rem' }}>
+                        <span style={{ background: color + '22', color, borderRadius: 6, padding: '2px 8px', fontWeight: 600, fontSize: '0.78rem' }}>{label}</span>
+                        {q.error_message && <div style={{ fontSize: '0.72rem', color: '#b94a4a', marginTop: 2 }}>{q.error_message}</div>}
+                      </td>
+                    </tr>
+                  )
+                })}
+              </tbody>
+            </table>
           </div>
         </div>
       )}
