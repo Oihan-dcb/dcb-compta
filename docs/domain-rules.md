@@ -385,14 +385,25 @@ Ces règles **ne sont pas implémentées dans `ventilation.js` V1**. Elles const
 
 ### 12.1 Gestion de l'écart AUTO réel > provision
 
-Lorsque `ventilation.montant_reel > bien.provision_ae_ref`, un écart doit être traité. Deux cas possibles — **règle métier configurable, non encore implémentée** :
+> ✅ Implémenté commit `00436d3` — session 21/04/2026 : CAS DCB
 
-| Cas | Porteur | Mécanisme | Impact |
-|---|---|---|---|
-| CAS OWNER | Propriétaire | Différence = EXTRA dans la ventilation | Réduit LOY ou augmente la facture propriétaire |
-| CAS DCB | DCB | Différence absorbée dans FMEN | Réduit la marge DCB, n'impacte pas le propriétaire |
+**Règle** : AUTO (provision ou réel) est toujours déduit du MEN pour donner FMEN. Il ne touche jamais le LOY du propriétaire pour `mode_encaissement='dcb'`.
 
-En l'absence de règle définie, l'écart ne doit pas être absorbé silencieusement — il doit être signalé comme anomalie.
+```
+autoCouvertMen = min(autoBien, menBien)   → payé par DCB depuis FMEN
+autoNetMen     = max(0, autoBien - menBien) → seul ce surplus va sur LOY/DEB_AE
+```
+
+- Si `autoBien ≤ menBien` → `autoNetMen = 0` → pas d'absorption LOY, pas de DEB_AE
+- Si `autoBien > menBien` → le surplus est absorbé sur LOY ou génère DEB_AE
+- `mode_encaissement='proprio'` → totalité AUTO → DEB_AE (DCB ne perçoit pas le MEN)
+
+**FMEN réel** : quand `montant_reel` est mis à jour via `update-ventilation-auto`, la ligne FMEN est aussi mise à jour :
+```
+FMEN.montant_reel = FMEN.montant_ttc + AUTO.provision - AUTO.réel
+```
+
+**Avant** (comportement incorrect supprimé) : AUTO absorbait du LOY même quand MEN le couvrait → DEB_AE fantôme et double-déduction du proprio.
 
 ### 12.2 Prestations hors forfait validées (code EXTRA)
 
