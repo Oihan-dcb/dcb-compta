@@ -33,6 +33,7 @@ export default function PageAchats() {
   const [saving, setSaving]           = useState(false)
   const [fournisseurs, setFournisseurs] = useState([]) // suggestions autocomplete
   const [detections, setDetections]   = useState([])  // fournisseurs récurrents × mouvements
+  const [analyses, setAnalyses]       = useState({})  // id → { loading, ok, message }
 
   const charger = useCallback(async () => {
     setLoading(true)
@@ -154,9 +155,69 @@ export default function PageAchats() {
     charger()
   }
 
+  const analyserFacture = async (facture) => {
+    setAnalyses(prev => ({ ...prev, [facture.id]: { loading: true } }))
+    try {
+      const { data: historique } = await supabase
+        .from('facture_achat')
+        .select('fournisseur, montant_ttc, categorie, mois')
+        .eq('agence', AGENCE)
+        .eq('fournisseur', facture.fournisseur)
+        .neq('id', facture.id)
+        .order('mois', { ascending: false })
+        .limit(6)
+
+      const { data: { session } } = await supabase.auth.getSession()
+      const token = session?.access_token || import.meta.env.VITE_SUPABASE_ANON_KEY
+
+      const historiqueText = (historique || []).length
+        ? (historique || []).map(h => `- ${h.mois} : ${h.montant_ttc} € (${h.categorie || 'non classé'})`).join('\n')
+        : 'Aucun historique pour ce fournisseur.'
+
+      const prompt = `Analyse cette facture d'achat et réponds en JSON strict :
+{
+  "ok": true/false,
+  "message": "une phrase courte"
+}
+
+Facture à valider :
+- Fournisseur : ${facture.fournisseur}
+- Montant TTC : ${facture.montant_ttc} €
+- Catégorie saisie : ${facture.categorie || 'non renseignée'}
+- Type paiement : ${facture.type_paiement || '?'}
+- Mois : ${facture.mois}
+
+Historique des 6 dernières factures ${facture.fournisseur} :
+${historiqueText}
+
+Vérifie : montant cohérent avec l'historique ? Catégorie correcte pour ce fournisseur ?
+Si tout est cohérent → ok:true, message rassurant court.
+Si anomalie (montant très différent, catégorie suspecte) → ok:false, message expliquant l'anomalie.`
+
+      const res = await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/llm-analyse`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+        body: JSON.stringify({ prompt }),
+      })
+      const data = await res.json()
+      try {
+        const parsed = JSON.parse(data.text)
+        setAnalyses(prev => ({ ...prev, [facture.id]: { loading: false, ...parsed } }))
+      } catch {
+        setAnalyses(prev => ({ ...prev, [facture.id]: { loading: false, ok: true, message: data.text?.slice(0, 120) } }))
+      }
+    } catch (e) {
+      setAnalyses(prev => ({ ...prev, [facture.id]: { loading: false, ok: null, message: 'Analyse indisponible' } }))
+    }
+  }
+
   const changerStatut = async (id, statut) => {
     await supabase.from('facture_achat').update({ statut, updated_at: new Date().toISOString() }).eq('id', id)
     setFactures(prev => prev.map(f => f.id === id ? { ...f, statut } : f))
+    if (statut === 'valide') {
+      const facture = factures.find(f => f.id === id)
+      if (facture) analyserFacture({ ...facture, statut })
+    }
   }
 
   // Suggestions fournisseur à partir du champ saisi
@@ -300,7 +361,9 @@ export default function PageAchats() {
             )}
             {factures.map(f => {
               const sc = STATUT_COLORS[f.statut] || STATUT_COLORS.a_valider
+              const analyse = analyses[f.id]
               return (
+                <>
                 <tr key={f.id}>
                   <td style={{ fontWeight: 600 }}>{f.fournisseur}</td>
                   <td>
@@ -336,6 +399,21 @@ export default function PageAchats() {
                     </div>
                   </td>
                 </tr>
+                {analyse && (
+                  <tr key={f.id + '-analyse'} style={{ background: analyse.loading ? '#FAFAFA' : analyse.ok ? '#F0FDF4' : analyse.ok === false ? '#FFF7ED' : '#FAFAFA' }}>
+                    <td colSpan={7} style={{ padding: '6px 16px', fontSize: 12 }}>
+                      {analyse.loading
+                        ? <span style={{ color: 'var(--text-muted)' }}>⏳ Analyse en cours…</span>
+                        : analyse.ok === true
+                        ? <span style={{ color: '#065F46' }}>✓ {analyse.message}</span>
+                        : analyse.ok === false
+                        ? <span style={{ color: '#92400E' }}>⚠ {analyse.message}</span>
+                        : <span style={{ color: 'var(--text-muted)' }}>{analyse.message}</span>
+                      }
+                    </td>
+                  </tr>
+                )}
+                </>
               )
             })}
           </tbody>
