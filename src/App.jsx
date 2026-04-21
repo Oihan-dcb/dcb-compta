@@ -3,6 +3,9 @@ import { BrowserRouter, Routes, Route, NavLink, useLocation } from 'react-router
 import { useState, useEffect, useRef } from 'react'
 import { supabase } from './lib/supabase'
 import { AGENCE } from './lib/agence'
+import { applyTheme } from './lib/theme'
+
+applyTheme(AGENCE)
 
 const AGENCE_LABELS = {
   dcb:     { icon: 'DCB',    text: 'Compta' },
