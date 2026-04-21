@@ -174,26 +174,29 @@ serve(async (req) => {
     const { data: { signedUrl } } = await supabase.storage
       .from('etudiant-documents').createSignedUrl(storagePath, 3600)
 
-    // Envoyer par email
-    const dest = email_destinataire || agency?.email_comptable
+    // Envoyer par email (supporte plusieurs destinataires séparés par virgule)
+    const destRaw = email_destinataire || agency?.email_comptable
+    const destinataires = destRaw ? destRaw.split(',').map((e: string) => e.trim()).filter(Boolean) : []
     let email_envoye = false
-    if (dest) {
+    if (destinataires.length > 0) {
       let b64 = ''
       for (let i = 0; i < pdfBytes.length; i += 3072) {
         b64 += btoa(String.fromCharCode(...pdfBytes.slice(i, i + 3072)))
       }
-      const emailRes = await fetch(`${SUPABASE_URL}/functions/v1/smtp-send`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${SERVICE_KEY}` },
-        body: JSON.stringify({
-          to: dest,
-          subject: `Bilan LLD ${agenceLabel} — ${mois}`,
-          html: `<p>Bonjour,</p><p>Veuillez trouver en pièce jointe le bilan des locations longues durée pour <strong>${nomMois(mois)}</strong>.</p><p>Cordialement,<br>${agenceLabel}</p>`,
-          attachment_base64: b64,
-          attachment_name: `bilan-lld-${mois}.pdf`,
-        }),
-      })
-      email_envoye = emailRes.ok
+      const envois = await Promise.all(destinataires.map(to =>
+        fetch(`${SUPABASE_URL}/functions/v1/smtp-send`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${SERVICE_KEY}` },
+          body: JSON.stringify({
+            to,
+            subject: `Bilan LLD ${agenceLabel} — ${mois}`,
+            html: `<p>Bonjour,</p><p>Veuillez trouver en pièce jointe le bilan des locations longues durée pour <strong>${nomMois(mois)}</strong>.</p><p>Cordialement,<br>${agenceLabel}</p>`,
+            attachment_base64: b64,
+            attachment_name: `bilan-lld-${mois}.pdf`,
+          }),
+        })
+      ))
+      email_envoye = envois.every(r => r.ok)
     }
 
     return new Response(
