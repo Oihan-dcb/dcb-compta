@@ -26,8 +26,8 @@ const corsHeaders = {
 
 // ── Helpers ────────────────────────────────────────────────────────────────
 
-function formatEuros(centimes: number): string {
-  return (centimes / 100).toLocaleString('fr-FR', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) + ' €'
+function formatEuros(euros: number): string {
+  return euros.toLocaleString('fr-FR', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) + ' €'
 }
 
 function formatDate(isoDate: string): string {
@@ -53,8 +53,14 @@ function genererHtmlQuittance(data: {
   loyer: any,
   mois: string,
   agence_label: string,
+  agence_adresse1?: string,
+  agence_adresse2?: string,
+  agence_siret?: string,
+  charges_nature?: string,
 }): string {
-  const { etudiant: e, loyer: l, mois, agence_label } = data
+  const { etudiant: e, loyer: l, mois, agence_label,
+          agence_adresse1, agence_adresse2, agence_siret,
+          charges_nature = 'forfaitaires' } = data
   const total = (e.loyer_nu || 0) + (e.supplement_loyer || 0) +
                 (e.charges_eau || 0) + (e.charges_copro || 0) + (e.charges_internet || 0)
   const dateReception = l.date_reception ? formatDate(l.date_reception) : formatDate(new Date().toISOString().slice(0, 10))
@@ -109,8 +115,13 @@ function genererHtmlQuittance(data: {
 
 <div class="parties">
   <div class="bloc">
-    <div class="bloc-label">Bailleur</div>
-    <div class="bloc-value">${agence_label}</div>
+    <div class="bloc-label">Bailleur (mandataire)</div>
+    <div class="bloc-value">
+      ${agence_label}<br>
+      ${agence_adresse1 ? `<span style="font-weight:400;color:#555">${agence_adresse1}</span><br>` : ''}
+      ${agence_adresse2 ? `<span style="font-weight:400;color:#555">${agence_adresse2}</span>` : ''}
+      ${agence_siret ? `<br><span style="font-weight:400;color:#555;font-size:11px">SIRET ${agence_siret}</span>` : ''}
+    </div>
   </div>
   <div class="bloc">
     <div class="bloc-label">Locataire</div>
@@ -136,7 +147,7 @@ function genererHtmlQuittance(data: {
     ${lignesCharges.join('\n    ')}
     <tr><td colspan="2"><hr class="separator"></td></tr>
     <tr class="total-row">
-      <td>Total mensuel</td>
+      <td>Total mensuel (dont charges ${charges_nature})</td>
       <td style="text-align:right;color:#CC9933">${formatEuros(total)}</td>
     </tr>
   </tbody>
@@ -147,9 +158,10 @@ function genererHtmlQuittance(data: {
 </div>
 
 <div class="mention">
-  Je soussigné(e), représentant(e) de ${agence_label}, bailleur du logement désigné ci-dessus,<br>
+  Je soussigné(e), représentant(e) de ${agence_label}, mandataire du bailleur,<br>
   déclare avoir reçu de ${locataire} la somme de <strong>${formatEuros(l.montant_recu || total)}</strong><br>
-  au titre du loyer et des charges pour la période indiquée ci-dessus.<br><br>
+  au titre du loyer (${formatEuros(e.loyer_nu)}) et des charges ${charges_nature} (${formatEuros(total - (e.loyer_nu || 0))})<br>
+  pour la période indiquée ci-dessus, conformément à l'article 21 de la loi n° 89-462 du 6 juillet 1989.<br><br>
   <strong>Cette quittance annule tous les reçus qui auraient pu être établis précédemment en règlement du loyer du même mois.</strong>
 </div>
 
@@ -224,13 +236,22 @@ serve(async (req) => {
     // ── 2. Label agence ──────────────────────────────────────────────────
     const { data: agenceData } = await supabase
       .from('agency_config')
-      .select('label')
+      .select('label, adresse_ligne1, adresse_ligne2, siret, charges_nature')
       .eq('agence', etudiant.agence)
       .single()
     const agence_label = agenceData?.label || 'Destination Côte Basque'
 
     // ── 3. Générer HTML ──────────────────────────────────────────────────
-    const html = genererHtmlQuittance({ etudiant, loyer, mois: loyer.mois, agence_label })
+    const html = genererHtmlQuittance({
+      etudiant,
+      loyer,
+      mois: loyer.mois,
+      agence_label,
+      agence_adresse1:  agenceData?.adresse_ligne1 || undefined,
+      agence_adresse2:  agenceData?.adresse_ligne2 || undefined,
+      agence_siret:     agenceData?.siret || undefined,
+      charges_nature:   agenceData?.charges_nature || 'forfaitaires',
+    })
 
     // ── 4. Appel Vercel generate-pdf ─────────────────────────────────────
     const pdfRes = await fetch(`${APP_URL}/api/generate-pdf`, {

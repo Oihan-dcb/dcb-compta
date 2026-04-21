@@ -38,6 +38,7 @@ import PageExports from './pages/PageExports'
 import PageSmsReviews from './pages/PageSmsReviews'
 import PageLocationsLongues from './pages/PageLocationsLongues'
 import PageAchats from './pages/PageAchats'
+import PageAgence from './pages/PageAgence'
 import BugReportButton from './components/BugReportButton'
 import './App.css'
 
@@ -141,6 +142,7 @@ export default function App() {
             <NavLink to="/sms-reviews" className={({isActive}) => isActive ? 'nav-link active' : 'nav-link'}>SMS Reviews</NavLink>
             <NavLink to="/locations-longues" className={({isActive}) => isActive ? 'nav-link active' : 'nav-link'}>Étudiants</NavLink>
             <NavLink to="/achats" className={({isActive}) => isActive ? 'nav-link active' : 'nav-link'}>Achats</NavLink>
+            <NavLink to="/agence" className={({isActive}) => isActive ? 'nav-link active' : 'nav-link'}>Agence</NavLink>
             <ConfigDropdown />
           </nav>
         </header>
@@ -166,6 +168,7 @@ export default function App() {
             <Route path="/sms-reviews" element={<PageSmsReviews />} />
             <Route path="/locations-longues" element={<PageLocationsLongues />} />
             <Route path="/achats" element={<PageAchats />} />
+            <Route path="/agence" element={<PageAgence />} />
           </Routes>
         </main>
       </div>
