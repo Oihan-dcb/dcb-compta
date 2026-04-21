@@ -22,6 +22,8 @@ import {
   uploaderDocument,
   supprimerDocument,
   getSignedUrl,
+  listerLoyersEtudiant,
+  listerVirementsEtudiant,
 } from '../services/locationsLongues'
 
 const moisCourant = new Date().toISOString().slice(0, 7)
@@ -98,6 +100,14 @@ export default function PageLocationsLongues() {
   // Bilan mensuel
   const [generatingBilan, setGeneratingBilan] = useState(false)
 
+  // Onglet Suivi
+  const [suiviEtudiantId, setSuiviEtudiantId] = useState('')
+  const [suiviLoyers, setSuiviLoyers] = useState([])
+  const [suiviVirements, setSuiviVirements] = useState([])
+  const [suiviCautionData, setSuiviCautionData] = useState(null)
+  const [suiviDocs, setSuiviDocs] = useState([])
+  const [suiviLoading, setSuiviLoading] = useState(false)
+
   // Dossier étudiant
   const [dossierEtudiant, setDossierEtudiant] = useState(null)
   const [docs, setDocs] = useState([])
@@ -107,6 +117,8 @@ export default function PageLocationsLongues() {
   useEffect(() => { chargerReferentiels() }, [])
   useEffect(() => { if (onglet === 'mensuel') chargerMensuel() }, [mois, onglet])
   useEffect(() => { if (onglet === 'etudiants') chargerEtudiants() }, [onglet])
+  useEffect(() => { if (onglet === 'suivi' && !etudiants.length) chargerEtudiants() }, [onglet])
+  useEffect(() => { if (suiviEtudiantId) chargerSuivi(suiviEtudiantId) }, [suiviEtudiantId])
 
   useEffect(() => {
     const channel = supabase.channel('lld-changes')
@@ -227,6 +239,27 @@ export default function PageLocationsLongues() {
       await chargerMensuel()
     } catch (e) {
       setError(e.message)
+    }
+  }
+
+  // ── Suivi étudiant ────────────────────────────────────────────────────
+  async function chargerSuivi(etudiantId) {
+    setSuiviLoading(true)
+    try {
+      const [l, v, c, d] = await Promise.all([
+        listerLoyersEtudiant(etudiantId, AGENCE),
+        listerVirementsEtudiant(etudiantId, AGENCE),
+        getCautionEtudiant(etudiantId),
+        listerDocuments(etudiantId),
+      ])
+      setSuiviLoyers(l)
+      setSuiviVirements(v)
+      setSuiviCautionData(c)
+      setSuiviDocs(d)
+    } catch (e) {
+      setError(e.message)
+    } finally {
+      setSuiviLoading(false)
     }
   }
 
@@ -460,7 +493,7 @@ export default function PageLocationsLongues() {
 
       {/* Onglets */}
       <div style={{ display: 'flex', gap: 4, marginBottom: 20, borderBottom: '2px solid var(--border)' }}>
-        {[['mensuel', 'Mensuel'], ['etudiants', 'Étudiants']].map(([key, label]) => (
+        {[['mensuel', 'Mensuel'], ['etudiants', 'Étudiants'], ['suivi', 'Suivi']].map(([key, label]) => (
           <button key={key} onClick={() => setOnglet(key)}
             style={{
               padding: '8px 18px', border: 'none', cursor: 'pointer', fontSize: 14, fontWeight: 600,
@@ -723,6 +756,158 @@ export default function PageLocationsLongues() {
             </div>
           )}
         </>
+      )}
+
+      {/* ── Vue Suivi ── */}
+      {onglet === 'suivi' && (
+        <div>
+          {/* Sélecteur étudiant */}
+          <div style={{ marginBottom: 20, display: 'flex', alignItems: 'center', gap: 12 }}>
+            <select className="form-select" style={{ maxWidth: 280 }}
+              value={suiviEtudiantId}
+              onChange={e => setSuiviEtudiantId(e.target.value)}>
+              <option value="">— Sélectionner un étudiant —</option>
+              {etudiants.map(e => (
+                <option key={e.id} value={e.id}>
+                  {e.nom}{e.prenom ? ' ' + e.prenom : ''} {e.statut !== 'actif' ? `(${e.statut})` : ''}
+                </option>
+              ))}
+            </select>
+            {suiviEtudiantId && <button className="btn btn-secondary" style={{ fontSize: 12 }} onClick={() => chargerSuivi(suiviEtudiantId)}>↺</button>}
+          </div>
+
+          {suiviLoading && <div className="loading-state"><span className="spinner" /> Chargement…</div>}
+
+          {suiviEtudiantId && !suiviLoading && (() => {
+            const etudiant = etudiants.find(e => e.id === suiviEtudiantId)
+            if (!etudiant) return null
+
+            const totalLoysRecu = suiviLoyers.filter(l => l.statut === 'recu').reduce((s, l) => s + (l.montant_recu || 0), 0)
+            const totalVire = suiviVirements.filter(v => v.statut === 'vire').reduce((s, v) => s + (v.montant || 0), 0)
+
+            return (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 24 }}>
+
+                {/* Fiche résumé */}
+                <div style={{ background: 'var(--bg)', border: '1px solid var(--border)', borderRadius: 10, padding: '14px 18px', display: 'flex', gap: 32, flexWrap: 'wrap' }}>
+                  <div><div style={{ fontSize: 11, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: 1 }}>Bien</div><div style={{ fontWeight: 600 }}>{etudiant.bien?.code || '—'}</div></div>
+                  <div><div style={{ fontSize: 11, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: 1 }}>Entrée</div><div style={{ fontWeight: 600 }}>{etudiant.date_entree}</div></div>
+                  <div><div style={{ fontSize: 11, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: 1 }}>Sortie prévue</div><div style={{ fontWeight: 600 }}>{etudiant.date_sortie_prevue || '—'}</div></div>
+                  <div><div style={{ fontSize: 11, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: 1 }}>Total / mois</div><div style={{ fontWeight: 600, color: 'var(--brand)' }}>{formatMontant(montantTotalEtudiant(etudiant))}</div></div>
+                  <div><div style={{ fontSize: 11, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: 1 }}>Documents</div>
+                    <div style={{ fontWeight: 600 }}>
+                      {['contrat_location','eds_entree','eds_sortie'].map(t => (
+                        <span key={t} title={t} style={{ marginRight: 4, color: suiviDocs.some(d => d.type === t) ? '#059669' : '#B45309' }}>
+                          {suiviDocs.some(d => d.type === t) ? '✓' : '⚠'}
+                        </span>
+                      ))}
+                    </div>
+                  </div>
+                  <div><div style={{ fontSize: 11, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: 1 }}>Caution</div>
+                    <div style={{ fontWeight: 600 }}>
+                      {suiviCautionData
+                        ? <span style={{ color: STATUT_CAUTION[suiviCautionData.statut]?.color }}>{STATUT_CAUTION[suiviCautionData.statut]?.label}</span>
+                        : '—'}
+                    </div>
+                  </div>
+                </div>
+
+                {/* Historique loyers */}
+                <div>
+                  <h2 style={{ fontSize: 14, fontWeight: 700, margin: '0 0 10px' }}>
+                    Loyers — {suiviLoyers.length} mois · encaissé {formatMontant(totalLoysRecu)}
+                  </h2>
+                  {suiviLoyers.length === 0
+                    ? <div className="empty-state" style={{ padding: '20px' }}>Aucun loyer enregistré</div>
+                    : (
+                      <div className="table-container">
+                        <table className="table">
+                          <thead><tr>
+                            <th>Mois</th><th>Statut</th>
+                            <th style={{ textAlign: 'right' }}>Montant reçu</th>
+                            <th>Date réception</th>
+                            <th>Relances</th>
+                            <th>Quittance</th>
+                            <th></th>
+                          </tr></thead>
+                          <tbody>
+                            {suiviLoyers.map(l => {
+                              const st = STATUT_LOYER[l.statut] || {}
+                              return (
+                                <tr key={l.id}>
+                                  <td style={{ fontWeight: 600 }}>{l.mois}</td>
+                                  <td><span style={{ display: 'inline-block', padding: '2px 8px', borderRadius: 10, fontSize: 12, fontWeight: 600, color: st.color, background: st.bg }}>{st.label}</span></td>
+                                  <td style={{ textAlign: 'right', fontWeight: 600 }}>{l.montant_recu ? formatMontant(l.montant_recu) : '—'}</td>
+                                  <td style={{ fontSize: 13, color: 'var(--text-muted)' }}>{l.date_reception || '—'}</td>
+                                  <td style={{ fontSize: 13 }}>
+                                    {l.nb_relances > 0
+                                      ? <span style={{ color: l.nb_relances >= 3 ? '#DC2626' : '#B45309', fontWeight: 600 }}>
+                                          {l.nb_relances} relance{l.nb_relances > 1 ? 's' : ''}
+                                          {l.date_derniere_relance && <span style={{ fontWeight: 400, color: 'var(--text-muted)', marginLeft: 4 }}>({l.date_derniere_relance.slice(0, 10)})</span>}
+                                        </span>
+                                      : <span style={{ color: 'var(--text-muted)' }}>—</span>}
+                                  </td>
+                                  <td style={{ fontSize: 12 }}>
+                                    {l.quittance_envoyee_at
+                                      ? <span style={{ color: '#059669' }}>✓ {l.quittance_envoyee_at.slice(0, 10)}</span>
+                                      : <span style={{ color: 'var(--text-muted)' }}>—</span>}
+                                  </td>
+                                  <td>
+                                    {l.statut === 'recu' && (
+                                      <button className="btn btn-secondary" style={{ fontSize: 11, padding: '2px 7px', color: '#6B7280' }}
+                                        onClick={() => envoyerQuittance(l.id)}
+                                        title={l.quittance_envoyee_at ? 'Renvoyer la quittance' : 'Envoyer la quittance'}>
+                                        {l.quittance_envoyee_at ? '↺' : '📄'}
+                                      </button>
+                                    )}
+                                  </td>
+                                </tr>
+                              )
+                            })}
+                          </tbody>
+                        </table>
+                      </div>
+                    )}
+                </div>
+
+                {/* Historique virements */}
+                <div>
+                  <h2 style={{ fontSize: 14, fontWeight: 700, margin: '0 0 10px' }}>
+                    Virements proprio — viré {formatMontant(totalVire)}
+                  </h2>
+                  {suiviVirements.length === 0
+                    ? <div className="empty-state" style={{ padding: '20px' }}>Aucun virement enregistré</div>
+                    : (
+                      <div className="table-container">
+                        <table className="table">
+                          <thead><tr>
+                            <th>Mois</th>
+                            <th style={{ textAlign: 'right' }}>Montant</th>
+                            <th>Statut</th>
+                            <th>Date virement</th>
+                          </tr></thead>
+                          <tbody>
+                            {suiviVirements.map(v => {
+                              const st = STATUT_VIREMENT[v.statut] || {}
+                              return (
+                                <tr key={v.id}>
+                                  <td style={{ fontWeight: 600 }}>{v.mois}</td>
+                                  <td style={{ textAlign: 'right', fontWeight: 600 }}>{v.montant ? formatMontant(v.montant) : '—'}</td>
+                                  <td><span style={{ display: 'inline-block', padding: '2px 8px', borderRadius: 10, fontSize: 12, fontWeight: 600, color: st.color, background: st.bg }}>{st.label}</span></td>
+                                  <td style={{ fontSize: 13, color: 'var(--text-muted)' }}>{v.date_virement || '—'}</td>
+                                </tr>
+                              )
+                            })}
+                          </tbody>
+                        </table>
+                      </div>
+                    )}
+                </div>
+
+              </div>
+            )
+          })()}
+        </div>
       )}
 
       {/* Modal loyer reçu */}

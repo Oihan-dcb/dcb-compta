@@ -154,6 +154,30 @@ export async function mettreAJourCaution(id, payload) {
   if (error) throw error
 }
 
+// ── Historique / suivi par étudiant ───────────────────────────────────────
+
+export async function listerLoyersEtudiant(etudiantId, agence = AGENCE) {
+  const { data, error } = await supabase
+    .from('loyer_suivi')
+    .select('*')
+    .eq('agence', agence)
+    .eq('etudiant_id', etudiantId)
+    .order('mois', { ascending: false })
+  if (error) throw error
+  return data || []
+}
+
+export async function listerVirementsEtudiant(etudiantId, agence = AGENCE) {
+  const { data, error } = await supabase
+    .from('virement_proprio_suivi')
+    .select('*')
+    .eq('agence', agence)
+    .eq('etudiant_id', etudiantId)
+    .order('mois', { ascending: false })
+  if (error) throw error
+  return data || []
+}
+
 // ── Documents étudiant ────────────────────────────────────────────────────
 
 export async function listerDocuments(etudiantId) {
