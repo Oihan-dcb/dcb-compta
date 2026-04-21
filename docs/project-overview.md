@@ -582,6 +582,39 @@ Flux 2 (reversement)   : ventilation.code='VIR' ↔ facture propriétaire (indé
 - `annulerRapprochement` simplifié : resaIds depuis payout chain + reservation_paiement uniquement
 - VIR fantôme `88131ea4` (HMNN9Q5YAE, 148,15€) supprimé manuellement en base
 
+## Fixes session 21 avril 2026 — SMS automation + base_comm + LLM géographie
+
+### base_comm corrigé dans buildRapportData.js
+- `base_comm` = `fin_accommodation + fin_host_service_fee - fin_discount` (fin_discount manquant → 160.58 au lieu de 120.38 pour Le Panorama/Audrey Neveu mars 2026)
+- `fin_discount` ajouté au SELECT + soustrait dans la formule
+- `domain-rules.md` §15.1 mis à jour
+
+### LLM rapports — zone géographique (Bordeaux vs Biarritz)
+- `PageRapports.jsx` : `bien.ville` ajouté au SELECT
+- Variables dynamiques `isBordeaux`, `villeLabel`, `agenceLabel`, `meteoLat`, `meteoLon`
+- SYSTEM_PROMPT, prompt contexte et URL météo adaptés selon la ville du bien
+- `bien.ville` déjà alimenté par `syncBiens.js` et `hospitable-webhook` depuis `prop.address.city`
+
+### SMS automation — chaîne complète opérationnelle
+**Audit** : 3 breakpoints identifiés (pg_cron absent, webhook payload bugué, sync-reviews manuel)
+
+**Fixes déployés** :
+- `hospitable-webhook` v40 : `data.public.rating` + `data.public.review` (payload réel Hospitable)
+- `hospitable-webhook` v40 : met à jour `reservation.review_rating` à chaque avis reçu
+- `hospitable-webhook` v40 : remplit `reservation_review.bien_id` depuis `reservation.bien_id`
+- `process-sms-queue` : invitation Google explicite avant signature dans le corps SMS
+- Migration 021 : pg_cron `process-sms-queue` toutes les minutes (existait déjà en prod)
+- `PageSmsReviews.jsx` : nouvel onglet "Queue" — visibilité `sms_queue` + bouton "Traiter maintenant"
+
+**Chaîne automatique** :
+```
+review.created webhook → hospitable-webhook → sms_queue (28 min delay)
+→ pg_cron (1 min) → process-sms-queue → Twilio → sms_logs
+```
+**Webhook Hospitable** : events `review.created`/`review.updated` confirmés activés.
+
+**Rattrapage** : 3 avis 5⭐ manqués (Guillaume/Nathalie/Harea, Carole/Txomin) — SMS envoyés manuellement via SQL insert + process-sms-queue.
+
 ## Fixes session 13 avril 2026 — Trésorerie complète, Booking/Stripe, audit CERES
 
 ### Chemins encaissement Booking et Stripe (migration 012)

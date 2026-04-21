@@ -301,7 +301,10 @@ dcb-portail-ae (React, repo privé)
 | `sync-ical-cron` | Cron Supabase | Sync iCal automatique tous les AEs | ✅ Existe — sans filtre actif=true |
 | `global-sync` | PageConfig (lancerGlobalUpdate) | Sync totale all-time | ✅ Existe — **produit des NaN** (CF-C2) |
 | `evoliz-proxy` | syncProprietaires.js + evoliz.js | Proxy vers API Evoliz | ✅ Existe |
-| `hospitable-webhook` | Hospitable (événements temps réel) | Upsert réservations + avis | ✅ Existe — `handleReview` upsert dans `reservation_review` (30 mars). Appelle RPC `ventiler_toutes_resas` probablement inexistante. [✅ Confirmé fournisseur : si les financials changent, Hospitable déclenche un webhook réservation.] |
+| `hospitable-webhook` | Hospitable (événements temps réel) | Upsert réservations + avis + SMS queue | ✅ v40 (21/04/2026) — `handleReview` : lit `data.public.rating`/`data.public.review`, met à jour `reservation.review_rating` + `reservation_review.bien_id`, insère dans `sms_queue` si rating ≥ 5 (délai 28 min). [✅ Confirmé fournisseur : events `review.created`/`review.updated` activés] |
+| `process-sms-queue` | pg_cron (toutes les minutes) | Envoie les SMS en attente via Twilio | ✅ pg_cron job ID 2 actif (`* * * * *`). Lit `sms_queue WHERE status='pending' AND send_at <= now()`, envoie via Twilio, logue dans `sms_logs`. Claude Haiku génère le corps si commentaire disponible. |
+| `sync-reviews` | Manuel (UI Config) | Sync tous les avis Hospitable → `reservation_review` | ✅ Existe — remplit `bien_id`, `rating` depuis `review.public.rating`, `comment` depuis `review.public.review`. Ne déclenche PAS de SMS — alimentation DB uniquement. Pas de cron. |
+| `review-sms-trigger` | Manuel (UI SMS Reviews — Test + Campagnes) | Envoi SMS direct bypass queue | ✅ Existe — modes `test` et `campaign`. Bypass de `sms_queue` — envoi immédiat via Twilio. |
 | `smtp-send` | rapportProprietaire.js | Envoi email via Resend API HTTP | ✅ Migration Resend 05/04/2026 — fetch natif vers api.resend.com. From: rapports@mail.destinationcotebasque.com. Supporte to/cc/subject/html/attachments. Secret: RESEND_API_KEY. |
 | `ventiler_toutes_resas` | hospitable-webhook (RPC Postgres) | Ventilation post-webhook | 🔶 **Probablement inexistante** en base |
 

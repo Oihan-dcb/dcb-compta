@@ -220,6 +220,17 @@ Aucun invariant actif violé à l'issue de la session du 12 avril 2026.
 | I-110 | Badge trésorerie et bloc Contrôle Trésorerie masqués pour `type_facture = 'debours'`. | ✅ Session 13/04/2026 |
 | I-111 | Le recalcul `allocate-encaissements` se déclenche automatiquement à chaque visite de la page Factures (arrière-plan). Aucun bouton manuel. | ✅ Session 13/04/2026 |
 
+### Invariants ajoutés (21 avril 2026 — SMS automation + base_comm + LLM géo)
+
+| ID | Description | Statut |
+|---|---|---|
+| I-112 | `buildRapportData.js` : `base_comm = fin_accommodation + fin_host_service_fee - fin_discount`. Les trois champs sont inclus dans le SELECT. `fin_discount` (positif en base) est soustrait. | ✅ Session 21/04/2026 |
+| I-113 | `PageRapports.jsx` : le prompt LLM utilise `bien.ville` pour déterminer la zone géographique (Bordeaux vs Biarritz). SYSTEM_PROMPT, villeLabel, agenceLabel et coordonnées météo sont dynamiques. | ✅ Session 21/04/2026 |
+| I-114 | `hospitable-webhook` : les avis reçus via `review.*` lisent le rating depuis `data.public?.rating` et le commentaire depuis `data.public?.review` — structure réelle du payload Hospitable. | ✅ Session 21/04/2026 — v40 |
+| I-115 | `hospitable-webhook` `handleReview` : met à jour `reservation.review_rating` et `reservation_review.bien_id` à chaque avis reçu via webhook. | ✅ Session 21/04/2026 |
+| I-116 | Chaîne SMS automatique complète : `review.created` webhook → `sms_queue` (28 min) → pg_cron (1 min) → `process-sms-queue` → Twilio → `sms_logs`. Aucune action manuelle requise pour les avis 5⭐ avec téléphone disponible. | ✅ Session 21/04/2026 |
+| I-117 | `process-sms-queue` : le corps du SMS se termine par une invitation Google explicite (`"Laissez-nous aussi un avis Google (1 clic) ↓"`) avant la signature `"— Destination Côte Basque"`, suivie du lien Google. | ✅ Session 21/04/2026 |
+
 ### Invariants métier à formaliser (non encore implémentés dans V1)
 
 | Invariant | Description courte |
