@@ -221,6 +221,33 @@ async function genererFactureGroupe(proprio, biens, mois, ctx) {
   const fraisDirectHT  = Math.round(fraisDirectTTC / 1.20)
   const fraisDirectTVA = fraisDirectTTC - fraisDirectHT
 
+  const osResaIds = new Set((ownerStayResas || []).map(r => r.id))
+
+  const osVentByBien = new Map()
+  if (osResaIds.size > 0) {
+    for (const v of ventilation.filter(l => osResaIds.has(l.reservation_id) && (l.code === 'FMEN' || l.code === 'AUTO'))) {
+      if (!osVentByBien.has(v.bien_id)) osVentByBien.set(v.bien_id, { fmenTTC: 0, autoHT: 0 })
+      const e = osVentByBien.get(v.bien_id)
+      if (v.code === 'FMEN') e.fmenTTC += (v.montant_ttc || 0)
+      if (v.code === 'AUTO') e.autoHT += (v.montant_ht || 0)
+    }
+  }
+
+  const sumByCode = (code) => ventilation
+    .filter(l => l.code === code && !(code === 'FMEN' && osResaIds.has(l.reservation_id)))
+    .reduce((s, l) => ({
+      ht: s.ht + l.montant_ht,
+      tva: s.tva + l.montant_tva,
+      ttc: s.ttc + l.montant_ttc,
+    }), { ht: 0, tva: 0, ttc: 0 })
+
+  const com = sumByCode('HON')
+  const men = sumByCode('FMEN')
+  const mgt = sumByCode('MGT')
+  const ae  = sumByCode('AE')
+  const loy = sumByCode('LOY')
+  const vir = sumByCode('VIR')
+
   // DIV : expenses [DCB]
   const divHT = (expenses || []).reduce((s, e) => s + (e.amount || 0), 0)
   const divTVA = Math.round(divHT * 0.20)
