@@ -46,7 +46,7 @@ function ConfigDropdown() {
   const [open, setOpen] = useState(false)
   const ref = useRef(null)
   const location = useLocation()
-  const configPaths = ['/import', '/journal', '/config', '/bugs', '/exports']
+  const configPaths = ['/import', '/journal', '/config', '/bugs', '/exports', '/agence']
   const isActive = configPaths.some(p => location.pathname === p)
 
   useEffect(() => {
@@ -67,6 +67,7 @@ function ConfigDropdown() {
         <div style={{ position: 'absolute', top: '110%', right: 0, zIndex: 200, background: '#EAE3D4', border: '1px solid var(--border)', borderRadius: 10, boxShadow: '0 8px 24px rgba(0,0,0,0.18)', minWidth: 150, padding: '6px 0' }}
           onMouseLeave={() => setOpen(false)}>
           {[
+            { to: '/agence', label: 'Agence' },
             { to: '/import', label: 'Import CSV' },
             { to: '/journal', label: 'Journal' },
             { to: '/bugs', label: '🐛 Bugs' },
@@ -142,7 +143,6 @@ export default function App() {
             <NavLink to="/sms-reviews" className={({isActive}) => isActive ? 'nav-link active' : 'nav-link'}>SMS Reviews</NavLink>
             <NavLink to="/locations-longues" className={({isActive}) => isActive ? 'nav-link active' : 'nav-link'}>Étudiants</NavLink>
             <NavLink to="/achats" className={({isActive}) => isActive ? 'nav-link active' : 'nav-link'}>Achats</NavLink>
-            <NavLink to="/agence" className={({isActive}) => isActive ? 'nav-link active' : 'nav-link'}>Agence</NavLink>
             <ConfigDropdown />
           </nav>
         </header>
