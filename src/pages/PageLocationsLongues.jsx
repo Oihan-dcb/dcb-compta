@@ -94,7 +94,7 @@ export default function PageLocationsLongues() {
 
   async function chargerReferentiels() {
     const [{ data: b }, { data: p }] = await Promise.all([
-      supabase.from('bien').select('id, code, hospitable_name').eq('agence', AGENCE).eq('listed', true).order('code'),
+      supabase.from('bien').select('id, code, hospitable_name, proprietaire_id, adresse').eq('agence', AGENCE).eq('listed', true).order('code'),
       supabase.from('proprietaire').select('id, nom, prenom').eq('agence', AGENCE).order('nom'),
     ])
     setBiens(b || [])
@@ -673,7 +673,15 @@ export default function PageLocationsLongues() {
                   <label className="form-label">Bien</label>
                   <select className="form-select"
                     value={formEtudiant.bien_id}
-                    onChange={e => setFormEtudiant(f => ({ ...f, bien_id: e.target.value }))}>
+                    onChange={e => {
+                      const bien = biens.find(b => b.id === e.target.value)
+                      setFormEtudiant(f => ({
+                        ...f,
+                        bien_id:          e.target.value,
+                        proprietaire_id:  bien?.proprietaire_id || f.proprietaire_id,
+                        adresse_complete: bien?.adresse || f.adresse_complete,
+                      }))
+                    }}>
                     <option value="">— Sélectionner un bien —</option>
                     {biens.map(b => (
                       <option key={b.id} value={b.id}>{b.code} — {b.hospitable_name}</option>
