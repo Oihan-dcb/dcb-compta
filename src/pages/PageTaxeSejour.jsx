@@ -146,7 +146,12 @@ export default function PageTaxeSejour() {
     return sum + (resaParBien[b.id] || []).reduce((s, r) => s + (calculTaxe(r, config) || 0), 0)
   }, 0)
 
-  const deadline = { 1: '15 avril', 2: '15 juillet', 3: '15 octobre', 4: '15 janvier' }[trimestre]
+  const DEADLINES = {
+    dcb:     { 1: '15 avril', 2: '15 juillet', 3: '15 octobre', 4: '15 janvier' },
+    lauian:  { 1: '15 avril', 2: '15 juillet', 3: '15 octobre', 4: '15 janvier' },
+    bordeaux:{ 1: '20 avril', 2: '20 juillet', 3: '20 octobre', 4: '20 janvier' },
+  }
+  const deadline = (DEADLINES[AGENCE] || DEADLINES.dcb)[trimestre]
 
   const td = { padding: '8px 10px', borderBottom: '1px solid #f3f4f6', fontSize: 13 }
   const th = { padding: '8px 10px', background: '#EAE3D4', borderBottom: '2px solid #CC9933', fontSize: 12, fontWeight: 600, textAlign: 'left', whiteSpace: 'nowrap' }
@@ -155,10 +160,17 @@ export default function PageTaxeSejour() {
     <div style={{ maxWidth: 1100, margin: '0 auto', padding: '24px 20px' }}>
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 20 }}>
         <h1 style={{ margin: 0, fontSize: 22, color: 'var(--dark)' }}>Taxe de séjour</h1>
-        <a href="https://taxe.3douest.com/biarritz.php" target="_blank" rel="noreferrer"
-          style={{ fontSize: 12, color: '#CC9933', textDecoration: 'none', border: '1px solid #CC9933', borderRadius: 6, padding: '5px 12px', fontWeight: 600 }}>
-          🌐 Déclarer sur 3douest
-        </a>
+        {AGENCE === 'bordeaux' ? (
+          <a href="https://taxedesejour.bordeaux-metropole.fr" target="_blank" rel="noreferrer"
+            style={{ fontSize: 12, color: '#CC9933', textDecoration: 'none', border: '1px solid #CC9933', borderRadius: 6, padding: '5px 12px', fontWeight: 600 }}>
+            🌐 Déclarer sur Bordeaux Métropole
+          </a>
+        ) : (
+          <a href="https://taxe.3douest.com/biarritz.php" target="_blank" rel="noreferrer"
+            style={{ fontSize: 12, color: '#CC9933', textDecoration: 'none', border: '1px solid #CC9933', borderRadius: 6, padding: '5px 12px', fontWeight: 600 }}>
+            🌐 Déclarer sur 3douest
+          </a>
+        )}
       </div>
 
       {/* Tabs */}
@@ -386,7 +398,10 @@ export default function PageTaxeSejour() {
           </div>
 
           <div style={{ marginTop: 16, fontSize: 12, color: '#8C7B65', background: '#F7F3EC', borderRadius: 8, padding: '10px 14px' }}>
-            💡 Les tarifs Biarritz 2026 sont pré-remplis (délibération jan 2026, taxe.3douest.com). Pour Bordeaux, ajoute les tarifs manuellement. Le coefficient 1.44 = +10% département + +34% région (Grand Projet ferroviaire Sud-Ouest).
+            {AGENCE === 'bordeaux'
+              ? '💡 Bordeaux Métropole — délai de reversement au 20 du mois suivant la fin du trimestre. Tarifs à saisir manuellement (portail : taxedesejour.bordeaux-metropole.fr). Le coefficient 1.44 = +10% département Gironde + +34% région (Grand Projet ferroviaire Sud-Ouest).'
+              : '💡 Les tarifs Biarritz 2026 sont pré-remplis (délibération jan 2026, taxe.3douest.com). Le coefficient 1.44 = +10% département + +34% région (Grand Projet ferroviaire Sud-Ouest).'
+            }
           </div>
         </>
       )}
