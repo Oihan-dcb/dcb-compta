@@ -160,7 +160,7 @@ export default function PageExports() {
   const [emailCC, setEmailCC] = useState('')
   const [emailMessage, setEmailMessage] = useState('')
   const [emailExports, setEmailExports] = useState({
-    rapprochement: true, auto: true, factures: true, compta: true
+    rapprochement: true, auto: true, factures: true, compta: true, achats: false, bilan_lld: false
   })
   const [sendingEmail, setSendingEmail] = useState(false)
 
@@ -399,7 +399,9 @@ export default function PageExports() {
                     { key: 'rapprochement', label: 'Rapprochement bancaire' },
                     { key: 'auto', label: 'AUTO & Débours' },
                     { key: 'factures', label: 'Factures Evoliz' },
-                    { key: 'compta', label: 'Comptabilité mensuelle' }
+                    { key: 'compta', label: 'Comptabilité mensuelle' },
+                    { key: 'achats', label: 'Factures d\'achat' },
+                    { key: 'bilan_lld', label: 'Bilan étudiants (LLD)' },
                   ].map(({ key, label }) => (
                     <label key={key} style={{ display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer', fontSize: '0.9em' }}>
                       <input type="checkbox" checked={emailExports[key]}
