@@ -95,6 +95,9 @@ export default function PageLocationsLongues() {
   const [formEtudiant, setFormEtudiant] = useState(FORM_ETUDIANT_EMPTY)
   const [saving, setSaving] = useState(false)
 
+  // Bilan mensuel
+  const [generatingBilan, setGeneratingBilan] = useState(false)
+
   // Dossier étudiant
   const [dossierEtudiant, setDossierEtudiant] = useState(null)
   const [docs, setDocs] = useState([])
@@ -212,6 +215,24 @@ export default function PageLocationsLongues() {
       await chargerMensuel()
     } catch (e) {
       setError(e.message)
+    }
+  }
+
+  // ── Bilan mensuel ─────────────────────────────────────────────────────
+  async function genererBilan() {
+    setGeneratingBilan(true)
+    setError(null)
+    try {
+      const { data, error } = await supabase.functions.invoke('bilan-lld', {
+        body: { mois, agence: AGENCE },
+      })
+      if (error) throw error
+      if (data?.pdf_url) window.open(data.pdf_url, '_blank')
+      setSuccess(data?.email_envoye ? 'Bilan généré et envoyé au comptable' : 'Bilan généré — ouverture en cours')
+    } catch (e) {
+      setError(e.message)
+    } finally {
+      setGeneratingBilan(false)
     }
   }
 
@@ -396,6 +417,12 @@ export default function PageLocationsLongues() {
             <>
               <MoisSelector mois={mois} setMois={setMois} moisDispos={[moisCourant]} />
               <button className="btn btn-secondary" onClick={chargerMensuel} disabled={loading}>↺</button>
+              {loyers.length > 0 && (
+                <button className="btn btn-secondary" onClick={genererBilan} disabled={generatingBilan}
+                  title="Générer le PDF bilan mensuel et l'envoyer au comptable">
+                  {generatingBilan ? <><span className="spinner" /> Bilan…</> : '📊 Bilan PDF'}
+                </button>
+              )}
               {loyers.length === 0 && (
                 <button className="btn btn-primary" onClick={initialiserMois} disabled={loading}>
                   Initialiser le mois
