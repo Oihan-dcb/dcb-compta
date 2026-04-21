@@ -100,6 +100,9 @@ export default function PageLocationsLongues() {
   // Bilan mensuel
   const [generatingBilan, setGeneratingBilan] = useState(false)
 
+  // Loyers mois courant (pour indicateurs dans l'onglet Étudiants)
+  const [loyersCourant, setLoyersCourant] = useState([])
+
   // Onglet Suivi
   const [suiviEtudiantId, setSuiviEtudiantId] = useState('')
   const [suiviLoyers, setSuiviLoyers] = useState([])
@@ -162,7 +165,12 @@ export default function PageLocationsLongues() {
     setLoading(true)
     setError(null)
     try {
-      setEtudiants(await listerEtudiants(AGENCE))
+      const [ets, lc] = await Promise.all([
+        listerEtudiants(AGENCE),
+        listerLoyersMois(moisCourant),
+      ])
+      setEtudiants(ets)
+      setLoyersCourant(lc)
     } catch (e) {
       setError(e.message)
     } finally {
@@ -239,6 +247,17 @@ export default function PageLocationsLongues() {
       await chargerMensuel()
     } catch (e) {
       setError(e.message)
+    }
+  }
+
+  // ── Quittance PDF — signed URL ────────────────────────────────────────
+  async function ouvrirQuittancePdf(etudiantId, mois) {
+    const path = `quittances/${etudiantId}/${mois}.pdf`
+    try {
+      const url = await getSignedUrl(path)
+      window.open(url, '_blank')
+    } catch {
+      setError('Impossible d\'ouvrir la quittance — fichier introuvable.')
     }
   }
 
@@ -706,6 +725,7 @@ export default function PageLocationsLongues() {
                     <th style={{ textAlign: 'right' }}>Honoraires DCB</th>
                     <th style={{ textAlign: 'right' }}>Caution</th>
                     <th>Statut</th>
+                    <th style={{ whiteSpace: 'nowrap' }}>Mois courant</th>
                     <th></th>
                   </tr>
                 </thead>
@@ -714,6 +734,8 @@ export default function PageLocationsLongues() {
                     const total  = montantTotalEtudiant(e)
                     const verso  = montantVirementProprio(e)
                     const st     = STATUT_ETUDIANT[e.statut] || {}
+                    const lc     = loyersCourant.find(l => l.etudiant_id === e.id)
+                    const stLc   = lc ? (STATUT_LOYER[lc.statut] || {}) : null
                     return (
                       <tr key={e.id}>
                         <td style={{ fontWeight: 600 }}>
@@ -736,6 +758,34 @@ export default function PageLocationsLongues() {
                             {st.label}
                           </span>
                         </td>
+                        <td style={{ fontSize: 12, whiteSpace: 'nowrap' }}>
+                          {!lc ? (
+                            <span style={{ color: 'var(--text-muted)' }}>—</span>
+                          ) : (
+                            <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+                              <span style={{ fontWeight: 600, color: stLc.color }}>{stLc.label}</span>
+                              {lc.nb_relances > 0 && (
+                                <span style={{ color: lc.nb_relances >= 3 ? '#DC2626' : '#B45309' }}>
+                                  {lc.nb_relances} relance{lc.nb_relances > 1 ? 's' : ''}
+                                </span>
+                              )}
+                              {lc.quittance_envoyee_at ? (
+                                <span style={{ color: '#059669' }}>
+                                  Quittance ✓
+                                  <button
+                                    className="btn btn-secondary"
+                                    style={{ fontSize: 10, padding: '1px 5px', marginLeft: 4 }}
+                                    title="Télécharger la quittance"
+                                    onClick={() => ouvrirQuittancePdf(e.id, lc.mois)}>
+                                    ⬇
+                                  </button>
+                                </span>
+                              ) : (
+                                <span style={{ color: 'var(--text-muted)' }}>Pas de quittance</span>
+                              )}
+                            </div>
+                          )}
+                        </td>
                         <td style={{ display: 'flex', gap: 4 }}>
                           <button className="btn btn-secondary" style={{ fontSize: 12, padding: '3px 8px' }}
                             onClick={() => ouvrirModalEtudiant(e)}
@@ -746,6 +796,11 @@ export default function PageLocationsLongues() {
                             onClick={() => ouvrirDossier(e)}
                             title="Dossier — documents et caution">
                             📁
+                          </button>
+                          <button className="btn btn-secondary" style={{ fontSize: 12, padding: '3px 8px' }}
+                            title="Voir le suivi complet"
+                            onClick={() => { setSuiviEtudiantId(e.id); setOnglet('suivi') }}>
+                            📋
                           </button>
                         </td>
                       </tr>
@@ -848,9 +903,19 @@ export default function PageLocationsLongues() {
                                       : <span style={{ color: 'var(--text-muted)' }}>—</span>}
                                   </td>
                                   <td style={{ fontSize: 12 }}>
-                                    {l.quittance_envoyee_at
-                                      ? <span style={{ color: '#059669' }}>✓ {l.quittance_envoyee_at.slice(0, 10)}</span>
-                                      : <span style={{ color: 'var(--text-muted)' }}>—</span>}
+                                    {l.quittance_envoyee_at ? (
+                                      <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+                                        <span style={{ color: '#059669' }}>✓ {l.quittance_envoyee_at.slice(0, 10)}</span>
+                                        <button className="btn btn-secondary"
+                                          style={{ fontSize: 11, padding: '1px 6px' }}
+                                          title="Ouvrir / télécharger la quittance PDF"
+                                          onClick={() => ouvrirQuittancePdf(suiviEtudiantId, l.mois)}>
+                                          ⬇
+                                        </button>
+                                      </div>
+                                    ) : (
+                                      <span style={{ color: 'var(--text-muted)' }}>—</span>
+                                    )}
                                   </td>
                                   <td>
                                     {l.statut === 'recu' && (
