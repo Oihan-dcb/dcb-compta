@@ -32,6 +32,7 @@ export default function PageAchats() {
   const [form, setForm]               = useState(MODAL_VIDE)
   const [saving, setSaving]           = useState(false)
   const [fournisseurs, setFournisseurs] = useState([]) // suggestions autocomplete
+  const [detections, setDetections]   = useState([])  // fournisseurs récurrents × mouvements
 
   const charger = useCallback(async () => {
     setLoading(true)
@@ -48,15 +49,58 @@ export default function PageAchats() {
   const chargerFournisseurs = useCallback(async () => {
     const { data } = await supabase
       .from('fournisseur_recurrent')
-      .select('nom, categorie')
+      .select('nom, categorie, pattern_libelle, montant_habituel')
       .eq('agence', AGENCE)
       .eq('actif', true)
       .order('nom')
     setFournisseurs(data || [])
   }, [])
 
+  const chargerDetections = useCallback(async () => {
+    // Mouvements débiteurs du mois
+    const { data: mouvements } = await supabase
+      .from('mouvement_bancaire')
+      .select('libelle, debit, date_operation')
+      .eq('agence', AGENCE)
+      .eq('mois_releve', moisFiltre)
+      .gt('debit', 0)
+
+    // Fournisseurs récurrents actifs
+    const { data: fournisseursRec } = await supabase
+      .from('fournisseur_recurrent')
+      .select('id, nom, pattern_libelle, categorie, montant_habituel')
+      .eq('agence', AGENCE)
+      .eq('actif', true)
+      .order('nom')
+
+    // Factures déjà saisies ce mois
+    const { data: facturesMois } = await supabase
+      .from('facture_achat')
+      .select('fournisseur, montant_ttc')
+      .eq('agence', AGENCE)
+      .eq('mois', moisFiltre)
+
+    const facturesNoms = new Set((facturesMois || []).map(f => f.fournisseur.toLowerCase()))
+
+    const resultats = (fournisseursRec || []).map(f => {
+      const pattern = (f.pattern_libelle || f.nom).toUpperCase()
+      const match = (mouvements || []).find(m =>
+        (m.libelle || '').toUpperCase().includes(pattern)
+      )
+      const factureExiste = [...facturesNoms].some(n => n.includes(f.nom.toLowerCase()) || f.nom.toLowerCase().includes(n))
+      return {
+        ...f,
+        mouvement:     match || null,       // mouvement détecté
+        factureExiste,                       // facture saisie dans facture_achat
+      }
+    })
+
+    setDetections(resultats)
+  }, [moisFiltre])
+
   useEffect(() => { charger() }, [charger])
   useEffect(() => { chargerFournisseurs() }, [chargerFournisseurs])
+  useEffect(() => { chargerDetections() }, [chargerDetections])
 
   const ouvrir = (facture = null) => {
     if (facture) {
@@ -180,6 +224,60 @@ export default function PageAchats() {
           </div>
         ))}
       </div>
+
+      {/* Détection fournisseurs récurrents */}
+      {detections.length > 0 && (
+        <div className="card" style={{ marginBottom: 20 }}>
+          <div style={{ fontWeight: 700, fontSize: 14, marginBottom: 12, color: 'var(--text)' }}>
+            Fournisseurs récurrents — {new Date(moisFiltre + '-01').toLocaleDateString('fr-FR', { month: 'long', year: 'numeric' })}
+          </div>
+          <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
+            {detections.map(d => {
+              const detected = !!d.mouvement
+              const ok = detected && d.factureExiste
+              const warning = detected && !d.factureExiste
+              const missing = !detected
+
+              const bg    = ok ? '#D1FAE5' : warning ? '#FEF3C7' : '#F3F4F6'
+              const color = ok ? '#065F46' : warning ? '#92400E' : '#6B7280'
+              const icon  = ok ? '✓' : warning ? '⚠' : '?'
+              const title = ok
+                ? `Détecté + facture saisie`
+                : warning
+                ? `Prélèvement détecté (${Number(d.mouvement.debit).toFixed(2)} €) — facture manquante`
+                : `Non détecté dans les relevés ce mois`
+
+              return (
+                <div key={d.id} title={title} style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '5px 10px', borderRadius: 20, background: bg, color, fontSize: 12, fontWeight: 600, cursor: warning ? 'pointer' : 'default' }}
+                  onClick={() => {
+                    if (!warning) return
+                    ouvrir()
+                    setForm(prev => ({
+                      ...prev,
+                      fournisseur:   d.nom,
+                      montant_ttc:   d.mouvement ? Number(d.mouvement.debit).toFixed(2) : '',
+                      type_paiement: 'prelevement',
+                      categorie:     d.categorie || '',
+                    }))
+                  }}
+                >
+                  <span>{icon}</span>
+                  <span>{d.nom}</span>
+                  {warning && d.mouvement && (
+                    <span style={{ opacity: 0.8 }}>{Number(d.mouvement.debit).toFixed(2)} €</span>
+                  )}
+                  {warning && <span style={{ fontSize: 10, opacity: 0.7 }}>+ ajouter</span>}
+                </div>
+              )
+            })}
+          </div>
+          {detections.some(d => d.mouvement && !d.factureExiste) && (
+            <p style={{ fontSize: 11, color: 'var(--text-muted)', marginTop: 10, marginBottom: 0 }}>
+              ⚠ Cliquer sur un badge orange pour pré-remplir la facture automatiquement.
+            </p>
+          )}
+        </div>
+      )}
 
       {/* Tableau */}
       <div className="table-container">
