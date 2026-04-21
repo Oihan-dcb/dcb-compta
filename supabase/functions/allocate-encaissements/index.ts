@@ -47,7 +47,7 @@ serve(async (req) => {
   if (req.method === 'OPTIONS') return new Response('ok', { headers: CORS })
 
   try {
-    const { mois } = await req.json()
+    const { mois, agence = 'dcb' } = await req.json()
     if (!mois || !/^\d{4}-\d{2}$/.test(mois)) {
       throw new Error('mois invalide — format YYYY-MM attendu')
     }
@@ -58,18 +58,17 @@ serve(async (req) => {
       { auth: { persistSession: false } }
     )
 
-    // ── 1. Réservations du mois (DCB uniquement — exclut Lauian) ─────────────
-    // Récupérer d'abord les bien_ids DCB pour filtrer
-    const { data: biensDcb, error: biensErr } = await supabase
+    // ── 1. Réservations du mois (agence uniquement) ───────────────────────────
+    const { data: biensAgence, error: biensErr } = await supabase
       .from('bien')
       .select('id')
-      .eq('agence', 'dcb')
+      .eq('agence', agence)
     if (biensErr) throw biensErr
-    const biensDcbIds = (biensDcb || []).map(b => b.id)
+    const biensDcbIds = (biensAgence || []).map(b => b.id)
     if (!biensDcbIds.length) {
       return jsonResp({
         reservations_total: 0, prouvees: 0, non_prouvees: 0, anomalies: 0,
-        message: 'Aucun bien DCB trouvé',
+        message: `Aucun bien trouvé pour agence=${agence}`,
       })
     }
 

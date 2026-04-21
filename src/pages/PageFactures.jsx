@@ -1,3 +1,4 @@
+import { AGENCE } from '../lib/agence'
 import { useState, useEffect } from 'react'
 import MoisSelector from '../components/MoisSelector'
 import { useMoisPersisted } from '../hooks/useMoisPersisted'
@@ -344,7 +345,7 @@ const [pushing, setPushing] = useState(false)
     try {
       const { supabase } = await import('../lib/supabase')
       const { data, error } = await supabase.functions.invoke('allocate-encaissements', {
-        body: { mois },
+        body: { mois, agence: AGENCE },
       })
       if (error) throw new Error(`Edge Function: ${error.message}`)
       if (data?.error) throw new Error(data.error)
