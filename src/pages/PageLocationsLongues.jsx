@@ -166,6 +166,20 @@ export default function PageLocationsLongues() {
     }
   }
 
+  async function envoyerQuittance(loyerSuiviId) {
+    setError(null)
+    try {
+      const { data, error } = await supabase.functions.invoke('generer-quittance', {
+        body: { loyer_suivi_id: loyerSuiviId, envoyer_email: true },
+      })
+      if (error) throw error
+      setSuccess(`Quittance envoyée${data?.email_envoye ? ' par email' : ' (pas d\'email étudiant)'}`)
+      await chargerMensuel()
+    } catch (e) {
+      setError(e.message)
+    }
+  }
+
   async function changerStatutLoyer(id, statut) {
     setError(null)
     try {
@@ -411,6 +425,20 @@ export default function PageLocationsLongues() {
                               <button className="btn btn-secondary" style={{ fontSize: 12, padding: '3px 8px', color: '#DC2626' }}
                                 onClick={() => changerStatutLoyer(l.id, 'en_retard')}>
                                 ⚠ Retard
+                              </button>
+                            )}
+                            {l.statut === 'recu' && !l.quittance_envoyee_at && (
+                              <button className="btn btn-secondary" style={{ fontSize: 12, padding: '3px 8px', color: '#059669' }}
+                                onClick={() => envoyerQuittance(l.id)}
+                                title="Générer et envoyer la quittance PDF par email">
+                                📄 Quittance
+                              </button>
+                            )}
+                            {l.statut === 'recu' && l.quittance_envoyee_at && (
+                              <button className="btn btn-secondary" style={{ fontSize: 12, padding: '3px 8px', color: '#6B7280' }}
+                                onClick={() => envoyerQuittance(l.id)}
+                                title="Renvoyer la quittance">
+                                ↺ Quittance
                               </button>
                             )}
                             {l.statut === 'recu' && (
