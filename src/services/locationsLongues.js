@@ -153,3 +153,45 @@ export async function mettreAJourCaution(id, payload) {
     .eq('id', id)
   if (error) throw error
 }
+
+// ── Documents étudiant ────────────────────────────────────────────────────
+
+export async function listerDocuments(etudiantId) {
+  const { data, error } = await supabase
+    .from('etudiant_document')
+    .select('*')
+    .eq('etudiant_id', etudiantId)
+    .order('created_at', { ascending: false })
+  if (error) throw error
+  return data || []
+}
+
+export async function uploaderDocument(etudiantId, type, file, agence = AGENCE) {
+  const ext = file.name.split('.').pop().toLowerCase()
+  const path = `${etudiantId}/${type}_${Date.now()}.${ext}`
+  const { error: uploadError } = await supabase.storage
+    .from('etudiant-documents')
+    .upload(path, file, { contentType: file.type })
+  if (uploadError) throw uploadError
+  const { data, error } = await supabase
+    .from('etudiant_document')
+    .insert({ agence, etudiant_id: etudiantId, type, file_url: path, notes: file.name })
+    .select()
+    .single()
+  if (error) throw error
+  return data
+}
+
+export async function supprimerDocument(docId, filePath) {
+  await supabase.storage.from('etudiant-documents').remove([filePath])
+  const { error } = await supabase.from('etudiant_document').delete().eq('id', docId)
+  if (error) throw error
+}
+
+export async function getSignedUrl(filePath) {
+  const { data, error } = await supabase.storage
+    .from('etudiant-documents')
+    .createSignedUrl(filePath, 3600)
+  if (error) throw error
+  return data.signedUrl
+}

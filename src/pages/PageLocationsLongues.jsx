@@ -16,6 +16,12 @@ import {
   marquerLoyerStatut,
   listerVirementsMois,
   marquerVirementEffectue,
+  getCautionEtudiant,
+  mettreAJourCaution,
+  listerDocuments,
+  uploaderDocument,
+  supprimerDocument,
+  getSignedUrl,
 } from '../services/locationsLongues'
 
 const moisCourant = new Date().toISOString().slice(0, 7)
@@ -37,6 +43,19 @@ const STATUT_ETUDIANT = {
   en_attente: { label: 'En attente', color: '#B45309', bg: '#FFF7ED' },
   parti:      { label: 'Parti',      color: '#6B7280', bg: '#F3F4F6' },
 }
+
+const STATUT_CAUTION = {
+  en_cours:          { label: 'En cours',         color: '#059669', bg: '#D1FAE5' },
+  a_rendre:          { label: 'À rendre',          color: '#B45309', bg: '#FFF7ED' },
+  rendue:            { label: 'Rendue ✓',          color: '#6B7280', bg: '#F3F4F6' },
+  retenue_partielle: { label: 'Retenue partielle', color: '#DC2626', bg: '#FEE2E2' },
+}
+
+const TYPES_DOC = [
+  { type: 'contrat_location', label: 'Contrat de location' },
+  { type: 'eds_entree',       label: 'État des lieux — entrée' },
+  { type: 'eds_sortie',       label: 'État des lieux — sortie' },
+]
 
 const FORM_ETUDIANT_EMPTY = {
   nom: '', prenom: '', email: '', telephone: '',
@@ -75,6 +94,12 @@ export default function PageLocationsLongues() {
   const [editingEtudiant, setEditingEtudiant] = useState(null)
   const [formEtudiant, setFormEtudiant] = useState(FORM_ETUDIANT_EMPTY)
   const [saving, setSaving] = useState(false)
+
+  // Dossier étudiant
+  const [dossierEtudiant, setDossierEtudiant] = useState(null)
+  const [docs, setDocs] = useState([])
+  const [caution, setCaution] = useState(null)
+  const [uploadingType, setUploadingType] = useState(null)
 
   useEffect(() => { chargerReferentiels() }, [])
   useEffect(() => { if (onglet === 'mensuel') chargerMensuel() }, [mois, onglet])
@@ -185,6 +210,66 @@ export default function PageLocationsLongues() {
     try {
       await marquerLoyerStatut(id, statut)
       await chargerMensuel()
+    } catch (e) {
+      setError(e.message)
+    }
+  }
+
+  // ── Dossier ────────────────────────────────────────────────────────────
+  async function ouvrirDossier(e) {
+    setError(null)
+    setDossierEtudiant(e)
+    const [d, c] = await Promise.all([listerDocuments(e.id), getCautionEtudiant(e.id)])
+    setDocs(d)
+    setCaution(c)
+  }
+
+  async function handleUpload(type, file) {
+    if (!file) return
+    setUploadingType(type)
+    setError(null)
+    try {
+      await uploaderDocument(dossierEtudiant.id, type, file)
+      setDocs(await listerDocuments(dossierEtudiant.id))
+      setSuccess('Document uploadé')
+    } catch (e) {
+      setError(e.message)
+    } finally {
+      setUploadingType(null)
+    }
+  }
+
+  async function handleSupprimer(doc) {
+    setError(null)
+    try {
+      await supprimerDocument(doc.id, doc.file_url)
+      setDocs(await listerDocuments(dossierEtudiant.id))
+    } catch (e) {
+      setError(e.message)
+    }
+  }
+
+  async function ouvrirDoc(filePath) {
+    try {
+      const url = await getSignedUrl(filePath)
+      window.open(url, '_blank')
+    } catch (e) {
+      setError(e.message)
+    }
+  }
+
+  async function handleCaution(newStatut, extra = {}) {
+    if (!caution) return
+    const edsPresent = docs.some(d => d.type === 'eds_sortie')
+    if ((newStatut === 'a_rendre' || newStatut === 'rendue') && !edsPresent) {
+      setError('EDS de sortie requis avant de rendre la caution')
+      return
+    }
+    setError(null)
+    try {
+      await mettreAJourCaution(caution.id, { statut: newStatut, ...extra })
+      setCaution(c => ({ ...c, statut: newStatut, ...extra }))
+      setSuccess('Caution mise à jour')
     } catch (e) {
       setError(e.message)
     }
@@ -571,10 +656,16 @@ export default function PageLocationsLongues() {
                             {st.label}
                           </span>
                         </td>
-                        <td>
+                        <td style={{ display: 'flex', gap: 4 }}>
                           <button className="btn btn-secondary" style={{ fontSize: 12, padding: '3px 8px' }}
-                            onClick={() => ouvrirModalEtudiant(e)}>
+                            onClick={() => ouvrirModalEtudiant(e)}
+                            title="Modifier">
                             ✏
+                          </button>
+                          <button className="btn btn-secondary" style={{ fontSize: 12, padding: '3px 8px' }}
+                            onClick={() => ouvrirDossier(e)}
+                            title="Dossier — documents et caution">
+                            📁
                           </button>
                         </td>
                       </tr>
@@ -815,6 +906,125 @@ export default function PageLocationsLongues() {
           </div>
         </div>
       )}
+      {/* Modal dossier étudiant */}
+      {dossierEtudiant && (
+        <div className="modal-overlay">
+          <div className="modal" style={{ maxWidth: 580 }}>
+            <div className="modal-header">
+              <h2>Dossier — {dossierEtudiant.nom}{dossierEtudiant.prenom ? ' ' + dossierEtudiant.prenom : ''}</h2>
+              <button className="modal-close" onClick={() => { setDossierEtudiant(null); setError(null) }}>✗</button>
+            </div>
+            <div className="modal-body" style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
+
+              {/* Documents */}
+              <div>
+                <div style={{ fontSize: 13, fontWeight: 700, color: 'var(--text-muted)', marginBottom: 10, textTransform: 'uppercase', letterSpacing: 1 }}>
+                  Documents
+                </div>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                  {TYPES_DOC.map(({ type, label }) => {
+                    const existing = docs.filter(d => d.type === type)
+                    return (
+                      <div key={type} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '8px 12px', background: 'var(--bg)', borderRadius: 8 }}>
+                        <span style={{ flex: 1, fontSize: 13, fontWeight: 600 }}>
+                          {existing.length > 0
+                            ? <span style={{ color: '#059669' }}>✓ </span>
+                            : <span style={{ color: '#B45309' }}>⚠ </span>}
+                          {label}
+                        </span>
+                        {existing.length > 0 && existing.map(doc => (
+                          <span key={doc.id} style={{ display: 'flex', gap: 4 }}>
+                            <button className="btn btn-secondary" style={{ fontSize: 11, padding: '2px 7px' }}
+                              onClick={() => ouvrirDoc(doc.file_url)}
+                              title={doc.notes}>
+                              ↗ Ouvrir
+                            </button>
+                            <button className="btn btn-secondary" style={{ fontSize: 11, padding: '2px 7px', color: '#DC2626' }}
+                              onClick={() => handleSupprimer(doc)}>
+                              ✕
+                            </button>
+                          </span>
+                        ))}
+                        <label style={{ cursor: 'pointer' }}>
+                          <input type="file" accept=".pdf,.jpg,.jpeg,.png,.webp" style={{ display: 'none' }}
+                            onChange={e => { if (e.target.files[0]) handleUpload(type, e.target.files[0]); e.target.value = '' }} />
+                          <span className="btn btn-secondary" style={{ fontSize: 11, padding: '2px 7px', color: uploadingType === type ? '#999' : undefined }}>
+                            {uploadingType === type ? '…' : '+ Upload'}
+                          </span>
+                        </label>
+                      </div>
+                    )
+                  })}
+
+                  {/* Autres docs */}
+                  {docs.filter(d => d.type === 'autre').map(doc => (
+                    <div key={doc.id} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '8px 12px', background: 'var(--bg)', borderRadius: 8 }}>
+                      <span style={{ flex: 1, fontSize: 13 }}>📄 {doc.notes || 'Autre document'}</span>
+                      <button className="btn btn-secondary" style={{ fontSize: 11, padding: '2px 7px' }} onClick={() => ouvrirDoc(doc.file_url)}>↗ Ouvrir</button>
+                      <button className="btn btn-secondary" style={{ fontSize: 11, padding: '2px 7px', color: '#DC2626' }} onClick={() => handleSupprimer(doc)}>✕</button>
+                    </div>
+                  ))}
+                  <label style={{ cursor: 'pointer', alignSelf: 'flex-start' }}>
+                    <input type="file" accept=".pdf,.jpg,.jpeg,.png,.webp" style={{ display: 'none' }}
+                      onChange={e => { if (e.target.files[0]) handleUpload('autre', e.target.files[0]); e.target.value = '' }} />
+                    <span className="btn btn-secondary" style={{ fontSize: 11, padding: '2px 7px' }}>
+                      {uploadingType === 'autre' ? '…' : '+ Autre document'}
+                    </span>
+                  </label>
+                </div>
+              </div>
+
+              {/* Caution */}
+              {caution && (
+                <div style={{ borderTop: '1px solid var(--border)', paddingTop: 16 }}>
+                  <div style={{ fontSize: 13, fontWeight: 700, color: 'var(--text-muted)', marginBottom: 10, textTransform: 'uppercase', letterSpacing: 1 }}>
+                    Caution — {(dossierEtudiant.caution / 100).toFixed(2)} €
+                  </div>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                    <span style={{ padding: '3px 10px', borderRadius: 10, fontSize: 12, fontWeight: 600,
+                      color: STATUT_CAUTION[caution.statut]?.color,
+                      background: STATUT_CAUTION[caution.statut]?.bg }}>
+                      {STATUT_CAUTION[caution.statut]?.label}
+                    </span>
+                    {caution.statut === 'en_cours' && (
+                      <button className="btn btn-secondary" style={{ fontSize: 12, padding: '3px 8px', color: '#B45309' }}
+                        onClick={() => handleCaution('a_rendre')}>
+                        Marquer à rendre
+                      </button>
+                    )}
+                    {caution.statut === 'a_rendre' && (
+                      <>
+                        <button className="btn btn-secondary" style={{ fontSize: 12, padding: '3px 8px', color: '#059669' }}
+                          onClick={() => handleCaution('rendue', { date_rendu: new Date().toISOString().slice(0, 10), montant_rendu: dossierEtudiant.caution })}>
+                          ✓ Rendue intégralement
+                        </button>
+                        <button className="btn btn-secondary" style={{ fontSize: 12, padding: '3px 8px', color: '#DC2626' }}
+                          onClick={() => handleCaution('retenue_partielle')}>
+                          Retenue partielle
+                        </button>
+                      </>
+                    )}
+                    {caution.date_rendu && (
+                      <span style={{ fontSize: 12, color: 'var(--text-muted)' }}>le {caution.date_rendu}</span>
+                    )}
+                  </div>
+                  {!docs.some(d => d.type === 'eds_sortie') && caution.statut === 'en_cours' && (
+                    <div style={{ marginTop: 8, fontSize: 12, color: '#B45309' }}>
+                      ⚠ EDS de sortie requis pour rendre la caution
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {error && <div className="alert alert-error">{error}</div>}
+            </div>
+            <div className="modal-footer">
+              <button className="btn btn-secondary" onClick={() => { setDossierEtudiant(null); setError(null) }}>Fermer</button>
+            </div>
+          </div>
+        </div>
+      )}
+
     </div>
   )
 }
