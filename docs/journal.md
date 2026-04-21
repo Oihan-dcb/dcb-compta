@@ -523,3 +523,40 @@ Le VIR trésorerie est le résiduel réel disponible après les retenues DCB, ca
 - `399f686` : chargement auto trésorerie, suppression bouton
 - `23fac37` : masquer tréso sur Débours AE
 
+
+---
+
+# DCB Compta — Journal session 21 avril 2026 — AUTO/FMEN/CAS DCB
+
+## Contexte
+
+Investigation d'un DEB_AE brouillon de 59.65€ sur PANORAMA/Audrey Neveu mars 2026.
+Découverte d'un bug structurel : AUTO absorbait du LOY alors qu'il est déjà déduit du MEN.
+
+## Fix 1 — CAS DCB : AUTO couvert par MEN ne touche pas LOY (commit `00436d3`)
+
+**Règle** : `FMEN = MEN − dueToOwner − AUTO`. L'AUTO est donc déjà sorti du MEN. Il ne doit jamais en plus absorber du LOY ni générer de DEB_AE pour `mode_encaissement='dcb'`.
+
+**Code** : dans `genererFactureGroupe` et `genererFactureDebours` :
+```js
+const autoNetMen = Math.max(0, autoBien - menBien)  // seul le surplus touche LOY
+```
+- Si `autoBien ≤ menBien` → pas d'absorption LOY, pas de DEB_AE
+- Si `autoBien > menBien` → le surplus est absorbé sur LOY ou génère DEB_AE
+- `mode_encaissement='proprio'` → totalité AUTO → DEB_AE (DCB ne perçoit pas le MEN)
+
+## Fix 2 — Edge function `update-ventilation-auto` (nouvelle)
+
+Le portail AE appelait `update-ventilation-auto` pour synchroniser `ventilation.montant_reel` depuis `mission_menage.montant`, mais la fonction n'existait pas → montant_reel jamais mis à jour.
+
+**Fonctionnement** :
+- `{ mission_id }` → recalcule pour la réservation liée
+- `{ mois }` → batch sur tout le mois
+- `dry_run: true` → simulation sans écriture
+- Met aussi à jour `FMEN.montant_reel = FMEN.provision + AUTO.provision − AUTO.réel`
+
+**Résultat mars 2026** : 16 lignes AUTO mises à jour, FMEN synchronisé.
+
+## Commits
+- `00436d3` : CAS DCB — AUTO couvert par MEN ne touche pas LOY du proprio
+- `06e6a54` : docs mis à jour
