@@ -32,6 +32,12 @@ export default function PageAutoEntrepreneurs() {
   const [error, setError] = useState(null)
   const [success, setSuccess] = useState(null)
   const [confirmModal, setConfirmModal] = useState(null)
+  // Heures staff
+  const [heuresMois, setHeuresMois] = useState(() => new Date().toISOString().slice(0, 7))
+  const [heuresAeId, setHeuresAeId] = useState(null)
+  const [heures, setHeures] = useState({})
+  const [loadingHeures, setLoadingHeures] = useState(false)
+  const [sendingNavette, setSendingNavette] = useState(false)
   // Prestation type form
   const [editingPT, setEditingPT] = useState(null)
   const [formPT, setFormPT] = useState({ nom: '', description: '', taux_defaut: 25, unite: 'heure' })
@@ -67,6 +73,110 @@ export default function PageAutoEntrepreneurs() {
       }
     } catch (err) { setError(err.message) }
     finally { setLoading(false) }
+  }
+
+  // ── Heures staff ──────────────────────────────────────────────────────
+  function getDaysOfMonth(mois) {
+    const [y, m] = mois.split('-').map(Number)
+    const days = []
+    const d = new Date(y, m - 1, 1)
+    while (d.getMonth() === m - 1) { days.push(d.toISOString().slice(0, 10)); d.setDate(d.getDate() + 1) }
+    return days
+  }
+
+  function netHeures(row) {
+    if (!row?.heure_debut || !row?.heure_fin) return null
+    const [h1, m1] = row.heure_debut.split(':').map(Number)
+    const [h2, m2] = row.heure_fin.split(':').map(Number)
+    const min = (h2 * 60 + m2) - (h1 * 60 + m1) - (row.pause_min || 0)
+    return min > 0 ? +(min / 60).toFixed(2) : 0
+  }
+
+  async function chargerHeures(aeId = heuresAeId, mois = heuresMois) {
+    if (!aeId) return
+    setLoadingHeures(true)
+    const { data } = await supabase.from('staff_heures_jour')
+      .select('*').eq('ae_id', aeId).eq('mois', mois)
+    const map = {}
+    for (const row of data || []) map[row.date] = row
+    setHeures(map)
+    setLoadingHeures(false)
+  }
+
+  async function sauvegarderJour(date, values) {
+    const existing = heures[date]
+    const payload = { agence: AGENCE, ae_id: heuresAeId, mois: heuresMois, date, ...values }
+    if (existing?.id) payload.id = existing.id
+    const { data, error: e } = await supabase.from('staff_heures_jour')
+      .upsert(payload, { onConflict: 'ae_id,date' }).select().single()
+    if (!e && data) setHeures(prev => ({ ...prev, [date]: data }))
+  }
+
+  async function envoyerNavette() {
+    const ae = aes.find(a => a.id === heuresAeId)
+    if (!ae) return
+    const days = getDaysOfMonth(heuresMois)
+    const moisLabel = new Date(heuresMois + '-01').toLocaleDateString('fr-FR', { month: 'long', year: 'numeric' })
+    const moisLabelCap = moisLabel.charAt(0).toUpperCase() + moisLabel.slice(1)
+    const JOURS = ['Dim', 'Lun', 'Mar', 'Mer', 'Jeu', 'Ven', 'Sam']
+    const ABSENCES_LABEL = { conge_paye: 'CP', maladie: 'Maladie', rtt: 'RTT', ferie: 'Férié', repos: 'Repos' }
+    let totalHeures = 0
+    let lignes = ''
+    for (const d of days) {
+      const row = heures[d]
+      const date = new Date(d + 'T12:00:00')
+      const isWE = date.getDay() === 0 || date.getDay() === 6
+      const h = netHeures(row)
+      if (h) totalHeures += h
+      const absence = row?.type_absence ? (ABSENCES_LABEL[row.type_absence] || row.type_absence) : ''
+      const bg = isWE ? '#f9fafb' : '#ffffff'
+      lignes += `<tr style="background:${bg}">
+        <td style="padding:5px 8px;border:1px solid #e5e7eb;color:${isWE ? '#9ca3af' : '#374151'}">${JOURS[date.getDay()]} ${date.getDate()}</td>
+        <td style="padding:5px 8px;border:1px solid #e5e7eb;text-align:center">${row?.heure_debut || ''}</td>
+        <td style="padding:5px 8px;border:1px solid #e5e7eb;text-align:center">${row?.heure_fin || ''}</td>
+        <td style="padding:5px 8px;border:1px solid #e5e7eb;text-align:center">${row?.pause_min ? row.pause_min + 'min' : ''}</td>
+        <td style="padding:5px 8px;border:1px solid #e5e7eb;text-align:center;font-weight:600">${h !== null ? h.toFixed(2) + 'h' : absence}</td>
+        <td style="padding:5px 8px;border:1px solid #e5e7eb;font-size:11px;color:#6b7280">${row?.notes || ''}</td>
+      </tr>`
+    }
+    const html = `<div style="font-family:Arial,sans-serif;max-width:680px;margin:0 auto">
+      <div style="background:#1a3a6e;color:white;padding:20px">
+        <h2 style="margin:0;font-size:18px">Navette paie — ${ae.prenom} ${ae.nom}</h2>
+        <p style="margin:4px 0 0;opacity:.8;font-size:14px">${moisLabelCap}</p>
+      </div>
+      <table style="width:100%;border-collapse:collapse;font-size:13px">
+        <thead><tr style="background:#f3f4f6">
+          <th style="padding:6px 8px;border:1px solid #e5e7eb;text-align:left">Jour</th>
+          <th style="padding:6px 8px;border:1px solid #e5e7eb">Début</th>
+          <th style="padding:6px 8px;border:1px solid #e5e7eb">Fin</th>
+          <th style="padding:6px 8px;border:1px solid #e5e7eb">Pause</th>
+          <th style="padding:6px 8px;border:1px solid #e5e7eb">Heures</th>
+          <th style="padding:6px 8px;border:1px solid #e5e7eb;text-align:left">Notes</th>
+        </tr></thead>
+        <tbody>${lignes}</tbody>
+        <tfoot><tr style="background:#f0fdf4;font-weight:700">
+          <td colspan="4" style="padding:8px;border:1px solid #e5e7eb">Total ${moisLabelCap}</td>
+          <td style="padding:8px;border:1px solid #e5e7eb;text-align:center;color:#15803d">${totalHeures.toFixed(2)}h</td>
+          <td style="border:1px solid #e5e7eb"></td>
+        </tr></tfoot>
+      </table>
+      <p style="color:#9ca3af;font-size:11px;padding:12px">Généré depuis DCB Compta</p>
+    </div>`
+
+    setSendingNavette(true)
+    setError(null)
+    try {
+      const { data: r, error: e } = await supabase.functions.invoke('smtp-send', {
+        body: { to: 'anne@compact.fr', subject: `Navette paie ${ae.prenom} ${ae.nom} — ${moisLabelCap}`, html }
+      })
+      if (e) throw e
+      if (!r?.ok) throw new Error(r?.error || 'Erreur envoi')
+      setSuccess(`Navette envoyée à anne@compact.fr`)
+    } catch (e) {
+      setError('Navette : ' + e.message)
+    } finally {
+      setSendingNavette(false)
+    }
   }
 
   async function chargerBalance(mois) {
@@ -302,6 +412,7 @@ export default function PageAutoEntrepreneurs() {
         <button style={TAB_STYLE(tab === 'aes')} onClick={() => setTab('aes')}>🧹 Staff & AE ({aes.length})</button>
         <button style={TAB_STYLE(tab === 'prestations')} onClick={() => setTab('prestations')}>⚙️ Types de prestations ({prestationTypes.length})</button>
         <button style={TAB_STYLE(tab === 'controle')} onClick={() => { setTab('controle'); chargerVirementsAE(visionMois); chargerVision(visionMois) }}>🔍 Contrôle virements</button>
+        <button style={TAB_STYLE(tab === 'heures')} onClick={() => setTab('heures')}>⏱ Heures staff</button>
       </div>
 
       {loading && aes.length === 0 ? <div style={{ textAlign: 'center', padding: 40, color: '#888' }}>Chargement...</div> : (
@@ -752,6 +863,135 @@ export default function PageAutoEntrepreneurs() {
                     </div>
                   )
                 })()}
+              </div>
+            )
+          })()}
+
+          {tab === 'heures' && (() => {
+            const JOURS_LONG = ['Dimanche', 'Lundi', 'Mardi', 'Mercredi', 'Jeudi', 'Vendredi', 'Samedi']
+            const ABSENCES = [
+              { value: '', label: '— Travaillé' },
+              { value: 'conge_paye', label: 'Congé payé' },
+              { value: 'maladie', label: 'Maladie' },
+              { value: 'rtt', label: 'RTT' },
+              { value: 'ferie', label: 'Férié' },
+              { value: 'repos', label: 'Repos' },
+            ]
+            const ABSENCES_LABEL = { conge_paye: 'CP', maladie: 'Maladie', rtt: 'RTT', ferie: 'Férié', repos: 'Repos' }
+            const staffList = aes.filter(a => a.type === 'staff' || a.type === 'assistante')
+            const days = getDaysOfMonth(heuresMois)
+            let totalH = 0
+            days.forEach(d => { const h = netHeures(heures[d]); if (h) totalH += h })
+
+            return (
+              <div>
+                <div style={{ display: 'flex', gap: 10, marginBottom: 20, alignItems: 'center', flexWrap: 'wrap' }}>
+                  <select value={heuresAeId || ''}
+                    onChange={e => { const id = e.target.value || null; setHeuresAeId(id); setHeures({}); if (id) chargerHeures(id, heuresMois) }}
+                    style={{ padding: '8px 12px', borderRadius: 8, border: '1.5px solid #e5e7eb', fontSize: 13 }}>
+                    <option value="">— Sélectionner un membre —</option>
+                    {staffList.map(a => <option key={a.id} value={a.id}>{a.prenom} {a.nom}</option>)}
+                  </select>
+                  <input type="month" value={heuresMois}
+                    onChange={e => { setHeuresMois(e.target.value); setHeures({}); if (heuresAeId) chargerHeures(heuresAeId, e.target.value) }}
+                    style={{ padding: '8px 12px', borderRadius: 8, border: '1.5px solid #e5e7eb', fontSize: 13 }} />
+                  {loadingHeures && <span style={{ fontSize: 13, color: '#888' }}>Chargement…</span>}
+                  {heuresAeId && (
+                    <button onClick={envoyerNavette} disabled={sendingNavette}
+                      style={{ marginLeft: 'auto', padding: '8px 18px', borderRadius: 8, background: '#1a3a6e', color: '#fff', border: 'none', cursor: 'pointer', fontSize: 13, fontWeight: 600 }}>
+                      {sendingNavette ? 'Envoi…' : '📤 Navette Compact'}
+                    </button>
+                  )}
+                </div>
+
+                {!heuresAeId ? (
+                  <div style={{ textAlign: 'center', padding: 48, color: '#9ca3af', fontSize: 14 }}>
+                    Sélectionnez un membre du staff pour saisir ses heures
+                  </div>
+                ) : (
+                  <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
+                    <thead>
+                      <tr style={{ background: '#f3f4f6' }}>
+                        <th style={{ padding: '8px 10px', textAlign: 'left', border: '1px solid #e5e7eb' }}>Jour</th>
+                        <th style={{ padding: '8px 10px', border: '1px solid #e5e7eb', width: 90 }}>Début</th>
+                        <th style={{ padding: '8px 10px', border: '1px solid #e5e7eb', width: 90 }}>Fin</th>
+                        <th style={{ padding: '8px 10px', border: '1px solid #e5e7eb', width: 85 }}>Pause (min)</th>
+                        <th style={{ padding: '8px 10px', border: '1px solid #e5e7eb', width: 75 }}>Heures</th>
+                        <th style={{ padding: '8px 10px', border: '1px solid #e5e7eb', width: 150 }}>Absence</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {days.map(d => {
+                        const date = new Date(d + 'T12:00:00')
+                        const dow = date.getDay()
+                        const isWE = dow === 0 || dow === 6
+                        const row = heures[d] || {}
+                        const h = netHeures(row)
+
+                        function save(overrides = {}) {
+                          const merged = { ...row, ...overrides }
+                          sauvegarderJour(d, {
+                            heure_debut: merged.heure_debut || null,
+                            heure_fin: merged.heure_fin || null,
+                            pause_min: merged.pause_min || 0,
+                            type_absence: merged.type_absence || null,
+                            notes: merged.notes || null,
+                          })
+                        }
+
+                        return (
+                          <tr key={d} style={{ background: isWE ? '#f9fafb' : '#fff' }}>
+                            <td style={{ padding: '6px 10px', border: '1px solid #e5e7eb', color: isWE ? '#9ca3af' : '#374151', fontWeight: isWE ? 400 : 500 }}>
+                              {JOURS_LONG[dow]} {date.getDate()}
+                            </td>
+                            <td style={{ padding: '3px 5px', border: '1px solid #e5e7eb' }}>
+                              <input type="time" value={row.heure_debut || ''} disabled={!!row.type_absence}
+                                onChange={e => setHeures(p => ({ ...p, [d]: { ...p[d], heure_debut: e.target.value } }))}
+                                onBlur={e => save({ heure_debut: e.target.value })}
+                                style={{ width: '100%', padding: '4px 5px', border: '1px solid #e5e7eb', borderRadius: 5, fontSize: 12, background: row.type_absence ? '#f3f4f6' : '#fff' }} />
+                            </td>
+                            <td style={{ padding: '3px 5px', border: '1px solid #e5e7eb' }}>
+                              <input type="time" value={row.heure_fin || ''} disabled={!!row.type_absence}
+                                onChange={e => setHeures(p => ({ ...p, [d]: { ...p[d], heure_fin: e.target.value } }))}
+                                onBlur={e => save({ heure_fin: e.target.value })}
+                                style={{ width: '100%', padding: '4px 5px', border: '1px solid #e5e7eb', borderRadius: 5, fontSize: 12, background: row.type_absence ? '#f3f4f6' : '#fff' }} />
+                            </td>
+                            <td style={{ padding: '3px 5px', border: '1px solid #e5e7eb' }}>
+                              <input type="number" min="0" max="120" value={row.pause_min ?? ''} disabled={!!row.type_absence}
+                                onChange={e => setHeures(p => ({ ...p, [d]: { ...p[d], pause_min: e.target.value === '' ? 0 : parseInt(e.target.value) } }))}
+                                onBlur={e => save({ pause_min: parseInt(e.target.value) || 0 })}
+                                style={{ width: '100%', padding: '4px 5px', border: '1px solid #e5e7eb', borderRadius: 5, fontSize: 12, background: row.type_absence ? '#f3f4f6' : '#fff' }} />
+                            </td>
+                            <td style={{ padding: '6px 10px', border: '1px solid #e5e7eb', textAlign: 'center', fontWeight: 600 }}>
+                              {row.type_absence
+                                ? <span style={{ fontSize: 11, color: '#6b7280', fontWeight: 400 }}>{ABSENCES_LABEL[row.type_absence] || row.type_absence}</span>
+                                : h !== null ? <span style={{ color: '#15803d' }}>{h.toFixed(2)}h</span> : ''}
+                            </td>
+                            <td style={{ padding: '3px 5px', border: '1px solid #e5e7eb' }}>
+                              <select value={row.type_absence || ''}
+                                onChange={e => {
+                                  const abs = e.target.value || null
+                                  const next = { ...row, type_absence: abs, heure_debut: abs ? null : row.heure_debut, heure_fin: abs ? null : row.heure_fin }
+                                  setHeures(p => ({ ...p, [d]: next }))
+                                  sauvegarderJour(d, { heure_debut: next.heure_debut, heure_fin: next.heure_fin, pause_min: next.pause_min || 0, type_absence: abs, notes: next.notes || null })
+                                }}
+                                style={{ width: '100%', padding: '4px 5px', border: '1px solid #e5e7eb', borderRadius: 5, fontSize: 12 }}>
+                                {ABSENCES.map(a => <option key={a.value} value={a.value}>{a.label}</option>)}
+                              </select>
+                            </td>
+                          </tr>
+                        )
+                      })}
+                    </tbody>
+                    <tfoot>
+                      <tr style={{ background: '#f0fdf4', fontWeight: 700 }}>
+                        <td colSpan={4} style={{ padding: '8px 10px', border: '1px solid #e5e7eb' }}>Total</td>
+                        <td style={{ padding: '8px 10px', border: '1px solid #e5e7eb', textAlign: 'center', color: '#15803d' }}>{totalH.toFixed(2)}h</td>
+                        <td style={{ border: '1px solid #e5e7eb' }} />
+                      </tr>
+                    </tfoot>
+                  </table>
+                )}
               </div>
             )
           })()}
