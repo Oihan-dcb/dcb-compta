@@ -135,7 +135,7 @@ serve(async (req) => {
   if (req.method === 'OPTIONS') return new Response('ok', { headers: corsHeaders })
 
   try {
-    const { mois, agence = 'dcb', email_destinataire } = await req.json()
+    const { mois, agence = 'dcb', email_destinataire, envoyer_email = true } = await req.json()
     if (!mois) throw new Error('mois requis')
 
     const SUPABASE_URL = Deno.env.get('SUPABASE_URL')!
@@ -175,7 +175,7 @@ serve(async (req) => {
       .from('etudiant-documents').createSignedUrl(storagePath, 3600)
 
     // Envoyer par email (supporte plusieurs destinataires séparés par virgule)
-    const destRaw = email_destinataire || agency?.email_comptable
+    const destRaw = envoyer_email ? (email_destinataire || agency?.email_comptable) : null
     const destinataires = destRaw ? destRaw.split(',').map((e: string) => e.trim()).filter(Boolean) : []
     let email_envoye = false
     if (destinataires.length > 0) {
