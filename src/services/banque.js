@@ -5,6 +5,7 @@
  */
 
 import { supabase } from '../lib/supabase'
+import { AGENCE } from '../lib/agence'
 
 /**
  * Parse un fichier CSV Caisse d'Épargne
@@ -117,6 +118,7 @@ export async function importerMouvements(mouvements) {
     .from('mouvement_bancaire')
     .select('numero_operation')
     .eq('mois_releve', moisReleve)
+    .eq('agence', AGENCE)
 
   const existingNums = new Set((existing || []).map(m => m.numero_operation).filter(Boolean))
 
@@ -127,7 +129,7 @@ export async function importerMouvements(mouvements) {
 
   if (toInsert.length === 0) return { inserted: 0, skipped: mouvements.length }
 
-  const { error } = await supabase.from('mouvement_bancaire').insert(toInsert)
+  const { error } = await supabase.from('mouvement_bancaire').insert(toInsert.map(m => ({ ...m, agence: AGENCE })))
   if (error) throw error
 
   // Logger
@@ -152,6 +154,7 @@ export async function getMouvementsMois(mois) {
     .from('mouvement_bancaire')
     .select('*')
     .eq('mois_releve', mois)
+    .eq('agence', AGENCE)
     .order('date_operation', { ascending: false })
 
   if (error) throw error
@@ -166,6 +169,7 @@ export async function getMouvementsARapprocher(mois) {
     .from('mouvement_bancaire')
     .select('*')
     .eq('mois_releve', mois)
+    .eq('agence', AGENCE)
     .eq('statut_matching', 'en_attente')
     .not('credit', 'is', null)
     .order('date_operation')
@@ -181,6 +185,7 @@ export async function getMoisDispos() {
   const { data, error } = await supabase
     .from('mouvement_bancaire')
     .select('mois_releve')
+    .eq('agence', AGENCE)
     .order('mois_releve', { ascending: false })
   if (error) throw new Error(error.message)
   const seen = new Set()

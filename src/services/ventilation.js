@@ -17,6 +17,7 @@
  */
 
 import { supabase } from '../lib/supabase'
+import { AGENCE } from '../lib/agence'
 import { logOp } from './journal'
 import { STATUTS_NON_VENTILABLES } from '../lib/constants'
 
@@ -67,7 +68,7 @@ export async function calculerVentilationMois(mois) {
   let errors = 0
   let skipped = 0
 
-  for (const resa of (reservations || []).filter(r => r.bien?.gestion_loyer !== false && (r.bien?.agence || 'dcb') === 'dcb')) {
+  for (const resa of (reservations || []).filter(r => r.bien?.gestion_loyer !== false && (r.bien?.agence || AGENCE) === AGENCE)) {
     // Verrou facture : ne jamais écraser une réservation liée à une facture finalisée
     if (proprietairesVerrouilles.has(resa.bien?.proprietaire_id)) {
       skipped++
@@ -128,7 +129,7 @@ export function _calculerLignes(resa) {
   const bien = resa.bien
   if (!bien) throw new Error(`Bien manquant pour résa ${resa.code}`)
   if (bien.gestion_loyer === false) return { lignes: [] }
-  if ((bien.agence || 'dcb') !== 'dcb') return { lignes: [] }
+  if ((bien.agence || AGENCE) !== AGENCE) return { lignes: [] }
 
   const revenue = resa.fin_revenue || 0
 
@@ -392,7 +393,7 @@ export async function calculerVentilationResa(resa) {
   const bien = resa.bien
   if (!bien) throw new Error(`Bien manquant pour résa ${resa.code}`)
   if (bien.gestion_loyer === false) return []
-  if ((bien.agence || 'dcb') !== 'dcb') return []
+  if ((bien.agence || AGENCE) !== AGENCE) return []
 
   // Séjour propriétaire : MEN = fin_revenue, AUTO = provision AE, FMEN = MEN - AUTO
   if (resa.owner_stay) {

@@ -1,4 +1,5 @@
 import { supabase } from '../lib/supabase'
+import { AGENCE } from '../lib/agence'
 import { getInvoicePDFBase64 } from './evoliz'
 import heroSrc from '../assets/rapport-hero.jpg?inline'
 import logoSrc from '../assets/rapport-logo.png?inline'
@@ -91,7 +92,7 @@ export async function getKPIsMois(proprietaireId, mois) {
     .select('id')
     .eq('proprietaire_id', proprietaireId)
     .eq('actif', true)
-    .eq('agence', 'dcb')
+    .eq('agence', AGENCE)
   const nbBiens = (biens || []).length
   const [y, m] = mois.split('-').map(Number)
   const nuitsDispos = nbBiens * new Date(y, m, 0).getDate()

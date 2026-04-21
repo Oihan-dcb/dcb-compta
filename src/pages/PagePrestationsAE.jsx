@@ -1,3 +1,4 @@
+import { AGENCE } from '../lib/agence'
 import { useState, useEffect } from 'react'
 import { supabase } from '../lib/supabase'
 import { useMoisPersisted } from '../hooks/useMoisPersisted'
@@ -58,7 +59,7 @@ export default function PagePrestationsAE() {
 
       const [{ data: aesData }, { data: biensData }, { data: allStatuts }] = await Promise.all([
         supabase.from('auto_entrepreneur').select('id, nom, prenom').order('nom'),
-        supabase.from('bien').select('id, code, hospitable_name').eq('agence', 'dcb').eq('listed', true).order('code'),
+        supabase.from('bien').select('id, code, hospitable_name').eq('agence', AGENCE).eq('listed', true).order('code'),
         supabase.from('prestation_hors_forfait').select('statut, montant').eq('mois', mois)
       ])
       setAes(aesData || [])

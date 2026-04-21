@@ -1,3 +1,4 @@
+import { AGENCE } from '../lib/agence'
 import { useState, useEffect, useCallback, useRef } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
@@ -95,7 +96,7 @@ export default function PageRapprochement() {
           .eq('mois_comptable', mois)
           .eq('rapprochee', false)
           .eq('owner_stay', false)
-          .eq('bien.agence', 'dcb')
+          .eq('bien.agence', AGENCE)
           .neq('final_status', 'cancelled')
           .neq('final_status', 'not accepted')
           .gt('fin_revenue', 0)

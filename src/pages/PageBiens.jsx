@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react'
+import { AGENCE } from '../lib/agence'
 import { syncBiens, getBiens } from '../services/syncBiens'
 import { getProprietaires } from '../services/syncProprietaires'
 import { setToken } from '../lib/hospitable'
@@ -159,7 +160,7 @@ export default function PageBiens() {
     } catch (err) { setError('Erreur : ' + err.message) }
   }
 
-  const biensDCB = biens.filter(b => (b.agence || 'dcb') === 'dcb')
+  const biensDCB = biens.filter(b => (b.agence || AGENCE) === AGENCE)
   const biensActifs = biensDCB.filter(b => b.listed)
   const biensAvecProprio = biensDCB.filter(b => b.proprietaire_id)
   const biensAConfigurer = biensDCB.filter(b => b.listed && (!b.proprietaire_id || !b.provision_ae_ref))

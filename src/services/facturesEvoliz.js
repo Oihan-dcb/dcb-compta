@@ -16,6 +16,7 @@
  */
 
 import { supabase } from '../lib/supabase'
+import { AGENCE } from '../lib/agence'
 import { logOp } from './journal'
 
 const MENTION_MANDAT = "Conformément au mandat de gestion, les honoraires de gestion sont directement prélevés sur le loyer encaissé avant reversement au propriétaire."
@@ -38,7 +39,7 @@ export async function genererFacturesMois(mois) {
       )
     `)
     .eq('bien.listed', true)
-    .eq('bien.agence', 'dcb')
+    .eq('bien.agence', AGENCE)
     .eq('actif', true)
 
   if (propErr) throw propErr
@@ -1036,7 +1037,7 @@ export async function exportCSVComptable(mois) {
       proprietaire (nom)
     `)
     .eq('mois_comptable', mois)
-    .eq('bien.agence', 'dcb')
+    .eq('bien.agence', AGENCE)
     .order('code')
 
   if (error) throw error

@@ -1,4 +1,5 @@
 import { supabase } from '../lib/supabase'
+import { AGENCE } from '../lib/agence'
 
 const EVOLIZ_COMPANY_ID = parseInt(import.meta.env.VITE_EVOLIZ_COMPANY_ID || '114158')
 
@@ -83,6 +84,7 @@ export async function syncProprietairesEvoliz() {
         ville: addr.town || null,
         pays: addr.country?.label || 'France',
         actif: true,
+        agence: AGENCE,
       }
     })
 
@@ -108,6 +110,7 @@ export async function getProprietaires() {
     .from('proprietaire')
     .select('*')
     .eq('actif', true)
+    .eq('agence', AGENCE)
     .order('nom')
   if (error) throw error
   return data || []

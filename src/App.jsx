@@ -18,6 +18,7 @@ import PageComptabilite from './pages/PageComptabilite'
 import PageBugReports from './pages/PageBugReports'
 import PageExports from './pages/PageExports'
 import PageSmsReviews from './pages/PageSmsReviews'
+import PageLocationsLongues from './pages/PageLocationsLongues'
 import BugReportButton from './components/BugReportButton'
 import './App.css'
 
@@ -110,6 +111,7 @@ export default function App() {
             <NavLink to="/comptabilite" className={({isActive}) => isActive ? 'nav-link active' : 'nav-link'}>Comptabilité</NavLink>
             <NavLink to="/exports" className={({isActive}) => isActive ? 'nav-link active' : 'nav-link'}>Exports</NavLink>
             <NavLink to="/sms-reviews" className={({isActive}) => isActive ? 'nav-link active' : 'nav-link'}>SMS Reviews</NavLink>
+            <NavLink to="/locations-longues" className={({isActive}) => isActive ? 'nav-link active' : 'nav-link'}>Étudiants</NavLink>
             <ConfigDropdown />
           </nav>
         </header>
@@ -133,6 +135,7 @@ export default function App() {
             <Route path="/config" element={<PageConfig />} />
             <Route path="/exports" element={<PageExports />} />
             <Route path="/sms-reviews" element={<PageSmsReviews />} />
+            <Route path="/locations-longues" element={<PageLocationsLongues />} />
           </Routes>
         </main>
       </div>

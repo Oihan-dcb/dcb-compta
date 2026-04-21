@@ -1,9 +1,11 @@
 import { supabase } from '../lib/supabase'
+import { AGENCE } from '../lib/agence'
 
 export async function getAutoEntrepreneurs() {
   const { data, error } = await supabase
     .from('auto_entrepreneur')
     .select('*')
+    .eq('agence', AGENCE)
     .order('nom')
   if (error) throw error
   return data || []
@@ -23,7 +25,7 @@ export async function saveAutoEntrepreneur(ae) {
   } else {
     const { data, error } = await supabase
       .from('auto_entrepreneur')
-      .insert(fields)
+      .insert({ ...fields, agence: AGENCE })
       .select()
       .single()
     if (error) throw error
@@ -46,7 +48,7 @@ export async function createAEWithAuth(ae, email) {
   // 2. Créer la fiche AE en base (sans ae_user_id pour l'instant)
   const { data, error } = await supabase
     .from('auto_entrepreneur')
-    .insert({ ...ae, email })
+    .insert({ ...ae, email, agence: AGENCE })
     .select()
     .single()
   if (error) throw error

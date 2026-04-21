@@ -8,6 +8,7 @@ import {
 import { genererStatementHTML, genererMailStatementHTML } from '../services/rapportStatement'
 import { buildRapportData as buildRapportDataService } from '../services/buildRapportData'
 import { STATUTS_NON_VENTILABLES } from '../lib/constants'
+import { AGENCE } from '../lib/agence'
 
 const moisCourant = new Date().toISOString().substring(0, 7)
 const fmt = c => ((c || 0) / 100).toFixed(2).replace('.', ',') + ' €'
@@ -100,7 +101,7 @@ export default function PageRapports() {
     supabase
       .from('proprietaire')
       .select('id, nom, email, bien!inner(id, code, hospitable_name, ville, listed, agence, groupe_facturation, rapport_config)')
-      .eq('bien.agence', 'dcb')
+      .eq('bien.agence', AGENCE)
       .eq('actif', true)
       .order('nom')
       .then(({ data: props }) => {
@@ -121,7 +122,7 @@ export default function PageRapports() {
   useEffect(() => {
     if (!selectedPropId) return
     const proprio = proprietaires.find(p => p.id === selectedPropId)
-    const biens = (proprio?.bien || []).filter(b => b.listed && b.agence === 'dcb')
+    const biens = (proprio?.bien || []).filter(b => b.listed && b.agence === AGENCE)
     const maiteFirst = biens.find(b => b.groupe_facturation === 'MAITE')
     setSelectedBienId((maiteFirst || biens[0])?.id || '')
     setData(null)
@@ -688,7 +689,7 @@ FORMAT :
   }
 
   const proprio = proprietaires.find(p => p.id === selectedPropId)
-  const biensActifs = (proprio?.bien || []).filter(b => b.listed && b.agence === 'dcb')
+  const biensActifs = (proprio?.bien || []).filter(b => b.listed && b.agence === AGENCE)
   const isMaite = (proprio?.bien || []).some(b => b.groupe_facturation === 'MAITE')
   const maiteIds = (proprio?.bien || []).filter(b => b.groupe_facturation === 'MAITE').map(b => b.id)
   const biensActifsMaite = biensActifs.filter(b => b.groupe_facturation === 'MAITE')
@@ -770,7 +771,7 @@ FORMAT :
             const isMaiteP = (p.bien || []).some(b => b.groupe_facturation === 'MAITE')
             const codes = isMaiteP
               ? 'Maison Maïté'
-              : (p.bien || []).filter(b => b.listed && b.agence === 'dcb').map(b => b.code).filter(Boolean).join(', ')
+              : (p.bien || []).filter(b => b.listed && b.agence === AGENCE).map(b => b.code).filter(Boolean).join(', ')
             return (
               <option key={p.id} value={p.id} style={{ color: bienEnvoye ? '#9C8E7D' : 'inherit' }}>
                 {bienEnvoye ? '✓ ' : ''}{codes ? `${codes} — ` : ''}{p.nom}
