@@ -267,6 +267,7 @@ export default function PageBiens() {
                 <th className="right">Ménage proprio</th>
                  <th style={{whiteSpace:'nowrap',textAlign:'center'}}>Agence / Collecte</th>
                 <th style={{whiteSpace:'nowrap',textAlign:'center'}}>Code iCal</th>
+                <th style={{whiteSpace:'nowrap',textAlign:'center'}}>Classification</th>
                 <th>Statut</th>
               </tr>
             </thead>
@@ -452,6 +453,19 @@ export default function PageBiens() {
                         color: bien.ical_code ? '#16a34a' : '#888'
                       }}
                     />
+                  </td>
+                  <td style={{ textAlign: 'center' }}>
+                    <select
+                      value={bien.classification || 'non_classe'}
+                      onChange={e => saveField(bien.id, 'classification', e.target.value)}
+                      style={{ fontSize: 11, padding: '3px 6px', borderRadius: 5, border: '1px solid #e5e7eb', background: bien.classification && bien.classification !== 'non_classe' ? '#f0fdf4' : '#fff', color: bien.classification && bien.classification !== 'non_classe' ? '#16a34a' : '#888', cursor: 'pointer' }}>
+                      <option value="non_classe">Non classé</option>
+                      <option value="1_etoile">1 ★</option>
+                      <option value="2_etoiles">2 ★</option>
+                      <option value="3_etoiles">3 ★</option>
+                      <option value="4_etoiles">4 ★</option>
+                      <option value="5_etoiles">5 ★</option>
+                    </select>
                   </td>
                   <td>
                     {bien.listed ? (
