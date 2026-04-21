@@ -99,7 +99,7 @@ export default function PageRapports() {
   useEffect(() => {
     supabase
       .from('proprietaire')
-      .select('id, nom, email, bien!inner(id, code, hospitable_name, listed, agence, groupe_facturation, rapport_config)')
+      .select('id, nom, email, bien!inner(id, code, hospitable_name, ville, listed, agence, groupe_facturation, rapport_config)')
       .eq('bien.agence', 'dcb')
       .eq('actif', true)
       .order('nom')
@@ -305,7 +305,7 @@ export default function PageRapports() {
     let meteoFutur = ''
     try {
       const meteoRes = await fetch(
-        `https://api.open-meteo.com/v1/forecast?latitude=43.48&longitude=-1.56&daily=temperature_2m_max,temperature_2m_min,precipitation_sum,sunshine_duration&timezone=Europe%2FParis&past_days=31&forecast_days=14`
+        `https://api.open-meteo.com/v1/forecast?latitude=${meteoLat}&longitude=${meteoLon}&daily=temperature_2m_max,temperature_2m_min,precipitation_sum,sunshine_duration&timezone=Europe%2FParis&past_days=31&forecast_days=14`
       )
       const meteo = await meteoRes.json()
       const days = (meteo.daily?.time || [])
@@ -337,6 +337,12 @@ export default function PageRapports() {
 
     const bienNom = data.bien?.hospitable_name || ''
     const tauxCommission = data.tauxCommission
+    const bienVille = data.bien?.ville || ''
+    const isBordeaux = bienVille.toLowerCase().includes('bordeaux')
+    const villeLabel = isBordeaux ? 'Bordeaux' : 'la Côte Basque'
+    const agenceLabel = isBordeaux ? 'Destination Bordeaux' : 'Destination Côte Basque'
+    const meteoLat = isBordeaux ? '44.84' : '43.48'
+    const meteoLon = isBordeaux ? '-0.58' : '-1.56'
 
     const [m1yr, m1mo] = m1.split('-').map(Number)
     const [m2yr, m2mo] = m2.split('-').map(Number)
@@ -345,7 +351,7 @@ export default function PageRapports() {
     const totalNuitsFutures = (resasFutures || []).reduce((s, r) => s + (r.nights || 0), 0)
     const meteoPrevisions = meteoFutur || 'Données météo non disponibles pour les prochaines semaines.'
 
-    const SYSTEM_PROMPT = `Tu es Oïhan, gérant de Destination Côte Basque.
+    const SYSTEM_PROMPT = `Tu es Oïhan, gérant de ${agenceLabel}.
 Tu rédiges des analyses mensuelles internes sur les biens gérés, destinées à être partagées avec les propriétaires.
 Ton rôle n'est pas de décrire des chiffres mais d'en donner une lecture claire, professionnelle et maîtrisée.
 
@@ -446,8 +452,8 @@ Apporter un éclairage extérieur sur la performance.
 
 CONTENU ATTENDU :
 - Impact de la météo ou de la saisonnalité sur la demande
-- Lecture du niveau de demande locative à Biarritz ce mois
-- Mise en perspective du marché local (événements, vacances, dynamique côtière)
+- Lecture du niveau de demande locative à ${villeLabel} ce mois
+- Mise en perspective du marché local (événements, vacances, dynamique de la destination)
 
 CONTRAINTES :
 - Ne pas répéter les données du bloc Analyse
