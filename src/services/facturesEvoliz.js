@@ -366,8 +366,9 @@ async function genererFactureGroupe(proprio, biens, mois) {
   const totalTTC = totalHT + totalTVA
 
   // ownerStayAbsorbTotal = part couverte par LOY → réduit le reversement
+  // autoAbsorbableTotal  = AUTO couvert par LOY → réduit le reversement (surplus facturé en DEB_AE séparé)
   // owner stay surplus = facturé séparément → ne réduit pas le reversement
-  const montantReversement = Math.max(0, vir.ht - totalPrestations - haownerTTC - fraisDirectTTC - fraisDeduitTotal - deboursPropAbsorbTotal - ownerStayAbsorbTotal) + remboursementsTotal
+  const montantReversement = Math.max(0, vir.ht - totalPrestations - haownerTTC - fraisDirectTTC - fraisDeduitTotal - deboursPropAbsorbTotal - ownerStayAbsorbTotal - autoAbsorbableTotal) + remboursementsTotal
 
   // Cas solde nÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂ©gatif : uniquement des expenses, pas de rÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂ©servations
   const soldeNegatif = totalHT === 0 && div.ht > 0
@@ -833,10 +834,6 @@ async function genererFactureDebours(proprio, biens, mois) {
     }
   }
 
-  if (lignes.length === 0) return null
-
-  const totalHT = lignes.reduce((s, l) => s + l.montant_ht, 0)
-
   let existingDebQuery = supabase
     .from('facture_evoliz')
     .select('id, statut')
@@ -847,9 +844,21 @@ async function genererFactureDebours(proprio, biens, mois) {
   else existingDebQuery = existingDebQuery.is('bien_id', null)
   const { data: existing } = await existingDebQuery.maybeSingle()
 
+  if (lignes.length === 0) {
+    // Plus rien à facturer : supprimer le brouillon s'il existe, sinon rien
+    if (existing && existing.statut === 'brouillon') {
+      await supabase.from('facture_evoliz_ligne').delete().eq('facture_id', existing.id)
+      await supabase.from('facture_evoliz').delete().eq('id', existing.id)
+      return { created: false, deleted: true }
+    }
+    return null
+  }
+
   if (existing && ['envoye_evoliz', 'payee'].includes(existing.statut)) {
     return { created: false, skipped: true }
   }
+
+  const totalHT = lignes.reduce((s, l) => s + l.montant_ht, 0)
 
   const factureData = {
     proprietaire_id:     proprio.id,
