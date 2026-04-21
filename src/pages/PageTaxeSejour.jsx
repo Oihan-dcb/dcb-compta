@@ -68,6 +68,7 @@ export default function PageTaxeSejour() {
         .select('id, code, hospitable_name, ville, classification, agence, listed')
         .eq('agence', AGENCE)
         .eq('listed', true)
+        .eq('gestion_taxe_sejour', true)
         .order('code'),
       supabase.from('reservation')
         .select('id, bien_id, guest_name, guest_count, arrival_date, departure_date, nights, fin_accommodation, platform')

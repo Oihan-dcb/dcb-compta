@@ -142,6 +142,12 @@ export default function PageBiens() {
     }
   }
 
+  async function toggleGestionTaxeSejour(bienId, currentVal) {
+    const newVal = !currentVal
+    await supabase.from('bien').update({ gestion_taxe_sejour: newVal }).eq('id', bienId)
+    setBiens(prev => prev.map(b => b.id === bienId ? { ...b, gestion_taxe_sejour: newVal } : b))
+  }
+
   async function toggleGestionLoyer(bienId, currentVal) {
     try {
       const { supabase } = await import('../lib/supabase')
@@ -268,6 +274,7 @@ export default function PageBiens() {
                  <th style={{whiteSpace:'nowrap',textAlign:'center'}}>Agence / Collecte</th>
                 <th style={{whiteSpace:'nowrap',textAlign:'center'}}>Code iCal</th>
                 <th style={{whiteSpace:'nowrap',textAlign:'center'}}>Classification</th>
+                <th style={{whiteSpace:'nowrap',textAlign:'center'}}>Taxe séjour</th>
                 <th>Statut</th>
               </tr>
             </thead>
@@ -466,6 +473,14 @@ export default function PageBiens() {
                       <option value="4_etoiles">4 ★</option>
                       <option value="5_etoiles">5 ★</option>
                     </select>
+                  </td>
+                  <td style={{textAlign:'center'}}>
+                    <span
+                      onClick={() => toggleGestionTaxeSejour(bien.id, bien.gestion_taxe_sejour)}
+                      style={{fontSize:16, cursor:'pointer'}}
+                      title={bien.gestion_taxe_sejour ? 'DCB gère la taxe de séjour' : 'Taxe de séjour non gérée par DCB'}>
+                      {bien.gestion_taxe_sejour ? '✅' : '⬜'}
+                    </span>
                   </td>
                   <td>
                     {bien.listed ? (
