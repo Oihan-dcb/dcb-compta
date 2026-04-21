@@ -179,14 +179,26 @@ export default function PageLocationsLongues() {
     if (!loyerModal) return
     setSaving(true)
     setError(null)
+    const loyerId    = loyerModal.id
+    const hasEmail   = !!loyerModal.etudiant?.email
     try {
-      await marquerLoyerRecu(loyerModal.id, {
+      await marquerLoyerRecu(loyerId, {
         montant_recu:   Math.round(parseFloat(montantRecu) * 100),
         date_reception: dateReception,
       })
-      setSuccess('Loyer marqué reçu')
       setLoyerModal(null)
       await chargerMensuel()
+
+      // Quittance automatique si l'étudiant a un email
+      if (hasEmail) {
+        setSuccess('Loyer reçu ✓ — envoi quittance…')
+        const { error: qErr } = await supabase.functions.invoke('generer-quittance', {
+          body: { loyer_suivi_id: loyerId, envoyer_email: true },
+        })
+        setSuccess(qErr ? 'Loyer reçu ✓ — quittance non envoyée (erreur)' : 'Loyer reçu ✓ — quittance envoyée par email')
+      } else {
+        setSuccess('Loyer reçu ✓ — pas d\'email étudiant, quittance à envoyer manuellement')
+      }
     } catch (e) {
       setError(e.message)
     } finally {
