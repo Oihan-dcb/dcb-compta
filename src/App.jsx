@@ -8,7 +8,7 @@ import { applyTheme } from './lib/theme'
 applyTheme(AGENCE)
 
 const AGENCE_LABELS = {
-  dcb:     { icon: 'DCB',    text: 'Compta' },
+  dcb:     { icon: 'DCB',    text: 'Immo'   },
   lauian:  { icon: 'Lauian', text: 'Immo'   },
   bordeaux:{ icon: 'DBX',    text: 'Immo'   },
 }

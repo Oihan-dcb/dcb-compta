@@ -1,7 +1,11 @@
 import { useState, useEffect, useCallback } from 'react'
 import { supabase } from '../lib/supabase'
+import { AGENCE } from '../lib/agence'
 
 const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL
+
+const AGENCE_LABELS = { dcb: 'Destination Côte Basque', lauian: 'Lauian Immo', bordeaux: 'Destination Bordeaux' }
+const agenceLabel = AGENCE_LABELS[AGENCE] || AGENCE.toUpperCase()
 
 const TABS = ['Dashboard', 'Queue', 'Logs', 'Test', 'Campagnes']
 
@@ -28,13 +32,14 @@ export default function PageSmsReviews() {
     try {
       const { data } = await supabase
         .from('reservation_review')
-        .select('comment, bien(hospitable_name)')
+        .select('comment, bien!inner(hospitable_name, agence)')
+        .eq('bien.agence', AGENCE)
         .gte('rating', 5)
         .not('comment', 'is', null)
         .limit(100)
       if (data?.length) {
         const pick = data[Math.floor(Math.random() * data.length)]
-        setTestComment({ comment: pick.comment, property_name: pick.bien?.hospitable_name || 'Villa DCB' })
+        setTestComment({ comment: pick.comment, property_name: pick.bien?.hospitable_name || agenceLabel })
       }
     } finally {
       setLoadingComment(false)
@@ -108,7 +113,8 @@ export default function PageSmsReviews() {
       // Source : reservation (review_rating + guest_phone depuis CSV Hospitable)
       const { data: resas } = await supabase
         .from('reservation')
-        .select('hospitable_id, guest_name, guest_phone, guest_country, guest_locale, review_rating, departure_date, bien_id, bien(hospitable_name)')
+        .select('hospitable_id, guest_name, guest_phone, guest_country, guest_locale, review_rating, departure_date, bien_id, bien!inner(hospitable_name, agence)')
+        .eq('bien.agence', AGENCE)
         .gte('review_rating', 5)
         .order('departure_date', { ascending: false })
         .limit(500)
@@ -186,7 +192,7 @@ export default function PageSmsReviews() {
         'Content-Type': 'application/json',
         'Authorization': `Bearer ${session?.access_token || import.meta.env.VITE_SUPABASE_ANON_KEY}`,
       },
-      body: JSON.stringify(body),
+      body: JSON.stringify({ ...body, agence: AGENCE }),
     })
     return res.json()
   }
@@ -201,7 +207,7 @@ export default function PageSmsReviews() {
         phone: testPhone,
         language: testLang,
         comment: testComment?.comment || null,
-        property: testComment?.property_name || 'Villa DCB',
+        property: testComment?.property_name || agenceLabel,
       })
       setTestResult(data)
       if (data.ok) chargerLogs()
