@@ -38,7 +38,7 @@ export async function buildRapportData(bienId, propId, mois, opts = {}) {
     (() => {
       let q = supabase
         .from('reservation')
-        .select('id, bien_id, code, fin_revenue, fin_accommodation, fin_host_service_fee, fin_gross_revenue, nights, arrival_date, departure_date, final_status, platform, owner_stay, guest_name, bien:bien_id(hospitable_name, code), reservation_fee(fee_type, label, amount)')
+        .select('id, bien_id, code, fin_revenue, fin_accommodation, fin_host_service_fee, fin_gross_revenue, fin_discount, nights, arrival_date, departure_date, final_status, platform, owner_stay, guest_name, bien:bien_id(hospitable_name, code), reservation_fee(fee_type, label, amount)')
         .eq('mois_comptable', mois)
         .order('arrival_date')
       return isGlobal ? q.in('bien_id', maiteIds) : q.eq('bien_id', bienId)
@@ -178,10 +178,10 @@ export async function buildRapportData(bienId, propId, mois, opts = {}) {
           (r.platform === 'booking'
             ? (r.reservation_fee || []).filter(f => f.fee_type === 'tax' && !f.label?.toLowerCase().includes('remitted')).reduce((s, f) => s + (f.amount || 0), 0)
             : 0)),
-      // base_comm = fin_accommodation + fin_host_service_fee
-      // = "Commissionable base" Hospitable (net de la commission hôte Airbnb/Booking/Direct)
-      // fin_host_service_fee est négatif (commission retenue par la plateforme)
-      base_comm: (r.fin_accommodation || 0) + (r.fin_host_service_fee || 0),
+      // base_comm = fin_accommodation + fin_host_service_fee - fin_discount
+      // = "Commissionable base" Hospitable (net de la commission hôte + remises promotionnelles)
+      // fin_host_service_fee est négatif, fin_discount est positif en base (à soustraire)
+      base_comm: (r.fin_accommodation || 0) + (r.fin_host_service_fee || 0) - (r.fin_discount || 0),
       hon:  v.HON?.montant_ttc || 0,
       loy:  loyHt,
       vir:  virHt,

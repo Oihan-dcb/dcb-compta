@@ -542,11 +542,13 @@ Le frais a été avancé par DCB. Il est refacturé au propriétaire via la fact
 gross_revenue = fin_accommodation + Σ reservation_fee WHERE fee_type='guest_fee'
               [valeur brute Hospitable exacte — total voyageur hors taxe de séjour]
 
-base_comm     = fin_accommodation
-              [Hospitable "Commissionable base" — base de la commission DCB]
+base_comm     = fin_accommodation + fin_host_service_fee - fin_discount
+              [= commissionableBase de ventilation.js — net de la commission plateforme et des remises]
+              [fin_host_service_fee est négatif, fin_discount est positif en base (à soustraire)]
+              [ex Airbnb: 201.00 + (-40.42) - 40.20 = 120.38€ ✓]
 ```
 
-Ni `fin_revenue` (qui inclut host_service_fee négatif), ni le code VIR (LOY+taxes) ne sont utilisés pour ces colonnes.
+Ni `fin_revenue`, ni le code VIR (LOY+taxes) ne sont utilisés pour ces colonnes.
 
 ### 15.2 fraisDeductionLoy — règle complète
 
