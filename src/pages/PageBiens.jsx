@@ -9,7 +9,7 @@ const HOSP_TOKEN = import.meta.env.VITE_HOSPITABLE_TOKEN
 
 export default function PageBiens() {
   const [biens, setBiens] = useState([])
-  const [filtreAgence, setFiltreAgence] = useState('dcb')
+  const [filtreAgence, setFiltreAgence] = useState(AGENCE)
   const [loading, setLoading] = useState(true)
   const [syncing, setSyncing] = useState(false)
   const [syncResult, setSyncResult] = useState(null)

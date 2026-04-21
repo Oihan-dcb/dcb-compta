@@ -13,6 +13,13 @@ const AGENCE_LABELS = {
   bordeaux:{ icon: 'DBX',    text: 'Immo'   },
 }
 const agenceLabel = AGENCE_LABELS[AGENCE] || AGENCE_LABELS.dcb
+
+const SIBLING_URLS = {
+  dcb:     'https://lauian-compta.vercel.app',
+  lauian:  'https://dcb-compta.vercel.app',
+  bordeaux: null,
+}
+const siblingUrl = SIBLING_URLS[AGENCE] || null
 import PageBiens from './pages/PageBiens'
 import PageReservations from './pages/PageReservations'
 import PageBanque from './pages/PageBanque'
@@ -99,8 +106,17 @@ export default function App() {
       <div className="app">
         <header className="app-header">
           <div className="header-logo">
-            <span className="logo-icon">{agenceLabel.icon}</span>
-            <span className="logo-text">{agenceLabel.text}</span>
+            {siblingUrl ? (
+              <a href={siblingUrl} title="Basculer vers l'autre agence" style={{ display: 'flex', alignItems: 'center', gap: 8, textDecoration: 'none' }}>
+                <span className="logo-icon">{agenceLabel.icon}</span>
+                <span className="logo-text">{agenceLabel.text}</span>
+              </a>
+            ) : (
+              <>
+                <span className="logo-icon">{agenceLabel.icon}</span>
+                <span className="logo-text">{agenceLabel.text}</span>
+              </>
+            )}
           </div>
           <nav className="app-nav">
             <NavLink to="/" end className={({isActive}) => isActive ? 'nav-link active' : 'nav-link'}>Biens</NavLink>
