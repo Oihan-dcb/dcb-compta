@@ -17,4 +17,8 @@ CREATE TABLE IF NOT EXISTS staff_heures_jour (
 );
 
 ALTER TABLE staff_heures_jour ENABLE ROW LEVEL SECURITY;
-CREATE POLICY "open_all_staff_heures" ON staff_heures_jour FOR ALL TO public USING (true) WITH CHECK (true);
+DO $$ BEGIN
+  IF NOT EXISTS (SELECT 1 FROM pg_policies WHERE tablename='staff_heures_jour' AND policyname='open_all_staff_heures') THEN
+    CREATE POLICY "open_all_staff_heures" ON staff_heures_jour FOR ALL TO public USING (true) WITH CHECK (true);
+  END IF;
+END $$;
