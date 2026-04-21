@@ -76,26 +76,28 @@ Deno.serve(async (req) => {
   }
 })
 
-const PROMPT = `Analyse cette facture et extrais les informations en JSON strict, sans commentaire autour :
+const PROMPT = `Analyse ce document (facture ou ticket de caisse) et extrais les informations en JSON strict, sans commentaire autour :
 
 {
-  "fournisseur": "nom de l'entreprise qui émet la facture",
+  "fournisseur": "nom de l'entreprise ou du commerce",
   "montant_ttc": 99.99,
   "montant_ht": 83.32,
   "tva": 16.67,
   "date_facture": "YYYY-MM-DD",
   "numero_facture": "FAC-2026-001",
-  "type_paiement": "virement"
+  "type_paiement": "cb"
 }
 
 Règles :
-- montant_ttc : montant total TTC en euros (nombre décimal)
-- montant_ht : montant HT si présent, sinon null
+- fournisseur : nom du magasin, enseigne ou entreprise émettrice (ex: "Carrefour", "Leroy Merlin", "SFR")
+- montant_ttc : montant total payé en euros (nombre décimal). Sur un ticket de caisse = TOTAL ou MONTANT DÛ
+- montant_ht : montant HT si explicitement mentionné, sinon null
 - tva : montant TVA si présent, sinon null
-- date_facture : date de la facture au format YYYY-MM-DD, sinon null
-- numero_facture : numéro de facture si présent, sinon null
-- type_paiement : "virement" | "cb" | "prelevement" | "cheque" | null selon ce qui est mentionné
-- Si une valeur n'est pas lisible, mets null
+- date_facture : date du document au format YYYY-MM-DD, sinon null
+- numero_facture : numéro de facture ou de ticket si présent, sinon null
+- type_paiement : "virement" | "cb" | "prelevement" | "cheque" | "especes" | null
+  (sur un ticket de caisse : CB = "cb", ESPECES = "especes")
+- Si une valeur n'est pas lisible ou absente, mets null
 
 Réponds UNIQUEMENT avec le JSON, rien d'autre.`
 
