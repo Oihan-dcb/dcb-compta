@@ -119,53 +119,173 @@ export default function PageAutoEntrepreneurs() {
     const days = getDaysOfMonth(heuresMois)
     const moisLabel = new Date(heuresMois + '-01').toLocaleDateString('fr-FR', { month: 'long', year: 'numeric' })
     const moisLabelCap = moisLabel.charAt(0).toUpperCase() + moisLabel.slice(1)
+
+    const ABSENCES_LABEL = {
+      conge_paye: 'Congés payés', maladie: 'Maladie',
+      rtt: 'RTT', ferie: 'Férié', repos: 'Absences non rémunérées'
+    }
+    const fmt2 = d => d ? d.split('-').reverse().join('/') : ''
+
+    // Heures sup par semaine (S1=j1-7, S2=j8-14, S3=j15-21, S4=j22+)
+    const semH = [0, 0, 0, 0]
+    let totalH = 0
+    for (const d of days) {
+      const jour = parseInt(d.split('-')[2])
+      const si = jour <= 7 ? 0 : jour <= 14 ? 1 : jour <= 21 ? 2 : 3
+      const h = netHeures(heures[d])
+      if (h) { semH[si] += h; totalH += h }
+    }
+    const sup = semH.map(h => Math.max(0, h - 35))
+
+    // Plages d'absences
+    const absences = []
+    let cur = null
+    for (const d of days) {
+      const abs = heures[d]?.type_absence || null
+      if (abs) {
+        if (cur && cur.motif === abs) { cur.fin = d }
+        else { cur = { motif: abs, debut: d, fin: d }; absences.push(cur) }
+      } else { cur = null }
+    }
+
+    // Détail journalier (annexe)
     const JOURS = ['Dim', 'Lun', 'Mar', 'Mer', 'Jeu', 'Ven', 'Sam']
-    const ABSENCES_LABEL = { conge_paye: 'CP', maladie: 'Maladie', rtt: 'RTT', ferie: 'Férié', repos: 'Repos' }
-    let totalHeures = 0
+    const ABSENCES_COURT = { conge_paye: 'CP', maladie: 'Maladie', rtt: 'RTT', ferie: 'Férié', repos: 'Repos' }
     let lignes = ''
     for (const d of days) {
       const row = heures[d]
       const date = new Date(d + 'T12:00:00')
       const isWE = date.getDay() === 0 || date.getDay() === 6
       const h = netHeures(row)
-      if (h) totalHeures += h
-      const absence = row?.type_absence ? (ABSENCES_LABEL[row.type_absence] || row.type_absence) : ''
-      const bg = isWE ? '#f9fafb' : '#ffffff'
-      lignes += `<tr style="background:${bg}">
-        <td style="padding:5px 8px;border:1px solid #e5e7eb;color:${isWE ? '#9ca3af' : '#374151'}">${JOURS[date.getDay()]} ${date.getDate()}</td>
-        <td style="padding:5px 8px;border:1px solid #e5e7eb;text-align:center">${row?.heure_debut || ''}</td>
-        <td style="padding:5px 8px;border:1px solid #e5e7eb;text-align:center">${row?.heure_fin || ''}</td>
-        <td style="padding:5px 8px;border:1px solid #e5e7eb;text-align:center">${row?.pause_min ? row.pause_min + 'min' : ''}</td>
-        <td style="padding:5px 8px;border:1px solid #e5e7eb;text-align:center;font-weight:600">${h !== null ? h.toFixed(2) + 'h' : absence}</td>
-        <td style="padding:5px 8px;border:1px solid #e5e7eb;font-size:11px;color:#6b7280">${row?.notes || ''}</td>
+      const absence = row?.type_absence ? (ABSENCES_COURT[row.type_absence] || row.type_absence) : ''
+      lignes += `<tr style="background:${isWE ? '#f9fafb' : '#fff'}">
+        <td style="padding:4px 8px;border:1px solid #e5e7eb;color:${isWE ? '#9ca3af' : '#374151'}">${JOURS[date.getDay()]} ${date.getDate()}</td>
+        <td style="padding:4px 8px;border:1px solid #e5e7eb;text-align:center">${row?.heure_debut || ''}</td>
+        <td style="padding:4px 8px;border:1px solid #e5e7eb;text-align:center">${row?.heure_fin || ''}</td>
+        <td style="padding:4px 8px;border:1px solid #e5e7eb;text-align:center">${row?.pause_min ? row.pause_min + ' min' : ''}</td>
+        <td style="padding:4px 8px;border:1px solid #e5e7eb;text-align:center;font-weight:600;color:${h ? '#15803d' : '#6b7280'}">${h !== null ? h.toFixed(2) + 'h' : absence}</td>
+        <td style="padding:4px 8px;border:1px solid #e5e7eb;font-size:11px;color:#6b7280">${row?.notes || ''}</td>
       </tr>`
     }
-    return {
-      ae, moisLabelCap, totalHeures,
-      html: `<div style="font-family:Arial,sans-serif;max-width:680px;margin:0 auto">
-      <div style="background:#1a3a6e;color:white;padding:20px">
-        <h2 style="margin:0;font-size:18px">Navette paie — ${ae.prenom} ${ae.nom}</h2>
-        <p style="margin:4px 0 0;opacity:.8;font-size:14px">${moisLabelCap}</p>
-      </div>
-      <table style="width:100%;border-collapse:collapse;font-size:13px">
+
+    // Lignes absences pour le tableau principal (une par plage)
+    const absLignes = absences.length === 0
+      ? `<td style="${tdA}"></td><td style="${tdA}"></td><td style="${tdA}"></td>`
+      : '' // construit ci-dessous
+
+    const td = 'padding:6px 8px;border:1px solid #999;font-size:12px;'
+    const th = 'padding:6px 8px;border:1px solid #999;font-size:11px;background:#f3f4f6;font-weight:600;text-align:center;'
+    const tdA = 'padding:6px 8px;border:1px solid #999;font-size:12px;'
+
+    // Ligne(s) employé : première ligne avec heures + première absence, lignes suivantes = absences
+    const nbLignes = Math.max(1, absences.length)
+    let lignesEmploye = ''
+    for (let i = 0; i < nbLignes; i++) {
+      const abs = absences[i]
+      if (i === 0) {
+        lignesEmploye += `<tr>
+          <td style="${td}">${ae.matricule || ''}</td>
+          <td style="${td};font-weight:600">${ae.nom.toUpperCase()}</td>
+          <td style="${td}">${ae.prenom}</td>
+          <td style="${td};text-align:center">35</td>
+          <td style="${td};text-align:center">${sup[0] > 0 ? sup[0].toFixed(2) : ''}</td>
+          <td style="${td};text-align:center">${sup[1] > 0 ? sup[1].toFixed(2) : ''}</td>
+          <td style="${td};text-align:center">${sup[2] > 0 ? sup[2].toFixed(2) : ''}</td>
+          <td style="${td};text-align:center">${sup[3] > 0 ? sup[3].toFixed(2) : ''}</td>
+          <td style="${td}"></td><td style="${td}"></td>
+          <td style="${td}"></td><td style="${td}"></td>
+          <td style="${td}">${abs ? ABSENCES_LABEL[abs.motif] || abs.motif : ''}</td>
+          <td style="${td};text-align:center">${abs ? fmt2(abs.debut) : ''}</td>
+          <td style="${td};text-align:center">${abs ? fmt2(abs.fin) : ''}</td>
+          <td style="${td}"></td>
+        </tr>`
+      } else {
+        lignesEmploye += `<tr>
+          <td style="${td}" colspan="12"></td>
+          <td style="${td}">${abs ? ABSENCES_LABEL[abs.motif] || abs.motif : ''}</td>
+          <td style="${td};text-align:center">${abs ? fmt2(abs.debut) : ''}</td>
+          <td style="${td};text-align:center">${abs ? fmt2(abs.fin) : ''}</td>
+          <td style="${td}"></td>
+        </tr>`
+      }
+    }
+
+    const html = `<div style="font-family:Arial,sans-serif;max-width:900px;margin:0 auto;font-size:13px">
+      <table style="width:100%;border-collapse:collapse;margin-bottom:10px">
+        <tr>
+          <td style="font-size:20px;font-weight:700;padding:6px 0">FICHE NAVETTE</td>
+          <td style="text-align:right;font-size:13px;font-weight:600">MOIS DE PAIE : ${moisLabelCap.toUpperCase()}</td>
+        </tr>
+      </table>
+      <table style="width:100%;border-collapse:collapse;margin-bottom:14px;border:1px solid #999">
+        <tr>
+          <td style="${td};font-weight:600">NOM ENTREPRISE</td>
+          <td style="${td}">SARL DESTINATION COTE BASQUE</td>
+          <td style="${td};font-weight:600;text-align:right">COMPACT</td>
+        </tr>
+        <tr>
+          <td style="${td}">Téléphone : 05 59 55 41 46</td>
+          <td colspan="2" style="${td}"></td>
+        </tr>
+      </table>
+      <table style="width:100%;border-collapse:collapse;border:1px solid #999">
+        <thead>
+          <tr style="background:#e8e8e8">
+            <th colspan="3" style="${th}">SALARIÉ</th>
+            <th colspan="1" style="${th}">Heures<br>Normales</th>
+            <th colspan="4" style="${th}">Heures sup</th>
+            <th colspan="2" style="${th}">Primes brutes</th>
+            <th style="${th}">Acompte</th>
+            <th style="${th}">repas</th>
+            <th colspan="3" style="${th}">ABSENCES</th>
+            <th style="${th}">Observations</th>
+          </tr>
+          <tr style="background:#f3f4f6">
+            <th style="${th}">Matricule</th>
+            <th style="${th}">Nom</th>
+            <th style="${th}">Prénom</th>
+            <th style="${th}">Heures<br>contrat</th>
+            <th style="${th}">S1</th>
+            <th style="${th}">S2</th>
+            <th style="${th}">S3</th>
+            <th style="${th}">S4</th>
+            <th style="${th}">Montant</th>
+            <th style="${th}">Dénomination</th>
+            <th style="${th}">Acompte</th>
+            <th style="${th}">repas</th>
+            <th style="${th}">Motif absences</th>
+            <th style="${th}">Date départ</th>
+            <th style="${th}">Date fin</th>
+            <th style="${th}">Saisie arrêt, remboursements frais, déplacements, formation…</th>
+          </tr>
+        </thead>
+        <tbody>${lignesEmploye}</tbody>
+      </table>
+      <p style="font-size:11px;color:#6b7280;margin-top:8px">
+        congés payés &nbsp;|&nbsp; maladie &nbsp;|&nbsp; absences non rémunérées &nbsp;|&nbsp; accident de travail &nbsp;|&nbsp; évènement familial
+      </p>
+      <hr style="border:none;border-top:1px solid #e5e7eb;margin:20px 0">
+      <p style="font-size:11px;font-weight:600;color:#374151;margin-bottom:6px">Détail journalier (annexe)</p>
+      <table style="width:100%;border-collapse:collapse;font-size:12px">
         <thead><tr style="background:#f3f4f6">
-          <th style="padding:6px 8px;border:1px solid #e5e7eb;text-align:left">Jour</th>
-          <th style="padding:6px 8px;border:1px solid #e5e7eb">Début</th>
-          <th style="padding:6px 8px;border:1px solid #e5e7eb">Fin</th>
-          <th style="padding:6px 8px;border:1px solid #e5e7eb">Pause</th>
-          <th style="padding:6px 8px;border:1px solid #e5e7eb">Heures</th>
-          <th style="padding:6px 8px;border:1px solid #e5e7eb;text-align:left">Notes</th>
+          <th style="${th};text-align:left">Jour</th>
+          <th style="${th}">Début</th>
+          <th style="${th}">Fin</th>
+          <th style="${th}">Pause</th>
+          <th style="${th}">Heures</th>
+          <th style="${th};text-align:left">Notes</th>
         </tr></thead>
         <tbody>${lignes}</tbody>
         <tfoot><tr style="background:#f0fdf4;font-weight:700">
-          <td colspan="4" style="padding:8px;border:1px solid #e5e7eb">Total ${moisLabelCap}</td>
-          <td style="padding:8px;border:1px solid #e5e7eb;text-align:center;color:#15803d">${totalHeures.toFixed(2)}h</td>
-          <td style="border:1px solid #e5e7eb"></td>
+          <td colspan="4" style="${td}">Total ${moisLabelCap}</td>
+          <td style="${td};text-align:center;color:#15803d">${totalH.toFixed(2)}h</td>
+          <td style="${td}"></td>
         </tr></tfoot>
       </table>
-      <p style="color:#9ca3af;font-size:11px;padding:12px">Généré depuis DCB Compta</p>
+      <p style="color:#9ca3af;font-size:10px;margin-top:12px">Généré depuis DCB Compta</p>
     </div>`
-    }
+
+    return { ae, moisLabelCap, totalH, html }
   }
 
   async function envoyerNavette() {
