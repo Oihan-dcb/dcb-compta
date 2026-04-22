@@ -156,7 +156,7 @@ export default function PageTaxeSejour() {
   const deadline = (DEADLINES[AGENCE] || DEADLINES.dcb)[trimestre]
 
   const td = { padding: '8px 10px', borderBottom: '1px solid #f3f4f6', fontSize: 13 }
-  const th = { padding: '8px 10px', background: '#EAE3D4', borderBottom: '2px solid #CC9933', fontSize: 12, fontWeight: 600, textAlign: 'left', whiteSpace: 'nowrap' }
+  const th = { padding: '8px 10px', background: 'var(--header-bg)', borderBottom: '2px solid var(--brand)', fontSize: 12, fontWeight: 600, textAlign: 'left', whiteSpace: 'nowrap' }
 
   return (
     <div style={{ maxWidth: 1100, margin: '0 auto', padding: '24px 20px' }}>
@@ -164,22 +164,22 @@ export default function PageTaxeSejour() {
         <h1 style={{ margin: 0, fontSize: 22, color: 'var(--dark)' }}>Taxe de séjour</h1>
         {AGENCE === 'bordeaux' ? (
           <a href="https://taxedesejour.bordeaux-metropole.fr" target="_blank" rel="noreferrer"
-            style={{ fontSize: 12, color: '#CC9933', textDecoration: 'none', border: '1px solid #CC9933', borderRadius: 6, padding: '5px 12px', fontWeight: 600 }}>
+            style={{ fontSize: 12, color: 'var(--brand)', textDecoration: 'none', border: '1px solid var(--brand)', borderRadius: 6, padding: '5px 12px', fontWeight: 600 }}>
             🌐 Déclarer sur Bordeaux Métropole
           </a>
         ) : (
           <a href="https://taxe.3douest.com/biarritz.php" target="_blank" rel="noreferrer"
-            style={{ fontSize: 12, color: '#CC9933', textDecoration: 'none', border: '1px solid #CC9933', borderRadius: 6, padding: '5px 12px', fontWeight: 600 }}>
+            style={{ fontSize: 12, color: 'var(--brand)', textDecoration: 'none', border: '1px solid var(--brand)', borderRadius: 6, padding: '5px 12px', fontWeight: 600 }}>
             🌐 Déclarer sur 3douest
           </a>
         )}
       </div>
 
       {/* Tabs */}
-      <div style={{ display: 'flex', gap: 6, marginBottom: 20, borderBottom: '2px solid #CC9933', paddingBottom: 8 }}>
+      <div style={{ display: 'flex', gap: 6, marginBottom: 20, borderBottom: '2px solid var(--brand)', paddingBottom: 8 }}>
         {[['declaration', '📋 Déclaration'], ['tarifs', '⚙️ Tarifs']].map(([t, label]) => (
           <button key={t} onClick={() => setOnglet(t)}
-            style={{ padding: '7px 18px', borderRadius: '8px 8px 0 0', border: 'none', cursor: 'pointer', fontSize: 13, fontWeight: 600, background: onglet === t ? '#CC9933' : '#EAE3D4', color: onglet === t ? '#fff' : '#2C2416' }}>
+            style={{ padding: '7px 18px', borderRadius: '8px 8px 0 0', border: 'none', cursor: 'pointer', fontSize: 13, fontWeight: 600, background: onglet === t ? 'var(--brand)' : 'var(--header-bg)', color: onglet === t ? '#fff' : 'var(--text)' }}>
             {label}
           </button>
         ))}
@@ -200,17 +200,17 @@ export default function PageTaxeSejour() {
               <button onClick={() => { const t = trimestre === 4 ? 1 : trimestre + 1; const a = trimestre === 4 ? annee + 1 : annee; setTrimestre(t); setAnnee(a) }}
                 style={{ background: 'var(--white)', border: '1px solid #e5e7eb', borderRadius: 8, padding: '6px 12px', cursor: 'pointer', fontSize: 16 }}>›</button>
             </div>
-            <div style={{ fontSize: 12, color: '#8C7B65', background: '#FFF8EC', border: '1px solid #E4A853', borderRadius: 6, padding: '5px 12px' }}>
+            <div style={{ fontSize: 12, color: 'var(--text-muted)', background: 'var(--brand-pale)', border: '1px solid #E4A853', borderRadius: 6, padding: '5px 12px' }}>
               📅 Reversement avant le <strong>{deadline}</strong>
             </div>
-            {loading && <span style={{ fontSize: 12, color: '#8C7B65' }}>Chargement…</span>}
-            <div style={{ marginLeft: 'auto', background: '#EAE3D4', border: '2px solid #CC9933', borderRadius: 10, padding: '8px 20px', textAlign: 'center' }}>
-              <div style={{ fontSize: 10, color: '#8C7B65', textTransform: 'uppercase' }}>Total à déclarer</div>
-              <div style={{ fontSize: 22, fontWeight: 700, color: '#CC9933' }}>{fmt(totalGlobal)}</div>
+            {loading && <span style={{ fontSize: 12, color: 'var(--text-muted)' }}>Chargement…</span>}
+            <div style={{ marginLeft: 'auto', background: 'var(--header-bg)', border: '2px solid var(--brand)', borderRadius: 10, padding: '8px 20px', textAlign: 'center' }}>
+              <div style={{ fontSize: 10, color: 'var(--text-muted)', textTransform: 'uppercase' }}>Total à déclarer</div>
+              <div style={{ fontSize: 22, fontWeight: 700, color: 'var(--brand)' }}>{fmt(totalGlobal)}</div>
             </div>
           </div>
 
-          <div style={{ background: '#FFF8EC', border: '1px solid #E4A853', borderRadius: 8, padding: '10px 16px', marginBottom: 20, fontSize: 12, color: '#92400E' }}>
+          <div style={{ background: 'var(--brand-pale)', border: '1px solid #E4A853', borderRadius: 8, padding: '10px 16px', marginBottom: 20, fontSize: 12, color: '#92400E' }}>
             ℹ️ Seules les <strong>réservations directes</strong> sont concernées — Airbnb et Booking collectent la taxe eux-mêmes. Le nombre de voyageurs utilisé est <code>nb_guests</code> total (mineurs non déduits, à ajuster manuellement si besoin).
           </div>
 
@@ -229,16 +229,16 @@ export default function PageTaxeSejour() {
 
             return (
               <div key={b.id} style={{ background: 'var(--white)', borderRadius: 12, marginBottom: 16, overflow: 'hidden', boxShadow: '0 1px 6px rgba(0,0,0,.06)' }}>
-                <div style={{ background: '#EAE3D4', padding: '10px 16px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', borderBottom: '2px solid #CC9933' }}>
+                <div style={{ background: 'var(--header-bg)', padding: '10px 16px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', borderBottom: '2px solid var(--brand)' }}>
                   <div>
                     <span style={{ fontWeight: 700, fontSize: 14 }}>🏠 {b.code}</span>
-                    <span style={{ fontSize: 12, color: '#8C7B65', marginLeft: 10 }}>{b.ville}</span>
+                    <span style={{ fontSize: 12, color: 'var(--text-muted)', marginLeft: 10 }}>{b.ville}</span>
                     <span style={{ fontSize: 11, background: config ? '#DCFCE7' : '#FEE2E2', color: config ? '#15803D' : '#B91C1C', borderRadius: 4, padding: '2px 7px', marginLeft: 8, fontWeight: 600 }}>
                       {CLASS_LABEL[b.classification || 'non_classe']}
                       {!config && ' ⚠ tarif manquant'}
                     </span>
                   </div>
-                  <div style={{ fontWeight: 700, fontSize: 15, color: '#CC9933' }}>{fmt(totalBien)}</div>
+                  <div style={{ fontWeight: 700, fontSize: 15, color: 'var(--brand)' }}>{fmt(totalBien)}</div>
                 </div>
                 <table style={{ width: '100%', borderCollapse: 'collapse' }}>
                   <thead>
@@ -261,15 +261,15 @@ export default function PageTaxeSejour() {
                           <td style={{ ...td, textAlign: 'center' }}>{r.nights || '—'}</td>
                           <td style={{ ...td, textAlign: 'center' }}>{r.guest_count || '—'}</td>
                           <td style={{ ...td, textAlign: 'right' }}>{r.fin_accommodation != null ? fmt(r.fin_accommodation / 100) : '—'}</td>
-                          <td style={{ ...td, textAlign: 'right', fontWeight: 600, color: taxe != null ? '#CC9933' : '#B91C1C' }}>{taxe != null ? fmt(taxe) : '⚠ config'}</td>
+                          <td style={{ ...td, textAlign: 'right', fontWeight: 600, color: taxe != null ? 'var(--brand)' : '#B91C1C' }}>{taxe != null ? fmt(taxe) : '⚠ config'}</td>
                         </tr>
                       )
                     })}
                   </tbody>
                   <tfoot>
-                    <tr style={{ background: '#F7F3EC' }}>
+                    <tr style={{ background: 'var(--bg)' }}>
                       <td colSpan={5} style={{ ...td, fontWeight: 700 }}>Total {b.code}</td>
-                      <td style={{ ...td, textAlign: 'right', fontWeight: 700, color: '#CC9933' }}>{fmt(totalBien)}</td>
+                      <td style={{ ...td, textAlign: 'right', fontWeight: 700, color: 'var(--brand)' }}>{fmt(totalBien)}</td>
                     </tr>
                   </tfoot>
                 </table>
@@ -328,7 +328,7 @@ export default function PageTaxeSejour() {
                       <input type="number" step="0.01" defaultValue={c.coeff_additionnel || ''} onBlur={e => sauvegarderConfig(c.id, 'coeff_additionnel', e.target.value)}
                         style={{ width: 60, padding: '3px 6px', borderRadius: 5, border: '1px solid #e5e7eb', fontSize: 12, textAlign: 'center' }} />
                     </td>
-                    <td style={{ ...td, textAlign: 'center', color: '#8C7B65' }}>{c.annee}</td>
+                    <td style={{ ...td, textAlign: 'center', color: 'var(--text-muted)' }}>{c.annee}</td>
                   </tr>
                 ))}
               </tbody>
@@ -344,23 +344,23 @@ export default function PageTaxeSejour() {
                 { key: 'annee', label: 'Année', placeholder: '2026' },
               ].map(({ key, label, placeholder }) => (
                 <div key={key}>
-                  <label style={{ fontSize: 11, fontWeight: 600, color: '#8C7B65', display: 'block', marginBottom: 4, textTransform: 'uppercase' }}>{label}</label>
+                  <label style={{ fontSize: 11, fontWeight: 600, color: 'var(--text-muted)', display: 'block', marginBottom: 4, textTransform: 'uppercase' }}>{label}</label>
                   <input value={formConfig[key] || ''} onChange={e => setFormConfig(f => ({ ...f, [key]: e.target.value }))} placeholder={placeholder}
-                    style={{ width: '100%', padding: '7px 10px', borderRadius: 6, border: '1.5px solid #D9CEB8', fontSize: 13, boxSizing: 'border-box' }} />
+                    style={{ width: '100%', padding: '7px 10px', borderRadius: 6, border: '1.5px solid var(--border)', fontSize: 13, boxSizing: 'border-box' }} />
                 </div>
               ))}
               <div>
-                <label style={{ fontSize: 11, fontWeight: 600, color: '#8C7B65', display: 'block', marginBottom: 4, textTransform: 'uppercase' }}>Classification</label>
+                <label style={{ fontSize: 11, fontWeight: 600, color: 'var(--text-muted)', display: 'block', marginBottom: 4, textTransform: 'uppercase' }}>Classification</label>
                 <select value={formConfig.classification || ''} onChange={e => setFormConfig(f => ({ ...f, classification: e.target.value }))}
-                  style={{ width: '100%', padding: '7px 10px', borderRadius: 6, border: '1.5px solid #D9CEB8', fontSize: 13 }}>
+                  style={{ width: '100%', padding: '7px 10px', borderRadius: 6, border: '1.5px solid var(--border)', fontSize: 13 }}>
                   <option value="">Choisir…</option>
                   {CLASSIFICATIONS.map(c => <option key={c.value} value={c.value}>{c.label}</option>)}
                 </select>
               </div>
               <div>
-                <label style={{ fontSize: 11, fontWeight: 600, color: '#8C7B65', display: 'block', marginBottom: 4, textTransform: 'uppercase' }}>Type calcul</label>
+                <label style={{ fontSize: 11, fontWeight: 600, color: 'var(--text-muted)', display: 'block', marginBottom: 4, textTransform: 'uppercase' }}>Type calcul</label>
                 <select value={formConfig.type_calcul || 'forfait'} onChange={e => setFormConfig(f => ({ ...f, type_calcul: e.target.value }))}
-                  style={{ width: '100%', padding: '7px 10px', borderRadius: 6, border: '1.5px solid #D9CEB8', fontSize: 13 }}>
+                  style={{ width: '100%', padding: '7px 10px', borderRadius: 6, border: '1.5px solid var(--border)', fontSize: 13 }}>
                   <option value="forfait">Forfait (€/pers/nuit)</option>
                   <option value="pourcentage">Pourcentage du loyer</option>
                 </select>
@@ -368,38 +368,38 @@ export default function PageTaxeSejour() {
               {formConfig.type_calcul === 'pourcentage' ? (
                 <>
                   <div>
-                    <label style={{ fontSize: 11, fontWeight: 600, color: '#8C7B65', display: 'block', marginBottom: 4, textTransform: 'uppercase' }}>Taux %</label>
+                    <label style={{ fontSize: 11, fontWeight: 600, color: 'var(--text-muted)', display: 'block', marginBottom: 4, textTransform: 'uppercase' }}>Taux %</label>
                     <input type="number" step="0.1" value={formConfig.taux_pct || ''} onChange={e => setFormConfig(f => ({ ...f, taux_pct: e.target.value }))} placeholder="5"
-                      style={{ width: '100%', padding: '7px 10px', borderRadius: 6, border: '1.5px solid #D9CEB8', fontSize: 13, boxSizing: 'border-box' }} />
+                      style={{ width: '100%', padding: '7px 10px', borderRadius: 6, border: '1.5px solid var(--border)', fontSize: 13, boxSizing: 'border-box' }} />
                   </div>
                   <div>
-                    <label style={{ fontSize: 11, fontWeight: 600, color: '#8C7B65', display: 'block', marginBottom: 4, textTransform: 'uppercase' }}>Plafond HT (€)</label>
+                    <label style={{ fontSize: 11, fontWeight: 600, color: 'var(--text-muted)', display: 'block', marginBottom: 4, textTransform: 'uppercase' }}>Plafond HT (€)</label>
                     <input type="number" step="0.01" value={formConfig.plafond_ht || ''} onChange={e => setFormConfig(f => ({ ...f, plafond_ht: e.target.value }))} placeholder="4.90"
-                      style={{ width: '100%', padding: '7px 10px', borderRadius: 6, border: '1.5px solid #D9CEB8', fontSize: 13, boxSizing: 'border-box' }} />
+                      style={{ width: '100%', padding: '7px 10px', borderRadius: 6, border: '1.5px solid var(--border)', fontSize: 13, boxSizing: 'border-box' }} />
                   </div>
                 </>
               ) : (
                 <div>
-                  <label style={{ fontSize: 11, fontWeight: 600, color: '#8C7B65', display: 'block', marginBottom: 4, textTransform: 'uppercase' }}>€/pers/nuit TTC</label>
+                  <label style={{ fontSize: 11, fontWeight: 600, color: 'var(--text-muted)', display: 'block', marginBottom: 4, textTransform: 'uppercase' }}>€/pers/nuit TTC</label>
                   <input type="number" step="0.01" value={formConfig.tarif_pers_nuit || ''} onChange={e => setFormConfig(f => ({ ...f, tarif_pers_nuit: e.target.value }))} placeholder="2.45"
-                    style={{ width: '100%', padding: '7px 10px', borderRadius: 6, border: '1.5px solid #D9CEB8', fontSize: 13, boxSizing: 'border-box' }} />
+                    style={{ width: '100%', padding: '7px 10px', borderRadius: 6, border: '1.5px solid var(--border)', fontSize: 13, boxSizing: 'border-box' }} />
                 </div>
               )}
               <div>
-                <label style={{ fontSize: 11, fontWeight: 600, color: '#8C7B65', display: 'block', marginBottom: 4, textTransform: 'uppercase' }}>Coeff additionnel</label>
+                <label style={{ fontSize: 11, fontWeight: 600, color: 'var(--text-muted)', display: 'block', marginBottom: 4, textTransform: 'uppercase' }}>Coeff additionnel</label>
                 <input type="number" step="0.01" value={formConfig.coeff_additionnel || '1.44'} onChange={e => setFormConfig(f => ({ ...f, coeff_additionnel: e.target.value }))} placeholder="1.44"
-                  style={{ width: '100%', padding: '7px 10px', borderRadius: 6, border: '1.5px solid #D9CEB8', fontSize: 13, boxSizing: 'border-box' }} />
+                  style={{ width: '100%', padding: '7px 10px', borderRadius: 6, border: '1.5px solid var(--border)', fontSize: 13, boxSizing: 'border-box' }} />
               </div>
             </div>
             <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
               <button onClick={ajouterConfig} disabled={saving || !formConfig.commune || !formConfig.classification}
-                style={{ background: '#CC9933', color: '#fff', border: 'none', borderRadius: 8, padding: '9px 20px', fontSize: 13, fontWeight: 700, cursor: 'pointer', opacity: !formConfig.commune || !formConfig.classification ? 0.5 : 1 }}>
+                style={{ background: 'var(--brand)', color: '#fff', border: 'none', borderRadius: 8, padding: '9px 20px', fontSize: 13, fontWeight: 700, cursor: 'pointer', opacity: !formConfig.commune || !formConfig.classification ? 0.5 : 1 }}>
                 {saving ? '…' : 'Ajouter le tarif'}
               </button>
             </div>
           </div>
 
-          <div style={{ marginTop: 16, fontSize: 12, color: '#8C7B65', background: '#F7F3EC', borderRadius: 8, padding: '10px 14px' }}>
+          <div style={{ marginTop: 16, fontSize: 12, color: 'var(--text-muted)', background: 'var(--bg)', borderRadius: 8, padding: '10px 14px' }}>
             {AGENCE === 'bordeaux'
               ? '💡 Bordeaux Métropole — délai de reversement au 20 du mois suivant la fin du trimestre. Tarifs à saisir manuellement (portail : taxedesejour.bordeaux-metropole.fr). Le coefficient 1.44 = +10% département Gironde + +34% région (Grand Projet ferroviaire Sud-Ouest).'
               : '💡 Les tarifs Biarritz 2026 sont pré-remplis (délibération jan 2026, taxe.3douest.com). Le coefficient 1.44 = +10% département + +34% région (Grand Projet ferroviaire Sud-Ouest).'
