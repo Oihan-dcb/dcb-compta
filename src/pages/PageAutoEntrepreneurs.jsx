@@ -40,6 +40,12 @@ export default function PageAutoEntrepreneurs() {
   const [loadingHeures, setLoadingHeures] = useState(false)
   const [sendingNavette, setSendingNavette] = useState(false)
   const [showAperçuNavette, setShowAperçuNavette] = useState(false)
+  // Saisie en groupe
+  const [groupeActif, setGroupeActif] = useState(false)
+  const [joursSelectionnes, setJoursSelectionnes] = useState(new Set())
+  const [groupeDebut, setGroupeDebut] = useState('09:00')
+  const [groupeFin, setGroupeFin] = useState('17:00')
+  const [groupePause, setGroupePause] = useState(60)
   // Prestation type form
   const [editingPT, setEditingPT] = useState(null)
   const [formPT, setFormPT] = useState({ nom: '', description: '', taux_defaut: 25, unite: 'heure' })
@@ -112,6 +118,29 @@ export default function PageAutoEntrepreneurs() {
     const { data, error: e } = await supabase.from('staff_heures_jour')
       .upsert(payload, { onConflict: 'ae_id,date' }).select().single()
     if (!e && data) setHeures(prev => ({ ...prev, [date]: data }))
+  }
+
+  async function appliquerGroupe() {
+    if (!joursSelectionnes.size) return
+    const updates = [...joursSelectionnes].map(date => ({
+      agence: AGENCE, ae_id: heuresAeId, mois: heuresMois, date,
+      heure_debut: groupeDebut, heure_fin: groupeFin,
+      pause_min: groupePause, type_absence: null, notes: null,
+      ...(heures[date]?.id ? { id: heures[date].id } : {}),
+    }))
+    const { data, error: e } = await supabase.from('staff_heures_jour')
+      .upsert(updates, { onConflict: 'ae_id,date' }).select()
+    if (!e && data) {
+      const updated = { ...heures }
+      for (const row of data) updated[row.date] = row
+      setHeures(updated)
+      setJoursSelectionnes(new Set())
+    }
+  }
+
+  async function toggleAutoSendNavette(aeId, current) {
+    await supabase.from('auto_entrepreneur').update({ auto_send_navette: !current }).eq('id', aeId)
+    setAes(prev => prev.map(a => a.id === aeId ? { ...a, auto_send_navette: !current } : a))
   }
 
   function genererHtmlNavette() {
@@ -1034,7 +1063,23 @@ export default function PageAutoEntrepreneurs() {
                   </div>
                   {loadingHeures && <span style={{ fontSize: 13, color: '#888' }}>Chargement…</span>}
                   {heuresAeId && (
-                    <div style={{ marginLeft: 'auto', display: 'flex', gap: 8 }}>
+                    <div style={{ marginLeft: 'auto', display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
+                      <button onClick={() => { setGroupeActif(v => !v); setJoursSelectionnes(new Set()) }}
+                        style={{ padding: '8px 14px', borderRadius: 8, background: groupeActif ? '#fef9c3' : 'var(--white)', color: '#854d0e', border: '1px solid #fde68a', cursor: 'pointer', fontSize: 13, fontWeight: 600 }}>
+                        ⚡ Saisie rapide
+                      </button>
+                      {(() => {
+                        const ae = aes.find(a => a.id === heuresAeId)
+                        if (!ae) return null
+                        return (
+                          <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 12, color: '#374151', cursor: 'pointer', padding: '6px 10px', borderRadius: 8, border: '1px solid #e5e7eb', background: 'var(--white)' }}>
+                            <input type="checkbox" checked={!!ae.auto_send_navette}
+                              onChange={() => toggleAutoSendNavette(ae.id, ae.auto_send_navette)}
+                              style={{ width: 14, height: 14 }} />
+                            Envoi auto navette
+                          </label>
+                        )
+                      })()}
                       <button onClick={() => setShowAperçuNavette(v => !v)}
                         style={{ padding: '8px 14px', borderRadius: 8, background: showAperçuNavette ? '#EAE3D4' : 'var(--white)', color: '#2C2416', border: '1px solid #D9CEB8', cursor: 'pointer', fontSize: 13, fontWeight: 600 }}>
                         👁 Aperçu
@@ -1047,6 +1092,31 @@ export default function PageAutoEntrepreneurs() {
                   )}
                 </div>
 
+                {groupeActif && heuresAeId && (
+                  <div style={{ display: 'flex', gap: 10, alignItems: 'center', background: '#fef9c3', border: '1px solid #fde68a', borderRadius: 8, padding: '10px 14px', marginBottom: 12, flexWrap: 'wrap' }}>
+                    <span style={{ fontSize: 12, fontWeight: 700, color: '#854d0e' }}>⚡ Saisie rapide</span>
+                    <label style={{ fontSize: 12, color: '#374151', display: 'flex', alignItems: 'center', gap: 4 }}>
+                      Début
+                      <input type="time" value={groupeDebut} onChange={e => setGroupeDebut(e.target.value)}
+                        style={{ padding: '3px 6px', borderRadius: 5, border: '1px solid #d1d5db', fontSize: 12 }} />
+                    </label>
+                    <label style={{ fontSize: 12, color: '#374151', display: 'flex', alignItems: 'center', gap: 4 }}>
+                      Fin
+                      <input type="time" value={groupeFin} onChange={e => setGroupeFin(e.target.value)}
+                        style={{ padding: '3px 6px', borderRadius: 5, border: '1px solid #d1d5db', fontSize: 12 }} />
+                    </label>
+                    <label style={{ fontSize: 12, color: '#374151', display: 'flex', alignItems: 'center', gap: 4 }}>
+                      Pause (min)
+                      <input type="number" min="0" max="120" value={groupePause} onChange={e => setGroupePause(parseInt(e.target.value) || 0)}
+                        style={{ width: 55, padding: '3px 6px', borderRadius: 5, border: '1px solid #d1d5db', fontSize: 12 }} />
+                    </label>
+                    <button onClick={appliquerGroupe} disabled={!joursSelectionnes.size}
+                      style={{ padding: '6px 14px', borderRadius: 7, background: joursSelectionnes.size ? '#854d0e' : '#d1d5db', color: '#fff', border: 'none', cursor: joursSelectionnes.size ? 'pointer' : 'default', fontSize: 12, fontWeight: 600 }}>
+                      Appliquer ({joursSelectionnes.size} jour{joursSelectionnes.size !== 1 ? 's' : ''})
+                    </button>
+                  </div>
+                )}
+
                 {!heuresAeId ? (
                   <div style={{ textAlign: 'center', padding: 48, color: '#9ca3af', fontSize: 14 }}>
                     Sélectionnez un membre du staff pour saisir ses heures
@@ -1055,6 +1125,7 @@ export default function PageAutoEntrepreneurs() {
                   <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
                     <thead>
                       <tr style={{ background: '#f3f4f6' }}>
+                        {groupeActif && <th style={{ padding: '8px 6px', border: '1px solid #e5e7eb', width: 32 }}></th>}
                         <th style={{ padding: '8px 10px', textAlign: 'left', border: '1px solid #e5e7eb' }}>Jour</th>
                         <th style={{ padding: '8px 10px', border: '1px solid #e5e7eb', width: 90 }}>Début</th>
                         <th style={{ padding: '8px 10px', border: '1px solid #e5e7eb', width: 90 }}>Fin</th>
@@ -1083,7 +1154,14 @@ export default function PageAutoEntrepreneurs() {
                         }
 
                         return (
-                          <tr key={d} style={{ background: isWE ? '#f9fafb' : '#fff' }}>
+                          <tr key={d} style={{ background: joursSelectionnes.has(d) ? '#fefce8' : isWE ? '#f9fafb' : '#fff' }}>
+                            {groupeActif && (
+                              <td style={{ padding: '3px 6px', border: '1px solid #e5e7eb', textAlign: 'center' }}>
+                                <input type="checkbox" checked={joursSelectionnes.has(d)}
+                                  onChange={() => setJoursSelectionnes(prev => { const s = new Set(prev); s.has(d) ? s.delete(d) : s.add(d); return s })}
+                                  style={{ width: 14, height: 14, cursor: 'pointer' }} />
+                              </td>
+                            )}
                             <td style={{ padding: '6px 10px', border: '1px solid #e5e7eb', color: isWE ? '#9ca3af' : '#374151', fontWeight: isWE ? 400 : 500 }}>
                               {JOURS_LONG[dow]} {date.getDate()}
                             </td>
@@ -1128,7 +1206,7 @@ export default function PageAutoEntrepreneurs() {
                     </tbody>
                     <tfoot>
                       <tr style={{ background: '#f0fdf4', fontWeight: 700 }}>
-                        <td colSpan={4} style={{ padding: '8px 10px', border: '1px solid #e5e7eb' }}>Total</td>
+                        <td colSpan={groupeActif ? 5 : 4} style={{ padding: '8px 10px', border: '1px solid #e5e7eb' }}>Total</td>
                         <td style={{ padding: '8px 10px', border: '1px solid #e5e7eb', textAlign: 'center', color: '#15803d' }}>{totalH.toFixed(2)}h</td>
                         <td style={{ border: '1px solid #e5e7eb' }} />
                       </tr>
