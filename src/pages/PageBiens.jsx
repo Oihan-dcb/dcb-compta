@@ -117,7 +117,7 @@ export default function PageBiens() {
       const { supabase } = await import('../lib/supabase')
       // taux_commission_override est un ratio (ex: 0.20 pour 20%), pas en centimes
       // Champs texte : sauvegarder tel quel
-      const TEXT_FIELDS = ['airbnb_account', 'ical_code', 'classification_date', 'classification_fin']
+      const TEXT_FIELDS = ['airbnb_account', 'ical_code', 'classification_date', 'classification_fin', 'code']
       const finalVal = value === '' || value === null ? null
         : TEXT_FIELDS.includes(field) ? value
         : field === 'taux_commission_override' ? value
@@ -288,7 +288,17 @@ export default function PageBiens() {
                     </div>
                   </td>
                   <td>
-                    <span className="mono">{bien.code || '—'}</span>
+                    {editing[bien.id+'_code'] ? (
+                      <input
+                        autoFocus
+                        defaultValue={bien.code || ''}
+                        style={{width:'90px', padding:'3px 6px', fontSize:'0.85em', fontFamily:'monospace', borderRadius:4, border:'1px solid var(--border)', textTransform:'uppercase'}}
+                        onBlur={e => { saveField(bien.id, 'code', e.target.value.toUpperCase() || null); setEditing(ev => { const n={...ev}; delete n[bien.id+'_code']; return n }) }}
+                        onKeyDown={e => { if (e.key === 'Enter') e.target.blur(); if (e.key === 'Escape') setEditing(ev => { const n={...ev}; delete n[bien.id+'_code']; return n }) }}
+                      />
+                    ) : (
+                      <span className="mono" onClick={() => setEditing(e => ({...e, [bien.id+'_code']: true}))} style={{cursor:'pointer', borderBottom:'1px dashed var(--border)'}} title="Cliquer pour modifier le code">{bien.code || '—'}</span>
+                    )}
                   </td>
                   <td>{bien.ville || '—'}</td>
                   <td>
