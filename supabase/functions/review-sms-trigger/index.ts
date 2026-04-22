@@ -107,7 +107,7 @@ async function sendSMS(sid: string, token: string, from: string, to: string, bod
         'Authorization': 'Basic ' + btoa(`${sid}:${token}`),
         'Content-Type': 'application/x-www-form-urlencoded',
       },
-      body: new URLSearchParams({ From: from, To: to, Body: body }).toString(),
+      body: new URLSearchParams({ From: from, To: to.replace(/\s/g, ''), Body: body }).toString(),
     })
     const data = await res.json()
     if (res.ok) return { ok: true, sid: data.sid as string }

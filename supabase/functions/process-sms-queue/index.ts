@@ -53,7 +53,7 @@ Deno.serve(async (req) => {
             'Authorization': 'Basic ' + btoa(`${twilioSid}:${twilioToken}`),
             'Content-Type': 'application/x-www-form-urlencoded',
           },
-          body: new URLSearchParams({ From: twilioFrom, To: item.guest_phone, Body: smsBody }).toString(),
+          body: new URLSearchParams({ From: twilioFrom, To: item.guest_phone.replace(/\s/g, ''), Body: smsBody }).toString(),
         }
       )
       const data = await res.json()
