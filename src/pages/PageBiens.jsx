@@ -117,7 +117,7 @@ export default function PageBiens() {
       const { supabase } = await import('../lib/supabase')
       // taux_commission_override est un ratio (ex: 0.20 pour 20%), pas en centimes
       // Champs texte : sauvegarder tel quel
-      const TEXT_FIELDS = ['airbnb_account', 'ical_code']
+      const TEXT_FIELDS = ['airbnb_account', 'ical_code', 'classification_date', 'classification_fin']
       const finalVal = value === '' || value === null ? null
         : TEXT_FIELDS.includes(field) ? value
         : field === 'taux_commission_override' ? value
@@ -461,7 +461,7 @@ export default function PageBiens() {
                       }}
                     />
                   </td>
-                  <td style={{ textAlign: 'center' }}>
+                  <td style={{ textAlign: 'center', minWidth: 150 }}>
                     <select
                       value={bien.classification || 'non_classe'}
                       onChange={e => saveField(bien.id, 'classification', e.target.value)}
@@ -473,6 +473,29 @@ export default function PageBiens() {
                       <option value="4_etoiles">4 ★</option>
                       <option value="5_etoiles">5 ★</option>
                     </select>
+                    {bien.classification && bien.classification !== 'non_classe' && (() => {
+                      const today = new Date().toISOString().slice(0, 10)
+                      const expired = bien.classification_fin && bien.classification_fin < today
+                      return (
+                        <div style={{ marginTop: 4, display: 'flex', flexDirection: 'column', gap: 2, alignItems: 'center' }}>
+                          <input
+                            type="date"
+                            defaultValue={bien.classification_date || ''}
+                            title="Date de classement"
+                            onBlur={e => { if (e.target.value !== (bien.classification_date || '')) saveField(bien.id, 'classification_date', e.target.value || null) }}
+                            style={{ fontSize: 10, padding: '1px 3px', border: '1px solid #e5e7eb', borderRadius: 3, width: 120, color: '#888' }}
+                          />
+                          <input
+                            type="date"
+                            defaultValue={bien.classification_fin || ''}
+                            title="Fin de classement"
+                            onBlur={e => { if (e.target.value !== (bien.classification_fin || '')) saveField(bien.id, 'classification_fin', e.target.value || null) }}
+                            style={{ fontSize: 10, padding: '1px 3px', border: `1px solid ${expired ? '#fca5a5' : '#e5e7eb'}`, borderRadius: 3, width: 120, color: expired ? '#dc2626' : '#888', background: expired ? '#fff1f2' : '#fff', fontWeight: expired ? 600 : 'normal' }}
+                          />
+                          {expired && <span style={{ fontSize: 9, color: '#dc2626', fontWeight: 700 }}>EXPIRÉ</span>}
+                        </div>
+                      )
+                    })()}
                   </td>
                   <td style={{textAlign:'center'}}>
                     <span

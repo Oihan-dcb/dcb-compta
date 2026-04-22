@@ -70,6 +70,7 @@ const FORM_ETUDIANT_EMPTY = {
   charges_copro: '0', charges_internet: '0',
   honoraires_dcb: '', caution: '', jour_paiement_attendu: '5',
   statut: 'actif',
+  type_bail: 'etudiant',
 }
 
 export default function PageLocationsLongues() {
@@ -432,6 +433,7 @@ export default function PageLocationsLongues() {
         caution:               (etudiant.caution / 100).toFixed(2),
         jour_paiement_attendu: String(etudiant.jour_paiement_attendu),
         statut:                etudiant.statut,
+        type_bail:             etudiant.type_bail || 'etudiant',
       })
       setEditingEtudiant(etudiant)
     } else {
@@ -471,6 +473,7 @@ export default function PageLocationsLongues() {
         caution:               Math.round(parseFloat(formEtudiant.caution || '0') * 100),
         jour_paiement_attendu: parseInt(formEtudiant.jour_paiement_attendu, 10),
         statut:                formEtudiant.statut,
+        type_bail:             formEtudiant.type_bail || 'etudiant',
       }
       if (editingEtudiant) {
         await modifierEtudiant(editingEtudiant.id, payload)
@@ -779,7 +782,12 @@ export default function PageLocationsLongues() {
                       <tr key={e.id}>
                         <td style={{ fontWeight: 600 }}>
                           {e.nom}{e.prenom ? ' ' + e.prenom : ''}
-                          {e.email && <div style={{ fontSize: 11, color: 'var(--text-muted)', fontWeight: 400 }}>{e.email}</div>}
+                          <div style={{ display: 'flex', gap: 4, marginTop: 2, flexWrap: 'wrap' }}>
+                            {e.type_bail === 'mobilite' && (
+                              <span style={{ fontSize: 10, fontWeight: 700, padding: '1px 5px', borderRadius: 4, background: '#EDE9FE', color: '#6D28D9' }}>Mobilité</span>
+                            )}
+                            {e.email && <span style={{ fontSize: 11, color: 'var(--text-muted)', fontWeight: 400 }}>{e.email}</span>}
+                          </div>
                         </td>
                         <td style={{ fontSize: 13, color: 'var(--text-muted)' }}>
                           {e.bien?.code || '—'}
@@ -1269,12 +1277,21 @@ export default function PageLocationsLongues() {
                   })()}
                 </div>
 
-                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 12 }}>
                   <div>
                     <label className="form-label">Caution (€)</label>
                     <input className="form-input" type="number" min="0" step="0.01"
                       value={formEtudiant.caution}
                       onChange={e => setFormEtudiant(f => ({ ...f, caution: e.target.value }))} />
+                  </div>
+                  <div>
+                    <label className="form-label">Type de bail</label>
+                    <select className="form-select"
+                      value={formEtudiant.type_bail}
+                      onChange={e => setFormEtudiant(f => ({ ...f, type_bail: e.target.value }))}>
+                      <option value="etudiant">Bail étudiant</option>
+                      <option value="mobilite">Bail mobilité</option>
+                    </select>
                   </div>
                   <div>
                     <label className="form-label">Statut</label>
