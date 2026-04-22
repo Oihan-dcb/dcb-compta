@@ -554,7 +554,7 @@ export default function PageLocationsLongues() {
 
       {/* Onglets */}
       <div style={{ display: 'flex', gap: 4, marginBottom: 20, borderBottom: '2px solid var(--border)' }}>
-        {[['mensuel', 'Mensuel'], ['suivi', 'Suivi'], ['etudiants', 'Étudiants']].map(([key, label]) => (
+        {[['mensuel', 'Mensuel'], ['suivi', 'Suivi'], ['etudiants', 'Locataires']].map(([key, label]) => (
           <button key={key} onClick={() => setOnglet(key)}
             style={{
               padding: '8px 18px', border: 'none', cursor: 'pointer', fontSize: 14, fontWeight: 600,
@@ -786,6 +786,9 @@ export default function PageLocationsLongues() {
                             {e.type_bail === 'mobilite' && (
                               <span style={{ fontSize: 10, fontWeight: 700, padding: '1px 5px', borderRadius: 4, background: '#EDE9FE', color: '#6D28D9' }}>Mobilité</span>
                             )}
+                            {e.type_bail === 'habitation' && (
+                              <span style={{ fontSize: 10, fontWeight: 700, padding: '1px 5px', borderRadius: 4, background: '#ECFDF5', color: '#059669' }}>Habitation</span>
+                            )}
                             {e.email && <span style={{ fontSize: 11, color: 'var(--text-muted)', fontWeight: 400 }}>{e.email}</span>}
                           </div>
                         </td>
@@ -868,7 +871,7 @@ export default function PageLocationsLongues() {
             <select className="form-select" style={{ maxWidth: 280 }}
               value={suiviEtudiantId}
               onChange={e => setSuiviEtudiantId(e.target.value)}>
-              <option value="">— Sélectionner un étudiant —</option>
+              <option value="">— Sélectionner un locataire —</option>
               {etudiants.map(e => (
                 <option key={e.id} value={e.id}>
                   {e.bien?.code ? `[${e.bien.code}] ` : ''}{e.nom}{e.prenom ? ' ' + e.prenom : ''}{e.statut !== 'actif' ? ` (${e.statut})` : ''}
@@ -1120,7 +1123,7 @@ export default function PageLocationsLongues() {
         <div className="modal-overlay">
           <div className="modal" style={{ maxWidth: 560 }}>
             <div className="modal-header">
-              <h2>{editingEtudiant ? 'Modifier l\'étudiant' : 'Ajouter un étudiant'}</h2>
+              <h2>{editingEtudiant ? 'Modifier le locataire' : 'Ajouter un locataire'}</h2>
               <button className="modal-close" onClick={() => setShowModalEtudiant(false)}>✗</button>
             </div>
             <form onSubmit={soumettreEtudiant}>
@@ -1269,7 +1272,7 @@ export default function PageLocationsLongues() {
                     const verso = total - (parseFloat(formEtudiant.honoraires_dcb) || 0)
                     return (
                       <div style={{ marginTop: 10, padding: '8px 12px', background: 'var(--bg)', borderRadius: 8, fontSize: 13, display: 'flex', gap: 20 }}>
-                        <span>Total étudiant : <strong>{total.toFixed(2)} €</strong></span>
+                        <span>Total locataire : <strong>{total.toFixed(2)} €</strong></span>
                         <span style={{ color: '#059669' }}>Verso proprio : <strong>{verso.toFixed(2)} €</strong></span>
                         <span style={{ color: 'var(--brand)' }}>DCB : <strong>{parseFloat(formEtudiant.honoraires_dcb).toFixed(2)} €</strong></span>
                       </div>
@@ -1291,6 +1294,7 @@ export default function PageLocationsLongues() {
                       onChange={e => setFormEtudiant(f => ({ ...f, type_bail: e.target.value }))}>
                       <option value="etudiant">Bail étudiant</option>
                       <option value="mobilite">Bail mobilité</option>
+                      <option value="habitation">Bail habitation</option>
                     </select>
                   </div>
                   <div>
