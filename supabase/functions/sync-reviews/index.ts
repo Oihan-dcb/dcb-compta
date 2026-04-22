@@ -110,8 +110,39 @@ Deno.serve(async (req) => {
         .from('reservation_review')
         .upsert(row, { onConflict: 'hospitable_reservation_id' })
 
-      if (error) { console.error('upsert:', error.message); errors++ }
-      else synced++
+      if (error) { console.error('upsert:', error.message); errors++; continue }
+      synced++
+
+      // Mettre à jour reservation.review_rating si on trouve la résa par proximité de date
+      // (l'API Hospitable ne retourne pas de reservation_id dans les reviews)
+      if (row.rating !== null && row.submitted_at) {
+        const reviewedAt = new Date(row.submitted_at)
+        const dateMin = new Date(reviewedAt.getTime() - 14 * 86400_000).toISOString().slice(0, 10)
+        const dateMax = new Date(reviewedAt.getTime() +  3 * 86400_000).toISOString().slice(0, 10)
+
+        const { data: matchedResa } = await sb
+          .from('reservation')
+          .select('id, review_rating')
+          .eq('bien_id', bien.id)
+          .gte('departure_date', dateMin)
+          .lte('departure_date', dateMax)
+          .order('departure_date', { ascending: false })
+          .limit(1)
+          .maybeSingle()
+
+        if (matchedResa && matchedResa.review_rating === null) {
+          await sb.from('reservation')
+            .update({ review_rating: row.rating })
+            .eq('id', matchedResa.id)
+
+          // Lier le review à la réservation si pas encore fait
+          if (!row.reservation_id) {
+            await sb.from('reservation_review')
+              .update({ reservation_id: matchedResa.id })
+              .eq('hospitable_reservation_id', row.hospitable_reservation_id)
+          }
+        }
+      }
     }
 
     await new Promise(r => setTimeout(r, 100))  // pause entre propriétés
