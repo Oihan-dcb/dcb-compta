@@ -44,11 +44,12 @@ export default function PagePrestationsAE() {
         .select(`
           *,
           ae:ae_id(nom, prenom, taux_horaire),
-          bien:bien_id(code, hospitable_name),
+          bien:bien_id!inner(code, hospitable_name, agence),
           type:prestation_type_id(nom, unite, taux_defaut),
           mission:mission_id(date_mission, titre_ical)
         `)
         .eq('mois', mois)
+        .eq('bien.agence', AGENCE)
         .order('created_at', { ascending: false })
 
       if (filtre !== 'tous') q = q.eq('statut', filtre)
@@ -60,7 +61,7 @@ export default function PagePrestationsAE() {
       const [{ data: aesData }, { data: biensData }, { data: allStatuts }] = await Promise.all([
         supabase.from('auto_entrepreneur').select('id, nom, prenom').order('nom'),
         supabase.from('bien').select('id, code, hospitable_name').eq('agence', AGENCE).eq('listed', true).order('code'),
-        supabase.from('prestation_hors_forfait').select('statut, montant').eq('mois', mois)
+        supabase.from('prestation_hors_forfait').select('statut, montant, bien:bien_id!inner(agence)').eq('mois', mois).eq('bien.agence', AGENCE)
       ])
       setAes(aesData || [])
       setBiens(biensData || [])
