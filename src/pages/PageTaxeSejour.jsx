@@ -42,7 +42,8 @@ function fmt(n) {
 
 export default function PageTaxeSejour() {
   const now = new Date()
-  const [onglet, setOnglet] = useState('declaration')
+  const [onglet, setOnglet] = useState(() => localStorage.getItem('tab_taxe') || 'declaration')
+  useEffect(() => localStorage.setItem('tab_taxe', onglet), [onglet])
   const [annee, setAnnee] = useState(now.getFullYear())
   const [trimestre, setTrimestre] = useState(Math.ceil((now.getMonth() + 1) / 3))
   const [biens, setBiens] = useState([])

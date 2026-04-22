@@ -14,7 +14,8 @@ const STATUS_COLOR = { sent: '#5a8a5a', error: '#b94a4a', no_phone: '#8a7a4a', s
 const LANG_FLAG   = { FR: '🇫🇷', EN: '🇬🇧', ES: '🇪🇸' }
 
 export default function PageSmsReviews() {
-  const [tab, setTab]         = useState('Dashboard')
+  const [tab, setTab] = useState(() => localStorage.getItem('tab_sms') || 'Dashboard')
+  useEffect(() => localStorage.setItem('tab_sms', tab), [tab])
   const [logs, setLogs]         = useState([])
   const [stats, setStats]       = useState(null)
   const [loading, setLoading]   = useState(false)

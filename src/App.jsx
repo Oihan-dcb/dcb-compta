@@ -43,6 +43,19 @@ import PageTaxeSejour from './pages/PageTaxeSejour'
 import BugReportButton from './components/BugReportButton'
 import './App.css'
 
+function AgencyLogo() {
+  const location = useLocation()
+  if (!siblingUrl) return (
+    <><span className="logo-icon">{agenceLabel.icon}</span><span className="logo-text">{agenceLabel.text}</span></>
+  )
+  return (
+    <a href={siblingUrl + location.pathname} title="Basculer vers l'autre agence" style={{ display: 'flex', alignItems: 'center', gap: 8, textDecoration: 'none' }}>
+      <span className="logo-icon">{agenceLabel.icon}</span>
+      <span className="logo-text">{agenceLabel.text}</span>
+    </a>
+  )
+}
+
 function ConfigDropdown() {
   const [open, setOpen] = useState(false)
   const ref = useRef(null)
@@ -113,17 +126,7 @@ export default function App() {
       <div className="app">
         <header className="app-header">
           <div className="header-logo">
-            {siblingUrl ? (
-              <a href={siblingUrl} title="Basculer vers l'autre agence" style={{ display: 'flex', alignItems: 'center', gap: 8, textDecoration: 'none' }}>
-                <span className="logo-icon">{agenceLabel.icon}</span>
-                <span className="logo-text">{agenceLabel.text}</span>
-              </a>
-            ) : (
-              <>
-                <span className="logo-icon">{agenceLabel.icon}</span>
-                <span className="logo-text">{agenceLabel.text}</span>
-              </>
-            )}
+            <AgencyLogo />
           </div>
           <nav className="app-nav">
             <NavLink to="/" end className={({isActive}) => isActive ? 'nav-link active' : 'nav-link'}>Biens</NavLink>

@@ -12,7 +12,8 @@ export default function PageAutoEntrepreneurs() {
   const [aes, setAes] = useState([])
   const [prestationTypes, setPrestationTypes] = useState([])
   const [loading, setLoading] = useState(true)
-  const [tab, setTab] = useState('vision') // 'vision' | 'aes' | 'prestations'
+  const [tab, setTab] = useState(() => localStorage.getItem('tab_ae') || 'vision') // 'vision' | 'aes' | 'prestations'
+  useEffect(() => localStorage.setItem('tab_ae', tab), [tab])
   const [editing, setEditing] = useState(null)
   const [form, setForm] = useState(EMPTY_AE)
   const [saving, setSaving] = useState(false)

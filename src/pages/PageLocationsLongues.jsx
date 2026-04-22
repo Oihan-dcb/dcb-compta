@@ -74,7 +74,8 @@ const FORM_ETUDIANT_EMPTY = {
 
 export default function PageLocationsLongues() {
   const [mois, setMois] = useMoisPersisted()
-  const [onglet, setOnglet] = useState('mensuel') // 'mensuel' | 'etudiants'
+  const [onglet, setOnglet] = useState(() => localStorage.getItem('tab_lld') || 'mensuel') // 'mensuel' | 'etudiants'
+  useEffect(() => localStorage.setItem('tab_lld', onglet), [onglet])
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState(null)
   const [success, setSuccess] = useState(null)
