@@ -24,6 +24,85 @@ const MODAL_VIDE = {
   notes: '',
 }
 
+// ── Parser CSV Caisse d'Épargne ────────────────────────────────────────────────
+// Format : colonnes séparées par ; ou \t
+// En-têtes attendus : Date comptable, Libelle simplifie, Reference,
+//   Informations complementaires, Type operation, Debit, Credit,
+//   Date operation, Date de valeur, Pointage
+
+function parseCSVCaisseEpargne(text) {
+  const lines = text.replace(/\r\n/g, '\n').replace(/\r/g, '\n').split('\n')
+
+  // Détecter la ligne d'en-têtes (contient "Date comptable")
+  const headerIdx = lines.findIndex(l =>
+    l.toLowerCase().includes('date comptable')
+  )
+  if (headerIdx === -1) throw new Error('Format Caisse d\'Épargne non reconnu — colonne "Date comptable" introuvable')
+
+  // Détecter le séparateur (; ou \t)
+  const headerLine = lines[headerIdx]
+  const sep = headerLine.includes(';') ? ';' : '\t'
+  const headers = headerLine.split(sep).map(h => h.trim().replace(/^"|"$/g, '').toLowerCase())
+
+  const col = (keywords) => headers.findIndex(h => keywords.some(k => h.includes(k)))
+  const IDX = {
+    dateComptable: col(['date comptable']),
+    libelle:       col(['libelle simplifie', 'libellé simplifié', 'libelle']),
+    reference:     col(['reference', 'référence']),
+    infos:         col(['informations complementaires', 'informations complémentaires']),
+    typeOp:        col(['type operation', 'type opération']),
+    debit:         col(['debit', 'débit']),
+    credit:        col(['credit', 'crédit']),
+    dateOp:        col(['date operation', 'date opération']),
+  }
+
+  function parseAmt(s) {
+    if (!s || !s.trim()) return null
+    const n = parseFloat(s.trim().replace(/\s/g, '').replace(',', '.'))
+    return isNaN(n) ? null : n
+  }
+
+  function parseDate(s) {
+    if (!s || !s.trim()) return null
+    const parts = s.trim().replace(/"/g, '').split('/')
+    if (parts.length !== 3) return null
+    return `${parts[2]}-${parts[1].padStart(2, '0')}-${parts[0].padStart(2, '0')}`
+  }
+
+  const lignes = []
+  for (let i = headerIdx + 1; i < lines.length; i++) {
+    const line = lines[i].trim()
+    if (!line) continue
+    const cells = line.split(sep).map(c => c.trim().replace(/^"|"$/g, ''))
+    if (cells.length < 5) continue
+
+    const debit = parseAmt(IDX.debit >= 0 ? cells[IDX.debit] : null)
+    if (!debit || debit <= 0) continue // seulement les débits (achats)
+
+    const date = parseDate(IDX.dateComptable >= 0 ? cells[IDX.dateComptable] : null)
+              || parseDate(IDX.dateOp >= 0 ? cells[IDX.dateOp] : null)
+    const typeOp = IDX.typeOp >= 0 ? cells[IDX.typeOp] : ''
+
+    lignes.push({
+      date,
+      mois:      date ? date.slice(0, 7) : MOIS_COURANT,
+      libelle:   IDX.libelle >= 0 ? cells[IDX.libelle] : '',
+      reference: IDX.reference >= 0 ? cells[IDX.reference] : '',
+      infos:     IDX.infos >= 0 ? cells[IDX.infos] : '',
+      typeOp,
+      debit,
+      // champs modifiables dans le modal d'import
+      fournisseur: '',
+      categorie:   '',
+      selected:    true,
+    })
+  }
+
+  return lignes
+}
+
+// ── Composant principal ────────────────────────────────────────────────────────
+
 export default function PageAchats() {
   const [factures, setFactures]       = useState([])
   const [loading, setLoading]         = useState(true)
@@ -31,12 +110,14 @@ export default function PageAchats() {
   const [modal, setModal]             = useState(null) // null | 'new' | facture obj
   const [form, setForm]               = useState(MODAL_VIDE)
   const [saving, setSaving]           = useState(false)
-  const [fournisseurs, setFournisseurs] = useState([]) // suggestions autocomplete
-  const [detections, setDetections]   = useState([])  // fournisseurs récurrents × mouvements
-  const [analyses, setAnalyses]       = useState({})  // id → { loading, ok, message }
+  const [fournisseurs, setFournisseurs] = useState([])
+  const [detections, setDetections]   = useState([])
+  const [analyses, setAnalyses]       = useState({})
   const [scanning, setScanning]       = useState(false)
-  const [scanResult, setScanResult]   = useState(null) // résultat du scan + mouvement suggéré
+  const [scanResult, setScanResult]   = useState(null)
   const [dragOver, setDragOver]       = useState(false)
+  const [importModal, setImportModal] = useState(null) // { lignes, importing }
+  const [importError, setImportError] = useState(null)
 
   const charger = useCallback(async () => {
     setLoading(true)
@@ -64,7 +145,6 @@ export default function PageAchats() {
     setScanning(true)
     setScanResult(null)
     try {
-      // Convertir en base64
       const base64 = await new Promise((resolve, reject) => {
         const reader = new FileReader()
         reader.onload = () => resolve(reader.result.split(',')[1])
@@ -75,19 +155,21 @@ export default function PageAchats() {
       const { data: { session } } = await supabase.auth.getSession()
       const token = session?.access_token || import.meta.env.VITE_SUPABASE_ANON_KEY
 
-      // Appel edge function parse-invoice
       const res = await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/parse-invoice`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
         body: JSON.stringify({ file_base64: base64, media_type: file.type }),
       })
+      if (!res.ok) {
+        const errText = await res.text().catch(() => 'Erreur serveur')
+        setScanResult({ error: `Erreur ${res.status} : ${errText.slice(0, 120)}` })
+        setScanning(false)
+        return
+      }
       const parsed = await res.json()
       if (!parsed.ok) { setScanResult({ error: parsed.error || parsed.raw }); setScanning(false); return }
 
-      // Chercher le mouvement bancaire correspondant
-      const moisFacture = parsed.date_facture
-        ? parsed.date_facture.slice(0, 7)
-        : moisFiltre
+      const moisFacture = parsed.date_facture ? parsed.date_facture.slice(0, 7) : moisFiltre
 
       let mouvementSuggere = null
       if (parsed.fournisseur || parsed.montant_ttc) {
@@ -99,7 +181,7 @@ export default function PageAchats() {
           .gt('debit', 0)
 
         if (mouvements?.length && parsed.fournisseur) {
-          const pattern = parsed.fournisseur.toUpperCase().split(' ')[0] // premier mot
+          const pattern = parsed.fournisseur.toUpperCase().split(' ')[0]
           const montant = parsed.montant_ttc ? parseFloat(parsed.montant_ttc) : null
           mouvementSuggere = mouvements.find(m => {
             const libelleOk = (m.libelle || '').toUpperCase().includes(pattern)
@@ -110,8 +192,6 @@ export default function PageAchats() {
       }
 
       setScanResult({ ...parsed, mouvementSuggere, fichier: file })
-
-      // Pré-remplir le modal
       const moisForm = parsed.date_facture ? parsed.date_facture.slice(0, 7) : moisFiltre
       setForm(prev => ({
         ...prev,
@@ -139,8 +219,35 @@ export default function PageAchats() {
     scannerFichier(file)
   }
 
+  const onCSVInput = (e) => {
+    const file = e.target?.files?.[0]
+    if (!file) return
+    e.target.value = ''
+    setImportError(null)
+    const reader = new FileReader()
+    reader.onload = (ev) => {
+      try {
+        const lignes = parseCSVCaisseEpargne(ev.target.result)
+        if (!lignes.length) throw new Error('Aucune ligne de débit trouvée dans ce CSV')
+
+        // Auto-match fournisseurs récurrents
+        const matchees = lignes.map(l => {
+          const libelleUp = l.libelle.toUpperCase()
+          const f = fournisseurs.find(f => {
+            const pattern = (f.pattern_libelle || f.nom).toUpperCase()
+            return libelleUp.includes(pattern)
+          })
+          return { ...l, fournisseur: f?.nom || '', categorie: f?.categorie || '' }
+        })
+        setImportModal({ lignes: matchees, importing: false })
+      } catch (err) {
+        setImportError(err.message)
+      }
+    }
+    reader.readAsText(file, 'ISO-8859-1')
+  }
+
   const chargerDetections = useCallback(async () => {
-    // Mouvements débiteurs du mois
     const { data: mouvements } = await supabase
       .from('mouvement_bancaire')
       .select('libelle, debit, date_operation')
@@ -148,7 +255,6 @@ export default function PageAchats() {
       .eq('mois_releve', moisFiltre)
       .gt('debit', 0)
 
-    // Fournisseurs récurrents actifs
     const { data: fournisseursRec } = await supabase
       .from('fournisseur_recurrent')
       .select('id, nom, pattern_libelle, categorie, montant_habituel')
@@ -156,7 +262,6 @@ export default function PageAchats() {
       .eq('actif', true)
       .order('nom')
 
-    // Factures déjà saisies ce mois
     const { data: facturesMois } = await supabase
       .from('facture_achat')
       .select('fournisseur, montant_ttc')
@@ -167,15 +272,11 @@ export default function PageAchats() {
 
     const resultats = (fournisseursRec || []).map(f => {
       const pattern = (f.pattern_libelle || f.nom).toUpperCase()
-      const match = (mouvements || []).find(m =>
-        (m.libelle || '').toUpperCase().includes(pattern)
-      )
-      const factureExiste = [...facturesNoms].some(n => n.includes(f.nom.toLowerCase()) || f.nom.toLowerCase().includes(n))
-      return {
-        ...f,
-        mouvement:     match || null,       // mouvement détecté
-        factureExiste,                       // facture saisie dans facture_achat
-      }
+      const match = (mouvements || []).find(m => (m.libelle || '').toUpperCase().includes(pattern))
+      // Correspondance exacte (insensible à la casse) — évite les faux positifs substring
+      const nomLow = f.nom.toLowerCase()
+      const factureExiste = [...facturesNoms].some(n => n === nomLow || n.startsWith(nomLow + ' ') || nomLow.startsWith(n + ' '))
+      return { ...f, mouvement: match || null, factureExiste }
     })
 
     setDetections(resultats)
@@ -199,6 +300,7 @@ export default function PageAchats() {
       })
       setModal(facture)
     } else {
+      setScanResult(null)
       setForm({ ...MODAL_VIDE, mois: moisFiltre })
       setModal('new')
     }
@@ -226,17 +328,19 @@ export default function PageAchats() {
     if (modal === 'new') {
       await supabase.from('facture_achat').insert(payload)
     } else {
-      await supabase.from('facture_achat').update(payload).eq('id', modal.id)
+      await supabase.from('facture_achat').update(payload).eq('id', modal.id).eq('agence', AGENCE)
     }
     setSaving(false)
     fermer()
     charger()
+    chargerDetections()
   }
 
   const supprimer = async (id) => {
     if (!confirm('Supprimer cette facture ?')) return
-    await supabase.from('facture_achat').delete().eq('id', id)
+    await supabase.from('facture_achat').delete().eq('id', id).eq('agence', AGENCE)
     charger()
+    chargerDetections()
   }
 
   const analyserFacture = async (facture) => {
@@ -290,13 +394,16 @@ Si anomalie (montant très différent, catégorie suspecte) → ok:false, messag
       } catch {
         setAnalyses(prev => ({ ...prev, [facture.id]: { loading: false, ok: true, message: data.text?.slice(0, 120) } }))
       }
-    } catch (e) {
+    } catch {
       setAnalyses(prev => ({ ...prev, [facture.id]: { loading: false, ok: null, message: 'Analyse indisponible' } }))
     }
   }
 
   const changerStatut = async (id, statut) => {
-    await supabase.from('facture_achat').update({ statut, updated_at: new Date().toISOString() }).eq('id', id)
+    await supabase.from('facture_achat')
+      .update({ statut, updated_at: new Date().toISOString() })
+      .eq('id', id)
+      .eq('agence', AGENCE)
     setFactures(prev => prev.map(f => f.id === id ? { ...f, statut } : f))
     if (statut === 'valide') {
       const facture = factures.find(f => f.id === id)
@@ -304,7 +411,30 @@ Si anomalie (montant très différent, catégorie suspecte) → ok:false, messag
     }
   }
 
-  // Suggestions fournisseur à partir du champ saisi
+  const creerDepuisCSV = async () => {
+    const selected = (importModal?.lignes || []).filter(l => l.selected && l.fournisseur.trim() && l.debit > 0)
+    if (!selected.length) return
+    setImportModal(prev => ({ ...prev, importing: true }))
+
+    const payloads = selected.map(l => ({
+      agence:        AGENCE,
+      mois:          l.mois,
+      fournisseur:   l.fournisseur.trim(),
+      montant_ttc:   l.debit,
+      montant_ht:    null,
+      type_paiement: l.typeOp?.toLowerCase().includes('prlv') ? 'prelevement' : 'virement',
+      categorie:     l.categorie || null,
+      statut:        'a_valider',
+      notes:         [l.reference, l.infos].filter(Boolean).join(' — ') || null,
+      updated_at:    new Date().toISOString(),
+    }))
+
+    await supabase.from('facture_achat').insert(payloads)
+    setImportModal(null)
+    charger()
+    chargerDetections()
+  }
+
   const suggestions = form.fournisseur.length >= 2
     ? fournisseurs.filter(f => f.nom.toLowerCase().includes(form.fournisseur.toLowerCase()))
     : []
@@ -313,12 +443,11 @@ Si anomalie (montant très différent, catégorie suspecte) → ok:false, messag
     setForm(prev => ({ ...prev, fournisseur: f.nom, categorie: f.categorie || prev.categorie }))
   }
 
-  // Stats mois
-  const totalTTC   = factures.reduce((s, f) => s + Number(f.montant_ttc), 0)
-  const nbValides  = factures.filter(f => f.statut === 'valide').length
-  const nbAttente  = factures.filter(f => f.statut === 'a_valider').length
+  // Stats — protection NaN
+  const totalTTC  = factures.reduce((s, f) => { const n = Number(f.montant_ttc); return s + (isNaN(n) ? 0 : n) }, 0)
+  const nbValides = factures.filter(f => f.statut === 'valide').length
+  const nbAttente = factures.filter(f => f.statut === 'a_valider').length
 
-  // Navigation mois
   const moisPrecedent = () => {
     const d = new Date(moisFiltre + '-01')
     d.setMonth(d.getMonth() - 1)
@@ -331,6 +460,8 @@ Si anomalie (montant très différent, catégorie suspecte) → ok:false, messag
   }
   const moisLabel = new Date(moisFiltre + '-01').toLocaleDateString('fr-FR', { month: 'long', year: 'numeric' })
 
+  const nbImportSelected = (importModal?.lignes || []).filter(l => l.selected && l.fournisseur.trim()).length
+
   return (
     <div>
       {/* Header */}
@@ -340,9 +471,30 @@ Si anomalie (montant très différent, catégorie suspecte) → ok:false, messag
           <p className="page-subtitle">Factures d'achat mensuel — remplace le Word doc</p>
         </div>
         <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+          <input
+            id="csv-input"
+            type="file"
+            accept=".csv,.txt"
+            style={{ display: 'none' }}
+            onChange={onCSVInput}
+          />
+          <button
+            className="btn btn-secondary"
+            onClick={() => document.getElementById('csv-input').click()}
+            title="Importer un relevé CSV Caisse d'Épargne"
+          >
+            Importer CSV CE
+          </button>
           <button className="btn btn-primary" onClick={() => ouvrir()}>+ Ajouter facture</button>
         </div>
       </div>
+
+      {importError && (
+        <div style={{ padding: '10px 14px', background: '#FEF2F2', border: '1px solid #FCA5A5', borderRadius: 8, marginBottom: 16, color: '#991B1B', fontSize: 13 }}>
+          ✕ {importError}
+          <button onClick={() => setImportError(null)} style={{ float: 'right', background: 'none', border: 'none', cursor: 'pointer', color: '#991B1B' }}>✕</button>
+        </div>
+      )}
 
       {/* Drop zone scan */}
       <div
@@ -413,26 +565,25 @@ Si anomalie (montant très différent, catégorie suspecte) → ok:false, messag
       {detections.length > 0 && (
         <div className="card" style={{ marginBottom: 20 }}>
           <div style={{ fontWeight: 700, fontSize: 14, marginBottom: 12, color: 'var(--text)' }}>
-            Fournisseurs récurrents — {new Date(moisFiltre + '-01').toLocaleDateString('fr-FR', { month: 'long', year: 'numeric' })}
+            Fournisseurs récurrents — {moisLabel}
           </div>
           <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
             {detections.map(d => {
               const detected = !!d.mouvement
               const ok = detected && d.factureExiste
               const warning = detected && !d.factureExiste
-              const missing = !detected
-
               const bg    = ok ? '#D1FAE5' : warning ? '#FEF3C7' : '#F3F4F6'
               const color = ok ? '#065F46' : warning ? '#92400E' : '#6B7280'
               const icon  = ok ? '✓' : warning ? '⚠' : '?'
               const title = ok
-                ? `Détecté + facture saisie`
+                ? 'Détecté + facture saisie'
                 : warning
                 ? `Prélèvement détecté (${Number(d.mouvement.debit).toFixed(2)} €) — facture manquante`
-                : `Non détecté dans les relevés ce mois`
+                : 'Non détecté dans les relevés ce mois'
 
               return (
-                <div key={d.id} title={title} style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '5px 10px', borderRadius: 20, background: bg, color, fontSize: 12, fontWeight: 600, cursor: warning ? 'pointer' : 'default' }}
+                <div key={d.id} title={title}
+                  style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '5px 10px', borderRadius: 20, background: bg, color, fontSize: 12, fontWeight: 600, cursor: warning ? 'pointer' : 'default' }}
                   onClick={() => {
                     if (!warning) return
                     ouvrir()
@@ -487,7 +638,7 @@ Si anomalie (montant très différent, catégorie suspecte) → ok:false, messag
               const analyse = analyses[f.id]
               return (
                 <React.Fragment key={f.id}>
-                <tr key={f.id + '-row'}>
+                <tr>
                   <td style={{ fontWeight: 600 }}>{f.fournisseur}</td>
                   <td>
                     {f.categorie ? (
@@ -523,7 +674,7 @@ Si anomalie (montant très différent, catégorie suspecte) → ok:false, messag
                   </td>
                 </tr>
                 {analyse && (
-                  <tr key={f.id + '-analyse'} style={{ background: analyse.loading ? '#FAFAFA' : analyse.ok ? '#F0FDF4' : analyse.ok === false ? '#FFF7ED' : '#FAFAFA' }}>
+                  <tr style={{ background: analyse.loading ? '#FAFAFA' : analyse.ok ? '#F0FDF4' : analyse.ok === false ? '#FFF7ED' : '#FAFAFA' }}>
                     <td colSpan={7} style={{ padding: '6px 16px', fontSize: 12 }}>
                       {analyse.loading
                         ? <span style={{ color: 'var(--text-muted)' }}>⏳ Analyse en cours…</span>
@@ -543,7 +694,7 @@ Si anomalie (montant très différent, catégorie suspecte) → ok:false, messag
         </table>
       </div>
 
-      {/* Modal */}
+      {/* Modal saisie manuelle */}
       {modal && (
         <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.4)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000, padding: 16 }}>
           <div style={{ background: '#fff', borderRadius: 12, padding: 28, width: '100%', maxWidth: 520, boxShadow: '0 8px 32px rgba(0,0,0,0.2)' }}>
@@ -551,7 +702,6 @@ Si anomalie (montant très différent, catégorie suspecte) → ok:false, messag
               {modal === 'new' ? 'Nouvelle facture' : 'Modifier la facture'}
             </h2>
 
-            {/* Résultat scan + paiement suggéré */}
             {scanResult && modal === 'new' && (
               <div style={{ marginBottom: 16 }}>
                 <div style={{ background: 'var(--brand-pale)', border: '1px solid var(--border)', borderRadius: 8, padding: '10px 14px', fontSize: 12, color: 'var(--text)', marginBottom: scanResult.mouvementSuggere ? 8 : 0 }}>
@@ -567,13 +717,11 @@ Si anomalie (montant très différent, catégorie suspecte) → ok:false, messag
             )}
 
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
-              {/* Mois */}
               <div className="form-group" style={{ gridColumn: '1 / -1' }}>
                 <label className="form-label">Mois</label>
                 <input type="month" className="form-input" value={form.mois} onChange={e => setForm(p => ({ ...p, mois: e.target.value }))} />
               </div>
 
-              {/* Fournisseur */}
               <div className="form-group" style={{ gridColumn: '1 / -1', position: 'relative' }}>
                 <label className="form-label">Fournisseur *</label>
                 <input
@@ -599,21 +747,18 @@ Si anomalie (montant très différent, catégorie suspecte) → ok:false, messag
                 )}
               </div>
 
-              {/* Montant TTC */}
               <div className="form-group">
                 <label className="form-label">Montant TTC * (€)</label>
                 <input type="number" step="0.01" className="form-input" value={form.montant_ttc}
                   onChange={e => setForm(p => ({ ...p, montant_ttc: e.target.value }))} placeholder="0.00" />
               </div>
 
-              {/* Montant HT */}
               <div className="form-group">
                 <label className="form-label">Montant HT (€)</label>
                 <input type="number" step="0.01" className="form-input" value={form.montant_ht}
                   onChange={e => setForm(p => ({ ...p, montant_ht: e.target.value }))} placeholder="optionnel" />
               </div>
 
-              {/* Type paiement */}
               <div className="form-group">
                 <label className="form-label">Type paiement</label>
                 <select className="form-select" value={form.type_paiement} onChange={e => setForm(p => ({ ...p, type_paiement: e.target.value }))}>
@@ -621,7 +766,6 @@ Si anomalie (montant très différent, catégorie suspecte) → ok:false, messag
                 </select>
               </div>
 
-              {/* Catégorie */}
               <div className="form-group">
                 <label className="form-label">Catégorie</label>
                 <select className="form-select" value={form.categorie} onChange={e => setForm(p => ({ ...p, categorie: e.target.value }))}>
@@ -630,7 +774,6 @@ Si anomalie (montant très différent, catégorie suspecte) → ok:false, messag
                 </select>
               </div>
 
-              {/* Statut */}
               <div className="form-group" style={{ gridColumn: '1 / -1' }}>
                 <label className="form-label">Statut</label>
                 <select className="form-select" value={form.statut} onChange={e => setForm(p => ({ ...p, statut: e.target.value }))}>
@@ -638,7 +781,6 @@ Si anomalie (montant très différent, catégorie suspecte) → ok:false, messag
                 </select>
               </div>
 
-              {/* Notes */}
               <div className="form-group" style={{ gridColumn: '1 / -1' }}>
                 <label className="form-label">Notes</label>
                 <textarea className="form-input" rows={2} value={form.notes}
@@ -652,6 +794,119 @@ Si anomalie (montant très différent, catégorie suspecte) → ok:false, messag
               <button className="btn btn-primary" onClick={sauvegarder} disabled={saving || !form.fournisseur || !form.montant_ttc}>
                 {saving ? 'Enregistrement…' : 'Enregistrer'}
               </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Modal import CSV Caisse d'Épargne */}
+      {importModal && (
+        <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.5)', display: 'flex', alignItems: 'flex-start', justifyContent: 'center', zIndex: 1000, padding: 24, overflowY: 'auto' }}>
+          <div style={{ background: '#fff', borderRadius: 12, width: '100%', maxWidth: 820, boxShadow: '0 8px 40px rgba(0,0,0,0.25)', marginBottom: 24 }}>
+            {/* En-tête modal */}
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '18px 24px', borderBottom: '1px solid var(--border)' }}>
+              <div>
+                <div style={{ fontWeight: 700, fontSize: 16, color: 'var(--text)' }}>Import CSV — Caisse d'Épargne</div>
+                <div style={{ fontSize: 12, color: 'var(--text-muted)', marginTop: 2 }}>
+                  {importModal.lignes.length} lignes de débit détectées — sélectionnez celles à créer en factures
+                </div>
+              </div>
+              <button onClick={() => setImportModal(null)} style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: 18, color: '#9C8E7D' }}>✕</button>
+            </div>
+
+            {/* Tableau des lignes */}
+            <div style={{ overflowX: 'auto', maxHeight: '60vh', overflowY: 'auto' }}>
+              <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
+                <thead style={{ position: 'sticky', top: 0, background: '#EAE3D4', zIndex: 1 }}>
+                  <tr>
+                    <th style={{ padding: '8px 12px', textAlign: 'center', width: 40 }}>
+                      <input type="checkbox"
+                        checked={importModal.lignes.every(l => l.selected)}
+                        onChange={e => setImportModal(prev => ({ ...prev, lignes: prev.lignes.map(l => ({ ...l, selected: e.target.checked })) }))}
+                      />
+                    </th>
+                    <th style={{ padding: '8px 12px', textAlign: 'left', whiteSpace: 'nowrap' }}>Date</th>
+                    <th style={{ padding: '8px 12px', textAlign: 'left' }}>Libellé CE</th>
+                    <th style={{ padding: '8px 12px', textAlign: 'right', whiteSpace: 'nowrap' }}>Débit</th>
+                    <th style={{ padding: '8px 12px', textAlign: 'left', minWidth: 160 }}>Fournisseur</th>
+                    <th style={{ padding: '8px 12px', textAlign: 'left', minWidth: 120 }}>Catégorie</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {importModal.lignes.map((l, i) => (
+                    <tr key={i} style={{ background: l.selected ? (i % 2 === 0 ? '#fff' : '#FAF8F4') : '#F3F4F6', opacity: l.selected ? 1 : 0.5 }}>
+                      <td style={{ padding: '6px 12px', textAlign: 'center' }}>
+                        <input type="checkbox" checked={l.selected}
+                          onChange={e => setImportModal(prev => ({
+                            ...prev,
+                            lignes: prev.lignes.map((x, j) => j === i ? { ...x, selected: e.target.checked } : x)
+                          }))}
+                        />
+                      </td>
+                      <td style={{ padding: '6px 12px', whiteSpace: 'nowrap', color: 'var(--text-muted)' }}>
+                        {l.date ? new Date(l.date).toLocaleDateString('fr-FR') : '—'}
+                      </td>
+                      <td style={{ padding: '6px 12px', maxWidth: 220, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={[l.libelle, l.infos].filter(Boolean).join(' / ')}>
+                        {l.libelle || '—'}
+                        {l.infos && <span style={{ color: 'var(--text-muted)', marginLeft: 6, fontSize: 11 }}>{l.infos}</span>}
+                      </td>
+                      <td style={{ padding: '6px 12px', textAlign: 'right', fontWeight: 700, whiteSpace: 'nowrap' }}>
+                        {l.debit.toLocaleString('fr-FR', { style: 'currency', currency: 'EUR' })}
+                      </td>
+                      <td style={{ padding: '4px 8px' }}>
+                        <input
+                          value={l.fournisseur}
+                          onChange={e => setImportModal(prev => ({
+                            ...prev,
+                            lignes: prev.lignes.map((x, j) => j === i ? { ...x, fournisseur: e.target.value } : x)
+                          }))}
+                          placeholder="Nom fournisseur…"
+                          style={{ width: '100%', padding: '3px 6px', border: `1px solid ${l.fournisseur ? 'var(--border)' : '#FCA5A5'}`, borderRadius: 4, fontSize: 12, background: l.fournisseur ? '#fff' : '#FFF5F5' }}
+                        />
+                      </td>
+                      <td style={{ padding: '4px 8px' }}>
+                        <select
+                          value={l.categorie}
+                          onChange={e => setImportModal(prev => ({
+                            ...prev,
+                            lignes: prev.lignes.map((x, j) => j === i ? { ...x, categorie: e.target.value } : x)
+                          }))}
+                          style={{ width: '100%', padding: '3px 6px', border: '1px solid var(--border)', borderRadius: 4, fontSize: 12 }}
+                        >
+                          <option value="">—</option>
+                          {CATEGORIES.map(c => <option key={c} value={c}>{c}</option>)}
+                        </select>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+
+            {/* Pied modal */}
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '16px 24px', borderTop: '1px solid var(--border)', gap: 12 }}>
+              <div style={{ fontSize: 13, color: 'var(--text-muted)' }}>
+                {nbImportSelected > 0
+                  ? <span style={{ color: 'var(--text)', fontWeight: 600 }}>{nbImportSelected} facture{nbImportSelected > 1 ? 's' : ''} à créer</span>
+                  : 'Renseignez le fournisseur pour les lignes sélectionnées'}
+                {importModal.lignes.filter(l => l.selected && !l.fournisseur.trim()).length > 0 && (
+                  <span style={{ color: '#92400E', marginLeft: 8 }}>
+                    — {importModal.lignes.filter(l => l.selected && !l.fournisseur.trim()).length} sans fournisseur (ignorées)
+                  </span>
+                )}
+              </div>
+              <div style={{ display: 'flex', gap: 8 }}>
+                <button className="btn btn-secondary" onClick={() => setImportModal(null)} disabled={importModal.importing}>
+                  Annuler
+                </button>
+                <button
+                  className="btn btn-primary"
+                  onClick={creerDepuisCSV}
+                  disabled={importModal.importing || nbImportSelected === 0}
+                >
+                  {importModal.importing ? 'Création…' : `Créer ${nbImportSelected} facture${nbImportSelected > 1 ? 's' : ''}`}
+                </button>
+              </div>
             </div>
           </div>
         </div>
