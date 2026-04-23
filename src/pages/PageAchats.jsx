@@ -190,17 +190,53 @@ export default function PageAchats() {
           const token = session?.access_token || import.meta.env.VITE_SUPABASE_ANON_KEY
 
           const lignesAAnalyser = nonMatchesIdx.map(i => matchees[i])
-          const prompt = `Tu es un assistant comptable français pour une agence immobilière de location saisonnière.
-Voici des libellés bruts de relevé bancaire Caisse d'Épargne (format: libellé / infos | montant€).
-Pour chaque ligne, identifie le fournisseur (nom court lisible, sans numéro ni code) et la catégorie.
-Catégories disponibles : telecom, abonnement, logiciel, loyer, materiel, autre
-Si tu ne sais vraiment pas, fournisseur="" et categorie="autre".
+          const prompt = `Tu es un assistant comptable français pour Destination Côte Basque, une agence de conciergerie immobilière (location saisonnière + longue durée, ~50 biens à Biarritz).
+
+Voici des libellés bruts de relevé bancaire Caisse d'Épargne. Pour chaque ligne, identifie :
+- fournisseur : nom court lisible (ex: "EDF", "Ploquin Clémence", "DGFIP", "Stripe"). Supprime les codes/références/numéros.
+- categorie : choisis dans la liste ci-dessous.
+
+CATÉGORIES DISPONIBLES :
+- energie         : EDF, ENGIE, Veolia, électricité, gaz, eau
+- assurance       : Galian, MAIF, SMABTP, MMA, Allianz, assureur
+- comptabilite    : cabinet comptable, expert-comptable, DGFIP, impôts, taxes
+- frais_bancaires : frais virement SEPA, frais tenue compte, frais consentement B2B, frais Stripe, frais bancaires Caisse d'Épargne
+- carte_bancaire  : CUMUL DES DEBITS DIFFERES (achats carte)
+- salaire         : paye, salaire, virement à Clémence / Mathieu / prénom+nom si mention "PAYE" ou "SALAIRE"
+- prestataire_ae  : virement à un particulier (NOM PRENOM) pour prestation ou facture (mention FACTURE, LOYER, HONORAIRES)
+- loyer           : loyer locaux, virement LOYER DESTINATION
+- plateforme      : Airbnb, Booking, Abritel, Hospitable, reversement plateforme
+- telecom         : SFR, Orange, Bouygues, Free, téléphonie, internet
+- abonnement      : Stripe, Pennylane, logiciels SaaS, abonnements récurrents
+- logiciel        : achat logiciel, licence
+- fournitures     : Amazon, Leroy Merlin, Brico Dépôt, matériel, consommables
+- securite        : alarme, vidéosurveillance, sécurité
+- publicite       : Madame Editions, impression, communication, pub
+- retour          : retour virement, remboursement reçu
+- autre           : tout ce qui ne rentre pas ailleurs
+
+RÈGLES :
+- "VIR SEPA NOM PRENOM" + "FACTURE" dans les infos → categorie=prestataire_ae, fournisseur=Nom Prénom
+- "VIR SEPA NOM PRENOM" + "PAYE" ou "SALAIRE" → categorie=salaire
+- "PRLV DGFIP" ou "PRLV B2B DGFIP" → fournisseur="DGFIP", categorie=comptabilite
+- "PRLV EDF" → fournisseur="EDF", categorie=energie
+- "PRLV GALIAN" ou "PRLV SMA BTP" → fournisseur="Galian SMA BTP", categorie=assurance
+- "PRLV CABINET" + "COMPTAB" → fournisseur="Cabinet expertise comptable", categorie=comptabilite
+- "FRAIS DE VIREMENT SEPA" ou "FRAIS TENUE COMPTE" ou "FRAIS CONSENTEMENT" → fournisseur="Caisse d'Épargne", categorie=frais_bancaires
+- "CUMUL DES DEBITS DIFFERES" → fournisseur="Carte bancaire", categorie=carte_bancaire
+- "FRAIS STRIPE" → fournisseur="Stripe", categorie=frais_bancaires
+- "LOYERS LOCATIONS AIRBB" ou "AIRBNB" → fournisseur="Airbnb", categorie=plateforme
+- "PRLV AMAZON" → fournisseur="Amazon Business", categorie=fournitures
+- "RETOUR VIREMENT" → fournisseur="Retour virement", categorie=retour
+- "MADAME EDITIONS" → fournisseur="Madame Editions", categorie=publicite
+- "ECB SECURITE" → fournisseur="ECB Sécurité", categorie=securite
+Si vraiment inconnu : fournisseur="" categorie="autre"
 
 Réponds UNIQUEMENT en JSON valide, tableau dans le même ordre que les entrées :
 [{"fournisseur":"...","categorie":"..."}]
 
 Lignes à analyser :
-${lignesAAnalyser.map((l, i) => `${i + 1}. ${l.libelle}${l.infos ? ' / ' + l.infos : ''} | ${l.debit.toFixed(2)}€`).join('\n')}`
+${lignesAAnalyser.map((l, i) => `${i + 1}. ${l.libelle}${l.detail ? ' / ' + l.detail : ''}${l.infos ? ' / ' + l.infos : ''} | ${l.debit.toFixed(2)}€`).join('\n')}`
 
           const res = await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/llm-analyse`, {
             method: 'POST',
