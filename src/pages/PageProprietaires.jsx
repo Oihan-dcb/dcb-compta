@@ -666,7 +666,7 @@ function ModalPrevisionnel({ proprio, onClose }) {
       const enriched = results
         .filter(r => r.data)
         .flatMap(({ mois, data }) =>
-          data.resasEnrichies
+          (data.resas || [])
             .filter(r => !r.owner_stay)
             .map(r => ({
               ...r,
