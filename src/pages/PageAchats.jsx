@@ -183,14 +183,15 @@ export default function PageAchats() {
       const nonMatchesIdx = matchees.map((l, i) => i).filter(i => !matchees[i].fournisseur)
       setImportModal({ lignes: matchees, importing: false, enriching: nonMatchesIdx.length > 0 })
 
-      // 3. Si des lignes sans fournisseur → appel Claude batch
+      // 3. Si des lignes sans fournisseur → appel Claude batch (chunks de 25)
       if (nonMatchesIdx.length > 0) {
         try {
           const { data: { session } } = await supabase.auth.getSession()
           const token = session?.access_token || import.meta.env.VITE_SUPABASE_ANON_KEY
 
           const lignesAAnalyser = nonMatchesIdx.map(i => matchees[i])
-          const prompt = `Tu es un assistant comptable français pour Destination Côte Basque, une agence de conciergerie immobilière (location saisonnière + longue durée, ~50 biens à Biarritz).
+
+          const SYSTEM_PROMPT = `Tu es un assistant comptable français pour Destination Côte Basque, une agence de conciergerie immobilière (location saisonnière + longue durée, ~50 biens à Biarritz).
 
 Voici des libellés bruts de relevé bancaire Caisse d'Épargne. Pour chaque ligne, identifie :
 - fournisseur : nom court lisible (ex: "EDF", "Ploquin Clémence", "DGFIP", "Stripe"). Supprime les codes/références/numéros.
@@ -233,35 +234,43 @@ RÈGLES :
 Si vraiment inconnu : fournisseur="" categorie="autre"
 
 Réponds UNIQUEMENT en JSON valide, tableau dans le même ordre que les entrées :
-[{"fournisseur":"...","categorie":"..."}]
+[{"fournisseur":"...","categorie":"..."}]`
 
-Lignes à analyser :
-${lignesAAnalyser.map((l, i) => `${i + 1}. ${l.libelle}${l.detail ? ' / ' + l.detail : ''}${l.infos ? ' / ' + l.infos : ''} | ${l.debit.toFixed(2)}€`).join('\n')}`
+          // Découpe en chunks de 25 pour éviter la troncature max_tokens
+          const CHUNK_SIZE = 25
+          const allSuggestions = new Array(lignesAAnalyser.length).fill(null)
 
-          const res = await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/llm-analyse`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
-            body: JSON.stringify({ prompt }),
-          })
-          const data = await res.json()
+          for (let start = 0; start < lignesAAnalyser.length; start += CHUNK_SIZE) {
+            const chunk = lignesAAnalyser.slice(start, start + CHUNK_SIZE)
+            const lignesText = chunk.map((l, i) =>
+              `${i + 1}. ${l.libelle}${l.detail ? ' / ' + l.detail : ''}${l.infos ? ' / ' + l.infos : ''} | ${l.debit.toFixed(2)}€`
+            ).join('\n')
+            const prompt = `${SYSTEM_PROMPT}\n\nLignes à analyser :\n${lignesText}`
 
-          const match = (data.text || '').match(/\[[\s\S]*\]/)
-          if (match) {
-            const suggestions = JSON.parse(match[0])
-            setImportModal(prev => {
-              if (!prev) return prev
-              const lignes = [...prev.lignes]
-              nonMatchesIdx.forEach((idx, i) => {
-                const sug = suggestions[i]
-                if (sug?.fournisseur) {
-                  lignes[idx] = { ...lignes[idx], fournisseur: sug.fournisseur, categorie: sug.categorie || lignes[idx].categorie }
-                }
-              })
-              return { ...prev, lignes, enriching: false }
+            const res = await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/llm-analyse`, {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+              body: JSON.stringify({ prompt }),
             })
-          } else {
-            setImportModal(prev => prev ? { ...prev, enriching: false } : prev)
+            const data = await res.json()
+            const match = (data.text || '').match(/\[[\s\S]*\]/)
+            if (match) {
+              const suggestions = JSON.parse(match[0])
+              suggestions.forEach((s, i) => { allSuggestions[start + i] = s })
+            }
           }
+
+          setImportModal(prev => {
+            if (!prev) return prev
+            const lignes = [...prev.lignes]
+            nonMatchesIdx.forEach((idx, i) => {
+              const sug = allSuggestions[i]
+              if (sug?.fournisseur) {
+                lignes[idx] = { ...lignes[idx], fournisseur: sug.fournisseur, categorie: sug.categorie || lignes[idx].categorie }
+              }
+            })
+            return { ...prev, lignes, enriching: false }
+          })
         } catch {
           setImportModal(prev => prev ? { ...prev, enriching: false } : prev)
         }

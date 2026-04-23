@@ -28,7 +28,7 @@ Deno.serve(async (req) => {
 
   const body: Record<string, unknown> = {
     model: 'claude-haiku-4-5-20251001',
-    max_tokens: 600,
+    max_tokens: 2048,
     messages: [{ role: 'user', content: prompt }],
   }
   if (system) body.system = system
