@@ -7,6 +7,23 @@ Deno.serve(async (req) => {
   if (req.method === 'OPTIONS') return new Response('ok', { headers: corsHeaders })
 
   const { prompt, system } = await req.json()
+
+  if (!prompt || typeof prompt !== 'string' || prompt.trim().length === 0) {
+    return new Response(JSON.stringify({ error: 'prompt requis' }), {
+      status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+    })
+  }
+  if (prompt.length > 12000) {
+    return new Response(JSON.stringify({ error: 'prompt trop long (max 12000)' }), {
+      status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+    })
+  }
+  if (system !== undefined && (typeof system !== 'string' || system.length > 4000)) {
+    return new Response(JSON.stringify({ error: 'system invalide (string, max 4000)' }), {
+      status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+    })
+  }
+
   const apiKey = Deno.env.get('ANTHROPIC_API_KEY') ?? ''
 
   const body: Record<string, unknown> = {
