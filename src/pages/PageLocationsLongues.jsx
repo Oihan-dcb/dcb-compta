@@ -29,6 +29,13 @@ import {
   listerLogsEtudiant,
   ajouterLog,
 } from '../services/locationsLongues'
+import {
+  parserFichierLLD,
+  importerMouvementsLLD,
+  listerMouvementsLLD,
+  listerMoisDisposLLD,
+  supprimerMouvementLLD,
+} from '../services/lldBanque'
 
 const moisCourant = new Date().toISOString().slice(0, 7)
 const RELANCES_ACTIVES_DEPUIS = '2026-05'
@@ -136,11 +143,24 @@ export default function PageLocationsLongues() {
   const [caution, setCaution] = useState(null)
   const [uploadingType, setUploadingType] = useState(null)
 
+  // Onglet Banque LLD
+  const [banqueCompte, setBanqueCompte] = useState('loyers')
+  const [banqueMois, setBanqueMois] = useState(moisCourant)
+  const [banqueMoisDispos, setBanqueMoisDispos] = useState([])
+  const [banqueMouvements, setBanqueMouvements] = useState([])
+  const [banqueLoading, setBanqueLoading] = useState(false)
+  const [banqueParsed, setBanqueParsed] = useState(null) // { rows, moisDispos, total }
+  const [banqueMoisImport, setBanqueMoisImport] = useState('')
+  const [banqueImporting, setBanqueImporting] = useState(false)
+
   useEffect(() => { chargerReferentiels() }, [])
   useEffect(() => { if (onglet === 'mensuel') chargerMensuel() }, [mois, onglet])
   useEffect(() => { if (onglet === 'etudiants') chargerEtudiants(voirArchives) }, [onglet, voirArchives])
   useEffect(() => { if (onglet === 'suivi' && !etudiants.length) chargerEtudiants() }, [onglet])
   useEffect(() => { if (suiviEtudiantId) chargerSuivi(suiviEtudiantId) }, [suiviEtudiantId])
+  useEffect(() => {
+    if (onglet === 'banque') chargerBanque(banqueCompte, banqueMois)
+  }, [onglet, banqueCompte, banqueMois])
 
   useEffect(() => {
     const channel = supabase.channel('lld-changes')
@@ -381,6 +401,52 @@ export default function PageLocationsLongues() {
     }
   }
 
+  // ── Banque LLD ─────────────────────────────────────────────────────────
+  async function chargerBanque(compte, mois) {
+    setBanqueLoading(true); setError(null)
+    try {
+      const [mvts, moisDispos] = await Promise.all([
+        listerMouvementsLLD(compte, mois),
+        listerMoisDisposLLD(compte),
+      ])
+      setBanqueMouvements(mvts)
+      setBanqueMoisDispos(moisDispos)
+    } catch (e) { setError(e.message) }
+    finally { setBanqueLoading(false) }
+  }
+
+  async function handleFichierBanque(file) {
+    if (!file) return
+    setError(null); setBanqueParsed(null)
+    try {
+      const parsed = await parserFichierLLD(file)
+      if (!parsed.total) { setError('Aucune ligne trouvée dans le fichier'); return }
+      setBanqueParsed(parsed)
+      setBanqueMoisImport(parsed.moisDispos[0] || '')
+    } catch (e) { setError('Erreur parsing CSV : ' + e.message) }
+  }
+
+  async function handleImporterBanque() {
+    if (!banqueParsed || !banqueMoisImport) return
+    setBanqueImporting(true); setError(null)
+    try {
+      const n = await importerMouvementsLLD(banqueParsed.rows, banqueCompte, banqueMoisImport)
+      setSuccess(`${n} mouvement(s) importé(s) — compte ${banqueCompte}, ${banqueMoisImport}`)
+      setBanqueParsed(null)
+      await chargerBanque(banqueCompte, banqueMoisImport)
+      setBanqueMois(banqueMoisImport)
+    } catch (e) { setError(e.message) }
+    finally { setBanqueImporting(false) }
+  }
+
+  async function handleSupprimerMouvement(id) {
+    setError(null)
+    try {
+      await supprimerMouvementLLD(id)
+      setBanqueMouvements(prev => prev.filter(m => m.id !== id))
+    } catch (e) { setError(e.message) }
+  }
+
   // ── Dossier ────────────────────────────────────────────────────────────
   async function ouvrirDossier(e) {
     setError(null)
@@ -602,7 +668,7 @@ export default function PageLocationsLongues() {
 
       {/* Onglets */}
       <div style={{ display: 'flex', gap: 4, marginBottom: 20, borderBottom: '2px solid var(--border)' }}>
-        {[['mensuel', 'Mensuel'], ['suivi', 'Suivi'], ['etudiants', 'Locataires']].map(([key, label]) => (
+        {[['mensuel', 'Mensuel'], ['suivi', 'Suivi'], ['etudiants', 'Locataires'], ['banque', 'Banque LLD']].map(([key, label]) => (
           <button key={key} onClick={() => setOnglet(key)}
             style={{
               padding: '8px 18px', border: 'none', cursor: 'pointer', fontSize: 14, fontWeight: 600,
@@ -1033,10 +1099,12 @@ export default function PageLocationsLongues() {
                                             title="Envoyer une relance SMS + email maintenant">
                                             📨 relancer
                                           </button>
-                                        : <span style={{ fontSize: 11, color: 'var(--text-muted)', marginLeft: 4 }}
-                                            title="Relances actives à partir de mai 2026">
-                                            📨 relancer (inactif)
-                                          </span>
+                                        : <button
+                                            style={{ fontSize: 11, padding: '2px 8px', marginLeft: 4, background: '#FEE2E2', color: '#DC2626', border: '1px solid #FECACA', borderRadius: 5, cursor: 'pointer', fontWeight: 600 }}
+                                            onClick={() => { setSuccess(null); setError('Loyer non perçu — relances automatiques actives en mai 2026. Contactez le locataire directement.') }}
+                                            title="Loyer non perçu">
+                                            📨 Loyer non reçu
+                                          </button>
                                     )}
                                   </td>
                                 </tr>
@@ -1495,6 +1563,145 @@ export default function PageLocationsLongues() {
           </div>
         </div>
       )}
+
+      {/* ── Vue Banque LLD ── */}
+      {onglet === 'banque' && (() => {
+        const totalCredit = banqueMouvements.reduce((s, m) => s + (m.credit || 0), 0)
+        const totalDebit  = banqueMouvements.reduce((s, m) => s + (m.debit  || 0), 0)
+        const solde       = totalCredit - totalDebit
+        return (
+          <div>
+            {/* Sélecteur compte + mois */}
+            <div style={{ display: 'flex', gap: 10, alignItems: 'center', marginBottom: 18, flexWrap: 'wrap' }}>
+              {[['loyers', 'Compte Loyers'], ['cautions', 'Compte Cautions']].map(([val, label]) => (
+                <button key={val} onClick={() => setBanqueCompte(val)}
+                  style={{
+                    padding: '6px 16px', borderRadius: 8, border: '2px solid',
+                    borderColor: banqueCompte === val ? 'var(--brand)' : 'var(--border)',
+                    background: banqueCompte === val ? 'var(--brand)' : 'var(--bg)',
+                    color: banqueCompte === val ? '#fff' : 'var(--text)',
+                    fontWeight: 700, fontSize: 13, cursor: 'pointer',
+                  }}>
+                  {label}
+                </button>
+              ))}
+              <div style={{ display: 'flex', gap: 6, alignItems: 'center', marginLeft: 8 }}>
+                <select className="form-select" style={{ maxWidth: 140 }}
+                  value={banqueMois}
+                  onChange={e => setBanqueMois(e.target.value)}>
+                  {banqueMoisDispos.length === 0
+                    ? <option value={moisCourant}>{moisCourant}</option>
+                    : banqueMoisDispos.map(m => <option key={m} value={m}>{m}</option>)
+                  }
+                </select>
+                <button className="btn btn-secondary" onClick={() => chargerBanque(banqueCompte, banqueMois)} disabled={banqueLoading}>↺</button>
+              </div>
+              <label style={{ marginLeft: 'auto', cursor: 'pointer' }}>
+                <input type="file" accept=".csv,.txt" style={{ display: 'none' }}
+                  onChange={e => { if (e.target.files[0]) handleFichierBanque(e.target.files[0]); e.target.value = '' }} />
+                <span className="btn btn-primary" style={{ fontSize: 13 }}>⬆ Importer CSV</span>
+              </label>
+            </div>
+
+            {/* Panel d'import après sélection fichier */}
+            {banqueParsed && (
+              <div style={{ marginBottom: 18, padding: '14px 18px', background: '#FFFBEB', border: '1px solid #FDE68A', borderRadius: 10 }}>
+                <div style={{ fontWeight: 700, marginBottom: 8, fontSize: 14 }}>
+                  Fichier chargé — {banqueParsed.total} ligne(s) détectée(s)
+                </div>
+                <div style={{ display: 'flex', gap: 12, alignItems: 'center', flexWrap: 'wrap' }}>
+                  <div style={{ fontSize: 13 }}>
+                    Mois à importer :
+                    <select className="form-select" style={{ marginLeft: 8, width: 'auto', display: 'inline-block' }}
+                      value={banqueMoisImport}
+                      onChange={e => setBanqueMoisImport(e.target.value)}>
+                      {banqueParsed.moisDispos.map(m => <option key={m} value={m}>{m}</option>)}
+                    </select>
+                  </div>
+                  <div style={{ fontSize: 13, color: 'var(--text-muted)' }}>
+                    Compte cible : <strong>{banqueCompte}</strong>
+                  </div>
+                  <button className="btn btn-primary" onClick={handleImporterBanque} disabled={banqueImporting || !banqueMoisImport}>
+                    {banqueImporting ? <><span className="spinner" /> Import…</> : '✓ Confirmer l\'import'}
+                  </button>
+                  <button className="btn btn-secondary" onClick={() => setBanqueParsed(null)}>Annuler</button>
+                </div>
+              </div>
+            )}
+
+            {banqueLoading && <div className="loading-state"><span className="spinner" /> Chargement…</div>}
+
+            {!banqueLoading && banqueMouvements.length === 0 && (
+              <div className="empty-state">
+                Aucun mouvement pour {banqueCompte} — {banqueMois}.<br />
+                <span style={{ fontSize: 13, color: 'var(--text-muted)' }}>Importez un relevé CSV Caisse d'Épargne.</span>
+              </div>
+            )}
+
+            {!banqueLoading && banqueMouvements.length > 0 && (
+              <>
+                {/* Solde */}
+                <div style={{ display: 'flex', gap: 20, marginBottom: 14, padding: '10px 16px', background: 'var(--bg)', borderRadius: 8, fontSize: 13, flexWrap: 'wrap' }}>
+                  <span style={{ color: '#059669', fontWeight: 700 }}>↑ Crédits : {formatMontant(totalCredit)}</span>
+                  <span style={{ color: '#DC2626', fontWeight: 700 }}>↓ Débits : {formatMontant(totalDebit)}</span>
+                  <span style={{ fontWeight: 700, color: solde >= 0 ? '#059669' : '#DC2626' }}>
+                    Solde : {formatMontant(solde)}
+                  </span>
+                  <span style={{ color: 'var(--text-muted)', marginLeft: 'auto' }}>{banqueMouvements.length} opération(s)</span>
+                </div>
+
+                <div className="table-container">
+                  <table className="table">
+                    <thead>
+                      <tr>
+                        <th>Date</th>
+                        <th>Libellé</th>
+                        <th>Détail</th>
+                        <th style={{ textAlign: 'right', color: '#059669' }}>Crédit</th>
+                        <th style={{ textAlign: 'right', color: '#DC2626' }}>Débit</th>
+                        <th>Statut</th>
+                        <th>Locataire</th>
+                        <th></th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {banqueMouvements.map(m => (
+                        <tr key={m.id} style={{ opacity: m.statut === 'ignore' ? 0.45 : 1 }}>
+                          <td style={{ fontSize: 13, whiteSpace: 'nowrap' }}>{fmtDate(m.date_operation)}</td>
+                          <td style={{ fontSize: 13, maxWidth: 220, wordBreak: 'break-word' }}>{m.libelle || '—'}</td>
+                          <td style={{ fontSize: 12, color: 'var(--text-muted)', maxWidth: 160, wordBreak: 'break-word' }}>{m.detail || '—'}</td>
+                          <td style={{ textAlign: 'right', fontWeight: m.credit ? 700 : 400, color: m.credit ? '#059669' : 'var(--text-muted)' }}>
+                            {m.credit ? formatMontant(m.credit) : '—'}
+                          </td>
+                          <td style={{ textAlign: 'right', fontWeight: m.debit ? 700 : 400, color: m.debit ? '#DC2626' : 'var(--text-muted)' }}>
+                            {m.debit ? formatMontant(m.debit) : '—'}
+                          </td>
+                          <td>
+                            <span style={{
+                              display: 'inline-block', padding: '2px 7px', borderRadius: 8, fontSize: 11, fontWeight: 600,
+                              background: m.statut === 'rapproche' ? '#D1FAE5' : m.statut === 'ignore' ? '#F3F4F6' : '#FFF7ED',
+                              color:      m.statut === 'rapproche' ? '#059669' : m.statut === 'ignore' ? '#6B7280' : '#B45309',
+                            }}>
+                              {m.statut === 'rapproche' ? 'Rapproché ✓' : m.statut === 'ignore' ? 'Ignoré' : 'En attente'}
+                            </span>
+                          </td>
+                          <td style={{ fontSize: 12, color: 'var(--text-muted)' }}>
+                            {m.etudiant ? `${m.etudiant.nom}${m.etudiant.prenom ? ' ' + m.etudiant.prenom : ''}` : '—'}
+                          </td>
+                          <td>
+                            <button className="btn btn-secondary" style={{ fontSize: 11, padding: '2px 6px', color: '#DC2626' }}
+                              onClick={() => handleSupprimerMouvement(m.id)} title="Supprimer">✕</button>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </>
+            )}
+          </div>
+        )
+      })()}
 
       {/* Modal confirmation archivage / suppression */}
       {confirmSuppr && (
