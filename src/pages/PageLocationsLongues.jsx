@@ -477,6 +477,10 @@ export default function PageLocationsLongues() {
         return true
       })
       // Sinon chercher par montant de caution
+      if (!match) {
+        const candidats = etudiants.filter(e => e.bien?.code && hay.includes(norm(e.bien.code)))
+        if (candidats.length === 1) match = candidats[0]
+      }
       if (!match && m.credit) {
         const candidats = etudiants.filter(e => e.caution === m.credit)
         if (candidats.length === 1) match = candidats[0]
