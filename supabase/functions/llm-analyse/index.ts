@@ -13,8 +13,8 @@ Deno.serve(async (req) => {
       status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' },
     })
   }
-  if (prompt.length > 12000) {
-    return new Response(JSON.stringify({ error: 'prompt trop long (max 12000)' }), {
+  if (prompt.length > 20000) {
+    return new Response(JSON.stringify({ error: 'prompt trop long (max 20000)' }), {
       status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' },
     })
   }

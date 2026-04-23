@@ -1,12 +1,12 @@
 import { AGENCE } from '../lib/agence'
 import { useState, useEffect } from 'react'
+import { getAutoEntrepreneurs, saveAutoEntrepreneur, deleteAutoEntrepreneur, createAEWithAuth, createAEAccess, resetAEPassword } from '../services/autoEntrepreneurs'
+import { supabase } from '../lib/supabase'
 
 function escapeHtml(str) {
   if (!str) return ''
   return String(str).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;')
 }
-import { getAutoEntrepreneurs, saveAutoEntrepreneur, deleteAutoEntrepreneur, createAEWithAuth, createAEAccess, resetAEPassword } from '../services/autoEntrepreneurs'
-import { supabase } from '../lib/supabase'
 
 const EMPTY_AE = {
   nom: '', prenom: '', siret: '', adresse: '', code_postal: '', ville: '',
