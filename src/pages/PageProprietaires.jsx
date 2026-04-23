@@ -506,6 +506,15 @@ function addMois(mois, n) {
   return `${y}-${String(m).padStart(2, '0')}`
 }
 
+function raisonZero(r) {
+  const net = r.vir > 0 ? r.vir : r.loy
+  if (net > 0) return null
+  if ((r.base_comm || 0) === 0) return 'Montants Hospitable non disponibles'
+  if (r.isEstimated)             return 'Virement non encore calculé (mois futur)'
+  if ((r.loy || 0) === 0)       return 'Couvert par frais propriétaire'
+  return 'En attente de rapprochement bancaire'
+}
+
 function genererHTMLPrevisionnel(proprio, moisDebut, nbMois, data) {
   const moisList = Array.from({ length: nbMois }, (_, i) => addMois(moisDebut, i))
   const periode = nbMois === 1
@@ -520,13 +529,16 @@ function genererHTMLPrevisionnel(proprio, moisDebut, nbMois, data) {
       const arrFR = r.arrival_date ? r.arrival_date.substring(5).split('-').reverse().join('/') : '—'
       const depFR = r.departure_date ? r.departure_date.substring(5).split('-').reverse().join('/') : '—'
       const net = r.vir > 0 ? r.vir : r.loy
-      const isEst = r.vir === 0
+      const raison = raisonZero(r)
+      const netDisplay = raison
+        ? `<span style="font-size:10px;color:#dc2626;">${raison}</span>`
+        : `${((net || 0) / 100).toLocaleString('fr-FR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} €`
       return `<tr style="background:${i % 2 === 0 ? '#F7F4EF' : '#fff'};">
         <td>${arrFR} → ${depFR}</td>
         <td>${r.guest_name || '—'}</td>
         <td style="text-align:center;">${r.nights || '—'} nuits</td>
-        <td style="text-align:right;font-weight:600;color:#CC9933;">
-          ${((net || 0) / 100).toLocaleString('fr-FR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} €${isEst ? '<span style="font-size:9px;color:#9C8E7D;margin-left:4px;">estimé</span>' : ''}
+        <td style="text-align:right;font-weight:600;color:${raison ? '#dc2626' : '#CC9933'};">
+          ${netDisplay}
         </td>
       </tr>`
     }).join('')
@@ -834,7 +846,7 @@ function ModalPrevisionnel({ proprio, onClose }) {
   }
 
   const moisList = Array.from({ length: nbMois }, (_, i) => addMois(moisDebut, i))
-  const totalGlobal = (resas || []).reduce((s, r) => s + r.loy, 0)
+  const totalGlobal = (resas || []).reduce((s, r) => s + (r.vir > 0 ? r.vir : r.loy), 0)
 
   // Options mois de début : mois courant + 5 suivants
   const moisOptions = Array.from({ length: 6 }, (_, i) => addMois(moisCourant, i))
@@ -895,7 +907,7 @@ function ModalPrevisionnel({ proprio, onClose }) {
             <div style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
               {moisList.map(mois => {
                 const resasMois = (resas || []).filter(r => r.mois_comptable === mois)
-                const totalMois = resasMois.reduce((s, r) => s + r.loy, 0)
+                const totalMois = resasMois.reduce((s, r) => s + (r.vir > 0 ? r.vir : r.loy), 0)
                 return (
                   <div key={mois}>
                     <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8, paddingBottom: 6, borderBottom: '2px solid var(--brand)' }}>
@@ -922,7 +934,10 @@ function ModalPrevisionnel({ proprio, onClose }) {
                           </tr>
                         </thead>
                         <tbody>
-                          {resasMois.map(r => (
+                          {resasMois.map(r => {
+                            const net = r.vir > 0 ? r.vir : r.loy
+                            const raison = raisonZero(r)
+                            return (
                             <tr key={r.id}>
                               <td style={{ whiteSpace: 'nowrap' }}>{r.arrival_date ? r.arrival_date.substring(5).split('-').reverse().join('/') : '—'}</td>
                               <td style={{ whiteSpace: 'nowrap' }}>{r.departure_date ? r.departure_date.substring(5).split('-').reverse().join('/') : '—'}</td>
@@ -930,9 +945,14 @@ function ModalPrevisionnel({ proprio, onClose }) {
                               <td style={{ textAlign: 'center' }}>{r.nights || '—'}</td>
                               <td style={{ textAlign: 'right', fontVariantNumeric: 'tabular-nums' }}>{fmtEur(r.base_comm)}</td>
                               <td style={{ textAlign: 'right', color: 'var(--text-muted)', fontVariantNumeric: 'tabular-nums' }}>{fmtEur(r.hon)}</td>
-                              <td style={{ textAlign: 'right', fontWeight: 600, color: 'var(--brand)', fontVariantNumeric: 'tabular-nums' }}>{fmtEur(r.loy)}</td>
+                              <td style={{ textAlign: 'right', fontWeight: 600, fontVariantNumeric: 'tabular-nums' }}>
+                                {raison
+                                  ? <span style={{ fontSize: 11, color: '#dc2626' }}>{raison}</span>
+                                  : <span style={{ color: 'var(--brand)' }}>{fmtEur(net)}</span>}
+                              </td>
                             </tr>
-                          ))}
+                            )
+                          })}
                         </tbody>
                       </table>
                     )}
