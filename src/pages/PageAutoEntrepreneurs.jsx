@@ -203,11 +203,6 @@ export default function PageAutoEntrepreneurs() {
       </tr>`
     }
 
-    // Lignes absences pour le tableau principal (une par plage)
-    const absLignes = absences.length === 0
-      ? `<td style="${tdA}"></td><td style="${tdA}"></td><td style="${tdA}"></td>`
-      : '' // construit ci-dessous
-
     const td = 'padding:6px 8px;border:1px solid #999;font-size:12px;'
     const th = 'padding:6px 8px;border:1px solid #999;font-size:11px;background:#f3f4f6;font-weight:600;text-align:center;'
     const tdA = 'padding:6px 8px;border:1px solid #999;font-size:12px;'
