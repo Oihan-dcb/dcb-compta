@@ -12,7 +12,13 @@ export async function getProprietairesComplets() {
     .eq('agence', AGENCE)
     .order('nom')
   if (error) throw error
-  return data || []
+
+  // Filtre côté client : bien et mandat_gestion par agence courante
+  return (data || []).map(p => ({
+    ...p,
+    bien:           (p.bien           || []).filter(b => b.agence === AGENCE),
+    mandat_gestion: (p.mandat_gestion || []).filter(m => m.agence === AGENCE),
+  }))
 }
 
 export async function updateProprietaire(id, payload) {

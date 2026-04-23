@@ -13,18 +13,27 @@ const CORS_HEADERS = {
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
 }
 
-// Cache du token en mémoire (valide 20 min, marge de 60s)
-let _token: string | null = null
-let _tokenExpiry = 0
+// Cache des tokens par companyId (valide 20 min, marge de 60s)
+const _tokenCache: Record<string, { token: string; expiry: number }> = {}
 
-async function getToken(): Promise<string> {
-  if (_token && Date.now() < _tokenExpiry) return _token
+// Mapping companyId → suffixe secret Supabase
+// DCB     : EVOLIZ_PUBLIC_KEY     / EVOLIZ_SECRET_KEY
+// Lauian  : EVOLIZ_PUBLIC_KEY_LAUIAN / EVOLIZ_SECRET_KEY_LAUIAN
+const COMPANY_SUFFIX: Record<string, string> = {
+  '114158': '',
+  '115576': '_LAUIAN',
+}
 
-  const publicKey = Deno.env.get('EVOLIZ_PUBLIC_KEY')
-  const secretKey = Deno.env.get('EVOLIZ_SECRET_KEY')
+async function getToken(companyId: string): Promise<string> {
+  const cached = _tokenCache[companyId]
+  if (cached && Date.now() < cached.expiry) return cached.token
+
+  const suffix = COMPANY_SUFFIX[companyId] ?? ''
+  const publicKey = Deno.env.get(`EVOLIZ_PUBLIC_KEY${suffix}`)
+  const secretKey = Deno.env.get(`EVOLIZ_SECRET_KEY${suffix}`)
 
   if (!publicKey || !secretKey) {
-    throw new Error('Clés Evoliz manquantes dans les secrets Supabase (EVOLIZ_PUBLIC_KEY, EVOLIZ_SECRET_KEY)')
+    throw new Error(`Clés Evoliz manquantes pour companyId ${companyId} (EVOLIZ_PUBLIC_KEY${suffix}, EVOLIZ_SECRET_KEY${suffix})`)
   }
 
   const res = await fetch(`${EVOLIZ_BASE}/api/login`, {
@@ -39,20 +48,16 @@ async function getToken(): Promise<string> {
   }
 
   const data = await res.json()
-  _token = data.access_token
+  const expiry = data.expires_at
+    ? new Date(data.expires_at).getTime() - 60_000
+    : Date.now() + 19 * 60 * 1000
 
-  // expires_at = "2019-10-10T09:26:40.000000Z" — parser et soustraire 60s
-  if (data.expires_at) {
-    _tokenExpiry = new Date(data.expires_at).getTime() - 60_000
-  } else {
-    _tokenExpiry = Date.now() + 19 * 60 * 1000 // 19 min par défaut
-  }
-
-  return _token!
+  _tokenCache[companyId] = { token: data.access_token, expiry }
+  return data.access_token
 }
 
 async function evolizReq(method: string, path: string, companyId: string, body?: object) {
-  const token = await getToken()
+  const token = await getToken(companyId)
   const url = `${EVOLIZ_BASE}/api/v1/companies/${companyId}${path}`
 
   const res = await fetch(url, {
@@ -107,6 +112,12 @@ serve(async (req) => {
 
       case 'getClient': {
         result = await evolizReq('GET', `/clients/${payload.clientId}`, company)
+        break
+      }
+
+      case 'getClientContacts': {
+        // Récupère les contacts d'un client (emails, téléphones détaillés)
+        result = await evolizReq('GET', `/clients/${payload.clientId}/contacts`, company)
         break
       }
 
@@ -218,7 +229,7 @@ serve(async (req) => {
       // ── PDF ──────────────────────────────────────────────
       case 'getInvoicePDF': {
         // Télécharge le PDF d'une facture et retourne son contenu en base64
-        const token = await getToken()
+        const token = await getToken(company)
         const url = `${EVOLIZ_BASE}/api/v1/companies/${company}/invoices/${payload.invoiceId}/pdf`
         const pdfRes = await fetch(url, {
           method: 'GET',

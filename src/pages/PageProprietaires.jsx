@@ -8,6 +8,7 @@ import {
   supprimerMandat,
 } from '../services/mandats'
 import { syncProprietairesEvoliz } from '../services/syncProprietaires'
+import { buildRapportData } from '../services/buildRapportData'
 import { supabase } from '../lib/supabase'
 
 const TYPE_LABELS = {
@@ -66,24 +67,42 @@ function ModalFiche({ proprio, onClose, onSaved }) {
     if (!proprio.id_evoliz) return
     setSyncing(true); setErr(null)
     try {
-      await syncProprietairesEvoliz()
-      const { data } = await supabase
-        .from('proprietaire').select('*').eq('id', proprio.id).single()
-      if (data) {
-        setForm(f => ({
-          ...f,
-          nom:         data.nom || f.nom,
-          prenom:      data.prenom || f.prenom,
-          email:       data.email || f.email,
-          telephone:   data.telephone || f.telephone,
-          adresse:     data.adresse || f.adresse,
-          code_postal: data.code_postal || f.code_postal,
-          ville:       data.ville || f.ville,
-          pays:        data.pays || f.pays,
-        }))
-        onSaved({ ...proprio, ...data })
-        setOk(true); setTimeout(() => setOk(false), 2000)
+      // Appel direct getClient (plus rapide que full sync, et inclut l'email)
+      const { data: resp, error: fnErr } = await supabase.functions.invoke('evoliz-proxy', {
+        body: {
+          action: 'getClient',
+          companyId: parseInt(import.meta.env.VITE_EVOLIZ_COMPANY_ID || '114158'),
+          payload: { clientId: proprio.id_evoliz },
+        },
+      })
+      if (fnErr) throw new Error(fnErr.message)
+      const c = resp?.data
+
+      // L'email peut être direct (c.email) ou dans les contacts (c.contacts[].email)
+      const emailDirect = (c?.email || '').trim() || null
+      const emailContact = c?.contacts?.find(ct => ct.email)?.email?.trim() || null
+      const email = emailDirect || emailContact
+
+      const addr = c?.address || {}
+      const tel = (c?.mobile || c?.phone || '').trim() || null
+
+      const payload = {
+        email:       email,
+        telephone:   tel || null,
+        adresse:     addr.addr || null,
+        code_postal: addr.postcode || null,
+        ville:       addr.town || null,
+        pays:        addr.country?.label || 'France',
       }
+      // Ne mettre à jour que les champs non-nuls retournés par Evoliz
+      const toUpdate = Object.fromEntries(Object.entries(payload).filter(([, v]) => v != null))
+      if (Object.keys(toUpdate).length > 0) {
+        await supabase.from('proprietaire').update(toUpdate).eq('id', proprio.id)
+      }
+
+      setForm(f => ({ ...f, ...toUpdate }))
+      onSaved({ ...proprio, ...toUpdate })
+      setOk(true); setTimeout(() => setOk(false), 2000)
     } catch (e) { setErr(e.message) }
     finally { setSyncing(false) }
   }
@@ -465,6 +484,356 @@ function ModalFiche({ proprio, onClose, onSaved }) {
   )
 }
 
+// ── Modal prévisionnel ────────────────────────────────────────────────────────
+
+const MOIS_FR = ['janvier','février','mars','avril','mai','juin','juillet','août','septembre','octobre','novembre','décembre']
+const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL
+const SUPABASE_ANON_KEY = import.meta.env.VITE_SUPABASE_ANON_KEY
+
+function fmtEur(centimes) {
+  return ((centimes || 0) / 100).toLocaleString('fr-FR', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) + ' €'
+}
+
+function moisLabel(mois) {
+  const [y, m] = mois.split('-')
+  return MOIS_FR[parseInt(m) - 1] + ' ' + y
+}
+
+function addMois(mois, n) {
+  let [y, m] = mois.split('-').map(Number)
+  m += n
+  while (m > 12) { m -= 12; y++ }
+  return `${y}-${String(m).padStart(2, '0')}`
+}
+
+function genererEmailPrevisionnel(proprio, moisDebut, nbMois, data, taux) {
+  const periode = nbMois === 1
+    ? moisLabel(moisDebut)
+    : `${moisLabel(moisDebut)} – ${moisLabel(addMois(moisDebut, nbMois - 1))}`
+
+  const moisList = Array.from({ length: nbMois }, (_, i) => addMois(moisDebut, i))
+
+  const sectionsHTML = moisList.map(mois => {
+    const resasMois = data.filter(r => r.mois_comptable === mois)
+    const totalLoy = resasMois.reduce((s, r) => s + r.loy, 0)
+
+    if (resasMois.length === 0) return `
+      <div style="margin-bottom:24px;">
+        <div style="font-size:11px;font-weight:700;letter-spacing:1px;text-transform:uppercase;color:#CC9933;margin-bottom:8px;padding-bottom:6px;border-bottom:2px solid #CC9933;">
+          ${moisLabel(mois)}
+        </div>
+        <p style="color:#9C8E7D;font-style:italic;font-size:12px;">Aucune réservation confirmée.</p>
+      </div>`
+
+    const rows = resasMois.map((r, i) => {
+      const arrFR = r.arrival_date ? r.arrival_date.substring(5).split('-').reverse().join('/') : '—'
+      const depFR = r.departure_date ? r.departure_date.substring(5).split('-').reverse().join('/') : '—'
+      const bg = i % 2 === 0 ? '#F7F4EF' : '#fff'
+      return `<tr style="background:${bg};">
+        <td style="padding:5px 8px;color:#2C2416;font-size:12px;">${arrFR}</td>
+        <td style="padding:5px 8px;color:#4A3728;font-size:12px;">${depFR}</td>
+        <td style="padding:5px 8px;color:#2C2416;font-size:12px;">${r.guest_name || '—'}</td>
+        <td style="padding:5px 8px;text-align:center;color:#4A3728;font-size:12px;">${r.nights || '—'}</td>
+        <td style="padding:5px 8px;text-align:right;color:#9C8E7D;font-size:12px;">${fmtEur(r.hon)}</td>
+        <td style="padding:5px 8px;text-align:right;font-weight:600;color:#CC9933;font-size:12px;">${fmtEur(r.loy)}</td>
+      </tr>`
+    }).join('')
+
+    return `
+      <div style="margin-bottom:28px;">
+        <div style="font-size:11px;font-weight:700;letter-spacing:1px;text-transform:uppercase;color:#CC9933;margin-bottom:8px;padding-bottom:6px;border-bottom:2px solid #CC9933;">
+          ${moisLabel(mois)}
+        </div>
+        <table style="width:100%;border-collapse:collapse;font-size:12px;">
+          <thead>
+            <tr style="background:#EDEBE5;">
+              <th style="padding:6px 8px;text-align:left;font-weight:600;font-size:11px;color:#2C2416;">Arrivée</th>
+              <th style="padding:6px 8px;text-align:left;font-weight:600;font-size:11px;color:#2C2416;">Départ</th>
+              <th style="padding:6px 8px;text-align:left;font-weight:600;font-size:11px;color:#2C2416;">Voyageur</th>
+              <th style="padding:6px 8px;text-align:center;font-weight:600;font-size:11px;color:#2C2416;">Nuits</th>
+              <th style="padding:6px 8px;text-align:right;font-weight:600;font-size:11px;color:#9C8E7D;">Honoraires DCB</th>
+              <th style="padding:6px 8px;text-align:right;font-weight:600;font-size:11px;color:#CC9933;">Net propriétaire</th>
+            </tr>
+          </thead>
+          <tbody>${rows}</tbody>
+          <tfoot>
+            <tr>
+              <td colspan="5" style="padding:8px;font-weight:700;border-top:2px solid #CC9933;background:#E8E2D6;font-size:11px;letter-spacing:0.05em;text-transform:uppercase;color:#2C2416;">
+                Total estimé ${moisLabel(mois)}
+              </td>
+              <td style="padding:8px;font-weight:700;border-top:2px solid #CC9933;background:#E8E2D6;text-align:right;color:#CC9933;font-size:14px;">
+                ${fmtEur(totalLoy)}
+              </td>
+            </tr>
+          </tfoot>
+        </table>
+      </div>`
+  }).join('')
+
+  const totalGlobal = data.reduce((s, r) => s + r.loy, 0)
+
+  return `<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8">
+<title>Prévisionnel ${proprio.nom} — ${periode}</title>
+</head>
+<body style="margin:0;padding:0;background:#F7F4EF;font-family:Arial,sans-serif;">
+<div style="max-width:640px;margin:0 auto;background:#fff;">
+
+  <!-- Header -->
+  <div style="background:#2C2416;padding:28px 32px;">
+    <div style="font-size:10px;letter-spacing:0.08em;text-transform:uppercase;color:#CC9933;margin-bottom:6px;">Destination Côte Basque · Prévisionnel</div>
+    <div style="font-size:22px;font-weight:400;color:#fff;">${proprio.nom}${proprio.prenom ? ' ' + proprio.prenom : ''}</div>
+    <div style="font-size:13px;color:rgba(255,255,255,0.6);margin-top:4px;">${periode}</div>
+  </div>
+
+  <!-- Intro -->
+  <div style="padding:20px 32px 0;">
+    <p style="font-size:13px;color:#4A3728;line-height:1.7;margin:0 0 4px;">
+      Voici une estimation de vos revenus nets pour la période à venir, basée sur les réservations <strong>actuellement confirmées</strong> dans notre système.
+    </p>
+    <div style="background:#FEF9EC;border:1px solid #CC9933;border-radius:6px;padding:10px 14px;margin:14px 0 0;font-size:12px;color:#92400E;line-height:1.6;">
+      ⚠️ <strong>Ces montants sont indicatifs.</strong> Ils peuvent évoluer en fonction des nouvelles réservations, des annulations ou des ajustements tarifaires jusqu'à la date de versement.
+      Le taux de commission appliqué est de <strong>${taux}%</strong>.
+    </div>
+  </div>
+
+  <!-- Sections par mois -->
+  <div style="padding:20px 32px;">
+    ${sectionsHTML}
+  </div>
+
+  <!-- Total global (si plusieurs mois) -->
+  ${nbMois > 1 ? `
+  <div style="margin:0 32px 24px;background:#2C2416;border-radius:8px;padding:16px 20px;display:flex;justify-content:space-between;align-items:center;">
+    <span style="font-size:13px;color:#CC9933;font-weight:600;letter-spacing:0.04em;text-transform:uppercase;">Total estimé sur la période</span>
+    <span style="font-size:20px;font-weight:700;color:#fff;">${fmtEur(totalGlobal)}</span>
+  </div>` : ''}
+
+  <!-- Footer -->
+  <div style="padding:16px 32px;background:#F7F4EF;border-top:2px solid #CC9933;text-align:center;">
+    <div style="font-size:11px;color:#9C8E7D;">Destination Côte Basque — Conciergerie de prestige, Biarritz</div>
+    <div style="font-size:11px;color:#9C8E7D;margin-top:3px;">oihan@destinationcotebasque.com</div>
+    <div style="font-size:10px;color:#C4B89A;margin-top:8px;">Document généré le ${new Date().toLocaleDateString('fr-FR')} · Estimation non contractuelle</div>
+  </div>
+
+</div>
+</body>
+</html>`
+}
+
+function ModalPrevisionnel({ proprio, onClose }) {
+  const today = new Date()
+  const moisCourant = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}`
+
+  const [moisDebut, setMoisDebut] = useState(moisCourant)
+  const [nbMois, setNbMois]       = useState(3)
+  const [loading, setLoading]     = useState(false)
+  const [resas, setResas]         = useState(null)
+  const [sending, setSending]     = useState(false)
+  const [sent, setSent]           = useState(false)
+  const [err, setErr]             = useState(null)
+
+  const bienIds = (proprio.bien || []).map(b => b.id)
+  // Taux par bien (taux_commission_override du bien > mandat actif > proprio > 25)
+  // proprio.bien n'a pas taux_commission_override → on le récupère dans chargerResas
+  const mandatActif = (proprio.mandat_gestion || []).find(m => m.statut === 'actif')
+  const tauxDefaut = mandatActif?.taux_commission ?? proprio.taux_commission ?? 25
+
+  useEffect(() => {
+    if (bienIds.length === 0) return
+    chargerResas()
+  }, [moisDebut, nbMois])
+
+  async function chargerResas() {
+    setLoading(true); setErr(null); setResas(null)
+    try {
+      const biens = proprio.bien || []
+      const moisList = Array.from({ length: nbMois }, (_, i) => addMois(moisDebut, i))
+
+      // Appeler buildRapportData (source de vérité) pour chaque bien × mois
+      const calls = biens.flatMap(bien =>
+        moisList.map(mois =>
+          buildRapportData(bien.id, proprio.id, mois)
+            .then(data => ({ mois, data }))
+            .catch(() => ({ mois, data: null }))
+        )
+      )
+      const results = await Promise.all(calls)
+
+      // Aplatir les resasEnrichies — loy/hon/base_comm viennent directement de buildRapportData
+      const enriched = results
+        .filter(r => r.data)
+        .flatMap(({ mois, data }) =>
+          data.resasEnrichies
+            .filter(r => !r.owner_stay)
+            .map(r => ({
+              ...r,
+              mois_comptable: mois,
+              taux: data.tauxCommission,
+              // loy > 0 = ventilation calculée ; sinon mois futur sans ventilation
+              isEstimated: (r.loy || 0) === 0 && (r.base_comm || 0) > 0,
+            }))
+        )
+        .sort((a, b) => (a.arrival_date || '').localeCompare(b.arrival_date || ''))
+
+      setResas(enriched)
+    } catch (e) { setErr(e.message) }
+    finally { setLoading(false) }
+  }
+
+  async function envoyer() {
+    if (!proprio.email) return
+    setSending(true); setErr(null)
+    try {
+      const periode = nbMois === 1
+        ? moisLabel(moisDebut)
+        : `${moisLabel(moisDebut)} – ${moisLabel(addMois(moisDebut, nbMois - 1))}`
+      const html = genererEmailPrevisionnel(proprio, moisDebut, nbMois, resas || [], tauxDefaut)
+      const res = await fetch(`${SUPABASE_URL}/functions/v1/smtp-send`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${SUPABASE_ANON_KEY}` },
+        body: JSON.stringify({
+          to: [proprio.email],
+          subject: `Estimation de vos revenus ${periode} — Destination Côte Basque`,
+          html,
+        }),
+      })
+      if (!res.ok) { const t = await res.text(); throw new Error(t) }
+      setSent(true)
+    } catch (e) { setErr(e.message) }
+    finally { setSending(false) }
+  }
+
+  const moisList = Array.from({ length: nbMois }, (_, i) => addMois(moisDebut, i))
+  const totalGlobal = (resas || []).reduce((s, r) => s + r.loy, 0)
+
+  // Options mois de début : mois courant + 5 suivants
+  const moisOptions = Array.from({ length: 6 }, (_, i) => addMois(moisCourant, i))
+
+  return (
+    <div className="modal-overlay" onClick={onClose}>
+      <div className="modal" style={{ maxWidth: 780 }} onClick={e => e.stopPropagation()}>
+        <div className="modal-header">
+          <div>
+            <h2 style={{ margin: 0 }}>Prévisionnel — {proprio.nom}{proprio.prenom ? ' ' + proprio.prenom : ''}</h2>
+            <span style={{ fontSize: 12, color: 'var(--text-muted)' }}>
+              Estimation basée sur les réservations confirmées · Taux {Number(taux).toFixed(1)}%
+            </span>
+          </div>
+          <button className="modal-close" onClick={onClose}>✕</button>
+        </div>
+
+        <div className="modal-body">
+          {/* Sélecteurs */}
+          <div style={{ display: 'flex', gap: 16, alignItems: 'center', marginBottom: 20, flexWrap: 'wrap' }}>
+            <div className="form-group" style={{ margin: 0 }}>
+              <label className="form-label">Début</label>
+              <select className="form-select" value={moisDebut} onChange={e => setMoisDebut(e.target.value)} style={{ minWidth: 160 }}>
+                {moisOptions.map(m => <option key={m} value={m}>{moisLabel(m)}</option>)}
+              </select>
+            </div>
+            <div className="form-group" style={{ margin: 0 }}>
+              <label className="form-label">Durée</label>
+              <select className="form-select" value={nbMois} onChange={e => setNbMois(Number(e.target.value))}>
+                {[1,2,3,4,5,6].map(n => <option key={n} value={n}>{n} mois</option>)}
+              </select>
+            </div>
+            <div style={{ marginLeft: 'auto', textAlign: 'right' }}>
+              <div style={{ fontSize: 11, color: 'var(--text-muted)', marginBottom: 2 }}>NET estimé total</div>
+              <div style={{ fontSize: 22, fontWeight: 700, color: 'var(--brand)' }}>
+                {loading ? '…' : fmtEur(totalGlobal)}
+              </div>
+            </div>
+          </div>
+
+          {err && <div className="alert alert-error" style={{ marginBottom: 12 }}>✗ {err}</div>}
+          {sent && <div className="alert alert-success" style={{ marginBottom: 12 }}>✓ Email envoyé à {proprio.email}</div>}
+
+          {/* Disclaimer */}
+          <div style={{ background: '#FEF9EC', border: '1px solid var(--brand)', borderRadius: 6, padding: '8px 12px', fontSize: 12, color: '#92400E', marginBottom: 16 }}>
+            ⚠️ Estimation basée sur les réservations actuellement confirmées. Les montants peuvent varier suite à des annulations ou nouvelles réservations.
+          </div>
+
+          {/* Tableau par mois */}
+          {loading ? (
+            <div className="loading-state"><span className="spinner" /> Chargement des réservations…</div>
+          ) : bienIds.length === 0 ? (
+            <div className="empty-state" style={{ padding: 24 }}>
+              <div className="empty-state-title">Aucun bien associé</div>
+              <p style={{ fontSize: 13, color: 'var(--text-muted)' }}>Ce propriétaire n'a pas de bien dans cette agence.</p>
+            </div>
+          ) : (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
+              {moisList.map(mois => {
+                const resasMois = (resas || []).filter(r => r.mois_comptable === mois)
+                const totalMois = resasMois.reduce((s, r) => s + r.loy, 0)
+                return (
+                  <div key={mois}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8, paddingBottom: 6, borderBottom: '2px solid var(--brand)' }}>
+                      <span style={{ fontSize: 12, fontWeight: 700, letterSpacing: '0.06em', textTransform: 'uppercase', color: 'var(--brand)' }}>
+                        {moisLabel(mois)}
+                      </span>
+                      <span style={{ fontSize: 14, fontWeight: 700, color: 'var(--brand)' }}>
+                        {fmtEur(totalMois)}
+                      </span>
+                    </div>
+                    {resasMois.length === 0 ? (
+                      <p style={{ fontSize: 12, color: 'var(--text-muted)', fontStyle: 'italic', padding: '8px 0' }}>Aucune réservation confirmée.</p>
+                    ) : (
+                      <table>
+                        <thead>
+                          <tr>
+                            <th>Arrivée</th>
+                            <th>Départ</th>
+                            <th>Voyageur</th>
+                            <th style={{ textAlign: 'center' }}>Nuits</th>
+                            <th style={{ textAlign: 'right', color: 'var(--text-muted)' }}>Base comm.</th>
+                            <th style={{ textAlign: 'right', color: 'var(--text-muted)' }}>Hon. DCB</th>
+                            <th style={{ textAlign: 'right', color: 'var(--brand)' }}>NET proprio</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {resasMois.map(r => (
+                            <tr key={r.id}>
+                              <td style={{ whiteSpace: 'nowrap' }}>{r.arrival_date ? r.arrival_date.substring(5).split('-').reverse().join('/') : '—'}</td>
+                              <td style={{ whiteSpace: 'nowrap' }}>{r.departure_date ? r.departure_date.substring(5).split('-').reverse().join('/') : '—'}</td>
+                              <td style={{ fontSize: 12 }}>{r.guest_name || '—'}</td>
+                              <td style={{ textAlign: 'center' }}>{r.nights || '—'}</td>
+                              <td style={{ textAlign: 'right', fontVariantNumeric: 'tabular-nums' }}>{fmtEur(r.base_comm)}</td>
+                              <td style={{ textAlign: 'right', color: 'var(--text-muted)', fontVariantNumeric: 'tabular-nums' }}>{fmtEur(r.hon)}</td>
+                              <td style={{ textAlign: 'right', fontWeight: 600, color: 'var(--brand)', fontVariantNumeric: 'tabular-nums' }}>{fmtEur(r.loy)}</td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    )}
+                  </div>
+                )
+              })}
+            </div>
+          )}
+        </div>
+
+        <div className="modal-footer">
+          <button className="btn btn-secondary" onClick={onClose}>Fermer</button>
+          {proprio.email ? (
+            <button className="btn btn-primary" disabled={sending || loading || !resas}
+              onClick={envoyer}>
+              {sending ? 'Envoi…' : `📧 Envoyer à ${proprio.email}`}
+            </button>
+          ) : (
+            <span style={{ fontSize: 12, color: 'var(--text-muted)', alignSelf: 'center' }}>
+              Pas d'email renseigné pour ce propriétaire
+            </span>
+          )}
+        </div>
+      </div>
+    </div>
+  )
+}
+
 // ── Page principale ────────────────────────────────────────────────────────────
 
 export default function PageProprietaires() {
@@ -474,6 +843,7 @@ export default function PageProprietaires() {
   const [recherche, setRecherche] = useState('')
   const [filtreActif, setFiltreActif] = useState('actif') // 'actif' | 'archive' | 'tous'
   const [selected, setSelected]   = useState(null)
+  const [previsionnel, setPrevisionnel] = useState(null)
 
   useEffect(() => { charger() }, [])
 
@@ -639,9 +1009,15 @@ export default function PageProprietaires() {
                       {taux != null ? `${Number(taux).toFixed(1)}%` : <span style={{ color: 'var(--text-muted)' }}>—</span>}
                     </td>
                     <td>
-                      <button className="btn btn-secondary btn-sm" onClick={e => { e.stopPropagation(); setSelected(p) }}>
-                        Voir
-                      </button>
+                      <div style={{ display: 'flex', gap: 4 }}>
+                        <button className="btn btn-secondary btn-sm" onClick={e => { e.stopPropagation(); setSelected(p) }}>
+                          Voir
+                        </button>
+                        <button className="btn btn-secondary btn-sm" title="Envoyer prévisionnel NET"
+                          onClick={e => { e.stopPropagation(); setPrevisionnel(p) }}>
+                          📊
+                        </button>
+                      </div>
                     </td>
                   </tr>
                 )
@@ -657,6 +1033,14 @@ export default function PageProprietaires() {
           proprio={selected}
           onClose={() => setSelected(null)}
           onSaved={handleSaved}
+        />
+      )}
+
+      {/* Modal prévisionnel */}
+      {previsionnel && (
+        <ModalPrevisionnel
+          proprio={previsionnel}
+          onClose={() => setPrevisionnel(null)}
         />
       )}
     </div>
