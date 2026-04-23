@@ -5,7 +5,11 @@ import { parserCSVCaisseEpargne } from '../services/lldBanque'
 
 const MOIS_COURANT = new Date().toISOString().slice(0, 7)
 
-const CATEGORIES = ['telecom', 'abonnement', 'logiciel', 'loyer', 'materiel', 'autre']
+const CATEGORIES = [
+  'energie', 'assurance', 'comptabilite', 'frais_bancaires', 'carte_bancaire',
+  'salaire', 'prestataire_ae', 'loyer', 'plateforme', 'telecom',
+  'abonnement', 'logiciel', 'fournitures', 'securite', 'publicite', 'autre',
+]
 const TYPES_PAIEMENT = ['virement', 'cb', 'prelevement', 'cheque', 'especes']
 const STATUTS = { a_valider: 'À valider', valide: 'Validé', rejete: 'Rejeté' }
 const STATUT_COLORS = {
