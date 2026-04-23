@@ -20,30 +20,40 @@ function parseMontant(str) {
   return Math.round(Math.abs(v) * 100)
 }
 
-function splitCSVLine(line) {
+function splitCSVLine(line, sep) {
   const cols = []; let cur = '', inQ = false
   for (const c of line) {
     if (c === '"') { inQ = !inQ; continue }
-    if (c === ';' && !inQ) { cols.push(cur.trim()); cur = ''; continue }
+    if (c === sep && !inQ) { cols.push(cur.trim()); cur = ''; continue }
     cur += c
   }
   cols.push(cur.trim())
   return cols
 }
 
+function detectSep(firstLine) {
+  const tabs = (firstLine.match(/\t/g) || []).length
+  const semis = (firstLine.match(/;/g) || []).length
+  return tabs >= semis ? '\t' : ';'
+}
+
 export function parserCSVCaisseEpargne(texte) {
-  const lignes = texte.replace(/\r/g, '').split('\n').map(splitCSVLine)
+  const rawLines = texte.replace(/\r/g, '').split('\n').filter(l => l.trim())
+  const sep = detectSep(rawLines[0] || '')
+  const lignes = rawLines.map(l => splitCSVLine(l, sep))
   // Trouver la ligne d'en-tête (ignorer les lignes d'info compte)
-  const hi = lignes.findIndex(row => row.some(c => /^date$/i.test(c.trim())))
+  const hi = lignes.findIndex(row => row.some(c => /date/i.test(c.trim())))
   if (hi < 0) throw new Error('En-tête CSV non trouvée — vérifiez le format du fichier')
   const h = lignes[hi].map(x => x.toLowerCase().trim())
   const find = (...terms) => h.findIndex(x => terms.some(t => x.includes(t)))
-  const iDate   = find('date')
-  const iNum    = find('numéro', 'numero', 'n°')
-  const iLib    = find('libellé', 'libelle')
-  const iDet    = find('détail', 'detail')
-  const iDebit  = find('débit', 'debit')
-  const iCredit = find('crédit', 'credit')
+  // "Date operation" préféré sur "Date comptable" pour la date réelle
+  const iDateOp   = find('date operation', 'date_operation')
+  const iDate     = iDateOp >= 0 ? iDateOp : find('date')
+  const iNum      = find('référence', 'reference', 'numéro', 'numero', 'n°')
+  const iLib      = find('libellé', 'libelle')
+  const iDet      = find('informations', 'détail', 'detail', 'complément', 'complement')
+  const iDebit    = find('débit', 'debit')
+  const iCredit   = find('crédit', 'credit')
 
   const rows = []
   for (const cols of lignes.slice(hi + 1)) {
