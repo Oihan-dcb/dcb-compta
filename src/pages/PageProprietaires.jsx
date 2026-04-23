@@ -719,7 +719,7 @@ function ModalPrevisionnel({ proprio, onClose }) {
           <div>
             <h2 style={{ margin: 0 }}>Prévisionnel — {proprio.nom}{proprio.prenom ? ' ' + proprio.prenom : ''}</h2>
             <span style={{ fontSize: 12, color: 'var(--text-muted)' }}>
-              Estimation basée sur les réservations confirmées · Taux {Number(taux).toFixed(1)}%
+              Estimation basée sur les réservations confirmées · Taux {Number(tauxDefaut).toFixed(1)}%
             </span>
           </div>
           <button className="modal-close" onClick={onClose}>✕</button>
