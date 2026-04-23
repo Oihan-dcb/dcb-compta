@@ -109,6 +109,7 @@ export default function App() {
   const _sendDay = _lastDay - 2
   const _daysUntilSend = _sendDay - _now.getDate()
   const showNavetteBadge = _daysUntilSend >= 0 && _daysUntilSend <= 5
+  const navetteBadgeColor = _daysUntilSend <= 1 ? '#ef4444' : _daysUntilSend === 2 ? '#f97316' : _daysUntilSend === 3 ? '#f59e0b' : '#22c55e'
 
   useEffect(() => {
     const mois = new Date().toISOString().slice(0, 7)
@@ -151,7 +152,7 @@ export default function App() {
             <NavLink to="/auto-entrepreneurs" className={({isActive}) => isActive ? 'nav-link active' : 'nav-link'} style={{ position: 'relative' }}>
               Staff
               {showNavetteBadge && (
-                <span style={{ position: 'absolute', top: -6, right: -8, background: '#ef4444', color: '#fff', borderRadius: 10, fontSize: 10, fontWeight: 700, padding: '1px 5px', minWidth: 16, textAlign: 'center' }}>
+                <span style={{ position: 'absolute', top: -6, right: -8, background: navetteBadgeColor, color: '#fff', borderRadius: 10, fontSize: 10, fontWeight: 700, padding: '1px 5px', minWidth: 16, textAlign: 'center' }}>
                   j-{_daysUntilSend}
                 </span>
               )}
