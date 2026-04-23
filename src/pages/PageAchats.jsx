@@ -191,47 +191,64 @@ export default function PageAchats() {
 
           const lignesAAnalyser = nonMatchesIdx.map(i => matchees[i])
 
-          const SYSTEM_PROMPT = `Tu es un assistant comptable français pour Destination Côte Basque, une agence de conciergerie immobilière (location saisonnière + longue durée, ~50 biens à Biarritz).
+          const SYSTEM_PROMPT = `Tu es un assistant comptable expert pour Destination Côte Basque, agence de conciergerie immobilière à Biarritz (~50 biens, location saisonnière + longue durée).
+Tu analyses des libellés bruts de relevé bancaire Caisse d'Épargne.
 
-Voici des libellés bruts de relevé bancaire Caisse d'Épargne. Pour chaque ligne, identifie :
-- fournisseur : nom court lisible (ex: "EDF", "Ploquin Clémence", "DGFIP", "Stripe"). Supprime les codes/références/numéros.
-- categorie : choisis dans la liste ci-dessous.
+Pour chaque ligne retourne :
+- fournisseur : nom court lisible, sans codes ni références (ex: "EDF", "Clémence Ploquin", "DGFIP", "Caisse d'Épargne")
+- categorie : UNE SEULE valeur parmi les catégories ci-dessous
 
-CATÉGORIES DISPONIBLES :
-- energie         : EDF, ENGIE, Veolia, électricité, gaz, eau
-- assurance       : Galian, MAIF, SMABTP, MMA, Allianz, assureur
-- comptabilite    : cabinet comptable, expert-comptable, DGFIP, impôts, taxes
-- frais_bancaires : frais virement SEPA, frais tenue compte, frais consentement B2B, frais Stripe, frais bancaires Caisse d'Épargne
-- carte_bancaire  : CUMUL DES DEBITS DIFFERES (achats carte)
-- salaire         : paye, salaire, virement à Clémence / Mathieu / prénom+nom si mention "PAYE" ou "SALAIRE"
-- prestataire_ae  : virement à un particulier (NOM PRENOM) pour prestation ou facture (mention FACTURE, LOYER, HONORAIRES)
-- loyer           : loyer locaux, virement LOYER DESTINATION
-- plateforme      : Airbnb, Booking, Abritel, Hospitable, reversement plateforme
-- telecom         : SFR, Orange, Bouygues, Free, téléphonie, internet
-- abonnement      : Stripe, Pennylane, logiciels SaaS, abonnements récurrents
-- logiciel        : achat logiciel, licence
-- fournitures     : Amazon, Leroy Merlin, Brico Dépôt, matériel, consommables
-- securite        : alarme, vidéosurveillance, sécurité
-- publicite       : Madame Editions, impression, communication, pub
-- retour          : retour virement, remboursement reçu
-- autre           : tout ce qui ne rentre pas ailleurs
+RÈGLES DE PRIORITÉ (la première règle qui matche gagne) :
 
-RÈGLES :
-- "VIR SEPA NOM PRENOM" + "FACTURE" dans les infos → categorie=prestataire_ae, fournisseur=Nom Prénom
-- "VIR SEPA NOM PRENOM" + "PAYE" ou "SALAIRE" → categorie=salaire
-- "PRLV DGFIP" ou "PRLV B2B DGFIP" → fournisseur="DGFIP", categorie=comptabilite
-- "PRLV EDF" → fournisseur="EDF", categorie=energie
-- "PRLV GALIAN" ou "PRLV SMA BTP" → fournisseur="Galian SMA BTP", categorie=assurance
-- "PRLV CABINET" + "COMPTAB" → fournisseur="Cabinet expertise comptable", categorie=comptabilite
-- "FRAIS DE VIREMENT SEPA" ou "FRAIS TENUE COMPTE" ou "FRAIS CONSENTEMENT" → fournisseur="Caisse d'Épargne", categorie=frais_bancaires
-- "CUMUL DES DEBITS DIFFERES" → fournisseur="Carte bancaire", categorie=carte_bancaire
-- "FRAIS STRIPE" → fournisseur="Stripe", categorie=frais_bancaires
-- "LOYERS LOCATIONS AIRBB" ou "AIRBNB" → fournisseur="Airbnb", categorie=plateforme
-- "PRLV AMAZON" → fournisseur="Amazon Business", categorie=fournitures
-- "RETOUR VIREMENT" → fournisseur="Retour virement", categorie=retour
-- "MADAME EDITIONS" → fournisseur="Madame Editions", categorie=publicite
-- "ECB SECURITE" → fournisseur="ECB Sécurité", categorie=securite
-Si vraiment inconnu : fournisseur="" categorie="autre"
+1. frais_bancaires → libellé contient "FRAIS VIREMENT", "FRAIS TENUE", "FRAIS CONSENTEMENT", "FRAIS STRIPE", "COMMISSION", "COTISATION CARTE", "INTERETS"
+   fournisseur = "Caisse d'Épargne" sauf si "STRIPE" → fournisseur = "Stripe"
+
+2. carte_bancaire → "CUMUL DES DEBITS DIFFERES" ou "REMISE CARTE"
+   fournisseur = "Carte bancaire"
+
+3. retour → "RETOUR VIREMENT", "REMBOURSEMENT", "AVOIR", "ANNULATION PRLV"
+   fournisseur = nom de l'émetteur
+
+4. salaire → "VIR SEPA" + ("PAYE" ou "SALAIRE" ou "REMUNERATION") dans libellé ou infos
+   fournisseur = Prénom Nom du salarié
+
+5. prestataire_ae → "VIR SEPA NOM PRENOM" + ("FACTURE" ou "HONORAIRES" ou "PRESTATION") dans infos
+   fournisseur = Prénom Nom du prestataire
+
+6. loyer → "LOYER" dans libellé, ou "LOYER DESTINATION" ou "VIR LOYER LOCAUX"
+   fournisseur = "Loyer locaux DCB"
+
+7. energie → "EDF", "ENGIE", "VEOLIA", "ELECTRICITE", "GAZ", "EAU", "SUEZ", "SAUR"
+   fournisseur = nom exact (EDF / Engie / Veolia / etc.)
+
+8. assurance → "GALIAN", "SMA BTP", "SMABTP", "MAIF", "ALLIANZ", "MMA", "AXA", "GENERALI", "GROUPAMA", "ASSUR", "MUTUELLE"
+   fournisseur = nom de l'assureur
+
+9. comptabilite → "DGFIP", "IMPOTS", "URSSAF", "RSI", "CIPAV", "ACRE", "URSAFF", "CABINET COMPTAB", "EXPERT COMPTAB", "FIDUCIAIRE", "TAXE", "CFE", "TVA", "CVAE"
+   fournisseur = "DGFIP" ou "URSSAF" ou "Cabinet comptable" selon le cas
+
+10. plateforme → "AIRBNB", "AIRBB", "BOOKING", "ABRITEL", "VRBO", "HOMEAWAY", "HOSPITABLE" (reversements)
+    fournisseur = nom de la plateforme
+
+11. telecom → "SFR", "ORANGE", "BOUYGUES", "FREE", "NUMERICABLE", "SFREI", "TELEPHONIE", "INTERNET", "MOBILE"
+    fournisseur = opérateur
+
+12. securite → "ECB SECURITE", "VERISURE", "ALARME", "SECURITAS", "GARDIENNAGE", "VIDEOSURVEILLANCE"
+    fournisseur = nom prestataire sécurité
+
+13. publicite → "MADAME EDITIONS", "IMPRESSION", "FLYER", "AFFICHE", "PANNEAU", "GOOGLE ADS", "META ADS", "FACEBOOK ADS", "COMMUNICATION"
+    fournisseur = nom prestataire
+
+14. fournitures → "AMAZON", "LEROY MERLIN", "BRICO DEPOT", "CASTORAMA", "ACE", "IKEA", "BRICORAMA", "WELDOM", "LEROYMERLIN", "MATERIEL", "CONSOMMABLE"
+    fournisseur = enseigne
+
+15. abonnement → logiciels SaaS dont le libellé NE correspond à AUCUNE règle ci-dessus : "PENNYLANE", "NOTION", "SLACK", "GOOGLE", "MICROSOFT", "ADOBE", "DROPBOX", "CLAUDE", "ANTHROPIC", "OPENAI", "HUBSPOT", "MAILCHIMP", "ZAPIER", "MAKE", "AIRTABLE", "DOCUSIGN"
+    fournisseur = nom du service
+
+16. autre → tout ce qui ne matche aucune règle ci-dessus
+    fournisseur = nom court extrait du libellé
+
+IMPORTANT : "abonnement" est le dernier recours pour les SaaS uniquement. Frais bancaires Stripe = frais_bancaires (pas abonnement). Airbnb/Booking = plateforme (pas abonnement).
 
 Réponds UNIQUEMENT en JSON valide, tableau dans le même ordre que les entrées :
 [{"fournisseur":"...","categorie":"..."}]`
