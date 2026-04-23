@@ -1,5 +1,10 @@
 import { AGENCE } from '../lib/agence'
 import { useState, useEffect } from 'react'
+
+function escapeHtml(str) {
+  if (!str) return ''
+  return String(str).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;')
+}
 import { getAutoEntrepreneurs, saveAutoEntrepreneur, deleteAutoEntrepreneur, createAEWithAuth, createAEAccess, resetAEPassword } from '../services/autoEntrepreneurs'
 import { supabase } from '../lib/supabase'
 
@@ -194,7 +199,7 @@ export default function PageAutoEntrepreneurs() {
         <td style="padding:4px 8px;border:1px solid #e5e7eb;text-align:center">${row?.heure_fin || ''}</td>
         <td style="padding:4px 8px;border:1px solid #e5e7eb;text-align:center">${row?.pause_min ? row.pause_min + ' min' : ''}</td>
         <td style="padding:4px 8px;border:1px solid #e5e7eb;text-align:center;font-weight:600;color:${h ? '#15803d' : '#6b7280'}">${h !== null ? h.toFixed(2) + 'h' : absence}</td>
-        <td style="padding:4px 8px;border:1px solid #e5e7eb;font-size:11px;color:#6b7280">${row?.notes || ''}</td>
+        <td style="padding:4px 8px;border:1px solid #e5e7eb;font-size:11px;color:#6b7280">${escapeHtml(row?.notes)}</td>
       </tr>`
     }
 
@@ -214,9 +219,9 @@ export default function PageAutoEntrepreneurs() {
       const abs = absences[i]
       if (i === 0) {
         lignesEmploye += `<tr>
-          <td style="${td}">${ae.matricule || ''}</td>
-          <td style="${td};font-weight:600">${ae.nom.toUpperCase()}</td>
-          <td style="${td}">${ae.prenom}</td>
+          <td style="${td}">${escapeHtml(ae.matricule)}</td>
+          <td style="${td};font-weight:600">${escapeHtml(ae.nom).toUpperCase()}</td>
+          <td style="${td}">${escapeHtml(ae.prenom)}</td>
           <td style="${td};text-align:center">35</td>
           <td style="${td};text-align:center">${sup[0] > 0 ? sup[0].toFixed(2) : ''}</td>
           <td style="${td};text-align:center">${sup[1] > 0 ? sup[1].toFixed(2) : ''}</td>
@@ -224,7 +229,7 @@ export default function PageAutoEntrepreneurs() {
           <td style="${td};text-align:center">${sup[3] > 0 ? sup[3].toFixed(2) : ''}</td>
           <td style="${td}"></td><td style="${td}"></td>
           <td style="${td}"></td><td style="${td}"></td>
-          <td style="${td}">${abs ? ABSENCES_LABEL[abs.motif] || abs.motif : ''}</td>
+          <td style="${td}">${abs ? escapeHtml(ABSENCES_LABEL[abs.motif] || abs.motif) : ''}</td>
           <td style="${td};text-align:center">${abs ? fmt2(abs.debut) : ''}</td>
           <td style="${td};text-align:center">${abs ? fmt2(abs.fin) : ''}</td>
           <td style="${td}"></td>
@@ -232,7 +237,7 @@ export default function PageAutoEntrepreneurs() {
       } else {
         lignesEmploye += `<tr>
           <td style="${td}" colspan="12"></td>
-          <td style="${td}">${abs ? ABSENCES_LABEL[abs.motif] || abs.motif : ''}</td>
+          <td style="${td}">${abs ? escapeHtml(ABSENCES_LABEL[abs.motif] || abs.motif) : ''}</td>
           <td style="${td};text-align:center">${abs ? fmt2(abs.debut) : ''}</td>
           <td style="${td};text-align:center">${abs ? fmt2(abs.fin) : ''}</td>
           <td style="${td}"></td>
