@@ -43,6 +43,7 @@ export default function PageAchats() {
   const [dragOver, setDragOver]       = useState(false)
   const [importModal, setImportModal] = useState(null) // { lignes, importing }
   const [importError, setImportError] = useState(null)
+  const [rapprochement, setRapprochement] = useState(null) // null | 'loading' | { nb, details }
 
   const charger = useCallback(async () => {
     setLoading(true)
@@ -398,6 +399,85 @@ Si anomalie (montant très différent, catégorie suspecte) → ok:false, messag
     }
   }
 
+  const rapprochementsLLM = async () => {
+    setRapprochement('loading')
+    try {
+      // Factures sans mouvement lié pour le mois affiché
+      const { data: facturesSansLien } = await supabase
+        .from('facture_achat')
+        .select('id, fournisseur, montant_ttc')
+        .eq('agence', AGENCE)
+        .eq('mois', moisFiltre)
+        .is('mouvement_bancaire_id', null)
+
+      if (!facturesSansLien?.length) {
+        setRapprochement({ nb: 0, details: [] })
+        return
+      }
+
+      // Mouvements débiteurs du mois
+      const { data: mvts } = await supabase
+        .from('mouvement_bancaire')
+        .select('id, libelle, debit, date_operation')
+        .eq('agence', AGENCE)
+        .eq('mois_releve', moisFiltre)
+        .gt('debit', 0)
+
+      if (!mvts?.length) {
+        setRapprochement({ nb: 0, details: [] })
+        return
+      }
+
+      const { data: { session } } = await supabase.auth.getSession()
+      const token = session?.access_token || import.meta.env.VITE_SUPABASE_ANON_KEY
+
+      const prompt = `Tu es un assistant comptable français. Rapproche chaque facture avec le mouvement bancaire le plus probable.
+Critères : nom fournisseur similaire au libellé bancaire, montant proche (tolérance 5%).
+Si aucun mouvement ne correspond clairement, ne force pas le rapprochement.
+
+Réponds UNIQUEMENT en JSON valide :
+[{"facture_id":"...","mouvement_id":"..."}]
+Inclure uniquement les paires certaines. Omettre les factures sans correspondance claire.
+
+FACTURES (id | fournisseur | montant TTC €) :
+${facturesSansLien.map(f => `${f.id} | ${f.fournisseur} | ${Number(f.montant_ttc).toFixed(2)}€`).join('\n')}
+
+MOUVEMENTS BANCAIRES (id | libellé | débit €) :
+${mvts.map(m => `${m.id} | ${m.libelle} | ${(Number(m.debit) / 100).toFixed(2)}€`).join('\n')}`
+
+      const res = await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/llm-analyse`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+        body: JSON.stringify({ prompt }),
+      })
+      const data = await res.json()
+      const match = (data.text || '').match(/\[[\s\S]*\]/)
+      if (!match) { setRapprochement({ nb: 0, details: [] }); return }
+
+      const paires = JSON.parse(match[0])
+      if (!paires.length) { setRapprochement({ nb: 0, details: [] }); return }
+
+      // Appliquer les rapprochements
+      await Promise.all(paires.map(p =>
+        supabase.from('facture_achat')
+          .update({ mouvement_bancaire_id: p.mouvement_id, updated_at: new Date().toISOString() })
+          .eq('id', p.facture_id)
+          .eq('agence', AGENCE)
+      ))
+
+      // Construire le résumé lisible
+      const details = paires.map(p => {
+        const f = facturesSansLien.find(x => x.id === p.facture_id)
+        const m = mvts.find(x => x.id === p.mouvement_id)
+        return { fournisseur: f?.fournisseur, montant: f?.montant_ttc, libelle: m?.libelle }
+      })
+      setRapprochement({ nb: paires.length, details })
+      charger()
+    } catch (e) {
+      setRapprochement({ nb: 0, details: [], error: e.message })
+    }
+  }
+
   const creerDepuisCSV = async () => {
     const selected = (importModal?.lignes || []).filter(l => l.selected && l.fournisseur.trim() && l.debit > 0)
     if (!selected.length) return
@@ -472,6 +552,14 @@ Si anomalie (montant très différent, catégorie suspecte) → ok:false, messag
           >
             Importer CSV CE
           </button>
+          <button
+            className="btn btn-secondary"
+            onClick={rapprochementsLLM}
+            disabled={rapprochement === 'loading'}
+            title="Rapprocher automatiquement les factures avec les mouvements bancaires du mois"
+          >
+            {rapprochement === 'loading' ? 'Rapprochement…' : 'Rapprocher banque'}
+          </button>
           <button className="btn btn-primary" onClick={() => ouvrir()}>+ Ajouter facture</button>
         </div>
       </div>
@@ -480,6 +568,30 @@ Si anomalie (montant très différent, catégorie suspecte) → ok:false, messag
         <div style={{ padding: '10px 14px', background: '#FEF2F2', border: '1px solid #FCA5A5', borderRadius: 8, marginBottom: 16, color: '#991B1B', fontSize: 13 }}>
           ✕ {importError}
           <button onClick={() => setImportError(null)} style={{ float: 'right', background: 'none', border: 'none', cursor: 'pointer', color: '#991B1B' }}>✕</button>
+        </div>
+      )}
+
+      {rapprochement && rapprochement !== 'loading' && (
+        <div style={{ padding: '10px 14px', background: rapprochement.error ? '#FEF2F2' : rapprochement.nb ? '#D1FAE5' : '#F3F4F6', border: `1px solid ${rapprochement.error ? '#FCA5A5' : rapprochement.nb ? '#6EE7B7' : '#E5E7EB'}`, borderRadius: 8, marginBottom: 16, fontSize: 13, color: rapprochement.error ? '#991B1B' : '#065F46' }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+            <span>
+              {rapprochement.error
+                ? `✕ Erreur : ${rapprochement.error}`
+                : rapprochement.nb
+                ? `✓ ${rapprochement.nb} rapprochement${rapprochement.nb > 1 ? 's' : ''} effectué${rapprochement.nb > 1 ? 's' : ''}`
+                : 'Aucun rapprochement trouvé pour ce mois'}
+            </span>
+            <button onClick={() => setRapprochement(null)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'inherit', opacity: 0.6 }}>✕</button>
+          </div>
+          {rapprochement.details?.length > 0 && (
+            <div style={{ marginTop: 6, display: 'flex', flexDirection: 'column', gap: 3 }}>
+              {rapprochement.details.map((d, i) => (
+                <div key={i} style={{ fontSize: 12, opacity: 0.85 }}>
+                  {d.fournisseur} ({Number(d.montant).toFixed(2)} €) → <span style={{ fontFamily: 'monospace' }}>{d.libelle}</span>
+                </div>
+              ))}
+            </div>
+          )}
         </div>
       )}
 
