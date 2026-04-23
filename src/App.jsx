@@ -39,6 +39,7 @@ import PageSmsReviews from './pages/PageSmsReviews'
 import PageLocationsLongues from './pages/PageLocationsLongues'
 import PageAchats from './pages/PageAchats'
 import PageAgence from './pages/PageAgence'
+import PageProprietaires from './pages/PageProprietaires'
 import PageTaxeSejour from './pages/PageTaxeSejour'
 import BugReportButton from './components/BugReportButton'
 import './App.css'
@@ -60,7 +61,7 @@ function ConfigDropdown() {
   const [open, setOpen] = useState(false)
   const ref = useRef(null)
   const location = useLocation()
-  const configPaths = ['/import', '/journal', '/config', '/bugs', '/exports', '/agence', '/taxe-sejour']
+  const configPaths = ['/import', '/journal', '/config', '/bugs', '/exports', '/agence', '/taxe-sejour', '/proprietaires']
   const isActive = configPaths.some(p => location.pathname === p)
 
   useEffect(() => {
@@ -82,6 +83,7 @@ function ConfigDropdown() {
           onMouseLeave={() => setOpen(false)}>
           {[
             { to: '/agence', label: 'Agence' },
+            { to: '/proprietaires', label: 'Propriétaires' },
             { to: '/taxe-sejour', label: 'Taxe de séjour' },
             { to: '/import', label: 'Import CSV' },
             { to: '/journal', label: 'Journal' },
@@ -181,6 +183,7 @@ export default function App() {
             <Route path="/locations-longues" element={<PageLocationsLongues />} />
             <Route path="/achats" element={<PageAchats />} />
             <Route path="/agence" element={<PageAgence />} />
+            <Route path="/proprietaires" element={<PageProprietaires />} />
             <Route path="/taxe-sejour" element={<PageTaxeSejour />} />
           </Routes>
         </main>
