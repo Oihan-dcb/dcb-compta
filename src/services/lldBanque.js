@@ -92,7 +92,10 @@ export async function parserFichierLLD(file) {
 export async function importerMouvementsLLD(rows, compte, agence = AGENCE) {
   if (!rows.length) return 0
   const toInsert = rows.map(r => ({ agence, compte, ...r, statut: 'non_rapproche' }))
-  const avecNum  = toInsert.filter(r => r.numero_operation)
+  // Déduplication interne au fichier avant upsert
+  const avecNumMap = new Map()
+  for (const r of toInsert.filter(r => r.numero_operation)) avecNumMap.set(r.numero_operation, r)
+  const avecNum = [...avecNumMap.values()]
   const sansNum  = toInsert.filter(r => !r.numero_operation)
   let total = 0
 
