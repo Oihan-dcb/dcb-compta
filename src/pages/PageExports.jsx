@@ -10,6 +10,7 @@ import { exportReservationsDetaillees } from '../services/exportReservationsDeta
 import { exportDeboursPrestations, exportDeboursPrestationsCombined } from '../services/exportDeboursPrestations'
 import { buildComptaMensuelle, downloadComptaCSV, exportComptaCSV } from '../services/buildComptaMensuelle'
 import { envoyerExportsComptable } from '../services/envoyerExportsComptable'
+import { genererSCTVirementsProprios, genererSCTHonorairesDCB } from '../services/exportSCT'
 
 const moisCourant = new Date().toISOString().slice(0, 7)
 
@@ -453,6 +454,57 @@ export default function PageExports() {
               </div>
             </div>
           )}
+        </div>
+      </section>
+
+      {/* LOCATIONS LONGUES — VIREMENTS SCT */}
+      <section style={{ marginBottom: 32 }}>
+        <h2 style={{ fontSize: '1em', fontWeight: 700, color: '#9C8E7D', textTransform: 'uppercase', letterSpacing: '0.08em', margin: '0 0 14px 0' }}>
+          Locations longues — Virements SEPA
+        </h2>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+          <ExportCard
+            titre="Virements propriétaires"
+            description="Fichier SCT XML (pain.001.001.03) — un virement par proprio, statut à virer"
+            loading={loading.sct_proprios}
+            onClick={async () => {
+              setLoading(prev => ({ ...prev, sct_proprios: true }))
+              setError(null)
+              try {
+                const xml = await genererSCTVirementsProprios(mois)
+                const blob = new Blob([xml], { type: 'application/xml;charset=utf-8;' })
+                const url = URL.createObjectURL(blob)
+                const a = document.createElement('a')
+                a.href = url
+                a.download = `DCB_SCT_Proprios_${mois}.xml`
+                a.click()
+                URL.revokeObjectURL(url)
+              } catch (err) { setError(err.message) }
+              finally { setLoading(prev => ({ ...prev, sct_proprios: false })) }
+            }}
+            format="XML"
+          />
+          <ExportCard
+            titre="Virement honoraires DCB"
+            description="Fichier SCT XML — virement des honoraires LLD du compte loyers vers compte principal"
+            loading={loading.sct_honoraires}
+            onClick={async () => {
+              setLoading(prev => ({ ...prev, sct_honoraires: true }))
+              setError(null)
+              try {
+                const xml = await genererSCTHonorairesDCB(mois)
+                const blob = new Blob([xml], { type: 'application/xml;charset=utf-8;' })
+                const url = URL.createObjectURL(blob)
+                const a = document.createElement('a')
+                a.href = url
+                a.download = `DCB_SCT_Honoraires_${mois}.xml`
+                a.click()
+                URL.revokeObjectURL(url)
+              } catch (err) { setError(err.message) }
+              finally { setLoading(prev => ({ ...prev, sct_honoraires: false })) }
+            }}
+            format="XML"
+          />
         </div>
       </section>
 
