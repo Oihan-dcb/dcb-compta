@@ -83,6 +83,16 @@ tbody tr:hover { background: #fafafa; }
 .code-TAX { color: #9CA3AF; font-weight: 600; }
 .code-MGT { color: #0D9488; font-weight: 600; }
 
+/* ── Modals ──────────────────────────────────────────────────────────────── */
+.modal-overlay { position: fixed; inset: 0; z-index: 1000; background: rgba(0,0,0,0.45); display: flex; align-items: center; justify-content: center; padding: 16px; }
+.modal { background: var(--white); border-radius: 12px; box-shadow: 0 8px 32px rgba(0,0,0,0.18); width: 100%; max-height: 90vh; display: flex; flex-direction: column; overflow: hidden; }
+.modal-header { display: flex; align-items: center; justify-content: space-between; padding: 18px 24px; border-bottom: 1px solid var(--border); flex-shrink: 0; }
+.modal-header h2 { font-size: 16px; font-weight: 700; color: var(--text); margin: 0; }
+.modal-close { background: none; border: none; font-size: 16px; color: var(--text-muted); cursor: pointer; padding: 2px 6px; border-radius: 4px; line-height: 1; }
+.modal-close:hover { background: var(--bg); color: var(--text); }
+.modal-body { padding: 20px 24px; overflow-y: auto; flex: 1; }
+.modal-footer { display: flex; justify-content: flex-end; gap: 10px; padding: 14px 24px; border-top: 1px solid var(--border); flex-shrink: 0; }
+
 /* ── Responsive ──────────────────────────────────────────────────────────── */
 
 /* Tablette (768px et moins) */

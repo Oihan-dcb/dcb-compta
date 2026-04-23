@@ -549,7 +549,6 @@ export default function PageLocationsLongues() {
     }
     setShowModalEtudiant(true)
     setError(null)
-    window.scrollTo({ top: 0, behavior: 'instant' })
   }
 
   async function soumettreEtudiant(e) {
@@ -585,10 +584,11 @@ export default function PageLocationsLongues() {
       }
       if (editingEtudiant) {
         await modifierEtudiant(editingEtudiant.id, payload)
-        setSuccess('Étudiant modifié')
+        setSuccess('Locataire modifié')
       } else {
         await creerEtudiant(payload)
-        setSuccess('Étudiant créé')
+        await initialiserLoyersMois(mois, AGENCE)
+        setSuccess('Locataire créé')
       }
       setShowModalEtudiant(false)
       await chargerEtudiants()
@@ -862,9 +862,9 @@ export default function PageLocationsLongues() {
         <>
           {etudiants.length === 0 ? (
             <div className="empty-state">
-              Aucun étudiant enregistré.
+              Aucun locataire enregistré.
               <button className="btn btn-primary" style={{ marginTop: 12 }} onClick={() => ouvrirModalEtudiant()}>
-                + Ajouter un étudiant
+                + Ajouter un locataire
               </button>
             </div>
           ) : (
@@ -872,7 +872,7 @@ export default function PageLocationsLongues() {
               <table className="table">
                 <thead>
                   <tr>
-                    <th>Étudiant</th>
+                    <th>Locataire</th>
                     <th>Bien</th>
                     <th>Entrée</th>
                     <th>Sortie prévue</th>
@@ -923,7 +923,7 @@ export default function PageLocationsLongues() {
                             {st.label}
                           </span>
                         </td>
-                        <td style={{ fontSize: 12, whiteSpace: 'nowrap' }}>
+                        <td style={{ fontSize: 12, whiteSpace: 'nowrap', verticalAlign: 'middle' }}>
                           {!lc ? (
                             <span style={{ color: 'var(--text-muted)' }}>—</span>
                           ) : (
@@ -951,24 +951,26 @@ export default function PageLocationsLongues() {
                             </div>
                           )}
                         </td>
-                        <td style={{ display: 'flex', gap: 3, flexWrap: 'wrap', alignItems: 'center' }}>
-                          {!e.archived && (<>
-                            <button className="btn btn-secondary" style={{ fontSize: 13, padding: '3px 7px' }}
-                              onClick={() => ouvrirModalEtudiant(e)} title="Modifier">✏</button>
-                            <button className="btn btn-secondary" style={{ fontSize: 13, padding: '3px 7px' }}
-                              onClick={() => ouvrirDossier(e)} title="Dossier">📁</button>
-                            <button className="btn btn-secondary" style={{ fontSize: 13, padding: '3px 7px' }}
-                              onClick={() => { setSuiviEtudiantId(e.id); setOnglet('suivi') }} title="Suivi">📋</button>
-                          </>)}
-                          {e.archived ? (<>
-                            <button className="btn btn-secondary" style={{ fontSize: 12, padding: '3px 8px', color: '#059669' }}
-                              onClick={() => setConfirmSuppr({ etudiant: e, action: 'desarchiver' })} title="Réactiver">↩</button>
-                            <button className="btn btn-secondary" style={{ fontSize: 13, padding: '3px 7px', color: '#DC2626' }}
-                              onClick={() => setConfirmSuppr({ etudiant: e, action: 'supprimer' })} title="Supprimer définitivement">🗑</button>
-                          </>) : (
-                            <button className="btn btn-secondary" style={{ fontSize: 13, padding: '3px 7px', color: '#B45309' }}
-                              onClick={() => setConfirmSuppr({ etudiant: e, action: 'archiver' })} title="Archiver">📦</button>
-                          )}
+                        <td style={{ verticalAlign: 'middle', whiteSpace: 'nowrap' }}>
+                          <div style={{ display: 'flex', gap: 3, alignItems: 'center', flexWrap: 'nowrap' }}>
+                            {!e.archived && (<>
+                              <button className="btn btn-secondary" style={{ fontSize: 13, padding: '3px 7px' }}
+                                onClick={() => ouvrirModalEtudiant(e)} title="Modifier">✏</button>
+                              <button className="btn btn-secondary" style={{ fontSize: 13, padding: '3px 7px' }}
+                                onClick={() => ouvrirDossier(e)} title="Dossier">📁</button>
+                              <button className="btn btn-secondary" style={{ fontSize: 13, padding: '3px 7px' }}
+                                onClick={() => { setSuiviEtudiantId(e.id); setOnglet('suivi') }} title="Suivi">📋</button>
+                            </>)}
+                            {e.archived ? (<>
+                              <button className="btn btn-secondary" style={{ fontSize: 12, padding: '3px 8px', color: '#059669' }}
+                                onClick={() => setConfirmSuppr({ etudiant: e, action: 'desarchiver' })} title="Réactiver">↩</button>
+                              <button className="btn btn-secondary" style={{ fontSize: 13, padding: '3px 7px', color: '#DC2626' }}
+                                onClick={() => setConfirmSuppr({ etudiant: e, action: 'supprimer' })} title="Supprimer définitivement">🗑</button>
+                            </>) : (
+                              <button className="btn btn-secondary" style={{ fontSize: 13, padding: '3px 7px', color: '#B45309' }}
+                                onClick={() => setConfirmSuppr({ etudiant: e, action: 'archiver' })} title="Archiver">📦</button>
+                            )}
+                          </div>
                         </td>
                       </tr>
                     )
