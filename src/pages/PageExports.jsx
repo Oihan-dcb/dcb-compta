@@ -10,7 +10,7 @@ import { exportReservationsDetaillees } from '../services/exportReservationsDeta
 import { exportDeboursPrestations, exportDeboursPrestationsCombined } from '../services/exportDeboursPrestations'
 import { buildComptaMensuelle, downloadComptaCSV, exportComptaCSV } from '../services/buildComptaMensuelle'
 import { envoyerExportsComptable } from '../services/envoyerExportsComptable'
-import { genererSCTVirementsProprios, genererSCTHonorairesDCB } from '../services/exportSCT'
+import { genererSCTVirementsProprios, genererSCTHonorairesDCB, genererSCTVirementsPropriosLC, genererSCTInternesLC } from '../services/exportSCT'
 
 const moisCourant = new Date().toISOString().slice(0, 7)
 
@@ -502,6 +502,57 @@ export default function PageExports() {
                 URL.revokeObjectURL(url)
               } catch (err) { setError(err.message) }
               finally { setLoading(prev => ({ ...prev, sct_honoraires: false })) }
+            }}
+            format="XML"
+          />
+        </div>
+      </section>
+
+      {/* LOCATIONS COURTES — VIREMENTS SCT */}
+      <section style={{ marginBottom: 32 }}>
+        <h2 style={{ fontSize: '1em', fontWeight: 700, color: '#9C8E7D', textTransform: 'uppercase', letterSpacing: '0.08em', margin: '0 0 14px 0' }}>
+          Locations courtes — Virements SEPA
+        </h2>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+          <ExportCard
+            titre="Virements propriétaires"
+            description="Fichier SCT XML — 1 virement par bien (VIR = LOY + TAXE), groupe Maïté agrégé"
+            loading={loading.sct_proprios_lc}
+            onClick={async () => {
+              setLoading(prev => ({ ...prev, sct_proprios_lc: true }))
+              setError(null)
+              try {
+                const xml = await genererSCTVirementsPropriosLC(mois)
+                const blob = new Blob([xml], { type: 'application/xml;charset=utf-8;' })
+                const url = URL.createObjectURL(blob)
+                const a = document.createElement('a')
+                a.href = url
+                a.download = `DCB_SCT_Proprios_LC_${mois}.xml`
+                a.click()
+                URL.revokeObjectURL(url)
+              } catch (err) { setError(err.message) }
+              finally { setLoading(prev => ({ ...prev, sct_proprios_lc: false })) }
+            }}
+            format="XML"
+          />
+          <ExportCard
+            titre="Virements internes (HON + COM + FMEN + Stripe)"
+            description="Fichier SCT XML — séquestre LC → agence (HON/COM/FMEN TTC) + agence → séquestre LC (frais Stripe)"
+            loading={loading.sct_internes_lc}
+            onClick={async () => {
+              setLoading(prev => ({ ...prev, sct_internes_lc: true }))
+              setError(null)
+              try {
+                const xml = await genererSCTInternesLC(mois)
+                const blob = new Blob([xml], { type: 'application/xml;charset=utf-8;' })
+                const url = URL.createObjectURL(blob)
+                const a = document.createElement('a')
+                a.href = url
+                a.download = `DCB_SCT_Internes_LC_${mois}.xml`
+                a.click()
+                URL.revokeObjectURL(url)
+              } catch (err) { setError(err.message) }
+              finally { setLoading(prev => ({ ...prev, sct_internes_lc: false })) }
             }}
             format="XML"
           />
