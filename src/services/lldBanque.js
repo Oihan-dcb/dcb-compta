@@ -89,50 +89,42 @@ export async function parserFichierLLD(file) {
 
 // ── Import en base ─────────────────────────────────────────────────────────────
 
+const fp = r => `${r.date_operation}|${r.debit ?? ''}|${r.credit ?? ''}|${r.libelle ?? ''}`
+
 export async function importerMouvementsLLD(rows, compte, agence = AGENCE) {
   if (!rows.length) return 0
-  const toInsert = rows.map(r => ({ agence, compte, ...r, statut: 'non_rapproche' }))
-  // Déduplication interne au fichier avant upsert
-  const avecNumMap = new Map()
-  for (const r of toInsert.filter(r => r.numero_operation)) avecNumMap.set(r.numero_operation, r)
-  const avecNum = [...avecNumMap.values()]
-  const sansNum  = toInsert.filter(r => !r.numero_operation)
-  let total = 0
 
-  if (avecNum.length) {
-    const { data: existants } = await supabase
-      .from('lld_mouvement_bancaire')
-      .select('numero_operation')
-      .eq('agence', agence).eq('compte', compte)
-      .in('numero_operation', avecNum.map(r => r.numero_operation))
-    const dejaDans = new Set((existants || []).map(r => r.numero_operation))
-    const nouveaux = avecNum.filter(r => !dejaDans.has(r.numero_operation))
-    if (nouveaux.length) {
-      const { error } = await supabase.from('lld_mouvement_bancaire').insert(nouveaux)
-      if (error) throw error
-      total += nouveaux.length
-    }
+  // Plage de dates du fichier
+  const dates = rows.map(r => r.date_operation).filter(Boolean).sort()
+  const dateMin = dates[0], dateMax = dates[dates.length - 1]
+
+  // Récupérer TOUS les existants sur cette plage (évite les .in() avec trop de valeurs)
+  const { data: existants, error: fetchErr } = await supabase
+    .from('lld_mouvement_bancaire')
+    .select('date_operation,debit,credit,libelle,numero_operation')
+    .eq('agence', agence).eq('compte', compte)
+    .gte('date_operation', dateMin).lte('date_operation', dateMax)
+  if (fetchErr) throw fetchErr
+
+  const numExistants = new Set((existants || []).filter(r => r.numero_operation).map(r => r.numero_operation))
+  const fpExistants  = new Set((existants || []).filter(r => !r.numero_operation).map(fp))
+
+  // Dédupliquer le fichier lui-même (une seule entrée par clé)
+  const vus = new Map()
+  for (const r of rows) {
+    const key = r.numero_operation || fp(r)
+    if (!vus.has(key)) vus.set(key, r)
   }
 
-  if (sansNum.length) {
-    // Déduplication manuelle : on récupère les existants sur les mois concernés
-    const moisConcernes = [...new Set(sansNum.map(r => r.mois_releve))].filter(Boolean)
-    const { data: existants } = await supabase
-      .from('lld_mouvement_bancaire')
-      .select('date_operation,debit,credit,libelle')
-      .eq('agence', agence).eq('compte', compte)
-      .is('numero_operation', null)
-      .in('mois_releve', moisConcernes)
-    const empreintes = new Set((existants || []).map(r => `${r.date_operation}|${r.debit}|${r.credit}|${r.libelle}`))
-    const nouveaux = sansNum.filter(r => !empreintes.has(`${r.date_operation}|${r.debit}|${r.credit}|${r.libelle}`))
-    if (nouveaux.length) {
-      const { error } = await supabase.from('lld_mouvement_bancaire').insert(nouveaux)
-      if (error) throw error
-      total += nouveaux.length
-    }
-  }
+  // Filtrer ceux qui existent déjà en base
+  const nouveaux = [...vus.values()]
+    .filter(r => r.numero_operation ? !numExistants.has(r.numero_operation) : !fpExistants.has(fp(r)))
+    .map(r => ({ agence, compte, ...r, statut: 'non_rapproche' }))
 
-  return total
+  if (!nouveaux.length) return 0
+  const { error } = await supabase.from('lld_mouvement_bancaire').insert(nouveaux)
+  if (error) throw error
+  return nouveaux.length
 }
 
 // ── Lecture ────────────────────────────────────────────────────────────────────
