@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useCallback } from 'react'
 import { supabase } from '../lib/supabase'
 import { AGENCE } from '../lib/agence'
+import { parserCSVCaisseEpargne } from '../services/lldBanque'
 
 const MOIS_COURANT = new Date().toISOString().slice(0, 7)
 
@@ -24,97 +25,6 @@ const MODAL_VIDE = {
   notes: '',
 }
 
-// ── Parser CSV Caisse d'Épargne ────────────────────────────────────────────────
-// Format : colonnes séparées par ; ou \t
-// En-têtes attendus : Date comptable, Libelle simplifie, Reference,
-//   Informations complementaires, Type operation, Debit, Credit,
-//   Date operation, Date de valeur, Pointage
-
-function parseCSVCaisseEpargne(text) {
-  const lines = text.replace(/\r\n/g, '\n').replace(/\r/g, '\n').split('\n')
-
-  // Détecter la ligne d'en-têtes (contient "Date comptable")
-  const headerIdx = lines.findIndex(l =>
-    l.toLowerCase().includes('date comptable')
-  )
-  if (headerIdx === -1) throw new Error('Format Caisse d\'Épargne non reconnu — colonne "Date comptable" introuvable')
-
-  // Détecter le séparateur (; ou \t)
-  const headerLine = lines[headerIdx]
-  const sep = headerLine.includes(';') ? ';' : '\t'
-  const headers = headerLine.split(sep).map(h => h.trim().replace(/^"|"$/g, '').toLowerCase())
-
-  const col = (keywords) => headers.findIndex(h => keywords.some(k => h.includes(k)))
-  const IDX = {
-    dateComptable: col(['date comptable']),
-    libelle:       col(['libelle simplifie', 'libellé simplifié', 'libelle']),
-    reference:     col(['reference', 'référence']),
-    infos:         col(['informations complementaires', 'informations complémentaires']),
-    typeOp:        col(['type operation', 'type opération']),
-    debit:         col(['debit', 'débit']),
-    credit:        col(['credit', 'crédit']),
-    dateOp:        col(['date operation', 'date opération']),
-  }
-
-  function parseAmt(s) {
-    if (!s || !s.trim()) return null
-    // Supprimer espaces (séparateurs de milliers), remplacer virgule par point
-    const n = parseFloat(s.trim().replace(/\s/g, '').replace(',', '.'))
-    return isNaN(n) ? null : n
-  }
-
-  function parseDate(s) {
-    if (!s || !s.trim()) return null
-    const parts = s.trim().replace(/"/g, '').split('/')
-    if (parts.length !== 3) return null
-    return `${parts[2]}-${parts[1].padStart(2, '0')}-${parts[0].padStart(2, '0')}`
-  }
-
-  const lignes = []
-  for (let i = headerIdx + 1; i < lines.length; i++) {
-    const line = lines[i].trim()
-    if (!line) continue
-    const cells = line.split(sep).map(c => c.trim().replace(/^"|"$/g, ''))
-    if (cells.length < 5) continue
-
-    // Une ligne de débit = colonne Débit non vide (valeur positive ou négative selon export)
-    // La colonne Crédit est vide sur ces lignes
-    const debitCell = IDX.debit >= 0 ? cells[IDX.debit] : ''
-    const creditCell = IDX.credit >= 0 ? cells[IDX.credit] : ''
-
-    // Ignorer les lignes de crédit (colonne Crédit renseignée, Débit vide)
-    if (!debitCell && creditCell) continue
-    if (!debitCell && !creditCell) continue
-
-    const debit = parseAmt(debitCell)
-    if (!debit) continue // cellule vide ou non parseable
-
-    const date = parseDate(IDX.dateComptable >= 0 ? cells[IDX.dateComptable] : null)
-              || parseDate(IDX.dateOp >= 0 ? cells[IDX.dateOp] : null)
-    const typeOp = IDX.typeOp >= 0 ? cells[IDX.typeOp] : ''
-
-    lignes.push({
-      date,
-      mois:      date ? date.slice(0, 7) : MOIS_COURANT,
-      libelle:   IDX.libelle >= 0 ? cells[IDX.libelle] : '',
-      reference: IDX.reference >= 0 ? cells[IDX.reference] : '',
-      infos:     IDX.infos >= 0 ? cells[IDX.infos] : '',
-      typeOp,
-      debit:     Math.abs(debit), // toujours positif quelle que soit la convention CE
-      fournisseur: '',
-      categorie:   '',
-      selected:    true,
-    })
-  }
-
-  if (!lignes.length) {
-    // Aide au diagnostic : montrer les colonnes détectées
-    const colsDetectees = Object.entries(IDX).filter(([, v]) => v >= 0).map(([k, v]) => `${k}=${v}`).join(', ')
-    throw new Error(`Aucune ligne de débit trouvée (colonnes détectées : ${colsDetectees || 'aucune'})`)
-  }
-
-  return lignes
-}
 
 // ── Composant principal ────────────────────────────────────────────────────────
 
@@ -234,32 +144,43 @@ export default function PageAchats() {
     scannerFichier(file)
   }
 
-  const onCSVInput = (e) => {
+  const onCSVInput = async (e) => {
     const file = e.target?.files?.[0]
     if (!file) return
     e.target.value = ''
     setImportError(null)
-    const reader = new FileReader()
-    reader.onload = (ev) => {
-      try {
-        const lignes = parseCSVCaisseEpargne(ev.target.result)
-        if (!lignes.length) throw new Error('Aucune ligne de débit trouvée dans ce CSV')
+    try {
+      const buf   = await file.arrayBuffer()
+      const texte = new TextDecoder('iso-8859-1').decode(buf)
+      const rows  = parserCSVCaisseEpargne(texte)
 
-        // Auto-match fournisseurs récurrents
-        const matchees = lignes.map(l => {
-          const libelleUp = l.libelle.toUpperCase()
-          const f = fournisseurs.find(f => {
-            const pattern = (f.pattern_libelle || f.nom).toUpperCase()
-            return libelleUp.includes(pattern)
-          })
-          return { ...l, fournisseur: f?.nom || '', categorie: f?.categorie || '' }
+      const debits = rows.filter(r => r.debit)
+      if (!debits.length) throw new Error('Aucune ligne de débit trouvée dans ce CSV')
+
+      // Auto-match fournisseurs récurrents sur pattern_libelle
+      const matchees = debits.map(r => {
+        const libelleUp = (r.libelle + ' ' + (r.detail || '')).toUpperCase()
+        const f = fournisseurs.find(f => {
+          const pattern = (f.pattern_libelle || f.nom).toUpperCase()
+          return libelleUp.includes(pattern)
         })
-        setImportModal({ lignes: matchees, importing: false })
-      } catch (err) {
-        setImportError(err.message)
-      }
+        return {
+          date:        r.date_operation,
+          mois:        r.mois_releve,
+          libelle:     r.libelle,
+          infos:       r.detail || '',
+          reference:   r.numero_operation || '',
+          typeOp:      '',
+          debit:       r.debit / 100, // lldBanque stocke en centimes
+          fournisseur: f?.nom || '',
+          categorie:   f?.categorie || '',
+          selected:    true,
+        }
+      })
+      setImportModal({ lignes: matchees, importing: false })
+    } catch (err) {
+      setImportError(err.message)
     }
-    reader.readAsText(file, 'ISO-8859-1')
   }
 
   const chargerDetections = useCallback(async () => {
