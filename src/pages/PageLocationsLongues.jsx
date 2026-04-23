@@ -459,6 +459,21 @@ export default function PageLocationsLongues() {
     } catch (e) { setError(e.message) }
   }
 
+  async function handleLierMouvement(id, etudiantId) {
+    setError(null)
+    try {
+      const payload = etudiantId
+        ? { etudiant_id: etudiantId, statut: 'rapproche' }
+        : { etudiant_id: null, statut: 'non_rapproche' }
+      await mettreAJourMouvementLLD(id, payload)
+      const etudiant = etudiantId ? etudiants.find(e => e.id === etudiantId) || null : null
+      setBanqueMouvements(prev => prev.map(m => m.id === id
+        ? { ...m, ...payload, etudiant: etudiant ? { id: etudiant.id, nom: etudiant.nom, prenom: etudiant.prenom } : null }
+        : m
+      ))
+    } catch (e) { setError(e.message) }
+  }
+
   // ── Dossier ────────────────────────────────────────────────────────────
   async function ouvrirDossier(e) {
     setError(null)
@@ -1699,10 +1714,26 @@ export default function PageLocationsLongues() {
                               {m.statut === 'rapproche' ? 'Rapproché ✓' : m.statut === 'ignore' ? 'Ignoré' : 'En attente'}
                             </span>
                           </td>
-                          <td style={{ fontSize: 12, color: 'var(--text-muted)' }}>
-                            {m.etudiant ? `${m.etudiant.nom}${m.etudiant.prenom ? ' ' + m.etudiant.prenom : ''}` : '—'}
+                          <td style={{ fontSize: 12, minWidth: 160 }}>
+                            {m.etudiant ? (
+                              <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+                                <span style={{ fontWeight: 600 }}>{m.etudiant.nom}{m.etudiant.prenom ? ' ' + m.etudiant.prenom : ''}</span>
+                                <button className="btn btn-secondary" style={{ fontSize: 10, padding: '1px 5px', color: '#DC2626' }}
+                                  title="Dissocier"
+                                  onClick={() => handleLierMouvement(m.id, '')}>×</button>
+                              </div>
+                            ) : (
+                              <select className="form-select" style={{ fontSize: 12, padding: '2px 6px' }}
+                                value=""
+                                onChange={e => { if (e.target.value) handleLierMouvement(m.id, e.target.value) }}>
+                                <option value="">— Lier —</option>
+                                {etudiants.map(e => (
+                                  <option key={e.id} value={e.id}>{e.nom}{e.prenom ? ' ' + e.prenom : ''}{e.bien?.code ? ` [${e.bien.code}]` : ''}</option>
+                                ))}
+                              </select>
+                            )}
                           </td>
-                          <td>
+                          <td style={{ whiteSpace: 'nowrap' }}>
                             <button className="btn btn-secondary" style={{ fontSize: 11, padding: '2px 6px', color: '#DC2626' }}
                               onClick={() => handleSupprimerMouvement(m.id)} title="Supprimer">✕</button>
                           </td>
