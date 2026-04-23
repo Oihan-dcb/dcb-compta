@@ -58,6 +58,7 @@ function parseCSVCaisseEpargne(text) {
 
   function parseAmt(s) {
     if (!s || !s.trim()) return null
+    // Supprimer espaces (séparateurs de milliers), remplacer virgule par point
     const n = parseFloat(s.trim().replace(/\s/g, '').replace(',', '.'))
     return isNaN(n) ? null : n
   }
@@ -76,8 +77,17 @@ function parseCSVCaisseEpargne(text) {
     const cells = line.split(sep).map(c => c.trim().replace(/^"|"$/g, ''))
     if (cells.length < 5) continue
 
-    const debit = parseAmt(IDX.debit >= 0 ? cells[IDX.debit] : null)
-    if (!debit || debit <= 0) continue // seulement les débits (achats)
+    // Une ligne de débit = colonne Débit non vide (valeur positive ou négative selon export)
+    // La colonne Crédit est vide sur ces lignes
+    const debitCell = IDX.debit >= 0 ? cells[IDX.debit] : ''
+    const creditCell = IDX.credit >= 0 ? cells[IDX.credit] : ''
+
+    // Ignorer les lignes de crédit (colonne Crédit renseignée, Débit vide)
+    if (!debitCell && creditCell) continue
+    if (!debitCell && !creditCell) continue
+
+    const debit = parseAmt(debitCell)
+    if (!debit) continue // cellule vide ou non parseable
 
     const date = parseDate(IDX.dateComptable >= 0 ? cells[IDX.dateComptable] : null)
               || parseDate(IDX.dateOp >= 0 ? cells[IDX.dateOp] : null)
@@ -90,12 +100,17 @@ function parseCSVCaisseEpargne(text) {
       reference: IDX.reference >= 0 ? cells[IDX.reference] : '',
       infos:     IDX.infos >= 0 ? cells[IDX.infos] : '',
       typeOp,
-      debit,
-      // champs modifiables dans le modal d'import
+      debit:     Math.abs(debit), // toujours positif quelle que soit la convention CE
       fournisseur: '',
       categorie:   '',
       selected:    true,
     })
+  }
+
+  if (!lignes.length) {
+    // Aide au diagnostic : montrer les colonnes détectées
+    const colsDetectees = Object.entries(IDX).filter(([, v]) => v >= 0).map(([k, v]) => `${k}=${v}`).join(', ')
+    throw new Error(`Aucune ligne de débit trouvée (colonnes détectées : ${colsDetectees || 'aucune'})`)
   }
 
   return lignes
