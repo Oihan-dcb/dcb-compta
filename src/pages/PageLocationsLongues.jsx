@@ -885,23 +885,23 @@ export default function PageLocationsLongues() {
                             </div>
                           )}
                         </td>
-                        <td style={{ display: 'flex', gap: 4, flexWrap: 'wrap' }}>
+                        <td style={{ display: 'flex', gap: 3, flexWrap: 'wrap', alignItems: 'center' }}>
                           {!e.archived && (<>
-                            <button className="btn btn-secondary" style={{ fontSize: 12, padding: '3px 8px' }}
+                            <button className="btn btn-secondary" style={{ fontSize: 13, padding: '3px 7px' }}
                               onClick={() => ouvrirModalEtudiant(e)} title="Modifier">✏</button>
-                            <button className="btn btn-secondary" style={{ fontSize: 12, padding: '3px 8px' }}
+                            <button className="btn btn-secondary" style={{ fontSize: 13, padding: '3px 7px' }}
                               onClick={() => ouvrirDossier(e)} title="Dossier">📁</button>
-                            <button className="btn btn-secondary" style={{ fontSize: 12, padding: '3px 8px' }}
+                            <button className="btn btn-secondary" style={{ fontSize: 13, padding: '3px 7px' }}
                               onClick={() => { setSuiviEtudiantId(e.id); setOnglet('suivi') }} title="Suivi">📋</button>
                           </>)}
                           {e.archived ? (<>
                             <button className="btn btn-secondary" style={{ fontSize: 12, padding: '3px 8px', color: '#059669' }}
-                              onClick={() => setConfirmSuppr({ etudiant: e, action: 'desarchiver' })}>↩ Réactiver</button>
-                            <button className="btn btn-secondary" style={{ fontSize: 12, padding: '3px 8px', color: '#DC2626' }}
-                              onClick={() => setConfirmSuppr({ etudiant: e, action: 'supprimer' })}>🗑</button>
+                              onClick={() => setConfirmSuppr({ etudiant: e, action: 'desarchiver' })} title="Réactiver">↩</button>
+                            <button className="btn btn-secondary" style={{ fontSize: 13, padding: '3px 7px', color: '#DC2626' }}
+                              onClick={() => setConfirmSuppr({ etudiant: e, action: 'supprimer' })} title="Supprimer définitivement">🗑</button>
                           </>) : (
-                            <button className="btn btn-secondary" style={{ fontSize: 12, padding: '3px 8px', color: '#B45309' }}
-                              onClick={() => setConfirmSuppr({ etudiant: e, action: 'archiver' })}>📦 Archiver</button>
+                            <button className="btn btn-secondary" style={{ fontSize: 13, padding: '3px 7px', color: '#B45309' }}
+                              onClick={() => setConfirmSuppr({ etudiant: e, action: 'archiver' })} title="Archiver">📦</button>
                           )}
                         </td>
                       </tr>
