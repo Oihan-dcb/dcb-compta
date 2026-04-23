@@ -191,74 +191,34 @@ export default function PageAchats() {
 
           const lignesAAnalyser = nonMatchesIdx.map(i => matchees[i])
 
-          const SYSTEM_PROMPT = `Tu es un assistant comptable expert pour Destination Côte Basque, agence de conciergerie immobilière à Biarritz (~50 biens, location saisonnière + longue durée).
-Tu analyses des libellés bruts de relevé bancaire Caisse d'Épargne.
+          const SYSTEM_PROMPT = `Tu es comptable pour Destination Côte Basque, agence de conciergerie immobilière à Biarritz (~50 biens, location saisonnière + longue durée). Tu analyses des relevés bancaires Caisse d'Épargne.
 
-FORMAT CAISSE D'ÉPARGNE — CRUCIAL À COMPRENDRE :
-Les libellés CE collent le nom du bénéficiaire et le motif SANS ESPACE.
-Exemples : "ESCUDIER LEAFACTURE N131" = nom "ESCUDIER LEA" + motif "FACTURE N131"
-           "PLOQUIN CLEMENCEPAYE CLEMENCE MARS" = nom "PLOQUIN CLEMENCE" + motif "PAYE CLEMENCE MARS"
-           "SARL MADAME EDITIONSFACTURE FAC/2026/03/0024" = nom "MADAME EDITIONS" + motif "FACTURE"
-           "CAMPANDEGUI MARCLOYER DESTINATION" = nom "CAMPANDEGUI MARC" + motif "LOYER"
-           "THOISY MATHIEUVIR SEPA THOISY MATHIEU" = nom "THOISY MATHIEU" + virement sans motif spécifique
-Méthode : repère les mots-clés (FACTURE, PAYE, LOYER, ACOMPTE, DEBOURS...) pour couper le libellé.
-Pour le fournisseur : supprime "SARL", "SAS", "MONSIEUR", "MADAME" et les codes numériques.
+PARTICULARITÉ FORMAT CE : le libellé colle le nom du bénéficiaire et le motif SANS ESPACE.
+"PLOQUIN CLEMENCEPAYE CLEMENCE MARS" → bénéficiaire "Clémence Ploquin" + motif "PAYE" → salaire
+"ESCUDIER LEAFACTURE N131" → bénéficiaire "Léa Escudier" + motif "FACTURE" → prestataire_ae
+"SARL MADAME EDITIONSFACTURE FAC/2026" → bénéficiaire "Madame Editions" + motif "FACTURE" → publicite
+"CAMPANDEGUI MARCLOYER DESTINATION" → bénéficiaire "Marc Campandegui" + motif "LOYER" → loyer
+Lis le libellé en cherchant les mots-clés (FACTURE, PAYE, LOYER, DEBOURS, ACOMPTE) pour séparer nom et motif.
 
-Pour chaque ligne retourne :
-- fournisseur : nom court lisible (ex: "EDF", "Léa Escudier", "DGFIP", "Madame Editions")
-- categorie : UNE SEULE valeur — applique les règles dans l'ordre, la PREMIÈRE qui matche gagne
+CATÉGORIES (utilise ta compréhension du contexte, pas seulement des mots-clés) :
+- frais_bancaires : frais prélevés par la banque elle-même (virement SEPA, tenue de compte, consentement B2B, frais Stripe, VIR INST) — fournisseur = "Caisse d'Épargne" ou "Stripe"
+- carte_bancaire : cumul des achats carte différée — fournisseur = "Carte bancaire"
+- retour : remboursement ou retour de virement — fournisseur = l'émetteur
+- salaire : paiement de salaire ou rémunération d'un employé (PAYE, SALAIRE, PAIE dans le motif) — fournisseur = Prénom Nom
+- prestataire_ae : paiement d'une facture à un prestataire indépendant (FACTURE, HONORAIRES, DEBOURS, ACOMPTE, SOLDE dans le motif) sauf Madame Editions → publicite — fournisseur = Prénom Nom ou nom société
+- loyer : loyer des locaux professionnels DCB — fournisseur = bailleur (ex: "Marc Campandegui")
+- energie : électricité, gaz, eau (EDF, Engie, Veolia…) — fournisseur = fournisseur d'énergie
+- assurance : prime d'assurance (Galian, SMA BTP, MAIF, Allianz…) — fournisseur = assureur
+- comptabilite : impôts, taxes, URSSAF, DGFIP, cabinet comptable — fournisseur = organisme
+- plateforme : reversements ou frais de plateformes de réservation (Airbnb, Booking, Abritel…) — fournisseur = plateforme
+- telecom : téléphonie, internet (SFR, Orange, Bouygues, Free…) — fournisseur = opérateur
+- securite : alarme, gardiennage, vidéosurveillance (ECB Sécurité, Verisure…)
+- publicite : communication, impression, publicité (Madame Editions, Google Ads…)
+- fournitures : matériel, consommables, équipements (Amazon, Leroy Merlin, Brico Dépôt…)
+- abonnement : logiciel SaaS ou abonnement numérique (Pennylane, Notion, Microsoft, Adobe, Anthropic…)
+- autre : tout ce qui ne rentre dans aucune catégorie ci-dessus
 
-RÈGLES PAR PRIORITÉ :
-
-1. frais_bancaires → contient "FRAIS VIREMENT", "FRAIS TENUE", "FRAIS CONSENTEMENT", "FRAIS STRIPE", "VIR INST", "COMMISSION BANCAIRE", "AGIOS", "INTERETS DEBITEURS"
-   fournisseur = "Caisse d'Épargne" sauf "STRIPE" → "Stripe"
-
-2. carte_bancaire → contient "CUMUL DES DEBITS DIFFERES" ou "REMISE CARTE"
-   fournisseur = "Carte bancaire"
-
-3. retour → contient "RETOUR VIREMENT", "REMBOURSEMENT", "AVOIR", "ANNULATION PRLV", "TROP PERCU"
-   fournisseur = émetteur du retour
-
-4. salaire → "VIR SEPA" + motif contient "PAYE", "SALAIRE", "REMUNERATION", "PAIE"
-   fournisseur = Prénom Nom du salarié (ex: "Clémence Ploquin", "Mathieu Thoisy")
-   Attention : "PLOQUIN CLEMENCEPAYE" → salaire Clémence ; "THOISY MATHIEUVIR SEPA" sans PAYE/FACTURE → salaire Mathieu (employé connu)
-
-5. prestataire_ae → "VIR SEPA" + motif contient "FACTURE", "HONORAIRES", "PRESTATION", "DEBOURS", "ACOMPTE", "SOLDE"
-   fournisseur = Prénom Nom du prestataire (ex: "Léa Escudier", "Tom Wijnberg", "Madame Editions")
-
-6. loyer → contient "LOYER" dans n'importe quelle partie du libellé/detail
-   fournisseur = "Marc Campandegui" si CAMPANDEGUI, sinon "Loyer locaux"
-
-7. energie → contient "EDF", "ENGIE", "VEOLIA", "ELECTRICITE", "GAZ", "EAU", "SUEZ", "SAUR"
-   fournisseur = EDF / Engie / Veolia / etc.
-
-8. assurance → contient "GALIAN", "SMA BTP", "SMABTP", "MAIF", "ALLIANZ", "MMA", "AXA", "GENERALI", "GROUPAMA", "ASSUR"
-   fournisseur = nom de l'assureur (ex: "Galian SMA BTP")
-
-9. comptabilite → contient "DGFIP", "IMPOTS", "URSSAF", "CIPAV", "CABINET COMPTAB", "EXPERT COMPTAB", "FIDUCIAIRE", "CFE", "TVA", "TAXE FONCIERE"
-   fournisseur = "DGFIP" / "URSSAF" / "Cabinet comptable" / etc.
-
-10. plateforme → contient "AIRBNB", "AIRBB", "BOOKING", "ABRITEL", "VRBO", "HOMEAWAY", "LOYERS LOCATIONS"
-    fournisseur = nom de la plateforme
-
-11. telecom → contient "SFR", "ORANGE", "BOUYGUES", "FREE", "NUMERICABLE", "TELEPHONIE", "INTERNET"
-    fournisseur = opérateur
-
-12. securite → contient "ECB SECURITE", "VERISURE", "SECURITAS", "ALARME", "GARDIENNAGE"
-    fournisseur = nom prestataire
-
-13. publicite → contient "MADAME EDITIONS", "IMPRESSION", "GOOGLE ADS", "META ADS", "COMMUNICATION"
-    NB: "VIR SEPA SARL MADAME EDITIONS" + FACTURE → publicite (pas prestataire_ae)
-    fournisseur = "Madame Editions" ou nom de l'agence
-
-14. fournitures → contient "AMAZON", "LEROY MERLIN", "BRICO DEPOT", "CASTORAMA", "IKEA", "ACE"
-    fournisseur = enseigne
-
-15. abonnement → SaaS uniquement si aucune règle ci-dessus ne matche : "PENNYLANE", "NOTION", "SLACK", "GOOGLE ONE", "MICROSOFT", "ADOBE", "DROPBOX", "ANTHROPIC", "OPENAI", "ZAPIER", "AIRTABLE"
-    fournisseur = nom du service
-
-16. autre → rien ne matche
-    fournisseur = nom court extrait
+Pour le fournisseur : nom court lisible, sans codes numériques ni références, sans "SARL"/"SAS"/"MONSIEUR".
 
 Réponds UNIQUEMENT en JSON valide, tableau dans le même ordre que les entrées :
 [{"fournisseur":"...","categorie":"..."}]`
@@ -277,7 +237,7 @@ Réponds UNIQUEMENT en JSON valide, tableau dans le même ordre que les entrées
             const res = await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/llm-analyse`, {
               method: 'POST',
               headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
-              body: JSON.stringify({ prompt }),
+              body: JSON.stringify({ prompt, model: 'claude-sonnet-4-6' }),
             })
             const data = await res.json()
             const match = (data.text || '').match(/\[[\s\S]*\]/)

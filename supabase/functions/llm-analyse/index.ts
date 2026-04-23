@@ -6,7 +6,7 @@ const corsHeaders = {
 Deno.serve(async (req) => {
   if (req.method === 'OPTIONS') return new Response('ok', { headers: corsHeaders })
 
-  const { prompt, system } = await req.json()
+  const { prompt, system, model } = await req.json()
 
   if (!prompt || typeof prompt !== 'string' || prompt.trim().length === 0) {
     return new Response(JSON.stringify({ error: 'prompt requis' }), {
@@ -24,10 +24,13 @@ Deno.serve(async (req) => {
     })
   }
 
+  const ALLOWED_MODELS = ['claude-haiku-4-5-20251001', 'claude-sonnet-4-6']
+  const selectedModel = ALLOWED_MODELS.includes(model) ? model : 'claude-haiku-4-5-20251001'
+
   const apiKey = Deno.env.get('ANTHROPIC_API_KEY') ?? ''
 
   const body: Record<string, unknown> = {
-    model: 'claude-haiku-4-5-20251001',
+    model: selectedModel,
     max_tokens: 2048,
     messages: [{ role: 'user', content: prompt }],
   }
