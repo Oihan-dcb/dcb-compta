@@ -152,7 +152,7 @@ export default function App() {
               Staff
               {showNavetteBadge && (
                 <span style={{ position: 'absolute', top: -6, right: -8, background: '#ef4444', color: '#fff', borderRadius: 10, fontSize: 10, fontWeight: 700, padding: '1px 5px', minWidth: 16, textAlign: 'center' }}>
-                  j-2
+                  j-{_daysUntilSend}
                 </span>
               )}
             </NavLink>
