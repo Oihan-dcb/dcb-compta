@@ -89,24 +89,40 @@ export async function parserFichierLLD(file) {
 
 // ── Import en base ─────────────────────────────────────────────────────────────
 
-export async function importerMouvementsLLD(rows, compte, mois, agence = AGENCE) {
-  const filtered = rows.filter(r => r.mois_releve === mois)
-  if (!filtered.length) return 0
-  const toInsert = filtered.map(r => ({ agence, compte, ...r, statut: 'non_rapproche' }))
-  // Rows sans numero_operation : pas de contrainte unique → insert simple
+export async function importerMouvementsLLD(rows, compte, agence = AGENCE) {
+  if (!rows.length) return 0
+  const toInsert = rows.map(r => ({ agence, compte, ...r, statut: 'non_rapproche' }))
   const avecNum  = toInsert.filter(r => r.numero_operation)
   const sansNum  = toInsert.filter(r => !r.numero_operation)
+  let total = 0
+
   if (avecNum.length) {
     const { error } = await supabase
       .from('lld_mouvement_bancaire')
       .upsert(avecNum, { onConflict: 'numero_operation,compte,agence', ignoreDuplicates: true })
     if (error) throw error
+    total += avecNum.length
   }
+
   if (sansNum.length) {
-    const { error } = await supabase.from('lld_mouvement_bancaire').insert(sansNum)
-    if (error) throw error
+    // Déduplication manuelle : on récupère les existants sur les mois concernés
+    const moisConcernes = [...new Set(sansNum.map(r => r.mois_releve))].filter(Boolean)
+    const { data: existants } = await supabase
+      .from('lld_mouvement_bancaire')
+      .select('date_operation,debit,credit,libelle')
+      .eq('agence', agence).eq('compte', compte)
+      .is('numero_operation', null)
+      .in('mois_releve', moisConcernes)
+    const empreintes = new Set((existants || []).map(r => `${r.date_operation}|${r.debit}|${r.credit}|${r.libelle}`))
+    const nouveaux = sansNum.filter(r => !empreintes.has(`${r.date_operation}|${r.debit}|${r.credit}|${r.libelle}`))
+    if (nouveaux.length) {
+      const { error } = await supabase.from('lld_mouvement_bancaire').insert(nouveaux)
+      if (error) throw error
+      total += nouveaux.length
+    }
   }
-  return filtered.length
+
+  return total
 }
 
 // ── Lecture ────────────────────────────────────────────────────────────────────

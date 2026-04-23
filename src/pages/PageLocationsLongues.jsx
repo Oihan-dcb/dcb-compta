@@ -427,14 +427,16 @@ export default function PageLocationsLongues() {
   }
 
   async function handleImporterBanque() {
-    if (!banqueParsed || !banqueMoisImport) return
+    if (!banqueParsed) return
     setBanqueImporting(true); setError(null)
     try {
-      const n = await importerMouvementsLLD(banqueParsed.rows, banqueCompte, banqueMoisImport)
-      setSuccess(`${n} mouvement(s) importé(s) — compte ${banqueCompte}, ${banqueMoisImport}`)
+      const n = await importerMouvementsLLD(banqueParsed.rows, banqueCompte)
+      const moisStr = banqueParsed.moisDispos.join(', ')
+      setSuccess(`${n} mouvement(s) importé(s) — compte ${banqueCompte} (${moisStr})`)
       setBanqueParsed(null)
-      await chargerBanque(banqueCompte, banqueMoisImport)
-      setBanqueMois(banqueMoisImport)
+      const dernierMois = banqueParsed.moisDispos[banqueParsed.moisDispos.length - 1] || banqueMois
+      await chargerBanque(banqueCompte, dernierMois)
+      setBanqueMois(dernierMois)
     } catch (e) { setError(e.message) }
     finally { setBanqueImporting(false) }
   }
@@ -1612,19 +1614,14 @@ export default function PageLocationsLongues() {
                   Fichier chargé — {banqueParsed.total} ligne(s) détectée(s)
                 </div>
                 <div style={{ display: 'flex', gap: 12, alignItems: 'center', flexWrap: 'wrap' }}>
-                  <div style={{ fontSize: 13 }}>
-                    Mois à importer :
-                    <select className="form-select" style={{ marginLeft: 8, width: 'auto', display: 'inline-block' }}
-                      value={banqueMoisImport}
-                      onChange={e => setBanqueMoisImport(e.target.value)}>
-                      {banqueParsed.moisDispos.map(m => <option key={m} value={m}>{m}</option>)}
-                    </select>
+                  <div style={{ fontSize: 13, color: 'var(--text-muted)' }}>
+                    Mois détectés : <strong style={{ color: 'var(--text)' }}>{banqueParsed.moisDispos.join(', ')}</strong>
                   </div>
                   <div style={{ fontSize: 13, color: 'var(--text-muted)' }}>
-                    Compte cible : <strong>{banqueCompte}</strong>
+                    Compte cible : <strong style={{ color: 'var(--text)' }}>{banqueCompte}</strong>
                   </div>
-                  <button className="btn btn-primary" onClick={handleImporterBanque} disabled={banqueImporting || !banqueMoisImport}>
-                    {banqueImporting ? <><span className="spinner" /> Import…</> : '✓ Confirmer l\'import'}
+                  <button className="btn btn-primary" onClick={handleImporterBanque} disabled={banqueImporting}>
+                    {banqueImporting ? <><span className="spinner" /> Import…</> : '✓ Tout importer'}
                   </button>
                   <button className="btn btn-secondary" onClick={() => setBanqueParsed(null)}>Annuler</button>
                 </div>
