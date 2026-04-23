@@ -1218,12 +1218,16 @@ export default function PageAutoEntrepreneurs() {
                   const result = genererHtmlNavette()
                   if (!result) return null
                   return (
-                    <div style={{ marginTop: 24, border: '2px solid #D9CEB8', borderRadius: 10, overflow: 'hidden' }}>
-                      <div style={{ background: '#EAE3D4', padding: '8px 16px', fontSize: 12, fontWeight: 600, color: '#2C2416', borderBottom: '1px solid #D9CEB8' }}>
-                        👁 Aperçu — email vers anne@compact.fr
+                    <div style={{ position: 'fixed', inset: 0, zIndex: 1000, background: 'rgba(0,0,0,0.45)', display: 'flex', alignItems: 'flex-start', justifyContent: 'center', padding: '40px 16px', overflowY: 'auto' }}
+                      onClick={e => { if (e.target === e.currentTarget) setShowAperçuNavette(false) }}>
+                      <div style={{ background: '#fff', borderRadius: 12, border: '2px solid #D9CEB8', maxWidth: 960, width: '100%', overflow: 'hidden', boxShadow: '0 8px 32px rgba(0,0,0,0.18)' }}>
+                        <div style={{ background: '#EAE3D4', padding: '10px 18px', fontSize: 12, fontWeight: 600, color: '#2C2416', borderBottom: '1px solid #D9CEB8', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                          <span>👁 Aperçu — email vers anne@compact.fr</span>
+                          <button onClick={() => setShowAperçuNavette(false)} style={{ background: 'none', border: 'none', fontSize: 18, cursor: 'pointer', color: '#2C2416', lineHeight: 1 }}>✕</button>
+                        </div>
+                        <div style={{ padding: 20, background: '#fff', overflowX: 'auto' }}
+                          dangerouslySetInnerHTML={{ __html: result.html }} />
                       </div>
-                      <div style={{ padding: 16, background: '#fff' }}
-                        dangerouslySetInnerHTML={{ __html: result.html }} />
                     </div>
                   )
                 })()}
