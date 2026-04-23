@@ -157,7 +157,7 @@ export default function PageLocationsLongues() {
   useEffect(() => { chargerReferentiels() }, [])
   useEffect(() => { if (onglet === 'mensuel') chargerMensuel() }, [mois, onglet])
   useEffect(() => { if (onglet === 'etudiants') chargerEtudiants(voirArchives) }, [onglet, voirArchives])
-  useEffect(() => { if (onglet === 'suivi' && !etudiants.length) chargerEtudiants() }, [onglet])
+  useEffect(() => { if ((onglet === 'suivi' || onglet === 'banque') && !etudiants.length) chargerEtudiants() }, [onglet])
   useEffect(() => { if (suiviEtudiantId) chargerSuivi(suiviEtudiantId) }, [suiviEtudiantId])
   useEffect(() => {
     if (onglet === 'banque') chargerBanque(banqueCompte, banqueMois)
