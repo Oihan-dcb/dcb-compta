@@ -33,6 +33,7 @@ import {
   parserFichierLLD,
   importerMouvementsLLD,
   listerMouvementsLLD,
+  listerTousMouvementsLLD,
   listerMoisDisposLLD,
   supprimerMouvementLLD,
 } from '../services/lldBanque'
@@ -405,12 +406,21 @@ export default function PageLocationsLongues() {
   async function chargerBanque(compte, mois) {
     setBanqueLoading(true); setError(null)
     try {
-      const [mvts, moisDispos] = await Promise.all([
-        listerMouvementsLLD(compte, mois),
-        listerMoisDisposLLD(compte),
-      ])
-      setBanqueMouvements(mvts)
-      setBanqueMoisDispos(moisDispos)
+      if (compte === 'cautions') {
+        const [mvts, moisDispos] = await Promise.all([
+          listerTousMouvementsLLD(compte),
+          listerMoisDisposLLD(compte),
+        ])
+        setBanqueMouvements(mvts)
+        setBanqueMoisDispos(moisDispos)
+      } else {
+        const [mvts, moisDispos] = await Promise.all([
+          listerMouvementsLLD(compte, mois),
+          listerMoisDisposLLD(compte),
+        ])
+        setBanqueMouvements(mvts)
+        setBanqueMoisDispos(moisDispos)
+      }
     } catch (e) { setError(e.message) }
     finally { setBanqueLoading(false) }
   }
@@ -1589,17 +1599,22 @@ export default function PageLocationsLongues() {
                   {label}
                 </button>
               ))}
-              <div style={{ display: 'flex', gap: 6, alignItems: 'center', marginLeft: 8 }}>
-                <select className="form-select" style={{ maxWidth: 140 }}
-                  value={banqueMois}
-                  onChange={e => setBanqueMois(e.target.value)}>
-                  {banqueMoisDispos.length === 0
-                    ? <option value={moisCourant}>{moisCourant}</option>
-                    : banqueMoisDispos.map(m => <option key={m} value={m}>{m}</option>)
-                  }
-                </select>
-                <button className="btn btn-secondary" onClick={() => chargerBanque(banqueCompte, banqueMois)} disabled={banqueLoading}>↺</button>
-              </div>
+              {banqueCompte === 'loyers' && (
+                <div style={{ display: 'flex', gap: 6, alignItems: 'center', marginLeft: 8 }}>
+                  <select className="form-select" style={{ maxWidth: 140 }}
+                    value={banqueMois}
+                    onChange={e => setBanqueMois(e.target.value)}>
+                    {banqueMoisDispos.length === 0
+                      ? <option value={moisCourant}>{moisCourant}</option>
+                      : banqueMoisDispos.map(m => <option key={m} value={m}>{m}</option>)
+                    }
+                  </select>
+                  <button className="btn btn-secondary" onClick={() => chargerBanque(banqueCompte, banqueMois)} disabled={banqueLoading}>↺</button>
+                </div>
+              )}
+              {banqueCompte === 'cautions' && (
+                <button className="btn btn-secondary" style={{ marginLeft: 8 }} onClick={() => chargerBanque('cautions', banqueMois)} disabled={banqueLoading}>↺</button>
+              )}
               <label style={{ marginLeft: 'auto', cursor: 'pointer' }}>
                 <input type="file" accept=".csv,.txt" style={{ display: 'none' }}
                   onChange={e => { if (e.target.files[0]) handleFichierBanque(e.target.files[0]); e.target.value = '' }} />

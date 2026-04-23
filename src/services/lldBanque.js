@@ -141,6 +141,17 @@ export async function listerMouvementsLLD(compte, mois, agence = AGENCE) {
   return data || []
 }
 
+export async function listerTousMouvementsLLD(compte, agence = AGENCE) {
+  const { data, error } = await supabase
+    .from('lld_mouvement_bancaire')
+    .select('*, etudiant(id, nom, prenom)')
+    .eq('agence', agence)
+    .eq('compte', compte)
+    .order('date_operation', { ascending: false })
+  if (error) throw error
+  return data || []
+}
+
 export async function listerMoisDisposLLD(compte, agence = AGENCE) {
   const { data, error } = await supabase
     .from('lld_mouvement_bancaire')
