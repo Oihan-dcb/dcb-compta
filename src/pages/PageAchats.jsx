@@ -804,6 +804,15 @@ ${mvts.map(m => `${m.id} | ${m.libelle} | ${(Number(m.debit) / 100).toFixed(2)}�
                   <td>
                     <div style={{ display: 'flex', gap: 6 }}>
                       <button className="btn btn-secondary btn-sm" onClick={() => ouvrir(f)}>Éditer</button>
+                      {f.pdf_url && (
+                        <button className="btn btn-secondary btn-sm" title="Voir la pièce jointe"
+                          onClick={async () => {
+                            const { data, error } = await supabase.storage.from('achats-documents').createSignedUrl(f.pdf_url, 3600)
+                            if (!error) window.open(data.signedUrl, '_blank')
+                          }}>
+                          📎
+                        </button>
+                      )}
                       <button onClick={() => supprimer(f.id)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#dc2626', fontSize: 16 }} title="Supprimer">✕</button>
                     </div>
                   </td>
