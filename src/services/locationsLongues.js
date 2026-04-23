@@ -3,16 +3,39 @@ import { AGENCE } from '../lib/agence'
 
 // ── Étudiants ──────────────────────────────────────────────────────────────
 
-export async function listerEtudiants(agence = AGENCE, statut = null) {
+export async function listerEtudiants(agence = AGENCE, statut = null, inclureArchives = false) {
   let q = supabase
     .from('etudiant')
     .select('*, bien (id, code, hospitable_name), proprietaire (id, nom, prenom)')
     .eq('agence', agence)
     .order('nom')
   if (statut) q = q.eq('statut', statut)
+  if (!inclureArchives) q = q.eq('archived', false)
   const { data, error } = await q
   if (error) throw error
   return data
+}
+
+export async function archiverEtudiant(id, archiver = true) {
+  const { error } = await supabase
+    .from('etudiant')
+    .update({ archived: archiver, relances_actives: !archiver, updated_at: new Date().toISOString() })
+    .eq('id', id)
+  if (error) throw error
+}
+
+export async function supprimerEtudiant(id) {
+  await supabase.from('lld_log').delete().eq('etudiant_id', id)
+  await supabase.from('loyer_suivi').delete().eq('etudiant_id', id)
+  await supabase.from('virement_proprio_suivi').delete().eq('etudiant_id', id)
+  await supabase.from('caution_suivi').delete().eq('etudiant_id', id)
+  const { data: docs } = await supabase.from('etudiant_document').select('file_url').eq('etudiant_id', id)
+  if (docs?.length) {
+    await supabase.storage.from('etudiant-documents').remove(docs.map(d => d.file_url))
+  }
+  await supabase.from('etudiant_document').delete().eq('etudiant_id', id)
+  const { error } = await supabase.from('etudiant').delete().eq('id', id)
+  if (error) throw error
 }
 
 export async function creerEtudiant(payload) {
