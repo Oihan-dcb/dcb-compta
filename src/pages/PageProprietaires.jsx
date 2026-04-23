@@ -7,6 +7,8 @@ import {
   updateMandat,
   supprimerMandat,
 } from '../services/mandats'
+import { syncProprietairesEvoliz } from '../services/syncProprietaires'
+import { supabase } from '../lib/supabase'
 
 const TYPE_LABELS = {
   particulier: 'Particulier',
@@ -51,13 +53,40 @@ function ModalFiche({ proprio, onClose, onSaved }) {
     pays:           proprio.pays || 'France',
     iban:           proprio.iban || '',
     bic:            proprio.bic || '',
-    taux_commission: proprio.taux_commission != null ? (proprio.taux_commission * 100).toFixed(1) : '',
+    taux_commission: proprio.taux_commission != null ? String(proprio.taux_commission) : '',
     actif:          proprio.actif !== false,
     notes:          proprio.notes || '',
   })
-  const [saving, setSaving] = useState(false)
-  const [err, setErr]       = useState(null)
-  const [ok, setOk]         = useState(false)
+  const [saving, setSaving]   = useState(false)
+  const [err, setErr]         = useState(null)
+  const [ok, setOk]           = useState(false)
+  const [syncing, setSyncing] = useState(false)
+
+  async function syncDepuisEvoliz() {
+    if (!proprio.id_evoliz) return
+    setSyncing(true); setErr(null)
+    try {
+      await syncProprietairesEvoliz()
+      const { data } = await supabase
+        .from('proprietaire').select('*').eq('id', proprio.id).single()
+      if (data) {
+        setForm(f => ({
+          ...f,
+          nom:         data.nom || f.nom,
+          prenom:      data.prenom || f.prenom,
+          email:       data.email || f.email,
+          telephone:   data.telephone || f.telephone,
+          adresse:     data.adresse || f.adresse,
+          code_postal: data.code_postal || f.code_postal,
+          ville:       data.ville || f.ville,
+          pays:        data.pays || f.pays,
+        }))
+        onSaved({ ...proprio, ...data })
+        setOk(true); setTimeout(() => setOk(false), 2000)
+      }
+    } catch (e) { setErr(e.message) }
+    finally { setSyncing(false) }
+  }
 
   // Mandats
   const [mandats, setMandats]       = useState(proprio.mandat_gestion || [])
@@ -82,7 +111,7 @@ function ModalFiche({ proprio, onClose, onSaved }) {
         pays:           form.pays.trim() || 'France',
         iban:           form.iban.trim() || null,
         bic:            form.bic.trim() || null,
-        taux_commission: form.taux_commission !== '' ? parseFloat(form.taux_commission) / 100 : null,
+        taux_commission: form.taux_commission !== '' ? parseFloat(form.taux_commission) : null,
         actif:          form.actif,
         notes:          form.notes.trim() || null,
       }
@@ -104,7 +133,7 @@ function ModalFiche({ proprio, onClose, onSaved }) {
         date_echeance:   mf.date_echeance || null,
         type:            mf.type || 'gestion_locative',
         taux_commission: mf.taux_commission !== '' && mf.taux_commission != null
-                           ? parseFloat(mf.taux_commission) / 100 : null,
+                           ? parseFloat(mf.taux_commission) : null,
         conditions:      mf.conditions?.trim() || null,
         statut:          mf.statut || 'actif',
       }
@@ -168,6 +197,16 @@ function ModalFiche({ proprio, onClose, onSaved }) {
           {/* ── Identité ── */}
           {tab === 'identite' && (
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
+              {proprio.id_evoliz && (
+                <div style={{ gridColumn: '1 / -1', display: 'flex', alignItems: 'center', justifyContent: 'space-between', background: 'var(--brand-pale)', border: '1px solid var(--border)', borderRadius: 6, padding: '8px 12px', marginBottom: 4 }}>
+                  <span style={{ fontSize: 12, color: 'var(--text-muted)' }}>
+                    Lié Evoliz #{proprio.id_evoliz} — email, téléphone et adresse sont synchronisés depuis Evoliz
+                  </span>
+                  <button className="btn btn-secondary btn-sm" disabled={syncing} onClick={syncDepuisEvoliz}>
+                    {syncing ? '⏳ Sync…' : '⟳ Rafraîchir depuis Evoliz'}
+                  </button>
+                </div>
+              )}
               <div className="form-group">
                 <label className="form-label">Nom *</label>
                 <input className="form-input" value={form.nom} onChange={e => setForm(f => ({ ...f, nom: e.target.value }))} />
@@ -280,7 +319,7 @@ function ModalFiche({ proprio, onClose, onSaved }) {
                       <div style={{ fontSize: 12, color: 'var(--text-muted)', display: 'flex', gap: 16 }}>
                         {m.date_signature && <span>Signé le {new Date(m.date_signature).toLocaleDateString('fr-FR')}</span>}
                         {m.date_echeance  && <span>Échéance {new Date(m.date_echeance).toLocaleDateString('fr-FR')}</span>}
-                        {m.taux_commission != null && <span>Taux : {(m.taux_commission * 100).toFixed(1)}%</span>}
+                        {m.taux_commission != null && <span>Taux : {Number(m.taux_commission).toFixed(1)}%</span>}
                       </div>
                       {m.conditions && (
                         <p style={{ fontSize: 12, color: 'var(--text-muted)', marginTop: 6, whiteSpace: 'pre-wrap' }}>{m.conditions}</p>
@@ -288,7 +327,7 @@ function ModalFiche({ proprio, onClose, onSaved }) {
                     </div>
                     <div style={{ display: 'flex', gap: 6 }}>
                       <button className="btn btn-secondary btn-sm"
-                        onClick={() => setMandatForm({ ...m, taux_commission: m.taux_commission != null ? (m.taux_commission * 100).toFixed(1) : '' })}>
+                        onClick={() => setMandatForm({ ...m, taux_commission: m.taux_commission != null ? String(m.taux_commission) : '' })}>
                         Modifier
                       </button>
                       <button className="btn btn-sm" style={{ background: '#fee2e2', color: '#991b1b', border: 'none' }}
@@ -597,7 +636,7 @@ export default function PageProprietaires() {
                         : <span className="badge badge-warning">Non lié</span>}
                     </td>
                     <td style={{ fontVariantNumeric: 'tabular-nums' }}>
-                      {taux != null ? `${(taux * 100).toFixed(1)}%` : <span style={{ color: 'var(--text-muted)' }}>—</span>}
+                      {taux != null ? `${Number(taux).toFixed(1)}%` : <span style={{ color: 'var(--text-muted)' }}>—</span>}
                     </td>
                     <td>
                       <button className="btn btn-secondary btn-sm" onClick={e => { e.stopPropagation(); setSelected(p) }}>
