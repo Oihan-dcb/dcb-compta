@@ -8,6 +8,8 @@ import {
   listerEtudiants,
   creerEtudiant,
   modifierEtudiant,
+  archiverEtudiant,
+  supprimerEtudiant,
   montantTotalEtudiant,
   montantVirementProprio,
   listerLoyersMois,
@@ -29,6 +31,13 @@ import {
 } from '../services/locationsLongues'
 
 const moisCourant = new Date().toISOString().slice(0, 7)
+const RELANCES_ACTIVES_DEPUIS = '2026-05'
+const relancesAutorisees = () => moisCourant >= RELANCES_ACTIVES_DEPUIS
+function fmtDate(iso) {
+  if (!iso) return '—'
+  const [y, m, d] = iso.slice(0, 10).split('-')
+  return `${d}/${m}/${y}`
+}
 
 const STATUT_LOYER = {
   attendu:  { label: 'Attendu',    color: '#B45309', bg: '#FFF7ED' },
@@ -104,6 +113,11 @@ export default function PageLocationsLongues() {
   // Bilan mensuel
   const [generatingBilan, setGeneratingBilan] = useState(false)
 
+  // Archivage / suppression
+  const [voirArchives, setVoirArchives] = useState(false)
+  const [confirmSuppr, setConfirmSuppr] = useState(null) // { etudiant, action }
+  const [actioning, setActioning] = useState(false)
+
   // Loyers mois courant (pour indicateurs dans l'onglet Étudiants)
   const [loyersCourant, setLoyersCourant] = useState([])
 
@@ -124,7 +138,7 @@ export default function PageLocationsLongues() {
 
   useEffect(() => { chargerReferentiels() }, [])
   useEffect(() => { if (onglet === 'mensuel') chargerMensuel() }, [mois, onglet])
-  useEffect(() => { if (onglet === 'etudiants') chargerEtudiants() }, [onglet])
+  useEffect(() => { if (onglet === 'etudiants') chargerEtudiants(voirArchives) }, [onglet, voirArchives])
   useEffect(() => { if (onglet === 'suivi' && !etudiants.length) chargerEtudiants() }, [onglet])
   useEffect(() => { if (suiviEtudiantId) chargerSuivi(suiviEtudiantId) }, [suiviEtudiantId])
 
@@ -166,12 +180,12 @@ export default function PageLocationsLongues() {
     }
   }
 
-  async function chargerEtudiants() {
+  async function chargerEtudiants(avecArchives = voirArchives) {
     setLoading(true)
     setError(null)
     try {
       const [ets, lc] = await Promise.all([
-        listerEtudiants(AGENCE),
+        listerEtudiants(AGENCE, null, avecArchives),
         listerLoyersMois(moisCourant),
       ])
       setEtudiants(ets)
@@ -180,6 +194,29 @@ export default function PageLocationsLongues() {
       setError(e.message)
     } finally {
       setLoading(false)
+    }
+  }
+
+  async function handleConfirmerAction() {
+    if (!confirmSuppr) return
+    setActioning(true); setError(null)
+    try {
+      if (confirmSuppr.action === 'archiver') {
+        await archiverEtudiant(confirmSuppr.etudiant.id, true)
+        setSuccess(`${confirmSuppr.etudiant.nom} archivé — envois auto désactivés`)
+      } else if (confirmSuppr.action === 'desarchiver') {
+        await archiverEtudiant(confirmSuppr.etudiant.id, false)
+        setSuccess(`${confirmSuppr.etudiant.nom} réactivé`)
+      } else if (confirmSuppr.action === 'supprimer') {
+        await supprimerEtudiant(confirmSuppr.etudiant.id)
+        setSuccess(`${confirmSuppr.etudiant.nom} supprimé définitivement`)
+      }
+      setConfirmSuppr(null)
+      await chargerEtudiants()
+    } catch (e) {
+      setError(e.message)
+    } finally {
+      setActioning(false)
     }
   }
 
@@ -269,6 +306,10 @@ export default function PageLocationsLongues() {
 
   // ── Relance SMS manuelle ──────────────────────────────────────────────
   async function envoyerRelanceManuelle(loyerSuiviId) {
+    if (!relancesAutorisees()) {
+      setError('Relances désactivées — actives à partir de mai 2026')
+      return
+    }
     setSuccess(null)
     setError(null)
     try {
@@ -442,6 +483,7 @@ export default function PageLocationsLongues() {
     }
     setShowModalEtudiant(true)
     setError(null)
+    window.scrollTo({ top: 0, behavior: 'instant' })
   }
 
   async function soumettreEtudiant(e) {
@@ -545,9 +587,15 @@ export default function PageLocationsLongues() {
             </>
           )}
           {onglet === 'etudiants' && (
-            <button className="btn btn-primary" onClick={() => ouvrirModalEtudiant()}>
-              + Ajouter un étudiant
-            </button>
+            <>
+              <button className="btn btn-secondary" onClick={() => setVoirArchives(v => !v)}
+                style={{ color: voirArchives ? 'var(--brand)' : undefined }}>
+                {voirArchives ? '📦 Avec archivés' : '📦 Archivés'}
+              </button>
+              <button className="btn btn-primary" onClick={() => ouvrirModalEtudiant()}>
+                + Ajouter un étudiant
+              </button>
+            </>
           )}
         </div>
       </div>
@@ -625,7 +673,7 @@ export default function PageLocationsLongues() {
                             </span>
                           </td>
                           <td style={{ fontSize: 13, color: 'var(--text-muted)' }}>
-                            {l.date_reception || '—'}
+                            {fmtDate(l.date_reception)}
                           </td>
                           <td style={{ textAlign: 'right', color: ecart ? '#DC2626' : undefined, fontWeight: ecart ? 700 : 400 }}>
                             {l.montant_recu ? formatMontant(l.montant_recu) : '—'}
@@ -633,7 +681,7 @@ export default function PageLocationsLongues() {
                           </td>
                           <td style={{ fontSize: 12, color: 'var(--text-muted)' }}>
                             {l.quittance_envoyee_at
-                              ? <span style={{ color: '#059669' }}>✓ {l.quittance_envoyee_at.slice(0, 10)}</span>
+                              ? <span style={{ color: '#059669' }}>✓ {fmtDate(l.quittance_envoyee_at)}</span>
                               : '—'}
                           </td>
                           <td style={{ display: 'flex', gap: 4 }}>
@@ -711,7 +759,7 @@ export default function PageLocationsLongues() {
                             </span>
                           </td>
                           <td style={{ fontSize: 13, color: 'var(--text-muted)' }}>
-                            {v.date_virement || '—'}
+                            {fmtDate(v.date_virement)}
                           </td>
                           <td>
                             {v.statut === 'a_virer' && (
@@ -779,10 +827,11 @@ export default function PageLocationsLongues() {
                     const lc     = loyersCourant.find(l => l.etudiant_id === e.id)
                     const stLc   = lc ? (STATUT_LOYER[lc.statut] || {}) : null
                     return (
-                      <tr key={e.id}>
+                      <tr key={e.id} style={{ opacity: e.archived ? 0.55 : 1 }}>
                         <td style={{ fontWeight: 600 }}>
                           {e.nom}{e.prenom ? ' ' + e.prenom : ''}
                           <div style={{ display: 'flex', gap: 4, marginTop: 2, flexWrap: 'wrap' }}>
+                            {e.archived && <span style={{ fontSize: 10, fontWeight: 700, padding: '1px 5px', borderRadius: 4, background: '#F3F4F6', color: '#6B7280' }}>Archivé</span>}
                             {e.type_bail === 'mobilite' && (
                               <span style={{ fontSize: 10, fontWeight: 700, padding: '1px 5px', borderRadius: 4, background: '#EDE9FE', color: '#6D28D9' }}>Mobilité</span>
                             )}
@@ -795,9 +844,9 @@ export default function PageLocationsLongues() {
                         <td style={{ fontSize: 13, color: 'var(--text-muted)' }}>
                           {e.bien?.code || '—'}
                         </td>
-                        <td style={{ fontSize: 13, whiteSpace: 'nowrap' }}>{e.date_entree}</td>
+                        <td style={{ fontSize: 13, whiteSpace: 'nowrap' }}>{fmtDate(e.date_entree)}</td>
                         <td style={{ fontSize: 13, color: 'var(--text-muted)', whiteSpace: 'nowrap' }}>
-                          {e.date_sortie_prevue || '—'}
+                          {fmtDate(e.date_sortie_prevue)}
                         </td>
                         <td style={{ textAlign: 'right', fontWeight: 600 }}>{formatMontant(total)}</td>
                         <td style={{ textAlign: 'right', color: '#059669' }}>{formatMontant(verso)}</td>
@@ -836,22 +885,24 @@ export default function PageLocationsLongues() {
                             </div>
                           )}
                         </td>
-                        <td style={{ display: 'flex', gap: 4 }}>
-                          <button className="btn btn-secondary" style={{ fontSize: 12, padding: '3px 8px' }}
-                            onClick={() => ouvrirModalEtudiant(e)}
-                            title="Modifier">
-                            ✏
-                          </button>
-                          <button className="btn btn-secondary" style={{ fontSize: 12, padding: '3px 8px' }}
-                            onClick={() => ouvrirDossier(e)}
-                            title="Dossier — documents et caution">
-                            📁
-                          </button>
-                          <button className="btn btn-secondary" style={{ fontSize: 12, padding: '3px 8px' }}
-                            title="Voir le suivi complet"
-                            onClick={() => { setSuiviEtudiantId(e.id); setOnglet('suivi') }}>
-                            📋
-                          </button>
+                        <td style={{ display: 'flex', gap: 4, flexWrap: 'wrap' }}>
+                          {!e.archived && (<>
+                            <button className="btn btn-secondary" style={{ fontSize: 12, padding: '3px 8px' }}
+                              onClick={() => ouvrirModalEtudiant(e)} title="Modifier">✏</button>
+                            <button className="btn btn-secondary" style={{ fontSize: 12, padding: '3px 8px' }}
+                              onClick={() => ouvrirDossier(e)} title="Dossier">📁</button>
+                            <button className="btn btn-secondary" style={{ fontSize: 12, padding: '3px 8px' }}
+                              onClick={() => { setSuiviEtudiantId(e.id); setOnglet('suivi') }} title="Suivi">📋</button>
+                          </>)}
+                          {e.archived ? (<>
+                            <button className="btn btn-secondary" style={{ fontSize: 12, padding: '3px 8px', color: '#059669' }}
+                              onClick={() => setConfirmSuppr({ etudiant: e, action: 'desarchiver' })}>↩ Réactiver</button>
+                            <button className="btn btn-secondary" style={{ fontSize: 12, padding: '3px 8px', color: '#DC2626' }}
+                              onClick={() => setConfirmSuppr({ etudiant: e, action: 'supprimer' })}>🗑</button>
+                          </>) : (
+                            <button className="btn btn-secondary" style={{ fontSize: 12, padding: '3px 8px', color: '#B45309' }}
+                              onClick={() => setConfirmSuppr({ etudiant: e, action: 'archiver' })}>📦 Archiver</button>
+                          )}
                         </td>
                       </tr>
                     )
@@ -896,8 +947,8 @@ export default function PageLocationsLongues() {
                 {/* Fiche résumé */}
                 <div style={{ background: 'var(--bg)', border: '1px solid var(--border)', borderRadius: 10, padding: '14px 18px', display: 'flex', gap: 32, flexWrap: 'wrap' }}>
                   <div><div style={{ fontSize: 11, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: 1 }}>Bien</div><div style={{ fontWeight: 600 }}>{etudiant.bien?.code || '—'}</div></div>
-                  <div><div style={{ fontSize: 11, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: 1 }}>Entrée</div><div style={{ fontWeight: 600 }}>{etudiant.date_entree}</div></div>
-                  <div><div style={{ fontSize: 11, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: 1 }}>Sortie prévue</div><div style={{ fontWeight: 600 }}>{etudiant.date_sortie_prevue || '—'}</div></div>
+                  <div><div style={{ fontSize: 11, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: 1 }}>Entrée</div><div style={{ fontWeight: 600 }}>{fmtDate(etudiant.date_entree)}</div></div>
+                  <div><div style={{ fontSize: 11, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: 1 }}>Sortie prévue</div><div style={{ fontWeight: 600 }}>{fmtDate(etudiant.date_sortie_prevue)}</div></div>
                   <div><div style={{ fontSize: 11, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: 1 }}>Total / mois</div><div style={{ fontWeight: 600, color: 'var(--brand)' }}>{formatMontant(montantTotalEtudiant(etudiant))}</div></div>
                   <div><div style={{ fontSize: 11, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: 1 }}>Documents</div>
                     <div style={{ fontWeight: 600 }}>
@@ -943,19 +994,19 @@ export default function PageLocationsLongues() {
                                   <td style={{ fontWeight: 600 }}>{l.mois}</td>
                                   <td><span style={{ display: 'inline-block', padding: '2px 8px', borderRadius: 10, fontSize: 12, fontWeight: 600, color: st.color, background: st.bg }}>{st.label}</span></td>
                                   <td style={{ textAlign: 'right', fontWeight: 600 }}>{l.montant_recu ? formatMontant(l.montant_recu) : '—'}</td>
-                                  <td style={{ fontSize: 13, color: 'var(--text-muted)' }}>{l.date_reception || '—'}</td>
+                                  <td style={{ fontSize: 13, color: 'var(--text-muted)' }}>{fmtDate(l.date_reception)}</td>
                                   <td style={{ fontSize: 13 }}>
                                     {l.nb_relances > 0
                                       ? <span style={{ color: l.nb_relances >= 3 ? '#DC2626' : '#B45309', fontWeight: 600 }}>
                                           {l.nb_relances} relance{l.nb_relances > 1 ? 's' : ''}
-                                          {l.date_derniere_relance && <span style={{ fontWeight: 400, color: 'var(--text-muted)', marginLeft: 4 }}>({l.date_derniere_relance.slice(0, 10)})</span>}
+                                          {l.date_derniere_relance && <span style={{ fontWeight: 400, color: 'var(--text-muted)', marginLeft: 4 }}>({fmtDate(l.date_derniere_relance)})</span>}
                                         </span>
                                       : <span style={{ color: 'var(--text-muted)' }}>—</span>}
                                   </td>
                                   <td style={{ fontSize: 12 }}>
                                     {l.quittance_envoyee_at ? (
                                       <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
-                                        <span style={{ color: '#059669' }}>✓ {l.quittance_envoyee_at.slice(0, 10)}</span>
+                                        <span style={{ color: '#059669' }}>✓ {fmtDate(l.quittance_envoyee_at)}</span>
                                         <button className="btn btn-secondary"
                                           style={{ fontSize: 11, padding: '1px 6px' }}
                                           title="Ouvrir / télécharger la quittance PDF"
@@ -976,11 +1027,16 @@ export default function PageLocationsLongues() {
                                       </button>
                                     )}
                                     {(l.statut === 'attendu' || l.statut === 'en_retard') && (
-                                      <button className="btn btn-secondary" style={{ fontSize: 11, padding: '2px 7px', color: '#B45309', marginLeft: 4 }}
-                                        onClick={() => envoyerRelanceManuelle(l.id)}
-                                        title="Envoyer une relance SMS + email maintenant">
-                                        📨 relancer
-                                      </button>
+                                      relancesAutorisees()
+                                        ? <button className="btn btn-secondary" style={{ fontSize: 11, padding: '2px 7px', color: '#B45309', marginLeft: 4 }}
+                                            onClick={() => envoyerRelanceManuelle(l.id)}
+                                            title="Envoyer une relance SMS + email maintenant">
+                                            📨 relancer
+                                          </button>
+                                        : <span style={{ fontSize: 11, color: 'var(--text-muted)', marginLeft: 4 }}
+                                            title="Relances actives à partir de mai 2026">
+                                            📨 relancer (inactif)
+                                          </span>
                                     )}
                                   </td>
                                 </tr>
@@ -1016,7 +1072,7 @@ export default function PageLocationsLongues() {
                                   <td style={{ fontWeight: 600 }}>{v.mois}</td>
                                   <td style={{ textAlign: 'right', fontWeight: 600 }}>{v.montant ? formatMontant(v.montant) : '—'}</td>
                                   <td><span style={{ display: 'inline-block', padding: '2px 8px', borderRadius: 10, fontSize: 12, fontWeight: 600, color: st.color, background: st.bg }}>{st.label}</span></td>
-                                  <td style={{ fontSize: 13, color: 'var(--text-muted)' }}>{v.date_virement || '—'}</td>
+                                  <td style={{ fontSize: 13, color: 'var(--text-muted)' }}>{fmtDate(v.date_virement)}</td>
                                 </tr>
                               )
                             })}
@@ -1420,7 +1476,7 @@ export default function PageLocationsLongues() {
                       </>
                     )}
                     {caution.date_rendu && (
-                      <span style={{ fontSize: 12, color: 'var(--text-muted)' }}>le {caution.date_rendu}</span>
+                      <span style={{ fontSize: 12, color: 'var(--text-muted)' }}>le {fmtDate(caution.date_rendu)}</span>
                     )}
                   </div>
                   {!docs.some(d => d.type === 'eds_sortie') && caution.statut === 'en_cours' && (
@@ -1435,6 +1491,57 @@ export default function PageLocationsLongues() {
             </div>
             <div className="modal-footer">
               <button className="btn btn-secondary" onClick={() => { setDossierEtudiant(null); setError(null) }}>Fermer</button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Modal confirmation archivage / suppression */}
+      {confirmSuppr && (
+        <div className="modal-overlay" onClick={() => setConfirmSuppr(null)}>
+          <div className="modal" onClick={e => e.stopPropagation()} style={{ maxWidth: 400 }}>
+            <div className="modal-header">
+              <h2>
+                {confirmSuppr.action === 'archiver' && 'Archiver le locataire'}
+                {confirmSuppr.action === 'desarchiver' && 'Réactiver le locataire'}
+                {confirmSuppr.action === 'supprimer' && 'Supprimer définitivement'}
+              </h2>
+              <button className="modal-close" onClick={() => setConfirmSuppr(null)}>✗</button>
+            </div>
+            <div className="modal-body">
+              {confirmSuppr.action === 'archiver' && (
+                <p style={{ fontSize: 14 }}>
+                  Archiver <strong>{confirmSuppr.etudiant.nom}{confirmSuppr.etudiant.prenom ? ' ' + confirmSuppr.etudiant.prenom : ''}</strong> ?<br />
+                  <span style={{ color: 'var(--text-muted)', fontSize: 13 }}>Les envois automatiques (relances, quittances) seront désactivés. La fiche reste consultable.</span>
+                </p>
+              )}
+              {confirmSuppr.action === 'desarchiver' && (
+                <p style={{ fontSize: 14 }}>
+                  Réactiver <strong>{confirmSuppr.etudiant.nom}{confirmSuppr.etudiant.prenom ? ' ' + confirmSuppr.etudiant.prenom : ''}</strong> ?<br />
+                  <span style={{ color: 'var(--text-muted)', fontSize: 13 }}>Les envois automatiques seront réactivés.</span>
+                </p>
+              )}
+              {confirmSuppr.action === 'supprimer' && (
+                <p style={{ fontSize: 14 }}>
+                  Supprimer définitivement <strong>{confirmSuppr.etudiant.nom}{confirmSuppr.etudiant.prenom ? ' ' + confirmSuppr.etudiant.prenom : ''}</strong> ?<br />
+                  <span style={{ color: '#DC2626', fontSize: 13 }}>Cette action supprime tous les loyers, virements, caution, documents et logs associés. Irréversible.</span>
+                </p>
+              )}
+              {error && <div className="alert alert-error" style={{ marginTop: 10 }}>{error}</div>}
+            </div>
+            <div className="modal-footer">
+              <button className="btn btn-secondary" onClick={() => setConfirmSuppr(null)} disabled={actioning}>Annuler</button>
+              <button
+                className="btn btn-primary"
+                style={{ background: confirmSuppr.action === 'supprimer' ? '#DC2626' : undefined, borderColor: confirmSuppr.action === 'supprimer' ? '#DC2626' : undefined }}
+                onClick={handleConfirmerAction}
+                disabled={actioning}>
+                {actioning ? <><span className="spinner" /> …</> : (
+                  confirmSuppr.action === 'archiver' ? '📦 Archiver' :
+                  confirmSuppr.action === 'desarchiver' ? '↩ Réactiver' :
+                  '🗑 Supprimer'
+                )}
+              </button>
             </div>
           </div>
         </div>
