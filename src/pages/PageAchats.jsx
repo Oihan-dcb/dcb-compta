@@ -157,7 +157,7 @@ export default function PageAchats() {
       const debits = rows.filter(r => r.debit)
       if (!debits.length) throw new Error('Aucune ligne de débit trouvée dans ce CSV')
 
-      // Auto-match fournisseurs récurrents sur pattern_libelle
+      // 1. Pattern-match local sur fournisseurs_recurrents
       const matchees = debits.map(r => {
         const libelleUp = (r.libelle + ' ' + (r.detail || '')).toUpperCase()
         const f = fournisseurs.find(f => {
@@ -171,13 +171,64 @@ export default function PageAchats() {
           infos:       r.detail || '',
           reference:   r.numero_operation || '',
           typeOp:      '',
-          debit:       r.debit / 100, // lldBanque stocke en centimes
+          debit:       r.debit / 100,
           fournisseur: f?.nom || '',
           categorie:   f?.categorie || '',
           selected:    true,
         }
       })
-      setImportModal({ lignes: matchees, importing: false })
+
+      // 2. Ouvrir le modal tout de suite, enrichissement Claude en fond
+      const nonMatchesIdx = matchees.map((l, i) => i).filter(i => !matchees[i].fournisseur)
+      setImportModal({ lignes: matchees, importing: false, enriching: nonMatchesIdx.length > 0 })
+
+      // 3. Si des lignes sans fournisseur → appel Claude batch
+      if (nonMatchesIdx.length > 0) {
+        try {
+          const { data: { session } } = await supabase.auth.getSession()
+          const token = session?.access_token || import.meta.env.VITE_SUPABASE_ANON_KEY
+
+          const lignesAAnalyser = nonMatchesIdx.map(i => matchees[i])
+          const prompt = `Tu es un assistant comptable français pour une agence immobilière de location saisonnière.
+Voici des libellés bruts de relevé bancaire Caisse d'Épargne (format: libellé / infos | montant€).
+Pour chaque ligne, identifie le fournisseur (nom court lisible, sans numéro ni code) et la catégorie.
+Catégories disponibles : telecom, abonnement, logiciel, loyer, materiel, autre
+Si tu ne sais vraiment pas, fournisseur="" et categorie="autre".
+
+Réponds UNIQUEMENT en JSON valide, tableau dans le même ordre que les entrées :
+[{"fournisseur":"...","categorie":"..."}]
+
+Lignes à analyser :
+${lignesAAnalyser.map((l, i) => `${i + 1}. ${l.libelle}${l.infos ? ' / ' + l.infos : ''} | ${l.debit.toFixed(2)}€`).join('\n')}`
+
+          const res = await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/llm-analyse`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+            body: JSON.stringify({ prompt }),
+          })
+          const data = await res.json()
+
+          const match = (data.text || '').match(/\[[\s\S]*\]/)
+          if (match) {
+            const suggestions = JSON.parse(match[0])
+            setImportModal(prev => {
+              if (!prev) return prev
+              const lignes = [...prev.lignes]
+              nonMatchesIdx.forEach((idx, i) => {
+                const sug = suggestions[i]
+                if (sug?.fournisseur) {
+                  lignes[idx] = { ...lignes[idx], fournisseur: sug.fournisseur, categorie: sug.categorie || lignes[idx].categorie }
+                }
+              })
+              return { ...prev, lignes, enriching: false }
+            })
+          } else {
+            setImportModal(prev => prev ? { ...prev, enriching: false } : prev)
+          }
+        } catch {
+          setImportModal(prev => prev ? { ...prev, enriching: false } : prev)
+        }
+      }
     } catch (err) {
       setImportError(err.message)
     }
@@ -749,6 +800,14 @@ Si anomalie (montant très différent, catégorie suspecte) → ok:false, messag
               </div>
               <button onClick={() => setImportModal(null)} style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: 18, color: '#9C8E7D' }}>✕</button>
             </div>
+
+            {/* Bandeau enrichissement Claude */}
+            {importModal.enriching && (
+              <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '10px 24px', background: '#EFF6FF', borderBottom: '1px solid #BFDBFE', fontSize: 13, color: '#1E40AF' }}>
+                <div className="spinner" style={{ width: 14, height: 14, borderWidth: 2 }} />
+                Claude identifie les fournisseurs non reconnus…
+              </div>
+            )}
 
             {/* Tableau des lignes */}
             <div style={{ overflowX: 'auto', maxHeight: '60vh', overflowY: 'auto' }}>
