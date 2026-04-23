@@ -459,6 +459,41 @@ export default function PageLocationsLongues() {
     } catch (e) { setError(e.message) }
   }
 
+  async function handleAutoLierCautions() {
+    const nonLies = banqueMouvements.filter(m => !m.etudiant_id && !m.etudiant)
+    if (!nonLies.length) { setSuccess('Aucun mouvement à lier'); return }
+    let lies = 0
+    const updatedMvts = [...banqueMouvements]
+    for (const m of nonLies) {
+      const haystack = `${m.libelle || ''} ${m.detail || ''}`.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '')
+      // Chercher par nom (+ prénom optionnel) dans libellé/détail
+      let match = etudiants.find(e => {
+        const nom = e.nom.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '')
+        if (!haystack.includes(nom)) return false
+        if (e.prenom) {
+          const prenom = e.prenom.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '')
+          return haystack.includes(prenom)
+        }
+        return true
+      })
+      // Sinon chercher par montant de caution
+      if (!match && m.credit) {
+        const candidats = etudiants.filter(e => e.caution === m.credit)
+        if (candidats.length === 1) match = candidats[0]
+      }
+      if (match) {
+        try {
+          await mettreAJourMouvementLLD(m.id, { etudiant_id: match.id, statut: 'rapproche' })
+          const idx = updatedMvts.findIndex(x => x.id === m.id)
+          if (idx >= 0) updatedMvts[idx] = { ...updatedMvts[idx], etudiant_id: match.id, statut: 'rapproche', etudiant: { id: match.id, nom: match.nom, prenom: match.prenom } }
+          lies++
+        } catch { /* continuer */ }
+      }
+    }
+    setBanqueMouvements(updatedMvts)
+    setSuccess(`${lies} mouvement(s) lié(s) automatiquement sur ${nonLies.length} non liés`)
+  }
+
   async function handleLierMouvement(id, etudiantId) {
     setError(null)
     try {
@@ -1628,7 +1663,13 @@ export default function PageLocationsLongues() {
                 </div>
               )}
               {banqueCompte === 'cautions' && (
-                <button className="btn btn-secondary" style={{ marginLeft: 8 }} onClick={() => chargerBanque('cautions', banqueMois)} disabled={banqueLoading}>↺</button>
+                <div style={{ display: 'flex', gap: 6, marginLeft: 8 }}>
+                  <button className="btn btn-secondary" onClick={() => chargerBanque('cautions', banqueMois)} disabled={banqueLoading}>↺</button>
+                  <button className="btn btn-secondary" style={{ color: 'var(--brand)', fontWeight: 600 }}
+                    onClick={handleAutoLierCautions} disabled={banqueLoading}>
+                    ⚡ Auto-lier
+                  </button>
+                </div>
               )}
               <label style={{ marginLeft: 'auto', cursor: 'pointer' }}>
                 <input type="file" accept=".csv,.txt" style={{ display: 'none' }}
