@@ -25,8 +25,9 @@ function getDaysOfMonth(mois: string): string[] {
   const [y, m] = mois.split('-').map(Number)
   const days: string[] = []
   const d = new Date(y, m - 1, 1)
+  const pad = (n: number) => String(n).padStart(2, '0')
   while (d.getMonth() === m - 1) {
-    days.push(d.toISOString().slice(0, 10))
+    days.push(`${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`)
     d.setDate(d.getDate() + 1)
   }
   return days
@@ -47,7 +48,7 @@ function genererHtml(ae: any, mois: string, heuresMap: Record<string, any>): str
 
   const ABSENCES_LABEL: Record<string, string> = {
     conge_paye: 'Congés payés', maladie: 'Maladie',
-    rtt: 'RTT', ferie: 'Férié', repos: 'Absences non rémunérées',
+    rtt: 'RTT', ferie: 'Férié', repos: 'Repos compensateur',
   }
   const ABSENCES_COURT: Record<string, string> = {
     conge_paye: 'CP', maladie: 'Maladie', rtt: 'RTT', ferie: 'Férié', repos: 'Repos',

@@ -1066,6 +1066,23 @@ export default function PageAutoEntrepreneurs() {
                       style={{ background: 'var(--white)', border: '1px solid #e5e7eb', borderRadius: 8, padding: '6px 12px', cursor: 'pointer', fontSize: 16 }}>›</button>
                   </div>
                   {loadingHeures && <span style={{ fontSize: 13, color: '#888' }}>Chargement…</span>}
+                  {(() => {
+                    const now = new Date()
+                    const isCurrent = heuresMois === now.toISOString().slice(0, 7)
+                    if (!isCurrent) return null
+                    const lastDay = new Date(now.getFullYear(), now.getMonth() + 1, 0).getDate()
+                    const sendDay = lastDay - 2
+                    const daysLeft = sendDay - now.getDate()
+                    if (daysLeft < 0 || daysLeft > 5) return null
+                    const color = daysLeft >= 4 ? '#16a34a' : daysLeft === 3 ? '#ca8a04' : daysLeft <= 1 ? '#dc2626' : '#ea580c'
+                    const bg = daysLeft >= 4 ? '#f0fdf4' : daysLeft === 3 ? '#fefce8' : daysLeft <= 1 ? '#fef2f2' : '#fff7ed'
+                    const border = daysLeft >= 4 ? '#bbf7d0' : daysLeft === 3 ? '#fde68a' : daysLeft <= 1 ? '#fecaca' : '#fed7aa'
+                    return (
+                      <span style={{ fontSize: 12, fontWeight: 700, color, background: bg, border: `1px solid ${border}`, borderRadius: 8, padding: '5px 10px' }}>
+                        📤 Navette dans {daysLeft === 0 ? 'aujourd\'hui' : `J-${daysLeft}`}
+                      </span>
+                    )
+                  })()}
                   {heuresAeId && (
                     <div style={{ marginLeft: 'auto', display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
                       <button onClick={() => { setGroupeActif(v => !v); setJoursSelectionnes(new Set()) }}

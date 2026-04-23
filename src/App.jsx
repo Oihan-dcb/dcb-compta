@@ -104,8 +104,11 @@ function ConfigDropdown() {
 
 export default function App() {
   const [nbEnAttente, setNbEnAttente] = useState(0)
-  const jourDuMois = new Date().getDate()
-  const showNavetteBadge = jourDuMois >= 25
+  const _now = new Date()
+  const _lastDay = new Date(_now.getFullYear(), _now.getMonth() + 1, 0).getDate()
+  const _sendDay = _lastDay - 2
+  const _daysUntilSend = _sendDay - _now.getDate()
+  const showNavetteBadge = _daysUntilSend >= 0 && _daysUntilSend <= 5
 
   useEffect(() => {
     const mois = new Date().toISOString().slice(0, 7)
