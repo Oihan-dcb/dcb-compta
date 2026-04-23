@@ -36,6 +36,7 @@ import {
   listerTousMouvementsLLD,
   listerMoisDisposLLD,
   supprimerMouvementLLD,
+  majLoyersDepuisVirements,
 } from '../services/lldBanque'
 
 const moisCourant = new Date().toISOString().slice(0, 7)
@@ -496,6 +497,16 @@ export default function PageLocationsLongues() {
     }
     setBanqueMouvements(updatedMvts)
     setSuccess(`${lies} mouvement(s) lié(s) automatiquement sur ${nonLies.length} non liés`)
+  }
+
+  async function handleMajLoyersDepuisVirements() {
+    setError(null)
+    try {
+      const { updated, skipped } = await majLoyersDepuisVirements()
+      setSuccess(`${updated} loyer(s) marqué(s) "reçu" · ${skipped} ignoré(s) (déjà à jour, non rapproché ou mois absent)`)
+      // Recharger les loyers du mois courant pour refléter les changements
+      if (mois) setLoyers(await listerLoyersMois(mois))
+    } catch (e) { setError(e.message) }
   }
 
   async function handleLierMouvement(id, etudiantId) {
@@ -1664,6 +1675,10 @@ export default function PageLocationsLongues() {
                     }
                   </select>
                   <button className="btn btn-secondary" onClick={() => chargerBanque(banqueCompte, banqueMois)} disabled={banqueLoading}>↺</button>
+                  <button className="btn btn-secondary" style={{ color: 'var(--brand)', fontWeight: 600 }}
+                    onClick={handleMajLoyersDepuisVirements} disabled={banqueLoading}>
+                    ✓ Mettre à jour les loyers
+                  </button>
                 </div>
               )}
               {banqueCompte === 'cautions' && (
