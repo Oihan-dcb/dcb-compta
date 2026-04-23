@@ -1,6 +1,5 @@
 import { AGENCE } from '../lib/agence'
 import { useState, useEffect } from 'react'
-import { supabase } from '../lib/supabase'
 import { pingEvoliz, getPaytermsEvoliz } from '../services/evoliz'
 import { syncProprietairesEvoliz } from '../services/syncProprietaires'
 import { formatMontant, setToken } from '../lib/hospitable'
@@ -207,52 +206,6 @@ export default function PageConfig() {
   const [rematchSteps, setRematchSteps] = useState([])
   const [rematchTimer, setRematchTimer] = useState(0)
   const [rematchConfirmed, setRematchConfirmed] = useState(false)
-
-  // Config bancaire LLD
-  const [lldConfig, setLldConfig] = useState({
-    lld_nom_titulaire: '', lld_iban_loyers: '', lld_bic_loyers: '',
-    lld_iban_cautions: '', lld_bic_cautions: '',
-    lld_iban_principal: '', lld_bic_principal: '',
-  })
-  const [lldSaving, setLldSaving] = useState(false)
-  const [lldSaved, setLldSaved] = useState(false)
-  const [lldError, setLldError] = useState(null)
-
-  useEffect(() => {
-    supabase.from('agency_config')
-      .select('lld_nom_titulaire,lld_iban_loyers,lld_bic_loyers,lld_iban_cautions,lld_bic_cautions,lld_iban_principal,lld_bic_principal')
-      .eq('agence', AGENCE)
-      .single()
-      .then(({ data }) => {
-        if (data) setLldConfig({
-          lld_nom_titulaire:  data.lld_nom_titulaire  || '',
-          lld_iban_loyers:    data.lld_iban_loyers    || '',
-          lld_bic_loyers:     data.lld_bic_loyers     || '',
-          lld_iban_cautions:  data.lld_iban_cautions  || '',
-          lld_bic_cautions:   data.lld_bic_cautions   || '',
-          lld_iban_principal: data.lld_iban_principal || '',
-          lld_bic_principal:  data.lld_bic_principal  || '',
-        })
-      })
-  }, [])
-
-  async function sauvegarderLldConfig() {
-    setLldSaving(true)
-    setLldSaved(false)
-    setLldError(null)
-    try {
-      const { error } = await supabase.from('agency_config')
-        .update({ ...lldConfig, updated_at: new Date().toISOString() })
-        .eq('agence', AGENCE)
-      if (error) throw error
-      setLldSaved(true)
-      setTimeout(() => setLldSaved(false), 3000)
-    } catch (e) {
-      setLldError(e.message)
-    } finally {
-      setLldSaving(false)
-    }
-  }
 
   async function syncProprio() {
     setSyncingProprio(true)
@@ -543,46 +496,6 @@ export default function PageConfig() {
           La clé secrète n'est jamais envoyée au browser — elle reste côté serveur dans la Edge Function.
         </p>
       </div>
-      {/* Config bancaire LLD */}
-      <div className="card" style={{ marginBottom: 24 }}>
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
-          <div>
-            <h2 style={{ fontSize: 16, fontWeight: 600, color: 'var(--brand)', margin: 0 }}>
-              Locations longues — Comptes bancaires
-            </h2>
-            <p style={{ margin: '4px 0 0', fontSize: 13, color: 'var(--text-muted)' }}>
-              Coordonnées bancaires pour la génération des virements SEPA (SCT XML)
-            </p>
-          </div>
-          <button className="btn btn-primary" onClick={sauvegarderLldConfig} disabled={lldSaving}>
-            {lldSaving ? '⏳ Enregistrement…' : lldSaved ? '✓ Enregistré' : 'Enregistrer'}
-          </button>
-        </div>
-        {lldError && <div className="alert alert-error" style={{ marginBottom: 12 }}>✗ {lldError}</div>}
-        {lldSaved && <div className="alert alert-success" style={{ marginBottom: 12 }}>✓ Configuration enregistrée</div>}
-
-        {[
-          { label: 'Nom du titulaire', key: 'lld_nom_titulaire', placeholder: 'DESTINATION COTE BASQUE', full: true },
-          { label: 'IBAN — Compte loyers (CE)',    key: 'lld_iban_loyers',    placeholder: 'FR76 1234 …' },
-          { label: 'BIC — Compte loyers (CE)',     key: 'lld_bic_loyers',     placeholder: 'CEPAFRPP (optionnel)' },
-          { label: 'IBAN — Compte cautions (CE)',  key: 'lld_iban_cautions',  placeholder: 'FR76 1234 …' },
-          { label: 'BIC — Compte cautions (CE)',   key: 'lld_bic_cautions',   placeholder: 'CEPAFRPP (optionnel)' },
-          { label: 'IBAN — Compte principal DCB',  key: 'lld_iban_principal', placeholder: 'FR76 …' },
-          { label: 'BIC — Compte principal DCB',   key: 'lld_bic_principal',  placeholder: 'optionnel' },
-        ].map(({ label, key, placeholder, full }) => (
-          <div key={key} style={{ marginBottom: 10 }}>
-            <label style={{ display: 'block', marginBottom: 4, fontSize: 13, fontWeight: 600 }}>{label}</label>
-            <input
-              type="text"
-              value={lldConfig[key]}
-              onChange={e => setLldConfig(prev => ({ ...prev, [key]: e.target.value }))}
-              placeholder={placeholder}
-              style={{ width: full ? '100%' : '60%', padding: '7px 10px', border: '1px solid var(--border)', borderRadius: 6, fontFamily: 'monospace', fontSize: 13, boxSizing: 'border-box' }}
-            />
-          </div>
-        ))}
-      </div>
-
       {/* Global Update */}
       <div className="card" style={{ marginBottom: 24, border: '2px solid var(--brand)' }}>
         <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom: globalSteps.length > 0 ? 16 : 0 }}>

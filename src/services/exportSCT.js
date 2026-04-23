@@ -122,11 +122,11 @@ function buildSCT({ msgId, pmtInfId, debtorNom, debtorIban, debtorBic, transacti
 export async function genererSCTVirementsProprios(mois, agence = AGENCE) {
   const { data: config, error: errCfg } = await supabase
     .from('agency_config')
-    .select('lld_iban_loyers, lld_bic_loyers, lld_nom_titulaire')
+    .select('seq_lld_loyers_iban, seq_lld_loyers_bic, agence_titulaire')
     .eq('agence', agence)
     .single()
   if (errCfg) throw errCfg
-  if (!config?.lld_iban_loyers) throw new Error('IBAN compte loyers LLD non configuré (voir Config → Locations longues)')
+  if (!config?.seq_lld_loyers_iban) throw new Error('IBAN séquestre LLD loyers non configuré (voir Agence → Comptes bancaires)')
 
   const { data: virements, error: errVir } = await supabase
     .from('virement_proprio_suivi')
@@ -155,9 +155,9 @@ export async function genererSCTVirementsProprios(mois, agence = AGENCE) {
   return buildSCT({
     msgId:       `DCB-PROP-${mois}-${Date.now()}`,
     pmtInfId:    `PMT-PROP-${mois}`,
-    debtorNom:   config.lld_nom_titulaire || 'DESTINATION COTE BASQUE',
-    debtorIban:  config.lld_iban_loyers,
-    debtorBic:   config.lld_bic_loyers || '',
+    debtorNom:   config.agence_titulaire || 'DESTINATION COTE BASQUE',
+    debtorIban:  config.seq_lld_loyers_iban,
+    debtorBic:   config.seq_lld_loyers_bic || '',
     transactions,
   })
 }
@@ -170,12 +170,12 @@ export async function genererSCTVirementsProprios(mois, agence = AGENCE) {
 export async function genererSCTHonorairesDCB(mois, agence = AGENCE) {
   const { data: config, error: errCfg } = await supabase
     .from('agency_config')
-    .select('lld_iban_loyers, lld_bic_loyers, lld_iban_principal, lld_bic_principal, lld_nom_titulaire')
+    .select('seq_lld_loyers_iban, seq_lld_loyers_bic, agence_iban, agence_bic, agence_titulaire')
     .eq('agence', agence)
     .single()
   if (errCfg) throw errCfg
-  if (!config?.lld_iban_loyers)    throw new Error('IBAN compte loyers LLD non configuré (voir Config → Locations longues)')
-  if (!config?.lld_iban_principal) throw new Error('IBAN compte principal non configuré (voir Config → Locations longues)')
+  if (!config?.seq_lld_loyers_iban) throw new Error('IBAN séquestre LLD loyers non configuré (voir Agence → Comptes bancaires)')
+  if (!config?.agence_iban)         throw new Error('IBAN compte agence non configuré (voir Agence → Comptes bancaires)')
 
   const { data: loyers, error: errLoy } = await supabase
     .from('loyer_suivi')
@@ -188,19 +188,19 @@ export async function genererSCTHonorairesDCB(mois, agence = AGENCE) {
   const totalHon = (loyers || []).reduce((s, l) => s + (l.etudiant?.honoraires_dcb || 0), 0)
   if (!totalHon) throw new Error(`Aucun honoraire DCB à virer pour ${mois} (aucun loyer reçu avec honoraires)`)
 
-  const debtorNom = config.lld_nom_titulaire || 'DESTINATION COTE BASQUE'
+  const debtorNom = config.agence_titulaire || 'DESTINATION COTE BASQUE'
 
   return buildSCT({
     msgId:       `DCB-HON-${mois}-${Date.now()}`,
     pmtInfId:    `PMT-HON-${mois}`,
     debtorNom,
-    debtorIban:  config.lld_iban_loyers,
-    debtorBic:   config.lld_bic_loyers || '',
+    debtorIban:  config.seq_lld_loyers_iban,
+    debtorBic:   config.seq_lld_loyers_bic || '',
     transactions: [{
       endToEndId:   `HON-${mois}`,
       montant:       totalHon,
-      creditorIban:  config.lld_iban_principal,
-      creditorBic:   config.lld_bic_principal || '',
+      creditorIban:  config.agence_iban,
+      creditorBic:   config.agence_bic || '',
       creditorNom:   debtorNom,
       remittance:    `HONORAIRES LLD ${mois}`,
     }],
