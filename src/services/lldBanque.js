@@ -100,11 +100,18 @@ export async function importerMouvementsLLD(rows, compte, agence = AGENCE) {
   let total = 0
 
   if (avecNum.length) {
-    const { error } = await supabase
+    const { data: existants } = await supabase
       .from('lld_mouvement_bancaire')
-      .upsert(avecNum, { onConflict: 'numero_operation,compte,agence', ignoreDuplicates: true })
-    if (error) throw error
-    total += avecNum.length
+      .select('numero_operation')
+      .eq('agence', agence).eq('compte', compte)
+      .in('numero_operation', avecNum.map(r => r.numero_operation))
+    const dejaDans = new Set((existants || []).map(r => r.numero_operation))
+    const nouveaux = avecNum.filter(r => !dejaDans.has(r.numero_operation))
+    if (nouveaux.length) {
+      const { error } = await supabase.from('lld_mouvement_bancaire').insert(nouveaux)
+      if (error) throw error
+      total += nouveaux.length
+    }
   }
 
   if (sansNum.length) {
