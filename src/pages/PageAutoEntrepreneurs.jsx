@@ -93,7 +93,11 @@ export default function PageAutoEntrepreneurs() {
     const [y, m] = mois.split('-').map(Number)
     const days = []
     const d = new Date(y, m - 1, 1)
-    while (d.getMonth() === m - 1) { days.push(d.toISOString().slice(0, 10)); d.setDate(d.getDate() + 1) }
+    const pad = n => String(n).padStart(2, '0')
+    while (d.getMonth() === m - 1) {
+      days.push(`${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`)
+      d.setDate(d.getDate() + 1)
+    }
     return days
   }
 
@@ -157,7 +161,7 @@ export default function PageAutoEntrepreneurs() {
 
     const ABSENCES_LABEL = {
       conge_paye: 'Congés payés', maladie: 'Maladie',
-      rtt: 'RTT', ferie: 'Férié', repos: 'Absences non rémunérées'
+      rtt: 'RTT', ferie: 'Férié', repos: 'Repos compensateur'
     }
     const fmt2 = d => d ? d.split('-').reverse().join('/') : ''
 
