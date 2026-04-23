@@ -506,6 +506,125 @@ function addMois(mois, n) {
   return `${y}-${String(m).padStart(2, '0')}`
 }
 
+function genererHTMLPrevisionnel(proprio, moisDebut, nbMois, data) {
+  const moisList = Array.from({ length: nbMois }, (_, i) => addMois(moisDebut, i))
+  const periode = nbMois === 1
+    ? moisLabel(moisDebut)
+    : `${moisLabel(moisDebut)} – ${moisLabel(addMois(moisDebut, nbMois - 1))}`
+
+  const sectionsHTML = moisList.map(mois => {
+    const resasMois = data.filter(r => r.mois_comptable === mois)
+    const totalMois = resasMois.reduce((s, r) => s + (r.vir > 0 ? r.vir : r.loy), 0)
+
+    const rows = resasMois.map((r, i) => {
+      const arrFR = r.arrival_date ? r.arrival_date.substring(5).split('-').reverse().join('/') : '—'
+      const depFR = r.departure_date ? r.departure_date.substring(5).split('-').reverse().join('/') : '—'
+      const net = r.vir > 0 ? r.vir : r.loy
+      const isEst = r.vir === 0
+      return `<tr style="background:${i % 2 === 0 ? '#F7F4EF' : '#fff'};">
+        <td>${arrFR} → ${depFR}</td>
+        <td>${r.guest_name || '—'}</td>
+        <td style="text-align:center;">${r.nights || '—'} nuits</td>
+        <td style="text-align:right;font-weight:600;color:#CC9933;">
+          ${((net || 0) / 100).toLocaleString('fr-FR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} €${isEst ? '<span style="font-size:9px;color:#9C8E7D;margin-left:4px;">estimé</span>' : ''}
+        </td>
+      </tr>`
+    }).join('')
+
+    const totalStr = ((totalMois || 0) / 100).toLocaleString('fr-FR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
+
+    return `
+      <div class="mois-section">
+        <div class="mois-header">
+          <span>${moisLabel(mois).toUpperCase()}</span>
+          <span style="font-size:15px;">${totalStr} €</span>
+        </div>
+        ${resasMois.length === 0
+          ? `<p style="color:#9C8E7D;font-style:italic;font-size:12px;padding:8px 0;">Aucune réservation confirmée.</p>`
+          : `<table>
+              <thead>
+                <tr>
+                  <th>Séjour</th>
+                  <th>Client</th>
+                  <th style="text-align:center;">Durée</th>
+                  <th style="text-align:right;">Virement estimé</th>
+                </tr>
+              </thead>
+              <tbody>${rows}</tbody>
+              <tfoot>
+                <tr>
+                  <td colspan="3" style="font-weight:700;border-top:2px solid #CC9933;padding-top:6px;">Total ${moisLabel(mois)}</td>
+                  <td style="text-align:right;font-weight:700;border-top:2px solid #CC9933;padding-top:6px;color:#CC9933;">${totalStr} €</td>
+                </tr>
+              </tfoot>
+            </table>`
+        }
+      </div>`
+  }).join('')
+
+  const totalGlobal = data.reduce((s, r) => s + (r.vir > 0 ? r.vir : r.loy), 0)
+  const totalStr = ((totalGlobal || 0) / 100).toLocaleString('fr-FR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
+
+  return `<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8">
+<title>Prévisionnel ${proprio.nom} — ${periode}</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: 'Helvetica Neue', Arial, sans-serif; background: #fff; color: #2C2416; font-size: 13px; padding: 32px 40px; }
+  .header { border-bottom: 3px solid #CC9933; padding-bottom: 16px; margin-bottom: 24px; display: flex; justify-content: space-between; align-items: flex-end; }
+  .header-left h1 { font-size: 20px; font-weight: 600; color: #2C2416; }
+  .header-left p { font-size: 12px; color: #9C8E7D; margin-top: 4px; }
+  .header-right { text-align: right; font-size: 11px; color: #9C8E7D; }
+  .disclaimer { background: #FEF9EC; border: 1px solid #CC9933; border-radius: 4px; padding: 8px 12px; font-size: 11px; color: #92400E; margin-bottom: 20px; }
+  .mois-section { margin-bottom: 24px; page-break-inside: avoid; }
+  .mois-header { display: flex; justify-content: space-between; align-items: center; font-size: 11px; font-weight: 700; letter-spacing: 0.08em; color: #CC9933; border-bottom: 2px solid #CC9933; padding-bottom: 6px; margin-bottom: 10px; }
+  table { width: 100%; border-collapse: collapse; font-size: 12px; }
+  th { padding: 6px 8px; text-align: left; background: #F0EDE6; font-weight: 600; font-size: 11px; color: #2C2416; }
+  td { padding: 6px 8px; }
+  tfoot td { font-size: 12px; }
+  .total-global { margin-top: 24px; border-top: 3px solid #2C2416; padding-top: 12px; display: flex; justify-content: space-between; align-items: center; }
+  .total-global .label { font-size: 13px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.06em; }
+  .total-global .montant { font-size: 22px; font-weight: 700; color: #CC9933; }
+  .footer { margin-top: 32px; padding-top: 12px; border-top: 1px solid #E0D9CC; font-size: 10px; color: #9C8E7D; text-align: center; }
+  @media print {
+    body { padding: 16px 20px; }
+    * { -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important; }
+  }
+</style>
+</head>
+<body>
+  <div class="header">
+    <div class="header-left">
+      <h1>${proprio.nom}${proprio.prenom ? ' ' + proprio.prenom : ''}</h1>
+      <p>Prévisionnel NET propriétaire · ${periode}</p>
+    </div>
+    <div class="header-right">
+      Destination Côte Basque<br/>
+      Généré le ${new Date().toLocaleDateString('fr-FR')}
+    </div>
+  </div>
+
+  <div class="disclaimer">
+    ⚠️ Document prévisionnel basé sur les réservations confirmées à ce jour. Les montants "estimés" seront calculés précisément après clôture du mois. Les virements réels peuvent varier en cas d'annulation, nouvelles réservations ou frais à déduire.
+  </div>
+
+  ${sectionsHTML}
+
+  ${nbMois > 1 ? `
+  <div class="total-global">
+    <span class="label">Total estimé sur la période</span>
+    <span class="montant">${totalStr} €</span>
+  </div>` : ''}
+
+  <div class="footer">
+    Document non contractuel · Destination Côte Basque · oihan@destinationcotebasque.com
+  </div>
+</body>
+</html>`
+}
+
 function genererEmailPrevisionnel(proprio, moisDebut, nbMois, data, taux) {
   const periode = nbMois === 1
     ? moisLabel(moisDebut)
@@ -683,6 +802,14 @@ function ModalPrevisionnel({ proprio, onClose }) {
     finally { setLoading(false) }
   }
 
+  function telechargerPDF() {
+    const html = genererHTMLPrevisionnel(proprio, moisDebut, nbMois, resas || [])
+    const w = window.open('', '_blank')
+    w.document.write(html)
+    w.document.close()
+    w.onload = () => { w.focus(); w.print() }
+  }
+
   async function envoyer() {
     if (!proprio.email) return
     setSending(true); setErr(null)
@@ -818,6 +945,10 @@ function ModalPrevisionnel({ proprio, onClose }) {
 
         <div className="modal-footer">
           <button className="btn btn-secondary" onClick={onClose}>Fermer</button>
+          <button className="btn btn-secondary" disabled={loading || !resas}
+            onClick={telechargerPDF}>
+            📥 PDF
+          </button>
           {proprio.email ? (
             <button className="btn btn-primary" disabled={sending || loading || !resas}
               onClick={envoyer}>
@@ -825,7 +956,7 @@ function ModalPrevisionnel({ proprio, onClose }) {
             </button>
           ) : (
             <span style={{ fontSize: 12, color: 'var(--text-muted)', alignSelf: 'center' }}>
-              Pas d'email renseigné pour ce propriétaire
+              Pas d'email renseigné
             </span>
           )}
         </div>
