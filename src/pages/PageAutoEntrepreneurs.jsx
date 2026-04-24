@@ -1057,12 +1057,12 @@ export default function PageAutoEntrepreneurs() {
                     {staffList.map(a => <option key={a.id} value={a.id}>{a.prenom} {a.nom}</option>)}
                   </select>
                   <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                    <button onClick={() => { const d = new Date(heuresMois + '-01'); d.setMonth(d.getMonth()-1); const m = d.toISOString().slice(0,7); setHeuresMois(m); setHeures({}); if (heuresAeId) chargerHeures(heuresAeId, m) }}
+                    <button onClick={() => { const [y,mo] = heuresMois.split('-').map(Number); const d = new Date(y, mo-1, 1); d.setMonth(d.getMonth()-1); const m = d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0'); setHeuresMois(m); setHeures({}); if (heuresAeId) chargerHeures(heuresAeId, m) }}
                       style={{ background: 'var(--white)', border: '1px solid #e5e7eb', borderRadius: 8, padding: '6px 12px', cursor: 'pointer', fontSize: 16 }}>‹</button>
                     <span style={{ fontWeight: 700, fontSize: 15, minWidth: 130, textAlign: 'center' }}>
-                      {new Date(heuresMois + '-01').toLocaleDateString('fr-FR', { month: 'long', year: 'numeric' })}
+                      {(() => { const [y,mo] = heuresMois.split('-').map(Number); return new Date(y, mo-1, 1).toLocaleDateString('fr-FR', { month: 'long', year: 'numeric' }) })()}
                     </span>
-                    <button onClick={() => { const d = new Date(heuresMois + '-01'); d.setMonth(d.getMonth()+1); const m = d.toISOString().slice(0,7); setHeuresMois(m); setHeures({}); if (heuresAeId) chargerHeures(heuresAeId, m) }}
+                    <button onClick={() => { const [y,mo] = heuresMois.split('-').map(Number); const d = new Date(y, mo-1, 1); d.setMonth(d.getMonth()+1); const m = d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0'); setHeuresMois(m); setHeures({}); if (heuresAeId) chargerHeures(heuresAeId, m) }}
                       style={{ background: 'var(--white)', border: '1px solid #e5e7eb', borderRadius: 8, padding: '6px 12px', cursor: 'pointer', fontSize: 16 }}>›</button>
                   </div>
                   {loadingHeures && <span style={{ fontSize: 13, color: '#888' }}>Chargement…</span>}
