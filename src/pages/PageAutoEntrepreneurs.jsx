@@ -1314,30 +1314,31 @@ export default function PageAutoEntrepreneurs() {
               {inp('email', 'Email', { type: 'email' })}
               {inp('telephone', 'Téléphone')}
               <div style={{ gridColumn: '1/-1' }}>{inp('iban', 'IBAN', { placeholder: 'FR76 0000 0000 0000 0000 0000 000' })}</div>
-              <div style={{ gridColumn: '1/-1', display: 'flex', flexDirection: 'column', gap: 4 }}>
-                <label style={{ fontSize: 11, fontWeight: 600, color: '#CC9933', textTransform: 'uppercase' }}>
-                  📅 iCal Hospitable <span style={{ fontWeight: 400, color: '#9ca3af', textTransform: 'none' }}>— lecture seule</span>
-                </label>
-                <input value={form.ical_url ?? ''} readOnly
-                  style={{ padding: '8px 10px', borderRadius: 7, border: '1.5px solid #e5e7eb', fontSize: 12, background: '#f9fafb', color: '#6b7280', cursor: 'default', fontFamily: 'monospace' }} />
-                <div style={{ fontSize: 11, color: '#9ca3af' }}>Généré automatiquement par Hospitable — non modifiable</div>
-              </div>
-              <div style={{ gridColumn: '1/-1', display: 'flex', flexDirection: 'column', gap: 4 }}>
-                <label style={{ fontSize: 11, fontWeight: 600, color: '#0891B2', textTransform: 'uppercase' }}>
-                  🗓️ iCal Planning pro <span style={{ fontWeight: 400, color: '#9ca3af', textTransform: 'none' }}>— lecture + écriture</span>
-                </label>
-                <input value={form.ical_pro ?? ''} onChange={e => change('ical_pro', e.target.value)}
-                  placeholder="webcal:// ou https://... (Google Cal pro, Outlook…)"
-                  style={{ padding: '8px 10px', borderRadius: 7, border: '1.5px solid #0891B2', fontSize: 13 }} />
-                <div style={{ fontSize: 11, color: '#6b7280' }}>Calendrier pro partagé — RDVs et missions visibles dans PowerHouse</div>
-              </div>
-              <div style={{ gridColumn: '1/-1', display: 'flex', flexDirection: 'column', gap: 4 }}>
-                <label style={{ fontSize: 11, fontWeight: 600, color: '#7C3AED', textTransform: 'uppercase' }}>
-                  🔒 iCal perso (indispos) <span style={{ fontWeight: 400, color: '#9ca3af', textTransform: 'none' }}>— lecture seule</span>
-                </label>
-                <input value={form.ical_perso ?? ''} readOnly
-                  style={{ padding: '8px 10px', borderRadius: 7, border: '1.5px solid #e5e7eb', fontSize: 12, background: '#f9fafb', color: '#6b7280', cursor: 'default', fontFamily: 'monospace' }} />
-                <div style={{ fontSize: 11, color: '#9ca3af' }}>Renseigné par le/la staff depuis son portail. Les titres des événements sont masqués et remplacés par "Indispo" dans PowerHouse.</div>
+              <div style={{ gridColumn: '1/-1', background: '#fffbeb', borderRadius: 10, border: '1px solid #fde68a', padding: '12px 14px', display: 'flex', flexDirection: 'column', gap: 10 }}>
+                <div style={{ fontSize: 11, fontWeight: 700, color: '#92400e', textTransform: 'uppercase', letterSpacing: .5, marginBottom: 2 }}>📅 Calendriers iCal</div>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+                  <label style={{ fontSize: 11, fontWeight: 600, color: '#CC9933' }}>
+                    Hospitable (missions) — <span style={{ fontWeight: 400, color: '#9ca3af' }}>lecture seule, généré par Hospitable</span>
+                  </label>
+                  <input value={form.ical_url ?? ''} readOnly
+                    style={{ padding: '7px 10px', borderRadius: 6, border: '1px solid #e5e7eb', fontSize: 11, background: '#f9fafb', color: '#6b7280', cursor: 'default', fontFamily: 'monospace' }} />
+                </div>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+                  <label style={{ fontSize: 11, fontWeight: 600, color: '#0891B2' }}>
+                    Planning pro — <span style={{ fontWeight: 400, color: '#6b7280' }}>RDVs pro visibles dans PowerHouse avec leur titre</span>
+                  </label>
+                  <input value={form.ical_pro ?? ''} onChange={e => change('ical_pro', e.target.value)}
+                    placeholder="webcal:// ou https://... (Google Cal, Outlook pro…)"
+                    style={{ padding: '7px 10px', borderRadius: 6, border: '1.5px solid #0891B2', fontSize: 12 }} />
+                </div>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+                  <label style={{ fontSize: 11, fontWeight: 600, color: '#7C3AED' }}>
+                    Perso (indispos) — <span style={{ fontWeight: 400, color: '#6b7280' }}>affiché "Indispo" dans PowerHouse, titre jamais visible</span>
+                  </label>
+                  <input value={form.ical_perso ?? ''} onChange={e => change('ical_perso', e.target.value)}
+                    placeholder="webcal:// ou https://... (Apple Calendar, Google Cal perso…)"
+                    style={{ padding: '7px 10px', borderRadius: 6, border: '1.5px solid #7C3AED', fontSize: 12 }} />
+                </div>
               </div>
               <div style={{ gridColumn: '1/-1', display: 'flex', flexDirection: 'column', gap: 4 }}>
                 <label style={{ fontSize: 11, fontWeight: 600, color: '#666', textTransform: 'uppercase' }}>Note</label>
