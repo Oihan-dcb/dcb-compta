@@ -1315,25 +1315,36 @@ export default function PageAutoEntrepreneurs() {
               {inp('telephone', 'Téléphone')}
               <div style={{ gridColumn: '1/-1' }}>{inp('iban', 'IBAN', { placeholder: 'FR76 0000 0000 0000 0000 0000 000' })}</div>
               <div style={{ gridColumn: '1/-1', display: 'flex', flexDirection: 'column', gap: 4 }}>
-                <label style={{ fontSize: 11, fontWeight: 600, color: '#CC9933', textTransform: 'uppercase' }}>URL iCal missions Hospitable 📅</label>
-                <input value={form.ical_url ?? ''} onChange={e => change('ical_url', e.target.value)}
-                  placeholder="https://calendar.google.com/calendar/ical/..."
-                  style={{ padding: '8px 10px', borderRadius: 7, border: '1.5px solid #E4A853', fontSize: 13 }} />
-                <div style={{ fontSize: 11, color: '#6b7280' }}>L'iCal sera lu pour pré-remplir les missions dans le portail AE</div>
+                <label style={{ fontSize: 11, fontWeight: 600, color: '#CC9933', textTransform: 'uppercase' }}>
+                  📅 iCal Hospitable <span style={{ fontWeight: 400, color: '#9ca3af', textTransform: 'none' }}>— lecture seule</span>
+                </label>
+                <input value={form.ical_url ?? ''} readOnly
+                  style={{ padding: '8px 10px', borderRadius: 7, border: '1.5px solid #e5e7eb', fontSize: 12, background: '#f9fafb', color: '#6b7280', cursor: 'default', fontFamily: 'monospace' }} />
+                <div style={{ fontSize: 11, color: '#9ca3af' }}>Généré automatiquement par Hospitable — non modifiable</div>
               </div>
               <div style={{ gridColumn: '1/-1', display: 'flex', flexDirection: 'column', gap: 4 }}>
-                <label style={{ fontSize: 11, fontWeight: 600, color: '#0891B2', textTransform: 'uppercase' }}>iCal pro (calendrier professionnel) 🗓️</label>
+                <label style={{ fontSize: 11, fontWeight: 600, color: '#0891B2', textTransform: 'uppercase' }}>
+                  🗓️ iCal Planning pro <span style={{ fontWeight: 400, color: '#9ca3af', textTransform: 'none' }}>— lecture + écriture</span>
+                </label>
                 <input value={form.ical_pro ?? ''} onChange={e => change('ical_pro', e.target.value)}
-                  placeholder="webcal:// ou https://... (Google Cal, Outlook pro…)"
+                  placeholder="webcal:// ou https://... (Google Cal pro, Outlook…)"
                   style={{ padding: '8px 10px', borderRadius: 7, border: '1.5px solid #0891B2', fontSize: 13 }} />
-                <div style={{ fontSize: 11, color: '#6b7280' }}>Calendrier professionnel — utilisé dans PowerHouse pour afficher les missions</div>
+                <div style={{ fontSize: 11, color: '#6b7280' }}>Calendrier pro partagé — RDVs et missions visibles dans PowerHouse</div>
               </div>
               <div style={{ gridColumn: '1/-1', display: 'flex', flexDirection: 'column', gap: 4 }}>
-                <label style={{ fontSize: 11, fontWeight: 600, color: '#7C3AED', textTransform: 'uppercase' }}>iCal perso (indisponibilités) 🔒</label>
-                <input value={form.ical_perso ?? ''} onChange={e => change('ical_perso', e.target.value)}
-                  placeholder="webcal:// ou https://... (Apple Cal, Google Cal perso…)"
-                  style={{ padding: '8px 10px', borderRadius: 7, border: '1.5px solid #7C3AED', fontSize: 13 }} />
-                <div style={{ fontSize: 11, color: '#6b7280' }}>Calendrier perso — les événements apparaissent comme 🔒 Indisponible dans PowerHouse</div>
+                <label style={{ fontSize: 11, fontWeight: 600, color: '#7C3AED', textTransform: 'uppercase' }}>
+                  🔒 iCal perso (indispos) <span style={{ fontWeight: 400, color: '#9ca3af', textTransform: 'none' }}>— lecture seule</span>
+                </label>
+                {form.ical_perso
+                  ? <div style={{ padding: '8px 10px', borderRadius: 7, border: '1.5px solid #e5e7eb', fontSize: 13, background: '#f9fafb', color: '#059669', display: 'flex', alignItems: 'center', gap: 6 }}>
+                      <span>✓ URL configurée</span>
+                      <span style={{ fontSize: 11, color: '#9ca3af' }}>— contenu privé (affiché "Indispo" dans PowerHouse)</span>
+                    </div>
+                  : <div style={{ padding: '8px 10px', borderRadius: 7, border: '1.5px dashed #e5e7eb', fontSize: 13, color: '#9ca3af' }}>
+                      Non renseigné — à configurer depuis le portail AE
+                    </div>
+                }
+                <div style={{ fontSize: 11, color: '#9ca3af' }}>Renseigné par le/la staff depuis son portail. Les titres des événements sont masqués et remplacés par "Indispo".</div>
               </div>
               <div style={{ gridColumn: '1/-1', display: 'flex', flexDirection: 'column', gap: 4 }}>
                 <label style={{ fontSize: 11, fontWeight: 600, color: '#666', textTransform: 'uppercase' }}>Note</label>
