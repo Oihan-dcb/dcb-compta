@@ -821,12 +821,34 @@ function ModalPrevisionnel({ proprio, onClose }) {
     finally { setLoading(false) }
   }
 
-  function telechargerPDF() {
+  async function telechargerPDF() {
     const html = genererHTMLPrevisionnel(proprio, moisDebut, nbMois, resas || [])
-    const w = window.open('', '_blank')
-    w.document.write(html)
-    w.document.close()
-    w.onload = () => { w.focus(); w.print() }
+    const { default: html2pdf } = await import('html2pdf.js')
+    const periode = nbMois === 1
+      ? moisLabel(moisDebut)
+      : `${moisLabel(moisDebut)}-${moisLabel(addMois(moisDebut, nbMois - 1))}`
+    const nomFichier = `Previsionnel-${proprio.nom}-${periode}.pdf`
+    // Extraire le <body> du document HTML généré
+    const bodyMatch = html.match(/<body[^>]*>([\s\S]*)<\/body>/i)
+    const div = document.createElement('div')
+    div.style.cssText = 'position:fixed;left:-9999px;top:0;width:794px;background:#fff;font-family:Georgia,serif;'
+    // Injecter aussi le <style> du document
+    const styleMatch = html.match(/<style[^>]*>([\s\S]*?)<\/style>/i)
+    if (styleMatch) {
+      const style = document.createElement('style')
+      style.textContent = styleMatch[1]
+      div.appendChild(style)
+    }
+    div.innerHTML += bodyMatch ? bodyMatch[1] : html
+    document.body.appendChild(div)
+    await html2pdf().set({
+      margin: [12, 12, 12, 12],
+      filename: nomFichier,
+      html2canvas: { scale: 2, useCORS: true, backgroundColor: '#fff' },
+      jsPDF: { unit: 'mm', format: 'a4', orientation: 'portrait' },
+      pagebreak: { mode: ['avoid-all', 'css'] },
+    }).from(div).save()
+    document.body.removeChild(div)
   }
 
   async function envoyer() {
