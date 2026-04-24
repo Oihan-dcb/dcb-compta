@@ -1335,16 +1335,9 @@ export default function PageAutoEntrepreneurs() {
                 <label style={{ fontSize: 11, fontWeight: 600, color: '#7C3AED', textTransform: 'uppercase' }}>
                   🔒 iCal perso (indispos) <span style={{ fontWeight: 400, color: '#9ca3af', textTransform: 'none' }}>— lecture seule</span>
                 </label>
-                {form.ical_perso
-                  ? <div style={{ padding: '8px 10px', borderRadius: 7, border: '1.5px solid #e5e7eb', fontSize: 13, background: '#f9fafb', color: '#059669', display: 'flex', alignItems: 'center', gap: 6 }}>
-                      <span>✓ URL configurée</span>
-                      <span style={{ fontSize: 11, color: '#9ca3af' }}>— contenu privé (affiché "Indispo" dans PowerHouse)</span>
-                    </div>
-                  : <div style={{ padding: '8px 10px', borderRadius: 7, border: '1.5px dashed #e5e7eb', fontSize: 13, color: '#9ca3af' }}>
-                      Non renseigné — à configurer depuis le portail AE
-                    </div>
-                }
-                <div style={{ fontSize: 11, color: '#9ca3af' }}>Renseigné par le/la staff depuis son portail. Les titres des événements sont masqués et remplacés par "Indispo".</div>
+                <input value={form.ical_perso ?? ''} readOnly
+                  style={{ padding: '8px 10px', borderRadius: 7, border: '1.5px solid #e5e7eb', fontSize: 12, background: '#f9fafb', color: '#6b7280', cursor: 'default', fontFamily: 'monospace' }} />
+                <div style={{ fontSize: 11, color: '#9ca3af' }}>Renseigné par le/la staff depuis son portail. Les titres des événements sont masqués et remplacés par "Indispo" dans PowerHouse.</div>
               </div>
               <div style={{ gridColumn: '1/-1', display: 'flex', flexDirection: 'column', gap: 4 }}>
                 <label style={{ fontSize: 11, fontWeight: 600, color: '#666', textTransform: 'uppercase' }}>Note</label>
