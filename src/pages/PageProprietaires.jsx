@@ -841,15 +841,15 @@ function ModalPrevisionnel({ proprio, onClose }) {
     const styleMatch = html.match(/<style[^>]*>([\s\S]*?)<\/style>/i)
     const bodyMatch  = html.match(/<body[^>]*>([\s\S]*)<\/body>/i)
 
-    // Div visible dans le viewport — z-index max, aucun overlay au-dessus
-    // (les tentatives précédentes échouaient car l'overlay z-index:99999 couvrait le div z-index:99998)
+    // Div en flux normal (PAS position:fixed — html2canvas ne rend pas les fixed correctement)
+    // Appended en bas du body : html2canvas capture le document entier, pas juste le viewport
     const div = document.createElement('div')
-    div.style.cssText = 'position:fixed;top:0;left:0;width:794px;background:#fff;z-index:9999;'
+    div.style.cssText = 'width:794px;background:#fff;'
     div.innerHTML = (styleMatch ? `<style>${styleMatch[1]}</style>` : '') + (bodyMatch ? bodyMatch[1] : html)
     document.body.appendChild(div)
 
     // Attendre que le DOM + styles soient appliqués
-    await new Promise(r => setTimeout(r, 600))
+    await new Promise(r => setTimeout(r, 400))
 
     try {
       const [{ default: html2canvas }, { jsPDF }] = await Promise.all([
