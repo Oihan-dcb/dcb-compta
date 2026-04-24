@@ -9,6 +9,7 @@ import {
 } from '../services/mandats'
 import { syncProprietairesEvoliz } from '../services/syncProprietaires'
 import { buildRapportData } from '../services/buildRapportData'
+import { STATUTS_NON_VENTILABLES } from '../lib/constants'
 import { supabase } from '../lib/supabase'
 
 const TYPE_LABELS = {
@@ -798,7 +799,7 @@ function ModalPrevisionnel({ proprio, onClose }) {
         .filter(r => r.data)
         .flatMap(({ mois, data }) =>
           (data.resas || [])
-            .filter(r => !r.owner_stay)
+            .filter(r => !r.owner_stay && !STATUTS_NON_VENTILABLES.includes(r.final_status))
             .map(r => ({
               ...r,
               mois_comptable: mois,
