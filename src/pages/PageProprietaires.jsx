@@ -838,15 +838,18 @@ function ModalPrevisionnel({ proprio, onClose }) {
     const styleMatch = html.match(/<style[^>]*>([\s\S]*?)<\/style>/i)
     const bodyMatch  = html.match(/<body[^>]*>([\s\S]*)<\/body>/i)
     const div = document.createElement('div')
-    div.style.cssText = 'position:fixed;left:-9999px;top:0;width:794px;background:#fff;'
+    // opacity:0 garde l'élément rendu dans le DOM (html2canvas peut le capturer)
+    // position:absolute;top:-10000px évite tout scroll/flash visible
+    div.style.cssText = 'position:absolute;top:-10000px;left:0;width:794px;background:#fff;opacity:0;pointer-events:none;'
     div.innerHTML = `${styleMatch ? `<style>${styleMatch[1]}</style>` : ''}${bodyMatch ? bodyMatch[1] : html}`
     document.body.appendChild(div)
+    // Laisser le navigateur calculer le layout avant la capture
+    await new Promise(r => setTimeout(r, 200))
     await html2pdf().set({
       margin: [12, 12, 12, 12],
       filename: nomFichier,
-      html2canvas: { scale: 2, useCORS: true, backgroundColor: '#fff' },
+      html2canvas: { scale: 2, useCORS: true, backgroundColor: '#fff', logging: false },
       jsPDF: { unit: 'mm', format: 'a4', orientation: 'portrait' },
-      pagebreak: { mode: ['avoid-all', 'css'] },
     }).from(div).save()
     document.body.removeChild(div)
   }
