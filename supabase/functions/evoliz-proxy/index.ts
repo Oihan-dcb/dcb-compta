@@ -143,6 +143,31 @@ serve(async (req) => {
         break
       }
 
+      case 'createContact': {
+        // Crée un contact (email/phone) pour un client Evoliz
+        // payload: { clientId, firstname, lastname, email, phone, is_main }
+        result = await evolizReq('POST', `/clients/${payload.clientId}/contacts`, company, {
+          firstname: payload.firstname || '',
+          lastname: payload.lastname || '',
+          email: payload.email || undefined,
+          phone: payload.phone || undefined,
+          is_main: payload.is_main ?? true,
+        })
+        break
+      }
+
+      case 'updateContact': {
+        // Met à jour un contact existant
+        // payload: { clientId, contactId, email, phone, firstname, lastname }
+        result = await evolizReq('PATCH', `/clients/${payload.clientId}/contacts/${payload.contactId}`, company, {
+          firstname: payload.firstname || undefined,
+          lastname: payload.lastname || undefined,
+          email: payload.email || undefined,
+          phone: payload.phone || undefined,
+        })
+        break
+      }
+
       // ── FACTURES ──────────────────────────────────────────
       case 'listInvoices': {
         const params = new URLSearchParams()

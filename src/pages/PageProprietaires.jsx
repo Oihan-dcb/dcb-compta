@@ -48,6 +48,7 @@ function ModalFiche({ proprio, onClose, onSaved }) {
     prenom:         proprio.prenom || '',
     type_proprio:   proprio.type_proprio || 'particulier',
     email:          proprio.email || '',
+    email_cc:       proprio.email_cc || '',
     telephone:      proprio.telephone || '',
     adresse:        proprio.adresse || '',
     code_postal:    proprio.code_postal || '',
@@ -124,6 +125,7 @@ function ModalFiche({ proprio, onClose, onSaved }) {
         prenom:         form.prenom.trim() || null,
         type_proprio:   form.type_proprio,
         email:          form.email.trim() || null,
+        email_cc:       form.email_cc.trim() || null,
         telephone:      form.telephone.trim() || null,
         adresse:        form.adresse.trim() || null,
         code_postal:    form.code_postal.trim() || null,
@@ -244,6 +246,10 @@ function ModalFiche({ proprio, onClose, onSaved }) {
               <div className="form-group">
                 <label className="form-label">Email</label>
                 <input className="form-input" type="email" value={form.email} onChange={e => setForm(f => ({ ...f, email: e.target.value }))} />
+              </div>
+              <div className="form-group">
+                <label className="form-label">Email CC <span style={{ fontWeight: 400, color: 'var(--text-muted)' }}>(copie rapports)</span></label>
+                <input className="form-input" type="email" value={form.email_cc} onChange={e => setForm(f => ({ ...f, email_cc: e.target.value }))} />
               </div>
               <div className="form-group">
                 <label className="form-label">Téléphone</label>
@@ -836,6 +842,7 @@ function ModalPrevisionnel({ proprio, onClose }) {
         headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${SUPABASE_ANON_KEY}` },
         body: JSON.stringify({
           to: [proprio.email],
+          ...(proprio.email_cc ? { cc: [proprio.email_cc] } : {}),
           subject: `Estimation de vos revenus ${periode} — Destination Côte Basque`,
           html,
         }),
