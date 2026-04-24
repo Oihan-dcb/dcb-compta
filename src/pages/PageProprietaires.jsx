@@ -821,6 +821,13 @@ function ModalPrevisionnel({ proprio, onClose }) {
     finally { setLoading(false) }
   }
 
+  function apercuPDF() {
+    const html = genererHTMLPrevisionnel(proprio, moisDebut, nbMois, resas || [])
+    const w = window.open('', '_blank')
+    w.document.write(html)
+    w.document.close()
+  }
+
   async function telechargerPDF() {
     const html = genererHTMLPrevisionnel(proprio, moisDebut, nbMois, resas || [])
     const { default: html2pdf } = await import('html2pdf.js')
@@ -996,8 +1003,12 @@ function ModalPrevisionnel({ proprio, onClose }) {
         <div className="modal-footer">
           <button className="btn btn-secondary" onClick={onClose}>Fermer</button>
           <button className="btn btn-secondary" disabled={loading || !resas}
+            onClick={apercuPDF}>
+            👁 Aperçu
+          </button>
+          <button className="btn btn-secondary" disabled={loading || !resas}
             onClick={telechargerPDF}>
-            📥 PDF
+            📥 Télécharger PDF
           </button>
           {proprio.email ? (
             <button className="btn btn-primary" disabled={sending || loading || !resas}
