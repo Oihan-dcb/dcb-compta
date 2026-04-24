@@ -10,7 +10,7 @@ function escapeHtml(str) {
 
 const EMPTY_AE = {
   nom: '', prenom: '', siret: '', adresse: '', code_postal: '', ville: '',
-  email: '', telephone: '', iban: '', ical_url: '', taux_horaire: 2500, note: '', actif: true, type: 'ae'
+  email: '', telephone: '', iban: '', ical_url: '', ical_pro: '', ical_perso: '', taux_horaire: 2500, note: '', actif: true, type: 'ae'
 }
 
 export default function PageAutoEntrepreneurs() {
@@ -1315,11 +1315,25 @@ export default function PageAutoEntrepreneurs() {
               {inp('telephone', 'Téléphone')}
               <div style={{ gridColumn: '1/-1' }}>{inp('iban', 'IBAN', { placeholder: 'FR76 0000 0000 0000 0000 0000 000' })}</div>
               <div style={{ gridColumn: '1/-1', display: 'flex', flexDirection: 'column', gap: 4 }}>
-                <label style={{ fontSize: 11, fontWeight: 600, color: '#CC9933', textTransform: 'uppercase' }}>URL iCal missions 📅</label>
+                <label style={{ fontSize: 11, fontWeight: 600, color: '#CC9933', textTransform: 'uppercase' }}>URL iCal missions Hospitable 📅</label>
                 <input value={form.ical_url ?? ''} onChange={e => change('ical_url', e.target.value)}
                   placeholder="https://calendar.google.com/calendar/ical/..."
                   style={{ padding: '8px 10px', borderRadius: 7, border: '1.5px solid #E4A853', fontSize: 13 }} />
                 <div style={{ fontSize: 11, color: '#6b7280' }}>L'iCal sera lu pour pré-remplir les missions dans le portail AE</div>
+              </div>
+              <div style={{ gridColumn: '1/-1', display: 'flex', flexDirection: 'column', gap: 4 }}>
+                <label style={{ fontSize: 11, fontWeight: 600, color: '#0891B2', textTransform: 'uppercase' }}>iCal pro (calendrier professionnel) 🗓️</label>
+                <input value={form.ical_pro ?? ''} onChange={e => change('ical_pro', e.target.value)}
+                  placeholder="webcal:// ou https://... (Google Cal, Outlook pro…)"
+                  style={{ padding: '8px 10px', borderRadius: 7, border: '1.5px solid #0891B2', fontSize: 13 }} />
+                <div style={{ fontSize: 11, color: '#6b7280' }}>Calendrier professionnel — utilisé dans PowerHouse pour afficher les missions</div>
+              </div>
+              <div style={{ gridColumn: '1/-1', display: 'flex', flexDirection: 'column', gap: 4 }}>
+                <label style={{ fontSize: 11, fontWeight: 600, color: '#7C3AED', textTransform: 'uppercase' }}>iCal perso (indisponibilités) 🔒</label>
+                <input value={form.ical_perso ?? ''} onChange={e => change('ical_perso', e.target.value)}
+                  placeholder="webcal:// ou https://... (Apple Cal, Google Cal perso…)"
+                  style={{ padding: '8px 10px', borderRadius: 7, border: '1.5px solid #7C3AED', fontSize: 13 }} />
+                <div style={{ fontSize: 11, color: '#6b7280' }}>Calendrier perso — les événements apparaissent comme 🔒 Indisponible dans PowerHouse</div>
               </div>
               <div style={{ gridColumn: '1/-1', display: 'flex', flexDirection: 'column', gap: 4 }}>
                 <label style={{ fontSize: 11, fontWeight: 600, color: '#666', textTransform: 'uppercase' }}>Note</label>
