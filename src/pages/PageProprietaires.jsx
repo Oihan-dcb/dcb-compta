@@ -772,6 +772,7 @@ function ModalPrevisionnel({ proprio, onClose }) {
   const [sending, setSending]     = useState(false)
   const [sent, setSent]           = useState(false)
   const [err, setErr]             = useState(null)
+  const [pdfLoading, setPdfLoading] = useState(false)
 
   const bienIds = (proprio.bien || []).map(b => b.id)
   // Taux par bien (taux_commission_override du bien > mandat actif > proprio > 25)
@@ -829,8 +830,10 @@ function ModalPrevisionnel({ proprio, onClose }) {
   }
 
   async function telechargerPDF() {
+    if (pdfLoading) return
+    setPdfLoading(true)
+
     const html = genererHTMLPrevisionnel(proprio, moisDebut, nbMois, resas || [])
-    const { default: html2pdf } = await import('html2pdf.js')
     const periode = nbMois === 1
       ? moisLabel(moisDebut)
       : `${moisLabel(moisDebut)}-${moisLabel(addMois(moisDebut, nbMois - 1))}`
@@ -838,29 +841,55 @@ function ModalPrevisionnel({ proprio, onClose }) {
     const styleMatch = html.match(/<style[^>]*>([\s\S]*?)<\/style>/i)
     const bodyMatch  = html.match(/<body[^>]*>([\s\S]*)<\/body>/i)
 
-    // Overlay de chargement (au-dessus du contenu)
-    const overlay = document.createElement('div')
-    overlay.style.cssText = 'position:fixed;inset:0;z-index:99999;background:rgba(247,243,236,0.95);display:flex;align-items:center;justify-content:center;'
-    overlay.innerHTML = '<div style="font-family:Georgia,serif;color:#2C2416;font-size:15px;letter-spacing:0.03em;">Génération du PDF…</div>'
-    document.body.appendChild(overlay)
-
-    // Div rendu dans le viewport (sous l'overlay) pour que html2canvas le capture
+    // Div visible dans le viewport — z-index max, aucun overlay au-dessus
+    // (les tentatives précédentes échouaient car l'overlay z-index:99999 couvrait le div z-index:99998)
     const div = document.createElement('div')
-    div.style.cssText = 'position:fixed;top:0;left:0;width:794px;background:#fff;z-index:99998;overflow:hidden;'
-    div.innerHTML = `${styleMatch ? `<style>${styleMatch[1]}</style>` : ''}${bodyMatch ? bodyMatch[1] : html}`
+    div.style.cssText = 'position:fixed;top:0;left:0;width:794px;background:#fff;z-index:9999;'
+    div.innerHTML = (styleMatch ? `<style>${styleMatch[1]}</style>` : '') + (bodyMatch ? bodyMatch[1] : html)
     document.body.appendChild(div)
 
-    await new Promise(r => setTimeout(r, 300))
+    // Attendre que le DOM + styles soient appliqués
+    await new Promise(r => setTimeout(r, 600))
+
     try {
-      await html2pdf().set({
-        margin: [12, 12, 12, 12],
-        filename: nomFichier,
-        html2canvas: { scale: 2, useCORS: true, backgroundColor: '#fff', logging: false },
-        jsPDF: { unit: 'mm', format: 'a4', orientation: 'portrait' },
-      }).from(div).save()
+      const [{ default: html2canvas }, { jsPDF }] = await Promise.all([
+        import('html2canvas'),
+        import('jspdf'),
+      ])
+
+      const canvas = await html2canvas(div, {
+        scale: 2,
+        useCORS: true,
+        backgroundColor: '#fff',
+        scrollX: 0,
+        scrollY: 0,
+        logging: false,
+      })
+
+      const imgData = canvas.toDataURL('image/jpeg', 0.92)
+      const A4_W = 210  // mm
+      const A4_H = 297  // mm
+      const imgW = A4_W
+      const imgH = (canvas.height * A4_W) / canvas.width
+
+      const pdf = new jsPDF({ unit: 'mm', format: 'a4', orientation: 'portrait' })
+      let heightLeft = imgH
+      let yOffset = 0
+
+      pdf.addImage(imgData, 'JPEG', 0, 0, imgW, imgH)
+      heightLeft -= A4_H
+
+      while (heightLeft > 0) {
+        yOffset -= A4_H
+        pdf.addPage()
+        pdf.addImage(imgData, 'JPEG', 0, yOffset, imgW, imgH)
+        heightLeft -= A4_H
+      }
+
+      pdf.save(nomFichier)
     } finally {
       document.body.removeChild(div)
-      document.body.removeChild(overlay)
+      setPdfLoading(false)
     }
   }
 
@@ -1012,9 +1041,9 @@ function ModalPrevisionnel({ proprio, onClose }) {
             onClick={apercuPDF}>
             👁 Aperçu
           </button>
-          <button className="btn btn-secondary" disabled={loading || !resas}
+          <button className="btn btn-secondary" disabled={loading || !resas || pdfLoading}
             onClick={telechargerPDF}>
-            📥 Télécharger PDF
+            {pdfLoading ? '⏳ Génération…' : '📥 Télécharger PDF'}
           </button>
           {proprio.email ? (
             <button className="btn btn-primary" disabled={sending || loading || !resas}
