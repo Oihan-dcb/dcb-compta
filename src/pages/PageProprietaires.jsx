@@ -837,21 +837,31 @@ function ModalPrevisionnel({ proprio, onClose }) {
     const nomFichier = `Previsionnel-${proprio.nom}-${periode}.pdf`
     const styleMatch = html.match(/<style[^>]*>([\s\S]*?)<\/style>/i)
     const bodyMatch  = html.match(/<body[^>]*>([\s\S]*)<\/body>/i)
+
+    // Overlay de chargement (au-dessus du contenu)
+    const overlay = document.createElement('div')
+    overlay.style.cssText = 'position:fixed;inset:0;z-index:99999;background:rgba(247,243,236,0.95);display:flex;align-items:center;justify-content:center;'
+    overlay.innerHTML = '<div style="font-family:Georgia,serif;color:#2C2416;font-size:15px;letter-spacing:0.03em;">Génération du PDF…</div>'
+    document.body.appendChild(overlay)
+
+    // Div rendu dans le viewport (sous l'overlay) pour que html2canvas le capture
     const div = document.createElement('div')
-    // opacity:0 garde l'élément rendu dans le DOM (html2canvas peut le capturer)
-    // position:absolute;top:-10000px évite tout scroll/flash visible
-    div.style.cssText = 'position:absolute;top:-10000px;left:0;width:794px;background:#fff;opacity:0;pointer-events:none;'
+    div.style.cssText = 'position:fixed;top:0;left:0;width:794px;background:#fff;z-index:99998;overflow:hidden;'
     div.innerHTML = `${styleMatch ? `<style>${styleMatch[1]}</style>` : ''}${bodyMatch ? bodyMatch[1] : html}`
     document.body.appendChild(div)
-    // Laisser le navigateur calculer le layout avant la capture
-    await new Promise(r => setTimeout(r, 200))
-    await html2pdf().set({
-      margin: [12, 12, 12, 12],
-      filename: nomFichier,
-      html2canvas: { scale: 2, useCORS: true, backgroundColor: '#fff', logging: false },
-      jsPDF: { unit: 'mm', format: 'a4', orientation: 'portrait' },
-    }).from(div).save()
-    document.body.removeChild(div)
+
+    await new Promise(r => setTimeout(r, 300))
+    try {
+      await html2pdf().set({
+        margin: [12, 12, 12, 12],
+        filename: nomFichier,
+        html2canvas: { scale: 2, useCORS: true, backgroundColor: '#fff', logging: false },
+        jsPDF: { unit: 'mm', format: 'a4', orientation: 'portrait' },
+      }).from(div).save()
+    } finally {
+      document.body.removeChild(div)
+      document.body.removeChild(overlay)
+    }
   }
 
   async function envoyer() {
