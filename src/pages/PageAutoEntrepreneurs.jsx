@@ -56,6 +56,10 @@ export default function PageAutoEntrepreneurs() {
   const [editingPT, setEditingPT] = useState(null)
   const [formPT, setFormPT] = useState({ nom: '', description: '', taux_defaut: 25, unite: 'heure' })
   const [errorPT, setErrorPT] = useState(null)
+  // Nouveau groupe messagerie
+  const [showNewGroup, setShowNewGroup] = useState(false)
+  const [newGroupName, setNewGroupName] = useState('')
+  const [savingGroup, setSavingGroup] = useState(false)
 
   useEffect(() => {
     charger(true)  // autoSync au chargement
@@ -89,6 +93,20 @@ export default function PageAutoEntrepreneurs() {
       }
     } catch (err) { setError(err.message) }
     finally { setLoading(false) }
+  }
+
+  async function createGroup() {
+    const name = newGroupName.trim()
+    if (!name) return
+    const slug = name.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '')
+    setSavingGroup(true)
+    const { data, error } = await supabase.from('chat_groups').insert({ name, slug }).select('id, name, slug').single()
+    setSavingGroup(false)
+    if (error) { setError(error.message); return }
+    setChatGroups(prev => [...prev, data].sort((a, b) => a.name.localeCompare(b.name)))
+    change('chat_group_slug', slug)
+    setNewGroupName('')
+    setShowNewGroup(false)
   }
 
   // ── Heures staff ──────────────────────────────────────────────────────
@@ -1306,13 +1324,36 @@ export default function PageAutoEntrepreneurs() {
               </div>
               <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
                 <label style={{ fontSize: 11, fontWeight: 600, color: '#666', textTransform: 'uppercase' }}>Groupe messagerie 💬</label>
-                <select value={form.chat_group_slug || ''} onChange={e => change('chat_group_slug', e.target.value || null)}
-                  style={{ padding: '8px 10px', borderRadius: 7, border: '1.5px solid #e5e7eb', fontSize: 13 }}>
-                  <option value="">— Aucun groupe</option>
-                  {chatGroups.map(g => (
-                    <option key={g.slug} value={g.slug}>{g.name}</option>
-                  ))}
-                </select>
+                <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
+                  <select value={form.chat_group_slug || ''} onChange={e => change('chat_group_slug', e.target.value || null)}
+                    style={{ flex: 1, padding: '8px 10px', borderRadius: 7, border: '1.5px solid #e5e7eb', fontSize: 13 }}>
+                    <option value="">— Aucun groupe</option>
+                    {chatGroups.map(g => (
+                      <option key={g.slug} value={g.slug}>{g.name}</option>
+                    ))}
+                  </select>
+                  <button type="button" onClick={() => { setShowNewGroup(g => !g); setNewGroupName('') }}
+                    title="Créer un nouveau groupe"
+                    style={{ width: 34, height: 34, borderRadius: 7, border: '1.5px solid #CC9933', background: showNewGroup ? '#CC9933' : '#FDF4E0', color: showNewGroup ? '#fff' : '#CC9933', fontSize: 18, fontWeight: 700, cursor: 'pointer', flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                    {showNewGroup ? '×' : '+'}
+                  </button>
+                </div>
+                {showNewGroup && (
+                  <div style={{ display: 'flex', gap: 6, marginTop: 4 }}>
+                    <input
+                      autoFocus
+                      value={newGroupName}
+                      onChange={e => setNewGroupName(e.target.value)}
+                      onKeyDown={e => { if (e.key === 'Enter') createGroup(); if (e.key === 'Escape') setShowNewGroup(false) }}
+                      placeholder="Nom du groupe (ex: Bordeaux)"
+                      style={{ flex: 1, padding: '7px 10px', borderRadius: 7, border: '1.5px solid #CC9933', fontSize: 13, outline: 'none' }}
+                    />
+                    <button type="button" onClick={createGroup} disabled={!newGroupName.trim() || savingGroup}
+                      style={{ padding: '7px 14px', borderRadius: 7, border: 'none', background: newGroupName.trim() ? '#CC9933' : '#e5e7eb', color: '#fff', fontSize: 13, fontWeight: 700, cursor: newGroupName.trim() ? 'pointer' : 'default' }}>
+                      {savingGroup ? '…' : 'Créer'}
+                    </button>
+                  </div>
+                )}
               </div>
               {form.type !== 'staff' && (
               <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
