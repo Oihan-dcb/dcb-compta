@@ -1,12 +1,14 @@
 {
   "people": [],
   "projects": [
+    "Postgres",
+    "Supabase",
     "Hospitable",
-    "Le",
     "React",
-    "Evoliz",
+    "Connection",
+    "Performance",
+    "Cursor",
     "Vite",
-    "Architecture",
-    "Header"
+    "Row"
   ]
 }
