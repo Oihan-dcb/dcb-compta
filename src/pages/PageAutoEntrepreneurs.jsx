@@ -1369,6 +1369,21 @@ export default function PageAutoEntrepreneurs() {
                   </span>
                 </label>
               </div>
+              {form.is_chat_hidden && (
+                <div style={{ gridColumn: '1/-1', display: 'flex', flexDirection: 'column', gap: 4 }}>
+                  <label style={{ fontSize: 11, fontWeight: 600, color: '#CC9933', textTransform: 'uppercase' }}>
+                    Lier à (compte principal) 🔗
+                  </label>
+                  <select value={form.linked_ae_user_id || ''} onChange={e => change('linked_ae_user_id', e.target.value || null)}
+                    style={{ padding: '8px 10px', borderRadius: 7, border: '1.5px solid #CC9933', fontSize: 13 }}>
+                    <option value="">— Choisir le compte principal</option>
+                    {aes.filter(a => a.id !== editing && a.ae_user_id && !a.is_chat_hidden).map(a => (
+                      <option key={a.ae_user_id} value={a.ae_user_id}>{a.prenom} {a.nom} ({a.type})</option>
+                    ))}
+                  </select>
+                  <span style={{ fontSize: 11, color: '#9ca3af' }}>Les messages de ce compte s'afficheront sous le nom du compte principal.</span>
+                </div>
+              )}
             </div>
             <div style={{ display: 'flex', gap: 10, justifyContent: 'flex-end', marginTop: 20 }}>
               <button onClick={fermer} style={{ background: '#f3f4f6', border: 'none', borderRadius: 8, padding: '9px 18px', fontSize: 13, cursor: 'pointer', fontWeight: 600 }}>Annuler</button>
