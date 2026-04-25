@@ -267,9 +267,24 @@ async function handleMessage(supabase: any, event: string, data: any): Promise<s
   const body       = data.body || data.message || data.content || ''
   const senderType = data.sender_type || data.from || 'unknown'
 
-  // Ne traiter que les messages guests entrants
+  // Stocker TOUS les messages (guest + host) dans hospitable_messages pour contexte LLM
+  const msgId = data.id || data.message_id
+  if (msgId && body.trim()) {
+    await supabase.from('hospitable_messages').upsert({
+      id:              typeof msgId === 'number' ? msgId : parseInt(msgId, 10) || null,
+      reservation_id:  resaId || '',
+      conversation_id: convId || null,
+      platform:        data.platform || null,
+      body:            body.trim(),
+      sender_type:     senderType,
+      source:          data.source || null,
+      created_at:      data.created_at || new Date().toISOString(),
+    }, { onConflict: 'id', ignoreDuplicates: true }).catch(() => {})
+  }
+
+  // Ne classifier que les messages guests entrants
   if (!body.trim() || senderType === 'host' || senderType === 'owner') {
-    return `message ${event} skipped (sender: ${senderType})`
+    return `message ${event} stored (sender: ${senderType})`
   }
 
   // Récupérer la réservation + bien pour contexte
