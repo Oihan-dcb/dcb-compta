@@ -10,7 +10,7 @@ function escapeHtml(str) {
 
 const EMPTY_AE = {
   nom: '', prenom: '', siret: '', adresse: '', code_postal: '', ville: '',
-  email: '', telephone: '', iban: '', ical_url: '', ical_pro: '', ical_perso: '', taux_horaire: 2500, note: '', actif: true, type: 'ae'
+  email: '', telephone: '', iban: '', ical_url: '', ical_pro: '', ical_perso: '', taux_horaire: 2500, note: '', actif: true, type: 'ae', chat_group_slug: 'cote-basque'
 }
 
 export default function PageAutoEntrepreneurs() {
@@ -19,6 +19,7 @@ export default function PageAutoEntrepreneurs() {
   const [loading, setLoading] = useState(true)
   const [tab, setTab] = useState(() => localStorage.getItem('tab_ae') || 'vision') // 'vision' | 'aes' | 'prestations'
   useEffect(() => localStorage.setItem('tab_ae', tab), [tab])
+  const [chatGroups, setChatGroups] = useState([])
   const [editing, setEditing] = useState(null)
   const [form, setForm] = useState(EMPTY_AE)
   const [saving, setSaving] = useState(false)
@@ -74,12 +75,14 @@ export default function PageAutoEntrepreneurs() {
   async function charger(autoSync = false) {
     setLoading(true)
     try {
-      const [aesData, ptData] = await Promise.all([
+      const [aesData, ptData, groupsData] = await Promise.all([
         getAutoEntrepreneurs(),
-        supabase.from('prestation_type').select('*').order('nom').then(r => r.data || [])
+        supabase.from('prestation_type').select('*').order('nom').then(r => r.data || []),
+        supabase.from('chat_groups').select('id, name, slug').order('name').then(r => r.data || []),
       ])
       setAes(aesData)
       setPrestationTypes(ptData)
+      setChatGroups(groupsData)
       if (autoSync) {
         const moisCourant = new Date().toISOString().slice(0, 7)
         syncTousLesAEs(aesData, moisCourant)
@@ -1042,7 +1045,7 @@ export default function PageAutoEntrepreneurs() {
               { value: 'repos', label: 'Repos' },
             ]
             const ABSENCES_LABEL = { conge_paye: 'CP', maladie: 'Maladie', rtt: 'RTT', ferie: 'Férié', repos: 'Repos' }
-            const staffList = aes.filter(a => a.type === 'staff' || a.type === 'assistante')
+            const staffList = aes.filter(a => a.type === 'staff' || a.type === 'assistante' || a.type === 'gerant')
             const days = getDaysOfMonth(heuresMois)
             let totalH = 0
             days.forEach(d => { const h = netHeures(heures[d]); if (h) totalH += h })
@@ -1298,6 +1301,17 @@ export default function PageAutoEntrepreneurs() {
                   <option value="ae">🧹 Auto-entrepreneur</option>
                   <option value="staff">🌅 Staff DCB</option>
                   <option value="assistante">🗂️ Assistante DCB</option>
+                  <option value="gerant">👑 Gérant DCB</option>
+                </select>
+              </div>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+                <label style={{ fontSize: 11, fontWeight: 600, color: '#666', textTransform: 'uppercase' }}>Groupe messagerie 💬</label>
+                <select value={form.chat_group_slug || ''} onChange={e => change('chat_group_slug', e.target.value || null)}
+                  style={{ padding: '8px 10px', borderRadius: 7, border: '1.5px solid #e5e7eb', fontSize: 13 }}>
+                  <option value="">— Aucun groupe</option>
+                  {chatGroups.map(g => (
+                    <option key={g.slug} value={g.slug}>{g.name}</option>
+                  ))}
                 </select>
               </div>
               {form.type !== 'staff' && (
