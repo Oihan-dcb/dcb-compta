@@ -2,6 +2,36 @@ import { createClient } from 'npm:@supabase/supabase-js@2'
 
 const SUPABASE_URL = Deno.env.get('SUPABASE_URL')!
 const SUPABASE_SERVICE_KEY = Deno.env.get('SERVICE_ROLE_KEY')!
+const ANTHROPIC_KEY = Deno.env.get('ANTHROPIC_API_KEY') ?? ''
+
+const GUEST_MSG_SYSTEM_PROMPT = `Tu es un assistant pour une agence de conciergerie (Destination Côte Basque).
+Un voyageur vient d'envoyer un message via sa plateforme de réservation (Airbnb, Booking, etc.).
+Analyse ce message et détermine s'il mérite une action dans notre système de gestion.
+
+Tu dois retourner UNIQUEMENT un JSON valide :
+{
+  "action_type": "rdv" | "tech_issue" | "note" | "none",
+  "confidence": 0.0,
+  "summary": "Résumé en 1 phrase",
+  "action_data": {},
+  "reasoning": "Explication courte"
+}
+
+Règles :
+- "none" : questions basiques, remerciements, confirmation de réception
+- "rdv" : demande d'arrivée anticipée (early check-in), départ tardif (late check-out), livraison, visite
+- "tech_issue" : problème signalé dans le logement (panne, dégât, manque d'équipement)
+- "note" : information utile à garder (allergie, demande spéciale, heure d'arrivée approximative)
+- Seuil confidence > 0.70 pour proposer une action
+
+Formats action_data :
+- rdv: { "staff_id": "", "title": "", "date": "YYYY-MM-DD", "time_start": "HH:MM", "time_end": "HH:MM", "description": "", "bien_code": "" }
+- tech_issue: { "bien_code": "", "title": "", "description": "", "category": "plomberie|electrique|electromenager|serrurerie|mobilier|autre", "priority": "low|normal|high|urgent" }
+- note: { "text": "", "bien_code": "" }
+
+Pour "rdv" early CI / late CO :
+- Utilise les dates de la réservation (check_in / check_out) fournies dans le contexte
+- staff_id = "" (sera assigné lors de la validation)`
 
 Deno.serve(async (req) => {
   if (req.method !== 'POST') return new Response('Method Not Allowed', { status: 405 })
@@ -232,27 +262,96 @@ async function handleProperty(supabase: any, event: string, data: any): Promise<
 // MESSAGES
 // ============================================================
 async function handleMessage(supabase: any, event: string, data: any): Promise<string> {
-  // Tracer les messages voyageur dans webhook_log suffit pour l'instant
-  // Le payload contient : conversation_id, reservation_id, body, sender_type
-  const resaId   = data.reservation_id || data.reservation?.id
-  const convId   = data.conversation_id
-  const body     = data.body || data.message || data.content || ''
+  const resaId     = data.reservation_id || data.reservation?.id
+  const convId     = data.conversation_id
+  const body       = data.body || data.message || data.content || ''
   const senderType = data.sender_type || data.from || 'unknown'
 
-  // Mettre à jour synced_at de la résa si on a un reservation_id
+  // Ne traiter que les messages guests entrants
+  if (!body.trim() || senderType === 'host' || senderType === 'owner') {
+    return `message ${event} skipped (sender: ${senderType})`
+  }
+
+  // Récupérer la réservation + bien pour contexte
+  let bienCode = ''
+  let checkIn  = ''
+  let checkOut = ''
+  let guestName = data.guest?.first_name
+    ? [data.guest.first_name, data.guest.last_name].filter(Boolean).join(' ')
+    : (data.guest_name || '')
+  const hospPropertyId = data.property_id || data.property?.id || ''
+
   if (resaId) {
     const { data: resa } = await supabase
       .from('reservation')
-      .select('id, hospitable_id')
+      .select('id, check_in, check_out, guest_name, bien_id, bien(code)')
       .eq('hospitable_id', resaId)
-      .single()
+      .maybeSingle()
 
     if (resa) {
-      console.log('Message re\u00e7u pour r\u00e9sa:', resa.id, senderType, body.substring(0, 50))
+      checkIn   = resa.check_in  || ''
+      checkOut  = resa.check_out || ''
+      guestName = guestName || resa.guest_name || ''
+      bienCode  = resa.bien?.code || ''
+      console.log('Message guest:', resaId, senderType, body.substring(0, 60))
     }
   }
 
-  return `message ${event} conv:${convId || 'n/a'}`
+  // Pas de clé Anthropic → log seulement
+  if (!ANTHROPIC_KEY) return `message ${event} (no ANTHROPIC_API_KEY)`
+
+  const userPrompt = `Bien : ${bienCode || '(inconnu)'}
+Check-in : ${checkIn || 'inconnu'} | Check-out : ${checkOut || 'inconnu'}
+Guest : ${guestName || 'inconnu'}
+Message (${senderType}) : "${body.trim()}"`
+
+  let llmResponse: any = { action_type: 'none', confidence: 0 }
+  try {
+    const r = await fetch('https://api.anthropic.com/v1/messages', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'x-api-key': ANTHROPIC_KEY,
+        'anthropic-version': '2023-06-01',
+      },
+      body: JSON.stringify({
+        model: 'claude-haiku-4-5-20251001',
+        max_tokens: 512,
+        system: GUEST_MSG_SYSTEM_PROMPT,
+        messages: [{ role: 'user', content: userPrompt }],
+      }),
+    })
+    if (r.ok) {
+      const d = await r.json()
+      const text = d.content?.[0]?.text || '{}'
+      const match = text.match(/\{[\s\S]*\}/)
+      if (match) llmResponse = JSON.parse(match[0])
+    }
+  } catch (e) {
+    console.error('LLM error:', e)
+  }
+
+  const { action_type, confidence, summary, action_data } = llmResponse
+
+  if (!action_type || action_type === 'none' || !confidence || confidence < 0.7) {
+    return `message ${event} classified:none conv:${convId || 'n/a'}`
+  }
+
+  await supabase.from('chat_llm_jobs').insert({
+    status: 'done',
+    source: 'hospitable',
+    hospitable_reservation_id: resaId   || null,
+    hospitable_property_id:    hospPropertyId || null,
+    hospitable_guest_name:     guestName || null,
+    hospitable_message_body:   body.trim(),
+    llm_response:              llmResponse,
+    proposed_action_type:      action_type,
+    proposed_action_data:      action_data || {},
+    confidence:                confidence  || null,
+    summary:                   summary    || null,
+  })
+
+  return `message ${event} → ${action_type} (${Math.round((confidence || 0) * 100)}%) conv:${convId || 'n/a'}`
 }
 
 // ============================================================
