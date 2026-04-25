@@ -10,7 +10,7 @@ function escapeHtml(str) {
 
 const EMPTY_AE = {
   nom: '', prenom: '', siret: '', adresse: '', code_postal: '', ville: '',
-  email: '', telephone: '', iban: '', ical_url: '', ical_pro: '', ical_perso: '', taux_horaire: 2500, note: '', actif: true, type: 'ae', chat_group_slug: 'cote-basque'
+  email: '', telephone: '', iban: '', ical_url: '', ical_pro: '', ical_perso: '', taux_horaire: 2500, note: '', actif: true, type: 'ae', chat_group_slug: 'cote-basque', is_chat_hidden: false
 }
 
 export default function PageAutoEntrepreneurs() {
@@ -1301,7 +1301,7 @@ export default function PageAutoEntrepreneurs() {
                   <option value="ae">🧹 Auto-entrepreneur</option>
                   <option value="staff">🌅 Staff DCB</option>
                   <option value="assistante">🗂️ Assistante DCB</option>
-                  <option value="gerant">👑 Gérant DCB</option>
+                  <option value="gerant">Gérant DCB</option>
                 </select>
               </div>
               <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
@@ -1358,6 +1358,16 @@ export default function PageAutoEntrepreneurs() {
                 <label style={{ fontSize: 11, fontWeight: 600, color: '#666', textTransform: 'uppercase' }}>Note</label>
                 <textarea value={form.note ?? ''} onChange={e => change('note', e.target.value)} rows={2}
                   style={{ padding: '8px 10px', borderRadius: 7, border: '1.5px solid #e5e7eb', fontSize: 13, resize: 'vertical' }} />
+              </div>
+              <div style={{ gridColumn: '1/-1' }}>
+                <label style={{ display: 'flex', alignItems: 'center', gap: 10, cursor: 'pointer', userSelect: 'none' }}>
+                  <input type="checkbox" checked={!!form.is_chat_hidden} onChange={e => change('is_chat_hidden', e.target.checked)}
+                    style={{ width: 16, height: 16, accentColor: '#CC9933' }} />
+                  <span style={{ fontSize: 13, color: '#666' }}>
+                    <strong>Compte secondaire</strong> — masquer dans la messagerie
+                    <span style={{ fontSize: 11, color: '#9ca3af', marginLeft: 6 }}>(ex : compte ménage de Laura, Clémence…)</span>
+                  </span>
+                </label>
               </div>
             </div>
             <div style={{ display: 'flex', gap: 10, justifyContent: 'flex-end', marginTop: 20 }}>
