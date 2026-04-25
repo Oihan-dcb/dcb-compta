@@ -60,6 +60,8 @@ export default function PageAutoEntrepreneurs() {
   const [showNewGroup, setShowNewGroup] = useState(false)
   const [newGroupName, setNewGroupName] = useState('')
   const [savingGroup, setSavingGroup] = useState(false)
+  // Multi-groupes : Set de group_id sélectionnés pour l'AE en cours d'édition
+  const [selectedGroups, setSelectedGroups] = useState(new Set())
 
   useEffect(() => {
     charger(true)  // autoSync au chargement
@@ -93,6 +95,42 @@ export default function PageAutoEntrepreneurs() {
       }
     } catch (err) { setError(err.message) }
     finally { setLoading(false) }
+  }
+
+  async function syncGroupMemberships(aeUserId) {
+    if (!aeUserId) return
+    const { data: current } = await supabase.from('chat_group_members')
+      .select('group_id').eq('user_id', aeUserId)
+    const currentIds = new Set((current || []).map(r => r.group_id))
+    const toAdd = [...selectedGroups].filter(id => !currentIds.has(id))
+    const toRemove = [...currentIds].filter(id => !selectedGroups.has(id))
+
+    if (toAdd.length) {
+      await supabase.from('chat_group_members').upsert(
+        toAdd.map(group_id => ({ group_id, user_id: aeUserId, is_manager: false })),
+        { onConflict: 'group_id,user_id' }
+      )
+      // Ajouter aux rooms open de ces groupes
+      const { data: rooms } = await supabase.from('chat_rooms')
+        .select('id').eq('type', 'open').in('group_id', toAdd)
+      if (rooms?.length) {
+        await supabase.from('chat_room_members').upsert(
+          rooms.map(r => ({ room_id: r.id, user_id: aeUserId })),
+          { onConflict: 'room_id,user_id' }
+        )
+      }
+    }
+    if (toRemove.length) {
+      await supabase.from('chat_group_members')
+        .delete().eq('user_id', aeUserId).in('group_id', toRemove)
+      // Retirer des rooms de ces groupes
+      const { data: rooms } = await supabase.from('chat_rooms')
+        .select('id').eq('type', 'open').in('group_id', toRemove)
+      if (rooms?.length) {
+        await supabase.from('chat_room_members')
+          .delete().eq('user_id', aeUserId).in('room_id', rooms.map(r => r.id))
+      }
+    }
   }
 
   async function createGroup() {
@@ -448,8 +486,18 @@ export default function PageAutoEntrepreneurs() {
     }) || null
   }
 
-  function ouvrir(ae) { setForm(ae ? { ...ae } : EMPTY_AE); setEditing(ae ? ae.id : 'new'); setError(null); setSuccess(null) }
-  function fermer() { setEditing(null); setError(null) }
+  async function ouvrir(ae) {
+    setForm(ae ? { ...ae } : EMPTY_AE)
+    setEditing(ae ? ae.id : 'new')
+    setError(null); setSuccess(null)
+    setSelectedGroups(new Set())
+    if (ae?.ae_user_id) {
+      const { data } = await supabase.from('chat_group_members')
+        .select('group_id').eq('user_id', ae.ae_user_id)
+      if (data) setSelectedGroups(new Set(data.map(r => r.group_id)))
+    }
+  }
+  function fermer() { setEditing(null); setError(null); setSelectedGroups(new Set()) }
   function change(k, v) { setForm(f => ({ ...f, [k]: v })) }
 
   async function resetMdp(ae) {
@@ -504,7 +552,9 @@ export default function PageAutoEntrepreneurs() {
       const data = { ...form, taux_horaire: parseInt(form.taux_horaire) || 2500 }
       // taux_horaire est en centimes en base mais on affiche en €
       if (editing !== 'new') data.id = editing
-      await saveAutoEntrepreneur(data)
+      const saved = await saveAutoEntrepreneur(data)
+      const aeUserId = form.ae_user_id || saved?.ae_user_id
+      await syncGroupMemberships(aeUserId)
       setSuccess(editing === 'new' ? 'Auto-entrepreneur créé ✓' : 'Fiche mise à jour ✓')
       await charger()
       setTimeout(() => { fermer(); setSuccess(null) }, 1200)
@@ -1322,32 +1372,37 @@ export default function PageAutoEntrepreneurs() {
                   <option value="gerant">Gérant DCB</option>
                 </select>
               </div>
-              <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
-                <label style={{ fontSize: 11, fontWeight: 600, color: '#666', textTransform: 'uppercase' }}>Groupe messagerie 💬</label>
-                <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
-                  <select value={form.chat_group_slug || ''} onChange={e => change('chat_group_slug', e.target.value || null)}
-                    style={{ flex: 1, padding: '8px 10px', borderRadius: 7, border: '1.5px solid #e5e7eb', fontSize: 13 }}>
-                    <option value="">— Aucun groupe</option>
-                    {chatGroups.map(g => (
-                      <option key={g.slug} value={g.slug}>{g.name}</option>
-                    ))}
-                  </select>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                  <label style={{ fontSize: 11, fontWeight: 600, color: '#666', textTransform: 'uppercase' }}>Groupes messagerie 💬</label>
                   <button type="button" onClick={() => { setShowNewGroup(g => !g); setNewGroupName('') }}
                     title="Créer un nouveau groupe"
-                    style={{ width: 34, height: 34, borderRadius: 7, border: '1.5px solid #CC9933', background: showNewGroup ? '#CC9933' : '#FDF4E0', color: showNewGroup ? '#fff' : '#CC9933', fontSize: 18, fontWeight: 700, cursor: 'pointer', flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                    style={{ width: 26, height: 26, borderRadius: 6, border: '1.5px solid #CC9933', background: showNewGroup ? '#CC9933' : '#FDF4E0', color: showNewGroup ? '#fff' : '#CC9933', fontSize: 16, fontWeight: 700, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
                     {showNewGroup ? '×' : '+'}
                   </button>
                 </div>
+                <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
+                  {chatGroups.length === 0 && <span style={{ fontSize: 12, color: '#9ca3af' }}>Aucun groupe</span>}
+                  {chatGroups.map(g => {
+                    const on = selectedGroups.has(g.id)
+                    return (
+                      <button key={g.id} type="button"
+                        onClick={() => setSelectedGroups(prev => { const s = new Set(prev); on ? s.delete(g.id) : s.add(g.id); return s })}
+                        style={{ padding: '5px 12px', borderRadius: 20, border: `1.5px solid ${on ? '#CC9933' : '#e5e7eb'}`, background: on ? '#CC9933' : '#f9fafb', color: on ? '#fff' : '#374151', fontSize: 13, fontWeight: on ? 700 : 400, cursor: 'pointer' }}>
+                        {g.name}
+                      </button>
+                    )
+                  })}
+                </div>
+                {!form.ae_user_id && editing !== 'new' && (
+                  <div style={{ fontSize: 11, color: '#9ca3af' }}>⚠ Créez d'abord un accès portail pour gérer les groupes</div>
+                )}
                 {showNewGroup && (
-                  <div style={{ display: 'flex', gap: 6, marginTop: 4 }}>
-                    <input
-                      autoFocus
-                      value={newGroupName}
-                      onChange={e => setNewGroupName(e.target.value)}
+                  <div style={{ display: 'flex', gap: 6 }}>
+                    <input autoFocus value={newGroupName} onChange={e => setNewGroupName(e.target.value)}
                       onKeyDown={e => { if (e.key === 'Enter') createGroup(); if (e.key === 'Escape') setShowNewGroup(false) }}
                       placeholder="Nom du groupe (ex: Bordeaux)"
-                      style={{ flex: 1, padding: '7px 10px', borderRadius: 7, border: '1.5px solid #CC9933', fontSize: 13, outline: 'none' }}
-                    />
+                      style={{ flex: 1, padding: '7px 10px', borderRadius: 7, border: '1.5px solid #CC9933', fontSize: 13, outline: 'none' }} />
                     <button type="button" onClick={createGroup} disabled={!newGroupName.trim() || savingGroup}
                       style={{ padding: '7px 14px', borderRadius: 7, border: 'none', background: newGroupName.trim() ? '#CC9933' : '#e5e7eb', color: '#fff', fontSize: 13, fontWeight: 700, cursor: newGroupName.trim() ? 'pointer' : 'default' }}>
                       {savingGroup ? '…' : 'Créer'}
