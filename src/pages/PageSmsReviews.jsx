@@ -67,6 +67,19 @@ export default function PageSmsReviews() {
     }
   }, [])
 
+  const genererApercus = async () => {
+    const { data: { session } } = await supabase.auth.getSession()
+    await fetch(`${SUPABASE_URL}/functions/v1/generate-sms-previews`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${session?.access_token || import.meta.env.VITE_SUPABASE_ANON_KEY}`,
+      },
+      body: JSON.stringify({}),
+    })
+    chargerQueue()
+  }
+
   const flushQueue = async () => {
     setFlushResult(null)
     const { data: { session } } = await supabase.auth.getSession()
@@ -348,6 +361,9 @@ export default function PageSmsReviews() {
             <div style={{ display: 'flex', gap: '0.5rem' }}>
               <button onClick={chargerQueue} style={{ padding: '0.4rem 0.75rem', background: 'transparent', border: '1px solid var(--border)', borderRadius: 8, cursor: 'pointer', fontSize: '0.8rem' }}>
                 ↻ Rafraîchir
+              </button>
+              <button onClick={genererApercus} style={{ padding: '0.4rem 0.75rem', background: 'transparent', border: '1px solid var(--border)', borderRadius: 8, cursor: 'pointer', fontSize: '0.8rem' }}>
+                💬 Générer aperçus
               </button>
               <button onClick={flushQueue} style={{ padding: '0.4rem 1rem', background: 'var(--brand)', color: '#fff', border: 'none', borderRadius: 8, cursor: 'pointer', fontSize: '0.8rem', fontWeight: 700 }}>
                 ▶ Traiter maintenant
