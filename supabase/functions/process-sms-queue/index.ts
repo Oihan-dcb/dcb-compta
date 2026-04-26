@@ -180,9 +180,9 @@ Réponds uniquement avec le texte du SMS, sans guillemets ni balises.`
   }
 
   const t: Record<string, string> = {
-    FR: `${firstName}, merci pour votre avis 5⭐ Airbnb sur ${property} ! Votre retour nous touche beaucoup. Laissez-nous aussi un avis Google (1 clic) ↓ — Destination Côte Basque\n${googleUrl}`,
-    EN: `${firstName}, thank you for your 5-star Airbnb review of ${property}! Your feedback means so much to us. Leave us a Google review too (1 click) ↓ — Destination Côte Basque\n${googleUrl}`,
-    ES: `${firstName}, ¡gracias por tu reseña 5⭐ de Airbnb sobre ${property}! Tu opinión nos llena de alegría. Déjanos también una reseña en Google (1 clic) ↓ — Destination Côte Basque\n${googleUrl}`,
+    FR: `${firstName}, merci pour votre avis 5⭐ Airbnb sur ${property} ! Votre retour nous touche beaucoup. Soutenez-nous sur Google → — Destination Côte Basque\n${googleUrl}`,
+    EN: `${firstName}, thank you for your 5-star Airbnb review of ${property}! Your feedback means so much to us. Support us on Google → — Destination Côte Basque\n${googleUrl}`,
+    ES: `${firstName}, ¡gracias por tu reseña 5⭐ de Airbnb sobre ${property}! Tu opinión nos llena de alegría. Apóyanos en Google → — Destination Côte Basque\n${googleUrl}`,
   }
   return t[lang] ?? t['FR']
 }

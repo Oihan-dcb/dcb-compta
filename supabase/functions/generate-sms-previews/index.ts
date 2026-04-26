@@ -73,7 +73,7 @@ async function generatePreviewBody(
         body: JSON.stringify({
           model: 'claude-haiku-4-5-20251001',
           max_tokens: 150,
-          messages: [{ role: 'user', content: `Tu es l'assistant de Destination Côte Basque. Un voyageur vient de laisser un avis 5⭐ sur Airbnb pour "${propertyName}". Son commentaire : "${comment}"\nRédige un SMS de remerciement en ${langLabel} (160-220 caractères). Règles STRICTES :\n- N'inclus AUCUNE URL, AUCUN lien, AUCUN placeholder dans le texte\n- Termine par "— Destination Côte Basque"\n- Ajoute une invitation à laisser un avis Google SANS lien (ex: "Laissez-nous un avis Google ↓")\n- Sans mention STOP\nRéponds uniquement avec le texte du SMS, le lien Google sera ajouté automatiquement après.` }],
+          messages: [{ role: 'user', content: `Tu es l'assistant de Destination Côte Basque. Un voyageur vient de laisser un avis 5⭐ sur Airbnb pour "${propertyName}". Son commentaire : "${comment}"\nRédige un SMS de remerciement en ${langLabel} (160-220 caractères). Règles STRICTES :\n- N'inclus AUCUNE URL, AUCUN lien, AUCUN placeholder dans le texte\n- Termine par "— Destination Côte Basque"\n- Termine par cette phrase exacte selon la langue : FR: "Soutenez-nous sur Google →" / EN: "Support us on Google →" / ES: "Apóyanos en Google →"\n- Sans mention STOP\nRéponds uniquement avec le texte du SMS, le lien Google sera ajouté automatiquement après.` }],
         }),
       })
       if (res.ok) {
@@ -85,9 +85,9 @@ async function generatePreviewBody(
   }
 
   const t: Record<string, string> = {
-    FR: `${firstName}, merci pour votre avis 5⭐ Airbnb sur ${propertyName} ! Votre retour nous touche beaucoup. Laissez-nous aussi un avis Google (1 clic) ↓ — Destination Côte Basque\n${googleUrl}`,
-    EN: `${firstName}, thank you for your 5-star Airbnb review of ${propertyName}! Your feedback means so much to us. Leave us a Google review too (1 click) ↓ — Destination Côte Basque\n${googleUrl}`,
-    ES: `${firstName}, ¡gracias por tu reseña 5⭐ de Airbnb sobre ${propertyName}! Tu opinión nos llena de alegría. Déjanos también una reseña en Google (1 clic) ↓ — Destination Côte Basque\n${googleUrl}`,
+    FR: `${firstName}, merci pour votre avis 5⭐ Airbnb sur ${propertyName} ! Votre retour nous touche beaucoup. Soutenez-nous sur Google → — Destination Côte Basque\n${googleUrl}`,
+    EN: `${firstName}, thank you for your 5-star Airbnb review of ${propertyName}! Your feedback means so much to us. Support us on Google → — Destination Côte Basque\n${googleUrl}`,
+    ES: `${firstName}, ¡gracias por tu reseña 5⭐ de Airbnb sobre ${propertyName}! Tu opinión nos llena de alegría. Apóyanos en Google → — Destination Côte Basque\n${googleUrl}`,
   }
   return t[lang] ?? t['FR']
 }
