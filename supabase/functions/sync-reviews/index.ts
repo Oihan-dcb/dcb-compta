@@ -55,17 +55,20 @@ Deno.serve(async (req) => {
 
   const sb = createClient(SUPABASE_URL, SERVICE_KEY)
 
-  // Récupérer google_review_url depuis agency_config (pour SMS 5 étoiles)
-  const agence = Deno.env.get('AGENCE') || 'dcb'
-  const googleUrl: string | null = Deno.env.get('GOOGLE_REVIEW_URL') || await (async () => {
-    const { data } = await sb.from('agency_config').select('google_review_url').eq('agence', agence).single()
-    return data?.google_review_url || null
-  })()
+  // Récupérer configs agences (google_review_url + label)
+  const { data: agenceConfigs } = await sb.from('agency_config').select('agence, google_review_url, label')
+  const agenceMap: Record<string, { googleUrl: string | null, label: string }> = {}
+  for (const cfg of (agenceConfigs || [])) {
+    agenceMap[cfg.agence] = { googleUrl: cfg.google_review_url || null, label: cfg.label || cfg.agence.toUpperCase() }
+  }
+  // Fallback env var pour DCB
+  const envGoogleUrl = Deno.env.get('GOOGLE_REVIEW_URL')
+  if (envGoogleUrl && agenceMap['dcb']) agenceMap['dcb'].googleUrl = agenceMap['dcb'].googleUrl || envGoogleUrl
 
-  // Récupérer tous nos biens avec leur hospitable_id (UUID propriété)
+  // Récupérer tous nos biens avec leur hospitable_id + agence
   const { data: biens } = await sb
     .from('bien')
-    .select('id, hospitable_id, hospitable_name')
+    .select('id, hospitable_id, hospitable_name, agence')
     .not('hospitable_id', 'is', null)
 
   if (!biens?.length) return json({ ok: true, total: 0, synced: 0 })
@@ -165,6 +168,10 @@ Deno.serve(async (req) => {
       }
 
       // SMS 5 étoiles : priorité resaRow (match direct), fallback matchedResa (match par date)
+      const bienAgence = bien.agence || 'dcb'
+      const agenceCfg  = agenceMap[bienAgence] || agenceMap['dcb'] || { googleUrl: null, label: 'Destination Côte Basque' }
+      const googleUrl  = agenceCfg.googleUrl
+
       if (row.rating !== null && row.rating >= 5 && googleUrl) {
         const resaForSms = resaRow || matchedResa
         const guestPhone   = resaForSms?.guest_phone   || null
@@ -185,7 +192,7 @@ Deno.serve(async (req) => {
             const sendAt = new Date(Date.now() + 28 * 60 * 1000).toISOString()
             const comment = review.public?.review || null
             const previewBody = googleUrl
-              ? await generatePreviewBody(guestName, bien.hospitable_name, guestCountry, guestPhone, comment, googleUrl).catch(() => null)
+              ? await generatePreviewBody(guestName, bien.hospitable_name, guestCountry, guestPhone, comment, googleUrl, agenceCfg.label).catch(() => null)
               : null
             const { error: qErr } = await sb.from('sms_queue').insert({
               hospitable_reservation_id: resaHospId,
@@ -197,6 +204,8 @@ Deno.serve(async (req) => {
               rating:        row.rating,
               send_at:       sendAt,
               preview_body:  previewBody,
+              agence:        bienAgence,
+              agence_label:  agenceCfg.label,
             })
             if (qErr) { console.error('sms_queue insert:', qErr.message) }
             else { smsQueued++; console.log('SMS queued (sync-reviews):', resaHospId, guestPhone) }
@@ -243,7 +252,8 @@ function detectSmsLang(country: string | null, phone: string | null = null): str
 
 async function generatePreviewBody(
   guestName: string | null, propertyName: string, guestCountry: string | null,
-  guestPhone: string | null, comment: string | null, googleUrl: string
+  guestPhone: string | null, comment: string | null, googleUrl: string,
+  agenceLabel = 'Destination Côte Basque'
 ): Promise<string> {
   const firstName = (guestName || 'cher client').split(' ')[0]
   const lang = detectSmsLang(guestCountry, guestPhone)
@@ -258,7 +268,7 @@ async function generatePreviewBody(
         body: JSON.stringify({
           model: 'claude-haiku-4-5-20251001',
           max_tokens: 150,
-          messages: [{ role: 'user', content: `Tu es l'assistant de Destination Côte Basque. Un voyageur vient de laisser un avis 5⭐ sur Airbnb pour "${propertyName}". Son commentaire : "${comment}"\nRédige un SMS de remerciement en ${langLabel} (160-220 caractères). Règles STRICTES :\n- N'inclus AUCUNE URL, AUCUN lien, AUCUN placeholder dans le texte\n- Termine par "— Destination Côte Basque"\n- Termine par cette phrase exacte selon la langue : FR: "Soutenez-nous sur Google →" / EN: "Support us on Google →" / ES: "Apóyanos en Google →"\n- Sans mention STOP\nRéponds uniquement avec le texte du SMS, le lien Google sera ajouté automatiquement après.` }],
+          messages: [{ role: 'user', content: `Tu es l'assistant de ${agenceLabel}. Un voyageur vient de laisser un avis 5⭐ sur Airbnb pour "${propertyName}". Son commentaire : "${comment}"\nRédige un SMS de remerciement en ${langLabel} (160-220 caractères). Règles STRICTES :\n- N'inclus AUCUNE URL, AUCUN lien, AUCUN placeholder dans le texte\n- La signature est "— ${agenceLabel}"\n- Termine par cette phrase exacte selon la langue : FR: "Soutenez-nous sur Google →" / EN: "Support us on Google →" / ES: "Apóyanos en Google →"\n- Sans mention STOP\nRéponds uniquement avec le texte du SMS, le lien Google sera ajouté automatiquement après.` }],
         }),
       })
       if (res.ok) {
@@ -270,9 +280,9 @@ async function generatePreviewBody(
   }
 
   const t: Record<string, string> = {
-    FR: `${firstName}, merci pour votre avis 5⭐ Airbnb sur ${propertyName} ! Votre retour nous touche beaucoup. Soutenez-nous sur Google → — Destination Côte Basque\n${googleUrl}`,
-    EN: `${firstName}, thank you for your 5-star Airbnb review of ${propertyName}! Your feedback means so much to us. Support us on Google → — Destination Côte Basque\n${googleUrl}`,
-    ES: `${firstName}, ¡gracias por tu reseña 5⭐ de Airbnb sobre ${propertyName}! Tu opinión nos llena de alegría. Apóyanos en Google → — Destination Côte Basque\n${googleUrl}`,
+    FR: `${firstName}, merci pour votre avis 5⭐ Airbnb sur ${propertyName} ! Votre retour nous touche beaucoup. Soutenez-nous sur Google → — ${agenceLabel}\n${googleUrl}`,
+    EN: `${firstName}, thank you for your 5-star Airbnb review of ${propertyName}! Your feedback means so much to us. Support us on Google → — ${agenceLabel}\n${googleUrl}`,
+    ES: `${firstName}, ¡gracias por tu reseña 5⭐ de Airbnb sobre ${propertyName}! Tu opinión nos llena de alegría. Apóyanos en Google → — ${agenceLabel}\n${googleUrl}`,
   }
   return t[lang] ?? t['FR']
 }

@@ -33,7 +33,7 @@ Deno.serve(async (req) => {
   // Récupère les SMS prêts à envoyer
   const { data: pending, error } = await supabase
     .from('sms_queue')
-    .select('*')
+    .select('*, agence_label')
     .eq('status', 'pending')
     .lte('send_at', new Date().toISOString())
     .limit(20)
@@ -52,8 +52,9 @@ Deno.serve(async (req) => {
 
     const lang    = detectSmsLang(item.guest_country, item.guest_phone)
     const firstName = (item.guest_name || 'cher client').split(' ')[0]
+    const agenceLabel = item.agence_label || 'Destination Côte Basque'
     const smsBody = item.preview_body
-      || await generateSmsBody(firstName, item.property_name || 'notre villa', lang, googleUrl, item.comment || null)
+      || await generateSmsBody(firstName, item.property_name || 'notre villa', lang, googleUrl, item.comment || null, agenceLabel)
 
     let status       = 'error'
     let twilioSidOut = null
@@ -131,14 +132,15 @@ function detectSmsLang(country: string | null, phone: string | null = null): str
 }
 
 async function generateSmsBody(
-  firstName: string, property: string, lang: string, googleUrl: string, comment: string | null
+  firstName: string, property: string, lang: string, googleUrl: string, comment: string | null,
+  agenceLabel = 'Destination Côte Basque'
 ): Promise<string> {
   const anthropicKey = Deno.env.get('ANTHROPIC_API_KEY')
   const langLabel = lang === 'FR' ? 'français' : lang === 'EN' ? 'anglais' : 'espagnol'
 
   if (anthropicKey && comment) {
     try {
-      const prompt = `Tu es l'assistant de Destination Côte Basque (DCB), agence de location de villas de luxe au Pays Basque français.
+      const prompt = `Tu es l'assistant de ${agenceLabel}, agence de location de villas de luxe.
 
 Un voyageur vient de laisser un avis 5⭐ sur Airbnb pour "${property}". Son commentaire :
 "${comment}"
@@ -147,9 +149,9 @@ Rédige un SMS de remerciement en ${langLabel} qui :
 - Remercie chaleureusement en mentionnant un élément précis du commentaire
 - Reste entre 160 et 220 caractères (sans compter le lien Google)
 - Se termine OBLIGATOIREMENT par cette phrase d'invitation Google, puis la signature, dans cet ordre exact :
-  FR : "Laissez-nous aussi un avis Google (1 clic) ↓ — Destination Côte Basque"
-  EN : "Leave us a Google review too (1 click) ↓ — Destination Côte Basque"
-  ES : "Déjanos también una reseña en Google (1 clic) ↓ — Destination Côte Basque"
+  FR : "Laissez-nous aussi un avis Google (1 clic) ↓ — ${agenceLabel}"
+  EN : "Leave us a Google review too (1 click) ↓ — ${agenceLabel}"
+  ES : "Déjanos también una reseña en Google (1 clic) ↓ — ${agenceLabel}"
 - Le lien Google sera ajouté automatiquement après la signature, ne l'inclus pas
 - N'inclut PAS de mention STOP ou désabonnement
 
@@ -180,9 +182,9 @@ Réponds uniquement avec le texte du SMS, sans guillemets ni balises.`
   }
 
   const t: Record<string, string> = {
-    FR: `${firstName}, merci pour votre avis 5⭐ Airbnb sur ${property} ! Votre retour nous touche beaucoup. Soutenez-nous sur Google → — Destination Côte Basque\n${googleUrl}`,
-    EN: `${firstName}, thank you for your 5-star Airbnb review of ${property}! Your feedback means so much to us. Support us on Google → — Destination Côte Basque\n${googleUrl}`,
-    ES: `${firstName}, ¡gracias por tu reseña 5⭐ de Airbnb sobre ${property}! Tu opinión nos llena de alegría. Apóyanos en Google → — Destination Côte Basque\n${googleUrl}`,
+    FR: `${firstName}, merci pour votre avis 5⭐ Airbnb sur ${property} ! Votre retour nous touche beaucoup. Soutenez-nous sur Google → — ${agenceLabel}\n${googleUrl}`,
+    EN: `${firstName}, thank you for your 5-star Airbnb review of ${property}! Your feedback means so much to us. Support us on Google → — ${agenceLabel}\n${googleUrl}`,
+    ES: `${firstName}, ¡gracias por tu reseña 5⭐ de Airbnb sobre ${property}! Tu opinión nos llena de alegría. Apóyanos en Google → — ${agenceLabel}\n${googleUrl}`,
   }
   return t[lang] ?? t['FR']
 }

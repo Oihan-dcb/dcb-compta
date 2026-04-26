@@ -18,7 +18,7 @@ Deno.serve(async (req) => {
   // Récupérer tous les pending sans preview_body
   const { data: items, error } = await supabase
     .from('sms_queue')
-    .select('id, guest_name, guest_phone, guest_country, property_name, comment, rating')
+    .select('id, guest_name, guest_phone, guest_country, property_name, comment, rating, agence_label')
     .eq('status', 'pending')
     .is('preview_body', null)
 
@@ -29,7 +29,8 @@ Deno.serve(async (req) => {
   for (const item of items) {
     const preview = await generatePreviewBody(
       item.guest_name, item.property_name || 'notre villa',
-      item.guest_country, item.guest_phone, item.comment, googleUrl
+      item.guest_country, item.guest_phone, item.comment, googleUrl,
+      item.agence_label || 'Destination Côte Basque'
     ).catch(() => null)
 
     if (preview) {
@@ -58,7 +59,8 @@ function detectSmsLang(country: string | null, phone: string | null = null): str
 
 async function generatePreviewBody(
   guestName: string | null, propertyName: string, guestCountry: string | null,
-  guestPhone: string | null, comment: string | null, googleUrl: string
+  guestPhone: string | null, comment: string | null, googleUrl: string,
+  agenceLabel = 'Destination Côte Basque'
 ): Promise<string> {
   const firstName = (guestName || 'cher client').split(' ')[0]
   const lang = detectSmsLang(guestCountry, guestPhone)
@@ -73,7 +75,7 @@ async function generatePreviewBody(
         body: JSON.stringify({
           model: 'claude-haiku-4-5-20251001',
           max_tokens: 150,
-          messages: [{ role: 'user', content: `Tu es l'assistant de Destination Côte Basque. Un voyageur vient de laisser un avis 5⭐ sur Airbnb pour "${propertyName}". Son commentaire : "${comment}"\nRédige un SMS de remerciement en ${langLabel} (160-220 caractères). Règles STRICTES :\n- N'inclus AUCUNE URL, AUCUN lien, AUCUN placeholder dans le texte\n- Termine par "— Destination Côte Basque"\n- Termine par cette phrase exacte selon la langue : FR: "Soutenez-nous sur Google →" / EN: "Support us on Google →" / ES: "Apóyanos en Google →"\n- Sans mention STOP\nRéponds uniquement avec le texte du SMS, le lien Google sera ajouté automatiquement après.` }],
+          messages: [{ role: 'user', content: `Tu es l'assistant de ${agenceLabel}. Un voyageur vient de laisser un avis 5⭐ sur Airbnb pour "${propertyName}". Son commentaire : "${comment}"\nRédige un SMS de remerciement en ${langLabel} (160-220 caractères). Règles STRICTES :\n- N'inclus AUCUNE URL, AUCUN lien, AUCUN placeholder dans le texte\n- La signature est "— ${agenceLabel}"\n- Termine par cette phrase exacte selon la langue : FR: "Soutenez-nous sur Google →" / EN: "Support us on Google →" / ES: "Apóyanos en Google →"\n- Sans mention STOP\nRéponds uniquement avec le texte du SMS, le lien Google sera ajouté automatiquement après.` }],
         }),
       })
       if (res.ok) {
@@ -85,9 +87,9 @@ async function generatePreviewBody(
   }
 
   const t: Record<string, string> = {
-    FR: `${firstName}, merci pour votre avis 5⭐ Airbnb sur ${propertyName} ! Votre retour nous touche beaucoup. Soutenez-nous sur Google → — Destination Côte Basque\n${googleUrl}`,
-    EN: `${firstName}, thank you for your 5-star Airbnb review of ${propertyName}! Your feedback means so much to us. Support us on Google → — Destination Côte Basque\n${googleUrl}`,
-    ES: `${firstName}, ¡gracias por tu reseña 5⭐ de Airbnb sobre ${propertyName}! Tu opinión nos llena de alegría. Apóyanos en Google → — Destination Côte Basque\n${googleUrl}`,
+    FR: `${firstName}, merci pour votre avis 5⭐ Airbnb sur ${propertyName} ! Votre retour nous touche beaucoup. Soutenez-nous sur Google → — ${agenceLabel}\n${googleUrl}`,
+    EN: `${firstName}, thank you for your 5-star Airbnb review of ${propertyName}! Your feedback means so much to us. Support us on Google → — ${agenceLabel}\n${googleUrl}`,
+    ES: `${firstName}, ¡gracias por tu reseña 5⭐ de Airbnb sobre ${propertyName}! Tu opinión nos llena de alegría. Apóyanos en Google → — ${agenceLabel}\n${googleUrl}`,
   }
   return t[lang] ?? t['FR']
 }
