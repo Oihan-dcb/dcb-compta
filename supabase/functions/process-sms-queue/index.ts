@@ -53,8 +53,9 @@ Deno.serve(async (req) => {
     const lang    = detectSmsLang(item.guest_country, item.guest_phone)
     const firstName = (item.guest_name || 'cher client').split(' ')[0]
     const agenceLabel = item.agence_label || 'Destination Côte Basque'
+    const propertyZone = item.property_zone || null
     const smsBody = item.preview_body
-      || await generateSmsBody(firstName, item.property_name || 'notre villa', lang, googleUrl, item.comment || null, agenceLabel)
+      || await generateSmsBody(firstName, item.property_name || 'notre villa', lang, googleUrl, item.comment || null, agenceLabel, propertyZone)
 
     let status       = 'error'
     let twilioSidOut = null
@@ -133,10 +134,13 @@ function detectSmsLang(country: string | null, phone: string | null = null): str
 
 async function generateSmsBody(
   firstName: string, property: string, lang: string, googleUrl: string, comment: string | null,
-  agenceLabel = 'Destination Côte Basque'
+  agenceLabel = 'Destination Côte Basque', propertyZone: string | null = null
 ): Promise<string> {
   const anthropicKey = Deno.env.get('ANTHROPIC_API_KEY')
   const langLabel = lang === 'FR' ? 'français' : lang === 'EN' ? 'anglais' : 'espagnol'
+  const zoneRule = propertyZone
+    ? `- La zone géographique du bien est "${propertyZone}" — tu peux l'utiliser si pertinent`
+    : `- Ne mentionne AUCUNE région géographique dans le texte`
 
   if (anthropicKey && comment) {
     try {
@@ -148,7 +152,7 @@ Un voyageur vient de laisser un avis 5⭐ sur Airbnb pour "${property}". Son com
 Rédige un SMS de remerciement en ${langLabel} qui :
 - Remercie chaleureusement en mentionnant un élément précis du commentaire
 - Reste entre 160 et 220 caractères (sans compter le lien Google)
-- Ne mentionne AUCUNE région géographique (Côte Basque, Pays Basque, Bordeaux, Arcachon, etc.)
+${zoneRule}
 - Se termine OBLIGATOIREMENT par cette phrase d'invitation Google, puis la signature, dans cet ordre exact :
   FR : "Laissez-nous aussi un avis Google (1 clic) ↓ — ${agenceLabel}"
   EN : "Leave us a Google review too (1 click) ↓ — ${agenceLabel}"

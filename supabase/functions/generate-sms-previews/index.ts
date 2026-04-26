@@ -18,7 +18,7 @@ Deno.serve(async (req) => {
   // Récupérer tous les pending sans preview_body
   const { data: items, error } = await supabase
     .from('sms_queue')
-    .select('id, guest_name, guest_phone, guest_country, property_name, comment, rating, agence_label')
+    .select('id, guest_name, guest_phone, guest_country, property_name, comment, rating, agence_label, property_zone')
     .eq('status', 'pending')
     .is('preview_body', null)
 
@@ -30,7 +30,7 @@ Deno.serve(async (req) => {
     const preview = await generatePreviewBody(
       item.guest_name, item.property_name || 'notre villa',
       item.guest_country, item.guest_phone, item.comment, googleUrl,
-      item.agence_label || 'Destination Côte Basque'
+      item.agence_label || 'Destination Côte Basque', item.property_zone || null
     ).catch(() => null)
 
     if (preview) {
@@ -60,12 +60,15 @@ function detectSmsLang(country: string | null, phone: string | null = null): str
 async function generatePreviewBody(
   guestName: string | null, propertyName: string, guestCountry: string | null,
   guestPhone: string | null, comment: string | null, googleUrl: string,
-  agenceLabel = 'Destination Côte Basque'
+  agenceLabel = 'Destination Côte Basque', propertyZone: string | null = null
 ): Promise<string> {
   const firstName = (guestName || 'cher client').split(' ')[0]
   const lang = detectSmsLang(guestCountry, guestPhone)
   const anthropicKey = Deno.env.get('ANTHROPIC_API_KEY')
   const langLabel = lang === 'FR' ? 'français' : lang === 'EN' ? 'anglais' : 'espagnol'
+  const zoneRule = propertyZone
+    ? `- La zone géographique du bien est "${propertyZone}" — tu peux l'utiliser si pertinent`
+    : `- Ne mentionne AUCUNE région géographique dans le texte`
 
   if (anthropicKey && comment) {
     try {
@@ -75,7 +78,7 @@ async function generatePreviewBody(
         body: JSON.stringify({
           model: 'claude-haiku-4-5-20251001',
           max_tokens: 150,
-          messages: [{ role: 'user', content: `Tu es l'assistant de ${agenceLabel}. Un voyageur vient de laisser un avis 5⭐ sur Airbnb pour "${propertyName}". Son commentaire : "${comment}"\nRédige un SMS de remerciement en ${langLabel} (160-220 caractères). Règles STRICTES :\n- N'inclus AUCUNE URL, AUCUN lien, AUCUN placeholder dans le texte\n- Ne mentionne AUCUNE région géographique (Côte Basque, Pays Basque, Bordeaux, Arcachon, etc.)\n- La signature est "— ${agenceLabel}"\n- Termine par cette phrase exacte selon la langue : FR: "Soutenez-nous sur Google →" / EN: "Support us on Google →" / ES: "Apóyanos en Google →"\n- Sans mention STOP\nRéponds uniquement avec le texte du SMS, le lien Google sera ajouté automatiquement après.` }],
+          messages: [{ role: 'user', content: `Tu es l'assistant de ${agenceLabel}. Un voyageur vient de laisser un avis 5⭐ sur Airbnb pour "${propertyName}". Son commentaire : "${comment}"\nRédige un SMS de remerciement en ${langLabel} (160-220 caractères). Règles STRICTES :\n- N'inclus AUCUNE URL, AUCUN lien, AUCUN placeholder dans le texte\n${zoneRule}\n- La signature est "— ${agenceLabel}"\n- Termine par cette phrase exacte selon la langue : FR: "Soutenez-nous sur Google →" / EN: "Support us on Google →" / ES: "Apóyanos en Google →"\n- Sans mention STOP\nRéponds uniquement avec le texte du SMS, le lien Google sera ajouté automatiquement après.` }],
         }),
       })
       if (res.ok) {

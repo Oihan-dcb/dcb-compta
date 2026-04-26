@@ -68,7 +68,7 @@ Deno.serve(async (req) => {
   // Récupérer tous nos biens avec leur hospitable_id + agence
   const { data: biens } = await sb
     .from('bien')
-    .select('id, hospitable_id, hospitable_name, agence')
+    .select('id, hospitable_id, hospitable_name, agence, zone')
     .not('hospitable_id', 'is', null)
 
   if (!biens?.length) return json({ ok: true, total: 0, synced: 0 })
@@ -191,8 +191,9 @@ Deno.serve(async (req) => {
           if (guestPhone) {
             const sendAt = new Date(Date.now() + 28 * 60 * 1000).toISOString()
             const comment = review.public?.review || null
+            const propertyZone = bien.zone || null
             const previewBody = googleUrl
-              ? await generatePreviewBody(guestName, bien.hospitable_name, guestCountry, guestPhone, comment, googleUrl, agenceCfg.label).catch(() => null)
+              ? await generatePreviewBody(guestName, bien.hospitable_name, guestCountry, guestPhone, comment, googleUrl, agenceCfg.label, propertyZone).catch(() => null)
               : null
             const { error: qErr } = await sb.from('sms_queue').insert({
               hospitable_reservation_id: resaHospId,
@@ -206,6 +207,7 @@ Deno.serve(async (req) => {
               preview_body:  previewBody,
               agence:        bienAgence,
               agence_label:  agenceCfg.label,
+              property_zone: propertyZone,
             })
             if (qErr) { console.error('sms_queue insert:', qErr.message) }
             else { smsQueued++; console.log('SMS queued (sync-reviews):', resaHospId, guestPhone) }
@@ -253,12 +255,15 @@ function detectSmsLang(country: string | null, phone: string | null = null): str
 async function generatePreviewBody(
   guestName: string | null, propertyName: string, guestCountry: string | null,
   guestPhone: string | null, comment: string | null, googleUrl: string,
-  agenceLabel = 'Destination Côte Basque'
+  agenceLabel = 'Destination Côte Basque', propertyZone: string | null = null
 ): Promise<string> {
   const firstName = (guestName || 'cher client').split(' ')[0]
   const lang = detectSmsLang(guestCountry, guestPhone)
   const anthropicKey = Deno.env.get('ANTHROPIC_API_KEY')
   const langLabel = lang === 'FR' ? 'français' : lang === 'EN' ? 'anglais' : 'espagnol'
+  const zoneRule = propertyZone
+    ? `- La zone géographique du bien est "${propertyZone}" — tu peux l'utiliser si pertinent`
+    : `- Ne mentionne AUCUNE région géographique dans le texte`
 
   if (anthropicKey && comment) {
     try {
@@ -268,7 +273,7 @@ async function generatePreviewBody(
         body: JSON.stringify({
           model: 'claude-haiku-4-5-20251001',
           max_tokens: 150,
-          messages: [{ role: 'user', content: `Tu es l'assistant de ${agenceLabel}. Un voyageur vient de laisser un avis 5⭐ sur Airbnb pour "${propertyName}". Son commentaire : "${comment}"\nRédige un SMS de remerciement en ${langLabel} (160-220 caractères). Règles STRICTES :\n- N'inclus AUCUNE URL, AUCUN lien, AUCUN placeholder dans le texte\n- Ne mentionne AUCUNE région géographique (Côte Basque, Pays Basque, Bordeaux, Arcachon, etc.)\n- La signature est "— ${agenceLabel}"\n- Termine par cette phrase exacte selon la langue : FR: "Soutenez-nous sur Google →" / EN: "Support us on Google →" / ES: "Apóyanos en Google →"\n- Sans mention STOP\nRéponds uniquement avec le texte du SMS, le lien Google sera ajouté automatiquement après.` }],
+          messages: [{ role: 'user', content: `Tu es l'assistant de ${agenceLabel}. Un voyageur vient de laisser un avis 5⭐ sur Airbnb pour "${propertyName}". Son commentaire : "${comment}"\nRédige un SMS de remerciement en ${langLabel} (160-220 caractères). Règles STRICTES :\n- N'inclus AUCUNE URL, AUCUN lien, AUCUN placeholder dans le texte\n${zoneRule}\n- La signature est "— ${agenceLabel}"\n- Termine par cette phrase exacte selon la langue : FR: "Soutenez-nous sur Google →" / EN: "Support us on Google →" / ES: "Apóyanos en Google →"\n- Sans mention STOP\nRéponds uniquement avec le texte du SMS, le lien Google sera ajouté automatiquement après.` }],
         }),
       })
       if (res.ok) {
