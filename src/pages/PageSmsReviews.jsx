@@ -51,6 +51,7 @@ export default function PageSmsReviews() {
   const [queue, setQueue]             = useState([])
   const [loadingQueue, setLoadingQueue] = useState(false)
   const [flushResult, setFlushResult] = useState(null)
+  const [expandedQueue, setExpandedQueue] = useState(null)
 
   const chargerQueue = useCallback(async () => {
     setLoadingQueue(true)
@@ -365,36 +366,63 @@ export default function PageSmsReviews() {
             <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.85rem' }}>
               <thead>
                 <tr style={{ background: '#EAE3D4', borderBottom: '2px solid var(--border)' }}>
-                  {['Créé le', 'Envoi prévu', 'Client', 'Téléphone', 'Propriété', 'Note', 'Statut'].map(h => (
+                  {['Créé le', 'Envoi prévu', 'Client', 'Téléphone', 'Propriété', 'Note', 'Aperçu SMS', 'Statut'].map(h => (
                     <th key={h} style={{ padding: '0.65rem 1rem', textAlign: 'left', fontWeight: 600, color: 'var(--text)' }}>{h}</th>
                   ))}
                 </tr>
               </thead>
               <tbody>
                 {loadingQueue && <tr><td colSpan={7} style={{ padding: '2rem', textAlign: 'center', color: '#999' }}>Chargement…</td></tr>}
-                {!loadingQueue && queue.length === 0 && <tr><td colSpan={7} style={{ padding: '2rem', textAlign: 'center', color: '#999' }}>Queue vide</td></tr>}
+                {!loadingQueue && queue.length === 0 && <tr><td colSpan={8} style={{ padding: '2rem', textAlign: 'center', color: '#999' }}>Queue vide</td></tr>}
                 {queue.map((q, i) => {
-                  const isPending = q.status === 'pending'
-                  const isReady   = isPending && new Date(q.send_at) <= new Date()
-                  const color     = q.status === 'sent' ? '#5a8a5a' : q.status === 'error' ? '#b94a4a' : isReady ? 'var(--brand)' : '#888'
-                  const label     = q.status === 'sent' ? 'Envoyé' : q.status === 'error' ? 'Erreur' : isReady ? 'Prêt' : 'En attente'
+                  const isPending  = q.status === 'pending'
+                  const isReady    = isPending && new Date(q.send_at) <= new Date()
+                  const color      = q.status === 'sent' ? '#5a8a5a' : q.status === 'error' ? '#b94a4a' : isReady ? 'var(--brand)' : '#888'
+                  const label      = q.status === 'sent' ? 'Envoyé' : q.status === 'error' ? 'Erreur' : isReady ? 'Prêt' : 'En attente'
+                  const isExpanded = expandedQueue === q.id
+                  const preview    = q.preview_body || q.comment
                   return (
-                    <tr key={q.id} style={{ borderBottom: '1px solid var(--border)', background: i % 2 === 0 ? 'transparent' : '#faf8f4' }}>
-                      <td style={{ padding: '0.6rem 1rem', color: '#888', whiteSpace: 'nowrap' }}>
-                        {new Date(q.created_at).toLocaleDateString('fr-FR', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' })}
-                      </td>
-                      <td style={{ padding: '0.6rem 1rem', color: isReady ? 'var(--brand)' : '#888', whiteSpace: 'nowrap', fontWeight: isReady ? 700 : 400 }}>
-                        {new Date(q.send_at).toLocaleDateString('fr-FR', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' })}
-                      </td>
-                      <td style={{ padding: '0.6rem 1rem' }}>{q.guest_name || '—'}</td>
-                      <td style={{ padding: '0.6rem 1rem', fontFamily: 'monospace' }}>{q.guest_phone || '—'}</td>
-                      <td style={{ padding: '0.6rem 1rem' }}>{q.property_name || '—'}</td>
-                      <td style={{ padding: '0.6rem 1rem' }}>{q.rating ? '⭐'.repeat(Math.min(q.rating, 5)) : '—'}</td>
-                      <td style={{ padding: '0.6rem 1rem' }}>
-                        <span style={{ background: color + '22', color, borderRadius: 6, padding: '2px 8px', fontWeight: 600, fontSize: '0.78rem' }}>{label}</span>
-                        {q.error_message && <div style={{ fontSize: '0.72rem', color: '#b94a4a', marginTop: 2 }}>{q.error_message}</div>}
-                      </td>
-                    </tr>
+                    <>
+                      <tr key={q.id} style={{ borderBottom: isExpanded ? 'none' : '1px solid var(--border)', background: i % 2 === 0 ? 'transparent' : '#faf8f4' }}>
+                        <td style={{ padding: '0.6rem 1rem', color: '#888', whiteSpace: 'nowrap' }}>
+                          {new Date(q.created_at).toLocaleDateString('fr-FR', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' })}
+                        </td>
+                        <td style={{ padding: '0.6rem 1rem', color: isReady ? 'var(--brand)' : '#888', whiteSpace: 'nowrap', fontWeight: isReady ? 700 : 400 }}>
+                          {new Date(q.send_at).toLocaleDateString('fr-FR', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' })}
+                        </td>
+                        <td style={{ padding: '0.6rem 1rem' }}>{q.guest_name || '—'}</td>
+                        <td style={{ padding: '0.6rem 1rem', fontFamily: 'monospace' }}>{q.guest_phone || '—'}</td>
+                        <td style={{ padding: '0.6rem 1rem' }}>{q.property_name || '—'}</td>
+                        <td style={{ padding: '0.6rem 1rem' }}>{q.rating ? '⭐'.repeat(Math.min(q.rating, 5)) : '—'}</td>
+                        <td style={{ padding: '0.6rem 1rem', maxWidth: 220 }}>
+                          {preview ? (
+                            <span
+                              onClick={() => setExpandedQueue(isExpanded ? null : q.id)}
+                              style={{ cursor: 'pointer', color: q.preview_body ? 'var(--text)' : '#999', fontSize: '0.8rem',
+                                display: 'block', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}
+                              title="Cliquer pour voir le SMS complet"
+                            >
+                              {q.preview_body ? '💬 ' : '📝 '}{preview}
+                            </span>
+                          ) : <span style={{ color: '#ccc', fontSize: '0.8rem' }}>—</span>}
+                        </td>
+                        <td style={{ padding: '0.6rem 1rem' }}>
+                          <span style={{ background: color + '22', color, borderRadius: 6, padding: '2px 8px', fontWeight: 600, fontSize: '0.78rem' }}>{label}</span>
+                          {q.error_message && <div style={{ fontSize: '0.72rem', color: '#b94a4a', marginTop: 2 }}>{q.error_message}</div>}
+                        </td>
+                      </tr>
+                      {isExpanded && (
+                        <tr key={q.id + '-expanded'} style={{ borderBottom: '1px solid var(--border)', background: i % 2 === 0 ? 'transparent' : '#faf8f4' }}>
+                          <td colSpan={8} style={{ padding: '0 1rem 0.75rem 1rem' }}>
+                            <div style={{ background: '#fff', border: '1px solid var(--border)', borderRadius: 8, padding: '0.75rem 1rem',
+                              fontSize: '0.85rem', lineHeight: 1.6, whiteSpace: 'pre-wrap', color: 'var(--text)', maxWidth: 600 }}>
+                              {q.preview_body || q.comment}
+                            </div>
+                            {!q.preview_body && <div style={{ fontSize: '0.75rem', color: '#aaa', marginTop: 4 }}>Commentaire Airbnb — le SMS final sera généré par IA à l'envoi</div>}
+                          </td>
+                        </tr>
+                      )}
+                    </>
                   )
                 })}
               </tbody>

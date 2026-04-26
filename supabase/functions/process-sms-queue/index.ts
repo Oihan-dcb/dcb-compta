@@ -10,10 +10,24 @@ Deno.serve(async (req) => {
   const twilioSid   = Deno.env.get('TWILIO_ACCOUNT_SID')
   const twilioToken = Deno.env.get('TWILIO_AUTH_TOKEN')
   const twilioFrom  = Deno.env.get('TWILIO_FROM_NUMBER')
-  const googleUrl   = Deno.env.get('GOOGLE_REVIEW_URL')
 
-  if (!twilioSid || !twilioToken || !twilioFrom || !googleUrl) {
+  if (!twilioSid || !twilioToken || !twilioFrom) {
     return json({ error: 'Twilio secrets non configurés' }, 500)
+  }
+
+  // google_review_url : env var en priorité, sinon lecture en DB par agence
+  let googleUrl = Deno.env.get('GOOGLE_REVIEW_URL') || null
+  if (!googleUrl) {
+    const agence = Deno.env.get('AGENCE') || 'dcb'
+    const { data: agenceCfg } = await supabase
+      .from('agency_config')
+      .select('google_review_url')
+      .eq('agence', agence)
+      .single()
+    googleUrl = agenceCfg?.google_review_url || null
+  }
+  if (!googleUrl) {
+    return json({ error: 'google_review_url non configuré (env GOOGLE_REVIEW_URL ou agency_config)' }, 500)
   }
 
   // Récupère les SMS prêts à envoyer
@@ -38,7 +52,8 @@ Deno.serve(async (req) => {
 
     const lang    = detectSmsLang(item.guest_country, item.guest_phone)
     const firstName = (item.guest_name || 'cher client').split(' ')[0]
-    const smsBody = await generateSmsBody(firstName, item.property_name || 'notre villa', lang, googleUrl, item.comment || null)
+    const smsBody = item.preview_body
+      || await generateSmsBody(firstName, item.property_name || 'notre villa', lang, googleUrl, item.comment || null)
 
     let status       = 'error'
     let twilioSidOut = null

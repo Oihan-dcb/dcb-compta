@@ -1449,6 +1449,24 @@ export default function PageAutoEntrepreneurs() {
                     placeholder="webcal:// ou https://... (Apple Calendar, Google Cal perso…)"
                     style={{ padding: '7px 10px', borderRadius: 6, border: '1.5px solid #7C3AED', fontSize: 12 }} />
                 </div>
+                {form.prenom && (
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+                    <label style={{ fontSize: 11, fontWeight: 600, color: '#CC9933' }}>
+                      PowerHouse (sortant) — <span style={{ fontWeight: 400, color: '#9ca3af' }}>à donner au staff pour s'abonner dans leur calendrier</span>
+                    </label>
+                    <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
+                      <input
+                        value={`webcal://dcb-planning.vercel.app/api/ical-rdv?staff=${form.prenom.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '')}`}
+                        readOnly
+                        style={{ flex: 1, padding: '7px 10px', borderRadius: 6, border: '1px solid #e5e7eb', fontSize: 11, background: '#fffbeb', color: '#92400e', cursor: 'default', fontFamily: 'monospace' }}
+                      />
+                      <button type="button" onClick={() => navigator.clipboard.writeText(`webcal://dcb-planning.vercel.app/api/ical-rdv?staff=${form.prenom.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '')}`)}
+                        style={{ padding: '6px 10px', borderRadius: 6, border: '1px solid #D9CEB8', background: '#FDF5E8', color: '#92400e', fontSize: 11, cursor: 'pointer', whiteSpace: 'nowrap', fontWeight: 600 }}>
+                        Copier
+                      </button>
+                    </div>
+                  </div>
+                )}
               </div>
               <div style={{ gridColumn: '1/-1', display: 'flex', flexDirection: 'column', gap: 4 }}>
                 <label style={{ fontSize: 11, fontWeight: 600, color: '#666', textTransform: 'uppercase' }}>Note</label>

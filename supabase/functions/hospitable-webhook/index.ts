@@ -202,6 +202,20 @@ async function handleReservation(supabase: any, event: string, data: any): Promi
   }
 
   console.log('Upserted:', data.code, event)
+
+  // Hospitable embarque parfois l'avis dans le payload reservation (pas d'événement review.* séparé)
+  if (data.review && typeof data.review === 'object') {
+    const reviewPayload = {
+      ...data.review,
+      reservation_id: hospId,
+      guest: data.guest || data.review.guest,
+      property: { name: data.property_name || data.property?.name || null },
+    }
+    await handleReview(supabase, 'review.from_reservation', reviewPayload).catch((e: any) =>
+      console.error('Embedded review handling error (non-fatal):', e?.message)
+    )
+  }
+
   return 'upserted ' + data.code
 }
 

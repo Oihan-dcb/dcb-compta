@@ -55,6 +55,13 @@ Deno.serve(async (req) => {
 
   const sb = createClient(SUPABASE_URL, SERVICE_KEY)
 
+  // Récupérer google_review_url depuis agency_config (pour SMS 5 étoiles)
+  const agence = Deno.env.get('AGENCE') || 'dcb'
+  const googleUrl: string | null = Deno.env.get('GOOGLE_REVIEW_URL') || await (async () => {
+    const { data } = await sb.from('agency_config').select('google_review_url').eq('agence', agence).single()
+    return data?.google_review_url || null
+  })()
+
   // Récupérer tous nos biens avec leur hospitable_id (UUID propriété)
   const { data: biens } = await sb
     .from('bien')
@@ -63,7 +70,7 @@ Deno.serve(async (req) => {
 
   if (!biens?.length) return json({ ok: true, total: 0, synced: 0 })
 
-  let total = 0, synced = 0, errors = 0
+  let total = 0, synced = 0, errors = 0, smsQueued = 0
 
   for (const bien of biens) {
     let reviews: any[]
@@ -113,29 +120,42 @@ Deno.serve(async (req) => {
       if (error) { console.error('upsert:', error.message); errors++; continue }
       synced++
 
-      // Mettre à jour reservation.review_rating si on trouve la résa par proximité de date
-      // (l'API Hospitable ne retourne pas de reservation_id dans les reviews)
-      if (row.rating !== null && row.submitted_at) {
+      // Jointure par proximité de date pour trouver la réservation (fallback si pas de match par hospitable_id)
+      let matchedResa: any = null
+      if (row.submitted_at) {
         const reviewedAt = new Date(row.submitted_at)
         const dateMin = new Date(reviewedAt.getTime() - 14 * 86400_000).toISOString().slice(0, 10)
         const dateMax = new Date(reviewedAt.getTime() +  3 * 86400_000).toISOString().slice(0, 10)
 
-        const { data: matchedResa } = await sb
+        // Priorité aux réservations avec téléphone
+        let { data: found } = await sb
           .from('reservation')
-          .select('id, review_rating')
+          .select('id, review_rating, guest_phone, guest_country, guest_name')
           .eq('bien_id', bien.id)
           .gte('departure_date', dateMin)
           .lte('departure_date', dateMax)
+          .not('guest_phone', 'is', null)
           .order('departure_date', { ascending: false })
           .limit(1)
           .maybeSingle()
+        // Fallback sans filtre téléphone
+        if (!found) {
+          const { data: foundAny } = await sb
+            .from('reservation')
+            .select('id, review_rating, guest_phone, guest_country, guest_name')
+            .eq('bien_id', bien.id)
+            .gte('departure_date', dateMin)
+            .lte('departure_date', dateMax)
+            .order('departure_date', { ascending: false })
+            .limit(1)
+            .maybeSingle()
+          found = foundAny || null
+        }
 
-        if (matchedResa && matchedResa.review_rating === null) {
-          await sb.from('reservation')
-            .update({ review_rating: row.rating })
-            .eq('id', matchedResa.id)
+        matchedResa = found || null
 
-          // Lier le review à la réservation si pas encore fait
+        if (matchedResa && matchedResa.review_rating === null && row.rating !== null) {
+          await sb.from('reservation').update({ review_rating: row.rating }).eq('id', matchedResa.id)
           if (!row.reservation_id) {
             await sb.from('reservation_review')
               .update({ reservation_id: matchedResa.id })
@@ -143,11 +163,116 @@ Deno.serve(async (req) => {
           }
         }
       }
+
+      // SMS 5 étoiles : priorité resaRow (match direct), fallback matchedResa (match par date)
+      if (row.rating !== null && row.rating >= 5 && googleUrl) {
+        const resaForSms = resaRow || matchedResa
+        const guestPhone   = resaForSms?.guest_phone   || null
+        const guestCountry = resaForSms?.guest_country || null
+        const guestName    = resaForSms?.guest_name    || row.reviewer_name || null
+
+        // Dedup : déjà dans sms_queue ou sms_logs ?
+        const [{ count: qCount }, { count: lCount }] = await Promise.all([
+          sb.from('sms_queue').select('id', { count: 'exact', head: true })
+            .eq('hospitable_reservation_id', resaHospId),
+          sb.from('sms_logs').select('id', { count: 'exact', head: true })
+            .eq('hospitable_reservation_id', resaHospId)
+            .neq('status', 'no_phone'),
+        ])
+
+        if ((qCount || 0) === 0 && (lCount || 0) === 0) {
+          if (guestPhone) {
+            const sendAt = new Date(Date.now() + 28 * 60 * 1000).toISOString()
+            const comment = review.public?.review || null
+            const previewBody = googleUrl
+              ? await generatePreviewBody(guestName, bien.hospitable_name, guestCountry, guestPhone, comment, googleUrl).catch(() => null)
+              : null
+            const { error: qErr } = await sb.from('sms_queue').insert({
+              hospitable_reservation_id: resaHospId,
+              guest_name:    guestName,
+              guest_phone:   guestPhone,
+              guest_country: guestCountry,
+              property_name: bien.hospitable_name,
+              comment,
+              rating:        row.rating,
+              send_at:       sendAt,
+              preview_body:  previewBody,
+            })
+            if (qErr) { console.error('sms_queue insert:', qErr.message) }
+            else { smsQueued++; console.log('SMS queued (sync-reviews):', resaHospId, guestPhone) }
+          } else {
+            // Log no_phone pour ne pas retenter à chaque sync
+            await sb.from('sms_logs').insert({
+              hospitable_reservation_id: resaHospId,
+              guest_name:    guestName,
+              guest_phone:   null,
+              language:      'FR',
+              rating:        row.rating,
+              status:        'no_phone',
+              error_message: 'No guest phone in reservation table (sync-reviews)',
+            }).catch(() => {})
+          }
+        }
+      }
+
     }
 
     await new Promise(r => setTimeout(r, 100))  // pause entre propriétés
   }
 
-  console.log(`sync-reviews: ${synced} ok, ${errors} errors / ${total} reviews, ${biens.length} properties`)
-  return json({ ok: true, total, synced, errors, properties: biens.length })
+  console.log(`sync-reviews: ${synced} ok, ${errors} errors / ${total} reviews, ${biens.length} properties, ${smsQueued} SMS queued`)
+  return json({ ok: true, total, synced, errors, smsQueued, properties: biens.length })
 })
+
+// ─── Helpers SMS ─────────────────────────────────────────────
+
+function detectSmsLang(country: string | null, phone: string | null = null): string {
+  if (phone) {
+    const p = phone.replace(/\s/g, '')
+    if (/^\+33/.test(p) || /^\+32/.test(p) || /^\+41/.test(p) || /^\+352/.test(p)) return 'FR'
+    if (/^\+34/.test(p) || /^\+52/.test(p) || /^\+54/.test(p) || /^\+57/.test(p) || /^\+56/.test(p)) return 'ES'
+    if (/^\+/.test(p)) return 'EN'
+  }
+  if (country) {
+    const c = country.toLowerCase()
+    if (['united kingdom','uk','ireland','united states','usa','us','australia','canada','new zealand'].includes(c)) return 'EN'
+    if (['spain','españa','mexico','méxico','argentina','colombia','chile'].includes(c)) return 'ES'
+  }
+  return 'FR'
+}
+
+async function generatePreviewBody(
+  guestName: string | null, propertyName: string, guestCountry: string | null,
+  guestPhone: string | null, comment: string | null, googleUrl: string
+): Promise<string> {
+  const firstName = (guestName || 'cher client').split(' ')[0]
+  const lang = detectSmsLang(guestCountry, guestPhone)
+  const anthropicKey = Deno.env.get('ANTHROPIC_API_KEY')
+  const langLabel = lang === 'FR' ? 'français' : lang === 'EN' ? 'anglais' : 'espagnol'
+
+  if (anthropicKey && comment) {
+    try {
+      const res = await fetch('https://api.anthropic.com/v1/messages', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'x-api-key': anthropicKey, 'anthropic-version': '2023-06-01' },
+        body: JSON.stringify({
+          model: 'claude-haiku-4-5-20251001',
+          max_tokens: 150,
+          messages: [{ role: 'user', content: `Tu es l'assistant de Destination Côte Basque. Un voyageur vient de laisser un avis 5⭐ sur Airbnb pour "${propertyName}". Son commentaire : "${comment}"\nRédige un SMS de remerciement en ${langLabel} (160-220 caractères sans le lien), se terminant par "— Destination Côte Basque" et une invitation Google. Sans STOP. Réponds uniquement avec le texte.` }],
+        }),
+      })
+      if (res.ok) {
+        const d = await res.json()
+        const text = d.content?.[0]?.text?.trim()
+        if (text) return `${firstName}, ${text}\n${googleUrl}`
+      }
+    } catch (_) {}
+  }
+
+  const t: Record<string, string> = {
+    FR: `${firstName}, merci pour votre avis 5⭐ Airbnb sur ${propertyName} ! Votre retour nous touche beaucoup. Laissez-nous aussi un avis Google (1 clic) ↓ — Destination Côte Basque\n${googleUrl}`,
+    EN: `${firstName}, thank you for your 5-star Airbnb review of ${propertyName}! Your feedback means so much to us. Leave us a Google review too (1 click) ↓ — Destination Côte Basque\n${googleUrl}`,
+    ES: `${firstName}, ¡gracias por tu reseña 5⭐ de Airbnb sobre ${propertyName}! Tu opinión nos llena de alegría. Déjanos también una reseña en Google (1 clic) ↓ — Destination Côte Basque\n${googleUrl}`,
+  }
+  return t[lang] ?? t['FR']
+}
