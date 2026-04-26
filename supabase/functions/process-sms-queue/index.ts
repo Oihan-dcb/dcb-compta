@@ -148,6 +148,7 @@ Un voyageur vient de laisser un avis 5⭐ sur Airbnb pour "${property}". Son com
 Rédige un SMS de remerciement en ${langLabel} qui :
 - Remercie chaleureusement en mentionnant un élément précis du commentaire
 - Reste entre 160 et 220 caractères (sans compter le lien Google)
+- Ne mentionne AUCUNE région géographique (Côte Basque, Pays Basque, Bordeaux, Arcachon, etc.)
 - Se termine OBLIGATOIREMENT par cette phrase d'invitation Google, puis la signature, dans cet ordre exact :
   FR : "Laissez-nous aussi un avis Google (1 clic) ↓ — ${agenceLabel}"
   EN : "Leave us a Google review too (1 click) ↓ — ${agenceLabel}"

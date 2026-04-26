@@ -75,7 +75,7 @@ async function generatePreviewBody(
         body: JSON.stringify({
           model: 'claude-haiku-4-5-20251001',
           max_tokens: 150,
-          messages: [{ role: 'user', content: `Tu es l'assistant de ${agenceLabel}. Un voyageur vient de laisser un avis 5⭐ sur Airbnb pour "${propertyName}". Son commentaire : "${comment}"\nRédige un SMS de remerciement en ${langLabel} (160-220 caractères). Règles STRICTES :\n- N'inclus AUCUNE URL, AUCUN lien, AUCUN placeholder dans le texte\n- La signature est "— ${agenceLabel}"\n- Termine par cette phrase exacte selon la langue : FR: "Soutenez-nous sur Google →" / EN: "Support us on Google →" / ES: "Apóyanos en Google →"\n- Sans mention STOP\nRéponds uniquement avec le texte du SMS, le lien Google sera ajouté automatiquement après.` }],
+          messages: [{ role: 'user', content: `Tu es l'assistant de ${agenceLabel}. Un voyageur vient de laisser un avis 5⭐ sur Airbnb pour "${propertyName}". Son commentaire : "${comment}"\nRédige un SMS de remerciement en ${langLabel} (160-220 caractères). Règles STRICTES :\n- N'inclus AUCUNE URL, AUCUN lien, AUCUN placeholder dans le texte\n- Ne mentionne AUCUNE région géographique (Côte Basque, Pays Basque, Bordeaux, Arcachon, etc.)\n- La signature est "— ${agenceLabel}"\n- Termine par cette phrase exacte selon la langue : FR: "Soutenez-nous sur Google →" / EN: "Support us on Google →" / ES: "Apóyanos en Google →"\n- Sans mention STOP\nRéponds uniquement avec le texte du SMS, le lien Google sera ajouté automatiquement après.` }],
         }),
       })
       if (res.ok) {
