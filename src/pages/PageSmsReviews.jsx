@@ -52,6 +52,8 @@ export default function PageSmsReviews() {
   const [loadingQueue, setLoadingQueue] = useState(false)
   const [flushResult, setFlushResult] = useState(null)
   const [expandedQueue, setExpandedQueue] = useState(null)
+  const [generatingPreviews, setGeneratingPreviews] = useState(false)
+  const [previewResult, setPreviewResult] = useState(null)
 
   const chargerQueue = useCallback(async () => {
     setLoadingQueue(true)
@@ -68,16 +70,24 @@ export default function PageSmsReviews() {
   }, [])
 
   const genererApercus = async () => {
-    const { data: { session } } = await supabase.auth.getSession()
-    await fetch(`${SUPABASE_URL}/functions/v1/generate-sms-previews`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'Authorization': `Bearer ${session?.access_token || import.meta.env.VITE_SUPABASE_ANON_KEY}`,
-      },
-      body: JSON.stringify({}),
-    })
-    chargerQueue()
+    setGeneratingPreviews(true)
+    setPreviewResult(null)
+    try {
+      const { data: { session } } = await supabase.auth.getSession()
+      const res = await fetch(`${SUPABASE_URL}/functions/v1/generate-sms-previews`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${session?.access_token || import.meta.env.VITE_SUPABASE_ANON_KEY}`,
+        },
+        body: JSON.stringify({}),
+      })
+      const data = await res.json()
+      setPreviewResult(data)
+      chargerQueue()
+    } finally {
+      setGeneratingPreviews(false)
+    }
   }
 
   const flushQueue = async () => {
@@ -362,14 +372,20 @@ export default function PageSmsReviews() {
               <button onClick={chargerQueue} style={{ padding: '0.4rem 0.75rem', background: 'transparent', border: '1px solid var(--border)', borderRadius: 8, cursor: 'pointer', fontSize: '0.8rem' }}>
                 ↻ Rafraîchir
               </button>
-              <button onClick={genererApercus} style={{ padding: '0.4rem 0.75rem', background: 'transparent', border: '1px solid var(--border)', borderRadius: 8, cursor: 'pointer', fontSize: '0.8rem' }}>
-                💬 Générer aperçus
+              <button onClick={genererApercus} disabled={generatingPreviews} style={{ padding: '0.4rem 0.75rem', background: 'transparent', border: '1px solid var(--border)', borderRadius: 8, cursor: generatingPreviews ? 'not-allowed' : 'pointer', fontSize: '0.8rem', opacity: generatingPreviews ? 0.6 : 1 }}>
+                {generatingPreviews ? '⏳ Génération…' : '💬 Générer aperçus'}
               </button>
               <button onClick={flushQueue} style={{ padding: '0.4rem 1rem', background: 'var(--brand)', color: '#fff', border: 'none', borderRadius: 8, cursor: 'pointer', fontSize: '0.8rem', fontWeight: 700 }}>
                 ▶ Traiter maintenant
               </button>
             </div>
           </div>
+          {previewResult && (
+            <div style={{ marginBottom: '0.5rem', padding: '0.5rem 1rem', borderRadius: 8, fontSize: '0.875rem', fontWeight: 600,
+              background: '#5a8a5a22', color: '#5a8a5a', border: '1px solid #5a8a5a55' }}>
+              {previewResult.error ? `Erreur : ${previewResult.error}` : `✓ ${previewResult.updated} aperçu${previewResult.updated !== 1 ? 's' : ''} généré${previewResult.updated !== 1 ? 's' : ''}`}
+            </div>
+          )}
           {flushResult && (
             <div style={{ marginBottom: '1rem', padding: '0.65rem 1rem', borderRadius: 8, fontSize: '0.875rem', fontWeight: 600,
               background: flushResult.error ? '#b94a4a22' : '#5a8a5a22',
