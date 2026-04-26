@@ -574,7 +574,7 @@ export default function PageAutoEntrepreneurs() {
   }
 
   async function envoyerIdentifiants(ae) {
-    const portailUrl = 'https://dcb-portail-ae.vercel.app'
+    const portailUrl = 'https://staff-app.destinationcotebasque.com'
     const mdp = ae.mdp_temporaire || '(non disponible - recréer le compte)'
     const msg = `Bonjour ${ae.prenom || ae.nom},\n\nVoici vos accès au portail Destination Côte Basque 🌅\n\nURL : ${portailUrl}\nEmail : ${ae.email}\nMot de passe : ${mdp}\n\nConnectez-vous pour voir vos missions et déclarer vos prestations.\n\nÀ bientôt,\nDestination Côte Basque`
     await navigator.clipboard.writeText(msg)
@@ -1523,7 +1523,7 @@ export default function PageAutoEntrepreneurs() {
             <div style={{ background: '#f8fafc', borderRadius: 12, padding: 20, marginBottom: 20, border: '1px solid #e5e7eb' }}>
               <div style={{ marginBottom: 16 }}>
                 <div style={{ fontSize: 11, fontWeight: 700, color: '#666', textTransform: 'uppercase', marginBottom: 4 }}>URL du portail</div>
-                <div style={{ fontSize: 13, fontWeight: 600, color: '#1a3a6e', wordBreak: 'break-all' }}>https://dcb-portail-ae.vercel.app</div>
+                <div style={{ fontSize: 13, fontWeight: 600, color: '#1a3a6e', wordBreak: 'break-all' }}>https://staff-app.destinationcotebasque.com</div>
               </div>
               <div style={{ marginBottom: 16 }}>
                 <div style={{ fontSize: 11, fontWeight: 700, color: '#666', textTransform: 'uppercase', marginBottom: 4 }}>Email</div>
@@ -1537,7 +1537,7 @@ export default function PageAutoEntrepreneurs() {
             </div>
             <div style={{ display: 'flex', gap: 10 }}>
               <button onClick={() => {
-                const txt = `Portail DCB : https://dcb-portail-ae.vercel.app\nEmail : ${credentials.email}\nMot de passe : ${credentials.password}`
+                const txt = `Portail DCB : https://staff-app.destinationcotebasque.com\nEmail : ${credentials.email}\nMot de passe : ${credentials.password}`
                 navigator.clipboard.writeText(txt)
                 setSuccess('Copié !')
                 setTimeout(() => setSuccess(null), 2000)
