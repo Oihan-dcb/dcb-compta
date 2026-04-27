@@ -661,11 +661,30 @@ function OngletSequestre() {
       const resasValides = (resas || []).filter(r =>
         !['not_accepted', 'not accepted', 'declined', 'expired'].includes(r.final_status)
       )
-      const encaisse         = resasValides.reduce((s, r) => s + (r.fin_revenue || 0), 0)
+      const allResaIds = resasValides.map(r => r.id)
+
+      // ── 3. Paiements réels reçus (Stripe acompte/solde, Manuel) ──────────
+      // Pour Airbnb/Booking : reservation_paiement n'est pas peuplé → fallback fin_revenue
+      const paiementsByResa = {}
+      for (let i = 0; i < allResaIds.length; i += 400) {
+        const { data: pmts } = await supabase
+          .from('reservation_paiement')
+          .select('reservation_id, montant')
+          .in('reservation_id', allResaIds.slice(i, i + 400))
+        for (const p of pmts || []) {
+          paiementsByResa[p.reservation_id] = (paiementsByResa[p.reservation_id] || 0) + (p.montant || 0)
+        }
+      }
+      // Montant réellement reçu : paiements tracés si dispo, sinon fin_revenue (Airbnb/Booking)
+      const montantRecu = r => paiementsByResa[r.id] != null ? paiementsByResa[r.id] : (r.fin_revenue || 0)
+
+      const encaisse         = resasValides.reduce((s, r) => s + montantRecu(r), 0)
       const nbResas          = resasValides.length
       const nbNonVentilees   = resasValides.filter(r => !r.ventilation_calculee).length
-      const encaisseNonVentile = resasValides.filter(r => !r.ventilation_calculee).reduce((s, r) => s + (r.fin_revenue || 0), 0)
-      const resasFutures     = resasValides.filter(r => r.departure_date && r.departure_date >= today).reduce((s, r) => s + (r.fin_revenue || 0), 0)
+      const encaisseNonVentile = resasValides.filter(r => !r.ventilation_calculee).reduce((s, r) => s + montantRecu(r), 0)
+      const resasFutures     = resasValides.filter(r => r.departure_date && r.departure_date >= today).reduce((s, r) => s + montantRecu(r), 0)
+      // Paiements partiels = resas où montant reçu < 99% du fin_revenue (acompte en attente de solde)
+      const nbPaiementsPartiels = resasValides.filter(r => paiementsByResa[r.id] != null && paiementsByResa[r.id] < (r.fin_revenue || 0) * 0.99).length
       const resaIds          = resasValides.filter(r => r.ventilation_calculee).map(r => r.id)
 
       // ── C. Ventilation par code ──────────────────────────────────────────
@@ -737,7 +756,7 @@ function OngletSequestre() {
       const evolizSum = arr => ({ nb: arr.length, totalTtc: arr.reduce((s, f) => s + (f.total_ttc || 0), 0), totalRev: arr.reduce((s, f) => s + (f.montant_reversement || 0), 0) })
       evoliz.stats = { brouillon: evolizSum(evoliz.brouillon), valide: evolizSum(evoliz.valide), envoye: evolizSum(evoliz.envoye) }
 
-      setData({ encaisse, nbResas, nbNonVentilees, encaisseNonVentile, resasFutures, ventil, tvaDCB, ratioTVA, ecartResiduel, evoliz, diag: { nbHtNull, nbResasSansLignes, nbDoublons } })
+      setData({ encaisse, nbResas, nbNonVentilees, encaisseNonVentile, resasFutures, ventil, tvaDCB, ratioTVA, ecartResiduel, evoliz, diag: { nbHtNull, nbResasSansLignes, nbDoublons, nbPaiementsPartiels } })
       setGenAt(new Date())
     } catch (e) {
       setError(e.message)
@@ -920,6 +939,13 @@ function OngletSequestre() {
                   sub: diag.nbDoublons > 0 ? 'Ventilation possiblement surestimée' : null,
                   ok: diag.nbDoublons === 0,
                   msg: diag.nbDoublons === 0 ? 'OK' : `${diag.nbDoublons} paire(s) en double`,
+                },
+                {
+                  label: 'Paiements partiels (acompte Stripe non soldé)',
+                  val: diag.nbPaiementsPartiels,
+                  sub: diag.nbPaiementsPartiels > 0 ? 'Montant séquestre = réel reçu (pas le total résa)' : 'Montants = réel reçu pour toutes les resas',
+                  ok: diag.nbPaiementsPartiels === 0,
+                  msg: diag.nbPaiementsPartiels === 0 ? 'OK' : `${diag.nbPaiementsPartiels} résa(s) — solde à venir`,
                 },
                 {
                   label: 'Ratio TVA / base taxable TTC',
