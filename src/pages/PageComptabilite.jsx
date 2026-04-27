@@ -630,20 +630,34 @@ function SeqSeparateur({ label }) {
 }
 
 function OngletSequestre() {
+  const [mois, setMois] = useState(() => localStorage.getItem('tab_sequestre_mois') || moisCourant)
+  const [moisDispos, setMoisDispos] = useState([moisCourant])
   const [data, setData]     = useState(null)
   const [loading, setLoading] = useState(true)
   const [error, setError]   = useState(null)
   const [genAt, setGenAt]   = useState(null)
 
+  const setMoisAndPersist = m => { setMois(m); localStorage.setItem('tab_sequestre_mois', m) }
+
+  useEffect(() => {
+    supabase.from('reservation').select('mois_comptable').then(({ data: res }) => {
+      const [cy, cm] = moisCourant.split('-').map(Number)
+      const thisYear = Array.from({ length: cm }, (_, i) => `${cy}-${String(i + 1).padStart(2, '0')}`)
+      const uniq = [...new Set([...thisYear, ...(res || []).map(d => d.mois_comptable).filter(Boolean)])].sort((a, b) => b.localeCompare(a))
+      setMoisDispos(uniq)
+    })
+  }, [])
+
   const charger = useCallback(async () => {
     setLoading(true)
     setError(null)
     try {
-      // ── A. Solde banque réel (tous mouvements importés) ──────────────────
+      // ── A. Solde banque réel (mouvements du mois) ────────────────────────
       const { data: mbTotaux } = await supabase
         .from('mouvement_bancaire')
         .select('credit, debit')
         .eq('agence', AGENCE)
+        .eq('mois_releve', mois)
       const soldeBanque = (mbTotaux || []).reduce((s, m) => s + (m.credit || 0) - (m.debit || 0), 0)
 
       // ── B. Biens de l'agence ─────────────────────────────────────────────
@@ -652,19 +666,20 @@ function OngletSequestre() {
       const bienIds = (biens || []).map(b => b.id)
 
       if (!bienIds.length) {
-        setData({ soldeBanque, encaisse: 0, nbResas: 0, nbNonVentilees: 0, encaisseNonVentile: 0, resasFutures: 0, ventil: { loy: 0, hon: 0, com: 0, fmen: 0, auto: 0, taxe: 0, autres: 0, totalVentile: 0 }, facturesEnv: 0, facturesEnvNb: 0, facturesBrouillon: 0, facturesBrouillonNb: 0, ecart: 0 })
+        setData({ soldeBanque, encaisse: 0, nbResas: 0, nbNonVentilees: 0, encaisseNonVentile: 0, resasFutures: 0, ventil: { loy: 0, hon: 0, com: 0, fmen: 0, auto: 0, taxe: 0, autres: 0, totalVentile: 0 }, evoliz: { stats: { brouillon: { nb:0, totalTtc:0, totalRev:0 }, valide: { nb:0, totalTtc:0, totalRev:0 }, envoye: { nb:0, totalTtc:0, totalRev:0 } } }, ecart: 0 })
         setGenAt(new Date())
         return
       }
 
       const today = new Date().toISOString().slice(0, 10)
 
-      // ── C. Réservations rapprochées ──────────────────────────────────────
+      // ── C. Réservations rapprochées du mois ─────────────────────────────
       const { data: resas } = await supabase
         .from('reservation')
         .select('id, fin_revenue, ventilation_calculee, final_status, departure_date')
         .in('bien_id', bienIds)
         .eq('rapprochee', true)
+        .eq('mois_comptable', mois)
         .gt('fin_revenue', 0)
       const resasValides = (resas || []).filter(r =>
         !['not_accepted', 'not accepted', 'declined', 'expired'].includes(r.final_status)
@@ -699,11 +714,12 @@ function OngletSequestre() {
       }
       ventil.totalVentile = ventil.loy + ventil.hon + ventil.com + ventil.fmen + ventil.auto + ventil.taxe + ventil.autres
 
-      // ── E. Evoliz — suivi administratif uniquement (aucune influence sur le cash) ──
+      // ── E. Evoliz du mois — suivi administratif uniquement ───────────────
       const { data: fAll } = await supabase
         .from('facture_evoliz')
         .select('statut, montant_reversement, total_ttc')
         .eq('type_facture', 'honoraires')
+        .eq('mois', mois)
         .in('statut', ['brouillon', 'calcul_en_cours', 'valide', 'envoye_evoliz'])
       const evoliz = {
         brouillon: (fAll || []).filter(f => ['brouillon', 'calcul_en_cours'].includes(f.statut)),
@@ -725,16 +741,17 @@ function OngletSequestre() {
     }
   }, [])
 
-  useEffect(() => { charger() }, [charger])
+  useEffect(() => { charger() }, [mois]) // eslint-disable-line react-hooks/exhaustive-deps
 
   return (
     <div style={{ maxWidth: 1000 }}>
       {/* En-tête */}
-      <div style={{ display: 'flex', alignItems: 'center', marginBottom: 20, gap: 12 }}>
+      <div style={{ display: 'flex', alignItems: 'center', marginBottom: 20, gap: 12, flexWrap: 'wrap' }}>
+        <MoisSelector mois={mois} setMois={setMoisAndPersist} moisDispos={moisDispos} />
         <div style={{ fontSize: '0.8em', color: '#9C8E7D' }}>
           {genAt
             ? <>Calcul arrêté au <strong style={{ color: 'var(--text)' }}>{genAt.toLocaleString('fr-FR')}</strong></>
-            : 'Chargement…'}
+            : null}
         </div>
         <button className="btn btn-secondary" onClick={charger} disabled={loading} style={{ marginLeft: 'auto', padding: '6px 14px' }}>
           {loading ? '…' : '↺'}
