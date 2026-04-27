@@ -1405,6 +1405,15 @@ export default function PageAutoEntrepreneurs() {
                     )
                   })}
                 </div>
+                {form.ae_user_id && (
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                    <span style={{ fontSize: 11, color: '#9ca3af', fontFamily: 'monospace' }}>{form.ae_user_id}</span>
+                    <button type="button" onClick={() => navigator.clipboard.writeText(form.ae_user_id)}
+                      style={{ fontSize: 11, padding: '2px 8px', borderRadius: 4, border: '1px solid #e5e7eb', background: '#f9fafb', cursor: 'pointer', color: '#6b7280' }}>
+                      Copier
+                    </button>
+                  </div>
+                )}
                 {!form.ae_user_id && editing !== 'new' && (
                   <div style={{ fontSize: 11, color: '#9ca3af' }}>⚠ Créez d'abord un accès portail pour gérer les groupes</div>
                 )}
