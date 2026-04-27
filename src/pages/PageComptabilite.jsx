@@ -677,40 +677,51 @@ function OngletSequestre() {
           .in('reservation_id', resaIds.slice(i, i + 400))
         if (v) ventilRows.push(...v)
       }
-      // sumReel : montant_reel si renseigné, sinon montant_ht (base HT)
-      const sumReel = code => ventilRows.filter(v => v.code === code)
+      // Base HT : montant_reel si renseigné, sinon montant_ht
+      const sumHT = code => ventilRows.filter(v => v.code === code)
         .reduce((s, v) => s + (v.montant_reel != null ? v.montant_reel : (v.montant_ht || 0)), 0)
-      // sumTtc : montant_ttc (pour affichage des postes HON/COM/FMEN en TTC)
       const sumTtc = code => ventilRows.filter(v => v.code === code)
         .reduce((s, v) => s + (v.montant_ttc || 0), 0)
 
-      // Ventilation affichage (TTC pour HON/COM/FMEN, reel/ht pour le reste)
+      // Ventilation HT — cohérente avec fin_revenue, tous codes en base HT
       const ventil = {
-        loy:    sumReel('LOY'),
-        hon:    sumTtc('HON'),
-        com:    sumTtc('COM'),
-        fmen:   sumTtc('FMEN'),
-        auto:   sumReel('AUTO'),
-        taxe:   sumReel('TAXE'),
+        loy:    sumHT('LOY'),
+        hon:    sumHT('HON'),
+        com:    sumHT('COM'),
+        fmen:   sumHT('FMEN'),
+        auto:   sumHT('AUTO'),
+        taxe:   sumHT('TAXE'),
         autres: ventilRows.filter(v => !['LOY','HON','COM','FMEN','AUTO','TAXE','VIR'].includes(v.code))
           .reduce((s, v) => s + (v.montant_reel != null ? v.montant_reel : (v.montant_ht || 0)), 0),
       }
       ventil.totalVentile = ventil.loy + ventil.hon + ventil.com + ventil.fmen + ventil.auto + ventil.taxe + ventil.autres
 
-      // TVA DCB — calcul direct : SUM(montant_ttc − montant_ht) sur HON + COM + FMEN uniquement
+      // TVA DCB — calcul direct : SUM(montant_ttc − montant_ht) sur HON + COM + FMEN
       const tvaDCB = ventilRows
         .filter(v => ['HON', 'COM', 'FMEN'].includes(v.code))
         .reduce((s, v) => s + ((v.montant_ttc || 0) - (v.montant_ht || 0)), 0)
-
-      // Total ventilation base HT (cohérent avec fin_revenue) : reel/ht pour tous les codes
-      const ventilTotalHT = ventilRows
-        .filter(v => v.code !== 'VIR')
-        .reduce((s, v) => s + (v.montant_reel != null ? v.montant_reel : (v.montant_ht || 0)), 0)
+      // Base taxable TTC pour calcul du ratio
+      const baseTaxableTtc = sumTtc('HON') + sumTtc('COM') + sumTtc('FMEN')
+      const ratioTVA = baseTaxableTtc > 0 ? tvaDCB / baseTaxableTtc : null
 
       // Écart résiduel = fin_revenue ventilées − ventilTotalHT
-      // Devrait être ≈ 0 si les données sont cohérentes
       const encaisseVentilees = encaisse - encaisseNonVentile
-      const ecartResiduel = encaisseVentilees - ventilTotalHT
+      const ecartResiduel = encaisseVentilees - ventil.totalVentile
+
+      // ── Diagnostic qualité données ────────────────────────────────────────
+      // 1. Lignes HON/COM/FMEN avec montant_ht null → TVA mal calculée
+      const nbHtNull = ventilRows
+        .filter(v => ['HON','COM','FMEN'].includes(v.code) && v.montant_ht == null).length
+      // 2. Resas ventilation_calculee=true mais sans aucune ligne ventilation
+      const resaIdsAvecLignes = new Set(ventilRows.map(v => v.reservation_id).filter(Boolean))
+      const nbResasSansLignes = resaIds.filter(id => !resaIdsAvecLignes.has(id)).length
+      // 3. Doublons : même (reservation_id, code) apparaît > 1 fois
+      const pairCounts = {}
+      for (const v of ventilRows) {
+        const k = `${v.reservation_id}|${v.code}`
+        pairCounts[k] = (pairCounts[k] || 0) + 1
+      }
+      const nbDoublons = Object.values(pairCounts).filter(c => c > 1).length
 
       // ── D. Evoliz — toutes factures (pas de filtre mois) ────────────────
       const { data: fAll } = await supabase
@@ -726,7 +737,7 @@ function OngletSequestre() {
       const evolizSum = arr => ({ nb: arr.length, totalTtc: arr.reduce((s, f) => s + (f.total_ttc || 0), 0), totalRev: arr.reduce((s, f) => s + (f.montant_reversement || 0), 0) })
       evoliz.stats = { brouillon: evolizSum(evoliz.brouillon), valide: evolizSum(evoliz.valide), envoye: evolizSum(evoliz.envoye) }
 
-      setData({ encaisse, nbResas, nbNonVentilees, encaisseNonVentile, resasFutures, ventil, tvaDCB, ecartResiduel, evoliz })
+      setData({ encaisse, nbResas, nbNonVentilees, encaisseNonVentile, resasFutures, ventil, tvaDCB, ratioTVA, ecartResiduel, evoliz, diag: { nbHtNull, nbResasSansLignes, nbDoublons } })
       setGenAt(new Date())
     } catch (e) {
       setError(e.message)
@@ -758,94 +769,72 @@ function OngletSequestre() {
       {loading && !data && <div style={{ textAlign: 'center', padding: 40, color: '#9C8E7D' }}>Chargement…</div>}
 
       {data && (() => {
-        const { encaisse, nbResas, nbNonVentilees, encaisseNonVentile, resasFutures, ventil, tvaDCB, ecartResiduel, evoliz } = data
-
-        // Score global
-        const scoreEntrees = nbResas > 0 ? 'fiable' : 'absent'
-        const scoreVentil  = nbNonVentilees === 0 ? 'calcule' : (nbNonVentilees < 5 ? 'proxy' : 'absent')
-        const scoreSorties = 'absent'
-        const SCORE_LABEL  = { fiable: 'Fiable', calcule: 'Bonne', proxy: 'Partielle', absent: 'Faible' }
-        const SCORE_COLOR  = { fiable: '#065F46', calcule: '#1E40AF', proxy: '#92400E', absent: '#64748B' }
-        const SCORE_BG     = { fiable: '#D1FAE5', calcule: '#DBEAFE', proxy: '#FEF3C7', absent: '#F1F5F9' }
+        const { encaisse, nbResas, nbNonVentilees, encaisseNonVentile, resasFutures, ventil, tvaDCB, ratioTVA, ecartResiduel, evoliz, diag } = data
+        const absEcart = Math.abs(ecartResiduel)
+        const ecartColor = absEcart < 5000 ? '#065F46' : absEcart < 50000 ? '#92400E' : '#DC2626'
+        const ecartBg    = absEcart < 5000 ? '#D1FAE5' : absEcart < 50000 ? '#FEF3C7' : '#FEE2E2'
+        const ecartLabel = absEcart < 5000 ? '✓ Normal (< 50 €)' : absEcart < 50000 ? '⚠ À surveiller (50–500 €)' : '✗ À investiguer (> 500 €)'
+        const ratioOk = ratioTVA != null && ratioTVA >= 0.14 && ratioTVA <= 0.20
 
         return (
           <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
 
-            {/* ── Score fiabilité global ── */}
-            <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
-              {[
-                { label: 'Entrées', score: scoreEntrees },
-                { label: 'Ventilation', score: scoreVentil },
-                { label: 'Sorties', score: scoreSorties },
-              ].map(({ label, score }) => (
-                <div key={label} style={{ background: SCORE_BG[score], border: `1px solid ${SCORE_COLOR[score]}44`, borderRadius: 8, padding: '7px 14px', display: 'flex', flexDirection: 'column', alignItems: 'center', minWidth: 100 }}>
-                  <div style={{ fontSize: '0.7em', color: '#9C8E7D', textTransform: 'uppercase', fontWeight: 600 }}>{label}</div>
-                  <div style={{ fontSize: '0.85em', fontWeight: 700, color: SCORE_COLOR[score], marginTop: 2 }}>{SCORE_LABEL[score]}</div>
-                </div>
-              ))}
-              <div style={{ marginLeft: 'auto', background: 'var(--bg)', border: '1px solid var(--border)', borderRadius: 8, padding: '7px 14px', display: 'flex', flexDirection: 'column', alignItems: 'center', minWidth: 100 }}>
-                <div style={{ fontSize: '0.7em', color: '#9C8E7D', textTransform: 'uppercase', fontWeight: 600 }}>Score global</div>
-                <div style={{ fontSize: '0.85em', fontWeight: 700, color: scoreSorties === 'absent' ? '#92400E' : '#065F46', marginTop: 2 }}>Intermédiaire</div>
-              </div>
-            </div>
-
-            {/* ── Lecture business ── */}
+            {/* ── Résumé ── */}
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
               <div style={{ background: '#F0FDF4', border: '1px solid #A7F3D0', borderRadius: 10, padding: '12px 16px' }}>
                 <div style={{ fontSize: '0.72em', color: '#065F46', fontWeight: 700, textTransform: 'uppercase', marginBottom: 4 }}>À redistribuer (séjours passés)</div>
                 <div style={{ fontSize: '1.4em', fontWeight: 700, color: '#065F46', fontVariantNumeric: 'tabular-nums' }}>{fmt(encaisse - resasFutures)}</div>
-                <div style={{ fontSize: '0.75em', color: '#9C8E7D', marginTop: 4 }}>Séjours déjà effectués — argent dû aux proprios, AEs, DCB</div>
+                <div style={{ fontSize: '0.75em', color: '#9C8E7D', marginTop: 4 }}>Séjours effectués — dû aux proprios, AEs, DCB</div>
               </div>
               <div style={{ background: '#F0F9FF', border: '1px solid #BAE6FD', borderRadius: 10, padding: '12px 16px' }}>
                 <div style={{ fontSize: '0.72em', color: '#0369a1', fontWeight: 700, textTransform: 'uppercase', marginBottom: 4 }}>Encaissé futur (séjours à venir)</div>
                 <div style={{ fontSize: '1.4em', fontWeight: 700, color: '#0369a1', fontVariantNumeric: 'tabular-nums' }}>{fmt(resasFutures)}</div>
-                <div style={{ fontSize: '0.75em', color: '#9C8E7D', marginTop: 4 }}>Payé en avance — appartient encore aux voyageurs jusqu'au départ</div>
+                <div style={{ fontSize: '0.75em', color: '#9C8E7D', marginTop: 4 }}>Payé en avance — appartient encore aux voyageurs</div>
               </div>
             </div>
 
             {/* ── Détail séquestre ── */}
             <div style={{ background: 'var(--bg-card)', border: '1px solid var(--border)', borderRadius: 12, overflow: 'hidden' }}>
 
-              <SeqSeparateur label="1 — Encaissements prouvés suivis (base cash)" />
+              <SeqSeparateur label="1 — Base cash (encaissements prouvés)" />
               <SeqLigne label="Total encaissé rapproché" montant={encaisse} fiabilite="fiable" detail={`${nbResas} résa${nbResas > 1 ? 's' : ''}`} highlight />
               <div style={{ padding: '2px 14px 8px 32px', fontSize: '0.74em', color: '#9C8E7D', borderLeft: '2px solid var(--border)', marginLeft: 14 }}>
-                Source : <code>reservation.rapprochee = true</code> + <code>fin_revenue</code>. Annulations sans frais exclues.
+                <code>reservation.rapprochee = true</code> × <code>fin_revenue</code> — annulations sans frais exclues
               </div>
 
-              <SeqSeparateur label="2 — À qui appartient cet argent (ventilation théorique)" />
-              <SeqLigne label="Propriétaires" montant={ventil.loy} fiabilite="calcule" indent />
-              <SeqLigne label="DCB — honoraires (HON + COM)" montant={ventil.hon + ventil.com} fiabilite="calcule" indent />
-              <SeqLigne label="Ménage / AEs (FMEN + AUTO)" montant={ventil.fmen + ventil.auto} fiabilite="calcule" indent />
-              <SeqLigne label="Taxes de séjour" montant={ventil.taxe} fiabilite="calcule" indent />
+              <SeqSeparateur label="2 — Ventilation HT expliquée" />
+              <SeqLigne label="Propriétaires (LOY HT)" montant={ventil.loy} fiabilite="calcule" indent />
+              <SeqLigne label="DCB honoraires (HON + COM HT)" montant={ventil.hon + ventil.com} fiabilite="calcule" indent />
+              <SeqLigne label="Ménage / AEs (FMEN + AUTO HT)" montant={ventil.fmen + ventil.auto} fiabilite="calcule" indent />
+              <SeqLigne label="Taxes de séjour (TAXE HT)" montant={ventil.taxe} fiabilite="calcule" indent />
               {ventil.autres > 0 && <SeqLigne label="Autres (DEB_AE, HAOWNER…)" montant={ventil.autres} fiabilite="calcule" indent />}
-              {nbNonVentilees > 0 && (
-                <div style={{ margin: '4px 14px', padding: '8px 12px', background: '#FFFBEB', border: '1px solid #FDE68A', borderRadius: 8, display: 'flex', alignItems: 'center', gap: 10 }}>
-                  <span style={{ fontSize: '1em' }}>⚠️</span>
-                  <span style={{ flex: 1, fontSize: '0.82em', color: '#92400E', fontWeight: 600 }}>{nbNonVentilees} résa(s) rapprochée(s) sans ventilation</span>
-                  <span style={{ fontSize: '0.82em', fontWeight: 700, color: '#92400E', fontVariantNumeric: 'tabular-nums' }}>{fmt(encaisseNonVentile)}</span>
-                </div>
-              )}
-              {nbNonVentilees === 0 && <SeqLigne label="Non ventilé" montant={0} fiabilite="calcule" indent dimmed />}
-              <SeqLigne label="Total attribué" montant={ventil.totalVentile + encaisseNonVentile} fiabilite="calcule" highlight />
+              {nbNonVentilees > 0
+                ? <div style={{ margin: '4px 14px', padding: '8px 12px', background: '#FFFBEB', border: '1px solid #FDE68A', borderRadius: 8, display: 'flex', alignItems: 'center', gap: 10 }}>
+                    <span>⚠️</span>
+                    <span style={{ flex: 1, fontSize: '0.82em', color: '#92400E', fontWeight: 600 }}>{nbNonVentilees} résa(s) sans ventilation</span>
+                    <span style={{ fontSize: '0.82em', fontWeight: 700, color: '#92400E', fontVariantNumeric: 'tabular-nums' }}>{fmt(encaisseNonVentile)}</span>
+                  </div>
+                : <SeqLigne label="Non ventilé" montant={0} fiabilite="calcule" indent dimmed />
+              }
+              <SeqLigne label="Total ventilé HT + non ventilé" montant={ventil.totalVentile + encaisseNonVentile} fiabilite="calcule" highlight />
 
-              <SeqSeparateur label="3 — Facturation propriétaires (Evoliz) — suivi administratif uniquement" />
+              <SeqSeparateur label="3 — Facturation propriétaires (Evoliz) — informatif uniquement" />
               <div style={{ margin: '4px 14px 8px', padding: '8px 12px', background: '#FFFBEB', border: '1px solid #FDE68A', borderRadius: 8, fontSize: '0.77em', color: '#92400E', lineHeight: 1.5 }}>
-                Une facture envoyée dans Evoliz n'est pas un paiement bancaire confirmé.<br />
-                Ce bloc est purement informatif — il n'influence aucun chiffre du séquestre ci-dessus.
+                Une facture Evoliz n'est pas un paiement bancaire. Ce bloc n'influence aucun chiffre ci-dessus.
               </div>
               {[
-                { label: 'Brouillons / en cours de calcul', s: evoliz.stats.brouillon, dimmed: true },
-                { label: 'Validées (prêtes à envoyer)',      s: evoliz.stats.valide,    dimmed: false },
-                { label: 'Envoyées dans Evoliz',             s: evoliz.stats.envoye,    dimmed: false },
+                { label: 'Brouillons / en cours', s: evoliz.stats.brouillon, dimmed: true },
+                { label: 'Validées (prêtes à envoyer)', s: evoliz.stats.valide, dimmed: false },
+                { label: 'Envoyées dans Evoliz',        s: evoliz.stats.envoye, dimmed: false },
               ].map(({ label, s, dimmed }) => (
                 <div key={label} style={{ display: 'flex', alignItems: 'baseline', gap: 10, padding: '7px 14px 7px 32px', borderLeft: '2px solid var(--border)', marginLeft: 14, opacity: dimmed ? 0.55 : 1 }}>
                   <span style={{ flex: 1, fontSize: '0.88em', color: 'var(--text)' }}>{label}</span>
-                  {s.nb > 0 && <span style={{ fontSize: '0.76em', color: '#9C8E7D' }}>{s.nb} facture{s.nb > 1 ? 's' : ''}</span>}
+                  {s.nb > 0 && <span style={{ fontSize: '0.76em', color: '#9C8E7D' }}>{s.nb} fact.</span>}
                   <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 1, minWidth: 160 }}>
-                    <span style={{ fontSize: '0.82em', color: '#9C8E7D', fontVariantNumeric: 'tabular-nums' }}>total TTC {s.nb ? fmt(s.totalTtc) : '—'}</span>
-                    <span style={{ fontSize: '0.78em', color: '#9C8E7D', fontVariantNumeric: 'tabular-nums' }}>dont reversements {s.nb ? fmt(s.totalRev) : '—'}</span>
+                    <span style={{ fontSize: '0.82em', color: '#9C8E7D', fontVariantNumeric: 'tabular-nums' }}>TTC {s.nb ? fmt(s.totalTtc) : '—'}</span>
+                    <span style={{ fontSize: '0.78em', color: '#9C8E7D', fontVariantNumeric: 'tabular-nums' }}>dont revers. {s.nb ? fmt(s.totalRev) : '—'}</span>
                   </div>
-                  <span style={{ fontSize: '0.72em', fontWeight: 600, padding: '1px 6px', borderRadius: 6, background: BADGE.proxy.bg, color: BADGE.proxy.color, whiteSpace: 'nowrap' }}>{BADGE.proxy.label}</span>
+                  <span style={{ fontSize: '0.72em', fontWeight: 600, padding: '1px 6px', borderRadius: 6, background: BADGE.proxy.bg, color: BADGE.proxy.color }}>{BADGE.proxy.label}</span>
                 </div>
               ))}
               <div style={{ display: 'flex', alignItems: 'baseline', gap: 10, padding: '8px 14px 10px', borderTop: '1px solid var(--border)', marginTop: 4 }}>
@@ -859,31 +848,75 @@ function OngletSequestre() {
               <SeqLigne label="Propriétaires — virements débités" montant={null} fiabilite="absent" indent />
               <SeqLigne label="AEs — paiements débités" montant={null} fiabilite="absent" indent />
               <SeqLigne label="DCB — transferts honoraires débités" montant={null} fiabilite="absent" indent />
-              <SeqLigne label="Autres débits rapprochés" montant={null} fiabilite="absent" indent />
               <div style={{ padding: '2px 14px 10px 32px', fontSize: '0.74em', color: '#9C8E7D', borderLeft: '2px solid var(--border)', marginLeft: 14 }}>
                 Prochaine étape : rapprocher les débits CE aux factures sortantes.
               </div>
 
               <SeqSeparateur label="5 — Bilan" />
-              <SeqLigne label="Encaissements prouvés suivis" montant={encaisse} fiabilite="fiable" highlight />
-              <SeqLigne
-                label="TVA collectée DCB (HON + COM + FMEN)"
-                montant={tvaDCB}
-                fiabilite="calcule"
-                detail="SUM(montant_ttc − montant_ht) sur lignes ventilées"
-              />
-              <SeqLigne
-                label="Écart résiduel"
-                montant={ecartResiduel}
-                fiabilite={Math.abs(ecartResiduel) < 500 ? 'calcule' : 'absent'}
-                detail={Math.abs(ecartResiduel) < 500 ? 'Arrondis normaux' : '⚠️ À investiguer'}
-                highlight={Math.abs(ecartResiduel) >= 500}
-              />
-              <div style={{ padding: '6px 14px 14px', fontSize: '0.74em', color: '#9C8E7D' }}>
-                TVA = dette fiscale DCB sur honoraires (calculée directement depuis la ventilation).<br />
-                Écart résiduel = fin_revenue des resas ventilées − somme ventilation HT. Devrait être ≈ 0.
+              <SeqLigne label="Base cash" montant={encaisse} fiabilite="fiable" highlight />
+              <SeqLigne label="TVA collectée DCB (HON + COM + FMEN)" montant={tvaDCB} fiabilite="calcule"
+                detail={ratioTVA != null ? `Ratio : ${(ratioTVA * 100).toFixed(1)} % base taxable TTC${ratioOk ? '' : ' ⚠'}` : undefined} />
+              <div style={{ margin: '4px 14px 8px', padding: '8px 12px', borderRadius: 8, background: ecartBg, border: `1px solid ${ecartColor}44`, display: 'flex', alignItems: 'baseline', gap: 10 }}>
+                <span style={{ flex: 1, fontSize: '0.88em', color: 'var(--text)', fontWeight: 600 }}>Écart résiduel</span>
+                <span style={{ fontSize: '0.82em', color: ecartColor, fontWeight: 600 }}>{ecartLabel}</span>
+                <span style={{ fontSize: '0.95em', fontWeight: 700, color: ecartColor, fontVariantNumeric: 'tabular-nums' }}>{fmt(ecartResiduel)}</span>
+              </div>
+              <div style={{ padding: '2px 14px 10px', fontSize: '0.74em', color: '#9C8E7D' }}>
+                Écart = fin_revenue ventilées − ventilTotalHT. TVA = SUM(montant_ttc − montant_ht) sur HON+COM+FMEN.
               </div>
             </div>
+
+            {/* ── Diagnostic qualité données ── */}
+            <div style={{ background: 'var(--bg-card)', border: '1px solid var(--border)', borderRadius: 12, overflow: 'hidden' }}>
+              <SeqSeparateur label="Diagnostic qualité données" />
+              {[
+                {
+                  label: 'Resas rapprochées sans ventilation',
+                  val: nbNonVentilees,
+                  sub: nbNonVentilees > 0 ? `${fmt(encaisseNonVentile)} non attribué` : null,
+                  ok: nbNonVentilees === 0,
+                  msg: nbNonVentilees === 0 ? 'OK' : `${nbNonVentilees} résa(s) — lancer recalcul ventilation`,
+                },
+                {
+                  label: 'Resas ventilation_calculee=true sans lignes',
+                  val: diag.nbResasSansLignes,
+                  sub: null,
+                  ok: diag.nbResasSansLignes === 0,
+                  msg: diag.nbResasSansLignes === 0 ? 'OK' : `${diag.nbResasSansLignes} résa(s) — flag incohérent`,
+                },
+                {
+                  label: 'Lignes HON/COM/FMEN avec montant_ht null',
+                  val: diag.nbHtNull,
+                  sub: diag.nbHtNull > 0 ? 'TVA mal calculée sur ces lignes' : null,
+                  ok: diag.nbHtNull === 0,
+                  msg: diag.nbHtNull === 0 ? 'OK' : `${diag.nbHtNull} ligne(s) — montant_ht manquant`,
+                },
+                {
+                  label: 'Doublons (reservation_id + code) dans ventilation',
+                  val: diag.nbDoublons,
+                  sub: diag.nbDoublons > 0 ? 'Ventilation possiblement surestimée' : null,
+                  ok: diag.nbDoublons === 0,
+                  msg: diag.nbDoublons === 0 ? 'OK' : `${diag.nbDoublons} paire(s) en double`,
+                },
+                {
+                  label: 'Ratio TVA / base taxable TTC',
+                  val: ratioTVA != null ? `${(ratioTVA * 100).toFixed(1)} %` : '—',
+                  sub: 'Attendu entre 14 % et 20 % (TVA 20 %)',
+                  ok: ratioOk,
+                  msg: ratioOk ? 'OK' : ratioTVA == null ? 'Pas de base taxable' : 'Hors norme — vérifier montant_ht',
+                },
+              ].map(({ label, val, sub, ok, msg }) => (
+                <div key={label} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '8px 14px', borderBottom: '1px solid var(--border)' }}>
+                  <span style={{ fontSize: '1em' }}>{ok ? '✅' : '⚠️'}</span>
+                  <span style={{ flex: 1 }}>
+                    <div style={{ fontSize: '0.85em', color: 'var(--text)' }}>{label}</div>
+                    {sub && <div style={{ fontSize: '0.76em', color: '#9C8E7D', marginTop: 1 }}>{sub}</div>}
+                  </span>
+                  <span style={{ fontSize: '0.85em', fontWeight: 700, color: ok ? '#065F46' : '#92400E', whiteSpace: 'nowrap' }}>{msg}</span>
+                </div>
+              ))}
+            </div>
+
           </div>
         )
       })()}
