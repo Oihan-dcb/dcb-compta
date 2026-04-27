@@ -1406,12 +1406,29 @@ export default function PageAutoEntrepreneurs() {
                   })}
                 </div>
                 {form.ae_user_id && (
-                  <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
                     <span style={{ fontSize: 11, color: '#9ca3af', fontFamily: 'monospace' }}>{form.ae_user_id}</span>
                     <button type="button" onClick={() => navigator.clipboard.writeText(form.ae_user_id)}
                       style={{ fontSize: 11, padding: '2px 8px', borderRadius: 4, border: '1px solid #e5e7eb', background: '#f9fafb', cursor: 'pointer', color: '#6b7280' }}>
                       Copier
                     </button>
+                    {!form.is_chat_manager && (
+                      <button type="button" onClick={async () => {
+                        try {
+                          await syncGroupMemberships(form.ae_user_id)
+                          const r = await fetch('https://dcb-planning.vercel.app/api/messagerie-create-staff-room', {
+                            method: 'POST', headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({ ae_user_id: form.ae_user_id }),
+                          })
+                          const d = await r.json()
+                          setSuccess(d.already_exists ? 'Rooms déjà créées ✓' : 'Rooms créées ✓')
+                          setTimeout(() => setSuccess(null), 3000)
+                        } catch (e) { setError(e.message) }
+                      }}
+                        style={{ fontSize: 11, padding: '2px 8px', borderRadius: 4, border: '1px solid #CC9933', background: '#FDF5E8', cursor: 'pointer', color: '#92400e', fontWeight: 600 }}>
+                        🔧 Créer rooms
+                      </button>
+                    )}
                   </div>
                 )}
                 {!form.ae_user_id && editing !== 'new' && (
