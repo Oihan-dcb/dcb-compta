@@ -631,29 +631,17 @@ function SeqSeparateur({ label }) {
 }
 
 function OngletSequestre() {
-  const [mois, setMois] = useState(() => localStorage.getItem('tab_sequestre_mois') || moisCourant)
-  const [moisDispos, setMoisDispos] = useState([moisCourant])
+  const mois = moisCourant
   const [data, setData]     = useState(null)
   const [loading, setLoading] = useState(true)
   const [error, setError]   = useState(null)
   const [genAt, setGenAt]   = useState(null)
 
-  const setMoisAndPersist = m => { setMois(m); localStorage.setItem('tab_sequestre_mois', m) }
-
-  useEffect(() => {
-    supabase.from('reservation').select('mois_comptable').then(({ data: res }) => {
-      const [cy, cm] = moisCourant.split('-').map(Number)
-      const thisYear = Array.from({ length: cm }, (_, i) => `${cy}-${String(i + 1).padStart(2, '0')}`)
-      const uniq = [...new Set([...thisYear, ...(res || []).map(d => d.mois_comptable).filter(Boolean)])].sort((a, b) => b.localeCompare(a))
-      setMoisDispos(uniq)
-    })
-  }, [])
-
   const charger = useCallback(async () => {
     setLoading(true)
     setError(null)
     try {
-      // ── A. Solde banque du mois sélectionné ────────────────────────────
+      // ── A. Flux banque du mois courant ──────────────────────────────────
       const { data: mbTotaux } = await supabase
         .from('mouvement_bancaire')
         .select('credit, debit')
@@ -661,24 +649,14 @@ function OngletSequestre() {
         .eq('mois_releve', mois)
       const soldeBanque = (mbTotaux || []).reduce((s, m) => s + (m.credit || 0) - (m.debit || 0), 0)
 
-      // ── B. Biens de l'agence ─────────────────────────────────────────────
-      const { data: biens } = await supabase
-        .from('bien').select('id').eq('agence', AGENCE)
-      const bienIds = (biens || []).map(b => b.id)
-
-      if (!bienIds.length) {
-        setData({ soldeBanque, encaisse: 0, nbResas: 0, nbNonVentilees: 0, encaisseNonVentile: 0, resasFutures: 0, ventil: { loy: 0, hon: 0, com: 0, fmen: 0, auto: 0, taxe: 0, autres: 0, totalVentile: 0 }, evoliz: { stats: { brouillon: { nb:0, totalTtc:0, totalRev:0 }, valide: { nb:0, totalTtc:0, totalRev:0 }, envoye: { nb:0, totalTtc:0, totalRev:0 } } }, ecart: 0 })
-        setGenAt(new Date())
-        return
-      }
-
       const today = new Date().toISOString().slice(0, 10)
 
-      // ── C. Réservations rapprochées du mois sélectionné ────────────────
+      // ── B. Réservations rapprochées du mois courant ─────────────────────
+      // Pas de filtre bien_id : rapprochee=true garantit déjà l'appartenance DCB
+      // (le rapprochement se fait via mouvement_bancaire.agence='DCB')
       const { data: resas } = await supabase
         .from('reservation')
         .select('id, fin_revenue, ventilation_calculee, final_status, departure_date')
-        .in('bien_id', bienIds)
         .eq('rapprochee', true)
         .eq('mois_comptable', mois)
         .gt('fin_revenue', 0)
@@ -693,7 +671,7 @@ function OngletSequestre() {
       const resasFutures     = resasValides.filter(r => r.departure_date && r.departure_date >= today).reduce((s, r) => s + (r.fin_revenue || 0), 0)
       const resaIds          = resasValides.filter(r => r.ventilation_calculee).map(r => r.id)
 
-      // ── D. Ventilation par code ──────────────────────────────────────────
+      // ── C. Ventilation par code ──────────────────────────────────────────
       const ventilRows = []
       for (let i = 0; i < resaIds.length; i += 400) {
         const { data: v } = await supabase
@@ -715,7 +693,7 @@ function OngletSequestre() {
       }
       ventil.totalVentile = ventil.loy + ventil.hon + ventil.com + ventil.fmen + ventil.auto + ventil.taxe + ventil.autres
 
-      // ── E. Evoliz du mois — suivi administratif uniquement ───────────────
+      // ── D. Evoliz du mois — suivi administratif uniquement ───────────────
       const { data: fAll } = await supabase
         .from('facture_evoliz')
         .select('statut, montant_reversement, total_ttc')
@@ -730,7 +708,7 @@ function OngletSequestre() {
       const evolizSum = arr => ({ nb: arr.length, totalTtc: arr.reduce((s, f) => s + (f.total_ttc || 0), 0), totalRev: arr.reduce((s, f) => s + (f.montant_reversement || 0), 0) })
       evoliz.stats = { brouillon: evolizSum(evoliz.brouillon), valide: evolizSum(evoliz.valide), envoye: evolizSum(evoliz.envoye) }
 
-      // ── F. Écart ─────────────────────────────────────────────────────────
+      // ── E. Écart ─────────────────────────────────────────────────────────
       const ecart = encaisse - (ventil.totalVentile + encaisseNonVentile)
 
       setData({ soldeBanque, encaisse, nbResas, nbNonVentilees, encaisseNonVentile, resasFutures, ventil, evoliz, ecart })
@@ -740,7 +718,7 @@ function OngletSequestre() {
     } finally {
       setLoading(false)
     }
-  }, [mois])
+  }, [])
 
   useEffect(() => { charger() }, [charger])
 
@@ -748,10 +726,12 @@ function OngletSequestre() {
     <div style={{ maxWidth: 1000 }}>
       {/* En-tête */}
       <div style={{ display: 'flex', alignItems: 'center', marginBottom: 20, gap: 12, flexWrap: 'wrap' }}>
-        <MoisSelector mois={mois} setMois={setMoisAndPersist} moisDispos={moisDispos} />
+        <div style={{ fontWeight: 700, fontSize: '1em', color: 'var(--text)' }}>
+          Séquestre — {new Date().toLocaleString('fr-FR', { month: 'long', year: 'numeric' })}
+        </div>
         <div style={{ fontSize: '0.8em', color: '#9C8E7D' }}>
           {genAt
-            ? <>Calcul arrêté au <strong style={{ color: 'var(--text)' }}>{genAt.toLocaleString('fr-FR')}</strong></>
+            ? <>Calculé le <strong style={{ color: 'var(--text)' }}>{genAt.toLocaleString('fr-FR')}</strong></>
             : null}
         </div>
         <button className="btn btn-secondary" onClick={charger} disabled={loading} style={{ marginLeft: 'auto', padding: '6px 14px' }}>
