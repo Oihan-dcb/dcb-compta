@@ -793,6 +793,29 @@ function OngletSequestre() {
               </div>
             </div>
 
+            {/* ── Logique multi-canal ── */}
+            <div style={{ background: '#FDFAF4', border: '1px solid #D9CEB8', borderRadius: 10, padding: '12px 16px', fontSize: '0.78em', color: '#5C4B2A', lineHeight: 1.7 }}>
+              <div style={{ fontWeight: 700, marginBottom: 8, color: '#2C2416', fontSize: '0.85em', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Logique de pilotage par canal</div>
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 10 }}>
+                <div style={{ background: '#FFF7E6', border: '1px solid #F0D88A', borderRadius: 8, padding: '8px 12px' }}>
+                  <div style={{ fontWeight: 700, marginBottom: 4, color: '#92400E' }}>Airbnb / Booking</div>
+                  <div>Référence : <strong>date de check-in</strong></div>
+                  <div style={{ marginTop: 4, color: '#78716C' }}>Le payout arrive après le séjour — on pilote sur la date d'arrivée</div>
+                </div>
+                <div style={{ background: '#F0FDF4', border: '1px solid #A7F3D0', borderRadius: 8, padding: '8px 12px' }}>
+                  <div style={{ fontWeight: 700, marginBottom: 4, color: '#065F46' }}>Direct / Stripe</div>
+                  <div>Référence : <strong>encaissement réel</strong> + date du séjour</div>
+                  <div style={{ marginTop: 4, color: '#78716C' }}>Entrée dès paiement confirmé, classé selon la date du séjour</div>
+                </div>
+                <div style={{ background: '#F0F9FF', border: '1px solid #BAE6FD', borderRadius: 8, padding: '8px 12px' }}>
+                  <div style={{ fontWeight: 700, marginBottom: 4, color: '#0369A1' }}>Manuel</div>
+                  <div>Référence : <strong>rapprochement bancaire</strong></div>
+                  <div style={{ marginTop: 4, color: '#78716C' }}>Entrée uniquement sur preuve bancaire — pas de date de séjour imposée</div>
+                </div>
+              </div>
+              <div style={{ marginTop: 8, color: '#9C8E7D', fontStyle: 'italic' }}>Ce n'est pas une incohérence — c'est une logique métier multi-canal. Chaque canal suit son horloge réelle.</div>
+            </div>
+
             {/* ── Détail séquestre ── */}
             <div style={{ background: 'var(--bg-card)', border: '1px solid var(--border)', borderRadius: 12, overflow: 'hidden' }}>
 
