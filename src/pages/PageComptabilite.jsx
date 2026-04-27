@@ -677,18 +677,40 @@ function OngletSequestre() {
           .in('reservation_id', resaIds.slice(i, i + 400))
         if (v) ventilRows.push(...v)
       }
-      const sumCode    = code => ventilRows.filter(v => v.code === code).reduce((s, v) => s + (v.montant_reel != null ? v.montant_reel : (v.montant_ht || 0)), 0)
-      const sumCodeTtc = code => ventilRows.filter(v => v.code === code).reduce((s, v) => s + (v.montant_ttc || 0), 0)
+      // sumReel : montant_reel si renseigné, sinon montant_ht (base HT)
+      const sumReel = code => ventilRows.filter(v => v.code === code)
+        .reduce((s, v) => s + (v.montant_reel != null ? v.montant_reel : (v.montant_ht || 0)), 0)
+      // sumTtc : montant_ttc (pour affichage des postes HON/COM/FMEN en TTC)
+      const sumTtc = code => ventilRows.filter(v => v.code === code)
+        .reduce((s, v) => s + (v.montant_ttc || 0), 0)
+
+      // Ventilation affichage (TTC pour HON/COM/FMEN, reel/ht pour le reste)
       const ventil = {
-        loy:    sumCode('LOY'),
-        hon:    sumCodeTtc('HON'),
-        com:    sumCodeTtc('COM'),
-        fmen:   sumCodeTtc('FMEN'),
-        auto:   sumCode('AUTO'),
-        taxe:   sumCode('TAXE'),
-        autres: ventilRows.filter(v => !['LOY','HON','COM','FMEN','AUTO','TAXE','VIR'].includes(v.code)).reduce((s, v) => s + (v.montant_reel != null ? v.montant_reel : (v.montant_ht || 0)), 0),
+        loy:    sumReel('LOY'),
+        hon:    sumTtc('HON'),
+        com:    sumTtc('COM'),
+        fmen:   sumTtc('FMEN'),
+        auto:   sumReel('AUTO'),
+        taxe:   sumReel('TAXE'),
+        autres: ventilRows.filter(v => !['LOY','HON','COM','FMEN','AUTO','TAXE','VIR'].includes(v.code))
+          .reduce((s, v) => s + (v.montant_reel != null ? v.montant_reel : (v.montant_ht || 0)), 0),
       }
       ventil.totalVentile = ventil.loy + ventil.hon + ventil.com + ventil.fmen + ventil.auto + ventil.taxe + ventil.autres
+
+      // TVA DCB — calcul direct : SUM(montant_ttc − montant_ht) sur HON + COM + FMEN uniquement
+      const tvaDCB = ventilRows
+        .filter(v => ['HON', 'COM', 'FMEN'].includes(v.code))
+        .reduce((s, v) => s + ((v.montant_ttc || 0) - (v.montant_ht || 0)), 0)
+
+      // Total ventilation base HT (cohérent avec fin_revenue) : reel/ht pour tous les codes
+      const ventilTotalHT = ventilRows
+        .filter(v => v.code !== 'VIR')
+        .reduce((s, v) => s + (v.montant_reel != null ? v.montant_reel : (v.montant_ht || 0)), 0)
+
+      // Écart résiduel = fin_revenue ventilées − ventilTotalHT
+      // Devrait être ≈ 0 si les données sont cohérentes
+      const encaisseVentilees = encaisse - encaisseNonVentile
+      const ecartResiduel = encaisseVentilees - ventilTotalHT
 
       // ── D. Evoliz — toutes factures (pas de filtre mois) ────────────────
       const { data: fAll } = await supabase
@@ -704,10 +726,7 @@ function OngletSequestre() {
       const evolizSum = arr => ({ nb: arr.length, totalTtc: arr.reduce((s, f) => s + (f.total_ttc || 0), 0), totalRev: arr.reduce((s, f) => s + (f.montant_reversement || 0), 0) })
       evoliz.stats = { brouillon: evolizSum(evoliz.brouillon), valide: evolizSum(evoliz.valide), envoye: evolizSum(evoliz.envoye) }
 
-      // ── E. Écart ─────────────────────────────────────────────────────────
-      const ecart = encaisse - (ventil.totalVentile + encaisseNonVentile)
-
-      setData({ encaisse, nbResas, nbNonVentilees, encaisseNonVentile, resasFutures, ventil, evoliz, ecart })
+      setData({ encaisse, nbResas, nbNonVentilees, encaisseNonVentile, resasFutures, ventil, tvaDCB, ecartResiduel, evoliz })
       setGenAt(new Date())
     } catch (e) {
       setError(e.message)
@@ -739,7 +758,7 @@ function OngletSequestre() {
       {loading && !data && <div style={{ textAlign: 'center', padding: 40, color: '#9C8E7D' }}>Chargement…</div>}
 
       {data && (() => {
-        const { encaisse, nbResas, nbNonVentilees, encaisseNonVentile, resasFutures, ventil, evoliz, ecart } = data
+        const { encaisse, nbResas, nbNonVentilees, encaisseNonVentile, resasFutures, ventil, tvaDCB, ecartResiduel, evoliz } = data
 
         // Score global
         const scoreEntrees = nbResas > 0 ? 'fiable' : 'absent'
@@ -849,12 +868,20 @@ function OngletSequestre() {
               <SeqLigne label="Encaissements prouvés suivis" montant={encaisse} fiabilite="fiable" highlight />
               <SeqLigne
                 label="TVA collectée DCB (HON + COM + FMEN)"
-                montant={Math.abs(ecart)}
+                montant={tvaDCB}
                 fiabilite="calcule"
-                detail="Normal — TVA dans ventil. TTC, absente du payout"
+                detail="SUM(montant_ttc − montant_ht) sur lignes ventilées"
+              />
+              <SeqLigne
+                label="Écart résiduel"
+                montant={ecartResiduel}
+                fiabilite={Math.abs(ecartResiduel) < 500 ? 'calcule' : 'absent'}
+                detail={Math.abs(ecartResiduel) < 500 ? 'Arrondis normaux' : '⚠️ À investiguer'}
+                highlight={Math.abs(ecartResiduel) >= 500}
               />
               <div style={{ padding: '6px 14px 14px', fontSize: '0.74em', color: '#9C8E7D' }}>
-                L'écart entre encaissé et ventilé TTC correspond à la TVA DCB sur honoraires. Ce montant est dû à l'État, pas aux partenaires.
+                TVA = dette fiscale DCB sur honoraires (calculée directement depuis la ventilation).<br />
+                Écart résiduel = fin_revenue des resas ventilées − somme ventilation HT. Devrait être ≈ 0.
               </div>
             </div>
           </div>
