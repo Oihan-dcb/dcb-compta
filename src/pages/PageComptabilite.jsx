@@ -596,6 +596,7 @@ const BADGE = {
   fiable:  { bg: '#D1FAE5', color: '#065F46', label: 'Fiable — prouvé banque' },
   calcule: { bg: '#DBEAFE', color: '#1E40AF', label: 'Calculé — ventilation' },
   proxy:   { bg: '#FEF3C7', color: '#92400E', label: 'Proxy — facture Evoliz' },
+  estime:  { bg: '#FEF3C7', color: '#92400E', label: 'Estimé — partiel' },
   absent:  { bg: '#F1F5F9', color: '#64748B', label: 'Absent — non rapproché' },
 }
 
@@ -652,12 +653,12 @@ function OngletSequestre() {
     setLoading(true)
     setError(null)
     try {
-      // ── A. Solde banque cumulatif jusqu'au mois sélectionné ─────────────
+      // ── A. Solde banque du mois sélectionné ────────────────────────────
       const { data: mbTotaux } = await supabase
         .from('mouvement_bancaire')
         .select('credit, debit')
         .eq('agence', AGENCE)
-        .lte('mois_releve', mois)
+        .eq('mois_releve', mois)
       const soldeBanque = (mbTotaux || []).reduce((s, m) => s + (m.credit || 0) - (m.debit || 0), 0)
 
       // ── B. Biens de l'agence ─────────────────────────────────────────────
@@ -673,13 +674,13 @@ function OngletSequestre() {
 
       const today = new Date().toISOString().slice(0, 10)
 
-      // ── C. Réservations rapprochées — cumulatif jusqu'au mois sélectionné
+      // ── C. Réservations rapprochées du mois sélectionné ────────────────
       const { data: resas } = await supabase
         .from('reservation')
         .select('id, fin_revenue, ventilation_calculee, final_status, departure_date')
         .in('bien_id', bienIds)
         .eq('rapprochee', true)
-        .lte('mois_comptable', mois)
+        .eq('mois_comptable', mois)
         .gt('fin_revenue', 0)
       const resasValides = (resas || []).filter(r =>
         !['not_accepted', 'not accepted', 'declined', 'expired'].includes(r.final_status)
@@ -801,9 +802,9 @@ function OngletSequestre() {
               </div>
               <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 1, background: 'var(--border)' }}>
                 {[
-                  { label: 'Solde banque (CE importé)', montant: soldeBanque, badge: BADGE.fiable, note: 'SUM crédits − débits tous mouvements importés' },
-                  { label: 'Base cash suivie', montant: encaisse, badge: BADGE.fiable, note: `${nbResas} résa(s) rapprochée(s)` },
-                  { label: 'Écart à expliquer', montant: ecartBanque, badge: Math.abs(ecartBanque) < 10000 ? BADGE.fiable : BADGE.proxy, note: ecartBanque > 0 ? 'Banque > suivi : mouvements non encore rapprochés' : ecartBanque < 0 ? 'Suivi > banque : fin_revenue possiblement surestimé' : 'Parfait' },
+                  { label: 'Flux banque du mois (CE)', montant: soldeBanque, badge: BADGE.fiable, note: 'Crédits − débits CE importés ce mois' },
+                  { label: 'Encaissé suivi (rapproché)', montant: encaisse, badge: BADGE.fiable, note: `${nbResas} résa(s) rapprochée(s)` },
+                  { label: 'Écart à expliquer', montant: ecartBanque, badge: Math.abs(ecartBanque) < 5000 ? BADGE.fiable : BADGE.estime, note: ecartBanque > 0 ? 'Banque > suivi : mouvements non encore rapprochés' : ecartBanque < 0 ? 'Suivi > banque : fin_revenue possiblement surestimé' : 'Parfait' },
                 ].map(({ label, montant, badge, note }) => (
                   <div key={label} style={{ background: 'var(--bg-card)', padding: '14px 16px' }}>
                     <div style={{ fontSize: '0.74em', color: '#9C8E7D', fontWeight: 600, marginBottom: 4 }}>{label}</div>
