@@ -590,13 +590,120 @@ export default function PageAutoEntrepreneurs() {
     })
   }
 
+  function genererHtmlAcces(ae) {
+    const portailUrl = 'https://staff-app.destinationcotebasque.com'
+    const mdp = ae.mdp_temporaire || '(non disponible)'
+    const prenom = ae.prenom || ae.nom || 'Bonjour'
+    return `<!DOCTYPE html><html lang="fr"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"></head>
+<body style="margin:0;padding:0;background:#F7F3EC;font-family:Arial,Helvetica,sans-serif;">
+<div style="max-width:600px;margin:0 auto;background:#fff;">
+
+  <div style="background:#2C2416;padding:32px 36px 24px;">
+    <div style="font-size:10px;letter-spacing:.12em;text-transform:uppercase;color:#CC9933;margin-bottom:8px;">Destination Côte Basque</div>
+    <div style="font-size:24px;font-weight:700;color:#fff;letter-spacing:-.5px;">DCB &amp; Moi</div>
+    <div style="font-size:14px;color:rgba(255,255,255,.55);margin-top:4px;">On remplace WhatsApp</div>
+  </div>
+
+  <div style="padding:28px 36px 0;">
+    <p style="font-size:15px;color:#2C2416;margin:0 0 20px;">Bonjour ${prenom},</p>
+    <p style="font-size:14px;color:#4A3728;line-height:1.7;margin:0 0 24px;">À partir de maintenant on passe sur <strong>DCB &amp; Moi</strong> pour tous nos échanges internes à la place de WhatsApp.</p>
+
+    <!-- Accès -->
+    <div style="background:#F7F3EC;border-radius:10px;padding:20px 24px;margin-bottom:28px;">
+      <div style="font-size:11px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;color:#CC9933;margin-bottom:14px;">Vos accès</div>
+      <table style="width:100%;border-collapse:collapse;">
+        <tr><td style="padding:6px 0;font-size:12px;color:#9C8E7D;width:110px;">Adresse</td><td style="padding:6px 0;"><a href="${portailUrl}" style="color:#CC9933;font-weight:700;font-size:13px;text-decoration:none;">${portailUrl}</a></td></tr>
+        <tr><td style="padding:6px 0;font-size:12px;color:#9C8E7D;">Email</td><td style="padding:6px 0;font-size:13px;color:#2C2416;font-family:monospace;">${ae.email || '—'}</td></tr>
+        <tr><td style="padding:6px 0;font-size:12px;color:#9C8E7D;">Mot de passe</td><td style="padding:6px 0;font-size:13px;color:#2C2416;font-family:monospace;font-weight:700;">${mdp}</td></tr>
+      </table>
+    </div>
+
+    <!-- 2 actions -->
+    <div style="margin-bottom:28px;">
+      <div style="font-size:13px;font-weight:700;color:#2C2416;margin-bottom:14px;">2 choses à faire maintenant</div>
+      <div style="display:flex;flex-direction:column;gap:12px;">
+        <div style="display:flex;gap:12px;align-items:flex-start;">
+          <div style="min-width:26px;height:26px;background:#CC9933;border-radius:50%;display:flex;align-items:center;justify-content:center;color:#fff;font-weight:700;font-size:13px;flex-shrink:0;">1</div>
+          <div>
+            <div style="font-size:13px;font-weight:600;color:#2C2416;margin-bottom:3px;">Ajoutez-la sur votre écran d'accueil</div>
+            <div style="font-size:12px;color:#6b6359;line-height:1.6;">
+              <strong>iPhone</strong> : ouvrez le lien dans Safari → bouton Partager ↑ → "Sur l'écran d'accueil"<br>
+              <strong>Android</strong> : ouvrez dans Chrome → menu ⋮ → "Ajouter à l'écran d'accueil"
+            </div>
+          </div>
+        </div>
+        <div style="display:flex;gap:12px;align-items:flex-start;">
+          <div style="min-width:26px;height:26px;background:#CC9933;border-radius:50%;display:flex;align-items:center;justify-content:center;color:#fff;font-weight:700;font-size:13px;flex-shrink:0;">2</div>
+          <div>
+            <div style="font-size:13px;font-weight:600;color:#2C2416;margin-bottom:3px;">Acceptez les notifications quand ça vous le demande</div>
+            <div style="font-size:12px;color:#6b6359;">C'est comme ça que vous recevrez les messages en temps réel.</div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Features -->
+    <div style="border-top:1px solid #E8E2D6;padding-top:24px;margin-bottom:24px;">
+      <div style="font-size:11px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;color:#9C8E7D;margin-bottom:16px;">Ce que vous pouvez faire avec</div>
+      <div style="display:flex;flex-direction:column;gap:14px;">
+        <div style="display:flex;gap:12px;">
+          <span style="font-size:20px;flex-shrink:0;">💬</span>
+          <div>
+            <div style="font-size:13px;font-weight:600;color:#2C2416;margin-bottom:2px;">Messagerie</div>
+            <div style="font-size:12px;color:#6b6359;line-height:1.6;">Un groupe d'équipe et la possibilité d'écrire directement à n'importe qui. Envoyez des messages, des photos et des vidéos. Quand vous envoyez un média, vous précisez le sujet (avant ménage, après ménage, dégât, état des lieux…) et le bien concerné — tout est archivé et retrouvable facilement.</div>
+          </div>
+        </div>
+        <div style="display:flex;gap:12px;">
+          <span style="font-size:20px;flex-shrink:0;">🧰</span>
+          <div>
+            <div style="font-size:13px;font-weight:600;color:#2C2416;margin-bottom:2px;">Boîte à outils</div>
+            <div style="font-size:12px;color:#6b6359;line-height:1.6;">Toutes les infos pratiques de chaque bien à portée de main : adresse, codes d'entrée et de coffre, consignes poubelles, lien arrivée voyageur, dotation en linge et notes. Plus besoin de chercher dans vos mails.</div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Warning -->
+    <div style="background:#FEF9EC;border:1px solid #CC9933;border-radius:8px;padding:14px 16px;margin-bottom:28px;">
+      <div style="font-size:12px;color:#92400E;line-height:1.7;">
+        ⚠️ <strong>Soyez précis dans vos messages.</strong> Plus le contexte est clair — quel bien, quelle date, quel type d'intervention — mieux les informations sont classées et traitées automatiquement.<br>
+        <em>"CI confirmée Maïté le 3 mai avec Clémence"</em> plutôt que <em>"c'est bon pour vendredi"</em>. Ça nous fait gagner du temps à tous.
+      </div>
+    </div>
+
+    <p style="font-size:13px;color:#4A3728;margin:0 0 32px;">Des questions, écrivez-moi.</p>
+  </div>
+
+  <div style="background:#F7F3EC;padding:16px 36px;border-top:1px solid #E8E2D6;">
+    <div style="font-size:11px;color:#9C8E7D;">Destination Côte Basque · oihan@destinationcotebasque.com</div>
+  </div>
+</div>
+</body></html>`
+  }
+
   async function envoyerIdentifiants(ae) {
     const portailUrl = 'https://staff-app.destinationcotebasque.com'
     const mdp = ae.mdp_temporaire || '(non disponible - recréer le compte)'
-    const msg = `Bonjour ${ae.prenom || ae.nom},\n\nVoici vos accès au portail Destination Côte Basque 🌅\n\nURL : ${portailUrl}\nEmail : ${ae.email}\nMot de passe : ${mdp}\n\nConnectez-vous pour voir vos missions et déclarer vos prestations.\n\nÀ bientôt,\nDestination Côte Basque`
+    const prenom = ae.prenom || ae.nom || ''
+    const msg = `Bonjour ${prenom},\n\nDCB & Moi — On remplace WhatsApp\n\nÀ partir de maintenant on passe sur DCB & Moi pour tous nos échanges internes.\n\n👉 ${portailUrl}\n\nVos accès :\nEmail : ${ae.email}\nMot de passe : ${mdp}\n\n---\n2 choses à faire maintenant\n\n1. Ajoutez-la sur votre écran d'accueil\nSur iPhone : ouvrez le lien dans Safari → bouton Partager ↑ → "Sur l'écran d'accueil"\nSur Android : ouvrez dans Chrome → menu ⋮ → "Ajouter à l'écran d'accueil"\n\n2. Acceptez les notifications quand ça vous le demande\nC'est comme ça que vous recevrez les messages en temps réel.\n\n---\nDes questions, écrivez-moi.`
     await navigator.clipboard.writeText(msg)
-    setSuccess('Message copié ! Collez-le dans un SMS ou email.')
+    setSuccess('Message copié !')
     setTimeout(() => setSuccess(null), 3000)
+  }
+
+  async function envoyerEmailAcces(ae) {
+    if (!ae.email) { setError('Email requis'); return }
+    setSaving(true); setError(null)
+    try {
+      const html = genererHtmlAcces(ae)
+      const { data: r, error: e } = await supabase.functions.invoke('smtp-send', {
+        body: { to: ae.email, subject: 'DCB & Moi — Vos accès à l\'application', html }
+      })
+      if (e) throw e
+      if (!r?.ok) throw new Error(r?.error || 'Erreur envoi')
+      setSuccess(`Email envoyé à ${ae.email} ✓`)
+    } catch (e) { setError('Email : ' + e.message) }
+    finally { setSaving(false) }
   }
 
   async function sauvegarderPT() {
@@ -721,7 +828,8 @@ export default function PageAutoEntrepreneurs() {
                     </div>
                     {ae.ical_url && <div style={{ background: '#eff6ff', color: '#CC9933', borderRadius: 6, padding: '4px 10px', fontSize: 12, fontWeight: 600 }}>📅 iCal</div>}
                 {ae.type === 'staff' && <div style={{ background: '#fef3c7', color: '#92400e', borderRadius: 6, padding: '4px 10px', fontSize: 12, fontWeight: 700 }}>🌅 DCB Staff</div>}
-                    <button onClick={() => envoyerIdentifiants(ae)} title="Copier message avec identifiants" style={{ background: '#f0fdf4', color: '#16a34a', border: '1px solid #bbf7d0', borderRadius: 6, padding: '6px 10px', fontSize: 12, cursor: 'pointer' }}>📨 Identifiants</button>
+                    {ae.email && <button onClick={() => envoyerEmailAcces(ae)} title="Envoyer email de bienvenue avec accès" style={{ background: '#f0fdf4', color: '#16a34a', border: '1px solid #bbf7d0', borderRadius: 6, padding: '6px 10px', fontSize: 12, cursor: 'pointer' }}>📧 Email accès</button>}
+                    <button onClick={() => envoyerIdentifiants(ae)} title="Copier message avec identifiants" style={{ background: '#f9fafb', color: '#374151', border: '1px solid #e5e7eb', borderRadius: 6, padding: '6px 10px', fontSize: 12, cursor: 'pointer' }}>📋 Copier</button>
                     {(!ae.mdp_temporaire || !ae.ae_user_id) && ae.email && (
                       <button onClick={() => resetMdp(ae)} title="Créer/réinitialiser le mot de passe" style={{ background: '#fff7ed', color: '#c2410c', border: '1px solid #fed7aa', borderRadius: 6, padding: '6px 10px', fontSize: 12, cursor: 'pointer' }}>🔑 {ae.ae_user_id ? 'Regen mdp' : 'Créer accès'}</button>
                     )}
