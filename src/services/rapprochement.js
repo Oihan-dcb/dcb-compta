@@ -353,7 +353,7 @@ export async function getMouvementsMois(mois) {
             for (const resaId of info.reservation_ids) {
               const bRef = Object.keys(resaByRef).find(k => resaByRef[k]?.id === resaId)
               const line = bookingLines?.find(l => l.booking_ref === bRef)
-              const montant = line ? line.amount_cents / 100 : m.credit  // amount_cents → euros
+              const montant = line ? line.amount_cents : m.credit  // amount_cents = centimes (cohérent avec fin_revenue)
               const finRev = resaByRef[bRef]?.fin_revenue || 0
               supabase.from('reservation_paiement').upsert({
                 reservation_id: resaId, mouvement_id: m.id,
