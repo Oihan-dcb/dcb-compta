@@ -3,6 +3,7 @@ import MoisSelector, { MOIS_FR } from '../components/MoisSelector'
 import { useMoisPersisted } from '../hooks/useMoisPersisted'
 import { supabase } from '../lib/supabase'
 import { buildComptaMensuelle } from '../services/buildComptaMensuelle'
+import { AGENCE } from '../lib/agence'
 
 const moisCourant = new Date().toISOString().slice(0, 7)
 const fmt = c => c != null ? ((c / 100).toFixed(2).replace('.', ',') + ' €') : '—'
@@ -33,6 +34,9 @@ function AlertBadge({ level, count }) {
 }
 
 export default function PageComptabilite() {
+  const [tab, setTab] = useState(() => localStorage.getItem('tab_compta') || 'mensuelle')
+  const switchTab = t => { setTab(t); localStorage.setItem('tab_compta', t) }
+
   const [mois, setMois] = useMoisPersisted()
   const [moisDispos, setMoisDispos] = useState([moisCourant])
   const [data, setData] = useState(null)
@@ -216,19 +220,36 @@ export default function PageComptabilite() {
   return (
     <div style={{ padding: '24px 28px', maxWidth: 1400, margin: '0 auto' }}>
       {/* En-tête */}
-      <div style={{ display: 'flex', alignItems: 'center', gap: 16, marginBottom: 24, flexWrap: 'wrap' }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 16, marginBottom: 16, flexWrap: 'wrap' }}>
         <div>
           <h1 style={{ margin: 0, fontSize: '1.4em', fontWeight: 700, color: 'var(--text)' }}>Comptabilité</h1>
-          <div style={{ fontSize: '0.82em', color: '#9C8E7D', marginTop: 2 }}>Vue d'ensemble mensuelle — tous biens</div>
         </div>
-        <div style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: 10 }}>
-          <MoisSelector mois={mois} setMois={setMois} moisDispos={moisDispos} />
-          <button className="btn btn-secondary" onClick={charger} disabled={loading} style={{ padding: '6px 14px' }}>
-            {loading ? '…' : '↺'}
-          </button>
-        </div>
+        {tab === 'mensuelle' && (
+          <div style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: 10 }}>
+            <MoisSelector mois={mois} setMois={setMois} moisDispos={moisDispos} />
+            <button className="btn btn-secondary" onClick={charger} disabled={loading} style={{ padding: '6px 14px' }}>
+              {loading ? '…' : '↺'}
+            </button>
+          </div>
+        )}
       </div>
 
+      {/* Onglets */}
+      <div style={{ display: 'flex', gap: 0, marginBottom: 24, borderBottom: '2px solid var(--border)' }}>
+        {[
+          { key: 'mensuelle', label: 'Vue mensuelle' },
+          { key: 'sequestre', label: 'Séquestre' },
+        ].map(({ key, label }) => (
+          <button key={key} onClick={() => switchTab(key)}
+            style={{ padding: '8px 20px', border: 'none', background: 'none', cursor: 'pointer', fontSize: '0.9em', fontWeight: tab === key ? 700 : 400, color: tab === key ? 'var(--brand)' : '#9C8E7D', borderBottom: tab === key ? '2px solid var(--brand)' : '2px solid transparent', marginBottom: -2, transition: 'color 0.15s' }}>
+            {label}
+          </button>
+        ))}
+      </div>
+
+      {tab === 'sequestre' && <OngletSequestre />}
+
+      {tab === 'mensuelle' && <>
       {/* Erreur */}
       {error && (
         <div style={{ background: '#FEF2F2', border: '1px solid #FECACA', borderRadius: 8, padding: '12px 16px', color: '#DC2626', marginBottom: 20 }}>
@@ -548,6 +569,7 @@ export default function PageComptabilite() {
           Généré le {new Date(data.metadata.generated_at).toLocaleString('fr-FR')} · {data.metadata.nb_rows} biens actifs
         </div>
       )}
+      </>}
     </div>
   )
 }
@@ -565,4 +587,231 @@ const td = {
   padding: '8px 10px',
   verticalAlign: 'middle',
   whiteSpace: 'nowrap',
+}
+
+// ── Onglet Séquestre ──────────────────────────────────────────────────────────
+
+const POCHES = [
+  {
+    id: 'non_attribue',
+    label: 'Encaissé non attribué',
+    desc: 'Crédits bancaires reçus, non encore rapprochés à une réservation',
+    color: '#f59e0b',
+    bg: '#FFFBEB',
+    border: '#FDE68A',
+    icon: '⚠️',
+    fiabilite: 'Fiable',
+  },
+  {
+    id: 'du_proprios',
+    label: 'Dû aux propriétaires',
+    desc: 'Reversements sur factures envoyées, virements non encore émis',
+    color: '#0369a1',
+    bg: '#F0F9FF',
+    border: '#BAE6FD',
+    icon: '🏠',
+    fiabilite: 'Fiable',
+  },
+  {
+    id: 'du_dcb',
+    label: 'Honoraires DCB acquis',
+    desc: 'HON + FMEN nets sur factures envoyées, non encore transférés',
+    color: '#7C3AED',
+    bg: '#F5F3FF',
+    border: '#DDD6FE',
+    icon: '🏢',
+    fiabilite: 'Fiable',
+  },
+  {
+    id: 'brouillons',
+    label: 'Brouillons en cours',
+    desc: 'Factures en brouillon — reversements calculés non encore envoyés',
+    color: '#6b7280',
+    bg: '#F9FAFB',
+    border: '#E5E7EB',
+    icon: '📝',
+    fiabilite: 'Indicatif',
+  },
+  {
+    id: 'du_aes',
+    label: 'Dû aux AEs (provision)',
+    desc: 'Provisions AUTO sur mois récents — montant réel si saisi, sinon provision',
+    color: '#059669',
+    bg: '#F0FDF4',
+    border: '#A7F3D0',
+    icon: '👤',
+    fiabilite: 'Approximatif',
+  },
+  {
+    id: 'taxes',
+    label: 'Taxes de séjour collectées',
+    desc: 'TAXE ventilée sur réservations directes — à reverser à la commune',
+    color: '#DC2626',
+    bg: '#FEF2F2',
+    border: '#FECACA',
+    icon: '🏛️',
+    fiabilite: 'Approximatif',
+  },
+]
+
+function OngletSequestre() {
+  const [poches, setPoches] = useState(null)
+  const [loading, setLoading] = useState(true)
+  const [error, setError] = useState(null)
+
+  const charger = useCallback(async () => {
+    setLoading(true)
+    setError(null)
+    try {
+      // Poche 1 — Encaissé non attribué (crédits bancaires non rapprochés)
+      const { data: p1 } = await supabase
+        .from('mouvement_bancaire')
+        .select('credit')
+        .in('statut_matching', ['en_attente', 'non_identifie'])
+        .gt('credit', 0)
+        .eq('agence', AGENCE)
+      const nonAttribue = (p1 || []).reduce((s, r) => s + (r.credit || 0), 0)
+      const nbNonAttribue = (p1 || []).length
+
+      // Poche 2 + 3 — Factures honoraires envoye_evoliz
+      const { data: facturesEnv } = await supabase
+        .from('facture_evoliz')
+        .select('montant_reversement, total_ttc, mois')
+        .eq('statut', 'envoye_evoliz')
+        .eq('type_facture', 'honoraires')
+        .eq('agence', AGENCE)
+      const duProprios = (facturesEnv || []).reduce((s, r) => s + (r.montant_reversement || 0), 0)
+      const duDcb = (facturesEnv || []).reduce((s, r) => s + ((r.total_ttc || 0) - (r.montant_reversement || 0)), 0)
+      const nbFacturesEnv = (facturesEnv || []).length
+      const moisFacturesEnv = [...new Set((facturesEnv || []).map(r => r.mois).filter(Boolean))].sort((a, b) => b.localeCompare(a))
+
+      // Poche 4 — Brouillons (factures honoraires non encore envoyées)
+      const { data: facturesBrouillon } = await supabase
+        .from('facture_evoliz')
+        .select('montant_reversement, total_ttc, mois')
+        .eq('statut', 'brouillon')
+        .eq('type_facture', 'honoraires')
+        .eq('agence', AGENCE)
+      const brouillonsRev = (facturesBrouillon || []).reduce((s, r) => s + (r.montant_reversement || 0), 0)
+      const brouillonsDcb = (facturesBrouillon || []).reduce((s, r) => s + ((r.total_ttc || 0) - (r.montant_reversement || 0)), 0)
+      const nbBrouillons = (facturesBrouillon || []).length
+
+      // Poche 5 — Dû aux AEs (ventilation AUTO, 6 derniers mois)
+      const sixMoisAgo = new Date(); sixMoisAgo.setMonth(sixMoisAgo.getMonth() - 6)
+      const sixMoisAgoStr = sixMoisAgo.toISOString().slice(0, 7)
+      const { data: autoVentil } = await supabase
+        .from('ventilation')
+        .select('montant_reel, montant_ht, mois_comptable')
+        .eq('code', 'AUTO')
+        .eq('agence', AGENCE)
+        .gte('mois_comptable', sixMoisAgoStr)
+      const duAes = (autoVentil || []).reduce((s, r) => s + (r.montant_reel != null ? r.montant_reel : (r.montant_ht || 0)), 0)
+      const nbAutoMois = [...new Set((autoVentil || []).map(r => r.mois_comptable).filter(Boolean))].length
+
+      // Poche 6 — Taxes (ventilation TAXE, 6 derniers mois)
+      const { data: taxeVentil } = await supabase
+        .from('ventilation')
+        .select('montant_ht, mois_comptable')
+        .eq('code', 'TAXE')
+        .eq('agence', AGENCE)
+        .gte('mois_comptable', sixMoisAgoStr)
+      const taxes = (taxeVentil || []).reduce((s, r) => s + (r.montant_ht || 0), 0)
+      const nbTaxeMois = [...new Set((taxeVentil || []).map(r => r.mois_comptable).filter(Boolean))].length
+
+      setPoches({
+        non_attribue:  { montant: nonAttribue,  nb: nbNonAttribue,  extra: null },
+        du_proprios:   { montant: duProprios,    nb: nbFacturesEnv,  extra: moisFacturesEnv.length ? `${moisFacturesEnv.length} mois : ${moisFacturesEnv.slice(0, 3).join(', ')}${moisFacturesEnv.length > 3 ? '…' : ''}` : null },
+        du_dcb:        { montant: duDcb,         nb: nbFacturesEnv,  extra: null },
+        brouillons:    { montant: brouillonsRev + brouillonsDcb, nb: nbBrouillons, extra: nbBrouillons ? `dont ${fmtN(brouillonsRev)} proprios + ${fmtN(brouillonsDcb)} DCB` : null },
+        du_aes:        { montant: duAes,         nb: nbAutoMois,     extra: `${nbAutoMois} mois (provision / réel)` },
+        taxes:         { montant: taxes,         nb: nbTaxeMois,     extra: `${nbTaxeMois} mois — resas directes uniquement` },
+      })
+    } catch (e) {
+      setError(e.message)
+    } finally {
+      setLoading(false)
+    }
+  }, [])
+
+  useEffect(() => { charger() }, [charger])
+
+  const total = poches
+    ? (poches.non_attribue.montant + poches.du_proprios.montant + poches.du_dcb.montant + poches.du_aes.montant + poches.taxes.montant)
+    : 0
+
+  return (
+    <div>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 20 }}>
+        <div>
+          <div style={{ fontSize: '0.82em', color: '#9C8E7D' }}>Répartition des fonds en séquestre — vue globale (hors brouillons)</div>
+        </div>
+        <button className="btn btn-secondary" onClick={charger} disabled={loading} style={{ marginLeft: 'auto', padding: '6px 14px' }}>
+          {loading ? '…' : '↺'}
+        </button>
+      </div>
+
+      {error && (
+        <div style={{ background: '#FEF2F2', border: '1px solid #FECACA', borderRadius: 8, padding: '12px 16px', color: '#DC2626', marginBottom: 20 }}>
+          {error}
+        </div>
+      )}
+
+      {loading && !poches && (
+        <div style={{ textAlign: 'center', padding: 40, color: '#9C8E7D' }}>Chargement…</div>
+      )}
+
+      {poches && (
+        <>
+          {/* Total */}
+          <div style={{ background: 'var(--bg)', border: '2px solid var(--brand)', borderRadius: 10, padding: '16px 20px', marginBottom: 24, display: 'flex', alignItems: 'center', gap: 16 }}>
+            <div>
+              <div style={{ fontSize: '0.75em', color: '#9C8E7D', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.05em' }}>Total séquestre calculé</div>
+              <div style={{ fontSize: '1.8em', fontWeight: 700, color: 'var(--brand)', fontVariantNumeric: 'tabular-nums' }}>{fmt(total)}</div>
+            </div>
+            <div style={{ marginLeft: 'auto', fontSize: '0.75em', color: '#9C8E7D', textAlign: 'right', lineHeight: 1.6 }}>
+              <div>Lecture seule — aucune donnée modifiée</div>
+              <div>Montants en centimes divisés par 100</div>
+            </div>
+          </div>
+
+          {/* Grille poches */}
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))', gap: 14, marginBottom: 24 }}>
+            {POCHES.map(p => {
+              const d = poches[p.id]
+              return (
+                <div key={p.id} style={{ background: p.bg, border: `1px solid ${p.border}`, borderRadius: 10, padding: '16px 18px' }}>
+                  <div style={{ display: 'flex', alignItems: 'flex-start', gap: 8, marginBottom: 8 }}>
+                    <span style={{ fontSize: '1.1em' }}>{p.icon}</span>
+                    <div style={{ flex: 1 }}>
+                      <div style={{ fontWeight: 700, color: p.color, fontSize: '0.88em' }}>{p.label}</div>
+                      <div style={{ fontSize: '0.75em', color: '#9C8E7D', marginTop: 2, lineHeight: 1.4 }}>{p.desc}</div>
+                    </div>
+                  </div>
+                  <div style={{ fontSize: '1.6em', fontWeight: 700, color: p.color, fontVariantNumeric: 'tabular-nums', marginBottom: 4 }}>
+                    {fmt(d.montant)}
+                  </div>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: '0.75em', color: '#9C8E7D', flexWrap: 'wrap' }}>
+                    {d.nb > 0 && <span style={{ background: 'rgba(0,0,0,0.06)', padding: '1px 6px', borderRadius: 8 }}>{d.nb} ligne(s)</span>}
+                    <span style={{ background: p.fiabilite === 'Fiable' ? '#D1FAE5' : p.fiabilite === 'Indicatif' ? '#FEF3C7' : '#FEE2E2', color: p.fiabilite === 'Fiable' ? '#065F46' : p.fiabilite === 'Indicatif' ? '#92400E' : '#991B1B', padding: '1px 6px', borderRadius: 8, fontWeight: 600 }}>{p.fiabilite}</span>
+                    {d.extra && <span>{d.extra}</span>}
+                  </div>
+                </div>
+              )
+            })}
+          </div>
+
+          {/* Notes */}
+          <div style={{ background: 'var(--bg)', border: '1px solid var(--border)', borderRadius: 8, padding: '12px 16px', fontSize: '0.78em', color: '#9C8E7D', lineHeight: 1.7 }}>
+            <strong style={{ color: 'var(--text)' }}>Limites de ce calcul :</strong>
+            <ul style={{ margin: '6px 0 0', paddingLeft: 18 }}>
+              <li><strong>Proprios / DCB</strong> — "Fiable" signifie : factures envoyées dans Evoliz. Ne prouve pas que le virement est sorti.</li>
+              <li><strong>AEs</strong> — 6 derniers mois. <code>montant_reel</code> si saisi par l'AE sur le portail, sinon provision.</li>
+              <li><strong>Taxes</strong> — 6 derniers mois, réservations directes uniquement (Airbnb/Booking collectent eux-mêmes).</li>
+              <li><strong>Brouillons</strong> — hors total. Montants provisoires, factures non encore envoyées.</li>
+            </ul>
+          </div>
+        </>
+      )}
+    </div>
+  )
 }
