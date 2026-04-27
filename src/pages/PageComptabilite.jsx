@@ -652,12 +652,12 @@ function OngletSequestre() {
     setLoading(true)
     setError(null)
     try {
-      // ── A. Solde banque réel (mouvements du mois) ────────────────────────
+      // ── A. Solde banque cumulatif jusqu'au mois sélectionné ─────────────
       const { data: mbTotaux } = await supabase
         .from('mouvement_bancaire')
         .select('credit, debit')
         .eq('agence', AGENCE)
-        .eq('mois_releve', mois)
+        .lte('mois_releve', mois)
       const soldeBanque = (mbTotaux || []).reduce((s, m) => s + (m.credit || 0) - (m.debit || 0), 0)
 
       // ── B. Biens de l'agence ─────────────────────────────────────────────
@@ -673,13 +673,13 @@ function OngletSequestre() {
 
       const today = new Date().toISOString().slice(0, 10)
 
-      // ── C. Réservations rapprochées du mois ─────────────────────────────
+      // ── C. Réservations rapprochées — cumulatif jusqu'au mois sélectionné
       const { data: resas } = await supabase
         .from('reservation')
         .select('id, fin_revenue, ventilation_calculee, final_status, departure_date')
         .in('bien_id', bienIds)
         .eq('rapprochee', true)
-        .eq('mois_comptable', mois)
+        .lte('mois_comptable', mois)
         .gt('fin_revenue', 0)
       const resasValides = (resas || []).filter(r =>
         !['not_accepted', 'not accepted', 'declined', 'expired'].includes(r.final_status)
