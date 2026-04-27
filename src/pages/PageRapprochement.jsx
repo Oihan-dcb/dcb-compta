@@ -126,10 +126,12 @@ export default function PageRapprochement() {
   // Subscription Supabase créée UNE SEULE FOIS au mount — utilise une ref pour toujours appeler le charger courant
   const chargerRef = useRef(charger)
   chargerRef.current = charger
+  // Flag pour bloquer les appels real-time pendant le matching auto (évite flood de charger() concurrents)
+  const matchingInProgressRef = useRef(false)
   useEffect(() => {
     const channel = supabase.channel(`rapproch-${Date.now()}`)
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'mouvement_bancaire' }, () => chargerRef.current?.())
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'reservation' }, () => chargerRef.current?.())
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'mouvement_bancaire' }, () => { if (!matchingInProgressRef.current) chargerRef.current?.() })
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'reservation' }, () => { if (!matchingInProgressRef.current) chargerRef.current?.() })
       .subscribe()
     return () => { supabase.removeChannel(channel) }
   }, []) // eslint-disable-line react-hooks/exhaustive-deps
@@ -152,17 +154,19 @@ export default function PageRapprochement() {
   }
 
   async function lancerAuto() {
+    matchingInProgressRef.current = true
     setMatching(true)
     setMatchLog(null)
     setError(null)
     try {
       const log = await lancerMatchingAuto(mois)
       setMatchLog(log)
-      await charger()
     } catch (err) {
       setError(err.message)
     } finally {
+      matchingInProgressRef.current = false
       setMatching(false)
+      await charger()
     }
   }
 
