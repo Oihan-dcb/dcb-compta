@@ -674,12 +674,12 @@ function OngletSequestre() {
       const nbNonAttribue = (p1 || []).length
 
       // Poche 2 + 3 — Factures honoraires envoye_evoliz
+      // facture_evoliz n'a pas de colonne agence — pas de filtre agence ici
       const { data: facturesEnv } = await supabase
         .from('facture_evoliz')
         .select('montant_reversement, total_ttc, mois')
         .eq('statut', 'envoye_evoliz')
         .eq('type_facture', 'honoraires')
-        .eq('agence', AGENCE)
       const duProprios = (facturesEnv || []).reduce((s, r) => s + (r.montant_reversement || 0), 0)
       const duDcb = (facturesEnv || []).reduce((s, r) => s + ((r.total_ttc || 0) - (r.montant_reversement || 0)), 0)
       const nbFacturesEnv = (facturesEnv || []).length
@@ -691,19 +691,18 @@ function OngletSequestre() {
         .select('montant_reversement, total_ttc, mois')
         .eq('statut', 'brouillon')
         .eq('type_facture', 'honoraires')
-        .eq('agence', AGENCE)
       const brouillonsRev = (facturesBrouillon || []).reduce((s, r) => s + (r.montant_reversement || 0), 0)
       const brouillonsDcb = (facturesBrouillon || []).reduce((s, r) => s + ((r.total_ttc || 0) - (r.montant_reversement || 0)), 0)
       const nbBrouillons = (facturesBrouillon || []).length
 
       // Poche 5 — Dû aux AEs (ventilation AUTO, 6 derniers mois)
+      // ventilation n'a pas de colonne agence — filtré par mois_comptable uniquement
       const sixMoisAgo = new Date(); sixMoisAgo.setMonth(sixMoisAgo.getMonth() - 6)
       const sixMoisAgoStr = sixMoisAgo.toISOString().slice(0, 7)
       const { data: autoVentil } = await supabase
         .from('ventilation')
         .select('montant_reel, montant_ht, mois_comptable')
         .eq('code', 'AUTO')
-        .eq('agence', AGENCE)
         .gte('mois_comptable', sixMoisAgoStr)
       const duAes = (autoVentil || []).reduce((s, r) => s + (r.montant_reel != null ? r.montant_reel : (r.montant_ht || 0)), 0)
       const nbAutoMois = [...new Set((autoVentil || []).map(r => r.mois_comptable).filter(Boolean))].length
@@ -713,7 +712,6 @@ function OngletSequestre() {
         .from('ventilation')
         .select('montant_ht, mois_comptable')
         .eq('code', 'TAXE')
-        .eq('agence', AGENCE)
         .gte('mois_comptable', sixMoisAgoStr)
       const taxes = (taxeVentil || []).reduce((s, r) => s + (r.montant_ht || 0), 0)
       const nbTaxeMois = [...new Set((taxeVentil || []).map(r => r.mois_comptable).filter(Boolean))].length
