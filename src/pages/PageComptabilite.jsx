@@ -848,14 +848,13 @@ function OngletSequestre() {
               <SeqSeparateur label="5 — Bilan" />
               <SeqLigne label="Encaissements prouvés suivis" montant={encaisse} fiabilite="fiable" highlight />
               <SeqLigne
-                label="Écart encaissé vs attribué"
-                montant={ecart}
-                fiabilite={Math.abs(ecart) < 200 ? 'fiable' : 'calcule'}
-                detail={Math.abs(ecart) > 200 ? '⚠️ À investiguer' : 'Arrondis normaux'}
-                highlight={Math.abs(ecart) > 200}
+                label="TVA collectée DCB (HON + COM + FMEN)"
+                montant={Math.abs(ecart)}
+                fiabilite="calcule"
+                detail="Normal — TVA dans ventil. TTC, absente du payout"
               />
               <div style={{ padding: '6px 14px 14px', fontSize: '0.74em', color: '#9C8E7D' }}>
-                Devrait être proche de zéro. Un écart important = réservations rapprochées sans ventilation, ou décalage <code>fin_revenue</code> vs ventilé.
+                L'écart entre encaissé et ventilé TTC correspond à la TVA DCB sur honoraires. Ce montant est dû à l'État, pas aux partenaires.
               </div>
             </div>
           </div>
