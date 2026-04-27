@@ -10,7 +10,7 @@ function escapeHtml(str) {
 
 const EMPTY_AE = {
   nom: '', prenom: '', siret: '', adresse: '', code_postal: '', ville: '',
-  email: '', telephone: '', iban: '', ical_url: '', ical_pro: '', ical_perso: '', taux_horaire: 2500, note: '', actif: true, type: 'ae', chat_group_slug: 'cote-basque', is_chat_hidden: false
+  email: '', telephone: '', iban: '', ical_url: '', ical_pro: '', ical_perso: '', taux_horaire: 2500, note: '', actif: true, type: 'ae', chat_group_slug: 'cote-basque', is_chat_hidden: false, is_assujetti_tva: false
 }
 
 export default function PageAutoEntrepreneurs() {
@@ -1450,11 +1450,26 @@ export default function PageAutoEntrepreneurs() {
                 )}
               </div>
               {form.type !== 'staff' && (
-              <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
-                <label style={{ fontSize: 11, fontWeight: 600, color: '#666', textTransform: 'uppercase' }}>Taux horaire (€/h)</label>
-                <input type="number" step="0.5" min="0" value={(form.taux_horaire || 2500) / 100}
-                  onChange={e => change('taux_horaire', Math.round(parseFloat(e.target.value || 0) * 100))}
-                  style={{ padding: '8px 10px', borderRadius: 7, border: '1.5px solid #e5e7eb', fontSize: 13 }} />
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+                  <label style={{ fontSize: 11, fontWeight: 600, color: '#666', textTransform: 'uppercase' }}>Taux horaire (€/h HT)</label>
+                  <input type="number" step="0.5" min="0" value={(form.taux_horaire || 2500) / 100}
+                    onChange={e => change('taux_horaire', Math.round(parseFloat(e.target.value || 0) * 100))}
+                    style={{ padding: '8px 10px', borderRadius: 7, border: '1.5px solid #e5e7eb', fontSize: 13 }} />
+                  {form.is_assujetti_tva && (
+                    <div style={{ fontSize: 11, color: '#6b7280' }}>
+                      → TTC : {((form.taux_horaire || 2500) / 100 * 1.20).toFixed(2)} €/h · TVA 20%
+                    </div>
+                  )}
+                </div>
+                <label style={{ display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer', userSelect: 'none', background: form.is_assujetti_tva ? '#fef3c7' : '#f9fafb', border: `1px solid ${form.is_assujetti_tva ? '#fbbf24' : '#e5e7eb'}`, borderRadius: 7, padding: '8px 12px' }}>
+                  <input type="checkbox" checked={!!form.is_assujetti_tva} onChange={e => change('is_assujetti_tva', e.target.checked)}
+                    style={{ width: 15, height: 15, accentColor: '#CC9933' }} />
+                  <div>
+                    <div style={{ fontSize: 13, fontWeight: 600, color: '#92400e' }}>Assujettie à la TVA</div>
+                    <div style={{ fontSize: 11, color: '#9ca3af' }}>Facture DCB directement (pas les proprios) · TVA 20% à ajouter au taux horaire</div>
+                  </div>
+                </label>
               </div>
               )}
               <div style={{ gridColumn: '1/-1' }}>{inp('adresse', 'Adresse')}</div>
