@@ -53,6 +53,7 @@ export default function PageBiens() {
   const [airbnbAccounts, setAirbnbAccounts] = useState([])
   const [icalCodes, setIcalCodes] = useState([]) // codes courts extraits des missions iCal
   const [usedIcalCodes, setUsedIcalCodes] = useState({}) // { bien_id: ical_code }
+  const [showIcalMatrice, setShowIcalMatrice] = useState(false)
 
   useEffect(() => {
     getProprietaires().then(setProprietaires).catch(() => {})
@@ -68,14 +69,15 @@ export default function PageBiens() {
             setAirbnbAccounts(uniq)
           }
         })
-      // Charger les codes iCal disponibles depuis les missions
+      // Charger les codes iCal disponibles depuis les missions (préfixe = partie alpha+chiffres avant les chiffres finaux)
       supabase.from('mission_menage').select('titre_ical').not('titre_ical', 'is', null)
         .then(({ data: missions }) => {
           if (missions) {
             const codes = [...new Set(
               missions.map(m => {
-                const match = m.titre_ical?.match(/\(([A-Za-z]+)/)
-                return match ? match[1] : null
+                const match = m.titre_ical?.match(/\(([A-Za-z0-9\u00C0-\u024F\-]+?\d+)/)
+                if (!match) return null
+                return match[1].replace(/\d+$/, '') // strip trailing digits = préfixe
               }).filter(Boolean)
             )].sort()
             setIcalCodes(codes)
@@ -257,6 +259,65 @@ export default function PageBiens() {
                   </button>
                 ))}
               </div>
+
+        {/* Matrice iCal */}
+        {(() => {
+          const bienseIcal = biens.filter(b => (filtreAgence === 'tous' || (b.agence || 'dcb') === filtreAgence) && !b.ical_code && b.hospitable_id)
+          const avecCode = biens.filter(b => (filtreAgence === 'tous' || (b.agence || 'dcb') === filtreAgence) && b.ical_code)
+          const allPrefixes = [...new Set([...icalCodes, ...avecCode.map(b => b.ical_code)])].sort()
+          return (
+            <div style={{ marginBottom: 12 }}>
+              <button onClick={() => setShowIcalMatrice(v => !v)}
+                style={{ fontSize: 12, padding: '4px 12px', borderRadius: 6, border: '1px solid #e5e7eb', background: showIcalMatrice ? '#FDF5E8' : '#f9fafb', color: showIcalMatrice ? '#92400e' : '#374151', cursor: 'pointer', fontWeight: showIcalMatrice ? 700 : 400 }}>
+                📅 Matrice iCal — {avecCode.length} configurés · {bienseIcal.length} manquants {showIcalMatrice ? '▲' : '▼'}
+              </button>
+              {showIcalMatrice && (
+                <div style={{ marginTop: 8, background: '#FAFAF7', border: '1px solid #E8E2D6', borderRadius: 8, padding: '14px 16px' }}>
+                  <datalist id="ical-prefixes">
+                    {allPrefixes.map(p => <option key={p} value={p} />)}
+                  </datalist>
+                  {bienseIcal.length === 0 ? (
+                    <div style={{ fontSize: 13, color: '#16a34a', fontWeight: 600 }}>✓ Tous les biens ont un code iCal</div>
+                  ) : (
+                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(320px, 1fr))', gap: 8 }}>
+                      {bienseIcal.map(bien => (
+                        <div key={bien.id} style={{ display: 'flex', alignItems: 'center', gap: 8, background: '#fff', border: '1px solid #E8E2D6', borderRadius: 6, padding: '7px 10px' }}>
+                          <div style={{ flex: 1, minWidth: 0 }}>
+                            <div style={{ fontSize: 12, fontWeight: 600, color: '#2C2416', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{bien.hospitable_name}</div>
+                            <div style={{ fontSize: 10, color: '#9C8E7D', fontFamily: 'monospace' }}>{bien.code}</div>
+                          </div>
+                          <input
+                            list="ical-prefixes"
+                            placeholder="préfixe iCal…"
+                            defaultValue=""
+                            style={{ width: 140, fontSize: 12, padding: '4px 7px', borderRadius: 5, border: '1.5px solid #e5e7eb', fontFamily: 'monospace' }}
+                            onBlur={e => {
+                              const val = e.target.value.trim() || null
+                              if (val) saveField(bien.id, 'ical_code', val)
+                            }}
+                            onKeyDown={e => { if (e.key === 'Enter') e.target.blur() }}
+                          />
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                  {avecCode.length > 0 && (
+                    <details style={{ marginTop: 12 }}>
+                      <summary style={{ fontSize: 11, color: '#9C8E7D', cursor: 'pointer', userSelect: 'none' }}>✓ {avecCode.length} biens déjà configurés</summary>
+                      <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, marginTop: 8 }}>
+                        {avecCode.map(b => (
+                          <div key={b.id} style={{ fontSize: 11, background: '#f0fdf4', color: '#16a34a', border: '1px solid #bbf7d0', borderRadius: 4, padding: '2px 8px', fontFamily: 'monospace' }}>
+                            {b.ical_code} <span style={{ color: '#9C8E7D', fontFamily: 'sans-serif' }}>→ {b.code}</span>
+                          </div>
+                        ))}
+                      </div>
+                    </details>
+                  )}
+                </div>
+              )}
+            </div>
+          )
+        })()}
 
         <div className="table-container">
           <table>
