@@ -522,7 +522,7 @@ function raisonZero(r) {
   return 'En attente de rapprochement bancaire'
 }
 
-function genererHTMLPrevisionnel(proprio, moisDebut, nbMois, data) {
+function genererHTMLPrevisionnel(proprio, moisDebut, nbMois, data, virNetByMois = {}) {
   const moisList = Array.from({ length: nbMois }, (_, i) => addMois(moisDebut, i))
   const periode = nbMois === 1
     ? moisLabel(moisDebut)
@@ -530,7 +530,7 @@ function genererHTMLPrevisionnel(proprio, moisDebut, nbMois, data) {
 
   const sectionsHTML = moisList.map(mois => {
     const resasMois = data.filter(r => r.mois_comptable === mois)
-    const totalMois = resasMois.reduce((s, r) => s + (r.vir > 0 ? r.vir : r.loy), 0)
+    const totalMois = virNetByMois[mois] ?? resasMois.reduce((s, r) => s + (r.vir > 0 ? r.vir : r.loy), 0)
 
     const rows = resasMois.map((r, i) => {
       const arrFR = r.arrival_date ? r.arrival_date.substring(5).split('-').reverse().join('/') : '—'
@@ -581,7 +581,9 @@ function genererHTMLPrevisionnel(proprio, moisDebut, nbMois, data) {
       </div>`
   }).join('')
 
-  const totalGlobal = data.reduce((s, r) => s + (r.vir > 0 ? r.vir : r.loy), 0)
+  const totalGlobal = Object.keys(virNetByMois).length
+    ? Object.values(virNetByMois).reduce((s, v) => s + v, 0)
+    : data.reduce((s, r) => s + (r.vir > 0 ? r.vir : r.loy), 0)
   const totalStr = ((totalGlobal || 0) / 100).toLocaleString('fr-FR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
 
   return `<!DOCTYPE html>
@@ -644,7 +646,7 @@ function genererHTMLPrevisionnel(proprio, moisDebut, nbMois, data) {
 </html>`
 }
 
-function genererEmailPrevisionnel(proprio, moisDebut, nbMois, data, taux) {
+function genererEmailPrevisionnel(proprio, moisDebut, nbMois, data, taux, virNetByMois = {}) {
   const periode = nbMois === 1
     ? moisLabel(moisDebut)
     : `${moisLabel(moisDebut)} – ${moisLabel(addMois(moisDebut, nbMois - 1))}`
@@ -653,7 +655,7 @@ function genererEmailPrevisionnel(proprio, moisDebut, nbMois, data, taux) {
 
   const sectionsHTML = moisList.map(mois => {
     const resasMois = data.filter(r => r.mois_comptable === mois)
-    const totalLoy = resasMois.reduce((s, r) => s + r.loy, 0)
+    const totalLoy = virNetByMois[mois] ?? resasMois.reduce((s, r) => s + r.loy, 0)
 
     if (resasMois.length === 0) return `
       <div style="margin-bottom:24px;">
@@ -708,7 +710,9 @@ function genererEmailPrevisionnel(proprio, moisDebut, nbMois, data, taux) {
       </div>`
   }).join('')
 
-  const totalGlobal = data.reduce((s, r) => s + r.loy, 0)
+  const totalGlobal = Object.keys(virNetByMois).length
+    ? Object.values(virNetByMois).reduce((s, v) => s + v, 0)
+    : data.reduce((s, r) => s + r.loy, 0)
 
   return `<!DOCTYPE html>
 <html lang="fr">
@@ -769,6 +773,7 @@ function ModalPrevisionnel({ proprio, onClose }) {
   const [nbMois, setNbMois]       = useState(3)
   const [loading, setLoading]     = useState(false)
   const [resas, setResas]         = useState(null)
+  const [virNetByMois, setVirNetByMois] = useState({})
   const [sending, setSending]     = useState(false)
   const [sent, setSent]           = useState(false)
   const [err, setErr]             = useState(null)
@@ -801,6 +806,13 @@ function ModalPrevisionnel({ proprio, onClose }) {
       )
       const results = await Promise.all(calls)
 
+      // Accumuler virementNet par mois (source de vérité : après débours/HAOWNER/frais)
+      const netByMois = {}
+      results.filter(r => r.data).forEach(({ mois, data }) => {
+        netByMois[mois] = (netByMois[mois] || 0) + (data.kpis?.virementNet || 0)
+      })
+      setVirNetByMois(netByMois)
+
       // Aplatir les resasEnrichies — loy/hon/base_comm viennent directement de buildRapportData
       const enriched = results
         .filter(r => r.data)
@@ -823,7 +835,7 @@ function ModalPrevisionnel({ proprio, onClose }) {
   }
 
   function apercuPDF() {
-    const html = genererHTMLPrevisionnel(proprio, moisDebut, nbMois, resas || [])
+    const html = genererHTMLPrevisionnel(proprio, moisDebut, nbMois, resas || [], virNetByMois)
     const w = window.open('', '_blank')
     w.document.write(html)
     w.document.close()
@@ -833,7 +845,7 @@ function ModalPrevisionnel({ proprio, onClose }) {
     if (pdfLoading) return
     setPdfLoading(true)
 
-    const html = genererHTMLPrevisionnel(proprio, moisDebut, nbMois, resas || [])
+    const html = genererHTMLPrevisionnel(proprio, moisDebut, nbMois, resas || [], virNetByMois)
     const periode = nbMois === 1
       ? moisLabel(moisDebut)
       : `${moisLabel(moisDebut)}-${moisLabel(addMois(moisDebut, nbMois - 1))}`
@@ -900,7 +912,7 @@ function ModalPrevisionnel({ proprio, onClose }) {
       const periode = nbMois === 1
         ? moisLabel(moisDebut)
         : `${moisLabel(moisDebut)} – ${moisLabel(addMois(moisDebut, nbMois - 1))}`
-      const html = genererEmailPrevisionnel(proprio, moisDebut, nbMois, resas || [], tauxDefaut)
+      const html = genererEmailPrevisionnel(proprio, moisDebut, nbMois, resas || [], tauxDefaut, virNetByMois)
       const res = await fetch(`${SUPABASE_URL}/functions/v1/smtp-send`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${SUPABASE_ANON_KEY}` },
@@ -918,7 +930,7 @@ function ModalPrevisionnel({ proprio, onClose }) {
   }
 
   const moisList = Array.from({ length: nbMois }, (_, i) => addMois(moisDebut, i))
-  const totalGlobal = (resas || []).reduce((s, r) => s + (r.vir > 0 ? r.vir : r.loy), 0)
+  const totalGlobal = Object.values(virNetByMois).reduce((s, v) => s + v, 0)
 
   // Options mois de début : mois courant + 5 suivants
   const moisOptions = Array.from({ length: 6 }, (_, i) => addMois(moisCourant, i))
@@ -979,7 +991,7 @@ function ModalPrevisionnel({ proprio, onClose }) {
             <div style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
               {moisList.map(mois => {
                 const resasMois = (resas || []).filter(r => r.mois_comptable === mois)
-                const totalMois = resasMois.reduce((s, r) => s + (r.vir > 0 ? r.vir : r.loy), 0)
+                const totalMois = virNetByMois[mois] ?? resasMois.reduce((s, r) => s + (r.vir > 0 ? r.vir : r.loy), 0)
                 return (
                   <div key={mois}>
                     <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8, paddingBottom: 6, borderBottom: '2px solid var(--brand)' }}>
