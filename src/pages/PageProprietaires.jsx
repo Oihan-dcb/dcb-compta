@@ -530,12 +530,12 @@ function genererHTMLPrevisionnel(proprio, moisDebut, nbMois, data, virNetByMois 
 
   const sectionsHTML = moisList.map(mois => {
     const resasMois = data.filter(r => r.mois_comptable === mois)
-    const totalMois = virNetByMois[mois] ?? resasMois.reduce((s, r) => s + (r.vir > 0 ? r.vir : r.loy), 0)
+    const totalMois = virNetByMois[mois] ?? resasMois.reduce((s, r) => s + (r.loy || 0), 0)
 
     const rows = resasMois.map((r, i) => {
       const arrFR = r.arrival_date ? r.arrival_date.substring(5).split('-').reverse().join('/') : '—'
       const depFR = r.departure_date ? r.departure_date.substring(5).split('-').reverse().join('/') : '—'
-      const net = r.vir > 0 ? r.vir : r.loy
+      const net = r.loy || 0
       const raison = raisonZero(r)
       const netDisplay = raison
         ? `<span style="font-size:10px;color:#dc2626;">${raison}</span>`
@@ -806,10 +806,22 @@ function ModalPrevisionnel({ proprio, onClose }) {
       )
       const results = await Promise.all(calls)
 
-      // Accumuler virementNet par mois (source de vérité : après débours/HAOWNER/frais)
+      // Accumuler le net propriétaire par mois :
+      //   - facture confirmée → montant_reversement (vérité comptable)
+      //   - sinon → loyTotal (LOY = part nette après commission DCB) - débours - haowner - frais
+      //   NB: virTotal (VIR) = paiement brut plateforme (inclut commission DCB) → à NE PAS utiliser
       const netByMois = {}
       results.filter(r => r.data).forEach(({ mois, data }) => {
-        netByMois[mois] = (netByMois[mois] || 0) + (data.kpis?.virementNet || 0)
+        const f = data.facture
+        const factureSolide = f?.montant_reversement > 0 &&
+          f?.statut !== 'brouillon' && f?.statut !== 'calcul_en_cours'
+        const net = factureSolide
+          ? f.montant_reversement
+          : Math.max(0, (data.kpis?.loyTotal || 0)
+              - (data.kpis?._totalDebours || 0)
+              - (data.kpis?._totalHaowner || 0)
+              - (data.kpis?._fraisDeductionLoy || 0))
+        netByMois[mois] = (netByMois[mois] || 0) + net
       })
       setVirNetByMois(netByMois)
 
@@ -991,7 +1003,7 @@ function ModalPrevisionnel({ proprio, onClose }) {
             <div style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
               {moisList.map(mois => {
                 const resasMois = (resas || []).filter(r => r.mois_comptable === mois)
-                const totalMois = virNetByMois[mois] ?? resasMois.reduce((s, r) => s + (r.vir > 0 ? r.vir : r.loy), 0)
+                const totalMois = virNetByMois[mois] ?? resasMois.reduce((s, r) => s + (r.loy || 0), 0)
                 return (
                   <div key={mois}>
                     <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8, paddingBottom: 6, borderBottom: '2px solid var(--brand)' }}>
