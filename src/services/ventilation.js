@@ -435,19 +435,19 @@ export async function calculerVentilationResa(resa) {
     return lignes
   }
 
-  // Revenue = montant net reçu en banque (en centimes)
-  const revenue = resa.fin_revenue || 0
-  if (revenue === 0) {
-    await supabase.from('reservation').update({ ventilation_calculee: true }).eq('id', resa.id)
-    return
-  }
-
   // Réservation annulée sans payout → supprimer lignes existantes et marquer ventilée
   const isCancelled = STATUTS_NON_VENTILABLES.includes(resa.final_status)
   if (isCancelled && parseFloat(resa.fin_revenue || 0) === 0) {
     await supabase.from('ventilation').delete().eq('reservation_id', resa.id)
     await supabase.from('reservation').update({ ventilation_calculee: true }).eq('id', resa.id)
     return []
+  }
+
+  // Revenue = montant net reçu en banque (en centimes)
+  const revenue = resa.fin_revenue || 0
+  if (revenue === 0) {
+    await supabase.from('reservation').update({ ventilation_calculee: true }).eq('id', resa.id)
+    return
   }
 
   // Calcul pur — délégué à _calculerLignes
@@ -618,14 +618,14 @@ export async function getVentilationMois(mois) {
     .select(`
       *,
       reservation (code, platform, arrival_date, departure_date, nights, guest_name),
-      bien (hospitable_name, code),
+      bien (hospitable_name, code, agence),
       proprietaire (id, nom, prenom)
     `)
     .eq('mois_comptable', mois)
     .order('code')
 
   if (error) throw error
-  return data || []
+  return (data || []).filter(l => !l.bien?.agence || l.bien.agence === AGENCE)
 }
 
 /**

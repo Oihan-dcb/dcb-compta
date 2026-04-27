@@ -21,6 +21,7 @@ export default function PageReservations() {
   const [syncing, setSyncing] = useState(false)
   const [calculant, setCalculant] = useState(false)
   const [syncResult, setSyncResult] = useState(null)
+  const [ventilResult, setVentilResult] = useState(null)
   const [searchParams, setSearchParams] = useSearchParams()
   const [error, setError] = useState(null)
   const [onglet, setOnglet] = useState(() => localStorage.getItem('tab_reservations') || 'reservations')
@@ -104,17 +105,18 @@ export default function PageReservations() {
   }
 
   async function lancerVentilation() {
-    setCalculant(true); setError(null)
-    try { await calculerVentilationMois(mois); await charger() }
+    setCalculant(true); setError(null); setVentilResult(null)
+    try {
+      const result = await calculerVentilationMois(mois)
+      setVentilResult(result)
+      await charger()
+    }
     catch (err) { setError(err.message) }
     finally { setCalculant(false) }
   }
 
-  const nbVentilees   = reservations.filter(r => r.ventilation_calculee).length
-  const nbVentilables = reservations.filter(r =>
-    r.final_status !== 'cancelled' &&
-    r.owner_stay === false
-  ).length
+  const nbVentilables = reservations.filter(r => r.final_status !== 'cancelled').length
+  const nbVentilees   = reservations.filter(r => r.ventilation_calculee && r.final_status !== 'cancelled').length
   const nbDirectes = reservations.filter(r => r.platform === 'direct' || r.platform === 'manual').length
   const nbRapprochees = reservations.filter(r => r.rapprochee).length
   // Exclut les resas proprio (owner_stay=true) — leur ventilation est saisie manuellement via VentilationEdit
@@ -234,6 +236,13 @@ export default function PageReservations() {
         <div className="alert alert-success">
           ✓ Sync {mois} — {syncResult.created} créées, {syncResult.updated} mises à jour
           {syncResult.errors > 0 && ` — ⚠ ${syncResult.errors} erreurs`}
+        </div>
+      )}
+      {ventilResult && (
+        <div className={`alert ${ventilResult.errors > 0 ? 'alert-error' : 'alert-success'}`}>
+          ⚡ Ventilation {mois} — {ventilResult.total} calculée{ventilResult.total > 1 ? 's' : ''}
+          {ventilResult.skipped > 0 && ` · ${ventilResult.skipped} verrouillée${ventilResult.skipped > 1 ? 's' : ''}`}
+          {ventilResult.errors > 0 && ` · ⚠ ${ventilResult.errors} erreur${ventilResult.errors > 1 ? 's' : ''} (voir console)`}
         </div>
       )}
       {error && <div className="alert alert-error">✕ {error}</div>}
