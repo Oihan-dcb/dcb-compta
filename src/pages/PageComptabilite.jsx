@@ -739,9 +739,9 @@ function OngletSequestre() {
     } finally {
       setLoading(false)
     }
-  }, [])
+  }, [mois])
 
-  useEffect(() => { charger() }, [mois]) // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => { charger() }, [charger])
 
   return (
     <div style={{ maxWidth: 1000 }}>
