@@ -68,7 +68,7 @@ export async function calculerVentilationMois(mois) {
   let errors = 0
   let skipped = 0
 
-  for (const resa of (reservations || []).filter(r => r.bien?.gestion_loyer !== false && (r.bien?.agence || AGENCE) === AGENCE)) {
+  for (const resa of (reservations || []).filter(r => r.bien != null && r.bien.gestion_loyer !== false && (r.bien.agence || AGENCE) === AGENCE)) {
     // Verrou facture : ne jamais écraser une réservation liée à une facture finalisée
     if (proprietairesVerrouilles.has(resa.bien?.proprietaire_id)) {
       skipped++
