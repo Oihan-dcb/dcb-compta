@@ -240,9 +240,18 @@ export default function PageReservations() {
       )}
       {ventilResult && (
         <div className={`alert ${ventilResult.errors > 0 ? 'alert-error' : 'alert-success'}`}>
-          ⚡ Ventilation {mois} — {ventilResult.total} calculée{ventilResult.total > 1 ? 's' : ''}
-          {ventilResult.skipped > 0 && ` · ${ventilResult.skipped} verrouillée${ventilResult.skipped > 1 ? 's' : ''}`}
-          {ventilResult.errors > 0 && ` · ⚠ ${ventilResult.errors} erreur${ventilResult.errors > 1 ? 's' : ''} (voir console)`}
+          <div>
+            ⚡ Ventilation {mois} — {ventilResult.total} calculée{ventilResult.total > 1 ? 's' : ''}
+            {ventilResult.skipped > 0 && ` · ${ventilResult.skipped} verrouillée${ventilResult.skipped > 1 ? 's' : ''}`}
+            {ventilResult.errors > 0 && ` · ⚠ ${ventilResult.errors} erreur${ventilResult.errors > 1 ? 's' : ''}`}
+          </div>
+          {ventilResult.errorDetails?.length > 0 && (
+            <ul style={{ margin: '6px 0 0', paddingLeft: 18, fontSize: '0.82em' }}>
+              {ventilResult.errorDetails.map((e, i) => (
+                <li key={i}><strong>{e.code}</strong> — {e.msg}</li>
+              ))}
+            </ul>
+          )}
         </div>
       )}
       {error && <div className="alert alert-error">✕ {error}</div>}

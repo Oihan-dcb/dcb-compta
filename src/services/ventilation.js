@@ -67,6 +67,7 @@ export async function calculerVentilationMois(mois) {
   let total = 0
   let errors = 0
   let skipped = 0
+  const errorDetails = []
 
   for (const resa of (reservations || []).filter(r => r.bien != null && r.bien.gestion_loyer !== false && (r.bien.agence || AGENCE) === AGENCE)) {
     // Verrou facture : ne jamais écraser une réservation liée à une facture finalisée
@@ -78,7 +79,7 @@ export async function calculerVentilationMois(mois) {
       await calculerVentilationResa(resa)
       total++
     } catch (err) {
-      console.error('[VENTIL ERROR]', resa.code, resa.hospitable_id, err.message)
+      errorDetails.push({ code: resa.code, msg: err.message })
       errors++
     }
   }
@@ -87,9 +88,9 @@ export async function calculerVentilationMois(mois) {
     categorie: 'ventilation', action: 'compute', mois_comptable: mois,
     statut: errors > 0 ? 'warning' : 'ok', source: 'app',
     message: `Ventilation ${mois} : ${total} résa(s) calculée(s)${skipped > 0 ? ', ' + skipped + ' verrouillée(s)' : ''}${errors > 0 ? ', ' + errors + ' erreur(s)' : ''}`,
-    meta: { total, skipped, errors },
+    meta: { total, skipped, errors, errorDetails },
   }).catch(() => {})
-  return { total, skipped, errors }
+  return { total, skipped, errors, errorDetails }
 }
 
 /**
