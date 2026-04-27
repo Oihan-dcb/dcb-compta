@@ -75,7 +75,7 @@ export async function createAEAccess(ae_id, email) {
   })
   const data = await fnResp.json()
   if (!fnResp.ok || data?.error) throw new Error(data?.error || `Erreur serveur ${fnResp.status}`)
-  return { password }
+  return { password, ae_user_id: data.user_id }
 }
 
 export async function resetAEPassword(ae_id, email) {

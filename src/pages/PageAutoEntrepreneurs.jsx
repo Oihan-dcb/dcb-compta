@@ -515,6 +515,17 @@ export default function PageAutoEntrepreneurs() {
             ? await resetAEPassword(ae.id, ae.email)
             : await createAEAccess(ae.id, ae.email)
           setSuccess(`Mot de passe : ${result?.password}`)
+          // Après création d'accès : sync groupes + créer staff_room dans PowerHouse
+          if (!isReset && result?.ae_user_id) {
+            await syncGroupMemberships(result.ae_user_id)
+            if (!ae.is_chat_manager) {
+              fetch('https://dcb-planning.vercel.app/api/messagerie-create-staff-room', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ ae_user_id: result.ae_user_id }),
+              }).catch(() => {})
+            }
+          }
           await charger()
         } catch(err) { setError(err.message) }
         finally { setSaving(false) }
