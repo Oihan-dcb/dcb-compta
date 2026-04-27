@@ -134,40 +134,13 @@ export default function PageAutoEntrepreneurs() {
   }
 
   async function creerStaffRoom(aeUserId) {
-    const { data: ae } = await supabase.from('auto_entrepreneur')
-      .select('prenom, nom, chat_group_slug, is_chat_manager').eq('ae_user_id', aeUserId).single()
-    if (!ae || ae.is_chat_manager || !ae.chat_group_slug) return
-
-    const { data: group } = await supabase.from('chat_groups')
-      .select('id').eq('slug', ae.chat_group_slug).single()
-    if (!group) throw new Error('Groupe introuvable : ' + ae.chat_group_slug)
-
-    // Vérifier si staff_room existe déjà
-    const { data: existingMembers } = await supabase.from('chat_room_members')
-      .select('room_id').eq('user_id', aeUserId)
-    if (existingMembers?.length) {
-      const roomIds = existingMembers.map(m => m.room_id)
-      const { data: existing } = await supabase.from('chat_rooms')
-        .select('id').eq('type', 'staff_room').eq('group_id', group.id).in('id', roomIds).maybeSingle()
-      if (existing) return // déjà créée
-    }
-
-    // Créer la staff_room
-    const { data: room, error } = await supabase.from('chat_rooms')
-      .insert({ type: 'staff_room', name: `${ae.prenom}${ae.nom ? ' ' + ae.nom : ''}`, group_id: group.id })
-      .select('id').single()
-    if (error) throw error
-
-    // Ajouter l'AE + managers du groupe
-    const { data: managers } = await supabase.from('auto_entrepreneur')
-      .select('ae_user_id')
-      .eq('is_chat_manager', true).eq('actif', true).eq('chat_group_slug', ae.chat_group_slug)
-      .not('ae_user_id', 'is', null)
-    const members = [
-      { room_id: room.id, user_id: aeUserId },
-      ...(managers || []).map(m => ({ room_id: room.id, user_id: m.ae_user_id })),
-    ]
-    await supabase.from('chat_room_members').upsert(members, { onConflict: 'room_id,user_id' })
+    const r = await fetch('/api/create-staff-room', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ ae_user_id: aeUserId }),
+    })
+    const d = await r.json()
+    if (!r.ok) throw new Error(d.error || 'Erreur création rooms')
   }
 
   async function createGroup() {
