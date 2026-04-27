@@ -1428,10 +1428,11 @@ export default function PageAutoEntrepreneurs() {
                 <div style={{ fontSize: 11, fontWeight: 700, color: '#92400e', textTransform: 'uppercase', letterSpacing: .5, marginBottom: 2 }}>📅 Calendriers iCal</div>
                 <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
                   <label style={{ fontSize: 11, fontWeight: 600, color: '#CC9933' }}>
-                    Hospitable (missions) — <span style={{ fontWeight: 400, color: '#9ca3af' }}>lecture seule, généré par Hospitable</span>
+                    Hospitable (missions) — <span style={{ fontWeight: 400, color: '#6b7280' }}>URL iCal Hospitable du staff</span>
                   </label>
-                  <input value={form.ical_url ?? ''} readOnly
-                    style={{ padding: '7px 10px', borderRadius: 6, border: '1px solid #e5e7eb', fontSize: 11, background: '#f9fafb', color: '#6b7280', cursor: 'default', fontFamily: 'monospace' }} />
+                  <input value={form.ical_url ?? ''} onChange={e => change('ical_url', e.target.value)}
+                    placeholder="webcal:// ou https://... (Hospitable › Staff › Export iCal)"
+                    style={{ padding: '7px 10px', borderRadius: 6, border: '1.5px solid #CC9933', fontSize: 12, fontFamily: 'monospace' }} />
                 </div>
                 <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
                   <label style={{ fontSize: 11, fontWeight: 600, color: '#0891B2' }}>
