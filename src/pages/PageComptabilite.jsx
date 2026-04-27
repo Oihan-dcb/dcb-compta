@@ -629,38 +629,54 @@ function SeqSeparateur({ label }) {
 }
 
 function OngletSequestre() {
-  const [data, setData] = useState(null)
+  const [data, setData]     = useState(null)
   const [loading, setLoading] = useState(true)
-  const [error, setError] = useState(null)
+  const [error, setError]   = useState(null)
+  const [genAt, setGenAt]   = useState(null)
 
   const charger = useCallback(async () => {
     setLoading(true)
     setError(null)
     try {
-      // ── 1. Biens de l'agence ─────────────────────────────────────────────
+      // ── A. Solde banque réel (tous mouvements importés) ──────────────────
+      const { data: mbTotaux } = await supabase
+        .from('mouvement_bancaire')
+        .select('credit, debit')
+        .eq('agence', AGENCE)
+      const soldeBanque = (mbTotaux || []).reduce((s, m) => s + (m.credit || 0) - (m.debit || 0), 0)
+
+      // ── B. Biens de l'agence ─────────────────────────────────────────────
       const { data: biens } = await supabase
         .from('bien').select('id').eq('agence', AGENCE)
       const bienIds = (biens || []).map(b => b.id)
-      if (!bienIds.length) { setData({ encaisse: 0, nbResas: 0, nbNonVentilees: 0, ventil: {}, facturesEnv: 0, facturesBrouillon: 0, ecart: 0 }); return }
 
-      // ── 2. Réservations rapprochées avec fin_revenue > 0 ─────────────────
-      // Filtre : rapprochee = true, fin_revenue > 0, statut ventilable OU annulation avec frais
+      if (!bienIds.length) {
+        setData({ soldeBanque, encaisse: 0, nbResas: 0, nbNonVentilees: 0, encaisseNonVentile: 0, resasFutures: 0, ventil: { loy: 0, hon: 0, com: 0, fmen: 0, auto: 0, taxe: 0, autres: 0, totalVentile: 0 }, facturesEnv: 0, facturesEnvNb: 0, facturesBrouillon: 0, facturesBrouillonNb: 0, ecart: 0 })
+        setGenAt(new Date())
+        return
+      }
+
+      const today = new Date().toISOString().slice(0, 10)
+
+      // ── C. Réservations rapprochées ──────────────────────────────────────
       const { data: resas } = await supabase
         .from('reservation')
-        .select('id, fin_revenue, ventilation_calculee, final_status')
+        .select('id, fin_revenue, ventilation_calculee, final_status, departure_date')
         .in('bien_id', bienIds)
         .eq('rapprochee', true)
         .gt('fin_revenue', 0)
       const resasValides = (resas || []).filter(r =>
-        !['not_accepted','not accepted','declined','expired'].includes(r.final_status)
+        !['not_accepted', 'not accepted', 'declined', 'expired'].includes(r.final_status)
       )
-      const encaisse    = resasValides.reduce((s, r) => s + (r.fin_revenue || 0), 0)
-      const nbResas     = resasValides.length
-      const nbNonVentilees = resasValides.filter(r => !r.ventilation_calculee).length
-      const resaIds     = resasValides.filter(r => r.ventilation_calculee).map(r => r.id)
+      const encaisse         = resasValides.reduce((s, r) => s + (r.fin_revenue || 0), 0)
+      const nbResas          = resasValides.length
+      const nbNonVentilees   = resasValides.filter(r => !r.ventilation_calculee).length
+      const encaisseNonVentile = resasValides.filter(r => !r.ventilation_calculee).reduce((s, r) => s + (r.fin_revenue || 0), 0)
+      // Séjours futurs déjà encaissés (departure_date >= aujourd'hui)
+      const resasFutures     = resasValides.filter(r => r.departure_date && r.departure_date >= today).reduce((s, r) => s + (r.fin_revenue || 0), 0)
+      const resaIds          = resasValides.filter(r => r.ventilation_calculee).map(r => r.id)
 
-      // ── 3. Ventilation pour ces réservations ─────────────────────────────
-      // Batches de 400 pour éviter la limite URL PostgREST
+      // ── D. Ventilation par code ──────────────────────────────────────────
       const ventilRows = []
       for (let i = 0; i < resaIds.length; i += 400) {
         const { data: v } = await supabase
@@ -669,50 +685,38 @@ function OngletSequestre() {
           .in('reservation_id', resaIds.slice(i, i + 400))
         if (v) ventilRows.push(...v)
       }
-      // Regroupement par code — montant effectif = montant_reel si renseigné, sinon montant_ht
-      const sumCode = code => ventilRows
-        .filter(v => v.code === code)
-        .reduce((s, v) => s + (v.montant_reel != null ? v.montant_reel : (v.montant_ht || 0)), 0)
-      const sumCodeTtc = code => ventilRows
-        .filter(v => v.code === code)
-        .reduce((s, v) => s + (v.montant_ttc || 0), 0)
+      const sumCode    = code => ventilRows.filter(v => v.code === code).reduce((s, v) => s + (v.montant_reel != null ? v.montant_reel : (v.montant_ht || 0)), 0)
+      const sumCodeTtc = code => ventilRows.filter(v => v.code === code).reduce((s, v) => s + (v.montant_ttc || 0), 0)
       const ventil = {
-        loy:   sumCode('LOY'),
-        hon:   sumCodeTtc('HON'),
-        com:   sumCodeTtc('COM'),
-        fmen:  sumCodeTtc('FMEN'),
-        auto:  sumCode('AUTO'),
-        taxe:  sumCode('TAXE'),
-        autres: ventilRows
-          .filter(v => !['LOY','HON','COM','FMEN','AUTO','TAXE','VIR'].includes(v.code))
-          .reduce((s, v) => s + (v.montant_reel != null ? v.montant_reel : (v.montant_ht || 0)), 0),
+        loy:    sumCode('LOY'),
+        hon:    sumCodeTtc('HON'),
+        com:    sumCodeTtc('COM'),
+        fmen:   sumCodeTtc('FMEN'),
+        auto:   sumCode('AUTO'),
+        taxe:   sumCode('TAXE'),
+        autres: ventilRows.filter(v => !['LOY','HON','COM','FMEN','AUTO','TAXE','VIR'].includes(v.code)).reduce((s, v) => s + (v.montant_reel != null ? v.montant_reel : (v.montant_ht || 0)), 0),
       }
       ventil.totalVentile = ventil.loy + ventil.hon + ventil.com + ventil.fmen + ventil.auto + ventil.taxe + ventil.autres
-      // Montant des réservations non ventilées
-      const encaisseNonVentile = resasValides.filter(r => !r.ventilation_calculee).reduce((s, r) => s + (r.fin_revenue || 0), 0)
 
-      // ── 4. Proxy sorties : factures Evoliz envoyées ───────────────────────
+      // ── E. Proxy sorties : factures Evoliz ──────────────────────────────
       const { data: fEnv } = await supabase
         .from('facture_evoliz')
         .select('montant_reversement, total_ttc')
         .in('statut', ['envoye_evoliz', 'valide'])
         .eq('type_facture', 'honoraires')
-      const facturesEnv = (fEnv || []).reduce((s, r) => s + (r.total_ttc || 0), 0)
+      const facturesEnv   = (fEnv || []).reduce((s, r) => s + (r.total_ttc || 0), 0)
       const facturesEnvNb = (fEnv || []).length
 
       const { data: fBrouillon } = await supabase
-        .from('facture_evoliz')
-        .select('total_ttc')
-        .eq('statut', 'brouillon')
-        .eq('type_facture', 'honoraires')
-      const facturesBrouillon = (fBrouillon || []).reduce((s, r) => s + (r.total_ttc || 0), 0)
+        .from('facture_evoliz').select('total_ttc').eq('statut', 'brouillon').eq('type_facture', 'honoraires')
+      const facturesBrouillon   = (fBrouillon || []).reduce((s, r) => s + (r.total_ttc || 0), 0)
       const facturesBrouillonNb = (fBrouillon || []).length
 
-      // ── 5. Écart : encaissé vs (ventilé + non ventilé) ───────────────────
-      const totalExplique = ventil.totalVentile + encaisseNonVentile
-      const ecart = encaisse - totalExplique
+      // ── F. Écart ─────────────────────────────────────────────────────────
+      const ecart = encaisse - (ventil.totalVentile + encaisseNonVentile)
 
-      setData({ encaisse, nbResas, nbNonVentilees, encaisseNonVentile, ventil, facturesEnv, facturesEnvNb, facturesBrouillon, facturesBrouillonNb, ecart })
+      setData({ soldeBanque, encaisse, nbResas, nbNonVentilees, encaisseNonVentile, resasFutures, ventil, facturesEnv, facturesEnvNb, facturesBrouillon, facturesBrouillonNb, ecart })
+      setGenAt(new Date())
     } catch (e) {
       setError(e.message)
     } finally {
@@ -723,110 +727,145 @@ function OngletSequestre() {
   useEffect(() => { charger() }, [charger])
 
   return (
-    <div style={{ maxWidth: 720 }}>
-      <div style={{ display: 'flex', alignItems: 'center', marginBottom: 20 }}>
-        <div style={{ fontSize: '0.82em', color: '#9C8E7D' }}>
-          Chaque ligne indique son niveau de fiabilité. Lecture seule.
+    <div style={{ maxWidth: 760 }}>
+      {/* En-tête */}
+      <div style={{ display: 'flex', alignItems: 'center', marginBottom: 20, gap: 12 }}>
+        <div style={{ fontSize: '0.8em', color: '#9C8E7D' }}>
+          {genAt
+            ? <>Calcul arrêté au <strong style={{ color: 'var(--text)' }}>{genAt.toLocaleString('fr-FR')}</strong></>
+            : 'Chargement…'}
         </div>
         <button className="btn btn-secondary" onClick={charger} disabled={loading} style={{ marginLeft: 'auto', padding: '6px 14px' }}>
           {loading ? '…' : '↺'}
         </button>
       </div>
 
-      {error && (
-        <div style={{ background: '#FEF2F2', border: '1px solid #FECACA', borderRadius: 8, padding: '12px 16px', color: '#DC2626', marginBottom: 20 }}>{error}</div>
-      )}
-      {loading && !data && (
-        <div style={{ textAlign: 'center', padding: 40, color: '#9C8E7D' }}>Chargement…</div>
-      )}
+      {error && <div style={{ background: '#FEF2F2', border: '1px solid #FECACA', borderRadius: 8, padding: '12px 16px', color: '#DC2626', marginBottom: 20 }}>{error}</div>}
+      {loading && !data && <div style={{ textAlign: 'center', padding: 40, color: '#9C8E7D' }}>Chargement…</div>}
 
       {data && (() => {
-        const { encaisse, nbResas, nbNonVentilees, encaisseNonVentile, ventil, facturesEnv, facturesEnvNb, facturesBrouillon, facturesBrouillonNb, ecart } = data
+        const { soldeBanque, encaisse, nbResas, nbNonVentilees, encaisseNonVentile, resasFutures, ventil, facturesEnv, facturesEnvNb, facturesBrouillon, facturesBrouillonNb, ecart } = data
+        const ecartBanque = soldeBanque - encaisse
+
+        // Score global
+        const scoreEntrees = nbResas > 0 ? 'fiable' : 'absent'
+        const scoreVentil  = nbNonVentilees === 0 ? 'calcule' : (nbNonVentilees < 5 ? 'proxy' : 'absent')
+        const scoreSorties = 'absent'
+        const SCORE_LABEL  = { fiable: 'Fiable', calcule: 'Bonne', proxy: 'Partielle', absent: 'Faible' }
+        const SCORE_COLOR  = { fiable: '#065F46', calcule: '#1E40AF', proxy: '#92400E', absent: '#64748B' }
+        const SCORE_BG     = { fiable: '#D1FAE5', calcule: '#DBEAFE', proxy: '#FEF3C7', absent: '#F1F5F9' }
+
         return (
-          <div style={{ background: 'var(--bg-card)', border: '1px solid var(--border)', borderRadius: 12, overflow: 'hidden' }}>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
 
-            {/* ── Bloc 1 : Base encaissée ── */}
-            <SeqSeparateur label="1 — Base : argent réellement encaissé" />
-            <SeqLigne
-              label="Total encaissé rapproché"
-              montant={encaisse}
-              fiabilite="fiable"
-              detail={`${nbResas} résa${nbResas > 1 ? 's' : ''} rapprochée${nbResas > 1 ? 's' : ''}`}
-              highlight
-            />
-            <div style={{ padding: '4px 14px 8px 32px', fontSize: '0.76em', color: '#9C8E7D', borderLeft: '2px solid var(--border)', marginLeft: 14 }}>
-              Source : <code>reservation.rapprochee = true</code> + <code>fin_revenue</code> (montant Hospitable). Réservations annulées sans frais exclues.
+            {/* ── Score fiabilité global ── */}
+            <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
+              {[
+                { label: 'Entrées', score: scoreEntrees },
+                { label: 'Ventilation', score: scoreVentil },
+                { label: 'Sorties', score: scoreSorties },
+              ].map(({ label, score }) => (
+                <div key={label} style={{ background: SCORE_BG[score], border: `1px solid ${SCORE_COLOR[score]}44`, borderRadius: 8, padding: '7px 14px', display: 'flex', flexDirection: 'column', alignItems: 'center', minWidth: 100 }}>
+                  <div style={{ fontSize: '0.7em', color: '#9C8E7D', textTransform: 'uppercase', fontWeight: 600 }}>{label}</div>
+                  <div style={{ fontSize: '0.85em', fontWeight: 700, color: SCORE_COLOR[score], marginTop: 2 }}>{SCORE_LABEL[score]}</div>
+                </div>
+              ))}
+              <div style={{ marginLeft: 'auto', background: 'var(--bg)', border: '1px solid var(--border)', borderRadius: 8, padding: '7px 14px', display: 'flex', flexDirection: 'column', alignItems: 'center', minWidth: 100 }}>
+                <div style={{ fontSize: '0.7em', color: '#9C8E7D', textTransform: 'uppercase', fontWeight: 600 }}>Score global</div>
+                <div style={{ fontSize: '0.85em', fontWeight: 700, color: scoreSorties === 'absent' ? '#92400E' : '#065F46', marginTop: 2 }}>Intermédiaire</div>
+              </div>
             </div>
 
-            {/* ── Bloc 2 : Ventilation théorique ── */}
-            <SeqSeparateur label="2 — Ventilation théorique de cet encaissement" />
-            <SeqLigne label="Part propriétaires (LOY)" montant={ventil.loy} fiabilite="calcule" indent />
-            <SeqLigne label="Part DCB — honoraires (HON + COM)" montant={ventil.hon + ventil.com} fiabilite="calcule" indent />
-            <SeqLigne label="Part ménage (FMEN + AUTO)" montant={ventil.fmen + ventil.auto} fiabilite="calcule" indent />
-            <SeqLigne label="Taxes de séjour (TAXE)" montant={ventil.taxe} fiabilite="calcule" indent />
-            {ventil.autres > 0 && <SeqLigne label="Autres lignes (DEB_AE, HAOWNER…)" montant={ventil.autres} fiabilite="calcule" indent />}
-            <SeqLigne
-              label="Réservations rapprochées non encore ventilées"
-              montant={encaisseNonVentile}
-              fiabilite="calcule"
-              detail={nbNonVentilees > 0 ? `${nbNonVentilees} résa(s) à ventiler` : null}
-              indent
-            />
-            <SeqLigne label="Total ventilé" montant={ventil.totalVentile + encaisseNonVentile} fiabilite="calcule" highlight />
-
-            {/* ── Bloc 3 : Proxy sorties ── */}
-            <SeqSeparateur label="3 — Proxy sorties (facturé dans Evoliz — pas une preuve de virement)" />
-            <SeqLigne
-              label="Factures envoyées / validées Evoliz"
-              montant={facturesEnv}
-              fiabilite="proxy"
-              detail={facturesEnvNb > 0 ? `${facturesEnvNb} facture${facturesEnvNb > 1 ? 's' : ''}` : null}
-              indent
-            />
-            <SeqLigne
-              label="Factures en brouillon (non encore envoyées)"
-              montant={facturesBrouillon}
-              fiabilite="proxy"
-              detail={facturesBrouillonNb > 0 ? `${facturesBrouillonNb} brouillon${facturesBrouillonNb > 1 ? 's' : ''}` : null}
-              indent
-              dimmed
-            />
-            <div style={{ padding: '4px 14px 8px 32px', fontSize: '0.76em', color: '#9C8E7D', borderLeft: '2px solid var(--border)', marginLeft: 14 }}>
-              "Envoyé Evoliz" ≠ "sorti du compte". Le virement peut ne pas avoir eu lieu.
+            {/* ── Comparatif banque / cash suivi ── */}
+            <div style={{ background: 'var(--bg-card)', border: '1px solid var(--border)', borderRadius: 12, overflow: 'hidden' }}>
+              <div style={{ padding: '10px 14px 4px', fontSize: '0.75em', fontWeight: 700, color: '#9C8E7D', textTransform: 'uppercase', letterSpacing: '0.07em' }}>
+                Comparatif banque vs suivi
+              </div>
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 1, background: 'var(--border)' }}>
+                {[
+                  { label: 'Solde banque (CE importé)', montant: soldeBanque, badge: BADGE.fiable, note: 'SUM crédits − débits tous mouvements importés' },
+                  { label: 'Base cash suivie', montant: encaisse, badge: BADGE.fiable, note: `${nbResas} résa(s) rapprochée(s)` },
+                  { label: 'Écart à expliquer', montant: ecartBanque, badge: Math.abs(ecartBanque) < 10000 ? BADGE.fiable : BADGE.proxy, note: ecartBanque > 0 ? 'Banque > suivi : mouvements non encore rapprochés' : ecartBanque < 0 ? 'Suivi > banque : fin_revenue possiblement surestimé' : 'Parfait' },
+                ].map(({ label, montant, badge, note }) => (
+                  <div key={label} style={{ background: 'var(--bg-card)', padding: '14px 16px' }}>
+                    <div style={{ fontSize: '0.74em', color: '#9C8E7D', fontWeight: 600, marginBottom: 4 }}>{label}</div>
+                    <div style={{ fontSize: '1.35em', fontWeight: 700, color: 'var(--brand)', fontVariantNumeric: 'tabular-nums' }}>{fmt(montant)}</div>
+                    <div style={{ marginTop: 5, display: 'flex', flexDirection: 'column', gap: 3 }}>
+                      <span style={{ fontSize: '0.72em', fontWeight: 600, padding: '1px 6px', borderRadius: 6, background: badge.bg, color: badge.color, alignSelf: 'flex-start' }}>{badge.label}</span>
+                      <span style={{ fontSize: '0.72em', color: '#9C8E7D', lineHeight: 1.4 }}>{note}</span>
+                    </div>
+                  </div>
+                ))}
+              </div>
             </div>
 
-            {/* ── Bloc 4 : Sorties prouvées ── */}
-            <SeqSeparateur label="4 — Sorties bancaires prouvées" />
-            <SeqLigne
-              label="Débits bancaires rapprochés à des factures"
-              montant={null}
-              fiabilite="absent"
-              indent
-            />
-            <div style={{ padding: '4px 14px 10px 32px', fontSize: '0.76em', color: '#9C8E7D', borderLeft: '2px solid var(--border)', marginLeft: 14 }}>
-              Fonctionnalité non encore disponible. Les débits du relevé CE ne sont pas aujourd'hui rapprochés aux factures sortantes.
+            {/* ── Lecture business ── */}
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
+              <div style={{ background: '#F0FDF4', border: '1px solid #A7F3D0', borderRadius: 10, padding: '12px 16px' }}>
+                <div style={{ fontSize: '0.72em', color: '#065F46', fontWeight: 700, textTransform: 'uppercase', marginBottom: 4 }}>À redistribuer (séjours passés)</div>
+                <div style={{ fontSize: '1.4em', fontWeight: 700, color: '#065F46', fontVariantNumeric: 'tabular-nums' }}>{fmt(encaisse - resasFutures)}</div>
+                <div style={{ fontSize: '0.75em', color: '#9C8E7D', marginTop: 4 }}>Séjours déjà effectués — argent dû aux proprios, AEs, DCB</div>
+              </div>
+              <div style={{ background: '#F0F9FF', border: '1px solid #BAE6FD', borderRadius: 10, padding: '12px 16px' }}>
+                <div style={{ fontSize: '0.72em', color: '#0369a1', fontWeight: 700, textTransform: 'uppercase', marginBottom: 4 }}>Encaissé futur (séjours à venir)</div>
+                <div style={{ fontSize: '1.4em', fontWeight: 700, color: '#0369a1', fontVariantNumeric: 'tabular-nums' }}>{fmt(resasFutures)}</div>
+                <div style={{ fontSize: '0.75em', color: '#9C8E7D', marginTop: 4 }}>Payé en avance — appartient encore aux voyageurs jusqu'au départ</div>
+              </div>
             </div>
 
-            {/* ── Bloc 5 : Bilan ── */}
-            <SeqSeparateur label="5 — Bilan" />
-            <SeqLigne
-              label="Solde théorique restant (encaissé − sorties prouvées)"
-              montant={encaisse}
-              fiabilite="fiable"
-              highlight
-            />
-            <div style={{ padding: '4px 14px 4px 14px', fontSize: '0.76em', color: '#9C8E7D' }}>
-              Égal à l'encaissé tant que les sorties bancaires ne sont pas tracées.
-            </div>
-            <SeqLigne
-              label="Écart non expliqué (encaissé − ventilé total)"
-              montant={ecart}
-              fiabilite={Math.abs(ecart) < 200 ? 'fiable' : 'calcule'}
-              detail={Math.abs(ecart) > 200 ? 'À investiguer' : 'Normal (arrondis)'}
-              highlight={Math.abs(ecart) > 200}
-            />
-            <div style={{ padding: '8px 14px 14px', fontSize: '0.76em', color: '#9C8E7D' }}>
-              Devrait être proche de zéro. Un écart important indique des réservations rapprochées sans ventilation, ou un décalage entre <code>fin_revenue</code> et le total ventilé.
+            {/* ── Détail séquestre ── */}
+            <div style={{ background: 'var(--bg-card)', border: '1px solid var(--border)', borderRadius: 12, overflow: 'hidden' }}>
+
+              <SeqSeparateur label="1 — Encaissements prouvés suivis (base cash)" />
+              <SeqLigne label="Total encaissé rapproché" montant={encaisse} fiabilite="fiable" detail={`${nbResas} résa${nbResas > 1 ? 's' : ''}`} highlight />
+              <div style={{ padding: '2px 14px 8px 32px', fontSize: '0.74em', color: '#9C8E7D', borderLeft: '2px solid var(--border)', marginLeft: 14 }}>
+                Source : <code>reservation.rapprochee = true</code> + <code>fin_revenue</code>. Annulations sans frais exclues.
+              </div>
+
+              <SeqSeparateur label="2 — À qui appartient cet argent (ventilation théorique)" />
+              <SeqLigne label="Propriétaires" montant={ventil.loy} fiabilite="calcule" indent />
+              <SeqLigne label="DCB — honoraires (HON + COM)" montant={ventil.hon + ventil.com} fiabilite="calcule" indent />
+              <SeqLigne label="Ménage / AEs (FMEN + AUTO)" montant={ventil.fmen + ventil.auto} fiabilite="calcule" indent />
+              <SeqLigne label="Taxes de séjour" montant={ventil.taxe} fiabilite="calcule" indent />
+              {ventil.autres > 0 && <SeqLigne label="Autres (DEB_AE, HAOWNER…)" montant={ventil.autres} fiabilite="calcule" indent />}
+              {nbNonVentilees > 0 && (
+                <div style={{ margin: '4px 14px', padding: '8px 12px', background: '#FFFBEB', border: '1px solid #FDE68A', borderRadius: 8, display: 'flex', alignItems: 'center', gap: 10 }}>
+                  <span style={{ fontSize: '1em' }}>⚠️</span>
+                  <span style={{ flex: 1, fontSize: '0.82em', color: '#92400E', fontWeight: 600 }}>{nbNonVentilees} résa(s) rapprochée(s) sans ventilation</span>
+                  <span style={{ fontSize: '0.82em', fontWeight: 700, color: '#92400E', fontVariantNumeric: 'tabular-nums' }}>{fmt(encaisseNonVentile)}</span>
+                </div>
+              )}
+              {nbNonVentilees === 0 && <SeqLigne label="Non ventilé" montant={0} fiabilite="calcule" indent dimmed />}
+              <SeqLigne label="Total attribué" montant={ventil.totalVentile + encaisseNonVentile} fiabilite="calcule" highlight />
+
+              <SeqSeparateur label="3 — Proxy sorties (facturé Evoliz — ≠ virement effectué)" />
+              <SeqLigne label="Factures envoyées / validées" montant={facturesEnv} fiabilite="proxy" detail={facturesEnvNb > 0 ? `${facturesEnvNb} facture(s)` : null} indent />
+              <SeqLigne label="Brouillons non encore envoyés" montant={facturesBrouillon} fiabilite="proxy" detail={facturesBrouillonNb > 0 ? `${facturesBrouillonNb} brouillon(s)` : null} indent dimmed />
+              <div style={{ padding: '2px 14px 8px 32px', fontSize: '0.74em', color: '#f59e0b', borderLeft: '2px solid #FDE68A', marginLeft: 14 }}>
+                "Envoyé Evoliz" ≠ "sorti du compte". Aucun virement n'est prouvé ici.
+              </div>
+
+              <SeqSeparateur label="4 — Sorties bancaires prouvées (non disponible)" />
+              <SeqLigne label="Propriétaires — virements débités" montant={null} fiabilite="absent" indent />
+              <SeqLigne label="AEs — paiements débités" montant={null} fiabilite="absent" indent />
+              <SeqLigne label="DCB — transferts honoraires débités" montant={null} fiabilite="absent" indent />
+              <SeqLigne label="Autres débits rapprochés" montant={null} fiabilite="absent" indent />
+              <div style={{ padding: '2px 14px 10px 32px', fontSize: '0.74em', color: '#9C8E7D', borderLeft: '2px solid var(--border)', marginLeft: 14 }}>
+                Prochaine étape : rapprocher les débits CE aux factures sortantes.
+              </div>
+
+              <SeqSeparateur label="5 — Bilan" />
+              <SeqLigne label="Encaissements prouvés suivis" montant={encaisse} fiabilite="fiable" highlight />
+              <SeqLigne
+                label="Écart encaissé vs attribué"
+                montant={ecart}
+                fiabilite={Math.abs(ecart) < 200 ? 'fiable' : 'calcule'}
+                detail={Math.abs(ecart) > 200 ? '⚠️ À investiguer' : 'Arrondis normaux'}
+                highlight={Math.abs(ecart) > 200}
+              />
+              <div style={{ padding: '6px 14px 14px', fontSize: '0.74em', color: '#9C8E7D' }}>
+                Devrait être proche de zéro. Un écart important = réservations rapprochées sans ventilation, ou décalage <code>fin_revenue</code> vs ventilé.
+              </div>
             </div>
           </div>
         )
