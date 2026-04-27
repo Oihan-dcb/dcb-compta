@@ -631,7 +631,6 @@ function SeqSeparateur({ label }) {
 }
 
 function OngletSequestre() {
-  const mois = moisCourant
   const [data, setData]     = useState(null)
   const [loading, setLoading] = useState(true)
   const [error, setError]   = useState(null)
@@ -641,24 +640,23 @@ function OngletSequestre() {
     setLoading(true)
     setError(null)
     try {
-      // ── A. Flux banque du mois courant ──────────────────────────────────
-      const { data: mbTotaux } = await supabase
-        .from('mouvement_bancaire')
-        .select('credit, debit')
-        .eq('agence', AGENCE)
-        .eq('mois_releve', mois)
-      const soldeBanque = (mbTotaux || []).reduce((s, m) => s + (m.credit || 0) - (m.debit || 0), 0)
-
       const today = new Date().toISOString().slice(0, 10)
 
-      // ── B. Réservations rapprochées du mois courant ─────────────────────
-      // Pas de filtre bien_id : rapprochee=true garantit déjà l'appartenance DCB
-      // (le rapprochement se fait via mouvement_bancaire.agence='DCB')
+      // ── 1. Biens de l'agence ─────────────────────────────────────────────
+      const { data: biens } = await supabase
+        .from('bien').select('id').eq('agence', AGENCE)
+      const bienIds = (biens || []).map(b => b.id)
+      if (!bienIds.length) {
+        setData({ encaisse: 0, nbResas: 0, nbNonVentilees: 0, encaisseNonVentile: 0, resasFutures: 0, ventil: { loy:0,hon:0,com:0,fmen:0,auto:0,taxe:0,autres:0,totalVentile:0 }, evoliz: { stats: { brouillon:{nb:0,totalTtc:0,totalRev:0}, valide:{nb:0,totalTtc:0,totalRev:0}, envoye:{nb:0,totalTtc:0,totalRev:0} } }, ecart: 0 })
+        setGenAt(new Date()); return
+      }
+
+      // ── 2. Toutes les réservations rapprochées (sans filtre mois) ────────
       const { data: resas } = await supabase
         .from('reservation')
         .select('id, fin_revenue, ventilation_calculee, final_status, departure_date')
+        .in('bien_id', bienIds)
         .eq('rapprochee', true)
-        .eq('mois_comptable', mois)
         .gt('fin_revenue', 0)
       const resasValides = (resas || []).filter(r =>
         !['not_accepted', 'not accepted', 'declined', 'expired'].includes(r.final_status)
@@ -667,7 +665,6 @@ function OngletSequestre() {
       const nbResas          = resasValides.length
       const nbNonVentilees   = resasValides.filter(r => !r.ventilation_calculee).length
       const encaisseNonVentile = resasValides.filter(r => !r.ventilation_calculee).reduce((s, r) => s + (r.fin_revenue || 0), 0)
-      // Séjours futurs déjà encaissés (departure_date >= aujourd'hui)
       const resasFutures     = resasValides.filter(r => r.departure_date && r.departure_date >= today).reduce((s, r) => s + (r.fin_revenue || 0), 0)
       const resaIds          = resasValides.filter(r => r.ventilation_calculee).map(r => r.id)
 
@@ -693,12 +690,11 @@ function OngletSequestre() {
       }
       ventil.totalVentile = ventil.loy + ventil.hon + ventil.com + ventil.fmen + ventil.auto + ventil.taxe + ventil.autres
 
-      // ── D. Evoliz du mois — suivi administratif uniquement ───────────────
+      // ── D. Evoliz — toutes factures (pas de filtre mois) ────────────────
       const { data: fAll } = await supabase
         .from('facture_evoliz')
         .select('statut, montant_reversement, total_ttc')
         .eq('type_facture', 'honoraires')
-        .eq('mois', mois)
         .in('statut', ['brouillon', 'calcul_en_cours', 'valide', 'envoye_evoliz'])
       const evoliz = {
         brouillon: (fAll || []).filter(f => ['brouillon', 'calcul_en_cours'].includes(f.statut)),
@@ -711,7 +707,7 @@ function OngletSequestre() {
       // ── E. Écart ─────────────────────────────────────────────────────────
       const ecart = encaisse - (ventil.totalVentile + encaisseNonVentile)
 
-      setData({ soldeBanque, encaisse, nbResas, nbNonVentilees, encaisseNonVentile, resasFutures, ventil, evoliz, ecart })
+      setData({ encaisse, nbResas, nbNonVentilees, encaisseNonVentile, resasFutures, ventil, evoliz, ecart })
       setGenAt(new Date())
     } catch (e) {
       setError(e.message)
@@ -743,8 +739,7 @@ function OngletSequestre() {
       {loading && !data && <div style={{ textAlign: 'center', padding: 40, color: '#9C8E7D' }}>Chargement…</div>}
 
       {data && (() => {
-        const { soldeBanque, encaisse, nbResas, nbNonVentilees, encaisseNonVentile, resasFutures, ventil, evoliz, ecart } = data
-        const ecartBanque = soldeBanque - encaisse
+        const { encaisse, nbResas, nbNonVentilees, encaisseNonVentile, resasFutures, ventil, evoliz, ecart } = data
 
         // Score global
         const scoreEntrees = nbResas > 0 ? 'fiable' : 'absent'
@@ -772,29 +767,6 @@ function OngletSequestre() {
               <div style={{ marginLeft: 'auto', background: 'var(--bg)', border: '1px solid var(--border)', borderRadius: 8, padding: '7px 14px', display: 'flex', flexDirection: 'column', alignItems: 'center', minWidth: 100 }}>
                 <div style={{ fontSize: '0.7em', color: '#9C8E7D', textTransform: 'uppercase', fontWeight: 600 }}>Score global</div>
                 <div style={{ fontSize: '0.85em', fontWeight: 700, color: scoreSorties === 'absent' ? '#92400E' : '#065F46', marginTop: 2 }}>Intermédiaire</div>
-              </div>
-            </div>
-
-            {/* ── Comparatif banque / cash suivi ── */}
-            <div style={{ background: 'var(--bg-card)', border: '1px solid var(--border)', borderRadius: 12, overflow: 'hidden' }}>
-              <div style={{ padding: '10px 14px 4px', fontSize: '0.75em', fontWeight: 700, color: '#9C8E7D', textTransform: 'uppercase', letterSpacing: '0.07em' }}>
-                Comparatif banque vs suivi
-              </div>
-              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 1, background: 'var(--border)' }}>
-                {[
-                  { label: 'Flux banque du mois (CE)', montant: soldeBanque, badge: BADGE.fiable, note: 'Crédits − débits CE importés ce mois' },
-                  { label: 'Encaissé suivi (rapproché)', montant: encaisse, badge: BADGE.fiable, note: `${nbResas} résa(s) rapprochée(s)` },
-                  { label: 'Écart à expliquer', montant: ecartBanque, badge: Math.abs(ecartBanque) < 5000 ? BADGE.fiable : BADGE.estime, note: ecartBanque > 0 ? 'Banque > suivi : mouvements non encore rapprochés' : ecartBanque < 0 ? 'Suivi > banque : fin_revenue possiblement surestimé' : 'Parfait' },
-                ].map(({ label, montant, badge, note }) => (
-                  <div key={label} style={{ background: 'var(--bg-card)', padding: '14px 16px' }}>
-                    <div style={{ fontSize: '0.74em', color: '#9C8E7D', fontWeight: 600, marginBottom: 4 }}>{label}</div>
-                    <div style={{ fontSize: '1.35em', fontWeight: 700, color: 'var(--brand)', fontVariantNumeric: 'tabular-nums' }}>{fmt(montant)}</div>
-                    <div style={{ marginTop: 5, display: 'flex', flexDirection: 'column', gap: 3 }}>
-                      <span style={{ fontSize: '0.72em', fontWeight: 600, padding: '1px 6px', borderRadius: 6, background: badge.bg, color: badge.color, alignSelf: 'flex-start' }}>{badge.label}</span>
-                      <span style={{ fontSize: '0.72em', color: '#9C8E7D', lineHeight: 1.4 }}>{note}</span>
-                    </div>
-                  </div>
-                ))}
               </div>
             </div>
 
