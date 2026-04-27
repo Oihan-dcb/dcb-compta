@@ -6,8 +6,9 @@ import { buildComptaMensuelle } from '../services/buildComptaMensuelle'
 import { AGENCE } from '../lib/agence'
 
 const moisCourant = new Date().toISOString().slice(0, 7)
-const fmt = c => c != null ? ((c / 100).toFixed(2).replace('.', ',') + ' €') : '—'
-const fmtN = c => c != null ? ((c / 100).toFixed(2).replace('.', ',')) : '—'
+const NF  = new Intl.NumberFormat('fr-FR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
+const fmt = c => c != null ? NF.format(c / 100) + ' €' : '—'
+const fmtN = c => c != null ? NF.format(c / 100) : '—'
 const fmtDate = d => d ? d.slice(0, 10).split('-').reverse().join('/') : '—'
 
 const LEVEL_COLOR  = { error: '#ef4444', warning: '#f59e0b', info: '#6b7280' }
@@ -698,24 +699,24 @@ function OngletSequestre() {
       }
       ventil.totalVentile = ventil.loy + ventil.hon + ventil.com + ventil.fmen + ventil.auto + ventil.taxe + ventil.autres
 
-      // ── E. Proxy sorties : factures Evoliz ──────────────────────────────
-      const { data: fEnv } = await supabase
+      // ── E. Evoliz — suivi administratif uniquement (aucune influence sur le cash) ──
+      const { data: fAll } = await supabase
         .from('facture_evoliz')
-        .select('montant_reversement, total_ttc')
-        .in('statut', ['envoye_evoliz', 'valide'])
+        .select('statut, montant_reversement, total_ttc')
         .eq('type_facture', 'honoraires')
-      const facturesEnv   = (fEnv || []).reduce((s, r) => s + (r.total_ttc || 0), 0)
-      const facturesEnvNb = (fEnv || []).length
-
-      const { data: fBrouillon } = await supabase
-        .from('facture_evoliz').select('total_ttc').eq('statut', 'brouillon').eq('type_facture', 'honoraires')
-      const facturesBrouillon   = (fBrouillon || []).reduce((s, r) => s + (r.total_ttc || 0), 0)
-      const facturesBrouillonNb = (fBrouillon || []).length
+        .in('statut', ['brouillon', 'calcul_en_cours', 'valide', 'envoye_evoliz'])
+      const evoliz = {
+        brouillon: (fAll || []).filter(f => ['brouillon', 'calcul_en_cours'].includes(f.statut)),
+        valide:    (fAll || []).filter(f => f.statut === 'valide'),
+        envoye:    (fAll || []).filter(f => f.statut === 'envoye_evoliz'),
+      }
+      const evolizSum = arr => ({ nb: arr.length, totalTtc: arr.reduce((s, f) => s + (f.total_ttc || 0), 0), totalRev: arr.reduce((s, f) => s + (f.montant_reversement || 0), 0) })
+      evoliz.stats = { brouillon: evolizSum(evoliz.brouillon), valide: evolizSum(evoliz.valide), envoye: evolizSum(evoliz.envoye) }
 
       // ── F. Écart ─────────────────────────────────────────────────────────
       const ecart = encaisse - (ventil.totalVentile + encaisseNonVentile)
 
-      setData({ soldeBanque, encaisse, nbResas, nbNonVentilees, encaisseNonVentile, resasFutures, ventil, facturesEnv, facturesEnvNb, facturesBrouillon, facturesBrouillonNb, ecart })
+      setData({ soldeBanque, encaisse, nbResas, nbNonVentilees, encaisseNonVentile, resasFutures, ventil, evoliz, ecart })
       setGenAt(new Date())
     } catch (e) {
       setError(e.message)
@@ -727,7 +728,7 @@ function OngletSequestre() {
   useEffect(() => { charger() }, [charger])
 
   return (
-    <div style={{ maxWidth: 760 }}>
+    <div style={{ maxWidth: 1000 }}>
       {/* En-tête */}
       <div style={{ display: 'flex', alignItems: 'center', marginBottom: 20, gap: 12 }}>
         <div style={{ fontSize: '0.8em', color: '#9C8E7D' }}>
@@ -744,7 +745,7 @@ function OngletSequestre() {
       {loading && !data && <div style={{ textAlign: 'center', padding: 40, color: '#9C8E7D' }}>Chargement…</div>}
 
       {data && (() => {
-        const { soldeBanque, encaisse, nbResas, nbNonVentilees, encaisseNonVentile, resasFutures, ventil, facturesEnv, facturesEnvNb, facturesBrouillon, facturesBrouillonNb, ecart } = data
+        const { soldeBanque, encaisse, nbResas, nbNonVentilees, encaisseNonVentile, resasFutures, ventil, evoliz, ecart } = data
         const ecartBanque = soldeBanque - encaisse
 
         // Score global
@@ -838,11 +839,31 @@ function OngletSequestre() {
               {nbNonVentilees === 0 && <SeqLigne label="Non ventilé" montant={0} fiabilite="calcule" indent dimmed />}
               <SeqLigne label="Total attribué" montant={ventil.totalVentile + encaisseNonVentile} fiabilite="calcule" highlight />
 
-              <SeqSeparateur label="3 — Proxy sorties (facturé Evoliz — ≠ virement effectué)" />
-              <SeqLigne label="Factures envoyées / validées" montant={facturesEnv} fiabilite="proxy" detail={facturesEnvNb > 0 ? `${facturesEnvNb} facture(s)` : null} indent />
-              <SeqLigne label="Brouillons non encore envoyés" montant={facturesBrouillon} fiabilite="proxy" detail={facturesBrouillonNb > 0 ? `${facturesBrouillonNb} brouillon(s)` : null} indent dimmed />
-              <div style={{ padding: '2px 14px 8px 32px', fontSize: '0.74em', color: '#f59e0b', borderLeft: '2px solid #FDE68A', marginLeft: 14 }}>
-                "Envoyé Evoliz" ≠ "sorti du compte". Aucun virement n'est prouvé ici.
+              <SeqSeparateur label="3 — Facturation propriétaires (Evoliz) — suivi administratif uniquement" />
+              <div style={{ margin: '4px 14px 8px', padding: '8px 12px', background: '#FFFBEB', border: '1px solid #FDE68A', borderRadius: 8, fontSize: '0.77em', color: '#92400E', lineHeight: 1.5 }}>
+                Une facture envoyée dans Evoliz n'est pas un paiement bancaire confirmé.<br />
+                Ce bloc est purement informatif — il n'influence aucun chiffre du séquestre ci-dessus.
+              </div>
+              {[
+                { label: 'Brouillons / en cours de calcul', s: evoliz.stats.brouillon, dimmed: true },
+                { label: 'Validées (prêtes à envoyer)',      s: evoliz.stats.valide,    dimmed: false },
+                { label: 'Envoyées dans Evoliz',             s: evoliz.stats.envoye,    dimmed: false },
+              ].map(({ label, s, dimmed }) => (
+                <div key={label} style={{ display: 'flex', alignItems: 'baseline', gap: 10, padding: '7px 14px 7px 32px', borderLeft: '2px solid var(--border)', marginLeft: 14, opacity: dimmed ? 0.55 : 1 }}>
+                  <span style={{ flex: 1, fontSize: '0.88em', color: 'var(--text)' }}>{label}</span>
+                  {s.nb > 0 && <span style={{ fontSize: '0.76em', color: '#9C8E7D' }}>{s.nb} facture{s.nb > 1 ? 's' : ''}</span>}
+                  <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 1, minWidth: 160 }}>
+                    <span style={{ fontSize: '0.82em', color: '#9C8E7D', fontVariantNumeric: 'tabular-nums' }}>total TTC {s.nb ? fmt(s.totalTtc) : '—'}</span>
+                    <span style={{ fontSize: '0.78em', color: '#9C8E7D', fontVariantNumeric: 'tabular-nums' }}>dont reversements {s.nb ? fmt(s.totalRev) : '—'}</span>
+                  </div>
+                  <span style={{ fontSize: '0.72em', fontWeight: 600, padding: '1px 6px', borderRadius: 6, background: BADGE.proxy.bg, color: BADGE.proxy.color, whiteSpace: 'nowrap' }}>{BADGE.proxy.label}</span>
+                </div>
+              ))}
+              <div style={{ display: 'flex', alignItems: 'baseline', gap: 10, padding: '8px 14px 10px', borderTop: '1px solid var(--border)', marginTop: 4 }}>
+                <span style={{ flex: 1, fontSize: '0.85em', color: '#9C8E7D' }}>Total reversements administrativement traités</span>
+                <span style={{ fontSize: '0.95em', fontWeight: 700, fontVariantNumeric: 'tabular-nums', color: '#9C8E7D' }}>
+                  {fmt(evoliz.stats.brouillon.totalRev + evoliz.stats.valide.totalRev + evoliz.stats.envoye.totalRev)}
+                </span>
               </div>
 
               <SeqSeparateur label="4 — Sorties bancaires prouvées (non disponible)" />
