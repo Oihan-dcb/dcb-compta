@@ -1,5 +1,29 @@
 # DCB Compta — Context for AI Agents
 
+## Protocole de coordination inter-agents (Codex ↔ Claude Code)
+
+Ce projet est maintenu en parallèle par **Claude Code** (CLI local, sessions quotidiennes) et **ChatGPT Codex** (tâches ponctuelles). Pour rester synchronisés :
+
+### Ce que Codex DOIT faire après chaque modification significative
+
+1. **Mettre à jour `docs/`** selon les règles "Règle obligatoire" ci-dessous
+2. **Commit atomique** avec message explicite (pas de "fix stuff")
+3. **Ajouter une entrée dans `docs/project-overview.md`** section "Fixes récents" si c'est un bug corrigé
+4. **Ne jamais modifier `docs/domain-rules.md`** sans avoir lu et compris toute la section concernée
+
+### Ce que Claude Code fera automatiquement
+
+Claude Code lit git log au démarrage et se met à jour depuis les commits de Codex. Il utilise aussi MemPalace (MCP local) pour la mémoire persistante — Codex n'a pas accès à MemPalace mais Claude Code re-synchronise depuis les `docs/` après chaque session.
+
+### Règle de non-régression entre agents
+
+- Ne jamais supprimer ou modifier un comportement documenté dans `docs/domain-rules.md` sans laisser une trace dans le commit message.
+- Si tu touches `ventilation.js`, `facturesEvoliz.js`, ou `rapprochement.js` : mentionner explicitement dans le commit message quelle règle métier a changé (ex: "fix HON calc: round→floor pour directes — domain-rules §4.4").
+- Les tests dans `src/services/__tests__/ventilation.test.js` doivent passer après toute modification de `ventilation.js`.
+
+---
+
+
 ## Identité projet
 Application comptable interne pour **Destination Côte Basque (DCB)**, conciergerie ~50 biens, Biarritz.
 - **GitHub** : `github.com/Oihan-dcb/dcb-compta` (org : Oihan-dcb)
