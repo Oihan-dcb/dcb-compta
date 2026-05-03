@@ -430,7 +430,7 @@ export async function calculerVentilationResa(resa) {
     // Lier mission_menage si AE
     const { data: ligneAuto } = await supabase.from('ventilation').select('id').eq('reservation_id', resa.id).eq('code', 'AUTO').single()
     if (ligneAuto?.id) {
-      await supabase.rpc('lier_ventilation_auto_mission', { p_reservation_id: resa.id, p_ventilation_id: ligneAuto.id }).catch(() => {})
+      try { await supabase.rpc('lier_ventilation_auto_mission', { p_reservation_id: resa.id, p_ventilation_id: ligneAuto.id }) } catch {}
     }
 
     return lignes
@@ -561,10 +561,7 @@ export async function calculerVentilationResa(resa) {
     .single()
   if (ligneAuto?.id) {
     // RPC SECURITY DEFINER — contourne RLS ae_update_own_missions
-    await supabase.rpc('lier_ventilation_auto_mission', {
-      p_reservation_id: resa.id,
-      p_ventilation_id: ligneAuto.id,
-    })
+    try { await supabase.rpc('lier_ventilation_auto_mission', { p_reservation_id: resa.id, p_ventilation_id: ligneAuto.id }) } catch {}
   }
 }
 

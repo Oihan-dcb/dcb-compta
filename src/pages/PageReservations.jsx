@@ -1,5 +1,5 @@
 import { AGENCE } from '../lib/agence'
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { useSearchParams } from 'react-router-dom'
 import MoisSelector from '../components/MoisSelector'
 import { useMoisPersisted } from '../hooks/useMoisPersisted'
@@ -20,6 +20,7 @@ export default function PageReservations() {
   const [loading, setLoading] = useState(false)
   const [syncing, setSyncing] = useState(false)
   const [calculant, setCalculant] = useState(false)
+  const ventilLock = useRef(false)
   const [syncResult, setSyncResult] = useState(null)
   const [ventilResult, setVentilResult] = useState(null)
   const [searchParams, setSearchParams] = useSearchParams()
@@ -105,6 +106,8 @@ export default function PageReservations() {
   }
 
   async function lancerVentilation() {
+    if (ventilLock.current) return
+    ventilLock.current = true
     setCalculant(true); setError(null); setVentilResult(null)
     try {
       const result = await calculerVentilationMois(mois)
@@ -112,7 +115,7 @@ export default function PageReservations() {
       await charger()
     }
     catch (err) { setError(err.message) }
-    finally { setCalculant(false) }
+    finally { setCalculant(false); ventilLock.current = false }
   }
 
   const nbVentilables = reservations.filter(r => r.final_status !== 'cancelled').length
