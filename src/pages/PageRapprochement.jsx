@@ -499,7 +499,7 @@ export default function PageRapprochement() {
                             </button>
                           </div>
                         )}
-                        {m.statut_matching === 'rapproche' && (
+                        {['rapproche', 'matche_auto', 'matche_manuel'].includes(m.statut_matching) && (
                           <button onClick={() => annuler(m.id)}
                             style={{ background: '#FFF7ED', color: '#C2410C', border: '1px solid #FED7AA', borderRadius: 6, padding: '3px 8px', fontSize: 12, cursor: 'pointer' }}>
                             Annuler

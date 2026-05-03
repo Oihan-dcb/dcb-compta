@@ -652,7 +652,8 @@ export async function annulerRapprochement(mouvementId) {
   if (allResaIds.length) await supabase.from('reservation').update({ rapprochee: false }).in('id', allResaIds)
   await supabase.from('payout_hospitable').update({ mouvement_id: null, statut_matching: 'en_attente' }).eq('mouvement_id', mouvementId)
   await supabase.from('reservation_paiement').delete().eq('mouvement_id', mouvementId)
-  await supabase.from('mouvement_bancaire').update({ statut_matching: 'en_attente' }).eq('id', mouvementId)
+  const { error: mvtErr } = await supabase.from('mouvement_bancaire').update({ statut_matching: 'en_attente' }).eq('id', mouvementId)
+  if (mvtErr) throw mvtErr
   // Journal
   await logOp({
     categorie: 'rapprochement', action: 'unlink', statut: 'warning', source: 'app',
