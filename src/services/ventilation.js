@@ -355,15 +355,20 @@ export function _calculerLignes(resa) {
   }
 
 
+  // LOY + VIR — exclus si gestion_loyer=false sur plateforme externe (Airbnb/Booking)
+  // Dans ce cas, le loyer est versé directement au proprio par la plateforme.
+  // DCB ne détient pas les fonds → pas de reversement ni de virement à faire.
+  // Pour les resas directes/manuelles, même bien hors-séquestre : DCB perçoit le loyer → LOY+VIR normaux.
+  const horsSequestre = bien.gestion_loyer === false && (resa.platform === 'airbnb' || resa.platform === 'booking')
+
   // LOY — reversement propriétaire (hors TVA)
-  if (loyAmount > 0) {
+  if (loyAmount > 0 && !horsSequestre) {
     lignes.push(ligneHorsTVA('LOY', 'Reversement propriétaire', loyAmount, bien, resa))
   }
 
   // VIR — virement propriétaire = LOY + taxes pass-through
-  // LOY = variable de balance → somme(HON + FMEN + AUTO + COM + LOY + TAXE) = fin_revenue exact
   const virAmount = loyAmount + taxesTotal
-  if (virAmount > 0) {
+  if (virAmount > 0 && !horsSequestre) {
     lignes.push(ligneHorsTVA('VIR', 'Virement propriétaire', virAmount, bien, resa))
   }
 
@@ -402,7 +407,6 @@ export function _calculerLignes(resa) {
 export async function calculerVentilationResa(resa) {
   const bien = resa.bien
   if (!bien) throw new Error(`Bien manquant pour résa ${resa.code}`)
-  if (bien.gestion_loyer === false) return []
   if ((bien.agence || AGENCE) !== AGENCE) return []
 
   // Séjour propriétaire : MEN = fin_revenue, AUTO = provision AE, FMEN = MEN - AUTO
