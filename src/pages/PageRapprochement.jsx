@@ -271,16 +271,16 @@ export default function PageRapprochement() {
         <div style={{ display: 'flex', gap: 10, alignItems: 'center', flexWrap: 'wrap' }}>
           <MoisSelector mois={mois} setMois={setMois} moisDispos={moisDispos} />
           <button onClick={lancerSync} disabled={syncing || loading}
-            style={{ background: syncing ? '#aaa' : '#635BFF', color: '#fff', border: 'none', borderRadius: 8, padding: '8px 18px', fontWeight: 600, cursor: syncing ? 'not-allowed' : 'pointer', fontSize: 14 }}>
-            {syncing ? '⏳ Sync...' : '↻ Match Stripe'}
+            style={{ background: (syncing || loading) ? '#aaa' : '#635BFF', color: '#fff', border: 'none', borderRadius: 8, padding: '8px 18px', fontWeight: 600, cursor: (syncing || loading) ? 'not-allowed' : 'pointer', fontSize: 14 }}>
+            {syncing ? '⏳ Sync...' : loading ? '⏳ Chargement...' : '↻ Match Stripe'}
           </button>
           <button onClick={lancerAuto} disabled={matching || loading}
-            style={{ background: matching ? '#aaa' : '#CC9933', color: '#fff', border: 'none', borderRadius: 8, padding: '8px 18px', fontWeight: 600, cursor: matching ? 'not-allowed' : 'pointer', fontSize: 14 }}>
+            style={{ background: (matching || loading) ? '#aaa' : '#CC9933', color: '#fff', border: 'none', borderRadius: 8, padding: '8px 18px', fontWeight: 600, cursor: (matching || loading) ? 'not-allowed' : 'pointer', fontSize: 14 }}>
             {matching ? '⏳ Matching...' : '⚡ Matching auto'}
           </button>
           <button onClick={charger} disabled={loading}
-            style={{ background: '#f0f4ff', color: '#CC9933', border: '1.5px solid #CC9933', borderRadius: 8, padding: '8px 14px', fontWeight: 600, cursor: 'pointer', fontSize: 14 }}>
-            ↻ Actualiser
+            style={{ background: '#f0f4ff', color: '#CC9933', border: '1.5px solid #CC9933', borderRadius: 8, padding: '8px 14px', fontWeight: 600, cursor: loading ? 'not-allowed' : 'pointer', fontSize: 14 }}>
+            {loading ? '⏳' : '↻'} Actualiser
           </button>
         </div>
       </div>
