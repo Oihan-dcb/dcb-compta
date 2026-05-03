@@ -138,6 +138,7 @@ export default function PageRapprochement() {
   }, []) // eslint-disable-line react-hooks/exhaustive-deps
 
   async function lancerSync() {
+    matchingInProgressRef.current = true
     setSyncing(true)
     setSyncLog(null)
     setError(null)
@@ -147,11 +148,12 @@ export default function PageRapprochement() {
       const stripeLog = await syncStripe()
       if (stripeLog.errors > 0 && !stripeLog.matched) throw new Error(`Stripe API inaccessible (${stripeLog.errors} erreur(s))`)
       setSyncLog({ created: stripeLog.matched, updated: stripeLog.updated, errors: stripeLog.errors })
-      await charger()
     } catch (err) {
       setError('Erreur sync: ' + err.message)
     } finally {
+      matchingInProgressRef.current = false
       setSyncing(false)
+      await charger()
     }
   }
 
