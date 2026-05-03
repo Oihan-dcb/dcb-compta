@@ -669,8 +669,9 @@ export async function annulerRapprochement(mouvementId) {
 // Lier un mouvement bancaire à des réservations — Flux 1 pur (VIRSEPA distributeur/voyageur ↔ DCB)
 // Ne touche JAMAIS ventilation.mouvement_id : le reversement propriétaire (VIR) est un flux indépendant
 async function _lierViaPayout(mouvementId, resaIds, mvt = null, statut = 'rapproche') {
-  await supabase.from('mouvement_bancaire').update({ statut_matching: statut }).eq('id', mouvementId)
+  // Ne pas marquer rapproché si aucune réservation trouvée — évite les ghost matches
   if (!resaIds.length) return
+  await supabase.from('mouvement_bancaire').update({ statut_matching: statut }).eq('id', mouvementId)
   await supabase.from('reservation').update({ rapprochee: true }).in('id', resaIds)
   if (mvt) {
     const paiements = resaIds.map(rid => ({
