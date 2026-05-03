@@ -92,11 +92,12 @@ export default function PageRapprochement() {
       const [{ count: virCount }, resasNrRes] = await Promise.all([
         supabase.from('mouvement_bancaire').select('*', { count: 'exact', head: true }).eq('mois_releve', mois).eq('statut_matching', 'en_attente').gt('credit', 0).lt('date_operation', cutoff),
         supabase.from('reservation')
-          .select('id, code, platform, guest_name, arrival_date, departure_date, fin_revenue, final_status, mois_comptable, ventilation_calculee, bien!inner(id, code, hospitable_name, agence)')
+          .select('id, code, platform, guest_name, arrival_date, departure_date, fin_revenue, final_status, mois_comptable, ventilation_calculee, bien!inner(id, code, hospitable_name, agence, gestion_loyer)')
           .eq('mois_comptable', mois)
           .eq('rapprochee', false)
           .eq('owner_stay', false)
           .eq('bien.agence', AGENCE)
+          .eq('bien.gestion_loyer', true)
           .neq('final_status', 'cancelled')
           .neq('final_status', 'not accepted')
           .gt('fin_revenue', 0)
