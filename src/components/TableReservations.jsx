@@ -24,12 +24,17 @@ function BadgeStatut({ r, onToggle }) {
     </span>
   )
   // Rapprochée (priorité max — état final)
-  if (r.rapprochee) return (
-    <span className="badge badge-success"
-      style={{ display: 'inline-flex', alignItems: 'center', gap: 3 }}>
-      ✅ Rapprochée
-    </span>
-  )
+  if (r.rapprochee) {
+    const ANNULES = ['not_accepted', 'not accepted', 'declined', 'expired', 'cancelled']
+    const isAnnule = ANNULES.includes(r.final_status)
+    return (
+      <span className={`badge ${isAnnule ? 'badge-warning' : 'badge-success'}`}
+        style={{ display: 'inline-flex', alignItems: 'center', gap: 3 }}
+        title={isAnnule ? 'Rapprochement suspect — statut annulé/refusé' : ''}>
+        {isAnnule ? '⚠️' : '✅'} Rapprochée
+      </span>
+    )
+  }
   // Ventilée mais pas encore rapprochée
   const STATUTS_NON_VENTILABLES = ['cancelled', 'not_accepted', 'not accepted', 'declined', 'expired']
   if (r.ventilation_calculee && !STATUTS_NON_VENTILABLES.includes(r.final_status)) return (

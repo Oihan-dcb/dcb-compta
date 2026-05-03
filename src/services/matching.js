@@ -53,6 +53,7 @@ export async function lancerMatching(mois) {
     .eq('mois_comptable', mois)
     .eq('rapprochee', false)
     .eq('owner_stay', false)
+    .not('final_status', 'in', '("not_accepted","not accepted","declined","expired")')
 
   if (rErr) throw rErr
 
