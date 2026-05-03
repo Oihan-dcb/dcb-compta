@@ -5,6 +5,8 @@ export function detecterFormatCSV(texte) {
   if (lignes[0].includes('transaction id') || lignes[0].includes('date de la valeur')) return 'budgetbakers'
   if (lignes[0].includes('code de la banque') || lignes[0].includes('numéro de compte') || lignes[0].includes('numero de compte')) return 'caisse_epargne'
   if (lignes.some(l => l.startsWith('date;') && (l.includes('débit') || l.includes('debit')))) return 'caisse_epargne'
+  // Nouveau format banque : Date comptable;Libelle simplifie;Reference;Informations complementaires;...
+  if (lignes[0].includes('libelle simplifie') || lignes[0].includes('date comptable') || lignes[0].includes('informations complementaires')) return 'caisse_epargne'
   return 'inconnu'
 }
 
@@ -62,8 +64,12 @@ function parserLignes(lignes, iDate, iNum, iLib, iDet, iDebit, iCredit, source) 
     const credit = parseMontant(cols[iCredit] || '0')
     const lib = (cols[iLib] || '').slice(0, 200)
     const det = (iDet >= 0 ? cols[iDet] || '' : '').slice(0, 200)
+    const numOp = (iNum >= 0 && cols[iNum]) ? cols[iNum].trim() : null
+    // Clé synthétique déterministe quand le numéro de référence est absent
+    // Empêche les doublons lors des re-imports (NULL n'est pas unique en Postgres)
+    const numeroOperation = numOp || `${source}_${dateOp}_${lib.slice(0, 40)}_${debit || 0}_${credit || 0}`
     rows.push({
-      numero_operation: (iNum >= 0 && cols[iNum]) ? cols[iNum] : undefined,
+      numero_operation: numeroOperation,
       date_operation: dateOp, libelle: lib, detail: det,
       debit: debit || null, credit: credit || null,
       canal: detectCanal(lib, det, debit || 0),
@@ -96,9 +102,9 @@ export function parserCaisseEpargne(texte) {
   const find = (...terms) => h.findIndex(x => terms.some(t => x.includes(t)))
   return parserLignes(lignes,
     find('date'),
-    find('numéro', 'numero'),
+    find('numéro', 'numero', 'référence', 'reference'),
     find('libellé', 'libelle'),
-    find('détail', 'detail'),
+    find('détail', 'detail', 'informations'),
     find('débit', 'debit'),
     find('crédit', 'credit'),
     'CaisseEpargne')
