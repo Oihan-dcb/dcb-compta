@@ -133,12 +133,18 @@ export default function PageRapprochement() {
   // Flags pour bloquer les appels real-time concurrents
   const matchingInProgressRef = useRef(false)
   const loadingInProgressRef = useRef(false)
+  const realtimeDebounceRef = useRef(null)
   useEffect(() => {
+    const handleRealtime = () => {
+      if (matchingInProgressRef.current || loadingInProgressRef.current) return
+      clearTimeout(realtimeDebounceRef.current)
+      realtimeDebounceRef.current = setTimeout(() => chargerRef.current?.(), 800)
+    }
     const channel = supabase.channel(`rapproch-${Date.now()}`)
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'mouvement_bancaire' }, () => { if (!matchingInProgressRef.current && !loadingInProgressRef.current) chargerRef.current?.() })
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'reservation' }, () => { if (!matchingInProgressRef.current && !loadingInProgressRef.current) chargerRef.current?.() })
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'mouvement_bancaire' }, handleRealtime)
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'reservation' }, handleRealtime)
       .subscribe()
-    return () => { supabase.removeChannel(channel) }
+    return () => { clearTimeout(realtimeDebounceRef.current); supabase.removeChannel(channel) }
   }, []) // eslint-disable-line react-hooks/exhaustive-deps
 
   async function lancerSync() {
@@ -277,12 +283,12 @@ export default function PageRapprochement() {
         </div>
         <div style={{ display: 'flex', gap: 10, alignItems: 'center', flexWrap: 'wrap' }}>
           <MoisSelector mois={mois} setMois={setMois} moisDispos={moisDispos} />
-          <button onClick={lancerSync} disabled={syncing || loading}
-            style={{ background: (syncing || loading) ? '#aaa' : '#635BFF', color: '#fff', border: 'none', borderRadius: 8, padding: '8px 18px', fontWeight: 600, cursor: (syncing || loading) ? 'not-allowed' : 'pointer', fontSize: 14 }}>
-            {syncing ? '⏳ Sync...' : loading ? '⏳ Chargement...' : '↻ Match Stripe'}
+          <button onClick={lancerSync} disabled={syncing || matching}
+            style={{ background: syncing ? '#aaa' : '#635BFF', color: '#fff', border: 'none', borderRadius: 8, padding: '8px 18px', fontWeight: 600, cursor: (syncing || matching) ? 'not-allowed' : 'pointer', fontSize: 14 }}>
+            {syncing ? '⏳ Sync...' : '↻ Match Stripe'}
           </button>
-          <button onClick={lancerAuto} disabled={matching || loading}
-            style={{ background: (matching || loading) ? '#aaa' : '#CC9933', color: '#fff', border: 'none', borderRadius: 8, padding: '8px 18px', fontWeight: 600, cursor: (matching || loading) ? 'not-allowed' : 'pointer', fontSize: 14 }}>
+          <button onClick={lancerAuto} disabled={matching || syncing}
+            style={{ background: matching ? '#aaa' : '#CC9933', color: '#fff', border: 'none', borderRadius: 8, padding: '8px 18px', fontWeight: 600, cursor: (matching || syncing) ? 'not-allowed' : 'pointer', fontSize: 14 }}>
             {matching ? '⏳ Matching...' : '⚡ Matching auto'}
           </button>
           <button onClick={charger} disabled={loading}
