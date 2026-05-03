@@ -185,7 +185,10 @@ function parseReservation(resa, bien, mois) {
     final_status: resa.reservation_status?.current?.category || resa.status || 'accepted',
     // Financials en centimes
     fin_accommodation: fin.accommodation?.amount ?? null,
-    fin_revenue: fin.revenue?.amount ?? null,
+    // Airbnb renvoie le revenu théorique même pour les resas expirées/refusées — on force 0
+    fin_revenue: ['not_accepted', 'not accepted', 'declined', 'expired'].includes(
+      resa.reservation_status?.current?.category || resa.status
+    ) ? 0 : (fin.revenue?.amount ?? null),
     fin_host_service_fee: hostServiceFee?.amount ?? null,
     fin_taxes_total: taxesTotal || null,
     fin_currency: fin.currency || 'EUR',
