@@ -240,6 +240,7 @@ export default function PageComptabilite() {
         {[
           { key: 'mensuelle', label: 'Vue mensuelle' },
           { key: 'sequestre', label: 'Séquestre' },
+          { key: 'rapport2025', label: 'Rapport 2025' },
         ].map(({ key, label }) => (
           <button key={key} onClick={() => switchTab(key)}
             style={{ padding: '8px 20px', border: 'none', background: 'none', cursor: 'pointer', fontSize: '0.9em', fontWeight: tab === key ? 700 : 400, color: tab === key ? 'var(--brand)' : '#9C8E7D', borderBottom: tab === key ? '2px solid var(--brand)' : '2px solid transparent', marginBottom: -2, transition: 'color 0.15s' }}>
@@ -249,6 +250,7 @@ export default function PageComptabilite() {
       </div>
 
       {tab === 'sequestre' && <OngletSequestre />}
+      {tab === 'rapport2025' && <OngletRapport2025 />}
 
       {tab === 'mensuelle' && <>
       {/* Erreur */}
@@ -629,6 +631,248 @@ function SeqSeparateur({ label }) {
     </div>
   )
 }
+
+const MOIS_LABELS = {
+  '2025-01': 'Janvier 2025', '2025-02': 'Février 2025', '2025-03': 'Mars 2025',
+  '2025-04': 'Avril 2025',   '2025-05': 'Mai 2025',    '2025-06': 'Juin 2025',
+  '2025-07': 'Juillet 2025', '2025-08': 'Août 2025',   '2025-09': 'Septembre 2025',
+  '2025-10': 'Octobre 2025', '2025-11': 'Novembre 2025','2025-12': 'Décembre 2025',
+}
+const fmtE = v => v != null ? new Intl.NumberFormat('fr-FR', { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(v) + ' €' : '—'
+const sumE = (arr, key) => arr.reduce((s, i) => s + (i[key] ?? 0), 0)
+
+function StatCardE({ label, value, sub, color }) {
+  return (
+    <div style={{ background: 'var(--bg-card)', border: '1px solid var(--border)', borderRadius: 10, padding: '12px 16px', minWidth: 140 }}>
+      <div style={{ fontSize: '0.72em', color: '#9C8E7D', fontWeight: 600, marginBottom: 4, textTransform: 'uppercase', letterSpacing: '0.05em' }}>{label}</div>
+      <div style={{ fontSize: '1.15em', fontWeight: 700, color: color || 'var(--text)', fontVariantNumeric: 'tabular-nums' }}>{value}</div>
+      {sub && <div style={{ fontSize: '0.72em', color: '#9C8E7D', marginTop: 2 }}>{sub}</div>}
+    </div>
+  )
+}
+
+function OngletRapport2025() {
+  const [items, setItems] = useState([])
+  const [loading, setLoading] = useState(true)
+  const [error, setError] = useState(null)
+  const [moisFiltre, setMoisFiltre] = useState('all')
+  const [vue, setVue] = useState('detail') // 'synthese' | 'detail'
+
+  useEffect(() => {
+    supabase.from('sequestre_rapport_item')
+      .select('*')
+      .eq('agence', AGENCE)
+      .eq('annee', 2025)
+      .order('mois')
+      .order('bien_name')
+      .then(({ data, error: e }) => {
+        if (e) setError(e.message)
+        else setItems(data || [])
+        setLoading(false)
+      })
+  }, [])
+
+  const moisDispos = [...new Set(items.map(i => i.mois))].sort()
+  const itemsFiltres = moisFiltre === 'all' ? items : items.filter(i => i.mois === moisFiltre)
+
+  // Totaux globaux
+  const totVir = sumE(itemsFiltres, 'vir_montant')
+  const totHonHt = sumE(itemsFiltres, 'hon_ht')
+  const totHonTtc = sumE(itemsFiltres, 'hon_ttc')
+  const totMen = sumE(itemsFiltres, 'menages')
+  const totDeb = sumE(itemsFiltres, 'debours')
+  const totTaxe = sumE(itemsFiltres, 'taxe_sejour')
+  const totCom = sumE(itemsFiltres, 'com_distrib')
+
+  // Synthèse par mois
+  const parMois = moisDispos.map(m => {
+    const rows = items.filter(i => i.mois === m)
+    return {
+      mois: m,
+      label: MOIS_LABELS[m] || m,
+      nbBiens: rows.filter(r => !r.facture_chaos).length,
+      vir: sumE(rows, 'vir_montant'),
+      honTtc: sumE(rows, 'hon_ttc'),
+      honHt: sumE(rows, 'hon_ht'),
+      menages: sumE(rows, 'menages'),
+      debours: sumE(rows, 'debours'),
+      taxe: sumE(rows, 'taxe_sejour'),
+      com: sumE(rows, 'com_distrib'),
+    }
+  })
+
+  if (loading) return <div style={{ textAlign: 'center', padding: 40, color: '#9C8E7D' }}>Chargement…</div>
+  if (error) return <div style={{ background: '#FEF2F2', border: '1px solid #FECACA', borderRadius: 8, padding: '12px 16px', color: '#DC2626' }}>{error}</div>
+  if (!items.length) return (
+    <div style={{ background: '#FFFBEB', border: '1px solid #FDE68A', borderRadius: 8, padding: '16px 20px', color: '#92400E' }}>
+      <div style={{ fontWeight: 700, marginBottom: 6 }}>Données 2025 non chargées</div>
+      <div style={{ fontSize: '0.85em' }}>Exécutez la migration <code>102_sequestre_rapport_2025.sql</code> dans Supabase pour importer les données.</div>
+    </div>
+  )
+
+  return (
+    <div style={{ maxWidth: 1200 }}>
+      {/* En-tête */}
+      <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 16, flexWrap: 'wrap' }}>
+        <div style={{ fontWeight: 700, fontSize: '1em', color: 'var(--text)' }}>Rapport séquestre 2025</div>
+        <div style={{ fontSize: '0.78em', color: '#9C8E7D' }}>Source : rapports Hospitable (PDFs) — {items.length} enregistrements</div>
+        <div style={{ marginLeft: 'auto', display: 'flex', gap: 6 }}>
+          <button onClick={() => setVue('synthese')} className={vue === 'synthese' ? 'btn btn-primary' : 'btn btn-secondary'} style={{ padding: '5px 12px', fontSize: '0.82em' }}>Synthèse</button>
+          <button onClick={() => setVue('detail')} className={vue === 'detail' ? 'btn btn-primary' : 'btn btn-secondary'} style={{ padding: '5px 12px', fontSize: '0.82em' }}>Détail</button>
+        </div>
+      </div>
+
+      {/* Stats globales */}
+      <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginBottom: 20 }}>
+        <StatCardE label="VIR proprios" value={fmtE(totVir)} sub={moisFiltre === 'all' ? 'Année 2025' : MOIS_LABELS[moisFiltre]} color="#065F46" />
+        <StatCardE label="HON TTC" value={fmtE(totHonTtc)} sub={`HT : ${fmtE(totHonHt)}`} />
+        <StatCardE label="Ménages" value={fmtE(totMen)} />
+        <StatCardE label="Débours" value={fmtE(totDeb)} />
+        {totTaxe > 0 && <StatCardE label="Taxe de séjour" value={fmtE(totTaxe)} />}
+        {totCom > 0 && <StatCardE label="COM distrib" value={fmtE(totCom)} />}
+        <StatCardE
+          label="Total sorties séquestre"
+          value={fmtE(totVir + totHonTtc + totMen + totDeb + totTaxe + totCom)}
+          color="#92400E"
+        />
+      </div>
+
+      {/* ── Vue Synthèse par mois ── */}
+      {vue === 'synthese' && (
+        <div style={{ background: 'var(--bg-card)', border: '1px solid var(--border)', borderRadius: 12, overflow: 'hidden' }}>
+          <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.84em' }}>
+            <thead>
+              <tr style={{ background: '#F0EAD8', borderBottom: '2px solid var(--border)' }}>
+                <th style={{ textAlign: 'left', padding: '10px 14px', fontWeight: 700, color: '#5C4B2A' }}>Mois</th>
+                <th style={{ textAlign: 'right', padding: '10px 14px', fontWeight: 700, color: '#5C4B2A' }}>Biens</th>
+                <th style={{ textAlign: 'right', padding: '10px 14px', fontWeight: 700, color: '#5C4B2A' }}>VIR proprios</th>
+                <th style={{ textAlign: 'right', padding: '10px 14px', fontWeight: 700, color: '#5C4B2A' }}>HON TTC</th>
+                <th style={{ textAlign: 'right', padding: '10px 14px', fontWeight: 700, color: '#5C4B2A' }}>HON HT</th>
+                <th style={{ textAlign: 'right', padding: '10px 14px', fontWeight: 700, color: '#5C4B2A' }}>Ménages</th>
+                <th style={{ textAlign: 'right', padding: '10px 14px', fontWeight: 700, color: '#5C4B2A' }}>Débours</th>
+                <th style={{ textAlign: 'right', padding: '10px 14px', fontWeight: 700, color: '#5C4B2A' }}>Taxe</th>
+                <th style={{ textAlign: 'right', padding: '10px 14px', fontWeight: 700, color: '#5C4B2A' }}>Total sorti</th>
+              </tr>
+            </thead>
+            <tbody>
+              {parMois.map((m, idx) => (
+                <tr key={m.mois} style={{ borderBottom: '1px solid var(--border)', background: idx % 2 === 0 ? 'transparent' : '#FAF7F1' }}
+                  onClick={() => { setMoisFiltre(m.mois); setVue('detail') }}
+                  style={{ borderBottom: '1px solid var(--border)', background: idx % 2 === 0 ? 'transparent' : '#FAF7F1', cursor: 'pointer' }}
+                  title="Cliquer pour voir le détail">
+                  <td style={{ padding: '9px 14px', fontWeight: 600, color: 'var(--text)' }}>{m.label}</td>
+                  <td style={{ padding: '9px 14px', textAlign: 'right', color: '#9C8E7D' }}>{m.nbBiens}</td>
+                  <td style={{ padding: '9px 14px', textAlign: 'right', fontWeight: 600, color: '#065F46', fontVariantNumeric: 'tabular-nums' }}>{fmtE(m.vir)}</td>
+                  <td style={{ padding: '9px 14px', textAlign: 'right', fontVariantNumeric: 'tabular-nums' }}>{fmtE(m.honTtc)}</td>
+                  <td style={{ padding: '9px 14px', textAlign: 'right', color: '#9C8E7D', fontVariantNumeric: 'tabular-nums' }}>{fmtE(m.honHt)}</td>
+                  <td style={{ padding: '9px 14px', textAlign: 'right', fontVariantNumeric: 'tabular-nums' }}>{fmtE(m.menages)}</td>
+                  <td style={{ padding: '9px 14px', textAlign: 'right', fontVariantNumeric: 'tabular-nums' }}>{fmtE(m.debours)}</td>
+                  <td style={{ padding: '9px 14px', textAlign: 'right', color: '#9C8E7D', fontVariantNumeric: 'tabular-nums' }}>{m.taxe > 0 ? fmtE(m.taxe) : '—'}</td>
+                  <td style={{ padding: '9px 14px', textAlign: 'right', fontWeight: 600, color: '#92400E', fontVariantNumeric: 'tabular-nums' }}>{fmtE(m.vir + m.honTtc + m.menages + m.debours + m.taxe + m.com)}</td>
+                </tr>
+              ))}
+            </tbody>
+            <tfoot>
+              <tr style={{ background: '#F0EAD8', borderTop: '2px solid var(--border)' }}>
+                <td style={{ padding: '10px 14px', fontWeight: 700 }}>TOTAL 2025</td>
+                <td style={{ padding: '10px 14px', textAlign: 'right', fontWeight: 700 }}>{items.filter(i => !i.facture_chaos).length}</td>
+                <td style={{ padding: '10px 14px', textAlign: 'right', fontWeight: 700, color: '#065F46', fontVariantNumeric: 'tabular-nums' }}>{fmtE(totVir)}</td>
+                <td style={{ padding: '10px 14px', textAlign: 'right', fontWeight: 700, fontVariantNumeric: 'tabular-nums' }}>{fmtE(totHonTtc)}</td>
+                <td style={{ padding: '10px 14px', textAlign: 'right', fontWeight: 700, color: '#9C8E7D', fontVariantNumeric: 'tabular-nums' }}>{fmtE(totHonHt)}</td>
+                <td style={{ padding: '10px 14px', textAlign: 'right', fontWeight: 700, fontVariantNumeric: 'tabular-nums' }}>{fmtE(totMen)}</td>
+                <td style={{ padding: '10px 14px', textAlign: 'right', fontWeight: 700, fontVariantNumeric: 'tabular-nums' }}>{fmtE(totDeb)}</td>
+                <td style={{ padding: '10px 14px', textAlign: 'right', fontWeight: 700, fontVariantNumeric: 'tabular-nums' }}>{fmtE(totTaxe)}</td>
+                <td style={{ padding: '10px 14px', textAlign: 'right', fontWeight: 700, color: '#92400E', fontVariantNumeric: 'tabular-nums' }}>{fmtE(totVir + totHonTtc + totMen + totDeb + totTaxe + totCom)}</td>
+              </tr>
+            </tfoot>
+          </table>
+        </div>
+      )}
+
+      {/* ── Vue Détail par bien ── */}
+      {vue === 'detail' && (
+        <>
+          {/* Sélecteur mois */}
+          <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginBottom: 14 }}>
+            <button onClick={() => setMoisFiltre('all')}
+              style={{ padding: '5px 12px', borderRadius: 6, border: '1px solid var(--border)', background: moisFiltre === 'all' ? 'var(--brand)' : 'transparent', color: moisFiltre === 'all' ? '#fff' : 'var(--text)', cursor: 'pointer', fontSize: '0.82em', fontWeight: moisFiltre === 'all' ? 700 : 400 }}>
+              Tout 2025
+            </button>
+            {moisDispos.map(m => (
+              <button key={m} onClick={() => setMoisFiltre(m)}
+                style={{ padding: '5px 12px', borderRadius: 6, border: '1px solid var(--border)', background: moisFiltre === m ? 'var(--brand)' : 'transparent', color: moisFiltre === m ? '#fff' : 'var(--text)', cursor: 'pointer', fontSize: '0.82em', fontWeight: moisFiltre === m ? 700 : 400 }}>
+                {(MOIS_LABELS[m] || m).split(' ')[0]}
+              </button>
+            ))}
+          </div>
+
+          <div style={{ background: 'var(--bg-card)', border: '1px solid var(--border)', borderRadius: 12, overflow: 'auto' }}>
+            <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.82em', minWidth: 900 }}>
+              <thead>
+                <tr style={{ background: '#F0EAD8', borderBottom: '2px solid var(--border)' }}>
+                  {moisFiltre === 'all' && <th style={thS}>Mois</th>}
+                  <th style={{ ...thS, textAlign: 'left' }}>Bien</th>
+                  <th style={thS}>VIR proprio</th>
+                  <th style={thS}>HON TTC</th>
+                  <th style={thS}>HON HT</th>
+                  <th style={thS}>Ménages</th>
+                  <th style={thS}>Débours</th>
+                  <th style={thS}>Taxe</th>
+                  <th style={thS}>COM</th>
+                  <th style={{ ...thS, textAlign: 'left' }}>Note</th>
+                </tr>
+              </thead>
+              <tbody>
+                {itemsFiltres.map((item, idx) => {
+                  const isChaos = item.facture_chaos
+                  const isNullVir = item.vir_montant == null && !isChaos
+                  return (
+                    <tr key={item.id || idx} style={{ borderBottom: '1px solid var(--border)', background: isChaos ? '#FFFBEB' : isNullVir ? '#FEF2F2' : idx % 2 === 0 ? 'transparent' : '#FAF7F1', opacity: isChaos ? 0.7 : 1 }}>
+                      {moisFiltre === 'all' && <td style={{ padding: '7px 10px', color: '#9C8E7D', whiteSpace: 'nowrap', fontSize: '0.9em' }}>{(MOIS_LABELS[item.mois] || item.mois).split(' ')[0].slice(0, 3)}</td>}
+                      <td style={{ padding: '7px 10px' }}>
+                        <div style={{ fontWeight: 600, color: 'var(--text)' }}>{item.bien_name}</div>
+                        {item.owner_name && <div style={{ fontSize: '0.82em', color: '#9C8E7D' }}>{item.owner_name}</div>}
+                        {isChaos && <div style={{ fontSize: '0.75em', color: '#92400E', fontWeight: 600 }}>FACTURE DIRECTE</div>}
+                      </td>
+                      <td style={{ ...tdNumS, color: item.vir_montant < 0 ? '#DC2626' : '#065F46', fontWeight: 600 }}>{fmtE(item.vir_montant)}</td>
+                      <td style={tdNumS}>{fmtE(item.hon_ttc)}</td>
+                      <td style={{ ...tdNumS, color: '#9C8E7D' }}>{fmtE(item.hon_ht)}</td>
+                      <td style={tdNumS}>{fmtE(item.menages)}</td>
+                      <td style={tdNumS}>{fmtE(item.debours)}</td>
+                      <td style={{ ...tdNumS, color: '#9C8E7D' }}>{item.taxe_sejour > 0 ? fmtE(item.taxe_sejour) : '—'}</td>
+                      <td style={{ ...tdNumS, color: '#9C8E7D' }}>{item.com_distrib > 0 ? fmtE(item.com_distrib) : '—'}</td>
+                      <td style={{ padding: '7px 10px', fontSize: '0.8em', color: '#9C8E7D', maxWidth: 200 }}>{item.vir_note || ''}</td>
+                    </tr>
+                  )
+                })}
+              </tbody>
+              <tfoot>
+                <tr style={{ background: '#F0EAD8', borderTop: '2px solid var(--border)' }}>
+                  {moisFiltre === 'all' && <td style={{ padding: '9px 10px' }} />}
+                  <td style={{ padding: '9px 10px', fontWeight: 700, color: 'var(--text)' }}>
+                    TOTAL {moisFiltre === 'all' ? '2025' : MOIS_LABELS[moisFiltre] || moisFiltre}
+                    <span style={{ fontSize: '0.8em', fontWeight: 400, color: '#9C8E7D', marginLeft: 6 }}>{itemsFiltres.length} biens</span>
+                  </td>
+                  <td style={{ ...tdNumS, fontWeight: 700, color: '#065F46' }}>{fmtE(totVir)}</td>
+                  <td style={{ ...tdNumS, fontWeight: 700 }}>{fmtE(totHonTtc)}</td>
+                  <td style={{ ...tdNumS, fontWeight: 700, color: '#9C8E7D' }}>{fmtE(totHonHt)}</td>
+                  <td style={{ ...tdNumS, fontWeight: 700 }}>{fmtE(totMen)}</td>
+                  <td style={{ ...tdNumS, fontWeight: 700 }}>{fmtE(totDeb)}</td>
+                  <td style={{ ...tdNumS, fontWeight: 700, color: '#9C8E7D' }}>{fmtE(totTaxe)}</td>
+                  <td style={{ ...tdNumS, fontWeight: 700, color: '#9C8E7D' }}>{fmtE(totCom)}</td>
+                  <td />
+                </tr>
+              </tfoot>
+            </table>
+          </div>
+        </>
+      )}
+    </div>
+  )
+}
+
+const thS = { padding: '10px 10px', fontWeight: 700, color: '#5C4B2A', textAlign: 'right', whiteSpace: 'nowrap' }
+const tdNumS = { padding: '7px 10px', textAlign: 'right', fontVariantNumeric: 'tabular-nums', whiteSpace: 'nowrap' }
 
 function OngletSequestre() {
   const [data, setData]     = useState(null)
