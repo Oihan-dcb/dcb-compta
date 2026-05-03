@@ -368,11 +368,18 @@ export function _calculerLignes(resa) {
   }
 
   // TAXE — Airbnb: exclue. Booking: pass-through seulement. Direct: toutes.
+  // Les taxes sont agrégées par label pour éviter les doublons si reservation_fee
+  // contient plusieurs lignes avec le même libellé (ex. imports CSV Booking dupliqués).
   if (resa.platform !== 'airbnb') {
+    const taxesGroupees = {}
     for (const tax of taxes) {
       if (tax.amount > 0 && !isRemitted(tax)) {
-        lignes.push(ligneHorsTVA('TAXE', tax.label || 'Taxe séjour', tax.amount, bien, resa))
+        const label = tax.label || 'Taxe séjour'
+        taxesGroupees[label] = (taxesGroupees[label] || 0) + tax.amount
       }
+    }
+    for (const [label, amount] of Object.entries(taxesGroupees)) {
+      lignes.push(ligneHorsTVA('TAXE', label, amount, bien, resa))
     }
   }
 
