@@ -129,7 +129,6 @@ export function agregerSejoursProrio(reservations) {
 export function _calculerLignes(resa) {
   const bien = resa.bien
   if (!bien) throw new Error(`Bien manquant pour résa ${resa.code}`)
-  if (bien.gestion_loyer === false) return { lignes: [] }
   if ((bien.agence || AGENCE) !== AGENCE) return { lignes: [] }
 
   const revenue = resa.fin_revenue || 0
