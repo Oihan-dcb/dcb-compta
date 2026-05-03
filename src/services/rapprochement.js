@@ -535,6 +535,7 @@ export async function lancerMatchingAuto(mois) {
           }
 
           const allResaIds = []
+          let allLinked = true
           for (const p of subsetPay) {
             const { data: prLinks } = await supabase
               .from('payout_reservation').select('reservation_id').eq('payout_id', p.id)
@@ -545,9 +546,16 @@ export async function lancerMatchingAuto(mois) {
               const { data: resaFb } = await supabase
                 .from('reservation').select('id')
                 .eq('platform', canal).eq('fin_revenue', p.amount).eq('mois_comptable', mois)
-              if (resaFb?.length === 1) allResaIds.push(resaFb[0].id)
+              if (resaFb?.length === 1) {
+                allResaIds.push(resaFb[0].id)
+              } else {
+                // Un payout de la combinaison sans lien resa → combinaison invalide, on abandonne
+                allLinked = false
+                break
+              }
             }
           }
+          if (!allLinked) { log.skipped++; continue }
           const resaIds = [...new Set(allResaIds.filter(Boolean))]
           await _lierViaPayout(mouv.id, resaIds, mouv)
 
