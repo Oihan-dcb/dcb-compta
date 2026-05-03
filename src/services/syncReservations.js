@@ -90,7 +90,9 @@ export async function syncReservations(mois) {
 
         // Airbnb : payout = fin_revenue (financials.host.revenue.amount)
         // date_payout = arrival_date (Airbnb génère le payout au check-in)
-        if (resa.platform === 'airbnb' && parsed.fin_revenue && parsed.arrival_date) {
+        // Ne pas créer de payout synthétique pour les biens hors-séquestre (gestion_loyer=false)
+        // car Airbnb vire directement au propriétaire — pas de virement côté DCB
+        if (resa.platform === 'airbnb' && parsed.fin_revenue && parsed.arrival_date && bien.gestion_loyer !== false) {
           await supabase.from('payout_hospitable').upsert({
             hospitable_id: resa.id + '_airbnb_payout',
             platform: 'airbnb',
