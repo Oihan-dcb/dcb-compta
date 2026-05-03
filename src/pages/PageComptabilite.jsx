@@ -651,12 +651,234 @@ function StatCardE({ label, value, sub, color }) {
   )
 }
 
+// ── Export CSV ────────────────────────────────────────────────────────────────
+function exportCSV(items, moisFiltre) {
+  const NF2 = v => v != null ? String(v).replace('.', ',') : ''
+  const headers = ['Mois','Bien','Propriétaire','VIR proprio','HON TTC','HON HT','Ménages','Débours','Taxe séjour','COM distrib','Note','Source','Facture directe']
+  const rows = items.map(i => [
+    i.mois,
+    i.bien_name,
+    i.owner_name || '',
+    NF2(i.vir_montant),
+    NF2(i.hon_ttc),
+    NF2(i.hon_ht),
+    NF2(i.menages),
+    NF2(i.debours),
+    NF2(i.taxe_sejour),
+    NF2(i.com_distrib),
+    i.vir_note || '',
+    i.source || '',
+    i.facture_chaos ? 'oui' : '',
+  ])
+  const csv = [headers, ...rows].map(r => r.map(c => `"${String(c).replace(/"/g,'""')}"`).join(';')).join('\n')
+  const blob = new Blob(['\ufeff' + csv], { type: 'text/csv;charset=utf-8' })
+  const url = URL.createObjectURL(blob)
+  const a = document.createElement('a')
+  a.href = url
+  a.download = `sequestre_2025${moisFiltre !== 'all' ? '_' + moisFiltre : ''}.csv`
+  a.click()
+  URL.revokeObjectURL(url)
+}
+
+// ── Bilan component (Tableau 1 type Lauian) ───────────────────────────────────
+function BilanSequestre({ items }) {
+  const [bilan, setBilan] = useState(null)
+  const [saving, setSaving] = useState(false)
+  const [soldeSaisie, setSoldeSaisie] = useState('')
+  const [cautionsSaisie, setCautionsSaisie] = useState('')
+  const [ajustements, setAjustements] = useState([])
+  const [newLabel, setNewLabel] = useState('')
+  const [newMontant, setNewMontant] = useState('')
+  const [newColor, setNewColor] = useState('normal') // 'normal' | 'rouge' | 'orange'
+
+  useEffect(() => {
+    supabase.from('sequestre_bilan').select('*').eq('agence', AGENCE).eq('annee', 2025).maybeSingle()
+      .then(({ data }) => {
+        if (data) {
+          setBilan(data)
+          setSoldeSaisie(data.solde_bancaire != null ? String(data.solde_bancaire).replace('.', ',') : '')
+          setCautionsSaisie(data.compte_cautions != null ? String(data.compte_cautions).replace('.', ',') : '')
+          setAjustements(data.ajustements || [])
+        }
+      })
+  }, [])
+
+  const parseNum = s => { const v = parseFloat(String(s).replace(',', '.')); return isNaN(v) ? null : v }
+
+  const sauvegarder = async () => {
+    setSaving(true)
+    const payload = {
+      agence: AGENCE, annee: 2025,
+      solde_bancaire: parseNum(soldeSaisie),
+      compte_cautions: parseNum(cautionsSaisie),
+      ajustements,
+      updated_at: new Date().toISOString(),
+    }
+    if (bilan?.id) {
+      await supabase.from('sequestre_bilan').update(payload).eq('id', bilan.id)
+    } else {
+      const { data } = await supabase.from('sequestre_bilan').insert(payload).select().single()
+      if (data) setBilan(data)
+    }
+    setSaving(false)
+  }
+
+  const ajouterLigne = () => {
+    if (!newLabel.trim() || newMontant.trim() === '') return
+    setAjustements(a => [...a, { label: newLabel.trim(), montant: parseNum(newMontant), couleur: newColor }])
+    setNewLabel(''); setNewMontant(''); setNewColor('normal')
+  }
+
+  const supprimerLigne = idx => setAjustements(a => a.filter((_, i) => i !== idx))
+
+  // Calculs
+  const solde = parseNum(soldeSaisie) ?? 0
+  const cautions = parseNum(cautionsSaisie) ?? 0
+  const totalBanque = solde + cautions
+
+  const totVir = sumE(items, 'vir_montant')
+  const totHonTtc = sumE(items, 'hon_ttc')
+  const totMen = sumE(items, 'menages')
+  const totDeb = sumE(items, 'debours')
+  const totTaxe = sumE(items, 'taxe_sejour')
+  const totCom = sumE(items, 'com_distrib')
+  const totAjust = ajustements.reduce((s, a) => s + (a.montant ?? 0), 0)
+  const totalCalcule = totVir + totHonTtc + totMen + totDeb + totTaxe + totCom + totAjust
+  const delta = totalBanque - totalCalcule
+
+  const deltaAbs = Math.abs(delta)
+  const deltaOk = deltaAbs < 500
+  const deltaColor = deltaAbs < 100 ? '#065F46' : deltaAbs < 1000 ? '#92400E' : '#DC2626'
+  const deltaBg = deltaAbs < 100 ? '#D1FAE5' : deltaAbs < 1000 ? '#FEF3C7' : '#FEE2E2'
+
+  const COULEUR_STYLE = {
+    normal: { color: 'var(--text)', fontWeight: 600 },
+    rouge:  { color: '#DC2626', fontWeight: 600 },
+    orange: { color: '#92400E', fontWeight: 600 },
+  }
+
+  return (
+    <div style={{ maxWidth: 640 }}>
+      {/* Inputs bancaires */}
+      <div style={{ background: 'var(--bg-card)', border: '1px solid var(--border)', borderRadius: 12, overflow: 'hidden', marginBottom: 16 }}>
+        <div style={{ background: '#F0EAD8', padding: '10px 16px', fontWeight: 700, fontSize: '0.85em', color: '#5C4B2A', textTransform: 'uppercase', letterSpacing: '0.04em' }}>
+          Comptes bancaires au 31/12/2025
+        </div>
+        <div style={{ padding: '14px 16px', display: 'flex', flexDirection: 'column', gap: 10 }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+            <label style={{ flex: 1, fontSize: '0.88em', fontWeight: 600, color: 'var(--text)' }}>Solde séquestre LC (relevé bancaire)</label>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+              <input value={soldeSaisie} onChange={e => setSoldeSaisie(e.target.value)}
+                style={{ width: 130, padding: '5px 8px', borderRadius: 6, border: '1px solid var(--border)', fontSize: '0.9em', textAlign: 'right', fontVariantNumeric: 'tabular-nums' }}
+                placeholder="ex: 33 052,35" />
+              <span style={{ fontSize: '0.85em', color: '#9C8E7D' }}>€</span>
+            </div>
+          </div>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+            <label style={{ flex: 1, fontSize: '0.88em', fontWeight: 600, color: 'var(--text)' }}>Compte excédent cautions</label>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+              <input value={cautionsSaisie} onChange={e => setCautionsSaisie(e.target.value)}
+                style={{ width: 130, padding: '5px 8px', borderRadius: 6, border: '1px solid var(--border)', fontSize: '0.9em', textAlign: 'right', fontVariantNumeric: 'tabular-nums' }}
+                placeholder="ex: 1 914,60" />
+              <span style={{ fontSize: '0.85em', color: '#9C8E7D' }}>€</span>
+            </div>
+          </div>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', paddingTop: 8, borderTop: '1px solid var(--border)' }}>
+            <span style={{ fontSize: '0.88em', fontWeight: 700 }}>TOTAL BANQUE</span>
+            <span style={{ fontSize: '1.1em', fontWeight: 700, color: parseNum(soldeSaisie) != null ? '#065F46' : '#9C8E7D', fontVariantNumeric: 'tabular-nums' }}>
+              {parseNum(soldeSaisie) != null ? fmtE(totalBanque) : '—'}
+            </span>
+          </div>
+        </div>
+      </div>
+
+      {/* Décomposition calculée */}
+      <div style={{ background: 'var(--bg-card)', border: '1px solid var(--border)', borderRadius: 12, overflow: 'hidden', marginBottom: 16 }}>
+        <div style={{ background: '#F0EAD8', padding: '10px 16px', fontWeight: 700, fontSize: '0.85em', color: '#5C4B2A', textTransform: 'uppercase', letterSpacing: '0.04em' }}>
+          Décomposition — source : rapports Hospitable 2025
+        </div>
+        {[
+          { label: 'Virements proprios (VIR)', montant: totVir, color: '#065F46' },
+          { label: 'Honoraires DCB (HON TTC)', montant: totHonTtc },
+          { label: 'Ménages', montant: totMen },
+          { label: 'Débours / frais', montant: totDeb },
+          ...(totTaxe > 0 ? [{ label: 'Taxe de séjour', montant: totTaxe }] : []),
+          ...(totCom > 0 ? [{ label: 'Commissions distributeurs', montant: totCom }] : []),
+        ].map(({ label, montant, color }) => (
+          <div key={label} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '9px 16px', borderBottom: '1px solid var(--border)' }}>
+            <span style={{ fontSize: '0.88em', color: 'var(--text)' }}>{label}</span>
+            <span style={{ fontSize: '0.92em', fontWeight: 600, color: color || 'var(--text)', fontVariantNumeric: 'tabular-nums' }}>{fmtE(montant)}</span>
+          </div>
+        ))}
+
+        {/* Ajustements manuels */}
+        {ajustements.map((a, idx) => (
+          <div key={idx} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '9px 16px', borderBottom: '1px solid var(--border)', background: '#FDFAF4' }}>
+            <span style={{ fontSize: '0.88em', ...COULEUR_STYLE[a.couleur || 'normal'] }}>{a.label}</span>
+            <div style={{ display: 'flex', gap: 10, alignItems: 'center' }}>
+              <span style={{ fontSize: '0.92em', fontWeight: 600, ...COULEUR_STYLE[a.couleur || 'normal'], fontVariantNumeric: 'tabular-nums' }}>{fmtE(a.montant)}</span>
+              <button onClick={() => supprimerLigne(idx)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#9C8E7D', fontSize: '1em', padding: 0 }} title="Supprimer">×</button>
+            </div>
+          </div>
+        ))}
+
+        {/* Ajouter ajustement */}
+        <div style={{ padding: '10px 16px', background: '#F7F3EC', borderBottom: '1px solid var(--border)' }}>
+          <div style={{ fontSize: '0.78em', color: '#9C8E7D', marginBottom: 6, fontWeight: 600 }}>+ Ajustement manuel</div>
+          <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+            <input value={newLabel} onChange={e => setNewLabel(e.target.value)} placeholder="Label (ex: Arrosa bloqué)"
+              style={{ flex: 2, minWidth: 160, padding: '5px 8px', borderRadius: 6, border: '1px solid var(--border)', fontSize: '0.85em' }} />
+            <input value={newMontant} onChange={e => setNewMontant(e.target.value)} placeholder="-13547,14"
+              style={{ width: 110, padding: '5px 8px', borderRadius: 6, border: '1px solid var(--border)', fontSize: '0.85em', textAlign: 'right' }} />
+            <select value={newColor} onChange={e => setNewColor(e.target.value)}
+              style={{ padding: '5px 8px', borderRadius: 6, border: '1px solid var(--border)', fontSize: '0.85em' }}>
+              <option value="normal">Normal</option>
+              <option value="rouge">Rouge</option>
+              <option value="orange">Orange</option>
+            </select>
+            <button onClick={ajouterLigne} className="btn btn-secondary" style={{ padding: '5px 10px', fontSize: '0.82em' }}>Ajouter</button>
+          </div>
+        </div>
+
+        {/* Total calculé */}
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '11px 16px', borderBottom: '1px solid var(--border)', background: '#F0EAD8' }}>
+          <span style={{ fontSize: '0.9em', fontWeight: 700 }}>TOTAL CALCULÉ</span>
+          <span style={{ fontSize: '1.05em', fontWeight: 700, fontVariantNumeric: 'tabular-nums' }}>{fmtE(totalCalcule)}</span>
+        </div>
+
+        {/* Delta */}
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '12px 16px', background: deltaBg }}>
+          <div>
+            <div style={{ fontSize: '0.9em', fontWeight: 700, color: deltaColor }}>
+              Delta (banque − calculé)
+            </div>
+            <div style={{ fontSize: '0.75em', color: '#9C8E7D', marginTop: 2 }}>
+              {deltaAbs < 100 ? '✅ Équilibré' : deltaAbs < 1000 ? '⚠️ À vérifier' : '❌ Écart important'}
+            </div>
+          </div>
+          <span style={{ fontSize: '1.15em', fontWeight: 700, color: deltaColor, fontVariantNumeric: 'tabular-nums' }}>
+            {parseNum(soldeSaisie) != null ? fmtE(delta) : '—'}
+          </span>
+        </div>
+      </div>
+
+      {/* Bouton sauvegarder */}
+      <button onClick={sauvegarder} disabled={saving} className="btn btn-primary" style={{ padding: '8px 20px' }}>
+        {saving ? 'Enregistrement…' : 'Enregistrer le bilan'}
+      </button>
+      <div style={{ fontSize: '0.76em', color: '#9C8E7D', marginTop: 6 }}>
+        Le solde bancaire et les ajustements sont sauvegardés dans la base de données.
+      </div>
+    </div>
+  )
+}
+
 function OngletRapport2025() {
   const [items, setItems] = useState([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState(null)
   const [moisFiltre, setMoisFiltre] = useState('all')
-  const [vue, setVue] = useState('detail') // 'synthese' | 'detail'
+  const [vue, setVue] = useState('bilan') // 'bilan' | 'synthese' | 'detail'
 
   useEffect(() => {
     supabase.from('sequestre_rapport_item')
@@ -712,18 +934,27 @@ function OngletRapport2025() {
 
   return (
     <div style={{ maxWidth: 1200 }}>
-      {/* En-tête */}
+      {/* En-tête + onglets */}
       <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 16, flexWrap: 'wrap' }}>
         <div style={{ fontWeight: 700, fontSize: '1em', color: 'var(--text)' }}>Rapport séquestre 2025</div>
-        <div style={{ fontSize: '0.78em', color: '#9C8E7D' }}>Source : rapports Hospitable (PDFs) — {items.length} enregistrements</div>
+        <div style={{ fontSize: '0.78em', color: '#9C8E7D' }}>Source : rapports Hospitable (PDFs) — {items.length} lignes</div>
         <div style={{ marginLeft: 'auto', display: 'flex', gap: 6 }}>
-          <button onClick={() => setVue('synthese')} className={vue === 'synthese' ? 'btn btn-primary' : 'btn btn-secondary'} style={{ padding: '5px 12px', fontSize: '0.82em' }}>Synthèse</button>
-          <button onClick={() => setVue('detail')} className={vue === 'detail' ? 'btn btn-primary' : 'btn btn-secondary'} style={{ padding: '5px 12px', fontSize: '0.82em' }}>Détail</button>
+          {[
+            { key: 'bilan',    label: 'Bilan comptable' },
+            { key: 'synthese', label: 'Synthèse mensuelle' },
+            { key: 'detail',   label: 'Détail par bien' },
+          ].map(({ key, label }) => (
+            <button key={key} onClick={() => setVue(key)}
+              className={vue === key ? 'btn btn-primary' : 'btn btn-secondary'}
+              style={{ padding: '5px 12px', fontSize: '0.82em' }}>
+              {label}
+            </button>
+          ))}
         </div>
       </div>
 
-      {/* Stats globales */}
-      <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginBottom: 20 }}>
+      {/* Stats globales (hors bilan) */}
+      {vue !== 'bilan' && <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginBottom: 20 }}>
         <StatCardE label="VIR proprios" value={fmtE(totVir)} sub={moisFiltre === 'all' ? 'Année 2025' : MOIS_LABELS[moisFiltre]} color="#065F46" />
         <StatCardE label="HON TTC" value={fmtE(totHonTtc)} sub={`HT : ${fmtE(totHonHt)}`} />
         <StatCardE label="Ménages" value={fmtE(totMen)} />
@@ -735,7 +966,10 @@ function OngletRapport2025() {
           value={fmtE(totVir + totHonTtc + totMen + totDeb + totTaxe + totCom)}
           color="#92400E"
         />
-      </div>
+      </div>}
+
+      {/* ── Vue Bilan comptable ── */}
+      {vue === 'bilan' && <BilanSequestre items={items} />}
 
       {/* ── Vue Synthèse par mois ── */}
       {vue === 'synthese' && (
@@ -792,8 +1026,8 @@ function OngletRapport2025() {
       {/* ── Vue Détail par bien ── */}
       {vue === 'detail' && (
         <>
-          {/* Sélecteur mois */}
-          <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginBottom: 14 }}>
+          {/* Sélecteur mois + export */}
+          <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginBottom: 14, alignItems: 'center' }}>
             <button onClick={() => setMoisFiltre('all')}
               style={{ padding: '5px 12px', borderRadius: 6, border: '1px solid var(--border)', background: moisFiltre === 'all' ? 'var(--brand)' : 'transparent', color: moisFiltre === 'all' ? '#fff' : 'var(--text)', cursor: 'pointer', fontSize: '0.82em', fontWeight: moisFiltre === 'all' ? 700 : 400 }}>
               Tout 2025
@@ -804,6 +1038,10 @@ function OngletRapport2025() {
                 {(MOIS_LABELS[m] || m).split(' ')[0]}
               </button>
             ))}
+            <button onClick={() => exportCSV(itemsFiltres, moisFiltre)} className="btn btn-secondary"
+              style={{ marginLeft: 'auto', padding: '5px 12px', fontSize: '0.82em' }}>
+              ⬇ Export CSV
+            </button>
           </div>
 
           <div style={{ background: 'var(--bg-card)', border: '1px solid var(--border)', borderRadius: 12, overflow: 'auto' }}>
