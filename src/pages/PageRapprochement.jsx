@@ -77,6 +77,8 @@ export default function PageRapprochement() {
   }
 
   const charger = useCallback(async () => {
+    if (loadingInProgressRef.current) return
+    loadingInProgressRef.current = true
     setLoading(true)
     setError(null)
     try {
@@ -115,6 +117,7 @@ export default function PageRapprochement() {
     } catch (err) {
       setError(err.message)
     } finally {
+      loadingInProgressRef.current = false
       setLoading(false)
     }
   }, [mois])
@@ -127,12 +130,13 @@ export default function PageRapprochement() {
   // Subscription Supabase créée UNE SEULE FOIS au mount — utilise une ref pour toujours appeler le charger courant
   const chargerRef = useRef(charger)
   chargerRef.current = charger
-  // Flag pour bloquer les appels real-time pendant le matching auto (évite flood de charger() concurrents)
+  // Flags pour bloquer les appels real-time concurrents
   const matchingInProgressRef = useRef(false)
+  const loadingInProgressRef = useRef(false)
   useEffect(() => {
     const channel = supabase.channel(`rapproch-${Date.now()}`)
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'mouvement_bancaire' }, () => { if (!matchingInProgressRef.current) chargerRef.current?.() })
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'reservation' }, () => { if (!matchingInProgressRef.current) chargerRef.current?.() })
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'mouvement_bancaire' }, () => { if (!matchingInProgressRef.current && !loadingInProgressRef.current) chargerRef.current?.() })
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'reservation' }, () => { if (!matchingInProgressRef.current && !loadingInProgressRef.current) chargerRef.current?.() })
       .subscribe()
     return () => { supabase.removeChannel(channel) }
   }, []) // eslint-disable-line react-hooks/exhaustive-deps
