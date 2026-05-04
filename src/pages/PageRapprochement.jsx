@@ -6,7 +6,7 @@ import {
   getMouvementsMois, getVirNonRapproches, getStatsRapprochement,
   lancerMatchingAuto, matcherManuellement, marquerNonIdentifie, annulerRapprochement
 } from '../services/rapprochement'
-import { syncStripe } from '../services/syncStripe'
+import { syncStripe, HAS_STRIPE } from '../services/syncStripe'
 import { setToken } from '../lib/hospitable'
 
 import MoisSelector from '../components/MoisSelector'
@@ -315,10 +315,12 @@ export default function PageRapprochement() {
         </div>
         <div style={{ display: 'flex', gap: 10, alignItems: 'center', flexWrap: 'wrap' }}>
           <MoisSelector mois={mois} setMois={setMois} moisDispos={moisDispos} />
-          <button onClick={lancerSync} disabled={syncing || matching}
-            style={{ background: syncing ? '#aaa' : '#635BFF', color: '#fff', border: 'none', borderRadius: 8, padding: '8px 18px', fontWeight: 600, cursor: (syncing || matching) ? 'not-allowed' : 'pointer', fontSize: 14 }}>
-            {syncing ? '⏳ Sync...' : '↻ Match Stripe'}
-          </button>
+          {HAS_STRIPE && (
+            <button onClick={lancerSync} disabled={syncing || matching}
+              style={{ background: syncing ? '#aaa' : '#635BFF', color: '#fff', border: 'none', borderRadius: 8, padding: '8px 18px', fontWeight: 600, cursor: (syncing || matching) ? 'not-allowed' : 'pointer', fontSize: 14 }}>
+              {syncing ? '⏳ Sync...' : '↻ Match Stripe'}
+            </button>
+          )}
           <button onClick={lancerAuto} disabled={matching || syncing}
             style={{ background: matching ? '#aaa' : '#CC9933', color: '#fff', border: 'none', borderRadius: 8, padding: '8px 18px', fontWeight: 600, cursor: (matching || syncing) ? 'not-allowed' : 'pointer', fontSize: 14 }}>
             {matching ? '⏳ Matching...' : '⚡ Matching auto'}
