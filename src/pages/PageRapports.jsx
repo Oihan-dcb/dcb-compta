@@ -106,7 +106,10 @@ export default function PageRapports() {
       .order('nom')
       .then(({ data: props }) => {
         setProprietaires(props || [])
-        if (props?.length) setSelectedPropId(props[0].id)
+        if (props?.length) {
+          const maiteOwner = props.find(p => (p.bien || []).some(b => b.groupe_facturation === 'MAITE'))
+          setSelectedPropId((maiteOwner || props[0]).id)
+        }
       })
 
     supabase.from('reservation').select('mois_comptable').then(({ data: res }) => {
@@ -137,12 +140,14 @@ export default function PageRapports() {
     setEditingBloc({ analyse: false, contexte: false, tendances: false })
     setStatut('idle')
     setPreviewOpen(false)
+    setModeMaite('chambre')
   }, [selectedPropId, proprietaires])
 
   useEffect(() => {
     setData(null)
     setStatut('idle')
     setPreviewOpen(false)
+    setBienIdsActifs(null)
     Promise.all([
       supabase.from('reservation').select('bien_id').eq('mois_comptable', mois)
         .or('fin_revenue.gt.0,final_status.not.in.("cancelled","not_accepted","declined","expired")'),
@@ -152,6 +157,19 @@ export default function PageRapports() {
       setBiensEnvoyes(new Set((rapports || []).map(r => r.bien_id)))
     })
   }, [mois])
+
+  // Quand bienIdsActifs filtre les proprios, si selectedPropId n'est plus visible
+  // dans le dropdown (filtré car pas de resas ce mois), le <select> affiche visuellement
+  // le premier item mais l'état reste sur l'ancien proprio → données incorrectes.
+  // Ce guard resélectionne le premier proprio valide (MAITE en priorité).
+  useEffect(() => {
+    if (bienIdsActifs === null || !proprietaires.length) return
+    const filtered = proprietaires.filter(p => (p.bien || []).some(b => bienIdsActifs.has(b.id)))
+    if (!filtered.length || filtered.some(p => p.id === selectedPropId)) return
+    const maiteFirst = filtered.find(p => (p.bien || []).some(b => b.groupe_facturation === 'MAITE'))
+    setSelectedPropId((maiteFirst || filtered[0]).id)
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [bienIdsActifs, proprietaires])
 
   const saveMenageProprio = async (row) => {
     const montantCents = Math.round(parseFloat(saisirMontant.replace(',', '.')) * 100)
@@ -177,11 +195,15 @@ export default function PageRapports() {
 
   const charger = useCallback(async () => {
     if (!selectedBienId || !selectedPropId) return
+    // Guard race condition : selectedBienId doit appartenir à selectedPropId
+    // (état intermédiaire pendant le changement de proprio)
+    const proprio = proprietaires.find(p => p.id === selectedPropId)
+    const bienIds = (proprio?.bien || []).map(b => b.id)
+    if (!bienIds.includes(selectedBienId)) return
     const reqId = ++reqRef.current
     setLoading(true)
     setError(null)
     try {
-      const proprio = proprietaires.find(p => p.id === selectedPropId)
       setEmail(proprio?.email || '')
       const maiteIdsLocal = (proprio?.bien || []).filter(b => b.groupe_facturation === 'MAITE').map(b => b.id)
       const isGlobal = modeMaite === 'global' && maiteIdsLocal.length > 0
@@ -801,7 +823,7 @@ FORMAT :
         </button>
       </div>
 
-      {error && <div style={{ background: '#FEE2E2', color: '#DC2626', padding: '10px 14px', borderRadius: 8, marginBottom: 16 }}>{error}</div>}
+{error && <div style={{ background: '#FEE2E2', color: '#DC2626', padding: '10px 14px', borderRadius: 8, marginBottom: 16 }}>{error}</div>}
       {loading && !data && <div style={{ color: '#9C8E7D', marginBottom: 16 }}>Chargement…</div>}
 
       {data && (
