@@ -123,9 +123,16 @@ virAmount          = loyAmount + taxesTotal
 
 > **Note de validation** : le recalcul LOY Booking depuis `fin_revenue_net` est la règle **implémentée actuelle** dans V1. Elle diffère de la formule Airbnb (`commissionableBase − honTTC + platformRemb`). La justification métier : Booking raisonne depuis le fin_revenue total moins les déductions.
 
-### 4.4 Direct (Hospitable)
+### 4.4 Direct + Manual (Hospitable)
 
 > ✅ Refonte session 07/04/2026 : formule `commissionableBase` unifiée, `platformRemb` supprimé, `ownerFees` introduit, validé sur HOST-9HAQHD (Ibaneta, mars 2026).
+> ✅ Fix session 04/05/2026 : `platform='manual'` traité comme `'direct'` (`isDirect = platform === 'direct' || platform === 'manual'`). Les réservations manuelles Hospitable utilisent la même structure de fees que les directes — la différence est qu'Hospitable ne prélève pas de Host Service Fee sur les manuelles (hostServiceFee = 0, donc ownerFees = 0).
+
+**Règle isDirect :** `isDirect = resa.platform === 'direct' || resa.platform === 'manual'`
+- Utilise la formule LOY directe : `loyAmount = commissionableBase − honTTC + ownerFees`
+- `honTTC` utilise `Math.floor` (pas `Math.round`)
+- `COM` = managementFeeRaw (management fee brut)
+- Pour les manuelles : ownerFees = 0 car hostServiceFee = 0 → LOY = commissionableBase − honTTC
 
 ```
 commissionableBase = accommodation + hostServiceFee + discountsTotal

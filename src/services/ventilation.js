@@ -199,7 +199,7 @@ export function _calculerLignes(resa) {
   //   (Hospitable prend 0,77% sur les fees directs — pas Airbnb, Booking, manual)
   // ─────────────────────────────────────────────────────────────────────────
 
-  const isDirect = resa.platform === 'direct'
+  const isDirect = resa.platform === 'direct' || resa.platform === 'manual'
   const isCancelled = STATUTS_NON_VENTILABLES.includes(resa.final_status)
 
   // Réservation annulée mais fin_revenue > 0 (frais d'annulation) → ventiler normalement
