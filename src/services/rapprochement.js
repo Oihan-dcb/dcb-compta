@@ -461,7 +461,7 @@ export async function getVirNonRapproches(mois) {
     .from('ventilation')
     .select(`
       id, code, montant_ttc, mouvement_id, mois_comptable, reservation_id,
-      reservation (id, code, platform, guest_name, arrival_date, departure_date, nights, fin_revenue, final_status,
+      reservation (id, code, platform, guest_name, arrival_date, departure_date, nights, fin_revenue, final_status, rapprochee,
         bien!inner (code, hospitable_name, gestion_loyer, agence),
         ventilation (montant_ttc, mouvement_id, code, mouvement_bancaire(credit)))
     `)
@@ -472,11 +472,11 @@ export async function getVirNonRapproches(mois) {
     .eq('reservation.bien.agence', AGENCE)
     .order('mois_comptable', { ascending: false })
   if (error) throw error
-  // Exclure les réservations annulées SAUF si elles ont un revenu réel (pénalité d'annulation)
   return (data || []).filter(v => {
     const r = v.reservation
     if (!r) return false
     if (r.bien?.agence !== AGENCE) return false
+    if (r.rapprochee === true) return false
     if (r.final_status === 'not accepted') return false
     if (r.final_status === 'cancelled' && !(r.fin_revenue > 0)) return false
     return true
