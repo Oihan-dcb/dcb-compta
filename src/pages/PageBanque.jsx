@@ -5,8 +5,9 @@ import { supabase } from '../lib/supabase'
 import { importBookingCSV } from '../services/importBooking'
 import { annulerRapprochement } from '../services/rapprochement'
 import { parserFichierBancaire, importerMouvementsBancaires } from '../services/importBanque'
+import { syncPayoutsFromHospitable } from '../services/syncPayouts'
 import MoisSelector from '../components/MoisSelector'
-import { formatMontant } from '../lib/hospitable'
+import { formatMontant, setToken } from '../lib/hospitable'
 import { format } from 'date-fns'
 import { fr } from 'date-fns/locale'
 
@@ -40,9 +41,13 @@ export default function PageBanque() {
   const [supprimant, setSupprimant] = useState(false)
   const [supprimantId, setSupprimantId] = useState(null)
   const [bookingLog, setBookingLog] = useState(null)
+  const [syncPayoutsLog, setSyncPayoutsLog] = useState(null)
   const [confirmModal, setConfirmModal] = useState(null)
   const [importingBooking, setImportingBooking] = useState(false)
+  const [syncingPayouts, setSyncingPayouts] = useState(false)
   const bookingRef = useRef()
+
+  const HOSP_TOKEN = import.meta.env.VITE_HOSPITABLE_TOKEN
 
   useEffect(() => { charger() }, [mois])
 
@@ -75,6 +80,21 @@ export default function PageBanque() {
     } finally {
       setImportingBooking(false)
       if (bookingRef.current) bookingRef.current.value = ''
+    }
+  }
+
+  async function handleSyncPayouts() {
+    if (!HOSP_TOKEN) return setError('Token Hospitable non configuré (VITE_HOSPITABLE_TOKEN)')
+    setToken(HOSP_TOKEN)
+    setSyncingPayouts(true)
+    setSyncPayoutsLog(null)
+    try {
+      const log = await syncPayoutsFromHospitable({ monthsBack: 3 })
+      setSyncPayoutsLog(log)
+    } catch (err) {
+      setSyncPayoutsLog({ errors: 1, details: [err.message] })
+    } finally {
+      setSyncingPayouts(false)
     }
   }
 
@@ -199,6 +219,12 @@ export default function PageBanque() {
             <input ref={bookingRef} type='file' accept='.csv' style={{ display:'none' }} onChange={handleBookingFile} />
           </label>
           <button
+            onClick={handleSyncPayouts}
+            disabled={syncingPayouts}
+            style={{ cursor: syncingPayouts ? 'wait' : 'pointer', background:'#FF5A5F', color:'#fff', border:'none', borderRadius:8, padding:'8px 14px', fontWeight:600, fontSize:14, display:'inline-flex', alignItems:'center', gap:6 }}>
+            {syncingPayouts ? '⏳ Sync...' : '🔄 Sync Airbnb'}
+          </button>
+          <button
             onClick={() => setSuppression(suppression ? null : { source: 'CaisseEpargne', mois, count: mouvements.length })}
             style={{ background: '#FEF2F2', color: '#B91C1C', border: '1px solid #FCA5A5', borderRadius: 8, padding: '8px 14px', fontWeight: 600, cursor: 'pointer', fontSize: 14 }}>
             Supprimer
@@ -241,6 +267,18 @@ export default function PageBanque() {
         </div>
       )}
 
+      {syncPayoutsLog && (
+        <div style={{ background: syncPayoutsLog.errors > 0 ? '#FEF2F2' : '#F0FDF4', border: '1px solid ' + (syncPayoutsLog.errors > 0 ? '#FCA5A5' : '#86EFAC'), borderRadius:8, padding:'10px 16px', marginBottom:12, fontSize:13 }}>
+          <strong>Sync Airbnb :</strong>{' '}
+          <span style={{ color:'#16A34A' }}>{syncPayoutsLog.updated || 0} date(s) corrigée(s)</span>
+          {(syncPayoutsLog.created || 0) > 0 && <span style={{ color:'#16A34A' }}>{' · '}{syncPayoutsLog.created} entrée(s) créée(s)</span>}
+          {(syncPayoutsLog.processed || 0) > 0 && <span style={{ color:'#888' }}>{' · '}{syncPayoutsLog.processed} résa(s) traitées</span>}
+          {(syncPayoutsLog.not_found || 0) > 0 && <span style={{ color:'#2563EB' }}>{' · '}{syncPayoutsLog.not_found} code(s) non trouvés</span>}
+          {(syncPayoutsLog.skipped || 0) > 0 && <span style={{ color:'#888' }}>{' · '}{syncPayoutsLog.skipped} déjà rapprochés</span>}
+          {syncPayoutsLog.errors > 0 && <span style={{ color:'#B91C1C' }}>{' · '}{syncPayoutsLog.errors} erreur(s)</span>}
+          {syncPayoutsLog.details?.length > 0 && <div style={{ color:'#666', marginTop:4 }}>{syncPayoutsLog.details.slice(0, 10).join(' | ')}</div>}
+        </div>
+      )}
       {bookingLog && (
         <div style={{ background: bookingLog.errors > 0 ? '#FEF2F2' : '#F0FDF4', border: '1px solid ' + (bookingLog.errors > 0 ? '#FCA5A5' : '#86EFAC'), borderRadius:8, padding:'10px 16px', marginBottom:12, fontSize:13 }}>
           <strong>Import Booking :</strong>{' '}

@@ -100,6 +100,20 @@ export async function fetchTransactions(opts = {}) {
 }
 
 /**
+ * Récupère une page de payouts (sans transactions)
+ */
+export async function fetchPayoutsList({ page = 1, per_page = 100 } = {}) {
+  return apiFetch('/payouts', { page, per_page })
+}
+
+/**
+ * Récupère un payout avec ses transactions détaillées (une entrée par réservation)
+ */
+export async function fetchPayoutDetail(uuid) {
+  return apiFetch(`/payouts/${uuid}`, { include: 'transactions' })
+}
+
+/**
  * Formate un montant en centimes en euros
  * @param {number} centimes
  * @returns {string} ex: "€484.89"

@@ -690,6 +690,7 @@ function BilanSequestre({ items }) {
   const [newLabel, setNewLabel] = useState('')
   const [newMontant, setNewMontant] = useState('')
   const [newColor, setNewColor] = useState('normal') // 'normal' | 'rouge' | 'orange'
+  const [shineData, setShineData] = useState([])
 
   useEffect(() => {
     supabase.from('sequestre_bilan').select('*').eq('agence', AGENCE).eq('annee', 2025).maybeSingle()
@@ -701,6 +702,8 @@ function BilanSequestre({ items }) {
           setAjustements(data.ajustements || [])
         }
       })
+    supabase.from('sequestre_shine_mensuel').select('*').eq('agence', AGENCE).like('mois', '2025-%').order('mois')
+      .then(({ data }) => { if (data) setShineData(data) })
   }, [])
 
   const parseNum = s => { const v = parseFloat(String(s).replace(',', '.')); return isNaN(v) ? null : v }
@@ -724,8 +727,15 @@ function BilanSequestre({ items }) {
   }
 
   const ajouterLigne = () => {
-    if (!newLabel.trim() || newMontant.trim() === '') return
-    setAjustements(a => [...a, { label: newLabel.trim(), montant: parseNum(newMontant), couleur: newColor }])
+    if (!newLabel.trim()) return
+    const isInfo = newColor === 'info'
+    if (!isInfo && newMontant.trim() === '') return
+    setAjustements(a => [...a, {
+      label: newLabel.trim(),
+      montant: parseNum(newMontant),
+      couleur: isInfo ? 'normal' : newColor,
+      ...(isInfo ? { info_only: true } : {})
+    }])
     setNewLabel(''); setNewMontant(''); setNewColor('normal')
   }
 
@@ -742,12 +752,11 @@ function BilanSequestre({ items }) {
   const totDeb = sumE(items, 'debours')
   const totTaxe = sumE(items, 'taxe_sejour')
   const totCom = sumE(items, 'com_distrib')
-  const totAjust = ajustements.reduce((s, a) => s + (a.montant ?? 0), 0)
+  const totAjust = ajustements.reduce((s, a) => a.info_only ? s : s + (a.montant ?? 0), 0)
   const totalCalcule = totVir + totHonTtc + totMen + totDeb + totTaxe + totCom + totAjust
   const delta = totalBanque - totalCalcule
 
   const deltaAbs = Math.abs(delta)
-  const deltaOk = deltaAbs < 500
   const deltaColor = deltaAbs < 100 ? '#065F46' : deltaAbs < 1000 ? '#92400E' : '#DC2626'
   const deltaBg = deltaAbs < 100 ? '#D1FAE5' : deltaAbs < 1000 ? '#FEF3C7' : '#FEE2E2'
 
@@ -755,6 +764,7 @@ function BilanSequestre({ items }) {
     normal: { color: 'var(--text)', fontWeight: 600 },
     rouge:  { color: '#DC2626', fontWeight: 600 },
     orange: { color: '#92400E', fontWeight: 600 },
+    info:   { color: '#1D4ED8', fontWeight: 500 },
   }
 
   return (
@@ -813,10 +823,15 @@ function BilanSequestre({ items }) {
 
         {/* Ajustements manuels */}
         {ajustements.map((a, idx) => (
-          <div key={idx} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '9px 16px', borderBottom: '1px solid var(--border)', background: '#FDFAF4' }}>
-            <span style={{ fontSize: '0.88em', ...COULEUR_STYLE[a.couleur || 'normal'] }}>{a.label}</span>
+          <div key={idx} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '9px 16px', borderBottom: '1px solid var(--border)', background: a.info_only ? '#EFF6FF' : '#FDFAF4' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+              {a.info_only && <span style={{ fontSize: '0.7em', background: '#DBEAFE', color: '#1D4ED8', borderRadius: 4, padding: '1px 5px', fontWeight: 700 }}>INFO</span>}
+              <span style={{ fontSize: '0.88em', ...COULEUR_STYLE[a.info_only ? 'info' : (a.couleur || 'normal')] }}>{a.label}</span>
+            </div>
             <div style={{ display: 'flex', gap: 10, alignItems: 'center' }}>
-              <span style={{ fontSize: '0.92em', fontWeight: 600, ...COULEUR_STYLE[a.couleur || 'normal'], fontVariantNumeric: 'tabular-nums' }}>{fmtE(a.montant)}</span>
+              <span style={{ fontSize: '0.92em', fontWeight: 600, ...COULEUR_STYLE[a.info_only ? 'info' : (a.couleur || 'normal')], fontVariantNumeric: 'tabular-nums' }}>
+                {a.info_only ? fmtE(a.montant) : fmtE(a.montant)}
+              </span>
               <button onClick={() => supprimerLigne(idx)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#9C8E7D', fontSize: '1em', padding: 0 }} title="Supprimer">×</button>
             </div>
           </div>
@@ -835,6 +850,7 @@ function BilanSequestre({ items }) {
               <option value="normal">Normal</option>
               <option value="rouge">Rouge</option>
               <option value="orange">Orange</option>
+              <option value="info">Info (hors calcul)</option>
             </select>
             <button onClick={ajouterLigne} className="btn btn-secondary" style={{ padding: '5px 10px', fontSize: '0.82em' }}>Ajouter</button>
           </div>
@@ -869,6 +885,57 @@ function BilanSequestre({ items }) {
       <div style={{ fontSize: '0.76em', color: '#9C8E7D', marginTop: 6 }}>
         Le solde bancaire et les ajustements sont sauvegardés dans la base de données.
       </div>
+
+      {/* Mouvements bancaires SHINE mensuels */}
+      {shineData.length > 0 && (
+        <div style={{ background: 'var(--bg-card)', border: '1px solid var(--border)', borderRadius: 12, overflow: 'hidden', marginTop: 24 }}>
+          <div style={{ background: '#F0EAD8', padding: '10px 16px', fontWeight: 700, fontSize: '0.85em', color: '#5C4B2A', textTransform: 'uppercase', letterSpacing: '0.04em' }}>
+            Mouvements bancaires réels — Shine 2025
+          </div>
+          <div style={{ overflowX: 'auto' }}>
+            <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.82em' }}>
+              <thead>
+                <tr style={{ background: '#F7F3EC' }}>
+                  <th style={{ ...thS, textAlign: 'left', paddingLeft: 16 }}>Mois</th>
+                  <th style={thS}>Entrées</th>
+                  <th style={thS}>Sorties</th>
+                  <th style={thS}>Solde fin</th>
+                  <th style={{ ...thS, color: '#065F46' }}>Airbnb</th>
+                  <th style={{ ...thS, color: '#6B21A8' }}>Stripe</th>
+                  <th style={{ ...thS, color: '#1D4ED8' }}>Booking</th>
+                  <th style={{ ...thS, color: '#B45309' }}>Direct</th>
+                </tr>
+              </thead>
+              <tbody>
+                {shineData.map((row, i) => (
+                  <tr key={row.mois} style={{ background: i % 2 === 0 ? '#fff' : '#FDFAF4', borderTop: '1px solid var(--border)' }}>
+                    <td style={{ padding: '7px 16px', fontWeight: 600, whiteSpace: 'nowrap' }}>{MOIS_LABELS[row.mois] || row.mois}</td>
+                    <td style={{ ...tdNumS, color: '#065F46' }}>+{fmtE(row.credits)}</td>
+                    <td style={{ ...tdNumS, color: '#B91C1C' }}>−{fmtE(row.debits)}</td>
+                    <td style={{ ...tdNumS, fontWeight: 700 }}>{fmtE(row.solde_fin)}</td>
+                    <td style={{ ...tdNumS, color: '#065F46' }}>{row.src_airbnb ? fmtE(row.src_airbnb) : '—'}</td>
+                    <td style={{ ...tdNumS, color: '#6B21A8' }}>{row.src_stripe ? fmtE(row.src_stripe) : '—'}</td>
+                    <td style={{ ...tdNumS, color: '#1D4ED8' }}>{row.src_booking ? fmtE(row.src_booking) : '—'}</td>
+                    <td style={{ ...tdNumS, color: '#B45309' }}>{row.src_direct ? fmtE(row.src_direct) : '—'}</td>
+                  </tr>
+                ))}
+              </tbody>
+              <tfoot>
+                <tr style={{ background: '#F0EAD8', borderTop: '2px solid var(--border)' }}>
+                  <td style={{ padding: '9px 16px', fontWeight: 700, fontSize: '0.92em' }}>TOTAL 2025</td>
+                  <td style={{ ...tdNumS, fontWeight: 700, color: '#065F46' }}>+{fmtE(shineData.reduce((s, r) => s + (r.credits ?? 0), 0))}</td>
+                  <td style={{ ...tdNumS, fontWeight: 700, color: '#B91C1C' }}>−{fmtE(shineData.reduce((s, r) => s + (r.debits ?? 0), 0))}</td>
+                  <td style={{ ...tdNumS, fontWeight: 700 }}>{fmtE(shineData[shineData.length - 1]?.solde_fin)}</td>
+                  <td style={{ ...tdNumS, fontWeight: 700, color: '#065F46' }}>{fmtE(shineData.reduce((s, r) => s + (r.src_airbnb ?? 0), 0))}</td>
+                  <td style={{ ...tdNumS, fontWeight: 700, color: '#6B21A8' }}>{fmtE(shineData.reduce((s, r) => s + (r.src_stripe ?? 0), 0))}</td>
+                  <td style={{ ...tdNumS, fontWeight: 700, color: '#1D4ED8' }}>{fmtE(shineData.reduce((s, r) => s + (r.src_booking ?? 0), 0))}</td>
+                  <td style={{ ...tdNumS, fontWeight: 700, color: '#B45309' }}>{fmtE(shineData.reduce((s, r) => s + (r.src_direct ?? 0), 0))}</td>
+                </tr>
+              </tfoot>
+            </table>
+          </div>
+        </div>
+      )}
     </div>
   )
 }

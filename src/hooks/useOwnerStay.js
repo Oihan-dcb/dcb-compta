@@ -13,7 +13,7 @@ export async function toggleOwnerStay(resa) {
   // Mettre à jour le flag
   await supabase
     .from('reservation')
-    .update({ owner_stay: newVal, ventilation_calculee: newVal })
+    .update({ owner_stay: newVal, ventilation_calculee: newVal, rapprochee: newVal })
     .eq('id', resa.id)
 
   // Supprimer les anciennes lignes dans tous les cas

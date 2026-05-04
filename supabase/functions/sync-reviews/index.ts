@@ -78,7 +78,7 @@ Deno.serve(async (req) => {
   for (const bien of biens) {
     let reviews: any[]
     try {
-      reviews = await fetchAll(`/properties/${bien.hospitable_id}/reviews`)
+      reviews = await fetchAll(`/properties/${bien.hospitable_id}/reviews`, { include: 'reservation' })
     } catch (e: any) {
       console.error(`Skipping ${bien.hospitable_name}: ${e.message}`)
       errors++

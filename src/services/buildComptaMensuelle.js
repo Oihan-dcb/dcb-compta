@@ -46,7 +46,7 @@ export async function buildComptaMensuelle(mois) {
       .from('ventilation')
       .select('bien_id, code, montant_ht, montant_tva, montant_ttc, montant_reel, reservation_id')
       .eq('mois_comptable', mois)
-      .in('code', ['HON', 'FMEN', 'AUTO', 'LOY', 'VIR', 'TAXE', 'COM']),
+      .in('code', ['HON', 'FMEN', 'MEN', 'AUTO', 'LOY', 'VIR', 'TAXE', 'COM']),
     supabase
       .from('facture_evoliz')
       .select('id, proprietaire_id, bien_id, statut, total_ht, total_ttc, montant_reversement')
@@ -234,18 +234,21 @@ export async function buildComptaMensuelle(mois) {
     const virHt2      = vent(b.id, 'VIR').ht
     const fraisDirect = fraisDirectByBien[b.id] || 0
     const rembours    = remboursParBien[b.id]   || 0
-    const virNet = Math.max(0, virHt2 - fraisLoy - fraisDirect - prestDeduct - deboursProp - ownerStayAbsorbByBien[b.id]) + rembours
+    const menHt       = vent(b.id, 'MEN').ht
+    const autoAbsorbable = Math.max(0, autoHt - menHt)
+    const virNet = Math.max(0, virHt2 - fraisLoy - fraisDirect - prestDeduct - deboursProp - ownerStayAbsorbByBien[b.id] - autoAbsorbable) + rembours
     loyParProprio[b.proprietaire_id] = (loyParProprio[b.proprietaire_id] || 0) + virNet
 
     // Accumuler les composantes par proprio pour le détail de l'alerte ECART_REVERSEMENT
     const pid = b.proprietaire_id
-    if (!composantesParProprio[pid]) composantesParProprio[pid] = { loy_ht: 0, frais_loy: 0, frais_direct: 0, prest_deduct: 0, debours_prop: 0, owner_stay_absorb: 0, remboursements: 0 }
+    if (!composantesParProprio[pid]) composantesParProprio[pid] = { loy_ht: 0, frais_loy: 0, frais_direct: 0, prest_deduct: 0, debours_prop: 0, owner_stay_absorb: 0, auto_absorbable: 0, remboursements: 0 }
     composantesParProprio[pid].loy_ht           += loyHt
     composantesParProprio[pid].frais_loy        += fraisLoy
     composantesParProprio[pid].frais_direct     += fraisDirect
     composantesParProprio[pid].prest_deduct     += prestDeduct
     composantesParProprio[pid].debours_prop     += deboursProp
     composantesParProprio[pid].owner_stay_absorb += ownerStayAbsorbByBien[b.id]
+    composantesParProprio[pid].auto_absorbable  += autoAbsorbable
     composantesParProprio[pid].remboursements   += rembours
   }
 
@@ -273,6 +276,7 @@ export async function buildComptaMensuelle(mois) {
     // Ventilation
     const hon  = vent(b.id, 'HON')
     const fmen = vent(b.id, 'FMEN')
+    const men  = vent(b.id, 'MEN')
     const auto = vent(b.id, 'AUTO')
     const loy  = vent(b.id, 'LOY')
     const vir  = vent(b.id, 'VIR')
@@ -289,9 +293,11 @@ export async function buildComptaMensuelle(mois) {
     const debours_prop    = deboursPropByBien[b.id] || 0
     const remboursements  = remboursParBien[b.id]   || 0
     const owner_stay_absorb = ownerStayAbsorbByBien[b.id] || 0
+    // AUTO absorbable = AUTO non couvert par MEN (fallback Airbnb : MEN=0, AUTO pris sur LOY)
+    const auto_absorbable = Math.max(0, auto.ht - men.ht)
     // reversement = max(0, VIR − déductions) + remboursements
     // Aligné sur facturesEvoliz.js — VIR est la base (inclut taxes passthrough le cas échéant)
-    const reversement_calcule = Math.max(0, vir.ht - frais_loy - frais_direct - prest_deduct - debours_prop - owner_stay_absorb) + remboursements
+    const reversement_calcule = Math.max(0, vir.ht - frais_loy - frais_direct - prest_deduct - debours_prop - owner_stay_absorb - auto_absorbable) + remboursements
 
     // Écart reversement au niveau proprio : Σ factures vs Σ reversement_calcule tous biens
     let ecart_reversement_proprio = null
@@ -323,7 +329,7 @@ export async function buildComptaMensuelle(mois) {
           bien_id: b.id,
           details: {
             loy_ht: loy.ht, frais_loy, frais_direct, prest_deduct,
-            debours_prop, owner_stay_absorb, remboursements,
+            debours_prop, owner_stay_absorb, auto_absorbable, remboursements,
             reversement_calcule,
             reversement_facture: factureBien.montant_reversement,
           },
@@ -403,6 +409,7 @@ export async function buildComptaMensuelle(mois) {
       prest_deduct,
       debours_prop,
       owner_stay_absorb,
+      auto_absorbable,
       remboursements,
       reversement_calcule,
 

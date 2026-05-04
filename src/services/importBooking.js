@@ -187,20 +187,40 @@ export async function importBookingCSV(csvText) {
       })
 
       if (!mouv) {
-        log.details.push('Pas de mouvement pour payout_date ' + pdate + ' (' + rows.length + ' lignes ignorees)')
+        // Stocker les lignes sans mouvement bancaire (payout futur ou relevé non importé)
+        const orphans = rows.filter(r => r.booking_ref).map(r => ({ ...r, mouvement_id: null, guest_name: null }))
+        if (orphans.length) {
+          await supabase
+            .from('booking_payout_line')
+            .upsert(orphans, { onConflict: 'booking_ref,payout_date', ignoreDuplicates: true })
+          log.details.push('Payout ' + pdate + ' stocké sans mouvement (' + orphans.length + ' ligne(s) — relevé bancaire manquant)')
+        } else {
+          log.details.push('Pas de mouvement pour payout_date ' + pdate + ' (' + rows.length + ' lignes ignorées)')
+        }
         continue
       }
 
       usedMouvIds.add(mouv.id)
       log.matched++
 
+      // Si des lignes orphelines existent déjà pour ce payout, les mettre à jour avec le mouvement
+      const refs = rows.filter(r => r.booking_ref).map(r => r.booking_ref)
+      if (refs.length) {
+        await supabase
+          .from('booking_payout_line')
+          .update({ mouvement_id: mouv.id })
+          .eq('payout_date', pdate)
+          .in('booking_ref', refs)
+          .is('mouvement_id', null)
+      }
+
       const toInsert = rows.map(r => ({ ...r, mouvement_id: mouv.id, guest_name: null }))
 
       const { error } = await supabase
         .from('booking_payout_line')
         .upsert(toInsert, {
-          onConflict: 'mouvement_id,booking_ref,payout_date',
-          ignoreDuplicates: true,
+          onConflict: 'booking_ref,payout_date',
+          ignoreDuplicates: false,
         })
 
       if (error) {
