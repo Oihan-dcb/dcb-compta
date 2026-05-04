@@ -105,11 +105,19 @@ export default function PageRapports() {
       .eq('actif', true)
       .order('nom')
       .then(({ data: props }) => {
-        setProprietaires(props || [])
-        if (props?.length) {
-          const maiteOwner = props.find(p => (p.bien || []).some(b => b.groupe_facturation === 'MAITE'))
-          setSelectedPropId((maiteOwner || props[0]).id)
-        }
+        if (!props?.length) return
+        setProprietaires(props)
+        // Appliquer le même tri que propsFiltres (MAITE en tête, puis code bien)
+        // pour que la sélection initiale corresponde à ce qui apparaît premier dans le dropdown
+        const sorted = [...props].sort((a, b) => {
+          const aMaite = (a.bien || []).some(b => b.groupe_facturation === 'MAITE') ? 0 : 1
+          const bMaite = (b.bien || []).some(b => b.groupe_facturation === 'MAITE') ? 0 : 1
+          if (aMaite !== bMaite) return aMaite - bMaite
+          const codeA = (a.bien?.[0]?.code || '').toLowerCase()
+          const codeB = (b.bien?.[0]?.code || '').toLowerCase()
+          return codeA.localeCompare(codeB)
+        })
+        setSelectedPropId(sorted[0].id)
       })
 
     supabase.from('reservation').select('mois_comptable').then(({ data: res }) => {
