@@ -80,7 +80,7 @@ const [pushing, setPushing] = useState(false)
 
   useEffect(() => {
     import('../lib/supabase').then(function(mod) {
-      mod.supabase.from('facture_evoliz').select('mois').then(function(res) {
+      mod.supabase.from('facture_evoliz').select('mois').eq('agence', AGENCE).then(function(res) {
         if (res.data) {
           var uniq = [...new Set(res.data.map(function(d) { return d.mois }).filter(Boolean))].sort(function(a,b) { return b.localeCompare(a) })
           if (uniq.length) setMoisDispos(function(p) { return [...new Set([...p, ...uniq])] })

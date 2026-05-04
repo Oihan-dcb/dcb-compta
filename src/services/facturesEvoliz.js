@@ -148,7 +148,7 @@ async function prechargerDonneesFacturation(mois, bienIds, proprietaireIds) {
 
     supabase.from('facture_evoliz')
       .select('id, statut, proprietaire_id, bien_id, type_facture')
-      .in('proprietaire_id', proprietaireIds).eq('mois', mois)
+      .in('proprietaire_id', proprietaireIds).eq('mois', mois).eq('agence', AGENCE)
       .in('type_facture', ['honoraires', 'debours']),
   ])
 
@@ -406,6 +406,7 @@ async function genererFactureGroupe(proprio, biens, mois, ctx) {
 
   const factureData = {
     mois,
+    agence: AGENCE,
     proprietaire_id: proprio.id,
     bien_id: bienId,
     type_facture: 'honoraires',
@@ -854,6 +855,7 @@ async function genererFactureDebours(proprio, biens, mois, ctx) {
   const factureData = {
     proprietaire_id:     proprio.id,
     mois,
+    agence:              AGENCE,
     bien_id:             bienId,
     type_facture:        'debours',
     total_ht:            totalHT,
@@ -910,6 +912,7 @@ export async function getFacturesMois(mois) {
       facture_evoliz_ligne (*)
     `)
     .eq('mois', mois)
+    .eq('agence', AGENCE)
     .neq('type_facture', 'com')
     .order('created_at')
 
@@ -957,6 +960,7 @@ export async function getFactureCOM(mois) {
     .from('facture_evoliz')
     .select('id, statut, total_ht, total_ttc, id_evoliz, numero_facture')
     .eq('mois', mois)
+    .eq('agence', AGENCE)
     .eq('type_facture', 'com')
     .maybeSingle()
   return data
@@ -983,6 +987,7 @@ export async function genererFactureCOM(mois) {
     .from('facture_evoliz')
     .select('id, statut')
     .eq('mois', mois)
+    .eq('agence', AGENCE)
     .eq('type_facture', 'com')
     .maybeSingle()
 
@@ -991,6 +996,7 @@ export async function genererFactureCOM(mois) {
 
   const factureData = {
     mois,
+    agence: AGENCE,
     type_facture: 'com',
     proprietaire_id: null,
     statut: 'brouillon',
@@ -1094,6 +1100,7 @@ export async function getStatsFactures(mois) {
     .from('facture_evoliz')
     .select('statut, total_ttc, solde_negatif')
     .eq('mois', mois)
+    .eq('agence', AGENCE)
 
   const all = factures || []
   return {
