@@ -150,6 +150,7 @@ const [pushing, setPushing] = useState(false)
           .from('mouvement_bancaire')
           .select('id, libelle, detail, debit, date_operation, canal, mois_releve')
           .in('mois_releve', [mois, moisSuivant])
+          .eq('agence', AGENCE)
           .gt('debit', 0)
           .order('date_operation', { ascending: true }),
         supabase
