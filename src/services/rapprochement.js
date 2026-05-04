@@ -472,12 +472,15 @@ export async function getVirNonRapproches(mois) {
     .eq('reservation.bien.agence', AGENCE)
     .order('mois_comptable', { ascending: false })
   if (error) throw error
-  // Exclure les réservations annulées + filtrer au cas où le join ne filtre pas strictement
-  return (data || []).filter(v =>
-    v.reservation?.final_status !== 'not accepted' &&
-    v.reservation?.final_status !== 'cancelled' &&
-    v.reservation?.bien?.agence === AGENCE
-  )
+  // Exclure les réservations annulées SAUF si elles ont un revenu réel (pénalité d'annulation)
+  return (data || []).filter(v => {
+    const r = v.reservation
+    if (!r) return false
+    if (r.bien?.agence !== AGENCE) return false
+    if (r.final_status === 'not accepted') return false
+    if (r.final_status === 'cancelled' && !(r.fin_revenue > 0)) return false
+    return true
+  })
 }
 
 export async function getStatsRapprochement(mois) {
