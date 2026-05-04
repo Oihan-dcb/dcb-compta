@@ -91,26 +91,19 @@ export async function buildRapportData(bienId, propId, mois, opts = {}) {
   if (resaIds.length) {
     const { data: ventsData } = await supabase
       .from('ventilation')
-      .select('reservation_id, code, montant_ht, montant_ttc')
+      .select('reservation_id, code, montant_ht, montant_ttc, calcul_source')
       .in('reservation_id', resaIds)
       .in('code', ['HON', 'LOY', 'VIR', 'FMEN', 'AUTO', 'MEN'])
     const vents = ventsData || []
     for (const v of vents) {
+      // Les lignes VIR résiduelles (rapprochement partiel) sont exclues des rapports
+      if (v.code === 'VIR' && v.calcul_source === 'residuel') continue
       if (!ventByResa[v.reservation_id]) ventByResa[v.reservation_id] = {}
-      if (v.code === 'VIR' && ventByResa[v.reservation_id]['VIR']) {
-        // Somme les VIR multiples (paiements partiels liés à des mouvements distincts)
-        ventByResa[v.reservation_id]['VIR'] = {
-          ...v,
-          montant_ht:  (ventByResa[v.reservation_id]['VIR'].montant_ht  || 0) + (v.montant_ht  || 0),
-          montant_ttc: (ventByResa[v.reservation_id]['VIR'].montant_ttc || 0) + (v.montant_ttc || 0),
-        }
-      } else {
-        ventByResa[v.reservation_id][v.code] = v
-      }
+      ventByResa[v.reservation_id][v.code] = v
     }
     loyTotal     = vents.filter(v => v.code === 'LOY').reduce((s, v) => s + (v.montant_ht  || 0), 0)
     honTotalVent = vents.filter(v => v.code === 'HON').reduce((s, v) => s + (v.montant_ttc || 0), 0)
-    virTotal     = vents.filter(v => v.code === 'VIR').reduce((s, v) => s + (v.montant_ht  || 0), 0)
+    virTotal     = vents.filter(v => v.code === 'VIR' && v.calcul_source !== 'residuel').reduce((s, v) => s + (v.montant_ht  || 0), 0)
   }
 
   // ── Prestations hors forfait ─────────────────────────────────────────────

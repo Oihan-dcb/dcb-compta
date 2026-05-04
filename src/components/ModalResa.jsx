@@ -180,6 +180,67 @@ function VentilationEdit({ resa, ventil, onSaved, onCancel }) {
   )
 }
 
+function EncaissementsRecap({ virements, finRevenue }) {
+  if (!virements?.length && !finRevenue) return null
+  const totalEncaisse = virements.reduce((s, v) => s + (v.montant || 0), 0)
+  const ecart = finRevenue ? totalEncaisse - finRevenue : 0
+  const hasEcart = Math.abs(ecart) > 2
+
+  return (
+    <div style={{ marginTop: 14, borderTop: '1px solid #eee', paddingTop: 14 }}>
+      <div style={{ fontWeight: 700, fontSize: '0.78em', color: '#888', textTransform: 'uppercase', letterSpacing: '0.08em', marginBottom: 8 }}>
+        Virements reçus
+      </div>
+      {virements.length === 0 ? (
+        <div style={{ color: '#9CA3AF', fontSize: '0.88em', fontStyle: 'italic' }}>Aucun virement bancaire lié</div>
+      ) : (
+        <table style={{ width: '100%', fontSize: '0.88em', borderCollapse: 'collapse' }}>
+          <tbody>
+            {virements.map((v, i) => (
+              <tr key={i} style={{ borderTop: i > 0 ? '1px solid #f0f0f0' : 'none' }}>
+                <td style={{ padding: '4px 0', color: '#666', whiteSpace: 'nowrap' }}>
+                  {v.date ? new Date(v.date).toLocaleDateString('fr-FR') : '—'}
+                </td>
+                <td style={{ padding: '4px 8px', color: '#555', fontSize: '0.9em', overflow: 'hidden', textOverflow: 'ellipsis', maxWidth: 180 }}>
+                  {v.libelle || '—'}
+                </td>
+                <td style={{ padding: '4px 0', textAlign: 'right', fontWeight: 600, whiteSpace: 'nowrap' }}>
+                  {((v.montant || 0) / 100).toFixed(2)} €
+                </td>
+              </tr>
+            ))}
+          </tbody>
+          <tfoot>
+            <tr style={{ borderTop: '2px solid #e5e7eb' }}>
+              <td colSpan={2} style={{ padding: '5px 0', fontWeight: 700, fontSize: '0.9em' }}>Total encaissé</td>
+              <td style={{ padding: '5px 0', textAlign: 'right', fontWeight: 700 }}>{(totalEncaisse / 100).toFixed(2)} €</td>
+            </tr>
+            {finRevenue > 0 && (
+              <tr>
+                <td colSpan={2} style={{ padding: '2px 0', color: '#888', fontSize: '0.85em' }}>Revenue attendu</td>
+                <td style={{ padding: '2px 0', textAlign: 'right', color: '#888', fontSize: '0.85em' }}>{(finRevenue / 100).toFixed(2)} €</td>
+              </tr>
+            )}
+            {finRevenue > 0 && ecart < -2 && (
+              <tr>
+                <td colSpan={2} style={{ padding: '4px 0', color: '#D97706', fontWeight: 700, fontSize: '0.9em' }}>Solde à recevoir</td>
+                <td style={{ padding: '4px 0', textAlign: 'right', color: '#D97706', fontWeight: 700, fontSize: '0.9em' }}>{(Math.abs(ecart) / 100).toFixed(2)} €</td>
+              </tr>
+            )}
+            {hasEcart && ecart > 0 && (
+              <tr>
+                <td colSpan={3} style={{ padding: '6px 8px', background: '#FEF2F2', borderRadius: 6, color: '#DC2626', fontWeight: 700, fontSize: '0.88em' }}>
+                  Trop perçu : +{(ecart / 100).toFixed(2)} €
+                </td>
+              </tr>
+            )}
+          </tfoot>
+        </table>
+      )}
+    </div>
+  )
+}
+
 export default function ModalResa({ resa, onClose, onSaved }) {
   if (!resa) return null
   const ventil = resa.ventilation || []
@@ -187,16 +248,71 @@ export default function ModalResa({ resa, onClose, onSaved }) {
   const [editing, setEditing] = useState(false)
   const [modeVentil, setModeVentil] = useState('normal')
   const [ventilating, setVentilating] = useState(false)
-  const [paiementsInfo, setPaiementsInfo] = useState([])
+  const [virements, setVirements] = useState([])
   const [editingRevenu, setEditingRevenu] = useState(false)
   const [revenuVal, setRevenuVal] = useState('')
   const [savingRevenu, setSavingRevenu] = useState(false)
   useEffect(() => {
     if (!resa?.id) return
-    supabase.from('reservation_paiement')
-      .select('montant, type_paiement, description_paiement, date_paiement, mouvement_id')
-      .eq('reservation_id', resa.id)
-      .then(({ data }) => setPaiementsInfo(data || []))
+    async function fetchVirements() {
+      const seen = new Map() // mouvement_id → virement
+      // Chemin 1 : reservation_paiement → mouvement_bancaire
+      const { data: rp } = await supabase
+        .from('reservation_paiement')
+        .select('montant, type_paiement, description_paiement, date_paiement, mouvement_id, mouvement_bancaire(id, date_operation, libelle, credit, canal)')
+        .eq('reservation_id', resa.id)
+      for (const p of rp || []) {
+        const mb = p.mouvement_bancaire
+        const key = mb?.id || ('rp_' + p.date_paiement)
+        if (!seen.has(key)) seen.set(key, {
+          mouvement_id: mb?.id || null,
+          date: mb?.date_operation || p.date_paiement,
+          libelle: mb?.libelle || p.description_paiement || '—',
+          montant: mb?.credit || p.montant,
+          canal: mb?.canal || null,
+          type_paiement: p.type_paiement,
+        })
+      }
+      // Chemin 2 : payout_reservation → payout_hospitable → mouvement_bancaire
+      const { data: pr } = await supabase
+        .from('payout_reservation')
+        .select('payout_hospitable(id, amount, date_payout, mouvement_id, mouvement_bancaire(id, date_operation, libelle, credit, canal))')
+        .eq('reservation_id', resa.id)
+      for (const row of pr || []) {
+        const ph = row.payout_hospitable
+        if (!ph?.mouvement_id) continue
+        const mb = ph.mouvement_bancaire
+        const key = mb?.id || ph.mouvement_id
+        if (!seen.has(key)) seen.set(key, {
+          mouvement_id: mb?.id || ph.mouvement_id,
+          date: mb?.date_operation || ph.date_payout,
+          libelle: mb?.libelle || '—',
+          montant: mb?.credit || ph.amount,
+          canal: mb?.canal || 'airbnb',
+          type_paiement: 'total',
+        })
+      }
+      // Chemin 3 : ventilation.mouvement_id → mouvement_bancaire (manual, direct)
+      const { data: vents } = await supabase
+        .from('ventilation')
+        .select('mouvement_id, mouvement_bancaire(id, date_operation, libelle, credit, canal)')
+        .eq('reservation_id', resa.id)
+        .not('mouvement_id', 'is', null)
+      for (const v of vents || []) {
+        const mb = v.mouvement_bancaire
+        if (!mb?.id) continue
+        if (!seen.has(mb.id)) seen.set(mb.id, {
+          mouvement_id: mb.id,
+          date: mb.date_operation,
+          libelle: mb.libelle || '—',
+          montant: mb.credit,
+          canal: mb.canal || null,
+          type_paiement: 'total',
+        })
+      }
+      setVirements([...seen.values()].sort((a, b) => (a.date || '').localeCompare(b.date || '')))
+    }
+    fetchVirements()
   }, [resa?.id])
 
   async function saveRevenu() {
@@ -330,26 +446,6 @@ export default function ModalResa({ resa, onClose, onSaved }) {
                 ))}
               </tbody>
             </table>
-            {paiementsInfo.length > 0 && (
-              <div style={{ marginTop: 12, padding: '10px 12px', background: '#FFFBEB', borderRadius: 8, border: '1px solid #FCD34D', fontSize: '0.85em' }}>
-                <div style={{ fontWeight: 700, color: '#92400E', marginBottom: 6, textTransform: 'uppercase', fontSize: '0.75em', letterSpacing: '0.05em' }}>
-                  💳 Paiements reçus voyageur
-                </div>
-                {paiementsInfo.map((p, i) => (
-                  <div key={i} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '3px 0', borderTop: i > 0 ? '1px solid #FDE68A' : 'none' }}>
-                    <div>
-                      <span style={{ fontWeight: 600, color: '#D97706', marginRight: 8 }}>
-                        {p.type_paiement === 'acompte' ? 'Acompte' : p.type_paiement === 'solde' ? 'Solde' : 'Total'}
-                      </span>
-                      {p.description_paiement && <span style={{ color: '#78350F', fontSize: '0.9em' }}>{p.description_paiement}</span>}
-                    </div>
-                    <strong style={{ color: '#92400E' }}>
-                      {p.date_paiement ? new Date(p.date_paiement).toLocaleDateString('fr-FR') : ''} — {(p.montant/100).toFixed(2)} €
-                    </strong>
-                  </div>
-                ))}
-              </div>
-            )}
           </>
         ) : (
           <div style={{ borderTop: '1px solid #eee', paddingTop: 16 }}>
@@ -397,6 +493,7 @@ export default function ModalResa({ resa, onClose, onSaved }) {
             )}
           </div>
         )}
+        <EncaissementsRecap virements={virements} finRevenue={resa.fin_revenue} />
       </div>
     </div>
   )

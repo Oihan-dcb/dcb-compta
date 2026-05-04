@@ -54,7 +54,7 @@ Ces invariants ont la priorité absolue. Leur violation peut entraîner une fact
 | I-20b | Le rapprochement (Flux 1) et le reversement propriétaire (Flux 2) sont des flux strictement indépendants — `ventilation.mouvement_id` n'est jamais positionné par le moteur de rapprochement | ✅ **Implémenté** | Session 12/04/2026 — `_lierViaPayout` remplace `_lier`. Jamais de `ventilation.mouvement_id` ni de VIR résiduels créés par le rapprochement. Flux 1 : VIRSEPA distributeur/voyageur → DCB. Flux 2 : VIR = reversement DCB → propriétaire (indépendant). |
 | I-21 | `payout_hospitable.mouvement_id` renseigné implique que le mouvement existe en base | ✅ **Corrigé** | `annulerRapprochement` remet `mouvement_id=null` sur `payout_hospitable` (CF-BQ1, confirmé session 12/04/2026) |
 | I-22 | `reservation_paiement.mouvement_id` renseigné implique que le mouvement existe en base | ✅ **Corrigé** | `annulerRapprochement` supprime les `reservation_paiement` liés au mouvement annulé |
-| I-23 | Un mouvement `statut = 'rapproche'` a au moins une réservation liée via `payout_hospitable → payout_reservation → reservation` ou `reservation_paiement` | ✅ **Corrigé** | `_lierViaPayout` peuple `reservation.rapprochee` et `reservation_paiement` pour tous les canaux (Airbnb, Booking, Stripe, manuel). Session 12/04/2026. |
+| I-23 | Un mouvement `statut = 'rapproche'` a au moins une réservation liée via `payout_hospitable → payout_reservation → reservation` ou `reservation_paiement` | ✅ **Renforcé** | `_lierViaPayout` crée désormais `reservation_paiement` AVANT de mettre `statut_matching='rapproche'` — élimine la fenêtre de ghost match en cas d'erreur mid-séquence. Trigger DB `prevent_ghost_match` bloque toute transition `→ rapproche` sans FK valide. Session 03/05/2026. |
 | I-24 | Le résultat du matching est identique quel que soit le bouton utilisé (Config ou PageRapprochement) | ✅ **Corrigé** | Unified sur `lancerMatchingAuto` de `rapprochement.js` — PageConfig et PageMatching utilisent le même moteur (CF-C3) |
 
 ---
@@ -219,6 +219,13 @@ Aucun invariant actif violé à l'issue de la session du 12 avril 2026.
 | I-109 | **VIR trésorerie = résiduel** : `max(0, creditsProuves − HON − FMEN − AUTO − COM − PREST − HAOWNER)`. La ventilation VIR (basée sur `fin_revenue`) n'est PAS utilisée dans la matrice de contrôle. Le solde = 0 signifie que les encaissements nets couvrent exactement les retenues DCB + reversement réel. | ✅ Session 13/04/2026 |
 | I-110 | Badge trésorerie et bloc Contrôle Trésorerie masqués pour `type_facture = 'debours'`. | ✅ Session 13/04/2026 |
 | I-111 | Le recalcul `allocate-encaissements` se déclenche automatiquement à chaque visite de la page Factures (arrière-plan). Aucun bouton manuel. | ✅ Session 13/04/2026 |
+
+### Invariants ajoutés (3 mai 2026 — Anti ghost match systémique)
+
+| ID | Description | Statut |
+|---|---|---|
+| I-118 | `_lierViaPayout` crée `reservation_paiement` avant de mettre `statut_matching='rapproche'`. Ordre inverse → ghost match si l'upsert échoue après la mise à jour du statut. | ✅ Session 03/05/2026 |
+| I-119 | Trigger DB `prevent_ghost_match` sur `mouvement_bancaire` : bloque toute transition vers `rapproche` sans FK valide dans `reservation_paiement`, `payout_hospitable` ou `ventilation`. | ✅ À appliquer via SQL Editor |
 
 ### Invariants ajoutés (21 avril 2026 — SMS automation + base_comm + LLM géo)
 

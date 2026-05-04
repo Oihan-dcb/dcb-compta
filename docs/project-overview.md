@@ -645,3 +645,54 @@ review.created webhook → hospitable-webhook → sms_queue (28 min delay)
 - Badge `Tréso ✓` (vert) / `Tréso ⚠` (rouge) / `Non prouvé` (orange) dans l'en-tête de chaque facture
 - `allocate-encaissements` déclenché automatiquement à chaque visite de la page Factures
 - Badge et bloc trésorerie masqués pour `type_facture='debours'`
+
+## Fixes session 3 mai 2026 — Anti ghost match systémique + enrichissement payout CSV
+
+### Rapprochement — fix `_lierViaPayout` ordre des opérations
+
+**Problème root cause** : `_lierViaPayout` positionnait `statut_matching='rapproche'` AVANT de créer les `reservation_paiement`. En cas d'erreur mid-séquence, le mouvement restait `rapproché` sans FK → ghost match.
+
+**Fix** : `reservation_paiement` upsert déplacé EN PREMIER, puis `statut_matching` mis à jour — fenêtre de ghost match éliminée. (`rapprochement.js`, session 03/05/2026)
+
+**Trigger DB** : `prevent_ghost_match` sur `mouvement_bancaire` — bloque toute transition `→ rapproche` sans FK valide dans `reservation_paiement`, `payout_hospitable` ou `ventilation`. SQL à appliquer via Supabase SQL Editor.
+
+### Rapprochement — import CSV Airbnb (`importAirbnb.js`)
+
+Nouveau service `src/services/importAirbnb.js` — import de l'historique transactions Airbnb (export "par propriétaire") :
+- Parse lignes Payout + Réservation, groupe par `payout_date`
+- Associe au mouvement bancaire Airbnb par montant (±2 centimes) + fenêtre 5j
+- Stocke les lignes dans `airbnb_payout_line` (avec ou sans `mouvement_id`)
+- Ligne orpheline (payout futur) = `mouvement_id = null` — récupérée quand le relevé arrive
+- Bouton "CSV Airbnb" (rouge) ajouté dans `PageBanque.jsx`
+
+### Rapprochement — orphelins Booking (`importBooking.js`)
+
+- Lignes `booking_payout_line` sans mouvement bancaire stockées avec `mouvement_id = null`
+- Affichage "Payout Booking prévu le XX/XX" dans `PageRapprochement.jsx` (sans-virement table)
+
+### Modal réservation — recap encaissements (`ModalResa.jsx`)
+
+Nouveau bloc "VIREMENTS REÇUS" : tableau des mouvements bancaires liés à la réservation (3 chemins : `reservation_paiement`, `payout_hospitable`, `ventilation.mouvement_id`), total encaissé, écart vs `fin_revenue` — utile pour les resas BETAK avec plusieurs virements partiels.
+
+## Fixes session 4 mai 2026 — Sync payouts Airbnb via MCP + reviews fix
+
+### Sync payouts Airbnb — remplacement CSV par API MCP (`syncPayouts.js`)
+
+**Problème** : `syncReservations.js` créait des `payout_hospitable` avec `date_payout = arrival_date` (bug). L'import CSV Airbnb manuel corrigeait la date mais nécessitait un export mensuel.
+
+**Remplacement** : bouton "CSV Airbnb" remplacé par "🔄 Sync Airbnb" (`syncPayoutsFromHospitable`) :
+- Parcourt les payouts Hospitable (API `/payouts`) des 3 derniers mois, filtres : `platform=airbnb` + `bank_account contains '6555'` (DCB)
+- Pour chaque transaction → parse code confirmation (dernier mot du champ `details`) → trouve réservation par `code`
+- Si `payout_hospitable` existe + `mouvement_id IS NULL` → UPDATE `date_payout`
+- Si `payout_hospitable` manquante (resa créée par webhook) → INSERT + `payout_reservation`
+- Si `mouvement_id IS NOT NULL` → skip (déjà rapprochée, ne pas toucher)
+
+**Bug pagination corrigé** : probe page 1 ne pouvait pas être réutilisé pour `lastPage` — chaque page maintenant fetchée indépendamment.
+
+**Affichage "Payout Airbnb prévu le X"** : `PageRapprochement.jsx` enrichit les réservations Airbnb sans virement avec `date_payout` depuis `payout_hospitable` (même logique que Booking via `booking_payout_line`).
+
+### Reviews sync — fix `include=reservation`
+
+**Problème** : `sync-reviews` appelait `/properties/{id}/reviews` sans `include=reservation` → `review.reservation?.id = undefined` → fallback sur `review.id` (UUID de l'avis ≠ `reservation.hospitable_id`) → lookup SMS échouait.
+
+**Fix** : ajout de `{ include: 'reservation' }` au `fetchAll` dans `sync-reviews/index.ts`. L'API retourne maintenant `review.reservation.id` = vrai hospitable_id. Déployé sur Supabase.

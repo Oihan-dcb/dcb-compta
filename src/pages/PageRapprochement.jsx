@@ -94,7 +94,7 @@ export default function PageRapprochement() {
       const [{ count: virCount }, resasNrRes] = await Promise.all([
         supabase.from('mouvement_bancaire').select('*', { count: 'exact', head: true }).eq('mois_releve', mois).eq('statut_matching', 'en_attente').gt('credit', 0).lt('date_operation', cutoff),
         supabase.from('reservation')
-          .select('id, code, platform, guest_name, arrival_date, departure_date, fin_revenue, final_status, mois_comptable, ventilation_calculee, bien!inner(id, code, hospitable_name, agence, gestion_loyer)')
+          .select('id, code, platform, platform_id, guest_name, arrival_date, departure_date, fin_revenue, final_status, mois_comptable, ventilation_calculee, bien!inner(id, code, hospitable_name, agence, gestion_loyer)')
           .eq('mois_comptable', mois)
           .eq('rapprochee', false)
           .eq('owner_stay', false)
@@ -106,6 +106,38 @@ export default function PageRapprochement() {
           .order('arrival_date', { ascending: true })
       ])
       const rnr = (resasNrRes.data || [])
+
+      // Enrichir avec les booking_payout_line orphelines (payout futur sans mouvement bancaire)
+      const bookingRnr = rnr.filter(r => r.platform === 'booking' && r.platform_id)
+      if (bookingRnr.length) {
+        const { data: orphanLines } = await supabase
+          .from('booking_payout_line')
+          .select('booking_ref, payout_date')
+          .in('booking_ref', bookingRnr.map(r => r.platform_id))
+          .is('mouvement_id', null)
+        if (orphanLines?.length) {
+          const payoutByRef = Object.fromEntries(orphanLines.map(l => [l.booking_ref, l.payout_date]))
+          rnr.forEach(r => { if (r.platform_id && payoutByRef[r.platform_id]) r._payout_prevu = payoutByRef[r.platform_id] })
+        }
+      }
+
+      // Enrichir avec les dates de payout Airbnb (payout_hospitable non rapprochés)
+      const airbnbRnr = rnr.filter(r => r.platform === 'airbnb')
+      if (airbnbRnr.length) {
+        const { data: airbnbPayouts } = await supabase
+          .from('payout_hospitable')
+          .select('hospitable_id, date_payout')
+          .in('hospitable_id', airbnbRnr.map(r => r.id + '_airbnb_payout'))
+          .is('mouvement_id', null)
+          .not('date_payout', 'is', null)
+        if (airbnbPayouts?.length) {
+          const payoutByResaId = Object.fromEntries(
+            airbnbPayouts.map(p => [p.hospitable_id.replace('_airbnb_payout', ''), p.date_payout])
+          )
+          rnr.forEach(r => { if (r.platform === 'airbnb' && payoutByResaId[r.id]) r._payout_prevu = payoutByResaId[r.id] })
+        }
+      }
+
       setResasNonRappr(rnr)
       setAlertes({ virOrphelins: virCount || 0, resasNonRapprochees: rnr.length })
       // Mois dispos
@@ -395,6 +427,11 @@ export default function PageRapprochement() {
                         {r.ventilation_calculee
                           ? <span style={{ color: '#D97706', fontWeight: 600, fontSize: 12 }}>✓ ventilée</span>
                           : <span style={{ color: '#9CA3AF', fontSize: 12 }}>non ventilée</span>}
+                        {r._payout_prevu && (
+                          <span style={{ display: 'block', marginTop: 2, color: '#2563EB', fontSize: 11, fontWeight: 600 }}>
+                            Payout {r.platform === 'airbnb' ? 'Airbnb' : 'Booking'} prévu le {fmtDate(r._payout_prevu)}
+                          </span>
+                        )}
                       </td>
                     </tr>
                   ))}
@@ -606,10 +643,8 @@ export default function PageRapprochement() {
                 <div style={{ color: '#aaa', fontSize: 13, textAlign: 'center', padding: 16 }}>Tous les VIR sont déjà rapprochés</div>
               ) : (() => {
                 const soldeRestant = (resa) => {
-                  const dejaLie = (resa?.ventilation || [])
-                    .filter(v => v.mouvement_id && v.code === 'VIR')
-                    .reduce((s, v) => s + (v.mouvement_bancaire?.credit || 0), 0)
-                  return Math.max(0, (resa?.fin_revenue || 0) - dejaLie)
+                  const soldeLine = (resa?.ventilation || []).find(v => v.code === 'SOLDE')
+                  return soldeLine?.montant_ttc || 0
                 }
                 return virs
                   .filter(v => virMoisFiltre === 'tous' || v.mois_comptable === virMoisFiltre)
@@ -641,8 +676,7 @@ export default function PageRapprochement() {
                   <div style={{ fontWeight: 700, color: '#CC9933', whiteSpace: 'nowrap' }}>{fmt(v.reservation?.fin_revenue)}</div>
                   {v.reservation?.fin_revenue > 0 && (() => {
                     const solde = soldeRestant(v.reservation)
-                    const partiel = solde < (v.reservation.fin_revenue || 0)
-                    return partiel ? <div style={{fontSize:10,color:'#D97706',fontWeight:700}}>Reste {fmt(solde)}</div> : null
+                    return solde > 0 ? <div style={{fontSize:10,color:'#D97706',fontWeight:700}}>Reste {fmt(solde)}</div> : null
                   })()}
                 </div>
                   </label>

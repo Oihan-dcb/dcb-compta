@@ -526,46 +526,6 @@ export async function calculerVentilationResa(resa) {
     await supabase.from('ventilation').update(patch).eq('reservation_id', resa.id).eq('code', code)
   }
 
-  // Recréer le VIR résiduel si rapprochement partiel (solde fin_revenue - mouvements liés > 1€)
-  if (existingMouvements['VIR'] && !resa.owner_stay) {
-    const { data: linkedVirs } = await supabase
-      .from('ventilation')
-      .select('mouvement_bancaire(credit)')
-      .eq('reservation_id', resa.id)
-      .eq('code', 'VIR')
-      .not('mouvement_id', 'is', null)
-    const totalLie = (linkedVirs || []).reduce((s, v) => s + (v.mouvement_bancaire?.credit || 0), 0)
-    const soldeResiduel = (resa.fin_revenue || 0) - totalLie
-    if (soldeResiduel > 100) {
-      const { data: virInfo } = await supabase
-        .from('ventilation')
-        .select('mois_comptable, bien_id, proprietaire_id')
-        .eq('reservation_id', resa.id)
-        .eq('code', 'VIR')
-        .limit(1)
-        .single()
-      const { count: nbVir } = await supabase
-        .from('ventilation')
-        .select('id', { count: 'exact', head: true })
-        .eq('reservation_id', resa.id)
-        .eq('code', 'VIR')
-      await supabase.from('ventilation').insert({
-        reservation_id: resa.id,
-        bien_id: virInfo?.bien_id,
-        proprietaire_id: virInfo?.proprietaire_id,
-        code: 'VIR',
-        libelle: `Virement propriétaire (${(nbVir || 0) + 1})`,
-        montant_ttc: soldeResiduel,
-        montant_ht: soldeResiduel,
-        taux_tva: 0,
-        montant_tva: 0,
-        mois_comptable: virInfo?.mois_comptable,
-        calcul_source: 'auto',
-      })
-      await supabase.from('reservation').update({ rapprochee: false }).eq('id', resa.id)
-    }
-  }
-
   // Marquer la résa comme ventilée
   await supabase
     .from('reservation')

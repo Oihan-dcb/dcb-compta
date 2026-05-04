@@ -26,8 +26,11 @@ Huit codes produits par la ventilation. Chacun est une ligne dans la table `vent
 | TAXE | Taxe de séjour | 0% | Line items `fee_type='tax'` non remis | ✅ |
 | MEN | Ménage brut voyageur | 0% | Somme des `guest_fees` dont le label n'est pas `'management fee'`, `'host service fee'` ni `'resort fee'`. Exemple : cleaning fee + community fee + pet fee. | ✅ |
 | COM | Commission DCB directe | 20% | `managementFeeRaw` (directes uniquement) | ✅ |
+| RGLM | Règlement voyageur N | 0% | Solde restant à encaisser : `fin_revenue − sum(reservation_paiement.montant)`. Créé uniquement pour `platform = 'manual'` ou `'direct'`, après réception d'au moins un acompte. N = nombre de paiements reçus + 1. `calcul_source = 'residuel'`. **N'apparaît pas dans les rapports propriétaires, factures ni exports SEPA.** Visible uniquement dans le module de rapprochement bancaire. | ✅ |
 
 **Note** : les codes MGT et AE existent dans le code de facturation mais ne sont jamais produits par la ventilation (leur `sumByCode` retourne toujours 0).
+
+**Distinction VIR vs RGLM** : VIR = virement calculé agence → proprio (flux financier). RGLM = solde attendu voyageur → agence (flux de trésorerie, rapprochement bancaire). Les deux coexistent sur une même réservation manual/direct sans interaction.
 
 ---
 

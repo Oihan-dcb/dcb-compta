@@ -55,6 +55,7 @@ export async function getMouvementsMois(mois) {
         if (isNewResa) info.reservation_ids.push(r.id)
         if (!info.codes.includes(r.code)) info.codes.push(r.code)
         // fin_revenue et nights : additionner UNE SEULE fois par résa (dédup)
+        if (isNewResa) info.nb_resas++
         if (isNewResa) info.fin_revenue += (r.fin_revenue || 0)
         if (isNewResa) info.nights = (info.nights || 0) + (r.nights || 0)
         if (isNewResa && r.arrival_date && (!info.arrival_date || r.arrival_date < info.arrival_date)) info.arrival_date = r.arrival_date
@@ -225,6 +226,7 @@ export async function getMouvementsMois(mois) {
     const mvtIds = encoreVides.map(m => m.id)
     const stripeIds  = encoreVides.filter(m => m.canal === 'stripe').map(m => m.id)
     const bookingIds = encoreVides.filter(m => m.canal === 'booking').map(m => m.id)
+    const airbnbIds  = encoreVides.filter(m => m.canal === 'airbnb').map(m => m.id)
 
     // ── Stripe : stripe_payout_line → reservation via reservation_code ──────
     if (stripeIds.length > 0) {
@@ -368,6 +370,73 @@ export async function getMouvementsMois(mois) {
         }
       }
     }
+
+    // ── Airbnb CSV : airbnb_payout_line → reservation via confirmation_code ──
+    if (airbnbIds.length > 0) {
+      const { data: airbnbLines } = await supabase
+        .from('airbnb_payout_line')
+        .select('mouvement_id, confirmation_code, guest_name, checkin, checkout, property_name, amount_cents')
+        .in('mouvement_id', airbnbIds)
+        .not('confirmation_code', 'is', null)
+
+      if (airbnbLines?.length > 0) {
+        const codes = [...new Set(airbnbLines.map(l => l.confirmation_code).filter(Boolean))]
+        const { data: resas } = await supabase
+          .from('reservation')
+          .select('id, code, platform, guest_name, arrival_date, departure_date, nights, fin_revenue, bien(hospitable_name, agence, gestion_loyer)')
+          .eq('platform', 'airbnb')
+          .in('code', codes)
+
+        const resaByCode = Object.fromEntries((resas || []).map(r => [r.code, r]))
+
+        const infoAirbnb = {}
+        for (const line of airbnbLines) {
+          const mvtId = line.mouvement_id
+          if (!infoAirbnb[mvtId]) infoAirbnb[mvtId] = { biens: [], guests: [], reservation_ids: [], codes: [], platform: 'airbnb', arrival_date: null, departure_date: null, nights: 0, fin_revenue: 0, nb_resas: 0 }
+          const info = infoAirbnb[mvtId]
+          const resa = resaByCode[line.confirmation_code]
+          if (resa) {
+            const bien = resa.bien?.hospitable_name
+            if (bien && !info.biens.includes(bien)) info.biens.push(bien)
+            if (resa.guest_name && !info.guests.includes(resa.guest_name)) info.guests.push(resa.guest_name)
+            if (!info.reservation_ids.includes(resa.id)) info.reservation_ids.push(resa.id)
+            if (!info.codes.includes(resa.code)) info.codes.push(resa.code)
+            info.fin_revenue += (line.amount_cents ?? resa.fin_revenue ?? 0)
+            info.nights += (resa.nights || 0)
+            info.nb_resas++
+            if (!info.arrival_date || resa.arrival_date < info.arrival_date) info.arrival_date = resa.arrival_date
+            if (!info.departure_date || resa.departure_date > info.departure_date) info.departure_date = resa.departure_date
+          } else {
+            if (line.property_name && !info.biens.includes(line.property_name)) info.biens.push(line.property_name)
+            if (line.checkin && (!info.arrival_date || line.checkin < info.arrival_date)) info.arrival_date = line.checkin
+            if (line.checkout && (!info.departure_date || line.checkout > info.departure_date)) info.departure_date = line.checkout
+          }
+          if (line.confirmation_code && !info.codes.includes(line.confirmation_code)) info.codes.push(line.confirmation_code)
+        }
+        for (const m of encoreVides.filter(m => m.canal === 'airbnb')) {
+          if (infoAirbnb[m.id]) {
+            const info = infoAirbnb[m.id]
+            info.bien_name  = info.biens.join(' | ')
+            info.guest_name = info.guests.length === 1 ? info.guests[0] : (info.nb_resas + ' résa(s)')
+            m._resa = info
+            for (const resaId of info.reservation_ids) {
+              const code = Object.keys(resaByCode).find(k => resaByCode[k]?.id === resaId)
+              const line = airbnbLines?.find(l => l.confirmation_code === code)
+              const montant = line?.amount_cents ?? m.credit
+              const finRev = resaByCode[code]?.fin_revenue || 0
+              supabase.from('reservation_paiement').upsert({
+                reservation_id: resaId, mouvement_id: m.id,
+                montant, date_paiement: m.date_operation,
+                type_paiement: (finRev && montant >= finRev * 0.99) ? 'total' : 'acompte'
+              }, { onConflict: 'reservation_id,mouvement_id', ignoreDuplicates: true }).then(() => {})
+            }
+            if (info.reservation_ids.length) {
+              supabase.from('reservation').update({ rapprochee: true }).in('id', info.reservation_ids).then(() => {})
+            }
+          }
+        }
+      }
+    }
   }
 
   // Marquer les d  // Marquer les débits seuls comme debit_en_attente
@@ -394,7 +463,7 @@ export async function getVirNonRapproches(mois) {
         bien (code, hospitable_name, gestion_loyer, agence),
         ventilation (montant_ttc, mouvement_id, code, mouvement_bancaire(credit)))
     `)
-    .eq('code', 'VIR')
+    .in('code', ['VIR', 'SOLDE'])
     .is('mouvement_id', null)
     .gte('mois_comptable', dateMin)
     .lte('mois_comptable', dateMax)
@@ -477,14 +546,14 @@ export async function lancerMatchingAuto(mois) {
           if (payoutExact) break
         }
         if (!payoutExact) {
-          payoutExact = payoutsCanal.find(p => Math.abs(p.amount - mouv.credit) <= 2)
+          // Fallback sans date : seulement si le montant est unique parmi les payouts disponibles
+          // Évite le faux match type Cleret/Crepy (même fin_revenue, payouts de dates différentes)
+          const candidates = payoutsCanal.filter(p => Math.abs(p.amount - mouv.credit) <= 2)
+          if (candidates.length === 1) payoutExact = candidates[0]
         }
 
         if (payoutExact) {
-          await supabase.from('payout_hospitable')
-            .update({ mouvement_id: mouv.id, statut_matching: 'rapproche' })
-            .eq('id', payoutExact.id)
-
+          // Récupérer les resaIds EN PREMIER
           const { data: prLinks } = await supabase
             .from('payout_reservation')
             .select('reservation_id')
@@ -506,7 +575,13 @@ export async function lancerMatchingAuto(mois) {
             }
           }
 
+          // _lierViaPayout crée reservation_paiement + met statut_matching AVANT payout_hospitable
           await _lierViaPayout(mouv.id, resaIds, mouv)
+
+          // Mettre à jour payout_hospitable APRÈS que reservation_paiement existe
+          await supabase.from('payout_hospitable')
+            .update({ mouvement_id: mouv.id, statut_matching: 'rapproche' })
+            .eq('id', payoutExact.id)
 
           payoutsCanal.splice(payoutsCanal.indexOf(payoutExact), 1)
           libres.splice(libres.indexOf(mouv), 1)
@@ -528,12 +603,7 @@ export async function lancerMatchingAuto(mois) {
           if (subsetPay) break
         }
         if (subsetPay) {
-          for (const p of subsetPay) {
-            await supabase.from('payout_hospitable')
-              .update({ mouvement_id: mouv.id, statut_matching: 'rapproche' })
-              .eq('id', p.id)
-          }
-
+          // Récupérer les resaIds EN PREMIER
           const allResaIds = []
           let allLinked = true
           for (const p of subsetPay) {
@@ -557,7 +627,16 @@ export async function lancerMatchingAuto(mois) {
           }
           if (!allLinked) { log.skipped++; continue }
           const resaIds = [...new Set(allResaIds.filter(Boolean))]
+
+          // _lierViaPayout crée reservation_paiement + met statut_matching AVANT payout_hospitable
           await _lierViaPayout(mouv.id, resaIds, mouv)
+
+          // Mettre à jour payout_hospitable APRÈS que reservation_paiement existe
+          for (const p of subsetPay) {
+            await supabase.from('payout_hospitable')
+              .update({ mouvement_id: mouv.id, statut_matching: 'rapproche' })
+              .eq('id', p.id)
+          }
 
           for (const p of subsetPay) payoutsCanal.splice(payoutsCanal.indexOf(p), 1)
           libres.splice(libres.indexOf(mouv), 1)
@@ -660,6 +739,8 @@ export async function annulerRapprochement(mouvementId) {
   if (allResaIds.length) await supabase.from('reservation').update({ rapprochee: false }).in('id', allResaIds)
   await supabase.from('payout_hospitable').update({ mouvement_id: null, statut_matching: 'en_attente' }).eq('mouvement_id', mouvementId)
   await supabase.from('reservation_paiement').delete().eq('mouvement_id', mouvementId)
+  // Resync RGLM + SOLDE après suppression du paiement
+  for (const rid of paiementResaIds) await _syncRglmSolde(rid)
   const { error: mvtErr } = await supabase.from('mouvement_bancaire').update({ statut_matching: 'en_attente' }).eq('id', mouvementId)
   if (mvtErr) throw mvtErr
   // Journal
@@ -674,13 +755,69 @@ export async function annulerRapprochement(mouvementId) {
 
 // ── HELPERS PRIVÉS ─────────────────────────────────────────────
 
+// Synchronise les lignes RGLM (paiements reçus) + SOLDE (reste à encaisser)
+// pour les réservations manual/direct payées en plusieurs versements voyageur.
+// Appelé après chaque liaison ou annulation de rapprochement.
+async function _syncRglmSolde(resaId) {
+  const [{ data: resa }, { data: virInfo }] = await Promise.all([
+    supabase.from('reservation').select('platform, fin_revenue').eq('id', resaId).single(),
+    supabase.from('ventilation').select('bien_id, proprietaire_id, mois_comptable')
+      .eq('reservation_id', resaId).eq('code', 'VIR').limit(1).single(),
+  ])
+  if (!resa || (resa.platform !== 'manual' && resa.platform !== 'direct')) return
+
+  const { data: paiements } = await supabase
+    .from('reservation_paiement')
+    .select('montant, date_paiement')
+    .eq('reservation_id', resaId)
+    .order('date_paiement', { ascending: true })
+
+  // Supprimer les RGLM + SOLDE existants puis recréer depuis zéro
+  await supabase.from('ventilation').delete()
+    .eq('reservation_id', resaId).in('code', ['RGLM', 'SOLDE'])
+
+  if (!paiements?.length) return
+
+  const meta = {
+    reservation_id: resaId,
+    bien_id: virInfo?.bien_id,
+    proprietaire_id: virInfo?.proprietaire_id,
+    mois_comptable: virInfo?.mois_comptable,
+    taux_tva: 0, montant_tva: 0,
+    calcul_source: 'rapprochement',
+  }
+
+  // RGLM N : une ligne par paiement reçu
+  const rglmLines = paiements.map((p, i) => ({
+    ...meta,
+    code: 'RGLM',
+    libelle: `Règlement ${i + 1}`,
+    montant_ttc: p.montant,
+    montant_ht: p.montant,
+  }))
+  if (rglmLines.length) await supabase.from('ventilation').insert(rglmLines)
+
+  // SOLDE : reste à recevoir (disparaît quand = 0)
+  const totalRecu = paiements.reduce((s, p) => s + (p.montant || 0), 0)
+  const solde = (resa.fin_revenue || 0) - totalRecu
+  if (solde > 100) {
+    await supabase.from('ventilation').insert({
+      ...meta,
+      code: 'SOLDE',
+      libelle: 'Solde à recevoir',
+      montant_ttc: solde,
+      montant_ht: solde,
+    })
+  }
+}
+
 // Lier un mouvement bancaire à des réservations — Flux 1 pur (VIRSEPA distributeur/voyageur ↔ DCB)
 // Ne touche JAMAIS ventilation.mouvement_id : le reversement propriétaire (VIR) est un flux indépendant
 async function _lierViaPayout(mouvementId, resaIds, mvt = null, statut = 'rapproche') {
   // Ne pas marquer rapproché si aucune réservation trouvée — évite les ghost matches
   if (!resaIds.length) return
-  await supabase.from('mouvement_bancaire').update({ statut_matching: statut }).eq('id', mouvementId)
-  await supabase.from('reservation').update({ rapprochee: true }).in('id', resaIds)
+  // Créer les FK (reservation_paiement) EN PREMIER — le statut rapproché ne doit être
+  // positionné qu'une fois les liens en place (évite les ghost matches en cas d'erreur mid-séquence)
   if (mvt) {
     const paiements = resaIds.map(rid => ({
       reservation_id: rid,
@@ -694,6 +831,11 @@ async function _lierViaPayout(mouvementId, resaIds, mvt = null, statut = 'rappro
       ignoreDuplicates: true
     })
   }
+  // Statut mis à jour APRÈS création des liens FK
+  await supabase.from('mouvement_bancaire').update({ statut_matching: statut }).eq('id', mouvementId)
+  await supabase.from('reservation').update({ rapprochee: true }).in('id', resaIds)
+  // Sync RGLM + SOLDE pour les resas manual/direct
+  for (const rid of resaIds) await _syncRglmSolde(rid)
 }
 
 function _subsetSum(virs, cible, tol = 2) {
