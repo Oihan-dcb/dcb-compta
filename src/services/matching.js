@@ -9,6 +9,7 @@
  */
 
 import { supabase } from '../lib/supabase'
+import { AGENCE } from '../lib/agence'
 
 // ============================================================
 // MOTEUR DE MATCHING BANCAIRE
@@ -31,6 +32,7 @@ export async function lancerMatching(mois) {
     .from('mouvement_bancaire')
     .select('*')
     .eq('mois_releve', mois)
+    .eq('agence', AGENCE)
     .eq('statut_matching', 'en_attente')
     .not('credit', 'is', null)
     .gt('credit', 5) // Ignorer les virements test < 0.05€
@@ -582,6 +584,7 @@ export async function getMatchingStats(mois) {
     .from('mouvement_bancaire')
     .select('statut_matching, credit')
     .eq('mois_releve', mois)
+    .eq('agence', AGENCE)
     .not('credit', 'is', null)
     .gt('credit', 5)
 

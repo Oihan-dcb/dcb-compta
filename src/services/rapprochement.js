@@ -10,6 +10,7 @@
  */
 import { supabase } from '../lib/supabase'
 import { logOp } from './journal'
+import { AGENCE } from '../lib/agence'
 
 // ── LECTURE ────────────────────────────────────────────────────
 
@@ -18,6 +19,7 @@ export async function getMouvementsMois(mois) {
     .from('mouvement_bancaire')
     .select('*')
     .eq('mois_releve', mois)
+    .eq('agence', AGENCE)
     .order('date_operation', { ascending: true })
   if (error) throw error
   const mouvements = data || []
@@ -478,7 +480,7 @@ export async function getVirNonRapproches(mois) {
 
 export async function getStatsRapprochement(mois) {
   const [{ data: m }, { data: r }] = await Promise.all([
-    supabase.from('mouvement_bancaire').select('statut_matching,credit,debit,canal').eq('mois_releve', mois),
+    supabase.from('mouvement_bancaire').select('statut_matching,credit,debit,canal').eq('mois_releve', mois).eq('agence', AGENCE),
     supabase.from('reservation').select('rapprochee,final_status').eq('mois_comptable', mois)
       .not('final_status', 'in', '("not accepted","cancelled")').gt('fin_revenue', 0),
   ])
@@ -889,6 +891,7 @@ export async function resetEtRematcher(mois) {
       .from('mouvement_bancaire')
       .select('id')
       .eq('mois_releve', mois)
+      .eq('agence', AGENCE)
       .in('statut_matching', ['rapproche', 'matche_auto'])
 
     if (!mouvements?.length) {
@@ -955,6 +958,7 @@ export async function resetEtRematcher(mois) {
       .from('mouvement_bancaire')
       .select('id, credit, date_operation')
       .eq('mois_releve', mois)
+      .eq('agence', AGENCE)
       .eq('statut_matching', 'rapproche')
       .gt('credit', 0)
     for (const mvt of mvtRapproches || []) {
