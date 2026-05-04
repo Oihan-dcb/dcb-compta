@@ -462,19 +462,21 @@ export async function getVirNonRapproches(mois) {
     .select(`
       id, code, montant_ttc, mouvement_id, mois_comptable, reservation_id,
       reservation (id, code, platform, guest_name, arrival_date, departure_date, nights, fin_revenue, final_status,
-        bien (code, hospitable_name, gestion_loyer, agence),
+        bien!inner (code, hospitable_name, gestion_loyer, agence),
         ventilation (montant_ttc, mouvement_id, code, mouvement_bancaire(credit)))
     `)
     .in('code', ['VIR', 'SOLDE'])
     .is('mouvement_id', null)
     .gte('mois_comptable', dateMin)
     .lte('mois_comptable', dateMax)
+    .eq('reservation.bien.agence', AGENCE)
     .order('mois_comptable', { ascending: false })
   if (error) throw error
-  // Exclure les réservations annulées
+  // Exclure les réservations annulées + filtrer au cas où le join ne filtre pas strictement
   return (data || []).filter(v =>
     v.reservation?.final_status !== 'not accepted' &&
-    v.reservation?.final_status !== 'cancelled'
+    v.reservation?.final_status !== 'cancelled' &&
+    v.reservation?.bien?.agence === AGENCE
   )
 }
 
