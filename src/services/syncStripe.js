@@ -124,6 +124,30 @@ export async function syncStripe() {
           .eq('id', po.mouvement_id)
         log.updated++
 
+        // Marquer les réservations comme rapprochées + insérer reservation_paiement
+        const codes = [...new Set(lines.map(l => l.reservation_code).filter(Boolean))]
+        if (codes.length) {
+          const { data: resas } = await supabase
+            .from('reservation')
+            .select('id, code')
+            .in('code', codes)
+          for (const resa of (resas || [])) {
+            await supabase.from('reservation').update({ rapprochee: true }).eq('id', resa.id)
+            const { data: existRp } = await supabase.from('reservation_paiement')
+              .select('id').eq('reservation_id', resa.id).eq('mouvement_id', po.mouvement_id).maybeSingle()
+            if (!existRp) {
+              const line = lines.find(l => l.reservation_code === resa.code)
+              await supabase.from('reservation_paiement').insert({
+                reservation_id: resa.id,
+                mouvement_id: po.mouvement_id,
+                montant: line?.montant_net ?? null,
+                date_paiement: line?.created_at ?? null,
+                type_paiement: line?.terme ? 'partiel' : 'total',
+              }).catch(() => {})
+            }
+          }
+        }
+
       } catch (e) {
         console.error('syncStripe payout error:', po.payout_id, e)
         log.errors++
