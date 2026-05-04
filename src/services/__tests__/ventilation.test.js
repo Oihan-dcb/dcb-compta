@@ -739,3 +739,47 @@ describe('Invariants formule — non-régression', () => {
     expect(ligne(lignes, 'HON').montant_ttc).toBe(4000)
   })
 })
+
+// ─────────────────────────────────────────────────────────────────────────
+// HMS2SR33WH — Airbnb BGH avec EXTRA_GUEST_FEE
+// Validé sur statement Hospitable avril 2026
+//   accommodation = 103900¢, hostServiceFee = -26022¢
+//   EXTRA_GUEST_FEE = 20000¢ → inclus dans commissionableBase
+//   commissionableBase = 103900 - 26022 + 20000 = 97878¢ = €978,78
+//   HON = round(97878 × 0.22) = 21533¢ = €215,33 ✓
+//   LOY = 113878 - 21533 - fmenTTC - 0 = €786,66 ✓
+// ─────────────────────────────────────────────────────────────────────────
+describe('HMS2SR33WH — Airbnb BGH avec EXTRA_GUEST_FEE (taux 22%)', () => {
+  const resa = {
+    id: 'test-bghrh',
+    code: 'HMS2SR33WH',
+    platform: 'airbnb',
+    fin_revenue: 113878,
+    fin_accommodation: 103900,
+    final_status: 'accepted',
+    owner_stay: false,
+    mois_comptable: '2026-04',
+    reservation_fee: [
+      { label: 'Host Service Fee', amount: -26022, fee_type: 'host_fee' },
+      { label: 'Community Fee',    amount: 16000,  fee_type: 'guest_fee' },
+      { label: 'EXTRA_GUEST_FEE', amount: 20000,  fee_type: 'guest_fee' },
+    ],
+    bien: makeBien({ taux_commission_override: 0.22 }),
+  }
+
+  it('commissionableBase inclut EXTRA_GUEST_FEE → HON = 21533¢', () => {
+    const { lignes } = _calculerLignes(resa)
+    // commissionableBase = 103900 - 26022 + 20000 = 97878
+    // HON = round(97878 × 0.22) = 21533
+    expect(ligne(lignes, 'HON').montant_ttc).toBe(21533)
+  })
+
+  it('LOY = 78666¢ = €786,66 (aligné statement Hospitable)', () => {
+    const { lignes } = _calculerLignes(resa)
+    // dueToOwner = round(26022 × 16000 / (103900+16000+20000) × 0.78)
+    //            = round(26022 × 16000 / 139900 × 0.78) = round(2321.3) = 2321
+    // fmenTTC = 16000 - 2321 = 13679
+    // LOY = 113878 - 21533 - 13679 - 0 - 0 = 78666
+    expect(ligne(lignes, 'LOY').montant_ttc).toBe(78666)
+  })
+})

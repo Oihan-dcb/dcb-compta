@@ -237,6 +237,13 @@ export function _calculerLignes(resa) {
   // Ménage brut selon la plateforme
   const menageBrut = resa.platform === 'airbnb' ? cleaningFeeAirbnb : communityFeeRaw
 
+  // Supplément voyageurs supplémentaires (EXTRA_GUEST_FEE Airbnb)
+  // Hospitable l'inclut dans sa commissionable base — DCB doit faire de même.
+  // Validé sur BGH HMS2SR33WH : 20000¢ → commissionableBase +200€ → HON +€44 ✓
+  const extraGuestFee = guestFeesAll
+    .filter(f => f.label?.toLowerCase() === 'extra_guest_fee')
+    .reduce((s, f) => s + (f.amount || 0), 0)
+
   // AUTO = provision AE (hors TVA)
   // Pour les réservations annulées non-directes (Airbnb/Booking avec frais) : pas de provision AE
   const aeAmount = isCancelled ? 0 : (bien.provision_ae_ref || 0)
@@ -255,8 +262,9 @@ export function _calculerLignes(resa) {
   // Prouvé sur données réelles :
   //   Direct  : accommodation(30400) + host_fees(-453)          = 29947 ✓
   //   Booking : accommodation(15245) + host_fees(-376 + -4211)  = 10658 ✓
-  //   Airbnb  : accommodation + host_service_fee + discounts    (inchangé)
-  commissionableBase = accommodation + hostServiceFee + discountsTotal
+  //   Airbnb  : accommodation + host_service_fee + discounts + extraGuestFee
+  //   BGH HMS2SR33WH : 103900 + (-26022) + 0 + 20000 = 97878 = €978,78 ✓
+  commissionableBase = accommodation + hostServiceFee + discountsTotal + extraGuestFee
 
   // HON = base × taux (TVA 20%)
   // Direct : Math.floor pour correspondre exactement au statement Hospitable

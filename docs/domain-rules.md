@@ -80,8 +80,10 @@ La ventilation identifie les fees par comparaison de label (`toLowerCase()`). �
 ### 4.2 Airbnb
 
 ```
-commissionableBase = accommodation + hostServiceFee + discounts
-                   = nuitées + commission_plateforme(négatif) + remises
+commissionableBase = accommodation + hostServiceFee + discounts + extraGuestFee
+                   = nuitées + commission_plateforme(négatif) + remises + EXTRA_GUEST_FEE
+                   [extraGuestFee = Σ guest_fees dont label === 'extra_guest_fee' (case-insensitive)]
+                   [validé BGH HMS2SR33WH : 103900 − 26022 + 20000 = 97878¢ = €978,78 ✓]
 fmenBase           = cleaningFeeAirbnb + communityFeeRaw
                    [base brute ménage = fees ménage bruts voyageur, avant retrait de la part
                     plateforme (dueToOwner) et avant déduction de l'AUTO]
