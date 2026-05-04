@@ -624,6 +624,19 @@ export async function validerMatchManuelResas(mouvementId, resaIds) {
     await supabase.from('ventilation')
       .update({ mouvement_id: mouvementId })
       .in('reservation_id', resaIds)
+
+    // Alimenter reservation_paiement — requis pour que annulerRapprochement
+    // et resetEtRematcher puissent remettre rapprochee=false correctement
+    for (const resaId of resaIds) {
+      const { data: existRp } = await supabase.from('reservation_paiement')
+        .select('id').eq('reservation_id', resaId).eq('mouvement_id', mouvementId).maybeSingle()
+      if (!existRp) {
+        await supabase.from('reservation_paiement').insert({
+          reservation_id: resaId, mouvement_id: mouvementId,
+          montant: mvt.credit, date_paiement: mvt.date_operation, type_paiement: 'total',
+        }).catch(() => {})
+      }
+    }
   }
 
   return { matched: true, resaIds }
