@@ -9,7 +9,9 @@
 import { supabase } from '../lib/supabase'
 import { fetchPayoutsList, fetchPayoutDetail } from '../lib/hospitable'
 
-const DCB_IBAN = '6555'
+// Suffixe IBAN configuré par déploiement (ex: '6555' pour DCB, '1234' pour Lauian)
+// Si absent, on ne filtre pas par IBAN (prend tous les payouts Airbnb)
+const IBAN_SUFFIX = import.meta.env.VITE_AIRBNB_IBAN || null
 
 /**
  * Parse le code de confirmation depuis le champ details d'une transaction Hospitable.
@@ -56,7 +58,7 @@ export async function syncPayoutsFromHospitable({ monthsBack = 3 } = {}) {
         }
 
         if (payout.platform?.toLowerCase() !== 'airbnb') continue
-        if (!payout.bank_account?.includes(DCB_IBAN)) continue
+        if (IBAN_SUFFIX && !payout.bank_account?.includes(IBAN_SUFFIX)) continue
 
         let transactions
         try {
