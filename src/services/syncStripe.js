@@ -49,11 +49,15 @@ export async function syncStripe() {
       .eq('agence', AGENCE)
       .gte('credit', 100)
 
-    // 3. Charger les payout_ids déjà traités
+    // 3. Charger les payout_ids déjà traités (mouvement effectivement rapproché)
     const { data: existingLines } = await supabase
       .from('stripe_payout_line')
-      .select('stripe_payout_id')
-    const alreadyDone = new Set((existingLines || []).map(l => l.stripe_payout_id))
+      .select('stripe_payout_id, mouvement_bancaire(statut_matching)')
+    const alreadyDone = new Set(
+      (existingLines || [])
+        .filter(l => l.mouvement_bancaire?.statut_matching === 'rapproche')
+        .map(l => l.stripe_payout_id)
+    )
 
     // 4. Matcher payouts aux mouvements
     const used = new Set()
