@@ -94,7 +94,7 @@ export default function PageRapprochement() {
       const [{ count: virCount }, resasNrRes] = await Promise.all([
         supabase.from('mouvement_bancaire').select('*', { count: 'exact', head: true }).eq('mois_releve', mois).eq('statut_matching', 'en_attente').gt('credit', 0).lt('date_operation', cutoff),
         supabase.from('reservation')
-          .select('id, code, platform, platform_id, guest_name, arrival_date, departure_date, fin_revenue, final_status, mois_comptable, ventilation_calculee, bien!inner(id, code, hospitable_name, agence, gestion_loyer)')
+          .select('id, code, platform, platform_id, guest_name, arrival_date, departure_date, fin_revenue, final_status, mois_comptable, ventilation_calculee, bien!inner(id, code, hospitable_name, agence, gestion_loyer), reservation_paiement(montant)')
           .eq('mois_comptable', mois)
           .eq('rapprochee', false)
           .eq('owner_stay', false)
@@ -584,7 +584,10 @@ export default function PageRapprochement() {
               Réservations à associer ({resasEnAttente.length})
               {resasSel.length > 0 && (
                 <span style={{ marginLeft: 8, color: '#CC9933' }}>
-                  — sélection : {fmt(resasEnAttente.filter(r => resasSel.includes(r.id)).reduce((s, r) => s + (r.fin_revenue || 0), 0))}
+                  — sélection : {fmt(resasEnAttente.filter(r => resasSel.includes(r.id)).reduce((s, r) => {
+                    const dejaRecu = (r.reservation_paiement || []).reduce((a, p) => a + (p.montant || 0), 0)
+                    return s + (dejaRecu > 0 ? Math.max(0, (r.fin_revenue || 0) - dejaRecu) : (r.fin_revenue || 0))
+                  }, 0))}
                 </span>
               )}
             </div>
@@ -644,8 +647,9 @@ export default function PageRapprochement() {
                 <div style={{ color: '#aaa', fontSize: 13, textAlign: 'center', padding: 16 }}>Toutes les réservations sont déjà rapprochées</div>
               ) : (() => {
                 const soldeRestant = (resa) => {
-                  const soldeLine = (resa?.ventilation || []).find(v => v.code === 'SOLDE')
-                  return soldeLine?.montant_ttc || 0
+                  const dejaRecu = (resa?.reservation_paiement || []).reduce((s, p) => s + (p.montant || 0), 0)
+                  if (dejaRecu <= 0) return 0
+                  return Math.max(0, (resa.fin_revenue || 0) - dejaRecu)
                 }
                 return resasEnAttente
                   .filter(r => resaMoisFiltre === 'tous' || r.mois_comptable === resaMoisFiltre)
