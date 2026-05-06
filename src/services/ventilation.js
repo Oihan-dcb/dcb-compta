@@ -143,10 +143,16 @@ export function _calculerLignes(resa) {
     const rawHostFees = fin.host_fees || []
     const rawGuestFees = fin.guest_fees || []
     const rawTaxes = fin.taxes || []
+    // Normalisation labels localisés → anglais canonique
+    const LABEL_ALIASES = {
+      'frais de ménage': 'cleaning fee',
+      'frais de service (5%)': 'community fee',
+    }
+    const normalizeLabel = l => LABEL_ALIASES[l?.toLowerCase()] ?? l
     fees = [
-      ...rawHostFees.map(f => ({ label: f.label, amount: f.amount, fee_type: 'host_fee' })),
-      ...rawGuestFees.map(f => ({ label: f.label, amount: f.amount, fee_type: 'guest_fee' })),
-      ...rawTaxes.map(f => ({ label: f.label, amount: f.amount, fee_type: 'tax' })),
+      ...rawHostFees.map(f => ({ label: normalizeLabel(f.label), amount: f.amount, fee_type: 'host_fee' })),
+      ...rawGuestFees.map(f => ({ label: normalizeLabel(f.label), amount: f.amount, fee_type: 'guest_fee' })),
+      ...rawTaxes.map(f => ({ label: normalizeLabel(f.label), amount: f.amount, fee_type: 'tax' })),
     ]
   }
 

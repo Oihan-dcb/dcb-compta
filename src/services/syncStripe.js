@@ -81,7 +81,13 @@ export async function syncStripe() {
         if (!payTxns.length) continue
 
         const charges = await Promise.all(
-          payTxns.map(t => stripeGet(`/v1/charges/${t.source}`))
+          payTxns.map(t => {
+            if (!t.source) return Promise.resolve({})
+            if (t.source.startsWith('pi_')) {
+              return stripeGet(`/v1/charges?payment_intent=${t.source}&limit=1`).then(r => r.data?.[0] || {})
+            }
+            return stripeGet(`/v1/charges/${t.source}`)
+          })
         )
 
         const lines = payTxns.map((tx, i) => {
@@ -133,10 +139,9 @@ export async function syncStripe() {
         if (codes.length) {
           const { data: resas } = await supabase
             .from('reservation')
-            .select('id, code')
+            .select('id, code, fin_revenue')
             .in('code', codes)
           for (const resa of (resas || [])) {
-            await supabase.from('reservation').update({ rapprochee: true }).eq('id', resa.id)
             const { data: existRp } = await supabase.from('reservation_paiement')
               .select('id').eq('reservation_id', resa.id).eq('mouvement_id', po.mouvement_id).maybeSingle()
             if (!existRp) {
@@ -149,6 +154,13 @@ export async function syncStripe() {
                 type_paiement: line?.terme ? 'partiel' : 'total',
               }).catch(() => {})
             }
+            // Calculer si la réservation est totalement payée
+            const { data: allPaiements } = await supabase.from('reservation_paiement')
+              .select('montant').eq('reservation_id', resa.id)
+            const totalRecu = (allPaiements || []).reduce((s, p) => s + (p.montant || 0), 0)
+            const finRev = resa.fin_revenue || 0
+            const estComplet = finRev === 0 || totalRecu >= finRev * 0.99
+            await supabase.from('reservation').update({ rapprochee: estComplet }).eq('id', resa.id)
           }
         }
 

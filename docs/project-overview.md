@@ -696,3 +696,34 @@ Nouveau bloc "VIREMENTS REÇUS" : tableau des mouvements bancaires liés à la r
 **Problème** : `sync-reviews` appelait `/properties/{id}/reviews` sans `include=reservation` → `review.reservation?.id = undefined` → fallback sur `review.id` (UUID de l'avis ≠ `reservation.hospitable_id`) → lookup SMS échouait.
 
 **Fix** : ajout de `{ include: 'reservation' }` au `fetchAll` dans `sync-reviews/index.ts`. L'API retourne maintenant `review.reservation.id` = vrai hospitable_id. Déployé sur Supabase.
+
+## Fixes session 4 mai 2026 (suite) — Multi-tenant Lauian + FMEN Booking
+
+### Multi-tenant Lauian — isolation agence
+
+Série de fixes pour isoler complètement Lauian (biens `agence='lauian'`) de DCB dans toutes les pages :
+
+- **`syncStripe.js`** : ajout `.eq('agence', AGENCE)` sur la requête `mouvement_bancaire` + `import { AGENCE }` + `export const HAS_STRIPE = !!STRIPE_KEY`. `alreadyDone` corrigé : vérification `statut_matching='rapproche'` sur le mouvement lié au lieu de l'existence brute de la ligne.
+- **`syncPayouts.js`** : `IBAN_SUFFIX` depuis `VITE_AIRBNB_IBAN` (env par déploiement) — remplace le IBAN DCB hardcodé `'6555'`. Lauian configure `VITE_AIRBNB_IBAN=xxxx` dans Vercel.
+- **`facturesEvoliz.js`** : `agence: AGENCE` ajouté à tous les `factureData` ; `.eq('agence', AGENCE)` sur toutes les requêtes `facture_evoliz`.
+- **`PageFactures.jsx`** : `.eq('agence', AGENCE)` sur les requêtes `facture_evoliz` (useEffect mois) et `mouvement_bancaire` (chargerVirements).
+- **`rapprochement.js`** : `getVirNonRapproches` filtre `rapprochee === true` (remplace `mouvement_id IS NULL`) — adapté au nouveau modèle `_lierViaPayout` qui ne pose plus de `mouvement_id` sur `ventilation`.
+- **Migration 122** : 92 mouvements bancaires importés avec `agence='dcb'` corrigés en `agence='lauian'` (CSV `operations_01122025_04052026.csv`).
+- **Migration 123** : colonne `agence` ajoutée à `facture_evoliz` (`NOT NULL DEFAULT 'dcb'`).
+
+### FMEN Booking — normalisation labels localisés
+
+**Problème** : Booking renvoie les labels de fees dans la langue du compte (`"frais de ménage"` en français). Le code attendait les labels anglais (`'cleaning fee'`, `'community fee'`). Résultat : `fmenBase = 0` → **FMEN absent sur 102 réservations Booking**.
+
+**Diagnostic** : `reservation_fee` vide + `hospitable_raw` avec label français → ni `cleaningFeeAirbnb` ni `communityFeeRaw` non matchés → FMEN = 0. MEN = 120€ correct (logique par exclusion). AUTO = 37,50€ (provision AE du bien) — la "valeur 37,50€" était l'AUTO, pas le FMEN.
+
+**Fix code** (`ventilation.js` `_calculerLignes`) : normalisation des labels au moment du fallback `hospitable_raw` :
+```js
+const LABEL_ALIASES = {
+  'frais de ménage': 'cleaning fee',
+  'frais de service (5%)': 'community fee',
+}
+const normalizeLabel = l => LABEL_ALIASES[l?.toLowerCase()] ?? l
+```
+
+**Fix data** (migration 124) : recalcul FMEN pour toutes les réservations Booking affectées + ajustement LOY/VIR en conséquence.

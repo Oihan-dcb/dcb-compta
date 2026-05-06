@@ -345,8 +345,9 @@ const [pushing, setPushing] = useState(false)
         // PAYIN manquant : ce que les réservations rapprochées auraient dû apporter
         const payinManquant = Math.max(0, payinAttendu - creditsProuves)
         // Safe : solde = 0, toutes réservations prouvées, aucune anomalie, PAYIN complet
+        const hasResaManquant = payinManquantResas.some(r => r.manque > 0)
         const isSafe = solde === 0 && resasAnomalie.size === 0
-          && totalResas > 0 && resasProuvees.size === totalResas && payinManquant === 0
+          && totalResas > 0 && resasProuvees.size === totalResas && payinManquant === 0 && !hasResaManquant
 
         result[f.id] = {
           creditsProuves, credits: creditsProuves,
@@ -744,7 +745,8 @@ const [pushing, setPushing] = useState(false)
                           Tréso ⚠
                         </span>
                       )
-                      if (sc.countAnomalies > 0 || sc.countProuvees < sc.totalResas || sc.payinManquant > 0) return (
+                      const hasResaManquant = (sc.payinManquantResas || []).some(r => r.manque > 0)
+                      if (sc.countAnomalies > 0 || sc.countProuvees < sc.totalResas || sc.payinManquant > 0 || hasResaManquant) return (
                         <span style={{ padding: '4px 10px', borderRadius: 100, fontSize: 11, fontWeight: 600, background: '#FEF3C7', color: '#B45309' }}>
                           Non prouvé
                         </span>

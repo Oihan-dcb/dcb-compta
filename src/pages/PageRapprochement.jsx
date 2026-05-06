@@ -3,7 +3,7 @@ import { useState, useEffect, useCallback, useRef } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
 import {
-  getMouvementsMois, getVirNonRapproches, getStatsRapprochement,
+  getMouvementsMois, getResasEnAttentePayin, getStatsRapprochement,
   lancerMatchingAuto, matcherManuellement, marquerNonIdentifie, annulerRapprochement
 } from '../services/rapprochement'
 import { syncStripe, HAS_STRIPE } from '../services/syncStripe'
@@ -46,7 +46,7 @@ export default function PageRapprochement() {
   const [selectedResa, setSelectedResa] = useState(null)
   const [moisDispos, setMoisDispos] = useState([moisCourant])
   const [mouvements, setMouvements] = useState([])
-  const [virs, setVirs] = useState([])
+  const [resasEnAttente, setResasEnAttente] = useState([])
   const [stats, setStats] = useState(null)
   const [loading, setLoading] = useState(false)
   const [matching, setMatching] = useState(false)
@@ -54,17 +54,17 @@ export default function PageRapprochement() {
   const [error, setError] = useState(null)
   const [filtre, setFiltre] = useState('tous')
   const [mouvSelId, setMouvSelId] = useState(null)   // mouvement sélectionné pour matching manuel
-  const [virsSel, setVirsSel] = useState([])           // VIR sélectionnés pour matching manuel
+  const [resasSel, setResasSel] = useState([])          // réservations sélectionnées pour matching manuel (via proxy VIR)
   const [soldeInfo, setSoldeInfo] = useState(null)
   const [saving, setSaving] = useState(false)
   const [alertes, setAlertes] = useState({ virOrphelins: 0, resasNonRapprochees: 0 })
   const [resasNonRappr, setResasNonRappr] = useState([])
   const [resasNonRapprOpen, setResasNonRapprOpen] = useState(true)
   const [filtreCanal, setFiltreCanal] = useState('tous')
-  const [virSearch, setVirSearch] = useState('')
-  const [virMoisFiltre, setVirMoisFiltre] = useState(mois) // filtre mois dans panneau Lier
-  const [filterVirBien, setFilterVirBien] = useState('')
-  const [filterVirPlat, setFilterVirPlat] = useState('')
+  const [resaSearch, setResaSearch] = useState('')
+  const [resaMoisFiltre, setResaMoisFiltre] = useState(mois) // filtre mois dans panneau Lier
+  const [filterResaBien, setFilterResaBien] = useState('')
+  const [filterResaPlat, setFilterResaPlat] = useState('')
   const [syncing, setSyncing] = useState(false)
   const [syncLog, setSyncLog] = useState(null)
 
@@ -84,11 +84,11 @@ export default function PageRapprochement() {
     try {
       const [m, v, s] = await Promise.all([
         getMouvementsMois(mois),
-        getVirNonRapproches(mois),
+        getResasEnAttentePayin(mois),
         getStatsRapprochement(mois),
       ])
       setMouvements(m)
-      setVirs(v)
+      setResasEnAttente(v)
       setStats(s)
       const cutoff = new Date(Date.now() - 7*86400000).toISOString().slice(0,10)
       const [{ count: virCount }, resasNrRes] = await Promise.all([
@@ -217,28 +217,24 @@ export default function PageRapprochement() {
   }
 
   async function confirmerMatchManuel() {
-    if (!mouvSelId || virsSel.length === 0) return
+    if (!mouvSelId || resasSel.length === 0) return
     setSaving(true)
     setSoldeInfo(null)
     try {
-      // Récupérer les infos du virement et des VIR sélectionnés
+      // Récupérer les infos du paiement reçu et des réservations sélectionnées
       const mvt = mouvements.find(m => m.id === mouvSelId)
-      const virSelData = virs.filter(v => virsSel.includes(v.id))
-      const virTTC = virSelData.reduce((s, v) => s + (v.montant_ttc || 0), 0)
-
-      // Vérifier les paiements déjà reçus pour cette résa
-      const resaIds = [...new Set(virSelData.map(v => v.reservation_id || v.reservation?.id).filter(Boolean))]
+      const resaSelData = resasEnAttente.filter(r => resasSel.includes(r.id))
+      // resasSel contient directement les reservation_id
+      const resaIds = resasSel
       let dejaRecu = 0
       let typePaiement = 'total'
 
       if (resaIds.length > 0 && mvt) {
-        const [{ data: existing }, { data: resaData }] = await Promise.all([
-          supabase.from('reservation_paiement').select('montant, type_paiement').in('reservation_id', resaIds),
-          supabase.from('reservation').select('fin_revenue').in('id', resaIds),
-        ])
+        const { data: existing } = await supabase
+          .from('reservation_paiement').select('montant, type_paiement').in('reservation_id', resaIds)
         dejaRecu = (existing || []).reduce((s, p) => s + (p.montant || 0), 0)
-        // Base = fin_revenue (total voyageur à DCB), pas VIR (loyer proprio)
-        const finRevTotal = (resaData || []).reduce((s, r) => s + (r.fin_revenue || 0), 0)
+        // fin_revenue = host.revenue Hospitable = PAYIN attendu (tous canaux)
+        const finRevTotal = resaSelData.reduce((s, r) => s + (r.fin_revenue || 0), 0)
         const base = finRevTotal
         const soldeRestant = base - dejaRecu
         const credit = mvt.credit || 0
@@ -261,9 +257,9 @@ export default function PageRapprochement() {
         })
       }
 
-      await matcherManuellement(mouvSelId, virsSel, typePaiement)
+      await matcherManuellement(mouvSelId, resasSel, typePaiement)
       setMouvSelId(null)
-      setVirsSel([])
+      setResasSel([])
       await charger()
     } catch (err) {
       setError(err.message)
@@ -540,7 +536,7 @@ export default function PageRapprochement() {
                       <td style={{ padding: '9px 12px', whiteSpace: 'nowrap' }}>
                         {m.statut_matching === 'en_attente' && (m.credit || 0) > 0 && (
                           <div style={{ display: 'flex', gap: 6 }}>
-                            <button onClick={() => { setMouvSelId(m.id); setVirsSel([]) }}
+                            <button onClick={() => { setMouvSelId(m.id); setResasSel([]) }}
                               style={{ background: '#FFF8EC', color: '#CC9933', border: '1px solid #E4A853', borderRadius: 6, padding: '3px 8px', fontSize: 12, cursor: 'pointer' }}>
                               Lier
                             </button>
@@ -569,8 +565,8 @@ export default function PageRapprochement() {
         {mouvSelId && mouvSel && (
           <div style={{ background: '#fff', border: '1.5px solid #CC9933', borderRadius: 12, padding: 20, height: 'fit-content', position: 'sticky', top: 20 }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 14 }}>
-              <h3 style={{ margin: 0, fontSize: 15, fontWeight: 700 }}>Lier manuellement</h3>
-              <button onClick={() => { setMouvSelId(null); setVirsSel([]) }}
+              <h3 style={{ margin: 0, fontSize: 15, fontWeight: 700 }}>Associer ce paiement reçu à une réservation</h3>
+              <button onClick={() => { setMouvSelId(null); setResasSel([]) }}
                 style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: 18, color: '#888' }}>✕</button>
             </div>
 
@@ -580,12 +576,15 @@ export default function PageRapprochement() {
               <div style={{ color: '#666', marginTop: 2 }}>{fmtDate(mouvSel.date_operation)} — <span style={{ color: '#2E7D32', fontWeight: 700 }}>{fmt(mouvSel.credit || mouvSel.debit || 0)}</span></div>
             </div>
 
-            {/* Liste des VIR à sélectionner */}
+            {/* Liste des réservations en attente de paiement entrant */}
+            {/* Note : "virs" = lignes VIR ventilation utilisées comme proxy pour identifier les réservations.
+                Ces lignes ne sont PAS modifiées par le rapprochement — seuls reservation.rapprochee
+                et reservation_paiement sont mis à jour. */}
             <div style={{ marginBottom: 12, fontSize: 13, fontWeight: 600, color: '#555' }}>
-              VIR disponibles ({virs.length})
-              {virsSel.length > 0 && (
+              Réservations à associer ({resasEnAttente.length})
+              {resasSel.length > 0 && (
                 <span style={{ marginLeft: 8, color: '#CC9933' }}>
-                  — sélection : {fmt(virs.filter(v => virsSel.includes(v.id)).reduce((s, v) => s + (v.reservation?.fin_revenue || 0), 0))}
+                  — sélection : {fmt(resasEnAttente.filter(r => resasSel.includes(r.id)).reduce((s, r) => s + (r.fin_revenue || 0), 0))}
                 </span>
               )}
             </div>
@@ -596,41 +595,41 @@ export default function PageRapprochement() {
               </span>
               <div style={{ display:'flex', alignItems:'center', gap:4 }}>
                 <button onClick={() => {
-                  const [y,m] = virMoisFiltre === 'tous' ? [new Date().getFullYear(), new Date().getMonth()+1] : virMoisFiltre.split('-').map(Number)
+                  const [y,m] = resaMoisFiltre === 'tous' ? [new Date().getFullYear(), new Date().getMonth()+1] : resaMoisFiltre.split('-').map(Number)
                   const p = m===1 ? `${y-1}-12` : `${y}-${String(m-1).padStart(2,'0')}`
-                  setVirMoisFiltre(p)
+                  setResaMoisFiltre(p)
                 }} style={{ border:'1px solid var(--border,#D9CEB8)', borderRadius:5, background:'var(--bg,#F7F3EC)', width:22, height:22, cursor:'pointer', fontSize:13, lineHeight:1 }}>&#8249;</button>
-                <span style={{ fontSize:12, fontWeight:600, minWidth:60, textAlign:'center' }}>{virMoisFiltre === 'tous' ? 'Tous' : virMoisFiltre}</span>
+                <span style={{ fontSize:12, fontWeight:600, minWidth:60, textAlign:'center' }}>{resaMoisFiltre === 'tous' ? 'Tous' : resaMoisFiltre}</span>
                 <button onClick={() => {
-                  const [y,m] = virMoisFiltre === 'tous' ? [new Date().getFullYear(), new Date().getMonth()+1] : virMoisFiltre.split('-').map(Number)
+                  const [y,m] = resaMoisFiltre === 'tous' ? [new Date().getFullYear(), new Date().getMonth()+1] : resaMoisFiltre.split('-').map(Number)
                   const n = m===12 ? `${y+1}-01` : `${y}-${String(m+1).padStart(2,'0')}`
-                  setVirMoisFiltre(n)
+                  setResaMoisFiltre(n)
                 }} style={{ border:'1px solid var(--border,#D9CEB8)', borderRadius:5, background:'var(--bg,#F7F3EC)', width:22, height:22, cursor:'pointer', fontSize:13, lineHeight:1 }}>&#8250;</button>
-                <button onClick={() => setVirMoisFiltre('tous')}
-                  style={{ fontSize:10, border:'1px solid var(--border,#D9CEB8)', borderRadius:5, background: virMoisFiltre==='tous' ? 'var(--brand,#CC9933)' : 'var(--bg,#F7F3EC)', color: virMoisFiltre==='tous' ? 'white' : 'var(--text,#2C2416)', padding:'2px 6px', cursor:'pointer', fontWeight:600 }}>
+                <button onClick={() => setResaMoisFiltre('tous')}
+                  style={{ fontSize:10, border:'1px solid var(--border,#D9CEB8)', borderRadius:5, background: resaMoisFiltre==='tous' ? 'var(--brand,#CC9933)' : 'var(--bg,#F7F3EC)', color: resaMoisFiltre==='tous' ? 'white' : 'var(--text,#2C2416)', padding:'2px 6px', cursor:'pointer', fontWeight:600 }}>
                   Tous
                 </button>
               </div>
             </div>
             {/* Filtres bien + plateforme */}
             {(() => {
-              const bienIds = [...new Set(virs.map(v => v.reservation?.bien?.id).filter(Boolean))]
-              const plateformes = [...new Set(virs.map(v => v.reservation?.platform).filter(Boolean))].sort()
+              const bienIds = [...new Set(resasEnAttente.map(r => r.bien?.id).filter(Boolean))]
+              const plateformes = [...new Set(resasEnAttente.map(r => r.platform).filter(Boolean))].sort()
               if (bienIds.length < 2 && plateformes.length < 2) return null
               return (
                 <div style={{ display: 'flex', gap: 6, marginBottom: 8, flexWrap: 'wrap' }}>
                   {bienIds.length >= 2 && (
-                    <select value={filterVirBien} onChange={e => setFilterVirBien(e.target.value)}
+                    <select value={filterResaBien} onChange={e => setFilterResaBien(e.target.value)}
                       style={{ flex: 1, padding: '5px 8px', borderRadius: 7, border: '1px solid var(--border,#D9CEB8)', background: 'var(--bg,#F7F3EC)', color: 'var(--text,#2C2416)', fontSize: 12 }}>
                       <option value="">Tous les biens</option>
                       {bienIds.map(id => {
-                        const nom = virs.find(v => v.reservation?.bien?.id === id)?.reservation?.bien?.hospitable_name || id
+                        const nom = resasEnAttente.find(r => r.bien?.id === id)?.bien?.hospitable_name || id
                         return <option key={id} value={id}>{nom}</option>
                       })}
                     </select>
                   )}
                   {plateformes.length >= 2 && (
-                    <select value={filterVirPlat} onChange={e => setFilterVirPlat(e.target.value)}
+                    <select value={filterResaPlat} onChange={e => setFilterResaPlat(e.target.value)}
                       style={{ flex: 1, padding: '5px 8px', borderRadius: 7, border: '1px solid var(--border,#D9CEB8)', background: 'var(--bg,#F7F3EC)', color: 'var(--text,#2C2416)', fontSize: 12 }}>
                       <option value="">Toutes plateformes</option>
                       {plateformes.map(p => <option key={p} value={p}>{p}</option>)}
@@ -639,45 +638,45 @@ export default function PageRapprochement() {
                 </div>
               )
             })()}
-            <input placeholder="Rechercher..." value={virSearch} onChange={e => setVirSearch(e.target.value)} style={{ width:'100%', padding:'7px 10px', borderRadius:8, border:'1px solid #e5e7eb', fontSize:12, marginBottom:10, boxSizing:'border-box' }} />
+            <input placeholder="Rechercher..." value={resaSearch} onChange={e => setResaSearch(e.target.value)} style={{ width:'100%', padding:'7px 10px', borderRadius:8, border:'1px solid #e5e7eb', fontSize:12, marginBottom:10, boxSizing:'border-box' }} />
             <div style={{ maxHeight: 380, overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: 6, marginBottom: 16 }}>
-              {virs.length === 0 ? (
-                <div style={{ color: '#aaa', fontSize: 13, textAlign: 'center', padding: 16 }}>Tous les VIR sont déjà rapprochés</div>
+              {resasEnAttente.length === 0 ? (
+                <div style={{ color: '#aaa', fontSize: 13, textAlign: 'center', padding: 16 }}>Toutes les réservations sont déjà rapprochées</div>
               ) : (() => {
                 const soldeRestant = (resa) => {
                   const soldeLine = (resa?.ventilation || []).find(v => v.code === 'SOLDE')
                   return soldeLine?.montant_ttc || 0
                 }
-                return virs
-                  .filter(v => virMoisFiltre === 'tous' || v.mois_comptable === virMoisFiltre)
-                  .filter(v => !filterVirBien || v.reservation?.bien?.id === filterVirBien)
-                  .filter(v => !filterVirPlat || v.reservation?.platform === filterVirPlat)
-                  .filter(v => !virSearch || v.reservation?.guest_name?.toLowerCase().includes(virSearch.toLowerCase()) || v.reservation?.bien?.hospitable_name?.toLowerCase().includes(virSearch.toLowerCase()) || v.reservation?.code?.toLowerCase().includes(virSearch.toLowerCase()) || v.reservation?.platform?.toLowerCase().includes(virSearch.toLowerCase()))
-                  .map(v => {
-                const checked = virsSel.includes(v.id)
+                return resasEnAttente
+                  .filter(r => resaMoisFiltre === 'tous' || r.mois_comptable === resaMoisFiltre)
+                  .filter(r => !filterResaBien || r.bien?.id === filterResaBien)
+                  .filter(r => !filterResaPlat || r.platform === filterResaPlat)
+                  .filter(r => !resaSearch || r.guest_name?.toLowerCase().includes(resaSearch.toLowerCase()) || r.bien?.hospitable_name?.toLowerCase().includes(resaSearch.toLowerCase()) || r.code?.toLowerCase().includes(resaSearch.toLowerCase()) || r.platform?.toLowerCase().includes(resaSearch.toLowerCase()))
+                  .map(r => {
+                const checked = resasSel.includes(r.id)
                 return (
-                  <label key={v.id} style={{ display: 'flex', alignItems: 'flex-start', gap: 8, padding: '8px 10px', borderRadius: 8, border: `1.5px solid ${checked ? '#E4A853' : '#e5e7eb'}`, background: checked ? '#FFF8EC' : '#fff', cursor: 'pointer', fontSize: 12 }}>
+                  <label key={r.id} style={{ display: 'flex', alignItems: 'flex-start', gap: 8, padding: '8px 10px', borderRadius: 8, border: `1.5px solid ${checked ? '#E4A853' : '#e5e7eb'}`, background: checked ? '#FFF8EC' : '#fff', cursor: 'pointer', fontSize: 12 }}>
                     <input type="checkbox" checked={checked} onChange={e => {
-                      setVirsSel(prev => e.target.checked ? [...prev, v.id] : prev.filter(x => x !== v.id))
+                      setResasSel(prev => e.target.checked ? [...prev, r.id] : prev.filter(x => x !== r.id))
                     }} style={{ marginTop: 2, accentColor: '#CC9933' }} />
                     <div style={{ flex: 1 }}>
-                      <div style={{ fontWeight: 600 }}>{v.reservation?.guest_name || '—'}</div>
+                      <div style={{ fontWeight: 600 }}>{r.guest_name || '—'}</div>
                       <div style={{ color: '#666', marginTop: 1 }}>
-                        {v.reservation?.bien?.code} · {fmtDate(v.reservation?.arrival_date)} → {fmtDate(v.reservation?.departure_date)}
+                        {r.bien?.code} · {fmtDate(r.arrival_date)} → {fmtDate(r.departure_date)}
                       </div>
-                      <div style={{ color: '#666', marginTop: 1 }}>{v.reservation?.code}</div>
-                      {v.mois_comptable !== mois && (
+                      <div style={{ color: '#666', marginTop: 1 }}>{r.code}</div>
+                      {r.mois_comptable !== mois && (
                         <div style={{ marginTop: 3 }}>
                           <span style={{ fontSize: 10, background: '#FEF3C7', color: '#D97706', borderRadius: 4, padding: '1px 6px', fontWeight: 700 }}>
-                            Séjour {v.mois_comptable}
+                            Séjour {r.mois_comptable}
                           </span>
                         </div>
                       )}
                     </div>
                     <div style={{ textAlign:'right' }}>
-                  <div style={{ fontWeight: 700, color: '#CC9933', whiteSpace: 'nowrap' }}>{fmt(v.reservation?.fin_revenue)}</div>
-                  {v.reservation?.fin_revenue > 0 && (() => {
-                    const solde = soldeRestant(v.reservation)
+                  <div style={{ fontWeight: 700, color: '#CC9933', whiteSpace: 'nowrap' }}>{fmt(r.fin_revenue)}</div>
+                  {r.fin_revenue > 0 && (() => {
+                    const solde = soldeRestant(r)
                     return solde > 0 ? <div style={{fontSize:10,color:'#D97706',fontWeight:700}}>Reste {fmt(solde)}</div> : null
                   })()}
                 </div>
@@ -687,16 +686,16 @@ export default function PageRapprochement() {
               })()}
             </div>
 
-            <button onClick={confirmerMatchManuel} disabled={virsSel.length === 0 || saving}
-              style={{ width: '100%', background: virsSel.length === 0 ? '#aaa' : '#CC9933', color: '#fff', border: 'none', borderRadius: 8, padding: '10px', fontWeight: 700, cursor: virsSel.length === 0 ? 'not-allowed' : 'pointer', fontSize: 14 }}>
-              {saving ? 'Enregistrement...' : `Confirmer (${virsSel.length} VIR)`}
+            <button onClick={confirmerMatchManuel} disabled={resasSel.length === 0 || saving}
+              style={{ width: '100%', background: resasSel.length === 0 ? '#aaa' : '#CC9933', color: '#fff', border: 'none', borderRadius: 8, padding: '10px', fontWeight: 700, cursor: resasSel.length === 0 ? 'not-allowed' : 'pointer', fontSize: 14 }}>
+              {saving ? 'Enregistrement...' : `Confirmer (${resasSel.length} résa${resasSel.length > 1 ? 's' : ''})`}
             </button>
             {/* Indicateur acompte/solde */}
-            {!saving && virsSel.length > 0 && mouvSel && (() => {
-              const virSelData = virs.filter(v => virsSel.includes(v.id))
-              const virTTC = virSelData.reduce((s,v) => s + (v.montant_ttc||0), 0)
+            {!saving && resasSel.length > 0 && mouvSel && (() => {
+              const resaSelData = resasEnAttente.filter(r => resasSel.includes(r.id))
+              const finRevTotal = resaSelData.reduce((s,r) => s + (r.fin_revenue||0), 0)
               const credit = mouvSel.credit || 0
-              const diff = virTTC - credit
+              const diff = finRevTotal - credit
               if (diff <= 100) return null // total ou quasi-total
               return (
                 <div style={{ marginTop:8, padding:'8px 12px', borderRadius:8, background:'#FFFBEB', border:'1px solid #FCD34D', fontSize:12 }}>
