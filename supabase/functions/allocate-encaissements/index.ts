@@ -244,6 +244,7 @@ serve(async (req) => {
 
     // Chemin 5 : stripe_payout_line
     // Utilise montant_net (montant par résa dans le virement groupé Stripe), pas mb.credit (total virement)
+    // Plusieurs lignes peuvent exister pour la même résa+mouvement (ex: hébergement + frais séparés) → sommer
     for (const spl of (stripePayoutRes.data || [])) {
       const mb = spl.mouvement_bancaire as any
       if (!mb?.id) continue
@@ -262,6 +263,9 @@ serve(async (req) => {
           libelle: mb.libelle,
           date_operation: mb.date_operation,
         })
+      } else {
+        // Plusieurs lignes stripe pour même résa+mouvement → additionner
+        map.get(mb.id)!.credit += credit
       }
     }
 
