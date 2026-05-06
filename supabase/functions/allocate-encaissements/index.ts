@@ -77,7 +77,6 @@ serve(async (req) => {
       .select('id, bien_id, fin_revenue, platform, mois_comptable, platform_id, code')
       .eq('mois_comptable', mois)
       .eq('owner_stay', false)
-      .neq('final_status', 'cancelled')
       .gt('fin_revenue', 0)
       .in('bien_id', biensDcbIds)
 
@@ -180,14 +179,19 @@ serve(async (req) => {
     }
 
     // Chemin 2 : reservation_paiement
+    // Utilise min(fin_revenue, mb.credit) :
+    //   - Si mb.credit > fin_revenue (payout partagé entre plusieurs resas) → fin_revenue évite le double-comptage
+    //   - Si mb.credit < fin_revenue (paiement partiel) → mb.credit = montant réellement reçu
     for (const rp of (rpRes.data || [])) {
       const mb = rp.mouvement_bancaire as any
       if (!mb?.id || !(mb.credit > 0)) continue
       const map = ensureResa(rp.reservation_id)
       if (!map.has(mb.id)) {
+        const resaFin = resaById[rp.reservation_id]?.fin_revenue
+        const credit = resaFin != null ? Math.min(resaFin, mb.credit) : mb.credit
         map.set(mb.id, {
           mb_id: mb.id,
-          credit: mb.credit,
+          credit,
           source: 'reservation_paiement',
           source_ref: rp.id,
           libelle: mb.libelle,
@@ -349,12 +353,17 @@ serve(async (req) => {
       allocOk += Math.min(BATCH, allocations.length - i)
     }
 
-    // ── 6. Persistance anomalies : DELETE toutes + INSERT ─────────────────────
-    if (resaIds.length > 0) {
+    // ── 6. Persistance anomalies : DELETE + INSERT ────────────────────────────
+    // DELETE scope = bien+mois (pas seulement resaIds) pour nettoyer les anomalies
+    // orphelines (owner_stay, cancelled fin_revenue=0, anciennes versions).
+    // On ne supprime que resolu=false — les anomalies résolues manuellement sont préservées.
+    if (uniqueBienIds.length > 0) {
       const { error: delAnoErr } = await supabase
         .from('encaissement_anomalie')
         .delete()
-        .in('reservation_id', resaIds)
+        .eq('mois_comptable', mois)
+        .eq('resolu', false)
+        .in('bien_id', uniqueBienIds)
       if (delAnoErr) throw new Error(`Erreur DELETE anomalies: ${delAnoErr.message}`)
 
       if (detectedAnomalies.length > 0) {
