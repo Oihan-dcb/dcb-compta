@@ -1,12 +1,28 @@
 /**
- * Service de rapprochement bancaire DCB — Sprint B
+ * Service de rapprochement bancaire DCB — Flux 1 pur
  *
- * Stratégie : matching par montant exact
+ * OBJECTIF : associer les virements ENTRANTS reçus par l'agence (mouvement_bancaire.credit)
+ * aux réservations correspondantes. Ce flux vérifie que l'agence a bien été payée.
+ *
+ * Ce service NE concerne PAS le reversement propriétaire (VIR ventilation = Flux 2).
+ *
+ * Stratégie :
  *   mouvement_bancaire.credit ↔ payout_hospitable.amount (±2 centimes)
- *   → lie mouvement au payout (mouvement_bancaire.statut = rapproche)
- *   → lie les VIR du même mois via subset sum si besoin
+ *   → lie le mouvement au payout (mouvement_bancaire.statut = rapproche)
+ *   → marque reservation.rapprochee = true
+ *   → crée reservation_paiement (traçabilité)
+ *   → NE touche JAMAIS ventilation.mouvement_id ni les lignes VIR
  *
- * SEPA/Direct : matching manuel — l'utilisateur choisit les VIR à lier
+ * NOTE sur le nommage hérité :
+ *   Les fonctions et variables contenant "VIR" (getVirNonRapproches, virIds…)
+ *   sont des vestiges de l'ancien modèle qui liait mouvement_bancaire ↔ ventilation.VIR.
+ *   Ce modèle a été abandonné. Aujourd'hui, les lignes VIR ventilation servent uniquement
+ *   de PROXY pour identifier la réservation (reservation_id) — elles ne sont jamais modifiées
+ *   par le rapprochement. La cible réelle est reservation.rapprochee + reservation_paiement.
+ *
+ * Matching manuel (SEPA/Direct) :
+ *   L'utilisateur sélectionne des réservations (affichées via leurs lignes VIR proxy)
+ *   à associer au paiement reçu.
  */
 import { supabase } from '../lib/supabase'
 import { logOp } from './journal'
@@ -451,34 +467,39 @@ export async function getMouvementsMois(mois) {
   return mouvements
 }
 
-export async function getVirNonRapproches(mois) {
-  // Charge les VIR non rapproch?s : -2 mois jusqu'? +6 mois (fenetre glissante)
-  // Couvre les accomptes (paiement avant s?jour) et les arr?r?s r?cents
+/**
+ * Charge les réservations en attente de PAYIN (paiement entrant non encore rapproché).
+ *
+ * Requête directe sur `reservation` — plus de proxy ventilation VIR.
+ * Source de vérité : reservation.rapprochee + reservation.fin_revenue (= host.revenue Hospitable,
+ * disponible pour tous les canaux : Airbnb, Booking, Direct, Manual).
+ *
+ * Fenêtre glissante : -2 mois → +7 mois depuis aujourd'hui (couvre acomptes + arriérés).
+ * Note : le paramètre `mois` est ignoré — la fenêtre est toujours calculée depuis new Date().
+ */
+export async function getResasEnAttentePayin(mois) {
   const now = new Date()
   const dateMin = new Date(now.getFullYear(), now.getMonth() - 2, 1).toISOString().slice(0, 7)
   const dateMax = new Date(now.getFullYear(), now.getMonth() + 7, 1).toISOString().slice(0, 7)
   const { data, error } = await supabase
-    .from('ventilation')
+    .from('reservation')
     .select(`
-      id, code, montant_ttc, mouvement_id, mois_comptable, reservation_id,
-      reservation (id, code, platform, guest_name, arrival_date, departure_date, nights, fin_revenue, final_status, rapprochee,
-        bien!inner (code, hospitable_name, gestion_loyer, agence),
-        ventilation (montant_ttc, mouvement_id, code, mouvement_bancaire(credit)))
+      id, code, platform, guest_name, arrival_date, departure_date, nights,
+      fin_revenue, final_status, rapprochee, mois_comptable,
+      bien!inner (id, code, hospitable_name, gestion_loyer, agence),
+      ventilation (montant_ttc, code)
     `)
-    .in('code', ['VIR', 'SOLDE'])
-    .is('mouvement_id', null)
+    .neq('rapprochee', true)
     .gte('mois_comptable', dateMin)
     .lte('mois_comptable', dateMax)
-    .eq('reservation.bien.agence', AGENCE)
+    .eq('bien.agence', AGENCE)
+    .gt('fin_revenue', 0)
     .order('mois_comptable', { ascending: false })
   if (error) throw error
-  return (data || []).filter(v => {
-    const r = v.reservation
-    if (!r) return false
+  return (data || []).filter(r => {
     if (r.bien?.agence !== AGENCE) return false
-    if (r.rapprochee === true) return false
     if (r.final_status === 'not accepted') return false
-    if (r.final_status === 'cancelled' && !(r.fin_revenue > 0)) return false
+    if (r.final_status === 'cancelled') return false
     return true
   })
 }
@@ -691,14 +712,15 @@ export async function lancerMatchingAuto(mois) {
 
 // ── MATCHING MANUEL ────────────────────────────────────────────
 
-export async function matcherManuellement(mouvementId, virIds, typePaiement = null) {
-  // Identifier les réservations via les lignes VIR sélectionnées
-  const { data: virData } = await supabase
-    .from('ventilation')
-    .select('reservation_id')
-    .in('id', virIds)
-  const resaIds = [...new Set((virData || []).map(v => v.reservation_id).filter(Boolean))]
-  if (!resaIds.length) throw new Error('Aucune réservation trouvée pour les lignes sélectionnées')
+/**
+ * Lie manuellement un mouvement bancaire entrant (PAYIN) à des réservations.
+ *
+ * @param {string} mouvementId - ID du mouvement bancaire (crédit reçu par l'agence)
+ * @param {string[]} resaIds - IDs de réservations à associer (directement, sans proxy)
+ * @param {string|null} typePaiement - non utilisé actuellement
+ */
+export async function matcherManuellement(mouvementId, resaIds, typePaiement = null) {
+  if (!resaIds.length) throw new Error('Aucune réservation sélectionnée')
   const { data: mvt } = await supabase.from('mouvement_bancaire').select('credit, date_operation').eq('id', mouvementId).single()
   await _lierViaPayout(mouvementId, resaIds, mvt, 'rapproche')
 }
@@ -818,8 +840,21 @@ async function _syncRglmSolde(resaId) {
   }
 }
 
-// Lier un mouvement bancaire à des réservations — Flux 1 pur (VIRSEPA distributeur/voyageur ↔ DCB)
-// Ne touche JAMAIS ventilation.mouvement_id : le reversement propriétaire (VIR) est un flux indépendant
+/**
+ * Lie un mouvement bancaire entrant (crédit reçu par l'agence) à des réservations. Flux 1 pur.
+ *
+ * Ce que cette fonction fait :
+ *   - mouvement_bancaire.statut_matching = 'rapproche'
+ *   - reservation.rapprochee = true  (pour chaque resa)
+ *   - INSERT reservation_paiement    (traçabilité du paiement reçu)
+ *
+ * Ce que cette fonction NE fait PAS :
+ *   - ventilation.mouvement_id : jamais modifié  ← Flux 2 (reversement proprio), indépendant
+ *   - lignes VIR ventilation  : jamais créées ni modifiées
+ *
+ * IMPORTANT : "VIR" dans le contexte de cette fonction = paiement reçu plateforme/voyageur → agence.
+ * Ne pas confondre avec le code VIR de ventilation = reversement agence → propriétaire.
+ */
 async function _lierViaPayout(mouvementId, resaIds, mvt = null, statut = 'rapproche') {
   // Ne pas marquer rapproché si aucune réservation trouvée — évite les ghost matches
   if (!resaIds.length) return
@@ -840,7 +875,18 @@ async function _lierViaPayout(mouvementId, resaIds, mvt = null, statut = 'rappro
   }
   // Statut mis à jour APRÈS création des liens FK
   await supabase.from('mouvement_bancaire').update({ statut_matching: statut }).eq('id', mouvementId)
-  await supabase.from('reservation').update({ rapprochee: true }).in('id', resaIds)
+  // rapprochee=true uniquement si paiement complet — si acompte/partiel, laisser false
+  // pour que la résa reste visible dans "En attente" et puisse recevoir un second paiement
+  for (const rid of resaIds) {
+    const [{ data: resa }, { data: allPaiements }] = await Promise.all([
+      supabase.from('reservation').select('fin_revenue').eq('id', rid).single(),
+      supabase.from('reservation_paiement').select('montant').eq('reservation_id', rid),
+    ])
+    const totalRecu = (allPaiements || []).reduce((s, p) => s + (p.montant || 0), 0)
+    const finRev = resa?.fin_revenue || 0
+    const estComplet = finRev === 0 || totalRecu >= finRev * 0.99
+    await supabase.from('reservation').update({ rapprochee: estComplet }).eq('id', rid)
+  }
   // Sync RGLM + SOLDE pour les resas manual/direct
   for (const rid of resaIds) await _syncRglmSolde(rid)
 }
