@@ -211,7 +211,7 @@ const [pushing, setPushing] = useState(false)
         // Total réservations pour stats de couverture
         supabase
           .from('reservation')
-          .select('id, bien_id, fin_revenue')
+          .select('id, bien_id, fin_revenue, guest_name, platform')
           .eq('mois_comptable', mois)
           .eq('owner_stay', false)
           .neq('final_status', 'not accepted')
@@ -256,15 +256,24 @@ const [pushing, setPushing] = useState(false)
         b.resaIdsProuve.add(a.reservation_id)
       }
 
-      // Total réservations par bien + PAYIN attendu + IDs in-scope
+      // Crédit par réservation (pour détail payinManquant par résa)
+      const creditByResaId = {}
+      for (const a of (allocRows || [])) {
+        creditByResaId[a.reservation_id] = (creditByResaId[a.reservation_id] || 0) + a.credit_retenu_centimes
+      }
+
+      // Total réservations par bien + PAYIN attendu + IDs in-scope + resas par bien
       const totalResasByBien = {}
       const payinAttenduByBien = {}
       const resaIdsInScopeByBien = {}
+      const resasByBienId = {}
       for (const r of (resasRows || [])) {
         totalResasByBien[r.bien_id] = (totalResasByBien[r.bien_id] || 0) + 1
         payinAttenduByBien[r.bien_id] = (payinAttenduByBien[r.bien_id] || 0) + (r.fin_revenue || 0)
         if (!resaIdsInScopeByBien[r.bien_id]) resaIdsInScopeByBien[r.bien_id] = new Set()
         resaIdsInScopeByBien[r.bien_id].add(r.id)
+        if (!resasByBienId[r.bien_id]) resasByBienId[r.bien_id] = []
+        resasByBienId[r.bien_id].push(r)
       }
 
       // Anomalies par bien — uniquement sur resas in-scope (non annulées, fin_revenue>0, non owner_stay)
@@ -303,6 +312,7 @@ const [pushing, setPushing] = useState(false)
         let creditsProuves = 0, payinAttendu = 0
         let vir = 0, hon = 0, fmen = 0, autoreel = 0, com = 0, prest = 0, haowner = 0
         let totalResas = 0, resasProuvees = new Set(), resasAnomalie = new Set()
+        const payinManquantResas = []
 
         for (const bid of bienIds) {
           const ba = allocByBien[bid] || {}
@@ -318,6 +328,12 @@ const [pushing, setPushing] = useState(false)
 
           const bp = prestByBien[bid] || {}
           prest += bp.PREST || 0; haowner += bp.HAOWNER || 0
+
+          for (const r of (resasByBienId[bid] || [])) {
+            const recu = creditByResaId[r.id] || 0
+            const manque = (r.fin_revenue || 0) - recu
+            if (manque > 0) payinManquantResas.push({ guest_name: r.guest_name, platform: r.platform, fin_revenue: r.fin_revenue, recu, manque })
+          }
         }
 
         // VIR trésorerie = résiduel net des encaissements réels après retenues DCB
@@ -336,7 +352,7 @@ const [pushing, setPushing] = useState(false)
           creditsProuves, credits: creditsProuves,
           vir, hon, fmen, autoreel, prest, haowner, com,
           emplois, solde,
-          payinAttendu, payinManquant,
+          payinAttendu, payinManquant, payinManquantResas,
           totalResas,
           countProuvees: resasProuvees.size,
           countAnomalies: resasAnomalie.size,
@@ -876,6 +892,13 @@ const [pushing, setPushing] = useState(false)
                                   </td>
                                 </tr>
                               )}
+                              {(sc.payinManquantResas || []).map((r, i) => (
+                                <tr key={i}>
+                                  <td colSpan={2} style={{ ...rs, color: '#D97706', paddingLeft: 20 }}>
+                                    · {r.guest_name} ({r.platform}) — manque {fm(r.manque)} · reçu {fm(r.recu)} / attendu {fm(r.fin_revenue)}
+                                  </td>
+                                </tr>
+                              ))}
                               {sc.countAnomalies > 0 && (
                                 <tr>
                                   <td colSpan={2} style={{ ...rs, color: '#DC2626', fontStyle: 'italic' }}>
