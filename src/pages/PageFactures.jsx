@@ -211,10 +211,10 @@ const [pushing, setPushing] = useState(false)
         // Total réservations pour stats de couverture
         supabase
           .from('reservation')
-          .select('id, bien_id')
+          .select('id, bien_id, fin_revenue')
           .eq('mois_comptable', mois)
           .eq('owner_stay', false)
-          .neq('final_status', 'cancelled')
+          .neq('final_status', 'not accepted')
           .gt('fin_revenue', 0)
           .in('bien_id', uniqueBienIds),
         // Ventilation — TTC pour HON/FMEN/COM (Airbnb paie TVA incluse), HT pour VIR
@@ -256,17 +256,24 @@ const [pushing, setPushing] = useState(false)
         b.resaIdsProuve.add(a.reservation_id)
       }
 
-      // Anomalies par bien — réservations distinctes non prouvées
-      const anomaliesByBien = {}
-      for (const a of (anomalieRows || [])) {
-        if (!anomaliesByBien[a.bien_id]) anomaliesByBien[a.bien_id] = new Set()
-        anomaliesByBien[a.bien_id].add(a.reservation_id)
-      }
-
-      // Total réservations par bien
+      // Total réservations par bien + PAYIN attendu + IDs in-scope
       const totalResasByBien = {}
+      const payinAttenduByBien = {}
+      const resaIdsInScopeByBien = {}
       for (const r of (resasRows || [])) {
         totalResasByBien[r.bien_id] = (totalResasByBien[r.bien_id] || 0) + 1
+        payinAttenduByBien[r.bien_id] = (payinAttenduByBien[r.bien_id] || 0) + (r.fin_revenue || 0)
+        if (!resaIdsInScopeByBien[r.bien_id]) resaIdsInScopeByBien[r.bien_id] = new Set()
+        resaIdsInScopeByBien[r.bien_id].add(r.id)
+      }
+
+      // Anomalies par bien — uniquement sur resas in-scope (non annulées, fin_revenue>0, non owner_stay)
+      // Les anomalies sur resas hors scope (annulées, séjour proprio) sont ignorées
+      const anomaliesByBien = {}
+      for (const a of (anomalieRows || [])) {
+        if (!resaIdsInScopeByBien[a.bien_id]?.has(a.reservation_id)) continue
+        if (!anomaliesByBien[a.bien_id]) anomaliesByBien[a.bien_id] = new Set()
+        anomaliesByBien[a.bien_id].add(a.reservation_id)
       }
 
       // Ventilation par bien
@@ -293,7 +300,7 @@ const [pushing, setPushing] = useState(false)
       const result = {}
       for (const f of facturesList) {
         const bienIds = factureBienMap[f.id]
-        let creditsProuves = 0
+        let creditsProuves = 0, payinAttendu = 0
         let vir = 0, hon = 0, fmen = 0, autoreel = 0, com = 0, prest = 0, haowner = 0
         let totalResas = 0, resasProuvees = new Set(), resasAnomalie = new Set()
 
@@ -303,6 +310,7 @@ const [pushing, setPushing] = useState(false)
           ;(ba.resaIdsProuve || new Set()).forEach(id => resasProuvees.add(id))
           ;(anomaliesByBien[bid] || new Set()).forEach(id => resasAnomalie.add(id))
           totalResas += totalResasByBien[bid] || 0
+          payinAttendu += payinAttenduByBien[bid] || 0
 
           const bv = ventByBien[bid] || {}
           hon += bv.HON || 0; fmen += bv.FMEN || 0
@@ -318,14 +326,17 @@ const [pushing, setPushing] = useState(false)
         vir = Math.max(0, creditsProuves - hon - fmen - autoreel - prest - haowner - com)
         const emplois = vir + hon + fmen + autoreel + prest + haowner + com
         const solde = creditsProuves - emplois
-        // Safe : solde = 0, toutes réservations prouvées, aucune anomalie
+        // PAYIN manquant : ce que les réservations rapprochées auraient dû apporter
+        const payinManquant = Math.max(0, payinAttendu - creditsProuves)
+        // Safe : solde = 0, toutes réservations prouvées, aucune anomalie, PAYIN complet
         const isSafe = solde === 0 && resasAnomalie.size === 0
-          && totalResas > 0 && resasProuvees.size === totalResas
+          && totalResas > 0 && resasProuvees.size === totalResas && payinManquant === 0
 
         result[f.id] = {
           creditsProuves, credits: creditsProuves,
           vir, hon, fmen, autoreel, prest, haowner, com,
           emplois, solde,
+          payinAttendu, payinManquant,
           totalResas,
           countProuvees: resasProuvees.size,
           countAnomalies: resasAnomalie.size,
@@ -827,11 +838,13 @@ const [pushing, setPushing] = useState(false)
                       const bgColor = sc.isSafe ? '#F0FDF4' : solde < 0 ? '#FFF5F5' : undefined
                       const [soldeColor, soldeLabel] = sc.isSafe
                         ? ['#059669', '✓ Équilibre — encaissements prouvés, couverture complète']
-                        : solde === 0 && !sc.isSafe
-                          ? ['#D97706', `⚠ Solde nul mais couverture incomplète (${sc.countAnomalies} anomalie(s))`]
-                          : solde > 0
-                            ? ['#D97706', `⚠ Excédent : ${fm(solde)}`]
-                            : ['#DC2626', `⛔ Déficit : ${fm(Math.abs(solde))} reversé sans encaissement prouvé`]
+                        : sc.payinManquant > 0 && solde === 0
+                          ? ['#D97706', `⚠ PAYIN incomplet — ${fm(sc.payinManquant)} non encore reçu`]
+                          : solde === 0 && !sc.isSafe
+                            ? ['#D97706', `⚠ Solde nul mais couverture incomplète (${sc.countAnomalies} anomalie(s))`]
+                            : solde > 0
+                              ? ['#D97706', `⚠ Excédent : ${fm(solde)}`]
+                              : ['#DC2626', `⛔ Déficit : ${fm(Math.abs(solde))} reversé sans encaissement prouvé`]
                       const rs = { padding: '3px 10px', fontSize: 12 }
                       const row = (label, val) => val === 0 ? null : (
                         <tr key={label}>
@@ -854,6 +867,13 @@ const [pushing, setPushing] = useState(false)
                                 <tr>
                                   <td style={{ ...rs, color: 'var(--text-muted)' }}>Encaissements prouvés (virement CSV rapproché)</td>
                                   <td style={{ ...rs, textAlign: 'right', fontFamily: 'monospace', color: '#059669', fontWeight: 600 }}>+ {fm(sc.creditsProuves)}</td>
+                                </tr>
+                              )}
+                              {sc.payinManquant > 0 && (
+                                <tr>
+                                  <td colSpan={2} style={{ ...rs, color: '#D97706', fontStyle: 'italic' }}>
+                                    ⚠ PAYIN attendu {fm(sc.payinAttendu)} — manque {fm(sc.payinManquant)}
+                                  </td>
                                 </tr>
                               )}
                               {sc.countAnomalies > 0 && (
