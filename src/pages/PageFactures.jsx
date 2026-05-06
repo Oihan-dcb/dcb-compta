@@ -728,7 +728,7 @@ const [pushing, setPushing] = useState(false)
                           Tréso ⚠
                         </span>
                       )
-                      if (sc.countAnomalies > 0 || sc.countProuvees < sc.totalResas) return (
+                      if (sc.countAnomalies > 0 || sc.countProuvees < sc.totalResas || sc.payinManquant > 0) return (
                         <span style={{ padding: '4px 10px', borderRadius: 100, fontSize: 11, fontWeight: 600, background: '#FEF3C7', color: '#B45309' }}>
                           Non prouvé
                         </span>
