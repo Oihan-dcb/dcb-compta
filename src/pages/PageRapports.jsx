@@ -372,6 +372,10 @@ export default function PageRapports() {
     const isBordeaux = bienVille.toLowerCase().includes('bordeaux')
     const villeLabel = isBordeaux ? 'Bordeaux' : 'la Côte Basque'
     const agenceLabel = isBordeaux ? 'Destination Bordeaux' : 'Destination Côte Basque'
+    const isGlobalMaite = isMaite && modeMaite === 'global'
+    const isChambreMaite = isMaite && modeMaite === 'chambre'
+    const resasGuest = (data.resas || []).filter(r => !r.owner_stay)
+    const privatisations = isGlobalMaite ? resasGuest.filter(r => r.platform === 'manual' && (r.nights || 0) >= 7) : []
     const meteoLat = isBordeaux ? '44.84' : '43.48'
     const meteoLon = isBordeaux ? '-0.58' : '-1.56'
 
@@ -422,7 +426,18 @@ PERFORMANCE FAIBLE :
 - Toujours abordée si présente
 - Ton factuel et constructif
 - Donner des éléments d'explication
-- Montrer implicitement que la situation est pilotée`
+- Montrer implicitement que la situation est pilotée${isMaite ? `
+
+---
+
+STRUCTURE DU BIEN — MAISON MAÏTÉ :
+Maison Maïté est une maison d'hôtes à Biarritz composée de 5 chambres indépendantes (Gaxuxa, Ibañeta, Bixintxo, Maitena, Prinkipo).
+Chaque chambre est louée séparément sur les plateformes (Airbnb, Booking, direct).
+La maison peut aussi être louée en "privatisation" : toutes les chambres sont réservées d'un bloc pour un seul groupe. Une privatisation apparaît comme une réservation manuelle de longue durée avec un revenu élevé.
+${isGlobalMaite
+  ? `Ce rapport est le RAPPORT GLOBAL de la maison : il agrège toutes les chambres. L'analyse doit refléter la dynamique globale — mix entre chambres louées séparément et éventuelles privatisations. Si une privatisation est présente, elle doit être mentionnée explicitement car elle impacte fortement les chiffres.`
+  : `Ce rapport concerne uniquement la chambre "${bienNom}" au sein de la maison. L'analyse doit rester centrée sur cette chambre seule, sans mentionner les autres chambres.`
+}` : ''}`
 
     async function _genererAnalyse() {
       const prompt = `Bien : ${bienNom} — ${moisLabel}
@@ -439,6 +454,14 @@ Données disponibles :
 Avis voyageurs :
 ${data.reviews.map(r => '- ' + r.rating + '/5 : "' + (r.comment || '') + '"').join('\n') || 'Aucun avis ce mois'}
 
+${isGlobalMaite && resasGuest.length > 0 ? `Répartition des réservations :
+${resasGuest.map(r => {
+  const isPrivat = r.platform === 'manual' && (r.nights || 0) >= 7
+  const chambre = r.bien?.hospitable_name ? ` [${r.bien.hospitable_name}]` : ''
+  return `- ${r.arrival_date} → ${r.departure_date} (${r.nights}n, ${r.platform}${chambre}${isPrivat ? ', PRIVATISATION MAISON ENTIÈRE' : ''}) : ${fmt(r.fin_revenue || 0)}`
+}).join('\n')}
+${privatisations.length > 0 ? `→ Ce mois contient ${privatisations.length} privatisation(s) représentant ${fmt(privatisations.reduce((s,r) => s+(r.fin_revenue||0),0))} du revenu total.` : '→ Ce mois, aucune privatisation : uniquement des chambres louées séparément.'}` : ''}
+
 ${notePerso ? 'NOTE OÏHAN :\n' + notePerso : ''}
 
 OBJECTIF :
@@ -447,7 +470,7 @@ Donner une lecture claire de la performance du mois.
 CONTENU ATTENDU :
 - Positionner le mois (bon / correct / en retrait)
 - Expliquer les variations vs N-1
-- Interpréter le niveau de revenu et d'occupation
+- Interpréter le niveau de revenu et d'occupation${isGlobalMaite ? '\n- Si privatisation : la mentionner et en expliquer l\'impact sur les chiffres globaux' : ''}
 - Intégrer intelligemment les retours voyageurs
 - Ajouter la NOTE OÏHAN de manière fluide si présente
 
