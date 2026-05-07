@@ -215,7 +215,8 @@ export default function PageRapports() {
       setEmail(proprio?.email || '')
       const maiteIdsLocal = (proprio?.bien || []).filter(b => b.groupe_facturation === 'MAITE').map(b => b.id)
       const isGlobal = modeMaite === 'global' && maiteIdsLocal.length > 0
-      const noteBienIdLocal = isGlobal ? maiteIdsLocal[0] : selectedBienId
+      const maiteMaisonLocal = (proprio?.bien || []).find(b => b.groupe_facturation === 'MAITE' && b.code === 'MAISON')
+      const noteBienIdLocal = isGlobal && maiteMaisonLocal ? maiteMaisonLocal.id : selectedBienId
 
       // Notes (UI state) + données métier en parallèle
       const [notesRow, result] = await Promise.all([
@@ -746,8 +747,9 @@ FORMAT :
   const biensActifs = (proprio?.bien || []).filter(b => b.listed && b.agence === AGENCE)
   const isMaite = (proprio?.bien || []).some(b => b.groupe_facturation === 'MAITE')
   const maiteIds = (proprio?.bien || []).filter(b => b.groupe_facturation === 'MAITE').map(b => b.id)
-  // En mode global, on ancre toutes les notes sur le premier bien MAITE (stable entre sessions)
-  const noteBienId = (isMaite && modeMaite === 'global' && maiteIds.length > 0) ? maiteIds[0] : selectedBienId
+  // En mode global, on ancre toutes les notes sur le bien MAISON (code='MAISON') — stable entre sessions
+  const maiteMaison = (proprio?.bien || []).find(b => b.groupe_facturation === 'MAITE' && b.code === 'MAISON')
+  const noteBienId = (isMaite && modeMaite === 'global' && maiteMaison) ? maiteMaison.id : selectedBienId
   const biensActifsMaite = biensActifs.filter(b => b.groupe_facturation === 'MAITE')
   const propsFiltres = (bienIdsActifs === null
     ? proprietaires
