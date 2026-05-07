@@ -375,9 +375,9 @@ export function genererMailStatementHTML(proprio, mois, data) {
     <div style="font-size:22px;font-weight:700;color:#2C2416;">${kpis.nbResas}</div>
     <div style="font-size:9px;color:#9C8E7D;text-transform:uppercase;letter-spacing:0.5px;margin-top:3px;">Reservations</div>
   </div>` : ''}
-  ${kpis.caHeb != null ? `<div style="flex:1;background:#F7F4EF;border:1px solid #EDEBE5;border-radius:8px;padding:12px 8px;text-align:center;">
-    <div style="font-size:22px;font-weight:700;color:#CC9933;">${fmtEur(kpis.caHeb)}</div>
-    <div style="font-size:9px;color:#9C8E7D;text-transform:uppercase;letter-spacing:0.5px;margin-top:3px;">CA hebergement</div>
+  ${kpis.baseCommTotal != null ? `<div style="flex:1;background:#F7F4EF;border:1px solid #EDEBE5;border-radius:8px;padding:12px 8px;text-align:center;">
+    <div style="font-size:22px;font-weight:700;color:#CC9933;">${fmtEur(kpis.baseCommTotal)}</div>
+    <div style="font-size:9px;color:#9C8E7D;text-transform:uppercase;letter-spacing:0.5px;margin-top:3px;">Base commissionable</div>
   </div>` : ''}
   ${noteMoisMoy != null ? `<div style="flex:1;background:#F7F4EF;border:1px solid #EDEBE5;border-radius:8px;padding:12px 8px;text-align:center;">
     <div style="font-size:22px;font-weight:700;color:#2C2416;">${SVG_STAR_FULL(16)} ${noteMoisMoy}</div>
