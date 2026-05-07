@@ -1,5 +1,6 @@
 import { AGENCE } from '../lib/agence'
 import { useState, useEffect } from 'react'
+import { getPowensStatus, connectPowens, syncPowensTransactions, listStagedTransactions, importStagedTransactions } from '../services/powens'
 import { supabase } from '../lib/supabase'
 import MoisSelector from '../components/MoisSelector'
 import { formatMontant } from '../lib/hospitable'
@@ -145,6 +146,14 @@ export default function PageLocationsLongues() {
   const [caution, setCaution] = useState(null)
   const [uploadingType, setUploadingType] = useState(null)
 
+  // Powens LLD
+  const [powensStatus, setPowensStatus] = useState(null)
+  const [powensStaged, setPowensStaged] = useState(null)
+  const [powensConnecting, setPowensConnecting] = useState(false)
+  const [powensSyncing, setPowensSyncing] = useState(false)
+  const [powensImporting, setPowensImporting] = useState(false)
+  const [powensLog, setPowensLog] = useState(null)
+
   // Onglet Banque LLD
   const [banqueCompte, setBanqueCompte] = useState('loyers')
   const [banqueMois, setBanqueMois] = useState(moisCourant)
@@ -161,8 +170,59 @@ export default function PageLocationsLongues() {
   useEffect(() => { if ((onglet === 'suivi' || onglet === 'banque') && !etudiants.length) chargerEtudiants() }, [onglet])
   useEffect(() => { if (suiviEtudiantId) chargerSuivi(suiviEtudiantId) }, [suiviEtudiantId])
   useEffect(() => {
-    if (onglet === 'banque') chargerBanque(banqueCompte, banqueMois)
+    if (onglet === 'banque') {
+      chargerBanque(banqueCompte, banqueMois)
+      chargerStatusPowensLLD()
+    }
   }, [onglet, banqueCompte, banqueMois])
+
+  async function chargerStatusPowensLLD() {
+    try {
+      const st = await getPowensStatus('dcb', 'seq_lld')
+      setPowensStatus(st)
+      if (st?.connection_state === 'connected') {
+        const staged = await listStagedTransactions('dcb', 'seq_lld')
+        setPowensStaged(staged)
+      }
+    } catch { /* silencieux */ }
+  }
+
+  async function handleConnectPowensLLD() {
+    setPowensConnecting(true); setPowensLog(null)
+    try {
+      const res = await connectPowens('dcb', 'seq_lld')
+      if (res.connected) { await chargerStatusPowensLLD(); setPowensLog({ ok: true, msg: 'Banque connectée !' }) }
+      else setPowensLog({ ok: false, msg: 'Connexion annulée.' })
+    } catch (err) { setPowensLog({ ok: false, msg: err.message }) }
+    finally { setPowensConnecting(false) }
+  }
+
+  async function handleSyncPowensLLD() {
+    setPowensSyncing(true); setPowensLog(null)
+    try {
+      const [y, m] = banqueMois.split('-').map(Number)
+      const res = await syncPowensTransactions('dcb', 'seq_lld', `${banqueMois}-01`, new Date(y, m, 0).toISOString().substring(0, 10))
+      const staged = await listStagedTransactions('dcb', 'seq_lld')
+      setPowensStaged(staged)
+      setPowensLog({ ok: true, msg: `${res.synced} tx récupérées · ${staged.length} en attente` })
+    } catch (err) {
+      setPowensLog({ ok: false, msg: err.message })
+      await chargerStatusPowensLLD()
+    } finally { setPowensSyncing(false) }
+  }
+
+  async function handleImportPowensLLD() {
+    if (!powensStaged?.length) return
+    setPowensImporting(true); setPowensLog(null)
+    try {
+      const ids = powensStaged.map(t => t.powens_transaction_id)
+      const res = await importStagedTransactions('dcb', 'seq_lld', ids)
+      setPowensStaged([])
+      setPowensLog({ ok: !res.erreurs?.length, msg: `${res.importe} importée(s)${res.erreurs?.length ? ` · ${res.erreurs.length} erreur(s)` : ''}` })
+      await chargerBanque(banqueCompte, banqueMois)
+    } catch (err) { setPowensLog({ ok: false, msg: err.message }) }
+    finally { setPowensImporting(false) }
+  }
 
   useEffect(() => {
     const channel = supabase.channel('lld-changes')
@@ -1696,6 +1756,75 @@ export default function PageLocationsLongues() {
                 <span className="btn btn-primary" style={{ fontSize: 13 }}>⬆ Importer CSV</span>
               </label>
             </div>
+
+            {/* ── Powens Open Banking LLD ──────────────────────────────────── */}
+            {banqueCompte === 'loyers' && (
+              <div style={{ background: '#FFFBF0', border: '1px solid #E5D48A', borderRadius: 10, padding: '12px 16px', marginBottom: 12 }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                    <span style={{ fontSize: 13, fontWeight: 700, color: '#2C2416' }}>🏦 Powens — Séquestre LLD</span>
+                    {powensStatus && (
+                      <span style={{
+                        fontSize: 11, fontWeight: 700, padding: '2px 8px', borderRadius: 20,
+                        background: powensStatus.connection_state === 'connected' ? '#DCFCE7' : powensStatus.connection_state === 'pending_webview' ? '#FEF9C3' : '#FEE2E2',
+                        color: powensStatus.connection_state === 'connected' ? '#166534' : powensStatus.connection_state === 'pending_webview' ? '#92400E' : '#991B1B',
+                      }}>
+                        {powensStatus.connection_state === 'connected' ? '● Connecté' : powensStatus.connection_state === 'pending_webview' ? '◌ En attente' : '○ Déconnecté'}
+                      </span>
+                    )}
+                    {powensStatus?.last_sync_at && (
+                      <span style={{ fontSize: 11, color: '#888' }}>
+                        Sync {new Date(powensStatus.last_sync_at).toLocaleDateString('fr-FR', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })}
+                      </span>
+                    )}
+                  </div>
+                  <div style={{ display: 'flex', gap: 8, marginLeft: 'auto' }}>
+                    {powensStatus?.connection_state !== 'connected' && (
+                      <button onClick={handleConnectPowensLLD} disabled={powensConnecting}
+                        style={{ background: '#CC9933', color: '#fff', border: 'none', borderRadius: 7, padding: '6px 14px', fontWeight: 700, cursor: powensConnecting ? 'wait' : 'pointer', fontSize: 13 }}>
+                        {powensConnecting ? '⏳ Connexion…' : '🔗 Connecter LLD'}
+                      </button>
+                    )}
+                    {powensStatus?.connection_state === 'connected' && (
+                      <button onClick={handleSyncPowensLLD} disabled={powensSyncing}
+                        style={{ background: '#1D4ED8', color: '#fff', border: 'none', borderRadius: 7, padding: '6px 14px', fontWeight: 700, cursor: powensSyncing ? 'wait' : 'pointer', fontSize: 13 }}>
+                        {powensSyncing ? '⏳ Sync…' : '🔄 Sync Powens'}
+                      </button>
+                    )}
+                    {powensStaged?.length > 0 && (
+                      <button onClick={handleImportPowensLLD} disabled={powensImporting}
+                        style={{ background: '#166534', color: '#fff', border: 'none', borderRadius: 7, padding: '6px 14px', fontWeight: 700, cursor: powensImporting ? 'wait' : 'pointer', fontSize: 13 }}>
+                        {powensImporting ? '⏳ Import…' : `⬇ Importer ${powensStaged.length} tx`}
+                      </button>
+                    )}
+                  </div>
+                </div>
+                {powensLog && (
+                  <div style={{ marginTop: 8, fontSize: 13, color: powensLog.ok ? '#166534' : '#991B1B', fontWeight: 600 }}>
+                    {powensLog.ok ? '✓' : '✗'} {powensLog.msg}
+                  </div>
+                )}
+                {powensStaged?.length > 0 && !powensImporting && (
+                  <div style={{ marginTop: 10, maxHeight: 160, overflowY: 'auto' }}>
+                    <table className='table' style={{ fontSize: 12 }}>
+                      <thead><tr><th>Date</th><th>Libellé</th><th className='right'>Montant</th></tr></thead>
+                      <tbody>
+                        {powensStaged.slice(0, 15).map(tx => (
+                          <tr key={tx.powens_transaction_id}>
+                            <td>{tx.date_operation}</td>
+                            <td>{tx.libelle}</td>
+                            <td className={`right montant ${tx.montant_centimes > 0 ? 'montant-positif' : 'montant-negatif'}`}>
+                              {formatMontant(Math.abs(tx.montant_centimes))}
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                    {powensStaged.length > 15 && <p style={{ textAlign: 'center', color: '#888', fontSize: 12, margin: '4px 0' }}>… et {powensStaged.length - 15} autres</p>}
+                  </div>
+                )}
+              </div>
+            )}
 
             {/* Panel d'import après sélection fichier */}
             {banqueParsed && (
