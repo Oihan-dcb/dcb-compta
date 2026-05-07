@@ -158,8 +158,8 @@ export function genererStatementHTML(proprio, mois, data) {
         <tr style="border-bottom:1px solid #ece8e2">
           <td style="padding:3px 8px;color:#9c8c7a">${p.date ? p.date.substring(5).split('-').reverse().join('/') : '—'}</td>
           <td style="padding:3px 8px">${p.libelle || '—'}</td>
-          <td style="padding:3px 8px">Frais proprio</td>
-          <td style="padding:3px 8px;text-align:right;color:#4A3728">${fmt(p.montant_ttc)}</td>
+          <td style="padding:3px 8px;color:#9c8c7a">Frais proprio</td>
+          <td style="padding:3px 8px;text-align:right">${fmt(p.montant_ttc)}</td>
         </tr>`).join('')}
       </tbody>
     </table>
