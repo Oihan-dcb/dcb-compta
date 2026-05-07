@@ -221,6 +221,11 @@ serve(async (req) => {
         break
       }
 
+      case 'updateInvoice': {
+        result = await evolizReq('PATCH', `/invoices/${payload.invoiceId}`, company, payload.data)
+        break
+      }
+
       case 'saveInvoice': {
         // Passe la facture de "filled" → "create" avec numéro définitif
         result = await evolizReq('POST', `/invoices/${payload.invoiceId}/create`, company)

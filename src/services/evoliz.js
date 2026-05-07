@@ -165,13 +165,17 @@ export async function creerFactureEvoliz(facture) {
   }
 
   // 4. Note de bas de facture
-  const comment = facture.solde_negatif
-    ? `Remboursement de frais avancés — mois ${facture.mois}`
-    : `Honoraires de gestion locative — ${facture.mois}\n\nConformément au mandat de gestion, les honoraires de gestion sont directement prélevés sur le loyer encaissé avant reversement au propriétaire.`
+  const comment = isDebours
+    ? `Remboursement de débours auto-entrepreneur — mois ${facture.mois}`
+    : facture.solde_negatif
+      ? `Remboursement de frais avancés — mois ${facture.mois}`
+      : `Honoraires de gestion locative — ${facture.mois}\n\nConformément au mandat de gestion, les honoraires de gestion sont directement prélevés sur le loyer encaissé avant reversement au propriétaire.`
 
   // 4b. Objet de la facture
   const bienNomEvoliz = facture.bien?.hospitable_name || facture.proprietaire?.nom || 'bien'
-  const objectFacture = `Facture du mois ${facture.mois} pour ${bienNomEvoliz}`
+  const objectFacture = isDebours
+    ? `Facture de débours — mois ${facture.mois} — ${bienNomEvoliz}`
+    : `Facture du mois ${facture.mois} pour ${bienNomEvoliz}`
 
   // 5 & 6. Créer et sauvegarder la facture dans Evoliz
   // Si Evoliz échoue ici : reset à 'valide' — relance possible sans doublon.
