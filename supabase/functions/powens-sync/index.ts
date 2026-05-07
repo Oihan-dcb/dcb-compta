@@ -85,6 +85,14 @@ async function syncTransactions(agence: string, accountLabel: string, dateFrom?:
 
   if (!res.ok) {
     const err = await res.text()
+    // Token expiré → marquer la connexion comme expirée
+    if (res.status === 401) {
+      await db.from('powens_connection').update({
+        connection_state: 'expired',
+        last_error: 'Token expiré — reconnexion requise',
+        updated_at: new Date().toISOString(),
+      }).eq('agence', agence).eq('account_label', accountLabel)
+    }
     throw new Error(`Powens transactions failed ${res.status}: ${err.substring(0, 200)}`)
   }
 
