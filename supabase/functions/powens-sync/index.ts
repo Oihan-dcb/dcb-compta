@@ -147,7 +147,7 @@ async function listStaged(agence: string, mois?: string) {
   return data || []
 }
 
-async function importStaged(agence: string, ids?: string[], mois?: string) {
+async function importStaged(agence: string, accountLabel: string, ids?: string[], mois?: string) {
   const db = supabase()
   let query = db.from('powens_transaction_raw')
     .select('*')
@@ -226,7 +226,7 @@ serve(async (req) => {
         result = { transactions: await listStaged(agence, mois) }
         break
       case 'import_staged':
-        result = await importStaged(agence, ids, mois)
+        result = await importStaged(agence, accountLabel, ids, mois)
         break
       default:
         throw new Error(`Action inconnue: ${action}`)
