@@ -77,7 +77,8 @@ async function syncTransactions(agence: string, accountLabel: string, dateFrom?:
   if (dateFrom) params.set('min_date', dateFrom)
   if (dateTo) params.set('max_date', dateTo)
 
-  const url = `${BASE_URL}/users/me/transactions?${params}&id_account=${conn.powens_account_id}`
+  // Filtrer par compte via le chemin (le query param id_account n'est pas supporté)
+  const url = `${BASE_URL}/users/me/accounts/${conn.powens_account_id}/transactions?${params}`
   const res = await fetch(url, {
     headers: { Authorization: `Bearer ${token}`, Accept: 'application/json' },
   })
@@ -128,13 +129,26 @@ async function syncTransactions(agence: string, accountLabel: string, dateFrom?:
   return { synced: transactions.length, new: count || 0 }
 }
 
-async function listStaged(agence: string, mois?: string) {
+async function listStaged(agence: string, accountLabel: string, mois?: string) {
   const db = supabase()
+
+  // Récupérer le powens_account_id pour ce compte
+  const { data: conn } = await db
+    .from('powens_connection')
+    .select('powens_account_id')
+    .eq('agence', agence)
+    .eq('account_label', accountLabel)
+    .single()
+
   let query = db.from('powens_transaction_raw')
     .select('*')
     .eq('agence', agence)
     .eq('statut', 'a_importer')
     .order('date_operation', { ascending: false })
+
+  if (conn?.powens_account_id) {
+    query = query.eq('powens_account_id', conn.powens_account_id)
+  }
 
   if (mois) {
     const [y, m] = mois.split('-').map(Number)
@@ -223,7 +237,7 @@ serve(async (req) => {
         result = await syncTransactions(agence, accountLabel, dateFrom, dateTo)
         break
       case 'list_staged':
-        result = { transactions: await listStaged(agence, mois) }
+        result = { transactions: await listStaged(agence, accountLabel, mois) }
         break
       case 'import_staged':
         result = await importStaged(agence, accountLabel, ids, mois)

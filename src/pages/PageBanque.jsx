@@ -80,7 +80,7 @@ export default function PageBanque() {
       const st = await getPowensStatus('dcb', 'seq_lc')
       setPowensStatus(st)
       if (st?.connection_state === 'connected') {
-        const staged = await listStagedTransactions('dcb')
+        const staged = await listStagedTransactions('dcb', 'seq_lc')
         setPowensStaged(staged)
       }
     } catch { /* silencieux */ }
@@ -112,7 +112,7 @@ export default function PageBanque() {
       const [y, m] = mois.split('-').map(Number)
       const dateTo = new Date(y, m, 0).toISOString().substring(0, 10)
       const res = await syncPowensTransactions('dcb', 'seq_lc', dateFrom, dateTo)
-      const staged = await listStagedTransactions('dcb') // toutes, pas filtrées par mois
+      const staged = await listStagedTransactions('dcb', 'seq_lc')
       setPowensStaged(staged)
       setPowensLog({ ok: true, msg: `${res.synced} transactions récupérées · ${staged.length} en attente d'import` })
     } catch (err) {

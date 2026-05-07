@@ -87,8 +87,8 @@ export async function syncPowensTransactions(agence, accountLabel, dateFrom, dat
 /**
  * Liste les transactions en attente d'import
  */
-export async function listStagedTransactions(agence, mois) {
-  const res = await call('powens-sync', { action: 'list_staged', agence, mois })
+export async function listStagedTransactions(agence, accountLabel, mois) {
+  const res = await call('powens-sync', { action: 'list_staged', agence, accountLabel, mois })
   return res.transactions || []
 }
 
