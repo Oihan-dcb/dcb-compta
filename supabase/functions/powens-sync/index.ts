@@ -194,31 +194,55 @@ async function importStaged(agence: string, accountLabel: string, ids?: string[]
     try {
       const credit = tx.montant_centimes > 0 ? tx.montant_centimes : null
       const debit  = tx.montant_centimes < 0 ? Math.abs(tx.montant_centimes) : null
-      const canal  = detectCanal(tx.libelle || '', tx.montant_centimes)
       const moisReleve = (tx.date_operation || '').substring(0, 7)
 
-      const { data: mvt, error: mvtErr } = await db.from('mouvement_bancaire')
-        .upsert({
-          numero_operation: `POWENS_${tx.powens_transaction_id}`,
-          date_operation: tx.date_operation,
-          libelle: tx.libelle,
-          detail: tx.detail,
-          credit,
-          debit,
-          canal,
-          source: `Powens_${accountLabel}`,
-          mois_releve: moisReleve,
-          statut_matching: 'en_attente',
-          agence,
-        }, { onConflict: 'numero_operation' })
-        .select('id')
-        .single()
+      let insertedId: string | null = null
 
-      if (mvtErr) throw new Error(mvtErr.message)
+      if (accountLabel === 'seq_lld') {
+        // → lld_mouvement_bancaire (compte loyers)
+        const { data: mvt, error: mvtErr } = await db.from('lld_mouvement_bancaire')
+          .upsert({
+            numero_operation: `POWENS_${tx.powens_transaction_id}`,
+            date_operation: tx.date_operation,
+            libelle: tx.libelle,
+            detail: tx.detail,
+            credit,
+            debit,
+            compte: 'loyers',
+            mois_releve: moisReleve,
+            statut: 'nouveau',
+            agence,
+          }, { onConflict: 'numero_operation,compte,agence' })
+          .select('id')
+          .single()
+        if (mvtErr) throw new Error(mvtErr.message)
+        insertedId = mvt.id
+      } else {
+        // seq_lc, courant → mouvement_bancaire
+        const canal = detectCanal(tx.libelle || '', tx.montant_centimes)
+        const { data: mvt, error: mvtErr } = await db.from('mouvement_bancaire')
+          .upsert({
+            numero_operation: `POWENS_${tx.powens_transaction_id}`,
+            date_operation: tx.date_operation,
+            libelle: tx.libelle,
+            detail: tx.detail,
+            credit,
+            debit,
+            canal,
+            source: `Powens_${accountLabel}`,
+            mois_releve: moisReleve,
+            statut_matching: 'en_attente',
+            agence,
+          }, { onConflict: 'numero_operation' })
+          .select('id')
+          .single()
+        if (mvtErr) throw new Error(mvtErr.message)
+        insertedId = mvt.id
+      }
 
       await db.from('powens_transaction_raw').update({
         statut: 'importe',
-        mouvement_bancaire_id: mvt.id,
+        mouvement_bancaire_id: insertedId,
         imported_at: new Date().toISOString(),
       }).eq('powens_transaction_id', tx.powens_transaction_id)
 
