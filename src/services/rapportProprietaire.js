@@ -458,9 +458,12 @@ export function genererRapportHTML(proprio, mois, data, colonnes = {}) {
         </tr>`).join('')}
         ${fraisProprietaire.map((p, i) => {
           const d = p.statut_deduction
+          const isRemboursement = p.mode_traitement === 'remboursement'
           const fraisFacture = p.statut === 'facture' && d && d !== 'en_attente'
           let montantCell
-          if (fraisFacture && d === 'totalement_deduit') {
+          if (isRemboursement) {
+            montantCell = `<span style="color:#059669;font-weight:600;">+${fmt(p.montant_ttc)}</span>`
+          } else if (fraisFacture && d === 'totalement_deduit') {
             montantCell = `<span style="color:#059669;">${fmt(p.montant_deduit_loy)}</span> <span style="font-size:9px;color:#059669;">déduit</span>`
           } else if (fraisFacture && d === 'partiellement_deduit') {
             montantCell = `<span style="display:block;color:#059669;font-size:10px;">↓ ${fmt(p.montant_deduit_loy)} déduit</span><span style="display:block;color:#c2410c;font-size:10px;">! ${fmt(p.montant_reliquat)} reliquat</span>`
@@ -472,7 +475,7 @@ export function genererRapportHTML(proprio, mois, data, colonnes = {}) {
           return `
         <tr style="background:${(extrasGlobaux.length + haownerList.length + i) % 2 === 0 ? '#fff' : '#F7F4EF'};">
           <td style="padding:6px 8px;color:#3a3530;">${p.date ? p.date.substring(5).split('-').reverse().join('/') : '—'}</td>
-          <td style="padding:6px 8px;color:#c2410c;font-size:10px;">Frais</td>
+          <td style="padding:6px 8px;color:${isRemboursement ? '#059669' : '#c2410c'};font-size:10px;">${isRemboursement ? 'Remboursement' : 'Frais'}</td>
           <td style="padding:6px 8px;color:#3a3530;">${p.libelle || '—'}</td>
           <td style="padding:6px 8px;text-align:right;white-space:nowrap;">${montantCell}</td>
         </tr>`}).join('')}

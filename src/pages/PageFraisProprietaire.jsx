@@ -186,6 +186,7 @@ export default function PageFraisProprietaire() {
         mode_encaissement: form.mode_encaissement,
         mois_facturation:  form.date.slice(0, 7),
         source:            'manuel',
+        statut:            'a_facturer',
       })
       setSuccess('Frais créé')
       setShowModal(false)
