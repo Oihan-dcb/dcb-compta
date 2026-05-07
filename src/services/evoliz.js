@@ -136,9 +136,11 @@ export async function creerFactureEvoliz(facture) {
 
   // 3. Construire les lignes de facture
   // Evoliz attend les prix en euros HT, on convertit depuis centimes
+  // Débours : DEB_AE autorisé (compte 467, TVA 0%) — Honoraires : DEB_AE filtré
+  const isDebours = facture.type_facture === 'debours'
   const lignes = (facture.facture_evoliz_ligne || [])
     .sort((a, b) => a.ordre - b.ordre)
-    .filter(l => l.montant_ht > 0 && l.code !== 'AUTO' && l.code !== 'DEB_AE')
+    .filter(l => l.montant_ht > 0 && l.code !== 'AUTO' && (isDebours || l.code !== 'DEB_AE'))
     .map(l => {
       const htCentimes = Math.round(l.montant_ht)
       if (!Number.isFinite(htCentimes) || htCentimes <= 0) return null
@@ -148,6 +150,8 @@ export async function creerFactureEvoliz(facture) {
         quantity: 1,
         unitPrice: htCentimes / 100,
         vatRate: l.taux_tva ?? 20,
+        // Débours AE : compte comptable 467 Débours réél
+        ...(l.code === 'DEB_AE' ? { accountingAccountId: 8629957 } : {}),
       }
     })
     .filter(Boolean)
@@ -180,6 +184,8 @@ export async function creerFactureEvoliz(facture) {
       object: objectFacture,
       comment,
       items: lignes,
+      // Débours : RIB séquestre (bankaccountid 133140)
+      ...(isDebours ? { bankAccountId: 133140 } : {}),
     })
     invoiceId = createdInvoice?.invoiceid
     if (!invoiceId) throw new Error('invoiceid non retourné après création')

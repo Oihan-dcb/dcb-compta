@@ -201,6 +201,7 @@ serve(async (req) => {
           documentdate: payload.documentdate,
           clientid: payload.clientId,
           object: payload.object || undefined,
+          bankaccountid: payload.bankAccountId || undefined,
           comment: payload.comment || '',
           term: {
             paytermid: payload.paytermid || 1, // 1 = comptant
@@ -214,6 +215,7 @@ serve(async (req) => {
             quantity: l.quantity || 1,
             unit_price: l.unitPrice,     // En euros (pas en centimes)
             vat_rate: l.vatRate ?? 20,
+            accountingaccountid: l.accountingAccountId || undefined,
           })),
         })
         break
@@ -281,6 +283,20 @@ serve(async (req) => {
 
       case 'getPaytypes': {
         result = await evolizReq('GET', '/paytypes', company)
+        break
+      }
+
+      case 'getBankAccounts': {
+        result = await evolizReq('GET', '/bankaccounts', company)
+        break
+      }
+
+      case 'getAccounts': {
+        // Comptes comptables Evoliz (plan comptable)
+        const params = new URLSearchParams()
+        if (payload?.search) params.set('search', payload.search)
+        const qs = params.toString() ? `?${params.toString()}` : ''
+        result = await evolizReq('GET', `/accounts${qs}`, company)
         break
       }
 
