@@ -95,6 +95,6 @@ export async function listStagedTransactions(agence, mois) {
 /**
  * Importe les transactions staged dans mouvement_bancaire
  */
-export async function importStagedTransactions(agence, ids, mois) {
-  return call('powens-sync', { action: 'import_staged', agence, ids, mois })
+export async function importStagedTransactions(agence, accountLabel, ids, mois) {
+  return call('powens-sync', { action: 'import_staged', agence, accountLabel, ids, mois })
 }

@@ -128,7 +128,7 @@ export default function PageBanque() {
     setPowensLog(null)
     try {
       const ids = powensStaged.map(t => t.powens_transaction_id)
-      const res = await importStagedTransactions('dcb', ids, mois)
+      const res = await importStagedTransactions('dcb', 'seq_lc', ids, mois)
       setPowensStaged([])
       const debugMsg = res.debug?.length ? ` — ${res.debug[0]}` : ''
       setPowensLog({ ok: res.erreurs?.length === 0, msg: `${res.importe} importée(s)${res.erreurs?.length ? ` · ${res.erreurs.length} erreur(s)${debugMsg}` : ''}` })
