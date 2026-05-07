@@ -405,6 +405,8 @@ TON :
 - Naturel, humain, maîtrisé
 - Neutre mais incarné (pas robotique)
 - Jamais commercial, jamais administratif
+- Toujours en français — aucun mot anglais (pas de "april", "booking", etc. — écrire "avril", "la plateforme")${isGlobalMaite ? `
+- Parler de "la maison" ou "Maison Maïté", jamais "la chambre"` : ''}
 
 FORME :
 - Aucun début type "Bonjour", aucune signature
@@ -438,14 +440,9 @@ Chaque chambre est louée séparément sur les plateformes (Airbnb, Booking, dir
 La maison peut aussi être louée en "privatisation" : toutes les chambres sont réservées d'un bloc pour un seul groupe. Une privatisation apparaît comme une réservation manuelle de longue durée avec un revenu élevé.
 ${isGlobalMaite
   ? `Ce rapport est le RAPPORT GLOBAL de la maison : il agrège toutes les chambres.
-L'analyse doit refléter la dynamique globale — mix entre chambres louées séparément et éventuelles privatisations.
-Si une privatisation est présente, elle doit être mentionnée explicitement car elle impacte fortement les chiffres.
-
-INTERDIT dans ce rapport global :
-- Mentionner ou calculer un "taux d'occupation" — cette métrique n'est pas valide à l'échelle globale car plusieurs chambres tournent en parallèle, le chiffre dépasse toujours 100% et n'a aucun sens.
-- Inventer ou déduire un taux d'occupation à partir d'autres données.
-- Comparer les taux d'occupation N vs N-1.
-Concentre-toi sur le revenu total, la répartition privatisation vs chambres, et le nombre de nuitées vendues.`
+L'analyse doit couvrir la maison dans son ensemble : dynamique globale, mix entre chambres louées séparément et éventuelles privatisations.
+Si une privatisation est présente, elle doit être mentionnée et son poids financier expliqué.
+Pour parler d'occupation, appuie-toi sur la liste des réservations (dates, nuits, chambres concernées) — le taux agrégé automatique n'est pas fourni car il est faussé par les chevauchements entre chambres.`
   : `Ce rapport concerne uniquement la chambre "${bienNom}" au sein de la maison. L'analyse doit rester centrée sur cette chambre seule, sans mentionner les autres chambres.`
 }` : ''}`
 
@@ -481,7 +478,7 @@ Donner une lecture claire de la performance du mois.
 CONTENU ATTENDU :
 - Positionner le mois (bon / correct / en retrait)
 - Expliquer les variations vs N-1 sur le revenu global
-- Interpréter la dynamique des réservations${isGlobalMaite ? '\n- Si privatisation : la mentionner et expliquer son poids dans le revenu\n- Ne jamais mentionner ni calculer de taux d\'occupation global (non significatif : plusieurs chambres en parallèle)' : '\n- Interpréter le niveau d\'occupation'}
+- Interpréter la dynamique des réservations${isGlobalMaite ? '\n- Si privatisation : la mentionner et expliquer son poids dans le revenu\n- Parler de l\'occupation en te basant sur la liste des réservations, pas sur un taux calculé automatiquement' : '\n- Interpréter le niveau d\'occupation'}
 - Intégrer intelligemment les retours voyageurs
 - Ajouter la NOTE OÏHAN de manière fluide si présente
 

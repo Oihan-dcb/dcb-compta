@@ -248,14 +248,14 @@ export async function buildRapportData(bienId, propId, mois, opts = {}) {
     supabase
       .from('reservation_review')
       .select('id, reviewer_name, rating, comment, submitted_at')
-      .eq('bien_id', bienId)
+      [isGlobal ? 'in' : 'eq']('bien_id', isGlobal ? maiteIds : bienId)
       .gte('submitted_at', `${mois}-01`)
       .lt('submitted_at', `${nextMoisStr}-01`)
       .order('submitted_at', { ascending: false }),
     supabase
       .from('reservation_review')
       .select('rating')
-      .eq('bien_id', bienId)
+      [isGlobal ? 'in' : 'eq']('bien_id', isGlobal ? maiteIds : bienId)
       .not('rating', 'is', null),
   ])
   const reviews = revData || []
