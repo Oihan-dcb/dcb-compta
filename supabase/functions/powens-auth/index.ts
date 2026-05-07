@@ -188,6 +188,15 @@ serve(async (req) => {
       case 'status':
         result = await getStatus(agence, accountLabel)
         break
+      case 'list_accounts': {
+        const { data: conn } = await supabase()
+          .from('powens_connection').select('access_token')
+          .eq('agence', agence).eq('account_label', accountLabel).single()
+        if (!conn?.access_token) throw new Error('Pas de token pour ce compte')
+        const r = await powensGet('/users/me/accounts', conn.access_token)
+        result = { accounts: r.data?.accounts || [] }
+        break
+      }
       default:
         throw new Error(`Action inconnue: ${action}`)
     }

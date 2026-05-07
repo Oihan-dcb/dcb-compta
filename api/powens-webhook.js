@@ -8,9 +8,9 @@ const SUPABASE_URL = 'https://omuncchvypbtxkpalwcr.supabase.co'
 
 // Mapping powens_account_id → account_label
 const ACCOUNT_MAP = {
-  '7':  { agence: 'dcb', accountLabel: 'courant' },
-  '8':  { agence: 'dcb', accountLabel: 'seq_lld' },
-  '9':  { agence: 'dcb', accountLabel: 'seq_lc' },
+  '10': { agence: 'dcb', accountLabel: 'courant' },
+  '11': { agence: 'dcb', accountLabel: 'seq_lld' },
+  '12': { agence: 'dcb', accountLabel: 'seq_lc' },
 }
 
 export default async function handler(req, res) {
