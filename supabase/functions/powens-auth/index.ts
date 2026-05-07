@@ -63,32 +63,19 @@ async function powensGet(path: string, token: string) {
 async function initWebview(agence: string, accountLabel: string, redirectUri: string) {
   const db = supabase()
 
-  // Réutiliser le token existant si la connexion est encore valide
-  const { data: existing } = await db
-    .from('powens_connection')
-    .select('access_token, connection_state')
-    .eq('agence', agence)
-    .eq('account_label', accountLabel)
-    .single()
-
-  let userToken: string | null = null
-
-  if (existing?.access_token && existing?.connection_state === 'connected') {
-    userToken = existing.access_token
-  } else {
-    // Créer un utilisateur anonyme via Basic auth → token permanent
-    const basicAuth = btoa(`${CLIENT_ID}:${CLIENT_SEC}`)
-    const userRes = await fetch(`${BASE_URL}/users/`, {
-      method: 'POST',
-      headers: {
-        'Authorization': `Basic ${basicAuth}`,
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({}),
-    })
-    const userData = await userRes.json()
-    userToken = userData.auth_token || userData.access_token || null
-  }
+  // Toujours créer un nouveau user Powens — les tokens sandbox expirent,
+  // réutiliser un token expiré cause des CSRF invalides lors du callback
+  const basicAuth = btoa(`${CLIENT_ID}:${CLIENT_SEC}`)
+  const userRes = await fetch(`${BASE_URL}/users/`, {
+    method: 'POST',
+    headers: {
+      'Authorization': `Basic ${basicAuth}`,
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({}),
+  })
+  const userData = await userRes.json()
+  const userToken: string | null = userData.auth_token || userData.access_token || null
 
   // Générer un state CSRF
   const pendingState = crypto.randomUUID()
