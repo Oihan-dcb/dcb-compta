@@ -206,7 +206,7 @@ async function importStaged(agence: string, accountLabel: string, ids?: string[]
     }
   }
 
-  return { importe, erreurs, debug: erreurs.slice(0, 3) }
+  return { importe, erreurs }
 }
 
 // ── Serve ─────────────────────────────────────────────────────────────────────
