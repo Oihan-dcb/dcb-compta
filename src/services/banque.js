@@ -155,6 +155,7 @@ export async function getMouvementsMois(mois) {
     .select('*')
     .eq('mois_releve', mois)
     .eq('agence', AGENCE)
+    .not('source', 'eq', 'Powens_courant')
     .order('date_operation', { ascending: false })
 
   if (error) throw error

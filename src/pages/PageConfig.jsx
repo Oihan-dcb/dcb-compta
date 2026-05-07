@@ -6,6 +6,17 @@ import { formatMontant, setToken } from '../lib/hospitable'
 import { calculerVentilationMois } from '../services/ventilation'
 import { lancerMatchingAuto } from '../services/rapprochement'
 import { resetEtRematcher } from '../services/rapprochement'
+import { getPowensStatus, connectPowens, syncAllPowensAccounts } from '../services/powens'
+import { format } from 'date-fns'
+import { fr } from 'date-fns/locale'
+
+const POWENS_ACCOUNTS = [
+  { label: 'seq_lc',  nom: 'Séquestre CE (loc. saisonnière)' },
+  { label: 'seq_lld', nom: 'Séquestre LLD (loc. longue durée)' },
+  { label: 'courant', nom: 'Compte courant' },
+]
+const moisCourant = new Date().toISOString().substring(0, 7)
+
 export default function PageConfig() {
   const [testing, setTesting] = useState(false)
   const [testResult, setTestResult] = useState(null)
@@ -207,6 +218,60 @@ export default function PageConfig() {
   const [rematchTimer, setRematchTimer] = useState(0)
   const [rematchConfirmed, setRematchConfirmed] = useState(false)
 
+  // Powens Open Banking
+  const [powensStatuses, setPowensStatuses] = useState({})
+  const [powensConnecting, setPowensConnecting] = useState(null) // accountLabel en cours
+  const [powensSyncing, setPowensSyncing] = useState(false)
+  const [powensSyncMois, setPowensSyncMois] = useState(moisCourant)
+  const [powensLog, setPowensLog] = useState(null)
+
+  useEffect(() => { chargerStatusPowens() }, [])
+
+  async function chargerStatusPowens() {
+    const statuses = {}
+    await Promise.allSettled(
+      POWENS_ACCOUNTS.map(async a => {
+        try {
+          statuses[a.label] = await getPowensStatus('dcb', a.label)
+        } catch { statuses[a.label] = { connection_state: 'disconnected' } }
+      })
+    )
+    setPowensStatuses(statuses)
+  }
+
+  async function handleConnectPowens(accountLabel) {
+    setPowensConnecting(accountLabel)
+    setPowensLog(null)
+    try {
+      const res = await connectPowens('dcb', accountLabel)
+      if (res.connected) {
+        await chargerStatusPowens()
+        setPowensLog({ ok: true, msg: 'Banque connectée — tous les comptes mis à jour.' })
+      } else {
+        setPowensLog({ ok: false, msg: 'Connexion annulée.' })
+      }
+    } catch (err) {
+      setPowensLog({ ok: false, msg: err.message })
+    } finally {
+      setPowensConnecting(null)
+    }
+  }
+
+  async function handleSyncPowens() {
+    setPowensSyncing(true)
+    setPowensLog(null)
+    try {
+      const res = await syncAllPowensAccounts(powensSyncMois)
+      const errMsg = res.errors?.length ? ` · ${res.errors.join(', ')}` : ''
+      setPowensLog({ ok: !res.errors?.length, msg: `${res.synced} tx récupérées · ${res.imported} importée(s)${errMsg}` })
+      await chargerStatusPowens()
+    } catch (err) {
+      setPowensLog({ ok: false, msg: err.message })
+    } finally {
+      setPowensSyncing(false)
+    }
+  }
+
   async function syncProprio() {
     setSyncingProprio(true)
     setSyncProprioResult(null)
@@ -313,6 +378,95 @@ export default function PageConfig() {
       </div>
 
       {error && <div className="alert alert-error">✗ {error}</div>}
+
+      {/* ── Powens Open Banking ───────────────────────────────────────────── */}
+      <div className="card" style={{ marginBottom: 24, border: '1px solid #E5D48A', background: '#FFFDF5' }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 16 }}>
+          <div>
+            <h2 style={{ fontSize: 16, fontWeight: 700, margin: 0, color: 'var(--brand)' }}>🏦 Powens — Open Banking</h2>
+            <p style={{ margin: '4px 0 0', fontSize: 13, color: 'var(--text-muted)' }}>
+              Connexion et synchronisation des 3 comptes bancaires Caisse d'Épargne
+            </p>
+          </div>
+          <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+            <select
+              value={powensSyncMois}
+              onChange={e => setPowensSyncMois(e.target.value)}
+              style={{ border: '1px solid var(--border)', borderRadius: 6, padding: '6px 10px', fontSize: 13 }}>
+              {Array.from({ length: 12 }, (_, i) => {
+                const d = new Date(); d.setMonth(d.getMonth() - i)
+                return d.toISOString().substring(0, 7)
+              }).map(m => <option key={m} value={m}>{m}</option>)}
+            </select>
+            <button
+              onClick={handleSyncPowens}
+              disabled={powensSyncing || !Object.values(powensStatuses).some(s => s?.connection_state === 'connected')}
+              style={{ background: '#1D4ED8', color: '#fff', border: 'none', borderRadius: 8, padding: '8px 16px', fontWeight: 700, fontSize: 13, cursor: powensSyncing ? 'wait' : 'pointer', opacity: powensSyncing ? 0.7 : 1 }}>
+              {powensSyncing ? '⏳ Sync…' : '🔄 Sync tous les comptes'}
+            </button>
+          </div>
+        </div>
+
+        {/* Tableau des 3 comptes */}
+        <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
+          <thead>
+            <tr style={{ borderBottom: '1px solid var(--border)' }}>
+              <th style={{ textAlign: 'left', padding: '6px 8px', fontWeight: 600, color: 'var(--text-muted)' }}>Compte</th>
+              <th style={{ textAlign: 'left', padding: '6px 8px', fontWeight: 600, color: 'var(--text-muted)' }}>Statut</th>
+              <th style={{ textAlign: 'left', padding: '6px 8px', fontWeight: 600, color: 'var(--text-muted)' }}>Dernière sync</th>
+              <th style={{ padding: '6px 8px' }}></th>
+            </tr>
+          </thead>
+          <tbody>
+            {POWENS_ACCOUNTS.map(a => {
+              const st = powensStatuses[a.label]
+              const connected = st?.connection_state === 'connected'
+              const pending = st?.connection_state === 'pending_webview'
+              return (
+                <tr key={a.label} style={{ borderBottom: '1px solid #F0EAD6' }}>
+                  <td style={{ padding: '10px 8px', fontWeight: 600 }}>{a.nom}</td>
+                  <td style={{ padding: '10px 8px' }}>
+                    {st ? (
+                      <span style={{
+                        fontSize: 11, fontWeight: 700, padding: '2px 8px', borderRadius: 20,
+                        background: connected ? '#DCFCE7' : pending ? '#FEF9C3' : '#FEE2E2',
+                        color: connected ? '#166534' : pending ? '#92400E' : '#991B1B',
+                      }}>
+                        {connected ? '● Connecté' : pending ? '◌ En attente' : '○ Déconnecté'}
+                      </span>
+                    ) : <span style={{ color: '#aaa', fontSize: 12 }}>—</span>}
+                  </td>
+                  <td style={{ padding: '10px 8px', color: '#888', fontSize: 12 }}>
+                    {st?.last_sync_at
+                      ? format(new Date(st.last_sync_at), 'd MMM HH:mm', { locale: fr })
+                      : '—'}
+                  </td>
+                  <td style={{ padding: '10px 8px', textAlign: 'right' }}>
+                    <button
+                      onClick={() => handleConnectPowens(a.label)}
+                      disabled={!!powensConnecting}
+                      style={{
+                        background: connected ? '#F3F4F6' : 'var(--brand)',
+                        color: connected ? '#374151' : '#fff',
+                        border: 'none', borderRadius: 6, padding: '5px 12px',
+                        fontWeight: 600, fontSize: 12, cursor: powensConnecting === a.label ? 'wait' : 'pointer',
+                        opacity: powensConnecting && powensConnecting !== a.label ? 0.5 : 1,
+                      }}>
+                      {powensConnecting === a.label ? '⏳…' : connected ? '↻ Reconnecter' : '🔗 Connecter'}
+                    </button>
+                  </td>
+                </tr>
+              )
+            })}
+          </tbody>
+        </table>
+
+        {powensLog && (
+          <div style={{ marginTop: 12, fontSize: 13, fontWeight: 600, color: powensLog.ok ? '#166534' : '#991B1B', padding: '8px 12px', borderRadius: 6, background: powensLog.ok ? '#F0FDF4' : '#FEF2F2' }}>
+            {powensLog.ok ? '✓' : '✗'} {powensLog.msg}
+          </div>
+        )}
+      </div>
 
       {/* Statut des variables d'env */}
       <div className="card" style={{ marginBottom: 20 }}>
