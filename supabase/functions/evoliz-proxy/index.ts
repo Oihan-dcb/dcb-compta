@@ -204,7 +204,7 @@ serve(async (req) => {
           term: {
             paytermid: payload.paytermid || 1, // 1 = comptant
             paytypeid: payload.paytypeid || undefined,
-            recovery_indemnity: false, // indemnité forfaitaire recouvrement — requis pour clients pro (SCI, etc.)
+            recovery_indemnity: true, // indemnité forfaitaire recouvrement obligatoire factures B2B (art. L441-10 code commerce)
           },
           items: (payload.items || []).map((l: any) => ({
             type: 'article',
