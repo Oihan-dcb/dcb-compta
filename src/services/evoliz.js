@@ -155,7 +155,7 @@ export async function creerFactureEvoliz(facture) {
   if (lignes.length === 0) {
     // Facture sans ligne Evoliz (ex: que du DEB_AE) — on marque comme envoyée sans passer par Evoliz
     await supabase.from('facture_evoliz')
-      .update({ statut: 'envoye', id_evoliz: 'N/A', numero_facture: 'N/A' })
+      .update({ statut: 'envoye_evoliz', id_evoliz: 'N/A', numero_facture: 'N/A' })
       .eq('id', facture.id)
     return { skipped: true, reason: 'no_billable_lines' }
   }
