@@ -8,15 +8,15 @@ const SUPABASE_URL = 'https://omuncchvypbtxkpalwcr.supabase.co'
 const REDIRECT_URI = 'https://dcb-compta.vercel.app/api/powens-callback'
 
 export default async function handler(req, res) {
-  const { state, error: oauthError, agence, account_label } = req.query
+  const { code, state, error: oauthError, agence, account_label } = req.query
 
   // Erreur renvoyée par Powens
   if (oauthError) {
     return res.send(htmlClose('error', `Erreur Powens : ${oauthError}`))
   }
 
-  if (!state) {
-    return res.send(htmlClose('error', 'Paramètre state manquant'))
+  if (!state || !code) {
+    return res.send(htmlClose('error', `Paramètres manquants (state=${state}, code=${!!code})`))
   }
 
   const targetAgence = agence || 'dcb'
@@ -35,6 +35,7 @@ export default async function handler(req, res) {
         agence: targetAgence,
         accountLabel: targetLabel,
         state,
+        code,
       }),
     })
 

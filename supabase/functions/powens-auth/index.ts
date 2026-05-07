@@ -56,57 +56,19 @@ async function powensGet(path: string, token: string) {
 // ── Actions ───────────────────────────────────────────────────────────────────
 
 /**
- * Flux token Powens :
- * 1. client_credentials → app token
- * 2. POST /users/ → crée user anonyme, retourne auth_token utilisateur
- * 3. Webview URL avec token= (pas de code OAuth)
+ * Flux webview Powens AIS :
+ * La webview crée elle-même le user et retourne le token directement dans le redirect
+ * (?code=USER_TOKEN — ce code EST le token, pas un code OAuth à échanger)
  */
 async function initWebview(agence: string, accountLabel: string, redirectUri: string) {
   const db = supabase()
 
-  // Réutiliser le token existant si disponible
-  const { data: existing } = await db
-    .from('powens_connection')
-    .select('access_token, connection_state')
-    .eq('agence', agence)
-    .eq('account_label', accountLabel)
-    .single()
-
-  let userToken: string
-
-  if (existing?.access_token) {
-    userToken = existing.access_token
-  } else {
-    // 1. Token application via client_credentials
-    const appRes = await powensPost('/auth/token', {
-      grant_type: 'client_credentials',
-      client_id: CLIENT_ID,
-      client_secret: CLIENT_SEC,
-      scope: 'accounts transactions',
-    })
-    if (!appRes.ok) throw new Error(`App token: ${JSON.stringify(appRes.data)}`)
-
-    // 2. Créer un utilisateur anonyme Powens
-    const userRes = await fetch(`${BASE_URL}/users/`, {
-      method: 'POST',
-      headers: {
-        Authorization: `Bearer ${appRes.data.access_token}`,
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({}),
-    })
-    const userData = await userRes.json()
-    userToken = userData.auth_token || userData.access_token
-    if (!userToken) throw new Error(`Création user Powens: ${JSON.stringify(userData)}`)
-  }
-
   // Générer un state CSRF
   const pendingState = crypto.randomUUID()
 
-  // URL webview avec token utilisateur (flux token, pas code OAuth)
+  // URL webview — Powens crée le user et retourne son token via redirect
   const params = new URLSearchParams({
     client_id: CLIENT_ID,
-    token: userToken,
     redirect_uri: redirectUri,
     state: pendingState,
   })
@@ -115,7 +77,6 @@ async function initWebview(agence: string, accountLabel: string, redirectUri: st
   await db.from('powens_connection').upsert({
     agence,
     account_label: accountLabel,
-    access_token: userToken,
     connection_state: 'pending_webview',
     pending_state: pendingState,
     updated_at: new Date().toISOString(),
@@ -126,14 +87,15 @@ async function initWebview(agence: string, accountLabel: string, redirectUri: st
 
 /**
  * Appelé depuis le callback après redirect Powens.
- * Vérifie le state CSRF, récupère l'account_id via le token déjà stocké.
+ * Le ?code retourné par Powens EST le user access_token (pas un code OAuth à échanger).
+ * On vérifie le state CSRF, on stocke le token, on récupère l'account_id.
  */
-async function verifyCallback(agence: string, accountLabel: string, state: string) {
+async function verifyCallback(agence: string, accountLabel: string, state: string, code: string) {
   const db = supabase()
 
   const { data: conn } = await db
     .from('powens_connection')
-    .select('pending_state, access_token')
+    .select('pending_state')
     .eq('agence', agence)
     .eq('account_label', accountLabel)
     .single()
@@ -142,13 +104,16 @@ async function verifyCallback(agence: string, accountLabel: string, state: strin
     throw new Error('State CSRF invalide')
   }
 
-  // Récupérer le compte bancaire lié
-  const accountsRes = await powensGet('/users/me/accounts', conn.access_token)
-  const firstAccount = accountsRes.data?.accounts?.[0]
-
+  // code = user access token directement
+  const userToken = code
   const connExpiresAt = new Date(Date.now() + 180 * 24 * 3600 * 1000).toISOString()
 
+  // Récupérer le compte bancaire lié
+  const accountsRes = await powensGet('/users/me/accounts', userToken)
+  const firstAccount = accountsRes.data?.accounts?.[0]
+
   await db.from('powens_connection').update({
+    access_token: userToken,
     connection_state: 'connected',
     pending_state: null,
     powens_account_id: firstAccount?.id ? String(firstAccount.id) : null,
@@ -177,7 +142,7 @@ serve(async (req) => {
   if (req.method === 'OPTIONS') return new Response('ok', { headers: CORS })
 
   try {
-    const { action, agence, accountLabel, state, redirectUri } = await req.json()
+    const { action, agence, accountLabel, state, code, redirectUri } = await req.json()
 
     let result
     switch (action) {
@@ -185,7 +150,7 @@ serve(async (req) => {
         result = await initWebview(agence, accountLabel, redirectUri)
         break
       case 'verify_callback':
-        result = await verifyCallback(agence, accountLabel, state)
+        result = await verifyCallback(agence, accountLabel, state, code)
         break
       case 'status':
         result = await getStatus(agence, accountLabel)
