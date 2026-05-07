@@ -322,21 +322,16 @@ export async function pousserFactureCOMVersEvoliz(factureId, totals, mois) {
     const invoiceId = createdInvoice?.invoiceid
     if (!invoiceId) throw new Error('invoiceid non retourné par Evoliz')
 
-    // 3. Finaliser la facture (brouillon → numéro définitif)
-    const savedInvoice = await evolizCall('saveInvoice', { invoiceId })
-    const invoiceNumber = savedInvoice?.invoicenumber || savedInvoice?.document_number || null
-
     const dateEmission = new Date().toISOString().substring(0, 10)
 
-    // 4. Mettre à jour Supabase
+    // Facture créée en brouillon dans Evoliz — validation manuelle intentionnelle
     await supabase.from('facture_evoliz').update({
       statut: 'envoye_evoliz',
       id_evoliz: String(invoiceId),
-      numero_evoliz: invoiceNumber ? String(invoiceNumber) : null,
       date_emission: dateEmission,
     }).eq('id', factureId)
 
-    return { invoiceId, invoiceNumber }
+    return { invoiceId }
   } catch (err) {
     // Reset si échec
     await supabase.from('facture_evoliz').update({ statut: 'valide' }).eq('id', factureId)
