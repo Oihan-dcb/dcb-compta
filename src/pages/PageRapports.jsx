@@ -437,7 +437,15 @@ Maison Maïté est une maison d'hôtes à Biarritz composée de 5 chambres indé
 Chaque chambre est louée séparément sur les plateformes (Airbnb, Booking, direct).
 La maison peut aussi être louée en "privatisation" : toutes les chambres sont réservées d'un bloc pour un seul groupe. Une privatisation apparaît comme une réservation manuelle de longue durée avec un revenu élevé.
 ${isGlobalMaite
-  ? `Ce rapport est le RAPPORT GLOBAL de la maison : il agrège toutes les chambres. L'analyse doit refléter la dynamique globale — mix entre chambres louées séparément et éventuelles privatisations. Si une privatisation est présente, elle doit être mentionnée explicitement car elle impacte fortement les chiffres.`
+  ? `Ce rapport est le RAPPORT GLOBAL de la maison : il agrège toutes les chambres.
+L'analyse doit refléter la dynamique globale — mix entre chambres louées séparément et éventuelles privatisations.
+Si une privatisation est présente, elle doit être mentionnée explicitement car elle impacte fortement les chiffres.
+
+INTERDIT dans ce rapport global :
+- Mentionner ou calculer un "taux d'occupation" — cette métrique n'est pas valide à l'échelle globale car plusieurs chambres tournent en parallèle, le chiffre dépasse toujours 100% et n'a aucun sens.
+- Inventer ou déduire un taux d'occupation à partir d'autres données.
+- Comparer les taux d'occupation N vs N-1.
+Concentre-toi sur le revenu total, la répartition privatisation vs chambres, et le nombre de nuitées vendues.`
   : `Ce rapport concerne uniquement la chambre "${bienNom}" au sein de la maison. L'analyse doit rester centrée sur cette chambre seule, sans mentionner les autres chambres.`
 }` : ''}`
 
@@ -445,11 +453,12 @@ ${isGlobalMaite
       const prompt = `Bien : ${bienNom} — ${moisLabel}
 
 Données disponibles :
-- Base commissionnable : ${fmt(data.kpis.caHeb)}
+- Revenu total maison : ${fmt(data.kpis.caHeb)}
 - Taux de commission : ${tauxCommission}%
-- Reversement net : ${fmt(data.kpis.loyTotal)}
+- Reversement net : ${fmt(data.kpis.loyTotal)}${isGlobalMaite ? `
+- Réservations ce mois : ${resasGuest.length} (sur l'ensemble des chambres + privatisation éventuelle)` : `
 - Réservations : ${data.kpis.nbResas} (N-1 : ${data.kpisN1?.nbResas > 0 ? data.kpisN1.nbResas : 'N/A'})
-- Taux occupation : ${data.kpis.tauxOcc}% (N-1 : ${data.kpisN1?.tauxOcc > 0 ? data.kpisN1.tauxOcc + '%' : 'N/A'})
+- Taux occupation : ${data.kpis.tauxOcc}% (N-1 : ${data.kpisN1?.tauxOcc > 0 ? data.kpisN1.tauxOcc + '%' : 'N/A'})`}
 - Prix moyen/nuit : ${prixMoyenNuit}€
 - Note voyageurs : ${data.noteMoisMoy ? data.noteMoisMoy + '/5 (' + data.reviews.length + ' avis)' : 'aucun avis ce mois'}
 
@@ -471,8 +480,8 @@ Donner une lecture claire de la performance du mois.
 
 CONTENU ATTENDU :
 - Positionner le mois (bon / correct / en retrait)
-- Expliquer les variations vs N-1
-- Interpréter le niveau de revenu et d'occupation${isGlobalMaite ? '\n- Si privatisation : la mentionner et en expliquer l\'impact sur les chiffres globaux' : ''}
+- Expliquer les variations vs N-1 sur le revenu global
+- Interpréter la dynamique des réservations${isGlobalMaite ? '\n- Si privatisation : la mentionner et expliquer son poids dans le revenu\n- Ne jamais mentionner ni calculer de taux d\'occupation global (non significatif : plusieurs chambres en parallèle)' : '\n- Interpréter le niveau d\'occupation'}
 - Intégrer intelligemment les retours voyageurs
 - Ajouter la NOTE OÏHAN de manière fluide si présente
 
