@@ -155,7 +155,7 @@ export async function creerFactureEvoliz(facture) {
   if (lignes.length === 0) {
     // Facture sans ligne Evoliz (ex: que du DEB_AE) — on marque comme envoyée sans passer par Evoliz
     await supabase.from('facture_evoliz')
-      .update({ statut: 'envoye', id_evoliz: 'N/A', numero_evoliz: 'N/A' })
+      .update({ statut: 'envoye', id_evoliz: 'N/A', numero_facture: 'N/A' })
       .eq('id', facture.id)
     return { skipped: true, reason: 'no_billable_lines' }
   }
@@ -165,6 +165,10 @@ export async function creerFactureEvoliz(facture) {
     ? `Remboursement de frais avancés — mois ${facture.mois}`
     : `Honoraires de gestion locative — ${facture.mois}\n\nConformément au mandat de gestion, les honoraires de gestion sont directement prélevés sur le loyer encaissé avant reversement au propriétaire.`
 
+  // 4b. Objet de la facture
+  const bienNomEvoliz = facture.bien?.hospitable_name || facture.proprietaire?.nom || 'bien'
+  const objectFacture = `Facture du mois ${facture.mois} pour ${bienNomEvoliz}`
+
   // 5 & 6. Créer et sauvegarder la facture dans Evoliz
   // Si Evoliz échoue ici : reset à 'valide' — relance possible sans doublon.
   let invoiceId, invoiceNumber
@@ -173,6 +177,7 @@ export async function creerFactureEvoliz(facture) {
       clientId: parseInt(clientId),
       documentdate: dateEmission,
       paytermid: 1,
+      object: objectFacture,
       comment,
       items: lignes,
     })
@@ -228,6 +233,7 @@ export async function pousserFacturesMoisVersEvoliz(mois) {
     .select(`
       *,
       proprietaire (id, nom, prenom, email, adresse, ville, code_postal, telephone, iban, id_evoliz),
+      bien (hospitable_name),
       facture_evoliz_ligne (*)
     `)
     .eq('mois', mois)

@@ -200,6 +200,7 @@ serve(async (req) => {
         result = await evolizReq('POST', '/invoices', company, {
           documentdate: payload.documentdate,
           clientid: payload.clientId,
+          object: payload.object || undefined,
           comment: payload.comment || '',
           term: {
             paytermid: payload.paytermid || 1, // 1 = comptant
