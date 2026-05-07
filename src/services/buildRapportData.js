@@ -32,7 +32,7 @@ export async function buildRapportData(bienId, propId, mois, opts = {}) {
     { data: resasN1 },
     { data: fraisData },
     { data: facture },
-    tauxCommission,
+    bienConfig,
   ] = await Promise.all([
     // 1. Réservations avec reservation_fee pour gross_revenue exact
     (() => {
@@ -72,21 +72,34 @@ export async function buildRapportData(bienId, propId, mois, opts = {}) {
     // 5. Taux de commission
     supabase
       .from('bien')
-      .select('taux_commission_override, proprietaire:proprietaire_id(taux_commission)')
+      .select('taux_commission_override, mode_encaissement, proprietaire:proprietaire_id(taux_commission)')
       .eq('id', bienId)
       .maybeSingle()
-      .then(r => r.data?.taux_commission_override || r.data?.proprietaire?.taux_commission || 25),
+      .then(r => ({
+        tauxCommission:   r.data?.taux_commission_override || r.data?.proprietaire?.taux_commission || 25,
+        modeEncaissement: r.data?.mode_encaissement || 'dcb',
+      })),
   ])
 
   if (resasErr) throw new Error(resasErr.message)
+
+  const tauxCommission    = bienConfig.tauxCommission
+  const modeEncaissement  = bienConfig.modeEncaissement
 
   const resasValides = (resas || []).filter(r =>
     !STATUTS_NON_VENTILABLES.includes(r.final_status) || (r.fin_revenue || 0) > 0
   )
   const resaIds = resasValides.map(r => r.id)
 
+  // Pour mode_encaissement='proprio' : Airbnb/Booking sont perçus directement
+  // par le proprio — pas de reversement DCB sur ces resas
+  const PLATFORMS_DCB = ['direct', 'manual']
+  const resaPlatformMap = new Map(resasValides.map(r => [r.id, r.platform || '']))
+  const isProprioEncaisse = (resaId) =>
+    modeEncaissement === 'proprio' && !PLATFORMS_DCB.includes(resaPlatformMap.get(resaId) || '')
+
   // ── Ventilation ──────────────────────────────────────────────────────────
-  let loyTotal = 0, honTotalVent = 0, virTotal = 0
+  let loyTotal = 0, honTotalVent = 0, virTotal = 0, virTotalProprioEncaisse = 0
   let ventByResa = {}
   if (resaIds.length) {
     const { data: ventsData } = await supabase
@@ -101,9 +114,10 @@ export async function buildRapportData(bienId, propId, mois, opts = {}) {
       if (!ventByResa[v.reservation_id]) ventByResa[v.reservation_id] = {}
       ventByResa[v.reservation_id][v.code] = v
     }
-    loyTotal     = vents.filter(v => v.code === 'LOY').reduce((s, v) => s + (v.montant_ht  || 0), 0)
-    honTotalVent = vents.filter(v => v.code === 'HON').reduce((s, v) => s + (v.montant_ttc || 0), 0)
-    virTotal     = vents.filter(v => v.code === 'VIR' && v.calcul_source !== 'residuel').reduce((s, v) => s + (v.montant_ht  || 0), 0)
+    loyTotal               = vents.filter(v => v.code === 'LOY').reduce((s, v) => s + (v.montant_ht  || 0), 0)
+    honTotalVent           = vents.filter(v => v.code === 'HON').reduce((s, v) => s + (v.montant_ttc || 0), 0)
+    virTotal               = vents.filter(v => v.code === 'VIR' && v.calcul_source !== 'residuel' && !isProprioEncaisse(v.reservation_id)).reduce((s, v) => s + (v.montant_ht || 0), 0)
+    virTotalProprioEncaisse = vents.filter(v => v.code === 'VIR' && v.calcul_source !== 'residuel' &&  isProprioEncaisse(v.reservation_id)).reduce((s, v) => s + (v.montant_ht || 0), 0)
   }
 
   // ── Prestations hors forfait ─────────────────────────────────────────────
@@ -175,6 +189,7 @@ export async function buildRapportData(bienId, propId, mois, opts = {}) {
       // = "Commissionable base" Hospitable (net de la commission hôte + remises promotionnelles)
       // fin_host_service_fee est négatif, fin_discount est positif en base (à soustraire)
       base_comm: (r.fin_accommodation || 0) + (r.fin_host_service_fee || 0) - (r.fin_discount || 0),
+      proprio_encaisse: isProprioEncaisse(r.id),
       hon:  v.HON?.montant_ttc || 0,
       loy:  loyHt,
       vir:  virHt,
@@ -289,6 +304,7 @@ export async function buildRapportData(bienId, propId, mois, opts = {}) {
     kpis: {
       nbResas, caHeb, baseCommTotal, nuitsOccupees, nuitsDispos,
       tauxOcc, dureeMoy, loyTotal, honTotal, virementNet,
+      modeEncaissement, virTotalProprioEncaisse,
       // Debug interne
       _virTotal: virTotal, _totalDebours: totalDebours, _totalHaowner: totalHaowner,
       _fraisDeductionLoy: fraisDeductionLoy, _ownerStayMenageTotal: ownerStayMenageTotal,

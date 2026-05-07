@@ -12,6 +12,8 @@ export function genererStatementHTML(proprio, mois, data) {
   const haownerList = data.haownerList || []
   const ownerStayMenageList = data.ownerStayMenageList || []
   const fraisProprietaire = data.fraisProprietaire || []
+  const modeEncaissement = data.kpis?.modeEncaissement || 'dcb'
+  const virTotalProprioEncaisse = data.kpis?.virTotalProprioEncaisse || 0
   const showBrut     = data.colonnes?.brut      ?? true
   const showNetPlat  = data.colonnes?.net_plat   ?? false
   const showBaseComm = data.colonnes?.base_comm  ?? true
@@ -51,7 +53,7 @@ export function genererStatementHTML(proprio, mois, data) {
   const menageTotal   = resas.reduce((s, r) => s + (r.menage_voyageur || 0), 0)
   const grossTotal    = resas.reduce((s, r) => s + ((r.gross_revenue ?? r.fin_revenue) || 0), 0)
   const caHeb         = resas.filter(r => !r.owner_stay).reduce((s, r) => s + (r.fin_revenue || 0), 0)
-  const virTotal      = resas.reduce((s, r) => s + (r.vir  || 0), 0)
+  const virTotal      = resas.reduce((s, r) => r.proprio_encaisse ? s : s + (r.vir  || 0), 0)
   const loyTotal      = resas.reduce((s, r) => s + (r.loy  || 0), 0)
   const taxeTotal     = resas.reduce((s, r) => s + (r.taxe || 0), 0)
   const baseCommTotal = resas.reduce((s, r) => s + (r.base_comm || 0), 0)
@@ -106,7 +108,7 @@ export function genererStatementHTML(proprio, mois, data) {
       ${showHon      ? `<td style="padding:4px 5px;font-size:9px;text-align:right;white-space:nowrap;color:#9c8c7a">${honR > 0 ? fmt(honR) : '—'}</td>` : ''}
       ${showMenage   ? `<td style="padding:4px 5px;font-size:9px;text-align:right;white-space:nowrap;color:#4A3728">${menR > 0 ? fmt(menR) : '—'}</td>` : ''}
       <td style="padding:4px 5px;font-size:9px;text-align:right;white-space:nowrap;color:#9c8c7a">${taxeR > 0 ? fmt(taxeR) : '—'}</td>
-      ${showVir      ? `<td style="padding:4px 5px;font-size:9px;text-align:right;white-space:nowrap;color:#2d7a50;font-weight:500">${virR > 0 ? fmt(virR) : '—'}</td>` : ''}
+      ${showVir      ? `<td style="padding:4px 5px;font-size:9px;text-align:right;white-space:nowrap;color:${r.proprio_encaisse ? '#9c8c7a' : '#2d7a50'};font-weight:500">${r.proprio_encaisse ? '<span style="font-style:italic;font-weight:400">perçu direct</span>' : (virR > 0 ? fmt(virR) : '—')}</td>` : ''}
     </tr>`
   }).join('')
 

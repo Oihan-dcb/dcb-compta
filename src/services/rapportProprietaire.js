@@ -118,6 +118,8 @@ export function genererRapportHTML(proprio, mois, data, colonnes = {}) {
   const { resas, reviews, notes, bien, llmAnalyse, llmContexte, llmTendances, noteMoisMoy, noteGlobaleMoy, nbReviewsGlobal, noteContexte, noteReco, tauxCommission, extrasGlobaux = [], haownerList = [], ownerStayMenageList = [], fraisProprietaire = [] } = data
   const kpis = data?.kpis || {}
   const kpisN1 = data?.kpisN1 || {}
+  const modeEncaissement = kpis.modeEncaissement || 'dcb'
+  const virTotalProprioEncaisse = kpis.virTotalProprioEncaisse || 0
   const [year, monthIdx] = mois.split('-')
   const MOIS_FR = ['janvier','février','mars','avril','mai','juin','juillet','août','septembre','octobre','novembre','décembre']
   const moisLabel = MOIS_FR[parseInt(monthIdx) - 1] + ' ' + year
@@ -198,8 +200,8 @@ export function genererRapportHTML(proprio, mois, data, colonnes = {}) {
               ${cols.net_plat  ? `<td style="padding:5px 4px;text-align:right;white-space:nowrap;color:#2C2416;">${r.owner_stay ? '—' : fmt(r.fin_revenue || 0)}</td>` : ''}
               ${cols.base_comm ? `<td style="padding:5px 4px;text-align:right;white-space:nowrap;color:#2C2416;">${r.owner_stay ? '—' : fmt(r.base_comm || 0)}</td>` : ''}
               ${cols.hon       ? `<td style="padding:5px 4px;text-align:right;white-space:nowrap;color:#9c8c7a;">${v.HON ? fmt(v.HON.montant_ttc) : '—'}</td>` : ''}
-              ${cols.loy       ? `<td style="padding:5px 4px;text-align:right;font-weight:500;white-space:nowrap;color:#CC9933;">${v.LOY ? fmt(v.LOY.montant_ht) : '—'}</td>` : ''}
-              ${cols.vir       ? `<td style="padding:5px 4px;text-align:right;white-space:nowrap;color:#2d7a50;">${v.VIR ? fmt(v.VIR.montant_ht) : '—'}</td>` : ''}
+              ${cols.loy       ? `<td style="padding:5px 4px;text-align:right;font-weight:500;white-space:nowrap;color:${r.proprio_encaisse ? '#9c8c7a' : '#CC9933'};">${r.proprio_encaisse ? '<span style="font-size:9px;font-weight:400;font-style:italic;">direct</span>' : (v.LOY ? fmt(v.LOY.montant_ht) : '—')}</td>` : ''}
+              ${cols.vir       ? `<td style="padding:5px 4px;text-align:right;white-space:nowrap;color:${r.proprio_encaisse ? '#9c8c7a' : '#2d7a50'};">${r.proprio_encaisse ? '<span style="font-size:9px;font-style:italic;">perçu direct</span>' : (v.VIR ? fmt(v.VIR.montant_ht) : '—')}</td>` : ''}
               ${cols.debours   ? `<td style="padding:5px 4px;text-align:right;white-space:nowrap;color:#4A3728;">${r.extra > 0 ? fmt(r.extra) : '—'}</td>` : ''}
               ${cols.menage    ? `<td style="padding:5px 4px;text-align:right;white-space:nowrap;color:#4A3728;">${(r.menage_voyageur || 0) > 0 ? fmt(r.menage_voyageur) : '—'}</td>` : ''}
             </tr>`}).join('')}
@@ -210,8 +212,8 @@ export function genererRapportHTML(proprio, mois, data, colonnes = {}) {
               acc.net_plat  += r.owner_stay ? 0 : (r.fin_revenue || 0)
               acc.base_comm += r.base_comm || 0
               acc.hon       += v.HON?.montant_ttc || 0
-              acc.loy       += v.LOY?.montant_ht  || 0
-              acc.vir       += v.VIR?.montant_ht  || 0
+              acc.loy       += r.proprio_encaisse ? 0 : (v.LOY?.montant_ht || 0)
+              acc.vir       += r.proprio_encaisse ? 0 : (v.VIR?.montant_ht || 0)
               acc.debours   += r.extra || 0
               acc.menage    += r.menage_voyageur || 0
               return acc
@@ -358,8 +360,9 @@ export function genererRapportHTML(proprio, mois, data, colonnes = {}) {
         <div style="font-size:9px;color:rgba(204,153,51,0.7);">${tauxCommission ? tauxCommission + '% TTC' : 'gestion & services'}</div>
       </div>
       <div style="text-align:center;">
-        <div style="font-size:8px;letter-spacing:0.04em;text-transform:uppercase;color:rgba(212,196,176,0.8);margin-bottom:3px;">Virement propriétaire</div>
+        <div style="font-size:8px;letter-spacing:0.04em;text-transform:uppercase;color:rgba(212,196,176,0.8);margin-bottom:3px;">${modeEncaissement === 'proprio' && virTotalProprioEncaisse > 0 ? 'Reversement DCB' : 'Virement propriétaire'}</div>
         <div style="font-size:18px;font-weight:400;color:#fff;">${fmt(kpis.virementNet ?? kpis.loyTotal)}</div>
+        ${modeEncaissement === 'proprio' && virTotalProprioEncaisse > 0 ? `<div style="font-size:9px;color:rgba(212,196,176,0.7);margin-top:2px;">+ ${fmt(virTotalProprioEncaisse)} perçu direct</div>` : ''}
       </div>
       </div>
     </div>
