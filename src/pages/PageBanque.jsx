@@ -117,6 +117,7 @@ export default function PageBanque() {
       setPowensLog({ ok: true, msg: `${res.synced} transactions récupérées · ${staged.length} en attente d'import` })
     } catch (err) {
       setPowensLog({ ok: false, msg: err.message })
+      await chargerStatusPowens() // recharge le statut (peut passer à 'expiré')
     } finally {
       setPowensSyncing(false)
     }
