@@ -201,10 +201,10 @@ export default function PageLocationsLongues() {
     setPowensSyncing(true); setPowensLog(null)
     try {
       const res = await syncAllPowensAccounts(banqueMois)
-      const staged = await listStagedTransactions('dcb', 'seq_lld')
-      setPowensStaged(staged)
+      setPowensStaged([])
       const errMsg = res.errors?.length ? ` · ${res.errors.join(', ')}` : ''
-      setPowensLog({ ok: !res.errors?.length, msg: `${res.synced} tx récupérées · ${staged.length} en attente${errMsg}` })
+      setPowensLog({ ok: !res.errors?.length, msg: `${res.synced} tx récupérées · ${res.imported} importée(s)${errMsg}` })
+      await chargerBanque(banqueCompte, banqueMois)
     } catch (err) {
       setPowensLog({ ok: false, msg: err.message })
       await chargerStatusPowensLLD()

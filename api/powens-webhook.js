@@ -53,6 +53,14 @@ export default async function handler(req, res) {
     })
     const syncData = await syncRes.json()
 
+    // Import automatique des transactions récupérées
+    const importRes = await fetch(`${SUPABASE_URL}/functions/v1/powens-sync`, {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${SERVICE_KEY}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ action: 'import_staged', agence, accountLabel, mois: moisCourant }),
+    })
+    const importData = await importRes.json()
+
     return res.status(200).json({
       ok: true,
       event: eventType,
@@ -60,6 +68,8 @@ export default async function handler(req, res) {
       accountLabel,
       synced: syncData.synced,
       new: syncData.new,
+      imported: importData.importe,
+      importErrors: importData.erreurs,
     })
   } catch (err) {
     return res.status(500).json({ error: err.message })

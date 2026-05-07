@@ -100,7 +100,7 @@ export async function importStagedTransactions(agence, accountLabel, ids, mois) 
 }
 
 /**
- * Synchronise les 3 comptes Powens en parallèle (seq_lc, seq_lld, courant)
+ * Synchronise ET importe les 3 comptes Powens en parallèle (seq_lc, seq_lld, courant)
  * Les erreurs par compte sont collectées mais ne bloquent pas les autres.
  */
 export async function syncAllPowensAccounts(mois) {
@@ -112,10 +112,25 @@ export async function syncAllPowensAccounts(mois) {
     { agence: 'dcb', accountLabel: 'seq_lld' },
     { agence: 'dcb', accountLabel: 'courant' },
   ]
-  const results = await Promise.allSettled(
+
+  // Sync tous les comptes en parallèle
+  const syncResults = await Promise.allSettled(
     accounts.map(a => syncPowensTransactions(a.agence, a.accountLabel, dateFrom, dateTo))
   )
-  const synced = results.reduce((s, r) => s + (r.status === 'fulfilled' ? (r.value?.synced || 0) : 0), 0)
-  const errors = results.flatMap((r, i) => r.status === 'rejected' ? [`${accounts[i].accountLabel}: ${r.reason?.message}`] : [])
-  return { synced, errors }
+
+  // Import automatique pour les comptes qui ont syncé avec succès
+  const importResults = await Promise.allSettled(
+    accounts.map((a, i) =>
+      syncResults[i].status === 'fulfilled'
+        ? importStagedTransactions(a.agence, a.accountLabel, undefined, mois)
+        : Promise.reject(new Error('sync échoué'))
+    )
+  )
+
+  const synced = syncResults.reduce((s, r) => s + (r.status === 'fulfilled' ? (r.value?.synced || 0) : 0), 0)
+  const imported = importResults.reduce((s, r) => s + (r.status === 'fulfilled' ? (r.value?.importe || 0) : 0), 0)
+  const errors = syncResults.flatMap((r, i) =>
+    r.status === 'rejected' ? [`${accounts[i].accountLabel}: ${r.reason?.message}`] : []
+  )
+  return { synced, imported, errors }
 }

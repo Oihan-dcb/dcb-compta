@@ -345,10 +345,10 @@ Réponds UNIQUEMENT en JSON valide, tableau dans le même ordre que les entrées
     setPowensSyncing(true); setPowensLog(null)
     try {
       const res = await syncAllPowensAccounts(moisFiltre)
-      const staged = await listStagedTransactions('dcb', 'courant')
-      setPowensStaged(staged)
+      setPowensStaged([])
       const errMsg = res.errors?.length ? ` · ${res.errors.join(', ')}` : ''
-      setPowensLog({ ok: !res.errors?.length, msg: `${res.synced} tx récupérées · ${staged.length} en attente${errMsg}` })
+      setPowensLog({ ok: !res.errors?.length, msg: `${res.synced} tx récupérées · ${res.imported} importée(s)${errMsg}` })
+      charger()
     } catch (err) {
       setPowensLog({ ok: false, msg: err.message })
       await chargerStatusPowensCourant()
