@@ -109,7 +109,8 @@ export default function PageBanque() {
     setPowensLog(null)
     try {
       const dateFrom = `${mois}-01`
-      const dateTo   = `${mois}-31`
+      const [y, m] = mois.split('-').map(Number)
+      const dateTo = new Date(y, m, 0).toISOString().substring(0, 10)
       const res = await syncPowensTransactions('dcb', 'seq_lc', dateFrom, dateTo)
       const staged = await listStagedTransactions('dcb', mois)
       setPowensStaged(staged)
