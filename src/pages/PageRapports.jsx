@@ -215,12 +215,13 @@ export default function PageRapports() {
       setEmail(proprio?.email || '')
       const maiteIdsLocal = (proprio?.bien || []).filter(b => b.groupe_facturation === 'MAITE').map(b => b.id)
       const isGlobal = modeMaite === 'global' && maiteIdsLocal.length > 0
+      const noteBienIdLocal = isGlobal ? maiteIdsLocal[0] : selectedBienId
 
       // Notes (UI state) + données métier en parallèle
       const [notesRow, result] = await Promise.all([
         supabase.from('bien_notes')
           .select('note_marche, note_recommandations, note_analyse_llm, note_contexte, note_tendances, note_personnalisation')
-          .eq('bien_id', selectedBienId).eq('mois', mois).maybeSingle()
+          .eq('bien_id', noteBienIdLocal).eq('mois', mois).maybeSingle()
           .then(r => r.data || {}),
         buildRapportDataService(selectedBienId, selectedPropId, mois, { isGlobal, maiteIds: maiteIdsLocal }),
       ])
@@ -263,7 +264,7 @@ export default function PageRapports() {
   async function handleNoteBlur() {
     try {
       await supabase.from('bien_notes').upsert(
-        { bien_id: selectedBienId, mois, note_marche: note, updated_at: new Date().toISOString() },
+        { bien_id: noteBienId, mois, note_marche: note, updated_at: new Date().toISOString() },
         { onConflict: 'bien_id,mois' }
       )
     } catch (e) { console.error(e) }
@@ -272,7 +273,7 @@ export default function PageRapports() {
   async function handleNoteRecoBlur() {
     try {
       await supabase.from('bien_notes').upsert(
-        { bien_id: selectedBienId, mois, note_recommandations: noteReco, updated_at: new Date().toISOString() },
+        { bien_id: noteBienId, mois, note_recommandations: noteReco, updated_at: new Date().toISOString() },
         { onConflict: 'bien_id,mois' }
       )
     } catch (e) { console.error(e) }
@@ -281,7 +282,7 @@ export default function PageRapports() {
   async function handleLlmBlur() {
     try {
       await supabase.from('bien_notes').upsert(
-        { bien_id: selectedBienId, mois, note_analyse_llm: llmAnalyse, updated_at: new Date().toISOString() },
+        { bien_id: noteBienId, mois, note_analyse_llm: llmAnalyse, updated_at: new Date().toISOString() },
         { onConflict: 'bien_id,mois' }
       )
     } catch (e) { console.error(e) }
@@ -290,7 +291,7 @@ export default function PageRapports() {
   async function handleContexteBlur() {
     try {
       await supabase.from('bien_notes').upsert(
-        { bien_id: selectedBienId, mois, note_contexte: llmContexte, updated_at: new Date().toISOString() },
+        { bien_id: noteBienId, mois, note_contexte: llmContexte, updated_at: new Date().toISOString() },
         { onConflict: 'bien_id,mois' }
       )
     } catch (e) { console.error(e) }
@@ -299,7 +300,7 @@ export default function PageRapports() {
   async function handleTendancesBlur() {
     try {
       await supabase.from('bien_notes').upsert(
-        { bien_id: selectedBienId, mois, note_tendances: llmTendances, updated_at: new Date().toISOString() },
+        { bien_id: noteBienId, mois, note_tendances: llmTendances, updated_at: new Date().toISOString() },
         { onConflict: 'bien_id,mois' }
       )
     } catch (e) { console.error(e) }
@@ -308,7 +309,7 @@ export default function PageRapports() {
   async function handleNotePersoBlur() {
     try {
       await supabase.from('bien_notes').upsert(
-        { bien_id: selectedBienId, mois, note_personnalisation: notePerso, updated_at: new Date().toISOString() },
+        { bien_id: noteBienId, mois, note_personnalisation: notePerso, updated_at: new Date().toISOString() },
         { onConflict: 'bien_id,mois' }
       )
     } catch (e) { console.error(e) }
@@ -487,7 +488,7 @@ FORMAT :
       if (txt) {
         setLlmAnalyse(cleanLlmText(txt))
         await supabase.from('bien_notes').upsert(
-          { bien_id: selectedBienId, mois, note_analyse_llm: txt, updated_at: new Date().toISOString() },
+          { bien_id: noteBienId, mois, note_analyse_llm: txt, updated_at: new Date().toISOString() },
           { onConflict: 'bien_id,mois' }
         )
       }
@@ -526,7 +527,7 @@ FORMAT :
       if (txt) {
         setLlmContexte(cleanLlmText(txt))
         await supabase.from('bien_notes').upsert(
-          { bien_id: selectedBienId, mois, note_contexte: txt, updated_at: new Date().toISOString() },
+          { bien_id: noteBienId, mois, note_contexte: txt, updated_at: new Date().toISOString() },
           { onConflict: 'bien_id,mois' }
         )
       }
@@ -576,7 +577,7 @@ FORMAT :
       if (txt) {
         setLlmTendances(cleanLlmText(txt))
         await supabase.from('bien_notes').upsert(
-          { bien_id: selectedBienId, mois, note_tendances: txt, updated_at: new Date().toISOString() },
+          { bien_id: noteBienId, mois, note_tendances: txt, updated_at: new Date().toISOString() },
           { onConflict: 'bien_id,mois' }
         )
       }
@@ -724,7 +725,7 @@ FORMAT :
       await envoyerRapportEmail({ ...data.proprio, email: emails, bienName }, mois, htmlBody, joindrePDF, prependAttachments)
       console.log('[envoyer] étape 5 — bien_notes upsert')
       await supabase.from('bien_notes').upsert(
-        { bien_id: selectedBienId, mois, rapport_envoye_at: new Date().toISOString() },
+        { bien_id: noteBienId, mois, rapport_envoye_at: new Date().toISOString() },
         { onConflict: 'bien_id,mois' }
       )
       setBiensEnvoyes(prev => new Set([...prev, selectedBienId]))
@@ -745,6 +746,8 @@ FORMAT :
   const biensActifs = (proprio?.bien || []).filter(b => b.listed && b.agence === AGENCE)
   const isMaite = (proprio?.bien || []).some(b => b.groupe_facturation === 'MAITE')
   const maiteIds = (proprio?.bien || []).filter(b => b.groupe_facturation === 'MAITE').map(b => b.id)
+  // En mode global, on ancre toutes les notes sur le premier bien MAITE (stable entre sessions)
+  const noteBienId = (isMaite && modeMaite === 'global' && maiteIds.length > 0) ? maiteIds[0] : selectedBienId
   const biensActifsMaite = biensActifs.filter(b => b.groupe_facturation === 'MAITE')
   const propsFiltres = (bienIdsActifs === null
     ? proprietaires
@@ -1323,7 +1326,7 @@ FORMAT :
                     style={{ padding: '4px 10px', border: '1px solid #d97706', borderRadius: 5, background: '#fff', color: '#92400e', fontSize: '0.9em', cursor: 'pointer' }}
                     onClick={async () => {
                       await supabase.from('bien_notes').upsert(
-                        { bien_id: selectedBienId, mois, rapport_envoye_at: new Date().toISOString() },
+                        { bien_id: noteBienId, mois, rapport_envoye_at: new Date().toISOString() },
                         { onConflict: 'bien_id,mois' }
                       )
                       setBiensEnvoyes(prev => new Set([...prev, selectedBienId]))
