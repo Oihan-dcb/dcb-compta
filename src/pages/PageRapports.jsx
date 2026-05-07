@@ -360,11 +360,11 @@ export default function PageRapports() {
       }
     } catch (e) { console.warn('Météo non disponible:', e.message) }
 
-    const isGlobalForQuery = isMaite && modeMaite === 'global' && maiteIdsLocal.length > 0
+    const isGlobalForQuery = isMaite && modeMaite === 'global' && maiteIds.length > 0
     const { data: resasFutures } = await supabase
       .from('reservation')
       .select('code, arrival_date, departure_date, nights, fin_revenue, final_status, platform')
-      [isGlobalForQuery ? 'in' : 'eq']('bien_id', isGlobalForQuery ? maiteIdsLocal : selectedBienId)
+      [isGlobalForQuery ? 'in' : 'eq']('bien_id', isGlobalForQuery ? maiteIds : selectedBienId)
       .in('mois_comptable', [m1, m2])
       .not('final_status', 'in', '("cancelled","not_accepted","declined","expired")')
       .order('arrival_date')
