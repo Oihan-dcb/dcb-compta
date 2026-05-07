@@ -313,8 +313,10 @@ export function _calculerLignes(resa) {
   const menFees = guestFeesAll.filter(f => !menLabelsToExclude.includes(f.label?.toLowerCase()))
   const menAmount = menFees.reduce((s, f) => s + (f.amount || 0), 0)
 
-  // ── COM : commission DCB sur locations directes (Management fee brut) — TVA 20%
-  const comAmount = isDirect ? managementFeeRaw : 0
+  // ── COM : commission DCB sur locations directes (Management fee + Resort fee) — TVA 20%
+  // Resort fee = provision frais plateforme (1% résa directe) → revient à DCB comme le management fee
+  const resortFeeRaw = guestFeesAll.find(f => f.label?.toLowerCase() === 'resort fee')?.amount || 0
+  const comAmount = isDirect ? (managementFeeRaw + resortFeeRaw) : 0
   const comHT = comAmount > 0 ? Math.round(comAmount / (1 + TVA_RATE)) : 0
 
   // Owner fees Direct : portion de la platform fee Hospitable attribuée aux guest fees,
@@ -336,7 +338,13 @@ export function _calculerLignes(resa) {
 
   if (resa.platform === 'booking') {
     const remittedTotal = taxes.filter(t => isRemitted(t)).reduce((s,t) => s + (t.amount||0), 0)
-    loyAmount = (revenue - remittedTotal) - honTTC - fmenTTC - aeAmount - taxesTotal
+    // CITY_TAX (Withheld Tax) : collectée par Booking auprès du voyageur, reversée directement
+    // aux autorités fiscales — jamais transmise à DCB. À déduire du revenue pour éviter
+    // de sur-reverser au propriétaire.
+    const withheldTotal = ((resa.hospitable_raw?.financials?.guest?.taxes) || [])
+      .filter(t => t.label?.toLowerCase().includes('withheld'))
+      .reduce((s, t) => s + (t.amount || 0), 0)
+    loyAmount = (revenue - remittedTotal - withheldTotal) - honTTC - fmenTTC - aeAmount - taxesTotal
   }
 
   // --- Lignes de ventilation ---
