@@ -166,7 +166,7 @@ export async function creerFactureEvoliz(facture) {
 
   // 4. Note de bas de facture
   const comment = isDebours
-    ? `Remboursement de débours auto-entrepreneur — mois ${facture.mois}\n\nVirement à effectuer sur le compte séquestre :\nIBAN : FR76 1333 5000 4008 0030 4976 555\nBIC : CEPAFRPP333`
+    ? `Remboursement de débours auto-entrepreneur — mois ${facture.mois}\n\n⚠ ATTENTION : ce règlement est à effectuer sur le compte séquestre, différent du compte courant utilisé pour les factures d'honoraires et de forfaits ménage.\n\nVirement à effectuer sur le compte séquestre :\nIBAN : FR76 1333 5000 4008 0030 4976 555\nBIC : CEPAFRPP333`
     : facture.solde_negatif
       ? `Remboursement de frais avancés — mois ${facture.mois}`
       : `Honoraires de gestion locative — ${facture.mois}\n\nConformément au mandat de gestion, les honoraires de gestion sont directement prélevés sur le loyer encaissé avant reversement au propriétaire.`
