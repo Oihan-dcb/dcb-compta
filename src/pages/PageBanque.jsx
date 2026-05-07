@@ -112,9 +112,9 @@ export default function PageBanque() {
       const [y, m] = mois.split('-').map(Number)
       const dateTo = new Date(y, m, 0).toISOString().substring(0, 10)
       const res = await syncPowensTransactions('dcb', 'seq_lc', dateFrom, dateTo)
-      const staged = await listStagedTransactions('dcb', mois)
+      const staged = await listStagedTransactions('dcb') // toutes, pas filtrées par mois
       setPowensStaged(staged)
-      setPowensLog({ ok: true, msg: `${res.synced} transactions récupérées · ${res.new} nouvelles` })
+      setPowensLog({ ok: true, msg: `${res.synced} transactions récupérées · ${staged.length} en attente d'import` })
     } catch (err) {
       setPowensLog({ ok: false, msg: err.message })
     } finally {
