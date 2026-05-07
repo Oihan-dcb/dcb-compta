@@ -138,7 +138,7 @@ export async function creerFactureEvoliz(facture) {
   // Evoliz attend les prix en euros HT, on convertit depuis centimes
   const lignes = (facture.facture_evoliz_ligne || [])
     .sort((a, b) => a.ordre - b.ordre)
-    .filter(l => l.montant_ht > 0 && l.code !== 'AUTO')
+    .filter(l => l.montant_ht > 0 && l.code !== 'AUTO' && l.code !== 'DEB_AE')
     .map(l => {
       const htCentimes = Math.round(l.montant_ht)
       if (!Number.isFinite(htCentimes) || htCentimes <= 0) return null
@@ -152,7 +152,13 @@ export async function creerFactureEvoliz(facture) {
     })
     .filter(Boolean)
 
-  if (lignes.length === 0) throw new Error('Aucune ligne non nulle dans la facture')
+  if (lignes.length === 0) {
+    // Facture sans ligne Evoliz (ex: que du DEB_AE) — on marque comme envoyée sans passer par Evoliz
+    await supabase.from('facture_evoliz')
+      .update({ statut: 'envoye', id_evoliz: 'N/A', numero_evoliz: 'N/A' })
+      .eq('id', facture.id)
+    return { skipped: true, reason: 'no_billable_lines' }
+  }
 
   // 4. Note de bas de facture
   const comment = facture.solde_negatif
