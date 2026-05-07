@@ -209,9 +209,10 @@ const [pushing, setPushing] = useState(false)
           .eq('resolu', false)
           .in('bien_id', uniqueBienIds),
         // Total réservations pour stats de couverture
+        // bien(mode_encaissement) pour exclure les resas proprio_encaisse (Airbnb/Booking perçu directement)
         supabase
           .from('reservation')
-          .select('id, bien_id, fin_revenue, guest_name, platform')
+          .select('id, bien_id, fin_revenue, guest_name, platform, bien!inner(mode_encaissement)')
           .eq('mois_comptable', mois)
           .eq('owner_stay', false)
           .neq('final_status', 'not accepted')
@@ -220,9 +221,10 @@ const [pushing, setPushing] = useState(false)
         // Ventilation — TTC pour HON/FMEN/COM (Airbnb paie TVA incluse), HT pour VIR
         // Exclure les séjours propriétaires (owner_stay=true) : ils ont des ventilations FMEN/AUTO
         // mais pas d'encaissement prouvé, ce qui crée un solde négatif artificiel
+        // reservation_id + platform pour exclure les ventilations proprio_encaisse du solde tréso
         supabase
           .from('ventilation')
-          .select('bien_id, code, montant_ht, montant_ttc, montant_reel, reservation!inner(owner_stay)')
+          .select('bien_id, code, montant_ht, montant_ttc, montant_reel, reservation_id, reservation!inner(owner_stay, platform)')
           .eq('mois_comptable', mois)
           .in('bien_id', uniqueBienIds)
           .in('code', ['VIR', 'HON', 'FMEN', 'AUTO', 'COM'])
@@ -234,6 +236,15 @@ const [pushing, setPushing] = useState(false)
           .in('bien_id', uniqueBienIds)
           .in('type_imputation', ['deduction_loy', 'haowner']),
       ])
+
+      // Resas proprio_encaisse : Airbnb/Booking pour biens mode_encaissement='proprio'
+      // → DCB ne perçoit pas ces fonds, exclus du scope tréso
+      const PLATFORMS_DCB_CTRL = ['direct', 'manual']
+      const proprioEncaisseResaIds = new Set(
+        (resasRows || [])
+          .filter(r => r.bien?.mode_encaissement === 'proprio' && !PLATFORMS_DCB_CTRL.includes(r.platform || ''))
+          .map(r => r.id)
+      )
 
       // Agréger depuis reservation_mouvement (vue métier — encaissements prouvés uniquement)
       // Déduplication par mouvement_bancaire_id uniquement pour payout_hospitable :
@@ -263,11 +274,13 @@ const [pushing, setPushing] = useState(false)
       }
 
       // Total réservations par bien + PAYIN attendu + IDs in-scope + resas par bien
+      // Exclure les resas proprio_encaisse (Airbnb/Booking perçu directement par le proprio)
       const totalResasByBien = {}
       const payinAttenduByBien = {}
       const resaIdsInScopeByBien = {}
       const resasByBienId = {}
       for (const r of (resasRows || [])) {
+        if (proprioEncaisseResaIds.has(r.id)) continue
         totalResasByBien[r.bien_id] = (totalResasByBien[r.bien_id] || 0) + 1
         payinAttenduByBien[r.bien_id] = (payinAttenduByBien[r.bien_id] || 0) + (r.fin_revenue || 0)
         if (!resaIdsInScopeByBien[r.bien_id]) resaIdsInScopeByBien[r.bien_id] = new Set()
@@ -285,9 +298,11 @@ const [pushing, setPushing] = useState(false)
         anomaliesByBien[a.bien_id].add(a.reservation_id)
       }
 
-      // Ventilation par bien
+      // Ventilation par bien — exclure les resas proprio_encaisse
+      // (Airbnb/Booking pour biens proprio : HON/FMEN facturés au proprio mais non retenus sur cash DCB)
       const ventByBien = {}
       for (const v of (ventRows || [])) {
+        if (proprioEncaisseResaIds.has(v.reservation_id)) continue
         if (!ventByBien[v.bien_id]) ventByBien[v.bien_id] = { VIR: 0, HON: 0, FMEN: 0, AUTOREEL: 0, COM: 0 }
         const b = ventByBien[v.bien_id]
         if (v.code === 'VIR') b.VIR += (v.montant_ht || 0)
