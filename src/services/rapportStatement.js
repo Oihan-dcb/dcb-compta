@@ -48,11 +48,19 @@ export function genererStatementHTML(proprio, mois, data) {
     return p
   }
 
+  // Management fee collecté du voyageur (direct/manual) — à déduire du net distributeur
+  const getMgmtFee = (r) => {
+    if (!['direct', 'manual'].includes(r.platform)) return 0
+    return (r.reservation_fee || [])
+      .filter(f => f.fee_type === 'guest_fee' && f.label?.toLowerCase().includes('management'))
+      .reduce((s, f) => s + (f.amount || 0), 0)
+  }
+
   // Calculs Summary — valeurs pré-calculées dans PageRapports.jsx (r.hon, r.vir, etc.)
   const honTotal      = resas.reduce((s, r) => s + (r.hon  || 0), 0)
   const menageTotal   = resas.reduce((s, r) => s + (r.menage_voyageur || 0), 0)
   const grossTotal    = resas.reduce((s, r) => s + ((r.gross_revenue ?? r.fin_revenue) || 0), 0)
-  const caHeb         = resas.filter(r => !r.owner_stay).reduce((s, r) => s + (r.fin_revenue || 0), 0)
+  const caHeb         = resas.filter(r => !r.owner_stay).reduce((s, r) => s + (r.fin_revenue || 0) - getMgmtFee(r), 0)
   const virTotal      = resas.reduce((s, r) => r.proprio_encaisse ? s : s + (r.vir  || 0), 0)
   const loyTotal      = resas.reduce((s, r) => s + (r.loy  || 0), 0)
   const taxeTotal     = resas.reduce((s, r) => s + (r.taxe || 0), 0)
@@ -103,7 +111,7 @@ export function genererStatementHTML(proprio, mois, data) {
       <td style="padding:4px 5px;font-size:8.5px;white-space:nowrap">${fmtDate(r.arrival_date)} – ${fmtDate(r.departure_date)}</td>
       <td style="padding:4px 5px;font-size:9px;text-align:right">${r.nights || '—'}</td>
       ${showBrut     ? `<td style="padding:4px 5px;font-size:9px;text-align:right;white-space:nowrap">${r.owner_stay ? '—' : fmt(r.gross_revenue ?? r.fin_revenue)}</td>` : ''}
-      ${showNetPlat  ? `<td style="padding:4px 5px;font-size:9px;text-align:right;white-space:nowrap;color:#4A3728">${r.owner_stay ? '—' : fmt(r.fin_revenue || 0)}</td>` : ''}
+      ${showNetPlat  ? `<td style="padding:4px 5px;font-size:9px;text-align:right;white-space:nowrap;color:#4A3728">${r.owner_stay ? '—' : fmt((r.fin_revenue || 0) - getMgmtFee(r))}</td>` : ''}
       ${showBaseComm ? `<td style="padding:4px 5px;font-size:9px;text-align:right;white-space:nowrap;color:#4A3728">${r.owner_stay ? '—' : (r.base_comm || 0) > 0 ? fmt(r.base_comm) : '—'}</td>` : ''}
       ${showHon      ? `<td style="padding:4px 5px;font-size:9px;text-align:right;white-space:nowrap;color:#9c8c7a">${honR > 0 ? fmt(honR) : '—'}</td>` : ''}
       ${showMenage   ? `<td style="padding:4px 5px;font-size:9px;text-align:right;white-space:nowrap;color:#4A3728">${menR > 0 ? fmt(menR) : '—'}</td>` : ''}
