@@ -289,14 +289,20 @@ async function genererFactureGroupe(proprio, biens, mois, ctx) {
   const ownerStaySurplusByBien = new Map()
 
   for (const bien of biens) {
-    if (bien.mode_encaissement !== 'dcb') continue
-
-    // LOY de ce bien depuis ventilation dÃÂ©jÃÂ  chargÃÂ©e
+    // LOY de ce bien depuis ventilation
     const loyBien = ventilation
       .filter(l => l.bien_id === bien.id && l.code === 'LOY')
       .reduce((s, l) => s + l.montant_ht, 0)
 
-    // DÃÂ©ductions deduction_loy de ce bien
+    // Pour les biens proprio : seul le LOY des resas direct/manual est encaisse par DCB
+    const loyAbsorbable = bien.mode_encaissement === 'proprio'
+      ? ventilation
+          .filter(l => l.bien_id === bien.id && l.code === 'LOY' &&
+            PLATFORMS_DCB_FACT.includes(resaPlatMapFact.get(l.reservation_id) || ''))
+          .reduce((s, l) => s + l.montant_ht, 0)
+      : loyBien
+
+    // Deductions deduction_loy de ce bien
     const prestBien = (prestationsDeduction || [])
       .filter(p => p.bien_id === bien.id)
       .reduce((s, p) => {
@@ -310,15 +316,21 @@ async function genererFactureGroupe(proprio, biens, mois, ctx) {
       .reduce((s, p) => s + (p.montant || 0), 0)
     const haownerBienTTC = haownerBienHT + Math.round(haownerBienHT * 0.20)
 
-    // Frais propriétaire : traités frais par frais pour calculer deduit vs reliquat
-    // LOY disponible après prestations et HAOWNER, avant frais
-    let loyDispoPrealable = Math.max(0, loyBien - prestBien - haownerBienTTC)
+    // Frais proprietaire : traites frais par frais pour calculer deduit vs reliquat
+    // DCB : LOY disponible apres prestations et HAOWNER
+    // Proprio : seulement le LOY direct/manual, pas de deduction prestBien/haowner
+    let loyDispoPrealable = bien.mode_encaissement === 'proprio'
+      ? loyAbsorbable
+      : Math.max(0, loyBien - prestBien - haownerBienTTC)
     for (const frais of (fraisDeduire || []).filter(f => f.bien_id === bien.id)) {
       const deduit   = Math.min(frais.montant_ttc, loyDispoPrealable)
       const reliquat = frais.montant_ttc - deduit
       fraisDeductionMap.set(frais.id, { deduit, reliquat })
       loyDispoPrealable = Math.max(0, loyDispoPrealable - deduit)
     }
+
+    // Pour les biens proprio : pas d'absorption AUTO/deboursProp/ownerStay (tout en DEB_AE)
+    if (bien.mode_encaissement !== 'dcb') continue
 
     // AUTO depuis ventilation deja chargee en memoire
     const autoBien = ventilation
