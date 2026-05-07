@@ -158,7 +158,7 @@ export default function PageRapports() {
     setBienIdsActifs(null)
     Promise.all([
       supabase.from('reservation').select('bien_id').eq('mois_comptable', mois)
-        .or('fin_revenue.gt.0,final_status.not.in.("cancelled","not_accepted","declined","expired")'),
+        .or('fin_revenue.gt.0,final_status.not.in.("cancelled","not_accepted","not accepted","declined","expired")'),
       supabase.from('bien_notes').select('bien_id').eq('mois', mois).not('rapport_envoye_at', 'is', null),
     ]).then(([{ data: resasBiens }, { data: rapports }]) => {
       setBienIdsActifs(new Set((resasBiens || []).map(r => r.bien_id)))
