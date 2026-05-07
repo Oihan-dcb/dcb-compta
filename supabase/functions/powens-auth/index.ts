@@ -141,21 +141,40 @@ async function verifyCallback(agence: string, accountLabel: string, state: strin
 
   const connExpiresAt = new Date(Date.now() + 180 * 24 * 3600 * 1000).toISOString()
 
-  // Récupérer le compte bancaire lié
+  // Récupérer tous les comptes bancaires et les matcher par nom
   const accountsRes = await powensGet('/users/me/accounts', userToken)
-  const firstAccount = accountsRes.data?.accounts?.[0]
+  const accounts: any[] = accountsRes.data?.accounts || []
 
-  await db.from('powens_connection').update({
-    access_token: userToken,
-    connection_state: 'connected',
-    pending_state: null,
-    powens_account_id: firstAccount?.id ? String(firstAccount.id) : null,
-    connection_expires_at: connExpiresAt,
-    last_error: null,
-    updated_at: new Date().toISOString(),
-  }).eq('agence', agence).eq('account_label', accountLabel)
+  // Règles de matching nom → account_label
+  function matchLabel(name: string): string | null {
+    const n = (name || '').toLowerCase()
+    if (n.includes('courant') || n.includes('checking')) return 'courant'
+    if (n.includes('longue') || n.includes('lld'))        return 'seq_lld'
+    if (n.includes('saisonniere') || n.includes('saison') || n.includes('lc')) return 'seq_lc'
+    return null
+  }
 
-  return { connected: true, accountId: firstAccount?.id, iban: firstAccount?.iban }
+  // Mettre à jour les 3 lignes powens_connection avec les bons account_id
+  const updates = accounts
+    .map(a => ({ label: matchLabel(a.original_name || a.name), id: String(a.id), iban: a.iban }))
+    .filter(a => a.label !== null)
+
+  for (const u of updates) {
+    await db.from('powens_connection').upsert({
+      agence,
+      account_label: u.label!,
+      access_token: userToken,
+      connection_state: 'connected',
+      pending_state: null,
+      powens_account_id: u.id,
+      connection_expires_at: connExpiresAt,
+      last_error: null,
+      updated_at: new Date().toISOString(),
+    }, { onConflict: 'agence,account_label' })
+  }
+
+  const matched = updates.find(u => u.label === accountLabel)
+  return { connected: true, accountId: matched?.id, matchedAccounts: updates.length }
 }
 
 async function getStatus(agence: string, accountLabel: string) {
