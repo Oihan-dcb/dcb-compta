@@ -38,7 +38,7 @@ export async function buildRapportData(bienId, propId, mois, opts = {}) {
     (() => {
       let q = supabase
         .from('reservation')
-        .select('id, bien_id, code, fin_revenue, fin_accommodation, fin_host_service_fee, fin_gross_revenue, fin_discount, nights, arrival_date, departure_date, final_status, platform, owner_stay, guest_name, bien:bien_id(hospitable_name, code), reservation_fee(fee_type, label, amount)')
+        .select('id, bien_id, code, fin_revenue, fin_accommodation, fin_host_service_fee, fin_gross_revenue, fin_discount, nights, arrival_date, departure_date, final_status, platform, owner_stay, guest_name, hospitable_raw, bien:bien_id(hospitable_name, code), reservation_fee(fee_type, label, amount)')
         .eq('mois_comptable', mois)
         .order('arrival_date')
       return isGlobal ? q.in('bien_id', maiteIds) : q.eq('bien_id', bienId)
@@ -177,18 +177,30 @@ export async function buildRapportData(bienId, propId, mois, opts = {}) {
       // gross_revenue = total payé par le voyageur (hors remitted taxes reversées directement)
       // Direct  : total_price CSV (fin_gross_revenue)
       // Booking : accommodation + guest_fees + pass_through_taxes (= ce que Hospitable affiche)
+      //   → si reservation_fee vide (fees non synchés) : fallback fin_gross_revenue - CITY_TAX withheld
+      //     (= total voyageur hors taxe reversée aux autorités = accommodation + ménage + TVA)
       // Airbnb  : accommodation + guest_fees (guest_service_fee exclus — payé à Airbnb, pas à DCB)
       // Manual  : accommodation + guest_fees + taxes (pass-through = taxe de séjour incluse dans fin_revenue)
-      gross_revenue: r.owner_stay ? 0 : (r.platform === 'direct' && r.fin_gross_revenue)
-        ? r.fin_gross_revenue
-        : ((r.fin_accommodation || 0) +
+      gross_revenue: (() => {
+        if (r.owner_stay) return 0
+        if (r.platform === 'direct' && r.fin_gross_revenue) return r.fin_gross_revenue
+        const hasFees = (r.reservation_fee || []).length > 0
+        if (r.platform === 'booking' && !hasFees && r.fin_gross_revenue) {
+          // Fallback : fin_gross_revenue - taxes withheld (CITY_TAX reversé aux autorités, hors payout)
+          const withheld = ((r.hospitable_raw?.financials?.guest?.taxes) || [])
+            .filter(t => t.label?.toLowerCase().includes('withheld'))
+            .reduce((s, t) => s + (t.amount || 0), 0)
+          return r.fin_gross_revenue - withheld
+        }
+        return (r.fin_accommodation || 0) +
           (r.reservation_fee || []).filter(f => f.fee_type === 'guest_fee').reduce((s, f) => s + (f.amount || 0), 0) +
           (r.platform === 'booking'
             ? (r.reservation_fee || []).filter(f => f.fee_type === 'tax' && !f.label?.toLowerCase().includes('remitted')).reduce((s, f) => s + (f.amount || 0), 0)
             : 0) +
           (r.platform === 'manual'
             ? (r.reservation_fee || []).filter(f => f.fee_type === 'tax').reduce((s, f) => s + (f.amount || 0), 0)
-            : 0)),
+            : 0)
+      })(),
       // base_comm = fin_accommodation + fin_host_service_fee - fin_discount
       // = "Commissionable base" Hospitable (net de la commission hôte + remises promotionnelles)
       // fin_host_service_fee est négatif, fin_discount est positif en base (à soustraire)
