@@ -1,6 +1,6 @@
 import { AGENCE } from '../lib/agence'
 import { useState, useEffect } from 'react'
-import { getPowensStatus, connectPowens, syncPowensTransactions, listStagedTransactions, importStagedTransactions } from '../services/powens'
+import { getPowensStatus, connectPowens, syncAllPowensAccounts, listStagedTransactions, importStagedTransactions } from '../services/powens'
 import { supabase } from '../lib/supabase'
 import MoisSelector from '../components/MoisSelector'
 import { formatMontant } from '../lib/hospitable'
@@ -200,11 +200,11 @@ export default function PageLocationsLongues() {
   async function handleSyncPowensLLD() {
     setPowensSyncing(true); setPowensLog(null)
     try {
-      const [y, m] = banqueMois.split('-').map(Number)
-      const res = await syncPowensTransactions('dcb', 'seq_lld', `${banqueMois}-01`, new Date(y, m, 0).toISOString().substring(0, 10))
+      const res = await syncAllPowensAccounts(banqueMois)
       const staged = await listStagedTransactions('dcb', 'seq_lld')
       setPowensStaged(staged)
-      setPowensLog({ ok: true, msg: `${res.synced} tx récupérées · ${staged.length} en attente` })
+      const errMsg = res.errors?.length ? ` · ${res.errors.join(', ')}` : ''
+      setPowensLog({ ok: !res.errors?.length, msg: `${res.synced} tx récupérées · ${staged.length} en attente${errMsg}` })
     } catch (err) {
       setPowensLog({ ok: false, msg: err.message })
       await chargerStatusPowensLLD()
@@ -1788,7 +1788,7 @@ export default function PageLocationsLongues() {
                     {powensStatus?.connection_state === 'connected' && (
                       <button onClick={handleSyncPowensLLD} disabled={powensSyncing}
                         style={{ background: '#1D4ED8', color: '#fff', border: 'none', borderRadius: 7, padding: '6px 14px', fontWeight: 700, cursor: powensSyncing ? 'wait' : 'pointer', fontSize: 13 }}>
-                        {powensSyncing ? '⏳ Sync…' : '🔄 Sync Powens'}
+                        {powensSyncing ? '⏳ Sync…' : '🔄 Sync tous les comptes'}
                       </button>
                     )}
                     {powensStaged?.length > 0 && (

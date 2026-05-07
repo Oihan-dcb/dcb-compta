@@ -98,3 +98,24 @@ export async function listStagedTransactions(agence, accountLabel, mois) {
 export async function importStagedTransactions(agence, accountLabel, ids, mois) {
   return call('powens-sync', { action: 'import_staged', agence, accountLabel, ids, mois })
 }
+
+/**
+ * Synchronise les 3 comptes Powens en parallèle (seq_lc, seq_lld, courant)
+ * Les erreurs par compte sont collectées mais ne bloquent pas les autres.
+ */
+export async function syncAllPowensAccounts(mois) {
+  const [y, m] = mois.split('-').map(Number)
+  const dateFrom = `${mois}-01`
+  const dateTo = new Date(y, m, 0).toISOString().substring(0, 10)
+  const accounts = [
+    { agence: 'dcb', accountLabel: 'seq_lc' },
+    { agence: 'dcb', accountLabel: 'seq_lld' },
+    { agence: 'dcb', accountLabel: 'courant' },
+  ]
+  const results = await Promise.allSettled(
+    accounts.map(a => syncPowensTransactions(a.agence, a.accountLabel, dateFrom, dateTo))
+  )
+  const synced = results.reduce((s, r) => s + (r.status === 'fulfilled' ? (r.value?.synced || 0) : 0), 0)
+  const errors = results.flatMap((r, i) => r.status === 'rejected' ? [`${accounts[i].accountLabel}: ${r.reason?.message}`] : [])
+  return { synced, errors }
+}

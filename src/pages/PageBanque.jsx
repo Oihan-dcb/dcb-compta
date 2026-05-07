@@ -6,7 +6,7 @@ import { importBookingCSV } from '../services/importBooking'
 import { annulerRapprochement } from '../services/rapprochement'
 import { parserFichierBancaire, importerMouvementsBancaires } from '../services/importBanque'
 import { syncPayoutsFromHospitable } from '../services/syncPayouts'
-import { getPowensStatus, connectPowens, syncPowensTransactions, listStagedTransactions, importStagedTransactions } from '../services/powens'
+import { getPowensStatus, connectPowens, syncAllPowensAccounts, listStagedTransactions, importStagedTransactions } from '../services/powens'
 import MoisSelector from '../components/MoisSelector'
 import { formatMontant, setToken } from '../lib/hospitable'
 import { format } from 'date-fns'
@@ -108,16 +108,14 @@ export default function PageBanque() {
     setPowensSyncing(true)
     setPowensLog(null)
     try {
-      const dateFrom = `${mois}-01`
-      const [y, m] = mois.split('-').map(Number)
-      const dateTo = new Date(y, m, 0).toISOString().substring(0, 10)
-      const res = await syncPowensTransactions('dcb', 'seq_lc', dateFrom, dateTo)
+      const res = await syncAllPowensAccounts(mois)
       const staged = await listStagedTransactions('dcb', 'seq_lc')
       setPowensStaged(staged)
-      setPowensLog({ ok: true, msg: `${res.synced} transactions récupérées · ${staged.length} en attente d'import` })
+      const errMsg = res.errors?.length ? ` · ${res.errors.join(', ')}` : ''
+      setPowensLog({ ok: !res.errors?.length, msg: `${res.synced} tx récupérées · ${staged.length} en attente${errMsg}` })
     } catch (err) {
       setPowensLog({ ok: false, msg: err.message })
-      await chargerStatusPowens() // recharge le statut (peut passer à 'expiré')
+      await chargerStatusPowens()
     } finally {
       setPowensSyncing(false)
     }
@@ -394,7 +392,7 @@ export default function PageBanque() {
             {powensStatus?.connection_state === 'connected' && (
               <button onClick={handleSyncPowens} disabled={powensSyncing}
                 style={{ background: '#1D4ED8', color: '#fff', border: 'none', borderRadius: 7, padding: '6px 14px', fontWeight: 700, cursor: powensSyncing ? 'wait' : 'pointer', fontSize: 13 }}>
-                {powensSyncing ? '⏳ Sync…' : '🔄 Sync Powens'}
+                {powensSyncing ? '⏳ Sync…' : '🔄 Sync tous les comptes'}
               </button>
             )}
             {powensStaged?.length > 0 && (
