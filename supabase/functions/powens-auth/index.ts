@@ -1,13 +1,12 @@
 /**
  * Supabase Edge Function — Powens Auth
- * Gère le cycle de vie OAuth2 avec l'API Powens (ex-Budget Insight)
+ * Flux token (pas authorization_code — non supporté en sandbox Powens)
  *
  * Actions :
- *   init_webview   → crée un utilisateur Powens + URL webview pour connexion bancaire
- *   exchange_code  → échange le code retourné par le callback en access/refresh token
- *   refresh_token  → renouvelle l'access token avant expiry
- *   status         → retourne l'état de connexion (sans tokens)
- *   disconnect     → supprime la connexion
+ *   init_webview     → crée un user Powens + URL webview avec token
+ *   verify_callback  → vérifie le state CSRF après redirect, récupère le compte
+ *   status           → retourne l'état de connexion (sans tokens)
+ *   disconnect       → réinitialise la connexion
  */
 
 import { serve } from 'https://deno.land/std@0.168.0/http/server.ts'
@@ -56,67 +55,85 @@ async function powensGet(path: string, token: string) {
 
 // ── Actions ───────────────────────────────────────────────────────────────────
 
+/**
+ * Flux token Powens :
+ * 1. client_credentials → app token
+ * 2. POST /users/ → crée user anonyme, retourne auth_token utilisateur
+ * 3. Webview URL avec token= (pas de code OAuth)
+ */
 async function initWebview(agence: string, accountLabel: string, redirectUri: string) {
   const db = supabase()
 
-  // 1. Créer un utilisateur Powens (ou réutiliser l'existant)
-  let powensUserId: string | null = null
+  // Réutiliser le token existant si disponible
   const { data: existing } = await db
     .from('powens_connection')
-    .select('powens_user_id')
+    .select('access_token, connection_state')
     .eq('agence', agence)
     .eq('account_label', accountLabel)
     .single()
 
-  if (existing?.powens_user_id) {
-    powensUserId = existing.powens_user_id
+  let userToken: string
+
+  if (existing?.access_token) {
+    userToken = existing.access_token
   } else {
-    // Créer un nouvel utilisateur Powens via auth client_credentials
-    const authRes = await powensPost('/auth/token', {
+    // 1. Token application via client_credentials
+    const appRes = await powensPost('/auth/token', {
       grant_type: 'client_credentials',
       client_id: CLIENT_ID,
       client_secret: CLIENT_SEC,
+      scope: 'accounts transactions',
     })
-    if (!authRes.ok) throw new Error(`Powens auth failed: ${JSON.stringify(authRes.data)}`)
+    if (!appRes.ok) throw new Error(`App token: ${JSON.stringify(appRes.data)}`)
 
-    // Créer l'utilisateur
-    const userRes = await powensGet('/users/', authRes.data.access_token)
-    // Powens crée un user anonymous avec le token client
-    powensUserId = authRes.data.access_token // Pour sandbox, on utilise le token comme user ID
+    // 2. Créer un utilisateur anonyme Powens
+    const userRes = await fetch(`${BASE_URL}/users/`, {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${appRes.data.access_token}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({}),
+    })
+    const userData = await userRes.json()
+    userToken = userData.auth_token || userData.access_token
+    if (!userToken) throw new Error(`Création user Powens: ${JSON.stringify(userData)}`)
   }
 
-  // 2. Générer un state CSRF
+  // Générer un state CSRF
   const pendingState = crypto.randomUUID()
 
-  // 3. Construire l'URL Webview
+  // URL webview avec token utilisateur (flux token, pas code OAuth)
   const params = new URLSearchParams({
     client_id: CLIENT_ID,
+    token: userToken,
     redirect_uri: redirectUri,
-    response_type: 'code',
     state: pendingState,
   })
-  const webviewUrl = `${BASE_URL.replace('/2.0', '')}/auth/webview/connect?${params}`
+  const webviewUrl = `${BASE_URL}/auth/webview/connect?${params}`
 
-  // 4. Upsert connexion en état pending
   await db.from('powens_connection').upsert({
     agence,
     account_label: accountLabel,
-    powens_user_id: powensUserId,
+    access_token: userToken,
     connection_state: 'pending_webview',
     pending_state: pendingState,
     updated_at: new Date().toISOString(),
   }, { onConflict: 'agence,account_label' })
 
-  return { webviewUrl, pendingState }
+  return { webviewUrl }
 }
 
-async function exchangeCode(agence: string, accountLabel: string, code: string, state: string, redirectUri: string) {
+/**
+ * Appelé depuis le callback après redirect Powens.
+ * Vérifie le state CSRF, récupère l'account_id via le token déjà stocké.
+ */
+async function verifyCallback(agence: string, accountLabel: string, state: string) {
   const db = supabase()
 
-  // Vérifier le state CSRF
   const { data: conn } = await db
     .from('powens_connection')
-    .select('pending_state, powens_user_id')
+    .select('pending_state, access_token')
     .eq('agence', agence)
     .eq('account_label', accountLabel)
     .single()
@@ -125,77 +142,22 @@ async function exchangeCode(agence: string, accountLabel: string, code: string, 
     throw new Error('State CSRF invalide')
   }
 
-  // Échanger le code contre des tokens
-  const tokenRes = await powensPost('/auth/token', {
-    grant_type: 'authorization_code',
-    client_id: CLIENT_ID,
-    client_secret: CLIENT_SEC,
-    code,
-    redirect_uri: redirectUri,
-  })
-  if (!tokenRes.ok) throw new Error(`Token exchange failed: ${JSON.stringify(tokenRes.data)}`)
-
-  const { access_token, refresh_token, expires_in } = tokenRes.data
-  const expiresAt = new Date(Date.now() + (expires_in || 3600) * 1000).toISOString()
-  const connExpiresAt = new Date(Date.now() + 180 * 24 * 3600 * 1000).toISOString() // 180 jours PSD2
-
-  // Récupérer l'account Powens lié
-  const accountsRes = await powensGet('/users/me/accounts', access_token)
+  // Récupérer le compte bancaire lié
+  const accountsRes = await powensGet('/users/me/accounts', conn.access_token)
   const firstAccount = accountsRes.data?.accounts?.[0]
 
+  const connExpiresAt = new Date(Date.now() + 180 * 24 * 3600 * 1000).toISOString()
+
   await db.from('powens_connection').update({
-    access_token,
-    refresh_token,
-    token_expires_at: expiresAt,
-    connection_expires_at: connExpiresAt,
     connection_state: 'connected',
     pending_state: null,
     powens_account_id: firstAccount?.id ? String(firstAccount.id) : null,
+    connection_expires_at: connExpiresAt,
     last_error: null,
     updated_at: new Date().toISOString(),
   }).eq('agence', agence).eq('account_label', accountLabel)
 
   return { connected: true, accountId: firstAccount?.id, iban: firstAccount?.iban }
-}
-
-async function refreshTokenFn(agence: string, accountLabel: string) {
-  const db = supabase()
-  const { data: conn } = await db
-    .from('powens_connection')
-    .select('refresh_token')
-    .eq('agence', agence)
-    .eq('account_label', accountLabel)
-    .single()
-
-  if (!conn?.refresh_token) throw new Error('Pas de refresh_token stocké')
-
-  const res = await powensPost('/auth/token', {
-    grant_type: 'refresh_token',
-    client_id: CLIENT_ID,
-    client_secret: CLIENT_SEC,
-    refresh_token: conn.refresh_token,
-  })
-  if (!res.ok) {
-    await db.from('powens_connection').update({
-      connection_state: 'expired',
-      last_error: `Refresh failed: ${res.status}`,
-      updated_at: new Date().toISOString(),
-    }).eq('agence', agence).eq('account_label', accountLabel)
-    throw new Error(`Refresh token failed: ${JSON.stringify(res.data)}`)
-  }
-
-  const { access_token, refresh_token, expires_in } = res.data
-  const expiresAt = new Date(Date.now() + (expires_in || 3600) * 1000).toISOString()
-
-  await db.from('powens_connection').update({
-    access_token,
-    refresh_token: refresh_token || conn.refresh_token,
-    token_expires_at: expiresAt,
-    connection_state: 'connected',
-    updated_at: new Date().toISOString(),
-  }).eq('agence', agence).eq('account_label', accountLabel)
-
-  return { access_token, expires_at: expiresAt }
 }
 
 async function getStatus(agence: string, accountLabel: string) {
@@ -215,18 +177,15 @@ serve(async (req) => {
   if (req.method === 'OPTIONS') return new Response('ok', { headers: CORS })
 
   try {
-    const { action, agence, accountLabel, code, state, redirectUri } = await req.json()
+    const { action, agence, accountLabel, state, redirectUri } = await req.json()
 
     let result
     switch (action) {
       case 'init_webview':
         result = await initWebview(agence, accountLabel, redirectUri)
         break
-      case 'exchange_code':
-        result = await exchangeCode(agence, accountLabel, code, state, redirectUri)
-        break
-      case 'refresh_token':
-        result = await refreshTokenFn(agence, accountLabel)
+      case 'verify_callback':
+        result = await verifyCallback(agence, accountLabel, state)
         break
       case 'status':
         result = await getStatus(agence, accountLabel)

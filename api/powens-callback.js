@@ -8,19 +8,17 @@ const SUPABASE_URL = 'https://omuncchvypbtxkpalwcr.supabase.co'
 const REDIRECT_URI = 'https://dcb-compta.vercel.app/api/powens-callback'
 
 export default async function handler(req, res) {
-  const { code, state, error: oauthError, agence, account_label } = req.query
+  const { state, error: oauthError, agence, account_label } = req.query
 
   // Erreur renvoyée par Powens
   if (oauthError) {
     return res.send(htmlClose('error', `Erreur Powens : ${oauthError}`))
   }
 
-  if (!code || !state) {
-    return res.send(htmlClose('error', 'Paramètres manquants'))
+  if (!state) {
+    return res.send(htmlClose('error', 'Paramètre state manquant'))
   }
 
-  // On récupère agence/account_label depuis le state si encodé, ou depuis les query params
-  // Le state est le pendingState CSRF — on le passe tel quel à l'edge function qui vérifie
   const targetAgence = agence || 'dcb'
   const targetLabel  = account_label || 'seq_lc'
 
@@ -33,12 +31,10 @@ export default async function handler(req, res) {
         'Content-Type': 'application/json',
       },
       body: JSON.stringify({
-        action: 'exchange_code',
+        action: 'verify_callback',
         agence: targetAgence,
         accountLabel: targetLabel,
-        code,
         state,
-        redirectUri: REDIRECT_URI,
       }),
     })
 

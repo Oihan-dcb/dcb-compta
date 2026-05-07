@@ -29,7 +29,7 @@ function supabase() {
 async function getValidToken(db: ReturnType<typeof supabase>, agence: string, accountLabel: string): Promise<string> {
   const { data: conn } = await db
     .from('powens_connection')
-    .select('access_token, token_expires_at, connection_state')
+    .select('access_token, connection_state')
     .eq('agence', agence)
     .eq('account_label', accountLabel)
     .single()
@@ -38,19 +38,7 @@ async function getValidToken(db: ReturnType<typeof supabase>, agence: string, ac
     throw new Error(`Connexion Powens non active pour ${agence}/${accountLabel}`)
   }
 
-  // Refresh si expire dans moins de 5 minutes
-  if (new Date(conn.token_expires_at) <= new Date(Date.now() + 5 * 60 * 1000)) {
-    const authFnUrl = `${SUPA_URL}/functions/v1/powens-auth`
-    const res = await fetch(authFnUrl, {
-      method: 'POST',
-      headers: { Authorization: `Bearer ${SUPA_KEY}`, 'Content-Type': 'application/json' },
-      body: JSON.stringify({ action: 'refresh_token', agence, accountLabel }),
-    })
-    const data = await res.json()
-    if (!data.ok) throw new Error(`Refresh token échoué: ${data.error}`)
-    return data.access_token
-  }
-
+  // Flux token Powens : le user token est permanent (pas de refresh)
   return conn.access_token
 }
 
