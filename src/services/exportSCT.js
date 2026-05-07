@@ -200,7 +200,7 @@ export async function genererSCTVirementsProprios(mois, agence = AGENCE) {
       montant:       v.montant,
       creditorIban:  prop.iban,
       creditorBic:   prop.bic || '',
-      creditorNom:   `${prop.nom} ${prop.prenom}`.trim(),
+      creditorNom:   [prop.nom, prop.prenom].filter(Boolean).join(' '),
       remittance:    `LOYER LLD ${mois} ${etud.nom} ${etud.prenom}`,
     }
   })
@@ -308,7 +308,7 @@ export async function genererSCTVirementsPropriosLC(mois, agence = AGENCE) {
     montant:       g.montant,
     creditorIban:  g.prop.iban,
     creditorBic:   g.prop.bic || '',
-    creditorNom:   `${g.prop.nom} ${g.prop.prenom}`.trim(),
+    creditorNom:   [g.prop.nom, g.prop.prenom].filter(Boolean).join(' '),
     remittance:    `LOYER LC ${mois} ${g.label}`,
   }))
 
