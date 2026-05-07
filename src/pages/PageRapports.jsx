@@ -406,7 +406,7 @@ TON :
 - Neutre mais incarné (pas robotique)
 - Jamais commercial, jamais administratif
 - Toujours en français — aucun mot anglais (pas de "april", "booking", etc. — écrire "avril", "la plateforme")${isGlobalMaite ? `
-- Parler de "la maison" ou "Maison Maïté", jamais "la chambre"` : ''}
+- Ce rapport couvre à la fois la maison dans son ensemble ET ses chambres individuelles. Utilise le bon niveau de granularité selon ce dont tu parles : "la maison" quand tu parles de la performance globale ou d'une privatisation qui occupe tout le bâtiment, "les chambres" quand tu parles de la dynamique des séjours individuels, et "Maison Maïté" pour nommer l'établissement. Ne réduis pas tout à "la chambre" (singulier) comme si c'était un seul logement.` : ''}
 
 FORME :
 - Aucun début type "Bonjour", aucune signature
