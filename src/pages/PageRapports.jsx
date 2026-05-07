@@ -360,15 +360,16 @@ export default function PageRapports() {
       }
     } catch (e) { console.warn('Météo non disponible:', e.message) }
 
+    const isGlobalForQuery = isMaite && modeMaite === 'global' && maiteIdsLocal.length > 0
     const { data: resasFutures } = await supabase
       .from('reservation')
       .select('code, arrival_date, departure_date, nights, fin_revenue, final_status, platform')
-      .eq('bien_id', selectedBienId)
+      [isGlobalForQuery ? 'in' : 'eq']('bien_id', isGlobalForQuery ? maiteIdsLocal : selectedBienId)
       .in('mois_comptable', [m1, m2])
       .not('final_status', 'in', '("cancelled","not_accepted","declined","expired")')
       .order('arrival_date')
 
-    const bienNom = data.bien?.hospitable_name || ''
+    const bienNom = (isMaite && modeMaite === 'global') ? 'Maison Maïté' : (data.bien?.hospitable_name || '')
     const tauxCommission = data.tauxCommission
     const bienVille = data.bien?.ville || ''
     const isBordeaux = bienVille.toLowerCase().includes('bordeaux')
@@ -506,8 +507,10 @@ FORMAT :
 
 Données disponibles :
 - Météo : ${meteoResume}
-- Taux d'occupation : ${data.kpis.tauxOcc}% (N-1 : ${data.kpisN1?.tauxOcc > 0 ? data.kpisN1.tauxOcc + '%' : 'N/A'})
-- Réservations : ${data.kpis.nbResas} (N-1 : ${data.kpisN1?.nbResas > 0 ? data.kpisN1.nbResas : 'N/A'})
+${isGlobalMaite
+  ? `- Réservations : ${data.kpis.nbResas} séjours (maison entière + chambres confondus)`
+  : `- Taux d'occupation : ${data.kpis.tauxOcc}% (N-1 : ${data.kpisN1?.tauxOcc > 0 ? data.kpisN1.tauxOcc + '%' : 'N/A'})
+- Réservations : ${data.kpis.nbResas} (N-1 : ${data.kpisN1?.nbResas > 0 ? data.kpisN1.nbResas : 'N/A'})`}
 
 OBJECTIF :
 Apporter un éclairage extérieur sur la performance.
@@ -521,6 +524,7 @@ CONTRAINTES :
 - Ne pas répéter les données du bloc Analyse
 - Ne pas reprendre la NOTE OÏHAN
 - Ne pas mentionner le reversement ou les honoraires
+${isGlobalMaite ? '- Parler de Maison Maïté dans son ensemble, pas d\'une chambre en particulier' : ''}
 
 FORMAT :
 - Démarrer directement par le contexte météo ou marché
@@ -568,7 +572,7 @@ CONTENU ATTENDU :
 
 CONTRAINTES :
 - Ne pas utiliser "vous", "votre"
-- Parler du bien à la 3ème personne
+- Parler du bien à la 3ème personne${isGlobalMaite ? '\n- Parler de Maison Maïté dans son ensemble — les réservations couvrent toutes les chambres et les privatisations' : ''}
 - "les réservations sont en portefeuille", "le carnet compte X réservations"
 - Ne pas répéter les données de performance du mois écoulé
 
