@@ -171,10 +171,21 @@ async function listStaged(agence: string, accountLabel: string, mois?: string) {
 
 async function importStaged(agence: string, accountLabel: string, ids?: string[], mois?: string) {
   const db = supabase()
+
+  // Récupérer le powens_account_id pour ne traiter que les transactions de ce compte
+  const { data: conn } = await db
+    .from('powens_connection')
+    .select('powens_account_id')
+    .eq('agence', agence)
+    .eq('account_label', accountLabel)
+    .single()
+
   let query = db.from('powens_transaction_raw')
     .select('*')
     .eq('agence', agence)
     .eq('statut', 'a_importer')
+
+  if (conn?.powens_account_id) query = query.eq('powens_account_id', conn.powens_account_id)
 
   if (ids?.length) query = query.in('powens_transaction_id', ids)
   else if (mois) {
