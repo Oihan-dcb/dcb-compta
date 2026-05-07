@@ -475,7 +475,7 @@ export function genererRapportHTML(proprio, mois, data, colonnes = {}) {
           return `
         <tr style="background:${(extrasGlobaux.length + haownerList.length + i) % 2 === 0 ? '#fff' : '#F7F4EF'};">
           <td style="padding:6px 8px;color:#3a3530;">${p.date ? p.date.substring(5).split('-').reverse().join('/') : '—'}</td>
-          <td style="padding:6px 8px;color:${isRemboursement ? '#059669' : '#c2410c'};font-size:10px;">${isRemboursement ? 'Remboursement' : 'Frais'}</td>
+          <td style="padding:6px 8px;color:${isRemboursement ? '#059669' : '#c2410c'};font-size:10px;">${isRemboursement ? 'Crédit' : 'Frais'}</td>
           <td style="padding:6px 8px;color:#3a3530;">${p.libelle || '—'}</td>
           <td style="padding:6px 8px;text-align:right;white-space:nowrap;">${montantCell}</td>
         </tr>`}).join('')}
