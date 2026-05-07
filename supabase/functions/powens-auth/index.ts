@@ -63,20 +63,50 @@ async function powensGet(path: string, token: string) {
 async function initWebview(agence: string, accountLabel: string, redirectUri: string) {
   const db = supabase()
 
+  // Réutiliser le token existant si la connexion est encore valide
+  const { data: existing } = await db
+    .from('powens_connection')
+    .select('access_token, connection_state')
+    .eq('agence', agence)
+    .eq('account_label', accountLabel)
+    .single()
+
+  let userToken: string | null = null
+
+  if (existing?.access_token && existing?.connection_state === 'connected') {
+    userToken = existing.access_token
+  } else {
+    // Créer un utilisateur anonyme via Basic auth → token permanent
+    const basicAuth = btoa(`${CLIENT_ID}:${CLIENT_SEC}`)
+    const userRes = await fetch(`${BASE_URL}/users/`, {
+      method: 'POST',
+      headers: {
+        'Authorization': `Basic ${basicAuth}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({}),
+    })
+    const userData = await userRes.json()
+    userToken = userData.auth_token || userData.access_token || null
+  }
+
   // Générer un state CSRF
   const pendingState = crypto.randomUUID()
 
-  // URL webview — Powens crée le user et retourne son token via redirect
-  const params = new URLSearchParams({
+  // URL webview — avec token utilisateur si disponible, sinon flux code
+  const params: Record<string, string> = {
     client_id: CLIENT_ID,
     redirect_uri: redirectUri,
     state: pendingState,
-  })
-  const webviewUrl = `${BASE_URL}/auth/webview/connect?${params}`
+  }
+  if (userToken) params.token = userToken
+
+  const webviewUrl = `${BASE_URL}/auth/webview/connect?${new URLSearchParams(params)}`
 
   await db.from('powens_connection').upsert({
     agence,
     account_label: accountLabel,
+    access_token: userToken,
     connection_state: 'pending_webview',
     pending_state: pendingState,
     updated_at: new Date().toISOString(),
@@ -90,12 +120,12 @@ async function initWebview(agence: string, accountLabel: string, redirectUri: st
  * Le ?code retourné par Powens EST le user access_token (pas un code OAuth à échanger).
  * On vérifie le state CSRF, on stocke le token, on récupère l'account_id.
  */
-async function verifyCallback(agence: string, accountLabel: string, state: string, code: string) {
+async function verifyCallback(agence: string, accountLabel: string, state: string, code?: string) {
   const db = supabase()
 
   const { data: conn } = await db
     .from('powens_connection')
-    .select('pending_state')
+    .select('pending_state, access_token')
     .eq('agence', agence)
     .eq('account_label', accountLabel)
     .single()
@@ -104,8 +134,11 @@ async function verifyCallback(agence: string, accountLabel: string, state: strin
     throw new Error('State CSRF invalide')
   }
 
-  // code = user access token directement
-  const userToken = code
+  // Utiliser le token permanent déjà stocké (Basic auth flow),
+  // ou le code retourné par le redirect si c'est le flux code
+  const userToken = conn.access_token || code
+  if (!userToken) throw new Error('Aucun token disponible')
+
   const connExpiresAt = new Date(Date.now() + 180 * 24 * 3600 * 1000).toISOString()
 
   // Récupérer le compte bancaire lié
