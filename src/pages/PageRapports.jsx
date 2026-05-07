@@ -994,7 +994,7 @@ FORMAT :
                             <td style={{ padding: '6px 8px' }}>{getCanal(r.platform, r.owner_stay)}</td>
                             <td style={{ padding: '6px 8px', textAlign: 'right', color: '#4A3728' }}>{r.nights || '—'}</td>
                             {(colsConfig.brut      ?? false) && <td style={{ padding: '6px 8px', textAlign: 'right', color: '#4A3728', whiteSpace: 'nowrap' }}>{r.owner_stay ? '—' : fmt(r.gross_revenue || 0)}</td>}
-                            {(colsConfig.net_plat   ?? false) && <td style={{ padding: '6px 8px', textAlign: 'right', color: '#4A3728', whiteSpace: 'nowrap' }}>{r.owner_stay ? '—' : fmt(r.fin_revenue || 0)}</td>}
+                            {(colsConfig.net_plat   ?? false) && <td style={{ padding: '6px 8px', textAlign: 'right', color: '#4A3728', whiteSpace: 'nowrap' }}>{r.owner_stay ? '—' : fmt((r.fin_revenue || 0) - ((['direct','manual'].includes(r.platform) ? (r.reservation_fee||[]).filter(f=>f.fee_type==='guest_fee'&&f.label?.toLowerCase().includes('management')).reduce((s,f)=>s+(f.amount||0),0) : 0)))}</td>}
                             {(colsConfig.base_comm  ?? true)  && <td style={{ padding: '6px 8px', textAlign: 'right', color: 'var(--text)', whiteSpace: 'nowrap' }}>{r.owner_stay ? '—' : fmt(r.base_comm || 0)}</td>}
                             {(colsConfig.hon        ?? true)  && <td style={{ padding: '6px 8px', textAlign: 'right', color: '#9c8c7a', whiteSpace: 'nowrap' }}>{v.HON ? fmt(v.HON.montant_ttc) : '—'}</td>}
                             {(colsConfig.loy        ?? true)  && <td style={{ padding: '6px 8px', textAlign: 'right', color: '#CC9933', fontWeight: 600, whiteSpace: 'nowrap' }}>{v.LOY ? fmt(v.LOY.montant_ht) : '—'}</td>}
@@ -1008,7 +1008,7 @@ FORMAT :
                         const tot = data.resas.reduce((acc, r) => {
                           const v = r.vent
                           acc.brut      += r.gross_revenue || 0
-                          acc.net_plat  += r.owner_stay ? 0 : (r.fin_revenue || 0)
+                          acc.net_plat  += r.owner_stay ? 0 : ((r.fin_revenue || 0) - (['direct','manual'].includes(r.platform) ? (r.reservation_fee||[]).filter(f=>f.fee_type==='guest_fee'&&f.label?.toLowerCase().includes('management')).reduce((s,f)=>s+(f.amount||0),0) : 0))
                           acc.base_comm += r.base_comm || 0
                           acc.hon       += v.HON?.montant_ttc || 0
                           acc.loy       += v.LOY?.montant_ht  || 0

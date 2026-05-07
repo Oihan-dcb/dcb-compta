@@ -285,7 +285,13 @@ export async function buildRapportData(bienId, propId, mois, opts = {}) {
   // et leurs nuits ne sont pas des nuits voyageur
   const resasGuest = resasEnrichies.filter(r => !r.owner_stay)
   const nbResas = resasGuest.length
-  const caHeb = resasGuest.reduce((s, r) => s + (r.fin_revenue || 0), 0)
+  const getMgmtFee = (r) => {
+    if (!['direct', 'manual'].includes(r.platform)) return 0
+    return (r.reservation_fee || [])
+      .filter(f => f.fee_type === 'guest_fee' && f.label?.toLowerCase().includes('management'))
+      .reduce((s, f) => s + (f.amount || 0), 0)
+  }
+  const caHeb = resasGuest.reduce((s, r) => s + (r.fin_revenue || 0) - getMgmtFee(r), 0)
   const baseCommTotal = resasGuest.reduce((s, r) => s + (r.base_comm || 0), 0)
   const durees = resasGuest.map(r => r.nights || 0).filter(v => v > 0)
   const nuitsOccupees = durees.reduce((s, v) => s + v, 0)
