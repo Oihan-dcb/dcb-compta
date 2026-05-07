@@ -279,7 +279,9 @@ export async function buildRapportData(bienId, propId, mois, opts = {}) {
   // ventByResa déduplique implicitement (last-write-wins par code/resa)
   // → immunisé contre les lignes HON en doublon dans la table ventilation
   // honTotalVent (somme brute toutes lignes) est conservé pour _debug uniquement
-  const honTotal = resasGuest.reduce((s, r) => s + (r.hon || 0), 0)
+  const honTotal  = resasGuest.reduce((s, r) => s + (r.hon || 0), 0)
+  const fmenTotal = resasEnrichies.reduce((s, r) => s + (r.fmen || 0), 0)
+  const autoTotal = resasEnrichies.reduce((s, r) => s + (ventByResa[r.id]?.AUTO?.montant_ht || 0), 0)
 
   const resaN1Valid = resasN1 || []
   const caHebN1 = resaN1Valid.reduce((s, r) => s + (r.fin_revenue || 0), 0)
@@ -303,7 +305,7 @@ export async function buildRapportData(bienId, propId, mois, opts = {}) {
     nbReviewsGlobal: allReviewsData?.length || 0,
     kpis: {
       nbResas, caHeb, baseCommTotal, nuitsOccupees, nuitsDispos,
-      tauxOcc, dureeMoy, loyTotal, honTotal, virementNet,
+      tauxOcc, dureeMoy, loyTotal, honTotal, fmenTotal, autoTotal, virementNet,
       modeEncaissement, virTotalProprioEncaisse,
       // Debug interne
       _virTotal: virTotal, _totalDebours: totalDebours, _totalHaowner: totalHaowner,

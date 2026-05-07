@@ -282,7 +282,7 @@ export function genererRapportHTML(proprio, mois, data, colonnes = {}) {
   .container { max-width:680px; margin:0 auto; background:#fff; }
   .section { padding:14px 24px; border-bottom:1px solid #EDEBE5; }
   .section-title { font-size:0.68em; font-weight:700; letter-spacing:1px; text-transform:uppercase; color:#CC9933; margin-bottom:10px; }
-  .kpi-grid { display:grid; grid-template-columns:repeat(3,1fr); gap:8px; }
+  .kpi-grid { display:grid; grid-template-columns:repeat(4,1fr); gap:8px; }
   .kpi { background:#F7F4EF; border:1px solid #EDEBE5; border-radius:8px; padding:10px 8px; text-align:center; }
   .kpi-val { font-size:18px; font-weight:700; color:#2C2416; }
   .kpi-lbl { font-size:8px; color:#9C8E7D; margin-top:3px; text-transform:uppercase; letter-spacing:0.5px; }
@@ -398,6 +398,14 @@ export function genererRapportHTML(proprio, mois, data, colonnes = {}) {
         <div class="kpi-val">${noteMoisMoy ? SVG.starFull(14) + ' ' + noteMoisMoy : '—'}</div>
         <div class="kpi-lbl">Note voyageurs</div>
         ${nbReviewsGlobal > 0 ? `<div class="kpi-delta" style="color:#9C8E7D;">${SVG.starFull(11,'#9C8E7D')} ${noteGlobaleMoy} global (${nbReviewsGlobal})</div>` : ''}
+      </div>
+      <div class="kpi">
+        <div class="kpi-val">${fmt(kpis.fmenTotal || 0)}</div>
+        <div class="kpi-lbl">Total FMEN</div>
+      </div>
+      <div class="kpi">
+        <div class="kpi-val">${fmt(kpis.autoTotal || 0)}</div>
+        <div class="kpi-lbl">Main d'œuvre AE</div>
       </div>
     </div>
   </div>
