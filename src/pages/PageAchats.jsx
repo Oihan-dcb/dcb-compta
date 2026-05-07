@@ -50,15 +50,16 @@ export default function PageAchats() {
   const [importError, setImportError] = useState(null)
   const [rapprochement, setRapprochement] = useState(null) // null | 'loading' | { nb, details }
 
+  const [mouvementsCourant, setMouvementsCourant] = useState([])
+
   const charger = useCallback(async () => {
     setLoading(true)
-    const { data } = await supabase
-      .from('facture_achat')
-      .select('*')
-      .eq('agence', AGENCE)
-      .eq('mois', moisFiltre)
-      .order('created_at', { ascending: false })
-    setFactures(data || [])
+    const [{ data: factures }, { data: mvts }] = await Promise.all([
+      supabase.from('facture_achat').select('*').eq('agence', AGENCE).eq('mois', moisFiltre).order('created_at', { ascending: false }),
+      supabase.from('mouvement_bancaire').select('id,date_operation,libelle,detail,credit,debit,canal').eq('agence', AGENCE).eq('mois_releve', moisFiltre).eq('source', 'Powens_courant').order('date_operation', { ascending: false }),
+    ])
+    setFactures(factures || [])
+    setMouvementsCourant(mvts || [])
     setLoading(false)
   }, [moisFiltre])
 
@@ -629,6 +630,32 @@ ${mvts.map(m => `${m.id} | ${m.libelle} | ${(Number(m.debit) / 100).toFixed(2)}�
               ))}
             </div>
           )}
+        </div>
+      )}
+
+      {/* Mouvements bancaires courant (Powens) */}
+      {mouvementsCourant.length > 0 && (
+        <div style={{ marginBottom: 20 }}>
+          <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--text-muted)', marginBottom: 8 }}>
+            🏦 Compte courant — {mouvementsCourant.length} opérations
+          </div>
+          <div style={{ maxHeight: 220, overflowY: 'auto', border: '1px solid var(--border)', borderRadius: 8 }}>
+            <table className="table" style={{ fontSize: 12 }}>
+              <thead>
+                <tr><th>Date</th><th>Libellé</th><th className="right">Crédit</th><th className="right">Débit</th></tr>
+              </thead>
+              <tbody>
+                {mouvementsCourant.map(m => (
+                  <tr key={m.id}>
+                    <td style={{ whiteSpace: 'nowrap' }}>{m.date_operation}</td>
+                    <td><div>{m.libelle}</div>{m.detail && <div style={{ color: '#888', fontSize: 11 }}>{m.detail}</div>}</td>
+                    <td className="right montant montant-positif">{m.credit ? (m.credit / 100).toFixed(2) + ' €' : '—'}</td>
+                    <td className="right montant montant-negatif">{m.debit ? (m.debit / 100).toFixed(2) + ' €' : '—'}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
         </div>
       )}
 
