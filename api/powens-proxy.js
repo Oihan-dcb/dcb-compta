@@ -20,9 +20,10 @@ export default async function handler(req, res) {
   const { fn, ...body } = req.body
   if (!fn) return res.status(400).json({ error: 'fn requis' })
 
-  // Injecter la redirectUri pour les appels auth
+  // Injecter la redirectUri avec agence+accountLabel pour que le callback sache quel compte traiter
   if (body.action === 'init_webview') {
-    body.redirectUri = REDIRECT_URI
+    const params = new URLSearchParams({ agence: body.agence || 'dcb', account_label: body.accountLabel || 'seq_lc' })
+    body.redirectUri = `${REDIRECT_URI}?${params}`
   }
 
   try {
