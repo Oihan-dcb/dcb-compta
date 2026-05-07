@@ -137,7 +137,9 @@ async function listStaged(agence: string, mois?: string) {
     .order('date_operation', { ascending: false })
 
   if (mois) {
-    query = query.gte('date_operation', `${mois}-01`).lte('date_operation', `${mois}-31`)
+    const [y, m] = mois.split('-').map(Number)
+    const lastDay = new Date(y, m, 0).toISOString().substring(0, 10)
+    query = query.gte('date_operation', `${mois}-01`).lte('date_operation', lastDay)
   }
 
   const { data, error } = await query
@@ -153,7 +155,11 @@ async function importStaged(agence: string, ids?: string[], mois?: string) {
     .eq('statut', 'a_importer')
 
   if (ids?.length) query = query.in('powens_transaction_id', ids)
-  else if (mois) query = query.gte('date_operation', `${mois}-01`).lte('date_operation', `${mois}-31`)
+  else if (mois) {
+    const [y, m] = mois.split('-').map(Number)
+    const lastDay = new Date(y, m, 0).toISOString().substring(0, 10)
+    query = query.gte('date_operation', `${mois}-01`).lte('date_operation', lastDay)
+  }
 
   const { data: staged, error } = await query
   if (error) throw error
