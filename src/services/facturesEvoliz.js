@@ -222,6 +222,15 @@ async function genererFactureGroupe(proprio, biens, mois, ctx) {
   const fraisDirectHT  = Math.round(fraisDirectTTC / 1.20)
   const fraisDirectTVA = fraisDirectTTC - fraisDirectHT
 
+  // Proprio encaisse : Airbnb/Booking pour biens mode_encaissement='proprio' — DCB n'encaisse pas
+  const PLATFORMS_DCB_FACT = ['direct', 'manual']
+  const resaPlatMapFact = new Map(reservations.map(r => [r.id, r.platform || '']))
+  const isProprioEncaisseVent = (v) => {
+    const b = biens.find(bb => bb.id === v.bien_id)
+    return b?.mode_encaissement === 'proprio' &&
+      !PLATFORMS_DCB_FACT.includes(resaPlatMapFact.get(v.reservation_id) || '')
+  }
+
   const osResaIds = new Set((ownerStayResas || []).map(r => r.id))
 
   const osVentByBien = new Map()
@@ -247,7 +256,13 @@ async function genererFactureGroupe(proprio, biens, mois, ctx) {
   const mgt = sumByCode('MGT')
   const ae  = sumByCode('AE')
   const loy = sumByCode('LOY')
-  const vir = sumByCode('VIR')
+  // VIR : exclure les resas proprio_encaisse (Airbnb/Booking pour biens proprio — non encaissé par DCB)
+  const vir = ventilation
+    .filter(l => l.code === 'VIR' && !isProprioEncaisseVent(l))
+    .reduce((s, l) => ({ ht: s.ht + l.montant_ht, tva: s.tva + l.montant_tva, ttc: s.ttc + l.montant_ttc }), { ht: 0, tva: 0, ttc: 0 })
+  const virProprioEncaisse = ventilation
+    .filter(l => l.code === 'VIR' && isProprioEncaisseVent(l))
+    .reduce((s, l) => s + l.montant_ht, 0)
 
   // DIV : expenses [DCB]
   const divHT = (expenses || []).reduce((s, e) => s + (e.amount || 0), 0)
@@ -396,6 +411,22 @@ async function genererFactureGroupe(proprio, biens, mois, ctx) {
         montant_tva: 0,
         montant_ttc: autoTotal,
         ordre: 99,
+      })
+    }
+    // Rafraîchir la ligne mémo VIRP même si la facture est déjà envoyée à Evoliz
+    await supabase.from('facture_evoliz_ligne').delete()
+      .eq('facture_id', existingFacture.id).eq('code', 'VIRP')
+    if (virProprioEncaisse > 0) {
+      await supabase.from('facture_evoliz_ligne').insert({
+        facture_id: existingFacture.id,
+        code: 'VIRP',
+        libelle: 'Loyers perçus directement par le propriétaire — mémo',
+        description: 'Airbnb / Booking : montant encaissé directement par le propriétaire, non transitant par DCB.',
+        montant_ht: virProprioEncaisse,
+        taux_tva: null,
+        montant_tva: 0,
+        montant_ttc: virProprioEncaisse,
+        ordre: 98,
       })
     }
     // Supprimer l'ancienne ligne RECAP si elle existe (remplacée par le contrôle virements UI)
@@ -613,6 +644,21 @@ async function genererFactureGroupe(proprio, biens, mois, ctx) {
       montant_tva: 0,
       montant_ttc: autoTotal,
       ordre: 99,
+    })
+  }
+
+  // Ligne mémo VIRP : loyers perçus directement par le proprio (Airbnb/Booking, non transitant par DCB)
+  if (virProprioEncaisse > 0) {
+    lignes.push({
+      facture_id: factureId,
+      code: 'VIRP',
+      libelle: 'Loyers perçus directement par le propriétaire — mémo',
+      description: 'Airbnb / Booking : montant encaissé directement par le propriétaire, non transitant par DCB.',
+      montant_ht: virProprioEncaisse,
+      taux_tva: null,
+      montant_tva: 0,
+      montant_ttc: virProprioEncaisse,
+      ordre: 98,
     })
   }
 
