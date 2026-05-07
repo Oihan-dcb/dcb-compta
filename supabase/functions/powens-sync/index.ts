@@ -223,7 +223,7 @@ serve(async (req) => {
         result = await syncTransactions(agence, accountLabel, dateFrom, dateTo)
         break
       case 'list_staged':
-        result = await listStaged(agence, mois)
+        result = { transactions: await listStaged(agence, mois) }
         break
       case 'import_staged':
         result = await importStaged(agence, ids, mois)
