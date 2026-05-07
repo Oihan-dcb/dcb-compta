@@ -6,7 +6,7 @@ import { formatMontant, setToken } from '../lib/hospitable'
 import { calculerVentilationMois } from '../services/ventilation'
 import { lancerMatchingAuto } from '../services/rapprochement'
 import { resetEtRematcher } from '../services/rapprochement'
-import { getPowensStatus, connectPowens, syncAllPowensAccounts } from '../services/powens'
+import { getPowensStatus, connectPowens, syncAllPowensAccounts, setupPowensWebhook } from '../services/powens'
 import { format } from 'date-fns'
 import { fr } from 'date-fns/locale'
 
@@ -224,6 +224,10 @@ export default function PageConfig() {
   const [powensSyncing, setPowensSyncing] = useState(false)
   const [powensSyncMois, setPowensSyncMois] = useState(moisCourant)
   const [powensLog, setPowensLog] = useState(null)
+  const [powensWebhookLog, setPowensWebhookLog] = useState(null)
+  const [settingWebhook, setSettingWebhook] = useState(false)
+
+  const WEBHOOK_URL = 'https://dcb-compta.vercel.app/api/powens-webhook'
 
   useEffect(() => { chargerStatusPowens() }, [])
 
@@ -254,6 +258,19 @@ export default function PageConfig() {
       setPowensLog({ ok: false, msg: err.message })
     } finally {
       setPowensConnecting(null)
+    }
+  }
+
+  async function handleSetupWebhook() {
+    setSettingWebhook(true)
+    setPowensWebhookLog(null)
+    try {
+      const res = await setupPowensWebhook(WEBHOOK_URL)
+      setPowensWebhookLog({ ok: true, msg: res.registered ? 'Webhook enregistré ✓' : res.message })
+    } catch (err) {
+      setPowensWebhookLog({ ok: false, msg: err.message })
+    } finally {
+      setSettingWebhook(false)
     }
   }
 
@@ -466,6 +483,25 @@ export default function PageConfig() {
             {powensLog.ok ? '✓' : '✗'} {powensLog.msg}
           </div>
         )}
+
+        {/* Webhook */}
+        <div style={{ marginTop: 16, paddingTop: 16, borderTop: '1px solid #F0EAD6', display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
+          <div style={{ flex: 1 }}>
+            <span style={{ fontSize: 13, fontWeight: 600 }}>Webhook ACCOUNT_SYNCED</span>
+            <span style={{ fontSize: 12, color: '#888', marginLeft: 8, fontFamily: 'monospace' }}>{WEBHOOK_URL}</span>
+          </div>
+          <button
+            onClick={handleSetupWebhook}
+            disabled={settingWebhook}
+            style={{ background: '#374151', color: '#fff', border: 'none', borderRadius: 7, padding: '6px 14px', fontWeight: 700, fontSize: 13, cursor: settingWebhook ? 'wait' : 'pointer' }}>
+            {settingWebhook ? '⏳…' : '⚙ Enregistrer webhook'}
+          </button>
+          {powensWebhookLog && (
+            <span style={{ fontSize: 13, fontWeight: 600, color: powensWebhookLog.ok ? '#166534' : '#991B1B' }}>
+              {powensWebhookLog.ok ? '✓' : '✗'} {powensWebhookLog.msg}
+            </span>
+          )}
+        </div>
       </div>
 
       {/* Statut des variables d'env */}

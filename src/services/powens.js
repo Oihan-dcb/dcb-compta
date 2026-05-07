@@ -100,6 +100,13 @@ export async function importStagedTransactions(agence, accountLabel, ids, mois) 
 }
 
 /**
+ * Enregistre le webhook Powens ACCOUNT_SYNCED
+ */
+export async function setupPowensWebhook(webhookUrl) {
+  return call('powens-auth', { action: 'setup_webhook', webhookUrl })
+}
+
+/**
  * Synchronise ET importe les 3 comptes Powens en parallèle (seq_lc, seq_lld, courant)
  * Les erreurs par compte sont collectées mais ne bloquent pas les autres.
  */

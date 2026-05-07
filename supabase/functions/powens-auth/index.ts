@@ -181,7 +181,7 @@ serve(async (req) => {
   if (req.method === 'OPTIONS') return new Response('ok', { headers: CORS })
 
   try {
-    const { action, agence, accountLabel, state, code, redirectUri } = await req.json()
+    const { action, agence, accountLabel, state, code, redirectUri, webhookUrl } = await req.json()
 
     let result
     switch (action) {
@@ -201,6 +201,28 @@ serve(async (req) => {
         if (!conn?.access_token) throw new Error('Pas de token pour ce compte')
         const r = await powensGet('/users/me/accounts', conn.access_token)
         result = { accounts: r.data?.accounts || [] }
+        break
+      }
+      case 'setup_webhook': {
+        const basicAuth = btoa(`${CLIENT_ID}:${CLIENT_SEC}`)
+        // Lister les webhooks existants
+        const listRes = await fetch(`${BASE_URL}/webhooks`, {
+          headers: { Authorization: `Basic ${basicAuth}`, Accept: 'application/json' },
+        })
+        const listData = await listRes.json()
+        const existing = (listData.webhooks || []).find((w: any) => w.url === webhookUrl)
+        if (existing) {
+          result = { registered: false, message: 'Webhook déjà enregistré', webhook: existing }
+        } else {
+          const createRes = await fetch(`${BASE_URL}/webhooks`, {
+            method: 'POST',
+            headers: { Authorization: `Basic ${basicAuth}`, 'Content-Type': 'application/json' },
+            body: JSON.stringify({ url: webhookUrl, event_name: 'ACCOUNT_SYNCED' }),
+          })
+          const createData = await createRes.json()
+          if (!createRes.ok) throw new Error(`Powens webhook: ${JSON.stringify(createData)}`)
+          result = { registered: true, webhook: createData }
+        }
         break
       }
       default:
