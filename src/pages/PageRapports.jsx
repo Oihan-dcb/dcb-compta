@@ -406,7 +406,7 @@ TON :
 - Naturel, humain, maîtrisé
 - Neutre mais incarné (pas robotique)
 - Jamais commercial, jamais administratif
-- Toujours en français — aucun mot anglais (pas de "april", "booking", etc. — écrire "avril", "la plateforme")${isGlobalMaite ? `
+- Toujours en français — aucun mot anglais, même en milieu de phrase (pas de "therefore", "indeed", "however", "thus", "hence", "moreover", "april", "booking" — écrire "donc", "en effet", "cependant", "ainsi", "par conséquent", "de plus", "avril", "la plateforme")${isGlobalMaite ? `
 - Ce rapport couvre à la fois la maison dans son ensemble ET ses chambres individuelles. Utilise le bon niveau de granularité selon ce dont tu parles : "la maison" quand tu parles de la performance globale ou d'une privatisation qui occupe tout le bâtiment, "les chambres" quand tu parles de la dynamique des séjours individuels, et "Maison Maïté" pour nommer l'établissement. Ne réduis pas tout à "la chambre" (singulier) comme si c'était un seul logement.` : ''}
 
 FORME :
@@ -598,6 +598,22 @@ FORMAT :
       .replace(/^---+$/gm, '')
       .replace(/^\*\*[^*]+\*\*\s*$/gm, '')
       .replace(/\n{3,}/g, '\n\n')
+      // Corrections anglicismes qui passent malgré la consigne
+      .replace(/\btherefore\b/gi, 'donc')
+      .replace(/\bhowever\b/gi, 'cependant')
+      .replace(/\bindeed\b/gi, 'en effet')
+      .replace(/\bthus\b/gi, 'ainsi')
+      .replace(/\bhence\b/gi, 'par conséquent')
+      .replace(/\bmoreover\b/gi, 'de plus')
+      .replace(/\bfurthermore\b/gi, 'de plus')
+      .replace(/\bnevertheless\b/gi, 'néanmoins')
+      .replace(/\boverall\b/gi, 'dans l\'ensemble')
+      .replace(/\bapril\b/gi, 'avril')
+      .replace(/\bmarch\b/gi, 'mars')
+      .replace(/\bmay\b/gi, 'mai')
+      .replace(/\bjune\b/gi, 'juin')
+      .replace(/\bjuly\b/gi, 'juillet')
+      .replace(/\baugust\b/gi, 'août')
       .trim()
 
     try {
