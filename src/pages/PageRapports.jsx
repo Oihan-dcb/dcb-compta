@@ -334,6 +334,11 @@ export default function PageRapports() {
     const prixMoyenNuit = data.kpis.nuitsOccupees > 0
       ? Math.round((data.kpis.caHeb / data.kpis.nuitsOccupees) / 100) : 0
 
+    const bienVilleEarly = data.bien?.ville || ''
+    const isBordeauxEarly = bienVilleEarly.toLowerCase().includes('bordeaux')
+    const meteoLat = isBordeauxEarly ? '44.84' : '43.48'
+    const meteoLon = isBordeauxEarly ? '-0.58' : '-1.56'
+
     let meteoResume = 'Données météo non disponibles.'
     let meteoFutur = ''
     try {
@@ -371,16 +376,13 @@ export default function PageRapports() {
 
     const bienNom = (isMaite && modeMaite === 'global') ? 'Maison Maïté' : (data.bien?.hospitable_name || '')
     const tauxCommission = data.tauxCommission
-    const bienVille = data.bien?.ville || ''
-    const isBordeaux = bienVille.toLowerCase().includes('bordeaux')
+    const isBordeaux = isBordeauxEarly
     const villeLabel = isBordeaux ? 'Bordeaux' : 'la Côte Basque'
     const agenceLabel = isBordeaux ? 'Destination Bordeaux' : 'Destination Côte Basque'
     const isGlobalMaite = isMaite && modeMaite === 'global'
     const isChambreMaite = isMaite && modeMaite === 'chambre'
     const resasGuest = (data.resas || []).filter(r => !r.owner_stay)
     const privatisations = isGlobalMaite ? resasGuest.filter(r => r.platform === 'manual' && (r.nights || 0) >= 7) : []
-    const meteoLat = isBordeaux ? '44.84' : '43.48'
-    const meteoLon = isBordeaux ? '-0.58' : '-1.56'
 
     const [m1yr, m1mo] = m1.split('-').map(Number)
     const [m2yr, m2mo] = m2.split('-').map(Number)
