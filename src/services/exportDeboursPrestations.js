@@ -1,22 +1,31 @@
 import { supabase } from '../lib/supabase'
 import * as XLSX from 'xlsx'
+import { AGENCE } from '../lib/agence'
 
-async function fetchData(mois) {
-  const [{ data: prestations }, { data: frais }] = await Promise.all([
-    supabase.from('prestation_hors_forfait')
-      .select('*, bien:bien_id(code, hospitable_name), prestation_type:prestation_type_id(nom), auto_entrepreneur:ae_id(prenom, nom)')
-      .eq('mois', mois)
-      .order('date_prestation', { ascending: true }),
-    supabase.from('frais_proprietaire')
-      .select('*, proprietaire:proprietaire_id(nom, prenom)')
-      .eq('mois_facturation', mois)
-      .order('date_creation', { ascending: true })
+async function fetchData(mois, bienIds = null) {
+  let prestQuery = supabase.from('prestation_hors_forfait')
+    .select('*, bien:bien_id!inner(code, hospitable_name, agence), prestation_type:prestation_type_id(nom), auto_entrepreneur:ae_id(prenom, nom)')
+    .eq('mois', mois)
+    .eq('bien.agence', AGENCE)
+    .order('date_prestation', { ascending: true })
+  if (bienIds) prestQuery = prestQuery.in('bien_id', bienIds)
+  let fraisQuery = supabase.from('frais_proprietaire')
+    .select('*, proprietaire:proprietaire_id(nom, prenom), bien:bien_id!inner(agence)')
+    .eq('mois_facturation', mois)
+    .eq('bien.agence', AGENCE)
+    .order('created_at', { ascending: true })
+  if (bienIds) fraisQuery = fraisQuery.in('bien_id', bienIds)
+  const [{ data: prestations, error: prestErr }, { data: frais, error: fraisErr }] = await Promise.all([
+    prestQuery,
+    fraisQuery,
   ])
+  if (prestErr) throw new Error(`Débours/prestations — prestations : ${prestErr.message}`)
+  if (fraisErr) throw new Error(`Débours/prestations — frais : ${fraisErr.message}`)
   return { prestations: prestations || [], frais: frais || [] }
 }
 
-export async function exportDeboursPrestations(mois) {
-  const { prestations, frais } = await fetchData(mois)
+export async function exportDeboursPrestations(mois, bienIds = null) {
+  const { prestations, frais } = await fetchData(mois, bienIds)
 
   const STATUT_PREST = { 'valide': 'Validée', 'en_attente': 'En attente', 'refuse': 'Refusée', 'annule': 'Annulée' }
   const IMPUTATION   = { 'haowner': 'Achat DCB pour proprio', 'debours_proprio': 'Débours propriétaire', 'deduction_loy': 'Déduction loyer AE' }
@@ -46,7 +55,7 @@ export async function exportDeboursPrestations(mois) {
     "Mode d'encaissement": MODE_ENCAISS[f.mode_encaissement] || f.mode_encaissement || '',
     'Statut': STATUT_FRAIS[f.statut] || f.statut || '',
     'Statut déduction': STATUT_DED[f.statut_deduction] || f.statut_deduction || '',
-    'Date de création': f.date_creation || ''
+    'Date de création': f.created_at?.slice(0, 10) || ''
   }))
 
   const wb = XLSX.utils.book_new()
@@ -61,8 +70,8 @@ export async function exportDeboursPrestations(mois) {
 }
 
 // Aperçu consulter — CSV combiné (2 sections)
-export async function exportDeboursPrestationsCombined(mois) {
-  const { prestations, frais } = await fetchData(mois)
+export async function exportDeboursPrestationsCombined(mois, bienIds = null) {
+  const { prestations, frais } = await fetchData(mois, bienIds)
 
   const q = v => `"${String(v ?? '').replace(/"/g, '""')}"`
   const row = cols => cols.map(q).join(';')
@@ -100,7 +109,7 @@ export async function exportDeboursPrestationsCombined(mois) {
       f.mode_encaissement || '',
       f.statut || '',
       f.statut_deduction || '',
-      f.date_creation || '',
+      f.created_at?.slice(0, 10) || '',
     ]))
   }
 

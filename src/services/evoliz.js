@@ -194,11 +194,21 @@ export async function creerFactureEvoliz(facture) {
     invoiceId = createdInvoice?.invoiceid
     if (!invoiceId) throw new Error('invoiceid non retourné après création')
   } catch (evolizErr) {
-    // Evoliz a échoué — aucune facture finalisée côté Evoliz : reset à 'valide'
+    // createInvoice échoué — aucune facture créée côté Evoliz : reset à 'valide' (retry sûr)
     await supabase.from('facture_evoliz')
       .update({ statut: 'valide' })
       .eq('id', facture.id)
     throw evolizErr
+  }
+
+  // Finaliser pour obtenir le numéro définitif Evoliz
+  // Séparé du try précédent : si saveInvoice échoue, invoiceId est connu — pas de doublon au retry
+  try {
+    const savedInvoice = await evolizCall('saveInvoice', { invoiceId })
+    invoiceNumber = savedInvoice?.document_number || null
+  } catch (saveErr) {
+    // Facture créée dans Evoliz (invoiceId connu) mais non finalisée — numéro null, non bloquant
+    console.warn(`saveInvoice échoué pour invoiceId=${invoiceId}:`, saveErr.message)
   }
 
   // 7. Mettre a jour Supabase - avec retry (CF-F2 niveau 2)

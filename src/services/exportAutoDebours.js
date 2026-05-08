@@ -2,6 +2,7 @@ import { supabase } from '../lib/supabase'
 import { format } from 'date-fns'
 import { fr } from 'date-fns/locale'
 import ExcelJS from 'exceljs'
+import { AGENCE } from '../lib/agence'
 
 const BRAND  = 'CC9933'
 const BEIGE  = 'EAE3D4'
@@ -10,21 +11,26 @@ const WHITE  = 'FFFFFF'
 const BROWN  = '2C2416'
 const GREY   = '9C8E7D'
 
-async function fetchData(mois) {
-  const [{ data: missions }, { data: prestations }] = await Promise.all([
-    supabase.from('mission_menage')
-      .select(`
-        id, reservation_id, ae_id, date_mission, duree_heures, montant, titre_ical,
-        bien:bien_id(code, hospitable_name, proprietaire:proprietaire_id(nom, prenom)),
-        auto_entrepreneur:ae_id(id, prenom, nom, taux_horaire, type)
-      `)
-      .eq('mois', mois)
-      .order('date_mission', { ascending: true }),
+async function fetchData(mois, bienIds = null) {
+  let missQuery = supabase.from('mission_menage')
+    .select(`
+      id, reservation_id, ae_id, date_mission, duree_heures, montant, titre_ical,
+      bien:bien_id!inner(code, hospitable_name, agence, proprietaire:proprietaire_id(nom, prenom)),
+      auto_entrepreneur:ae_id(id, prenom, nom, taux_horaire, type)
+    `)
+    .eq('mois', mois)
+    .eq('bien.agence', AGENCE)
+    .order('date_mission', { ascending: true })
+  if (bienIds) missQuery = missQuery.in('bien_id', bienIds)
+  const [{ data: missions, error: missErr }, { data: prestations, error: prestErr }] = await Promise.all([
+    missQuery,
     supabase.from('prestation_hors_forfait')
       .select(`id, mission_id, ae_id, montant, prestation_type:prestation_type_id(nom)`)
       .eq('mois', mois)
       .not('ae_id', 'is', null),
   ])
+  if (missErr) throw new Error(`AUTO/Débours — missions : ${missErr.message}`)
+  if (prestErr) throw new Error(`AUTO/Débours — prestations : ${prestErr.message}`)
 
   const moisLabel = format(new Date(mois + '-01'), 'MMMM yyyy', { locale: fr })
   const nomMois = moisLabel.charAt(0).toUpperCase() + moisLabel.slice(1)
@@ -186,8 +192,8 @@ function addSheet(wb, ae, missions, prestByMission, nomMois) {
 }
 
 // Export XLSX — un onglet par AE
-export async function exportAutoDebours(mois) {
-  const { missionsByAe, prestByMission, nomMois } = await fetchData(mois)
+export async function exportAutoDebours(mois, bienIds = null) {
+  const { missionsByAe, prestByMission, nomMois } = await fetchData(mois, bienIds)
 
   const wb = new ExcelJS.Workbook()
   wb.creator = 'DCB Compta'
@@ -202,8 +208,8 @@ export async function exportAutoDebours(mois) {
 }
 
 // Aperçu consulter — CSV combiné avec séparateurs par AE
-export async function exportAutoDeboursCombined(mois) {
-  const { missionsByAe, prestByMission, nomMois } = await fetchData(mois)
+export async function exportAutoDeboursCombined(mois, bienIds = null) {
+  const { missionsByAe, prestByMission, nomMois } = await fetchData(mois, bienIds)
 
   const sep = c => `"${String(c ?? '').replace(/"/g, '""')}"`
   const row = cols => cols.map(sep).join(';')

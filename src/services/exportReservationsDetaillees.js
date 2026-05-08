@@ -1,18 +1,24 @@
 import { supabase } from '../lib/supabase'
 import { format } from 'date-fns'
 import { fr } from 'date-fns/locale'
+import { AGENCE } from '../lib/agence'
 
-export async function exportReservationsDetaillees(mois) {
-  const [{ data: resas }, { data: ventils }] = await Promise.all([
-    supabase.from('reservation')
-      .select('*, bien:bien_id(code, hospitable_name, proprietaire:proprietaire_id(nom, prenom))')
-      .eq('mois_comptable', mois)
-      .order('arrival_date', { ascending: true }),
+export async function exportReservationsDetaillees(mois, bienIds = null) {
+  let resaQuery = supabase.from('reservation')
+    .select('*, bien:bien_id!inner(code, hospitable_name, agence, proprietaire:proprietaire_id(nom, prenom))')
+    .eq('mois_comptable', mois)
+    .eq('bien.agence', AGENCE)
+    .order('arrival_date', { ascending: true })
+  if (bienIds) resaQuery = resaQuery.in('bien_id', bienIds)
+  const [{ data: resas, error: resaErr }, { data: ventils, error: ventilErr }] = await Promise.all([
+    resaQuery,
     supabase.from('ventilation')
       .select('reservation_id, code, montant_ht, montant_tva, montant_ttc, montant_reel')
       .eq('mois_comptable', mois)
       .in('code', ['HON', 'FMEN', 'AUTO', 'LOY', 'VIR', 'TAXE', 'COM'])
   ])
+  if (resaErr) throw new Error(`Export réservations : ${resaErr.message}`)
+  if (ventilErr) throw new Error(`Export réservations — ventilation : ${ventilErr.message}`)
 
   const ventByResa = {}
   for (const v of (ventils || [])) {

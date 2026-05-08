@@ -162,9 +162,13 @@ export default function PageExports() {
   const [emailCC, setEmailCC] = useState('')
   const [emailMessage, setEmailMessage] = useState('')
   const [emailExports, setEmailExports] = useState({
-    rapprochement: true, auto: true, factures: true, compta: true, achats: false, bilan_lld: false
+    rapprochement: false, auto: false, factures: false, compta: false, achats: false, bilan_lld: false
   })
   const [sendingEmail, setSendingEmail] = useState(false)
+
+  const [biens, setBiens] = useState([])
+  const [bienFilter, setBienFilter] = useState({})
+  const [bienFilterOpen, setBienFilterOpen] = useState(false)
 
   useEffect(() => {
     supabase.from('reservation').select('mois_comptable').then(({ data: res }) => {
@@ -180,6 +184,51 @@ export default function PageExports() {
   // Fermer la preview si on change de mois
   useEffect(() => { setPreview(null) }, [mois])
 
+  // Charger les biens pour le filtre
+  useEffect(() => {
+    supabase.from('bien')
+      .select('id, code, hospitable_name, proprietaire_id, proprietaire:proprietaire_id(id, nom, prenom)')
+      .eq('agence', AGENCE)
+      .order('hospitable_name')
+      .then(({ data, error }) => {
+        if (error) { console.error('PageExports biens filter:', error); return }
+        const list = data || []
+        setBiens(list)
+        const init = {}
+        for (const b of list) init[b.id] = true
+        setBienFilter(init)
+      })
+  }, [])
+
+  // Réinitialiser le filtre à chaque changement de mois
+  useEffect(() => {
+    setBienFilter(prev => {
+      const next = {}
+      for (const k of Object.keys(prev)) next[k] = true
+      return next
+    })
+  }, [mois])
+
+  const selectedBienIds = useMemo(() => {
+    if (biens.length === 0) return null
+    const all = biens.every(b => bienFilter[b.id] !== false)
+    if (all) return null
+    return biens.filter(b => bienFilter[b.id] !== false).map(b => b.id)
+  }, [biens, bienFilter])
+
+  const nbSelected = useMemo(() => biens.filter(b => bienFilter[b.id] !== false).length, [biens, bienFilter])
+
+  const propGroups = useMemo(() => {
+    const groups = {}
+    for (const b of biens) {
+      const pid = b.proprietaire_id || '__sans__'
+      const nom = b.proprietaire ? `${b.proprietaire.prenom || ''} ${b.proprietaire.nom || ''}`.trim() : 'Sans propriétaire'
+      if (!groups[pid]) groups[pid] = { nom, biens: [] }
+      groups[pid].biens.push(b)
+    }
+    return Object.values(groups).sort((a, b) => a.nom.localeCompare(b.nom))
+  }, [biens])
+
   function downloadCSVBlob(csv, filename) {
     const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' })
     const url = URL.createObjectURL(blob)
@@ -190,11 +239,11 @@ export default function PageExports() {
     URL.revokeObjectURL(url)
   }
 
-  async function consulterCSV(type, titre, generator, filename) {
+  async function consulterCSV(type, titre, generator, filename, bienIds = null) {
     setLoading(prev => ({ ...prev, [type + '_preview']: true }))
     setError(null)
     try {
-      const csv = await generator(mois)
+      const csv = await generator(mois, bienIds)
       setPreview({
         titre: `${titre} — ${mois}`,
         csv,
@@ -211,7 +260,7 @@ export default function PageExports() {
     setLoading(prev => ({ ...prev, compta_preview: true }))
     setError(null)
     try {
-      const data = await buildComptaMensuelle(mois)
+      const data = await buildComptaMensuelle(mois, selectedBienIds)
       const csv = exportComptaCSV(data)
       setPreview({
         titre: `Comptabilité mensuelle — ${mois}`,
@@ -225,11 +274,11 @@ export default function PageExports() {
     }
   }
 
-  async function telechargerCSV(type, filename, generator) {
+  async function telechargerCSV(type, filename, generator, bienIds = null) {
     setLoading(prev => ({ ...prev, [type]: true }))
     setError(null)
     try {
-      const csv = await generator(mois)
+      const csv = await generator(mois, bienIds)
       downloadCSVBlob(csv, filename.replace('{mois}', mois))
     } catch (err) {
       setError(err.message)
@@ -242,7 +291,7 @@ export default function PageExports() {
     setLoading(prev => ({ ...prev, debours: true }))
     setError(null)
     try {
-      const blob = await exportDeboursPrestations(mois)
+      const blob = await exportDeboursPrestations(mois, selectedBienIds)
       const url = URL.createObjectURL(blob)
       const a = document.createElement('a')
       a.href = url
@@ -260,7 +309,7 @@ export default function PageExports() {
     setLoading(prev => ({ ...prev, compta: true }))
     setError(null)
     try {
-      const data = await buildComptaMensuelle(mois)
+      const data = await buildComptaMensuelle(mois, selectedBienIds)
       downloadComptaCSV(data)
     } catch (err) {
       setError(err.message)
@@ -296,7 +345,7 @@ export default function PageExports() {
     setError(null)
     setSuccess(null)
     try {
-      await envoyerExportsComptable(mois, emailDest, emailCC, exportsSelectionnes, emailMessage)
+      await envoyerExportsComptable(mois, emailDest, emailCC, exportsSelectionnes, emailMessage, selectedBienIds)
       setSuccess('Email envoyé avec succès')
       setShowEmailForm(false)
       setEmailDest(''); setEmailCC(''); setEmailMessage('')
@@ -319,13 +368,88 @@ export default function PageExports() {
         />
       )}
 
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 24 }}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
         <div>
           <h1 style={{ margin: 0, fontSize: '1.4em', fontWeight: 700, color: 'var(--text)' }}>Exports</h1>
           <div style={{ fontSize: '0.82em', color: '#9C8E7D', marginTop: 2 }}>Téléchargements et envoi comptable</div>
         </div>
         <MoisSelector mois={mois} setMois={setMois} moisDispos={moisDispos} />
       </div>
+
+      {/* Filtre par bien */}
+      {biens.length > 0 && (
+        <div style={{ marginBottom: 20, border: '1px solid var(--border)', borderRadius: 8, overflow: 'hidden' }}>
+          <button
+            onClick={() => setBienFilterOpen(o => !o)}
+            style={{
+              width: '100%', display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+              padding: '10px 14px', background: selectedBienIds ? '#FFF8E7' : '#EAE3D4',
+              border: 'none', cursor: 'pointer', textAlign: 'left',
+              borderBottom: bienFilterOpen ? '1px solid var(--border)' : 'none',
+            }}
+          >
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+              <span style={{ fontSize: '0.88em', fontWeight: 600, color: 'var(--text)' }}>
+                Filtre biens
+              </span>
+              <span style={{
+                fontSize: '0.78em', padding: '1px 7px', borderRadius: 10,
+                background: selectedBienIds ? 'var(--brand)' : '#C8BBA8', color: 'white',
+              }}>
+                {nbSelected}/{biens.length}
+              </span>
+              {selectedBienIds && (
+                <span style={{ fontSize: '0.75em', color: '#CC7700', fontWeight: 500 }}>filtre actif</span>
+              )}
+            </div>
+            <span style={{ fontSize: '0.75em', color: '#9C8E7D' }}>{bienFilterOpen ? '▲' : '▼'}</span>
+          </button>
+
+          {bienFilterOpen && (
+            <div style={{ padding: '12px 14px', background: 'white' }}>
+              <div style={{ display: 'flex', gap: 8, marginBottom: 12 }}>
+                <button
+                  className="btn btn-secondary"
+                  style={{ fontSize: '0.78em', padding: '3px 10px' }}
+                  onClick={() => setBienFilter(prev => { const n = {}; for (const k of Object.keys(prev)) n[k] = true; return n })}
+                >
+                  Tout
+                </button>
+                <button
+                  className="btn btn-secondary"
+                  style={{ fontSize: '0.78em', padding: '3px 10px' }}
+                  onClick={() => setBienFilter(prev => { const n = {}; for (const k of Object.keys(prev)) n[k] = false; return n })}
+                >
+                  Aucun
+                </button>
+              </div>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+                {propGroups.map(group => (
+                  <div key={group.nom}>
+                    <div style={{ fontSize: '0.78em', fontWeight: 700, color: '#9C8E7D', textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: 6 }}>
+                      {group.nom}
+                    </div>
+                    <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px 16px' }}>
+                      {group.biens.map(b => (
+                        <label key={b.id} style={{ display: 'flex', alignItems: 'center', gap: 5, cursor: 'pointer', fontSize: '0.85em' }}>
+                          <input
+                            type="checkbox"
+                            checked={bienFilter[b.id] !== false}
+                            onChange={e => setBienFilter(prev => ({ ...prev, [b.id]: e.target.checked }))}
+                          />
+                          <span style={{ color: bienFilter[b.id] !== false ? 'var(--text)' : '#B0A090' }}>
+                            {b.hospitable_name || b.code}
+                          </span>
+                        </label>
+                      ))}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+        </div>
+      )}
 
       {error && (
         <div style={{ padding: 12, background: '#FEF2F2', border: '1px solid #EF5350', borderRadius: 6, marginBottom: 16, color: '#C62828', fontSize: '0.9em' }}>
@@ -357,12 +481,12 @@ export default function PageExports() {
             description="Relevé de prestations par AE — un onglet par AE"
             loading={loading.auto}
             loadingPreview={loading.auto_preview}
-            onPreview={() => consulterCSV('auto', 'AUTO & Débours', exportAutoDeboursCombined, `DCB_AUTO_Debours_${mois}.csv`)}
+            onPreview={() => consulterCSV('auto', 'AUTO & Débours', exportAutoDeboursCombined, `DCB_AUTO_Debours_${mois}.csv`, selectedBienIds)}
             onClick={async () => {
               setLoading(prev => ({ ...prev, auto: true }))
               setError(null)
               try {
-                const blob = await exportAutoDebours(mois)
+                const blob = await exportAutoDebours(mois, selectedBienIds)
                 const url = URL.createObjectURL(blob)
                 const a = document.createElement('a')
                 a.href = url
@@ -379,8 +503,8 @@ export default function PageExports() {
             description="Honoraires + débours — statuts et montants"
             loading={loading.factures}
             loadingPreview={loading.factures_preview}
-            onClick={() => telechargerCSV('factures', `DCB_Factures_Evoliz_${mois}.csv`, exportFacturesEvoliz)}
-            onPreview={() => consulterCSV('factures', 'Factures Evoliz', exportFacturesEvoliz, `DCB_Factures_Evoliz_${mois}.csv`)}
+            onClick={() => telechargerCSV('factures', `DCB_Factures_Evoliz_${mois}.csv`, exportFacturesEvoliz, selectedBienIds)}
+            onPreview={() => consulterCSV('factures', 'Factures Evoliz', exportFacturesEvoliz, `DCB_Factures_Evoliz_${mois}.csv`, selectedBienIds)}
           />
           <ExportCard
             titre="Comptabilité mensuelle"
@@ -420,23 +544,32 @@ export default function PageExports() {
               </div>
               <div style={{ marginBottom: 12 }}>
                 <label style={{ display: 'block', marginBottom: 8, fontSize: '0.85em', fontWeight: 600 }}>Exports à joindre</label>
-                <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
                   {[
-                    { key: 'rapprochement', label: 'Rapprochement bancaire' },
-                    { key: 'auto', label: 'AUTO & Débours' },
-                    { key: 'factures', label: 'Factures Evoliz' },
-                    { key: 'compta', label: 'Comptabilité mensuelle' },
-                    { key: 'achats', label: 'Factures d\'achat' },
-                    { key: 'bilan_lld', label: 'Bilan étudiants (LLD)' },
-                  ].map(({ key, label }) => (
-                    <label key={key} style={{ display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer', fontSize: '0.9em' }}>
+                    { key: 'rapprochement', label: 'Rapprochement bancaire',    desc: 'Mouvements bancaires + ventilation comptable par réservation' },
+                    { key: 'auto',          label: 'AUTO & Débours',            desc: 'Relevé de prestations par auto-entrepreneur — missions et extras par bien' },
+                    { key: 'factures',      label: 'Factures Evoliz',           desc: 'Factures honoraires et débours propriétaires — HT, TTC, statut, réversement' },
+                    { key: 'compta',        label: 'Comptabilité mensuelle',    desc: 'Agrégat par bien — HON, FMEN, AUTO, LOY, VIR, TAXE, COM + alertes' },
+                    { key: 'achats',        label: "Factures d'achat",          desc: 'Factures fournisseurs et charges de la période' },
+                    { key: 'bilan_lld',     label: 'Bilan étudiants (LLD)',     desc: 'Loyers, virements propriétaires et soldes du mois — locations longues durée' },
+                  ].map(({ key, label, desc }) => (
+                    <label key={key} style={{ display: 'flex', alignItems: 'flex-start', gap: 8, cursor: 'pointer' }}>
                       <input type="checkbox" checked={emailExports[key]}
-                        onChange={e => setEmailExports(prev => ({ ...prev, [key]: e.target.checked }))} />
-                      {label}
+                        onChange={e => setEmailExports(prev => ({ ...prev, [key]: e.target.checked }))}
+                        style={{ marginTop: 3, flexShrink: 0 }} />
+                      <div>
+                        <div style={{ fontSize: '0.88em', fontWeight: 600, color: 'var(--text)' }}>{label}</div>
+                        <div style={{ fontSize: '0.78em', color: '#9C8E7D', marginTop: 1 }}>{desc}</div>
+                      </div>
                     </label>
                   ))}
                 </div>
               </div>
+              {selectedBienIds && (
+                <div style={{ marginBottom: 12, padding: '8px 10px', background: '#FFF8E7', border: '1px solid #E8C830', borderRadius: 6, fontSize: '0.82em', color: '#8B6800' }}>
+                  Filtre actif : {nbSelected}/{biens.length} biens inclus dans les exports
+                </div>
+              )}
               <div style={{ marginBottom: 12 }}>
                 <label style={{ display: 'block', marginBottom: 4, fontSize: '0.85em', fontWeight: 600 }}>Message (optionnel)</label>
                 <textarea value={emailMessage} onChange={e => setEmailMessage(e.target.value)}
@@ -570,8 +703,8 @@ export default function PageExports() {
             description="Toutes les resas + ventilation — vue opérationnelle"
             loading={loading.resas}
             loadingPreview={loading.resas_preview}
-            onClick={() => telechargerCSV('resas', `DCB_Reservations_${mois}.csv`, exportReservationsDetaillees)}
-            onPreview={() => consulterCSV('resas', 'Réservations détaillées', exportReservationsDetaillees, `DCB_Reservations_${mois}.csv`)}
+            onClick={() => telechargerCSV('resas', `DCB_Reservations_${mois}.csv`, exportReservationsDetaillees, selectedBienIds)}
+            onPreview={() => consulterCSV('resas', 'Réservations détaillées', exportReservationsDetaillees, `DCB_Reservations_${mois}.csv`, selectedBienIds)}
           />
           <ExportCard
             titre="Débours & Prestations"
@@ -579,7 +712,7 @@ export default function PageExports() {
             loading={loading.debours}
             loadingPreview={loading.debours_preview}
             onClick={telechargerXLSX}
-            onPreview={() => consulterCSV('debours', 'Débours & Prestations', exportDeboursPrestationsCombined, `DCB_Debours_Prestations_${mois}.csv`)}
+            onPreview={() => consulterCSV('debours', 'Débours & Prestations', exportDeboursPrestationsCombined, `DCB_Debours_Prestations_${mois}.csv`, selectedBienIds)}
             format="XLSX"
           />
         </div>

@@ -1,14 +1,19 @@
 import { supabase } from '../lib/supabase'
 import { format } from 'date-fns'
 import { fr } from 'date-fns/locale'
+import { AGENCE } from '../lib/agence'
 
-export async function exportFacturesEvoliz(mois) {
-  const { data: factures } = await supabase
+export async function exportFacturesEvoliz(mois, bienIds = null) {
+  let query = supabase
     .from('facture_evoliz')
     .select(`*, proprietaire:proprietaire_id(nom, prenom),
       lignes:facture_evoliz_ligne(code, montant_ht, montant_ttc, quantite, libelle, bien:bien_id(hospitable_name))`)
     .eq('mois', mois)
-    .order('date_creation', { ascending: true })
+    .eq('agence', AGENCE)
+    .order('created_at', { ascending: true })
+  if (bienIds) query = query.in('bien_id', bienIds)
+  const { data: factures, error: fetchError } = await query
+  if (fetchError) throw new Error(`Export factures Evoliz : ${fetchError.message}`)
 
   const now = new Date()
   const dateExport = format(now, 'dd/MM/yyyy à HH:mm', { locale: fr })

@@ -20,8 +20,14 @@ import { supabase } from '../lib/supabase'
 import { AGENCE } from '../lib/agence'
 import { STATUTS_NON_VENTILABLES } from '../lib/constants'
 
-export async function buildComptaMensuelle(mois) {
+export async function buildComptaMensuelle(mois, bienIds = null) {
   // ── Phase 1 : chargement parallèle ──────────────────────────────────────
+  let biensQuery = supabase
+    .from('bien')
+    .select('id, code, hospitable_name, listed, proprietaire_id, groupe_facturation, proprietaire:proprietaire_id(id, nom, prenom)')
+    .eq('agence', AGENCE)
+  if (bienIds) biensQuery = biensQuery.in('id', bienIds)
+
   const [
     { data: biensData,         error: biensErr         },
     { data: resasData,         error: resasErr         },
@@ -35,10 +41,7 @@ export async function buildComptaMensuelle(mois) {
     { data: prestDeboursData,  error: prestDeboursErr  },
     { data: reversementFaitData },
   ] = await Promise.all([
-    supabase
-      .from('bien')
-      .select('id, code, hospitable_name, listed, proprietaire_id, groupe_facturation, proprietaire:proprietaire_id(id, nom, prenom)')
-      .eq('agence', AGENCE),
+    biensQuery,
     supabase
       .from('reservation')
       .select('id, bien_id, final_status, ventilation_calculee, rapprochee, owner_stay, fin_revenue, code, arrival_date, departure_date, guest_name, platform')

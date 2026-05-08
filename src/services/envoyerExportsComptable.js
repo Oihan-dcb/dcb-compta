@@ -4,6 +4,7 @@ import { exportRapprochementBancaire } from './exportRapprochementBancaire'
 import { exportAutoDebours } from './exportAutoDebours'
 import { exportFacturesEvoliz } from './exportFacturesEvoliz'
 import { buildComptaMensuelle, exportComptaCSV } from './buildComptaMensuelle'
+import { exportDeboursPrestations } from './exportDeboursPrestations'
 
 const AGENCE_LABELS = {
   dcb:     { nom: 'Destination Côte Basque', prefix: 'DCB',    brand: '#CC9933' },
@@ -46,7 +47,7 @@ function achatsToCSV(factures) {
   return [header, ...rows].join('\n')
 }
 
-export async function envoyerExportsComptable(mois, destinataire, cc, exports, message) {
+export async function envoyerExportsComptable(mois, destinataire, cc, exports, message, bienIds = null) {
   const { prefix } = agenceInfo
   const attachments = []
 
@@ -56,19 +57,24 @@ export async function envoyerExportsComptable(mois, destinataire, cc, exports, m
   }
 
   if (exports.includes('auto')) {
-    const csv = await exportAutoDebours(mois)
-    attachments.push({ filename: `${prefix}_AUTO_Debours_${mois}.csv`, content: encodeBase64UTF8(csv) })
+    const blob = await exportAutoDebours(mois, bienIds)
+    attachments.push({ filename: `${prefix}_AUTO_Debours_${mois}.xlsx`, content: await blobToBase64(blob), content_type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' })
   }
 
   if (exports.includes('factures')) {
-    const csv = await exportFacturesEvoliz(mois)
+    const csv = await exportFacturesEvoliz(mois, bienIds)
     attachments.push({ filename: `${prefix}_Factures_Evoliz_${mois}.csv`, content: encodeBase64UTF8(csv) })
   }
 
   if (exports.includes('compta')) {
-    const data = await buildComptaMensuelle(mois)
+    const data = await buildComptaMensuelle(mois, bienIds)
     const csv = exportComptaCSV(data)
     attachments.push({ filename: `${prefix}_Comptabilite_${mois}.csv`, content: encodeBase64UTF8(csv) })
+  }
+
+  if (exports.includes('debours')) {
+    const blob = await exportDeboursPrestations(mois, bienIds)
+    attachments.push({ filename: `${prefix}_Debours_Prestations_${mois}.xlsx`, content: await blobToBase64(blob), content_type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' })
   }
 
   if (exports.includes('achats')) {
@@ -105,13 +111,14 @@ export async function envoyerExportsComptable(mois, destinataire, cc, exports, m
         <p style="margin: 0 0 16px 0; color: #2C2416;">Bonjour,</p>
         ${message ? `<p style="margin: 0 0 16px 0; color: #2C2416; white-space: pre-line;">${message}</p>` : ''}
         <p style="margin: 0 0 16px 0; color: #2C2416;">Vous trouverez ci-joint les exports comptables du mois de ${moisLabelCap} :</p>
-        <ul style="color: #2C2416; line-height: 1.6;">
-          ${exports.includes('rapprochement') ? '<li>Rapprochement bancaire</li>' : ''}
-          ${exports.includes('auto')          ? '<li>AUTO &amp; D&eacute;bours</li>' : ''}
-          ${exports.includes('factures')      ? '<li>Factures Evoliz</li>' : ''}
-          ${exports.includes('compta')        ? '<li>Comptabilit&eacute; mensuelle</li>' : ''}
-          ${exports.includes('achats')        ? '<li>Factures d\'achat</li>' : ''}
-          ${exports.includes('bilan_lld')     ? '<li>Bilan &eacute;tudiants (LLD)</li>' : ''}
+        <ul style="color: #2C2416; line-height: 1.8; padding-left: 20px;">
+          ${exports.includes('rapprochement') ? '<li><strong>Rapprochement bancaire</strong><br/><span style="font-size:13px;color:#6B5843;">Mouvements bancaires + ventilation comptable par r&eacute;servation</span></li>' : ''}
+          ${exports.includes('auto')          ? '<li><strong>AUTO &amp; D&eacute;bours</strong><br/><span style="font-size:13px;color:#6B5843;">Relev&eacute; de prestations par auto-entrepreneur — missions et extras par bien</span></li>' : ''}
+          ${exports.includes('factures')      ? '<li><strong>Factures Evoliz</strong><br/><span style="font-size:13px;color:#6B5843;">Factures honoraires et d&eacute;bours propri&eacute;taires — HT, TTC, statut, r&eacute;versement</span></li>' : ''}
+          ${exports.includes('compta')        ? '<li><strong>Comptabilit&eacute; mensuelle</strong><br/><span style="font-size:13px;color:#6B5843;">Agr&eacute;gat par bien — HON, FMEN, AUTO, LOY, VIR, TAXE, COM + alertes</span></li>' : ''}
+          ${exports.includes('achats')        ? '<li><strong>Factures d\'achat</strong><br/><span style="font-size:13px;color:#6B5843;">Factures fournisseurs et charges de la p&eacute;riode</span></li>' : ''}
+          ${exports.includes('debours')        ? '<li><strong>D&eacute;bours &amp; Prestations</strong><br/><span style="font-size:13px;color:#6B5843;">Prestations hors forfait et frais propri&eacute;taires de la p&eacute;riode</span></li>' : ''}
+          ${exports.includes('bilan_lld')     ? '<li><strong>Bilan &eacute;tudiants (LLD)</strong><br/><span style="font-size:13px;color:#6B5843;">Loyers, virements propri&eacute;taires et soldes du mois — locations longues dur&eacute;e</span></li>' : ''}
         </ul>
         <p style="margin: 16px 0 0 0; color: #2C2416;">Cordialement,<br/>L'&eacute;quipe ${agenceNom}</p>
       </div>
