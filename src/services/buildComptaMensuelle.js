@@ -238,10 +238,9 @@ export async function buildComptaMensuelle(mois) {
     const autoAbsorbable = Math.max(0, autoHt - menHt)
     // Source de vérité : facture per-bien si validée, sinon calcul ventilation
     const factureBienP3   = honByBien[b.id]
-    const factureValideP3 = factureBienP3?.statut && !['brouillon', 'calcul_en_cours'].includes(factureBienP3.statut)
-    const virNet = (factureBienP3?.montant_reversement != null && factureValideP3)
+    const virNet = (factureBienP3?.montant_reversement != null)
       ? factureBienP3.montant_reversement
-      : Math.max(0, virHt2 - fraisLoy - fraisDirect - prestDeduct - deboursProp - ownerStayAbsorbByBien[b.id] - autoAbsorbable) + rembours
+      : Math.max(0, loyHt - fraisLoy - fraisDirect - prestDeduct - deboursProp - ownerStayAbsorbByBien[b.id] - autoAbsorbable) + rembours
     loyParProprio[b.proprietaire_id] = (loyParProprio[b.proprietaire_id] || 0) + virNet
 
     // Accumuler les composantes par proprio pour le détail de l'alerte ECART_REVERSEMENT
@@ -303,10 +302,9 @@ export async function buildComptaMensuelle(mois) {
     // Source de vérité : facture per-bien si validée (même source que le rapport PDF)
     // Sinon : calcul depuis ventilation VIR
     const factureBien4   = honByBien[b.id]
-    const factureValide4 = factureBien4?.statut && !['brouillon', 'calcul_en_cours'].includes(factureBien4.statut)
-    const reversement_calcule = (factureBien4?.montant_reversement != null && factureValide4)
+    const reversement_calcule = (factureBien4?.montant_reversement != null)
       ? factureBien4.montant_reversement
-      : Math.max(0, vir.ht - frais_loy - frais_direct - prest_deduct - debours_prop - owner_stay_absorb - auto_absorbable) + remboursements
+      : Math.max(0, loy.ht - frais_loy - frais_direct - prest_deduct - debours_prop - owner_stay_absorb - auto_absorbable) + remboursements
 
     // Écart reversement au niveau proprio : Σ factures vs Σ reversement_calcule tous biens
     let ecart_reversement_proprio = null
