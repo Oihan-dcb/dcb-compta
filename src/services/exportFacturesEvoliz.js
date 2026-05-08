@@ -7,7 +7,7 @@ export async function exportFacturesEvoliz(mois, bienIds = null) {
   let query = supabase
     .from('facture_evoliz')
     .select(`*, proprietaire:proprietaire_id(nom, prenom),
-      lignes:facture_evoliz_ligne(code, montant_ht, montant_ttc, quantite, libelle),
+      lignes:facture_evoliz_ligne(code, montant_ht, montant_ttc, libelle),
       bien:bien_id(hospitable_name)`)
     .eq('mois', mois)
     .eq('agence', AGENCE)
