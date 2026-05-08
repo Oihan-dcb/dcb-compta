@@ -125,7 +125,7 @@ export async function buildRapportData(bienId, propId, mois, opts = {}) {
   try {
     let q = supabase
       .from('prestation_hors_forfait')
-      .select('id, bien_id, reservation_id, date_prestation, description, montant, type_imputation, prestation_type:prestation_type_id(nom)')
+      .select('id, bien_id, reservation_id, date_prestation, description, montant, type_imputation, prestation_type:prestation_type_id(nom), ae:ae_id(type)')
       .eq('mois', mois)
       .eq('statut', 'valide')
       .in('type_imputation', ['deduction_loy', 'debours_proprio', 'haowner'])
@@ -162,7 +162,10 @@ export async function buildRapportData(bienId, propId, mois, opts = {}) {
 
   const totalDebours = (prestations || [])
     .filter(p => ['deduction_loy', 'debours_proprio'].includes(p.type_imputation))
-    .reduce((s, p) => s + (p.montant || 0), 0)
+    .reduce((s, p) => {
+      const isStaff = p.type_imputation === 'deduction_loy' && p.ae?.type === 'staff'
+      return s + (isStaff ? Math.round((p.montant || 0) * 1.20) : (p.montant || 0))
+    }, 0)
   const totalHaowner = haownerList.reduce((s, p) => s + (p.montant_ttc || 0), 0)
 
   // ── Enrichissement par réservation ───────────────────────────────────────
