@@ -33,6 +33,7 @@ export async function buildComptaMensuelle(mois) {
     { data: remboursData,      error: remboursErr      },
     { data: prestDeductData,   error: prestDeductErr   },
     { data: prestDeboursData,  error: prestDeboursErr  },
+    { data: reversementFaitData },
   ] = await Promise.all([
     supabase
       .from('bien')
@@ -94,6 +95,12 @@ export async function buildComptaMensuelle(mois) {
       .eq('mois', mois)
       .eq('type_imputation', 'debours_proprio')
       .eq('statut', 'valide'),
+    // reversements faits (cochés manuellement dans PageComptabilite)
+    supabase
+      .from('reversement_fait')
+      .select('bien_id, fait_at')
+      .eq('mois', mois)
+      .eq('agence', AGENCE),
   ])
 
   if (biensErr)  throw new Error(`buildComptaMensuelle — biens: ${biensErr.message}`)
@@ -197,6 +204,12 @@ export async function buildComptaMensuelle(mois) {
   const deboursPropByBien = {}
   for (const p of (prestDeboursData || [])) {
     deboursPropByBien[p.bien_id] = (deboursPropByBien[p.bien_id] || 0) + (p.montant || 0)
+  }
+
+  // Reversements faits par bien_id → fait_at
+  const reversementFaitByBien = {}
+  for (const f of (reversementFaitData || [])) {
+    reversementFaitByBien[f.bien_id] = f.fait_at
   }
 
   // Owner stay : FMEN TTC + AUTO HT par bien (depuis ventilation, réservations owner_stay)
@@ -435,6 +448,8 @@ export async function buildComptaMensuelle(mois) {
       facture_montant_reversement: facture?.montant_reversement         ?? null,
       ecart_reversement_proprio,
 
+      reversement_fait_at: reversementFaitByBien[b.id] ?? null,
+
       alert_count: rowAlerts.length,
       alert_level: rowAlerts.some(a => a.level === 'error') ? 'error'
                  : rowAlerts.some(a => a.level === 'warning') ? 'warning'
@@ -554,7 +569,7 @@ export function exportComptaCSV(data) {
     'Nb réservations', 'Rapprochées', 'Non rapprochées', 'Non ventilées',
     'HON HT', 'HON TVA', 'HON TTC',
     'FMEN HT', 'FMEN TVA', 'FMEN TTC',
-    'AUTO HT', 'LOY HT', 'Frais HA proprio.', 'Réversement calculé', 'TAXE HT',
+    'AUTO HT', 'LOY HT', 'Frais HA proprio.', 'TAXE HT', 'Réversement calculé', 'Virement fait',
     'Statut facture', 'Réversement facturé', 'Écart facture', 'Alertes',
   ]
   // Regrouper les biens par groupe_facturation pour le CSV
@@ -577,7 +592,7 @@ export function exportComptaCSV(data) {
         const nsum = key => children.reduce((s, c) => s + (c[key] || 0), 0)
         const first = children[0]
         const glabel = GROUPE_LABELS[gk] || gk
-        // Ligne parent agrégée
+        // Ligne parent agrégée — "Virement fait" vide (agrégé de plusieurs biens)
         csvRows.push([
           glabel,
           '(groupe)',
@@ -585,7 +600,7 @@ export function exportComptaCSV(data) {
           nsum('nb_resas'), nsum('nb_rapprochees'), nsum('nb_non_rapprochees'), nsum('nb_non_ventilees'),
           fmt(nsum('hon_ht')), fmt(nsum('hon_tva')), fmt(nsum('hon_ttc')),
           fmt(nsum('fmen_ht')), fmt(nsum('fmen_tva')), fmt(nsum('fmen_ttc')),
-          fmt(nsum('auto_ht')), fmt(nsum('loy_ht')), fmt(nsum('frais_loy')), fmt(nsum('reversement_calcule')), fmt(nsum('taxe_ht')),
+          fmt(nsum('auto_ht')), fmt(nsum('loy_ht')), fmt(nsum('frais_loy')), fmt(nsum('taxe_ht')), fmt(nsum('reversement_calcule')), '',
           first.facture_statut || '',
           fmt(nsum('facture_montant_reversement')),
           first.ecart_reversement_proprio != null ? fmt(first.ecart_reversement_proprio) : '',
@@ -593,6 +608,7 @@ export function exportComptaCSV(data) {
         ])
       }
       // Ligne enfant indentée
+      const faitEnfant = r.reversement_fait_at ? (() => { const d = new Date(r.reversement_fait_at); return `OUI — ${d.toLocaleDateString('fr-FR', { day: '2-digit', month: '2-digit' })} ${d.toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' })}h` })() : ''
       csvRows.push([
         '  ' + (r.bien_code || ''),
         '  ' + (r.bien_nom || ''),
@@ -600,16 +616,17 @@ export function exportComptaCSV(data) {
         r.nb_resas, r.nb_rapprochees, r.nb_non_rapprochees, r.nb_non_ventilees,
         fmt(r.hon_ht), fmt(r.hon_tva), fmt(r.hon_ttc),
         fmt(r.fmen_ht), fmt(r.fmen_tva), fmt(r.fmen_ttc),
-        fmt(r.auto_ht), fmt(r.loy_ht), fmt(r.frais_loy), fmt(r.reversement_calcule), fmt(r.taxe_ht),
+        fmt(r.auto_ht), fmt(r.loy_ht), fmt(r.frais_loy), fmt(r.taxe_ht), fmt(r.reversement_calcule), faitEnfant,
         '', '', '', r.alert_codes.join(' | '),
       ])
     } else {
+      const faitStr = r.reversement_fait_at ? (() => { const d = new Date(r.reversement_fait_at); return `OUI — ${d.toLocaleDateString('fr-FR', { day: '2-digit', month: '2-digit' })} ${d.toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' })}h` })() : ''
       csvRows.push([
         r.bien_code, r.bien_nom, r.proprietaire_nom,
         r.nb_resas, r.nb_rapprochees, r.nb_non_rapprochees, r.nb_non_ventilees,
         fmt(r.hon_ht), fmt(r.hon_tva), fmt(r.hon_ttc),
         fmt(r.fmen_ht), fmt(r.fmen_tva), fmt(r.fmen_ttc),
-        fmt(r.auto_ht), fmt(r.loy_ht), fmt(r.frais_loy), fmt(r.reversement_calcule), fmt(r.taxe_ht),
+        fmt(r.auto_ht), fmt(r.loy_ht), fmt(r.frais_loy), fmt(r.taxe_ht), fmt(r.reversement_calcule), faitStr,
         r.facture_statut || '',
         fmt(r.facture_montant_reversement),
         r.ecart_reversement_proprio != null ? fmt(r.ecart_reversement_proprio) : '',
