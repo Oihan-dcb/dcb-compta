@@ -184,28 +184,32 @@ export default function PageExports() {
   // Fermer la preview si on change de mois
   useEffect(() => { setPreview(null) }, [mois])
 
-  // Charger les biens pour le filtre
+  // Charger les biens actifs du mois sélectionné pour le filtre
   useEffect(() => {
-    supabase.from('bien')
-      .select('id, code, hospitable_name, proprietaire_id, proprietaire:proprietaire_id(id, nom, prenom)')
-      .eq('agence', AGENCE)
-      .order('hospitable_name')
-      .then(({ data, error }) => {
-        if (error) { console.error('PageExports biens filter:', error); return }
-        const list = data || []
-        setBiens(list)
-        const init = {}
-        for (const b of list) init[b.id] = true
-        setBienFilter(init)
-      })
-  }, [])
-
-  // Réinitialiser le filtre à chaque changement de mois
-  useEffect(() => {
-    setBienFilter(prev => {
-      const next = {}
-      for (const k of Object.keys(prev)) next[k] = true
-      return next
+    setBiens([])
+    setBienFilter({})
+    Promise.all([
+      supabase.from('reservation').select('bien_id').eq('mois_comptable', mois),
+      supabase.from('ventilation').select('bien_id').eq('mois_comptable', mois),
+    ]).then(([{ data: resasData }, { data: ventilData }]) => {
+      const ids = [...new Set([
+        ...(resasData || []).map(r => r.bien_id),
+        ...(ventilData || []).map(v => v.bien_id),
+      ].filter(Boolean))]
+      if (ids.length === 0) return
+      supabase.from('bien')
+        .select('id, code, hospitable_name, proprietaire_id, proprietaire:proprietaire_id(id, nom, prenom)')
+        .eq('agence', AGENCE)
+        .in('id', ids)
+        .order('hospitable_name')
+        .then(({ data, error }) => {
+          if (error) { console.error('PageExports biens filter:', error); return }
+          const list = data || []
+          setBiens(list)
+          const init = {}
+          for (const b of list) init[b.id] = true
+          setBienFilter(init)
+        })
     })
   }, [mois])
 
