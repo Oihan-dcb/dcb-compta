@@ -61,7 +61,7 @@ export default async function handler(req, res) {
     })
     const importData = await importRes.json()
 
-    console.log(`powens-webhook account=${accountId}(${accountLabel}) synced=${syncData.synced} new=${syncData.new} imported=${importData.importe} matched=${importData.matched ?? 0} loyersUpdated=${importData.loyersUpdated ?? 0} errors=${(importData.erreurs || []).length}`)
+    console.log(`powens-webhook account=${accountId}(${accountLabel}) synced=${syncData.synced} new=${syncData.new} imported=${importData.importe} matched=${importData.matched ?? 0} loyersUpdated=${importData.loyersUpdated ?? 0} virementsLies=${importData.virementsLies ?? 0} errors=${(importData.erreurs || []).length}`)
 
     return res.status(200).json({
       ok: true,
@@ -73,6 +73,7 @@ export default async function handler(req, res) {
       imported: importData.importe,
       matched: importData.matched ?? 0,
       loyersUpdated: importData.loyersUpdated ?? 0,
+      virementsLies: importData.virementsLies ?? 0,
       importErrors: importData.erreurs,
     })
   } catch (err) {

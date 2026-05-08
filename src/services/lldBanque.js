@@ -226,6 +226,53 @@ export async function autoMatcherMouvementsLLD(agence = AGENCE) {
   return { lies }
 }
 
+export async function autoMatcherVirementsProprioLLD(agence = AGENCE) {
+  const norm = s => (s || '').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '')
+
+  const [{ data: mvts }, { data: virements }] = await Promise.all([
+    supabase
+      .from('lld_mouvement_bancaire')
+      .select('id, libelle, detail, debit, date_operation')
+      .eq('agence', agence)
+      .eq('statut', 'non_rapproche')
+      .not('debit', 'is', null)
+      .gt('debit', 0),
+    supabase
+      .from('virement_proprio_suivi')
+      .select('id, montant, etudiant(proprietaire(nom, prenom))')
+      .eq('agence', agence)
+      .eq('statut', 'a_virer'),
+  ])
+
+  if (!mvts?.length || !virements?.length) return { lies: 0 }
+
+  let lies = 0
+  for (const m of mvts) {
+    const haystack = norm(`${m.libelle || ''} ${m.detail || ''}`)
+    // Match : montant exact + nom du propriétaire dans le libellé
+    const candidats = virements.filter(v => {
+      if (v.montant !== m.debit) return false
+      const propNom = norm(v.etudiant?.proprietaire?.nom || '')
+      return propNom && haystack.includes(propNom)
+    })
+    if (candidats.length === 1) {
+      const v = candidats[0]
+      const [e1, e2] = await Promise.all([
+        supabase.from('virement_proprio_suivi')
+          .update({ statut: 'vire', date_virement: m.date_operation })
+          .eq('id', v.id)
+          .then(r => r.error),
+        supabase.from('lld_mouvement_bancaire')
+          .update({ statut: 'rapproche' })
+          .eq('id', m.id)
+          .then(r => r.error),
+      ])
+      if (!e1 && !e2) lies++
+    }
+  }
+  return { lies }
+}
+
 export async function majLoyersDepuisVirements(agence = AGENCE) {
   // 1. Récupérer tous les mouvements rapprochés crédits sur le compte loyers
   const { data: mvts, error: errMvts } = await supabase

@@ -39,6 +39,7 @@ import {
   supprimerMouvementLLD,
   mettreAJourMouvementLLD,
   majLoyersDepuisVirements,
+  autoMatcherVirementsProprioLLD,
 } from '../services/lldBanque'
 
 const moisCourant = new Date().toISOString().slice(0, 7)
@@ -498,9 +499,11 @@ export default function PageLocationsLongues() {
         const candidats = etudiants.filter(e => e.bien?.code && haystack.includes(norm(e.bien.code)))
         if (candidats.length === 1) match = candidats[0]
       }
-      // 3. Par montant exact (caution ou loyer_nu)
+      // 3. Par montant exact (caution pour compte cautions, loyer_nu pour compte loyers)
       if (!match && m.credit) {
-        const candidats = etudiants.filter(e => e.caution === m.credit || e.loyer_nu === m.credit)
+        const candidats = m.compte === 'cautions'
+          ? etudiants.filter(e => e.caution === m.credit)
+          : etudiants.filter(e => e.loyer_nu === m.credit)
         if (candidats.length === 1) match = candidats[0]
       }
       if (match) {
@@ -605,6 +608,16 @@ export default function PageLocationsLongues() {
     } catch (e) {
       setError(e.message)
     }
+  }
+
+  async function handleAutoLierVirements() {
+    setError(null)
+    try {
+      const { lies } = await autoMatcherVirementsProprioLLD()
+      const v = await listerVirementsMois(mois)
+      setVirements(v)
+      setSuccess(`${lies} virement(s) proprio lié(s) automatiquement depuis les mouvements bancaires`)
+    } catch (e) { setError(e.message) }
   }
 
   async function confirmerVirement(id) {
@@ -890,9 +903,17 @@ export default function PageLocationsLongues() {
               </div>
 
               {/* Tableau virements proprio */}
-              <h2 style={{ fontSize: 15, fontWeight: 700, color: 'var(--text)', margin: '0 0 10px' }}>
-                Virements propriétaires
-              </h2>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 10, margin: '0 0 10px' }}>
+                <h2 style={{ fontSize: 15, fontWeight: 700, color: 'var(--text)', margin: 0 }}>
+                  Virements propriétaires
+                </h2>
+                {virements.some(v => v.statut === 'a_virer') && (
+                  <button className="btn btn-secondary" style={{ fontSize: 12, padding: '3px 10px' }}
+                    onClick={handleAutoLierVirements}>
+                    ⚡ Auto-lier
+                  </button>
+                )}
+              </div>
               <div className="table-container">
                 <table className="table">
                   <thead>

@@ -139,6 +139,48 @@ async function majLoyersLLD(db: ReturnType<typeof supabase>, agence: string): Pr
   return { updated, skipped }
 }
 
+async function autoMatchVirementsProprioLLD(db: ReturnType<typeof supabase>, agence: string): Promise<{ lies: number }> {
+  const [{ data: mvts }, { data: virements }] = await Promise.all([
+    db.from('lld_mouvement_bancaire')
+      .select('id, libelle, detail, debit, date_operation')
+      .eq('agence', agence)
+      .eq('statut', 'non_rapproche')
+      .not('debit', 'is', null)
+      .gt('debit', 0),
+    db.from('virement_proprio_suivi')
+      .select('id, montant, etudiant:etudiant_id(proprietaire:proprietaire_id(nom, prenom))')
+      .eq('agence', agence)
+      .eq('statut', 'a_virer'),
+  ])
+
+  if (!mvts?.length || !virements?.length) return { lies: 0 }
+
+  let lies = 0
+  for (const m of (mvts as any[])) {
+    const haystack = normStr(`${m.libelle || ''} ${m.detail || ''}`)
+    const candidats = (virements as any[]).filter(v => {
+      if (v.montant !== m.debit) return false
+      const propNom = normStr(v.etudiant?.proprietaire?.nom || '')
+      return propNom && haystack.includes(propNom)
+    })
+    if (candidats.length === 1) {
+      const v = candidats[0]
+      const [e1, e2] = await Promise.all([
+        db.from('virement_proprio_suivi')
+          .update({ statut: 'vire', date_virement: m.date_operation })
+          .eq('id', v.id)
+          .then((r: any) => r.error),
+        db.from('lld_mouvement_bancaire')
+          .update({ statut: 'rapproche' })
+          .eq('id', m.id)
+          .then((r: any) => r.error),
+      ])
+      if (!e1 && !e2) lies++
+    }
+  }
+  return { lies }
+}
+
 // ── Actions ───────────────────────────────────────────────────────────────────
 
 async function syncTransactions(agence: string, accountLabel: string, dateFrom?: string, dateTo?: string) {
@@ -346,16 +388,18 @@ async function importStaged(agence: string, accountLabel: string, ids?: string[]
     }
   }
 
-  // Pour le compte LLD loyers : auto-match + maj loyers automatiques
-  let matched = 0, loyersUpdated = 0
+  // Pour le compte LLD loyers : auto-match locataires + maj loyers + auto-match virements proprio
+  let matched = 0, loyersUpdated = 0, virementsLies = 0
   if (accountLabel === 'seq_lld') {
     const matchResult = await autoMatchLLD(db, agence)
     matched = matchResult.lies
     const loyerResult = await majLoyersLLD(db, agence)
     loyersUpdated = loyerResult.updated
+    const virResult = await autoMatchVirementsProprioLLD(db, agence)
+    virementsLies = virResult.lies
   }
 
-  return { importe, erreurs, matched, loyersUpdated }
+  return { importe, erreurs, matched, loyersUpdated, virementsLies }
 }
 
 // ── Serve ─────────────────────────────────────────────────────────────────────
