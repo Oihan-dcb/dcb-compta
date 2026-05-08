@@ -65,8 +65,8 @@ export default function PageComptabilite() {
     { key: 'loy_ht',               label: 'LOY HT',        def: true },
     { key: 'frais_loy',            label: 'Frais HA proprio.', def: false },
     { key: 'prest_deduct',         label: 'Prest. déduit',    def: false },
-    { key: 'reversement_calcule',  label: 'Reversement',   def: true },
     { key: 'taxe',                 label: 'TAXE',          def: true },
+    { key: 'reversement_calcule',  label: 'Reversement',   def: true },
     { key: 'facture',              label: 'Facture',       def: true },
     { key: 'reversement_facture',  label: 'Rev. facturé',  def: false },
     { key: 'ecart_facture',        label: 'Écart facture', def: false },
@@ -416,8 +416,8 @@ export default function PageComptabilite() {
                 {col('loy_ht')              && <th style={{ ...th, textAlign: 'right' }}>LOY HT</th>}
                 {col('frais_loy')           && <th style={{ ...th, textAlign: 'right' }}>Frais HA proprio.</th>}
                 {col('prest_deduct')        && <th style={{ ...th, textAlign: 'right' }}>Prest. déduit</th>}
-                {col('reversement_calcule') && <th style={{ ...th, textAlign: 'right' }}>Reversement</th>}
                 {col('taxe')                && <th style={{ ...th, textAlign: 'right' }}>TAXE</th>}
+                {col('reversement_calcule') && <th style={{ ...th, textAlign: 'right' }}>Reversement</th>}
                 {col('facture')             && <th style={th}>Facture</th>}
                 {col('reversement_facture') && <th style={{ ...th, textAlign: 'right' }}>Rev. facturé</th>}
                 {col('ecart_facture')       && <th style={{ ...th, textAlign: 'right' }}>Écart facture</th>}
@@ -453,8 +453,8 @@ export default function PageComptabilite() {
                   {col('loy_ht')              && <td style={{ ...td, textAlign: 'right', fontVariantNumeric: 'tabular-nums' }}>{r.loy_ht ? fmtN(r.loy_ht) : '—'}</td>}
                   {col('frais_loy')           && <td style={{ ...td, textAlign: 'right', fontVariantNumeric: 'tabular-nums' }}>{r.frais_loy ? <span style={{ color: '#E65100' }}>-{fmtN(r.frais_loy)}</span> : '—'}</td>}
                   {col('prest_deduct')        && <td style={{ ...td, textAlign: 'right', fontVariantNumeric: 'tabular-nums' }}>{r.prest_deduct ? <span style={{ color: '#E65100' }}>-{fmtN(r.prest_deduct)}</span> : '—'}</td>}
-                  {col('reversement_calcule') && <td style={{ ...td, textAlign: 'right', fontVariantNumeric: 'tabular-nums', fontWeight: r.reversement_calcule ? 600 : 400 }}>{r.reversement_calcule ? fmtN(r.reversement_calcule) : '—'}</td>}
                   {col('taxe')                && <td style={{ ...td, textAlign: 'right', fontVariantNumeric: 'tabular-nums' }}>{r.taxe_ht ? fmtN(r.taxe_ht) : '—'}</td>}
+                  {col('reversement_calcule') && <td style={{ ...td, textAlign: 'right', fontVariantNumeric: 'tabular-nums', fontWeight: r.reversement_calcule ? 600 : 400 }}>{r.reversement_calcule ? fmtN(r.reversement_calcule) : '—'}</td>}
                   {col('facture')             && <td style={td}>
                     {isChild ? <span style={{ color: '#9C8E7D', fontSize: '0.8em' }}>—</span>
                       : r.facture_statut
@@ -554,8 +554,8 @@ export default function PageComptabilite() {
                   {col('loy_ht')              && <td style={{ ...td, textAlign: 'right' }}>{fmtN(rowsFiltrees.reduce((s, r) => s + r.loy_ht,              0))}</td>}
                   {col('frais_loy')           && <td style={{ ...td, textAlign: 'right', color: '#E65100' }}>{fmtN(rowsFiltrees.reduce((s, r) => s + r.frais_loy,          0))}</td>}
                   {col('prest_deduct')        && <td style={{ ...td, textAlign: 'right', color: '#E65100' }}>{fmtN(rowsFiltrees.reduce((s, r) => s + r.prest_deduct,        0))}</td>}
-                  {col('reversement_calcule') && <td style={{ ...td, textAlign: 'right' }}>{fmtN(rowsFiltrees.reduce((s, r) => s + r.reversement_calcule, 0))}</td>}
                   {col('taxe')                && <td style={{ ...td, textAlign: 'right' }}>{fmtN(rowsFiltrees.reduce((s, r) => s + r.taxe_ht,             0))}</td>}
+                  {col('reversement_calcule') && <td style={{ ...td, textAlign: 'right' }}>{fmtN(rowsFiltrees.reduce((s, r) => s + r.reversement_calcule, 0))}</td>}
                   {col('facture')             && <td style={td} />}
                   {col('reversement_facture') && <td style={td} />}
                   {col('ecart_facture')       && <td style={td} />}
