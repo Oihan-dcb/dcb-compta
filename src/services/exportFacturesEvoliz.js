@@ -7,7 +7,8 @@ export async function exportFacturesEvoliz(mois, bienIds = null) {
   let query = supabase
     .from('facture_evoliz')
     .select(`*, proprietaire:proprietaire_id(nom, prenom),
-      lignes:facture_evoliz_ligne(code, montant_ht, montant_ttc, quantite, libelle, bien:bien_id(hospitable_name))`)
+      lignes:facture_evoliz_ligne(code, montant_ht, montant_ttc, quantite, libelle),
+      bien:bien_id(hospitable_name)`)
     .eq('mois', mois)
     .eq('agence', AGENCE)
     .order('created_at', { ascending: true })
@@ -52,7 +53,7 @@ export async function exportFacturesEvoliz(mois, bienIds = null) {
 
     return [
       proprioNom,
-      [...new Set((f.lignes || []).map(l => l.bien?.hospitable_name).filter(Boolean))].join(', ') || '',
+      f.bien?.hospitable_name || '',
       typeLabels[f.type_facture] || f.type_facture,
       f.numero_facture || '',
       statutLabels[f.statut] || f.statut || '',
