@@ -44,6 +44,9 @@ export default function PageComptabilite() {
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState(null)
 
+  // Reversements faits (bien_id → fait_at ISO string)
+  const [reversementsFaits, setReversementsFaits] = useState({})
+
   // Filtres
   const [filterProprio, setFilterProprio] = useState('')
   const [filterStatutFacture, setFilterStatutFacture] = useState('')
@@ -67,6 +70,7 @@ export default function PageComptabilite() {
     { key: 'prest_deduct',         label: 'Prest. déduit',    def: false },
     { key: 'taxe',                 label: 'TAXE',          def: true },
     { key: 'reversement_calcule',  label: 'Reversement',   def: true },
+    { key: 'fait',                 label: 'Fait',          def: true },
     { key: 'facture',              label: 'Facture',       def: true },
     { key: 'reversement_facture',  label: 'Rev. facturé',  def: false },
     { key: 'ecart_facture',        label: 'Écart facture', def: false },
@@ -106,12 +110,29 @@ export default function PageComptabilite() {
     setLoading(true)
     setError(null)
     try {
-      const result = await buildComptaMensuelle(mois)
+      const [result, { data: faits }] = await Promise.all([
+        buildComptaMensuelle(mois),
+        supabase.from('reversement_fait').select('bien_id, fait_at').eq('mois', mois).eq('agence', AGENCE),
+      ])
       setData(result)
+      setReversementsFaits(Object.fromEntries((faits || []).map(f => [f.bien_id, f.fait_at])))
     } catch (e) {
       setError(e.message)
     } finally {
       setLoading(false)
+    }
+  }, [mois])
+
+  const toggleFait = useCallback(async (bienId, currentFaitAt) => {
+    if (currentFaitAt) {
+      // Décocher → supprimer
+      await supabase.from('reversement_fait').delete().eq('bien_id', bienId).eq('mois', mois).eq('agence', AGENCE)
+      setReversementsFaits(prev => { const n = { ...prev }; delete n[bienId]; return n })
+    } else {
+      // Cocher → insérer
+      const fait_at = new Date().toISOString()
+      await supabase.from('reversement_fait').upsert({ bien_id: bienId, mois, agence: AGENCE, fait_at }, { onConflict: 'bien_id,mois,agence' })
+      setReversementsFaits(prev => ({ ...prev, [bienId]: fait_at }))
     }
   }, [mois])
 
@@ -418,6 +439,7 @@ export default function PageComptabilite() {
                 {col('prest_deduct')        && <th style={{ ...th, textAlign: 'right' }}>Prest. déduit</th>}
                 {col('taxe')                && <th style={{ ...th, textAlign: 'right' }}>TAXE</th>}
                 {col('reversement_calcule') && <th style={{ ...th, textAlign: 'right' }}>Reversement</th>}
+                {col('fait')               && <th style={{ ...th, textAlign: 'center' }}>Fait</th>}
                 {col('facture')             && <th style={th}>Facture</th>}
                 {col('reversement_facture') && <th style={{ ...th, textAlign: 'right' }}>Rev. facturé</th>}
                 {col('ecart_facture')       && <th style={{ ...th, textAlign: 'right' }}>Écart facture</th>}
@@ -455,6 +477,25 @@ export default function PageComptabilite() {
                   {col('prest_deduct')        && <td style={{ ...td, textAlign: 'right', fontVariantNumeric: 'tabular-nums' }}>{r.prest_deduct ? <span style={{ color: '#E65100' }}>-{fmtN(r.prest_deduct)}</span> : '—'}</td>}
                   {col('taxe')                && <td style={{ ...td, textAlign: 'right', fontVariantNumeric: 'tabular-nums' }}>{r.taxe_ht ? fmtN(r.taxe_ht) : '—'}</td>}
                   {col('reversement_calcule') && <td style={{ ...td, textAlign: 'right', fontVariantNumeric: 'tabular-nums', fontWeight: r.reversement_calcule ? 600 : 400 }}>{r.reversement_calcule ? fmtN(r.reversement_calcule) : '—'}</td>}
+                  {col('fait') && <td style={{ ...td, textAlign: 'center' }}>
+                    {!isChild && (() => {
+                      const faitAt = reversementsFaits[r.bien_id]
+                      const d = faitAt ? new Date(faitAt) : null
+                      const label = d
+                        ? `Virement fait le ${d.toLocaleDateString('fr-FR', { day: '2-digit', month: '2-digit' })} à ${d.toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' })}h`
+                        : ''
+                      return (
+                        <div title={label} style={{ display: 'inline-flex', alignItems: 'center', gap: 4, cursor: 'pointer' }} onClick={() => toggleFait(r.bien_id, faitAt)}>
+                          <span style={{ fontSize: 18, color: faitAt ? '#059669' : '#D9CEB8', lineHeight: 1 }}>
+                            {faitAt ? '✅' : '○'}
+                          </span>
+                          {faitAt && <span style={{ fontSize: '0.7em', color: '#059669', whiteSpace: 'nowrap' }}>
+                            {d.toLocaleDateString('fr-FR', { day: '2-digit', month: '2-digit' })} {d.toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' })}h
+                          </span>}
+                        </div>
+                      )
+                    })()}
+                  </td>}
                   {col('facture')             && <td style={td}>
                     {isChild ? <span style={{ color: '#9C8E7D', fontSize: '0.8em' }}>—</span>
                       : r.facture_statut
@@ -556,6 +597,7 @@ export default function PageComptabilite() {
                   {col('prest_deduct')        && <td style={{ ...td, textAlign: 'right', color: '#E65100' }}>{fmtN(rowsFiltrees.reduce((s, r) => s + r.prest_deduct,        0))}</td>}
                   {col('taxe')                && <td style={{ ...td, textAlign: 'right' }}>{fmtN(rowsFiltrees.reduce((s, r) => s + r.taxe_ht,             0))}</td>}
                   {col('reversement_calcule') && <td style={{ ...td, textAlign: 'right' }}>{fmtN(rowsFiltrees.reduce((s, r) => s + r.reversement_calcule, 0))}</td>}
+                  {col('fait')               && <td style={{ ...td, textAlign: 'center', fontSize: '0.8em', color: '#9C8E7D' }}>{Object.keys(reversementsFaits).length > 0 ? `${Object.keys(reversementsFaits).length} ✅` : ''}</td>}
                   {col('facture')             && <td style={td} />}
                   {col('reversement_facture') && <td style={td} />}
                   {col('ecart_facture')       && <td style={td} />}
