@@ -105,7 +105,6 @@ export async function buildComptaMensuelle(mois) {
 
   const biens    = biensData    || []
   const resas    = resasData    || []
-  const ventils  = ventilData   || []
   const honFacts = facturesHon  || []
 
   // ── Phase 2 : indexation ─────────────────────────────────────────────────
@@ -116,6 +115,15 @@ export async function buildComptaMensuelle(mois) {
     if (!resasByBien[r.bien_id]) resasByBien[r.bien_id] = []
     resasByBien[r.bien_id].push(r)
   }
+
+  // Exclure les lignes ventilation dont la resa est annulée sans frais (orphelines)
+  // Ces lignes ne doivent ni contribuer aux totaux ni faire apparaître le bien dans la liste
+  const cancelledNoFeeIds = new Set(
+    resas
+      .filter(r => STATUTS_NON_VENTILABLES.includes(r.final_status) && (r.fin_revenue || 0) === 0)
+      .map(r => r.id)
+  )
+  const ventils = (ventilData || []).filter(v => !v.reservation_id || !cancelledNoFeeIds.has(v.reservation_id))
 
   // Ventilation agrégée par bien_id + code
   // Pour AUTO : montant_reel si disponible (C3 — reflète le coût AE réel vs estimé)
