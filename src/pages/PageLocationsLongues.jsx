@@ -212,7 +212,7 @@ export default function PageLocationsLongues() {
     try {
       const [ets, lc] = await Promise.all([
         listerEtudiants(AGENCE, null, avecArchives),
-        listerLoyersMois(moisCourant),
+        listerLoyersMois(mois),
       ])
       setEtudiants(ets)
       setLoyersCourant(lc)
@@ -722,7 +722,7 @@ export default function PageLocationsLongues() {
                   {nbLoyersAttendus > 0 && <span style={{ color: '#DC2626', marginLeft: 8 }}>· {nbLoyersAttendus} loyer(s) en attente</span>}
                   {nbVirementsAFaire > 0 && <span style={{ color: '#B45309', marginLeft: 8 }}>· {nbVirementsAFaire} virement(s) à faire</span>}
                 </>
-              : <>{etudiants.length} étudiant(s) enregistré(s)</>
+              : <>{etudiants.length} locataire(s) enregistré(s)</>
             }
           </p>
         </div>
@@ -759,7 +759,7 @@ export default function PageLocationsLongues() {
                 {voirArchives ? '📦 Avec archivés' : '📦 Archivés'}
               </button>
               <button className="btn btn-primary" onClick={() => ouvrirModalEtudiant()}>
-                + Ajouter un étudiant
+                + Ajouter un locataire
               </button>
             </>
           )}

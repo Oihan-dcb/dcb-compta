@@ -89,7 +89,10 @@ async function autoMatchLLD(db: ReturnType<typeof supabase>, agence: string): Pr
       if (candidats.length === 1) match = candidats[0]
     }
     if (!match && m.credit) {
-      const candidats = (etudiants as any[]).filter(e => e.caution === m.credit || e.loyer_nu === m.credit)
+      // Matching par montant : caution pour compte cautions, loyer_nu pour compte loyers
+      const candidats = m.compte === 'cautions'
+        ? (etudiants as any[]).filter(e => e.caution === m.credit)
+        : (etudiants as any[]).filter(e => e.loyer_nu === m.credit)
       if (candidats.length === 1) match = candidats[0]
     }
     if (match) {

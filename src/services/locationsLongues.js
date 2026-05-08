@@ -87,16 +87,24 @@ export async function listerLoyersMois(mois, agence = AGENCE) {
 }
 
 export async function initialiserLoyersMois(mois, agence = AGENCE) {
-  // Récupérer tous les étudiants actifs
-  const etudiants = await listerEtudiants(agence, 'actif')
+  // Récupérer tous les étudiants non archivés (actif + en_attente)
+  // Les en_attente sont inclus seulement si leur date_entree est dans ou avant le mois
+  const tous = await listerEtudiants(agence, null, false)
+  const [y, m] = mois.split('-').map(Number)
+  const dernierJour = `${mois}-${String(new Date(y, m, 0).getDate()).padStart(2, '0')}`
+  const etudiants = tous.filter(e =>
+    e.statut === 'actif' ||
+    (e.statut === 'en_attente' && e.date_entree && e.date_entree <= dernierJour)
+  )
   if (!etudiants.length) return []
 
-  // Upsert loyer_suivi pour chaque étudiant actif
+  // Upsert loyer_suivi pour chaque locataire éligible
   const rows = etudiants.map(e => ({
     agence,
     etudiant_id: e.id,
     mois,
     statut: 'attendu',
+    montant_attendu: montantTotalEtudiant(e),
   }))
 
   const { error } = await supabase
