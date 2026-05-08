@@ -240,7 +240,7 @@ export async function buildComptaMensuelle(mois) {
     const factureBienP3   = honByBien[b.id]
     const virNet = (factureBienP3?.montant_reversement != null)
       ? factureBienP3.montant_reversement
-      : Math.max(0, loyHt - fraisLoy - fraisDirect - prestDeduct - deboursProp - ownerStayAbsorbByBien[b.id] - autoAbsorbable) + rembours
+      : Math.max(0, virHt2 - fraisLoy - fraisDirect - prestDeduct - deboursProp - ownerStayAbsorbByBien[b.id] - autoAbsorbable) + rembours
     loyParProprio[b.proprietaire_id] = (loyParProprio[b.proprietaire_id] || 0) + virNet
 
     // Accumuler les composantes par proprio pour le détail de l'alerte ECART_REVERSEMENT
@@ -304,7 +304,7 @@ export async function buildComptaMensuelle(mois) {
     const factureBien4   = honByBien[b.id]
     const reversement_calcule = (factureBien4?.montant_reversement != null)
       ? factureBien4.montant_reversement
-      : Math.max(0, loy.ht - frais_loy - frais_direct - prest_deduct - debours_prop - owner_stay_absorb - auto_absorbable) + remboursements
+      : Math.max(0, vir.ht - frais_loy - frais_direct - prest_deduct - debours_prop - owner_stay_absorb - auto_absorbable) + remboursements
 
     // Écart reversement au niveau proprio : Σ factures vs Σ reversement_calcule tous biens
     let ecart_reversement_proprio = null
