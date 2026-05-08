@@ -221,7 +221,7 @@ async function importStaged(agence: string, accountLabel: string, ids?: string[]
             debit,
             compte: 'loyers',
             mois_releve: moisReleve,
-            statut: 'nouveau',
+            statut: 'non_rapproche',
             agence,
           }, { onConflict: 'numero_operation,compte,agence' })
           .select('id')

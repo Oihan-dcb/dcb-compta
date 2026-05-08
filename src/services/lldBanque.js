@@ -176,6 +176,53 @@ export async function mettreAJourMouvementLLD(id, payload) {
 // ── Mise à jour loyer_suivi depuis mouvements rapprochés ──────────────────────
 // Pour chaque mouvement rapproché (compte=loyers, credit>0), marque le loyer
 // correspondant comme reçu. N'envoie aucun email ni quittance.
+// Matching automatique DB-side : associe les mouvements non liés aux étudiants par nom/prénom
+// Appelable depuis n'importe quelle page (ne dépend pas de l'état React)
+export async function autoMatcherMouvementsLLD(agence = AGENCE) {
+  const norm = s => (s || '').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '')
+
+  const [{ data: mvts }, { data: etudiants }] = await Promise.all([
+    supabase
+      .from('lld_mouvement_bancaire')
+      .select('id, libelle, detail, credit, compte')
+      .eq('agence', agence)
+      .eq('statut', 'non_rapproche')
+      .is('etudiant_id', null),
+    supabase
+      .from('etudiant')
+      .select('id, nom, prenom, caution, loyer_nu, bien(code)')
+      .eq('agence', agence),
+  ])
+
+  if (!mvts?.length || !etudiants?.length) return { lies: 0 }
+
+  let lies = 0
+  for (const m of mvts) {
+    const haystack = norm(`${m.libelle || ''} ${m.detail || ''}`)
+    let match = etudiants.find(e => {
+      if (!norm(e.nom) || !haystack.includes(norm(e.nom))) return false
+      if (e.prenom) return haystack.includes(norm(e.prenom))
+      return true
+    })
+    if (!match) {
+      const candidats = etudiants.filter(e => e.bien?.code && haystack.includes(norm(e.bien.code)))
+      if (candidats.length === 1) match = candidats[0]
+    }
+    if (!match && m.credit) {
+      const candidats = etudiants.filter(e => e.caution === m.credit || e.loyer_nu === m.credit)
+      if (candidats.length === 1) match = candidats[0]
+    }
+    if (match) {
+      const { error } = await supabase
+        .from('lld_mouvement_bancaire')
+        .update({ etudiant_id: match.id, statut: 'rapproche' })
+        .eq('id', m.id)
+      if (!error) lies++
+    }
+  }
+  return { lies }
+}
+
 export async function majLoyersDepuisVirements(agence = AGENCE) {
   // 1. Récupérer tous les mouvements rapprochés crédits sur le compte loyers
   const { data: mvts, error: errMvts } = await supabase

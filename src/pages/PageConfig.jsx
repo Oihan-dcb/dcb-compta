@@ -7,6 +7,7 @@ import { calculerVentilationMois } from '../services/ventilation'
 import { lancerMatchingAuto } from '../services/rapprochement'
 import { resetEtRematcher } from '../services/rapprochement'
 import { getPowensStatus, connectPowens, syncAllPowensAccounts, setupPowensWebhook } from '../services/powens'
+import { autoMatcherMouvementsLLD, majLoyersDepuisVirements } from '../services/lldBanque'
 import { format } from 'date-fns'
 import { fr } from 'date-fns/locale'
 
@@ -280,7 +281,13 @@ export default function PageConfig() {
     try {
       const res = await syncAllPowensAccounts(powensSyncMois)
       const errMsg = res.errors?.length ? ` · ${res.errors.join(', ')}` : ''
-      setPowensLog({ ok: !res.errors?.length, msg: `${res.synced} tx récupérées · ${res.imported} importée(s)${errMsg}` })
+      // Auto-matching LLD après sync
+      const [{ lies }, { updated }] = await Promise.all([
+        autoMatcherMouvementsLLD(),
+        majLoyersDepuisVirements(),
+      ])
+      const lldMsg = (lies || updated) ? ` · LLD : ${lies} lié(s), ${updated} loyer(s) maj` : ''
+      setPowensLog({ ok: !res.errors?.length, msg: `${res.synced} tx récupérées · ${res.imported} importée(s)${lldMsg}${errMsg}` })
       await chargerStatusPowens()
     } catch (err) {
       setPowensLog({ ok: false, msg: err.message })

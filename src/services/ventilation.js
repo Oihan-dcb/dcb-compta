@@ -46,6 +46,22 @@ export async function calculerVentilationMois(mois) {
     (facturesVerrouillees || []).map(f => f.proprietaire_id).filter(Boolean)
   )
 
+  // Supprimer les lignes ventilation orphelines : resas annulées sans frais qui avaient
+  // été ventilées avant l'annulation (le filtre ci-dessous les exclut, donc le cleanup
+  // dans calculerVentilationResa ne tournerait jamais pour elles)
+  const { data: resasCancelleesIds } = await supabase
+    .from('reservation')
+    .select('id')
+    .eq('mois_comptable', mois)
+    .in('final_status', ['cancelled', 'not_accepted', 'not accepted', 'declined', 'expired'])
+    .or('fin_revenue.is.null,fin_revenue.eq.0')
+  if (resasCancelleesIds?.length) {
+    await supabase
+      .from('ventilation')
+      .delete()
+      .in('reservation_id', resasCancelleesIds.map(r => r.id))
+  }
+
   // Récupérer toutes les réservations du mois (ventilation_calculee n'est plus un verrou absolu)
   const { data: reservations, error } = await supabase
     .from('reservation')

@@ -37,6 +37,7 @@ import {
   listerTousMouvementsLLD,
   listerMoisDisposLLD,
   supprimerMouvementLLD,
+  mettreAJourMouvementLLD,
   majLoyersDepuisVirements,
 } from '../services/lldBanque'
 
@@ -454,11 +455,16 @@ export default function PageLocationsLongues() {
     try {
       const n = await importerMouvementsLLD(banqueParsed.rows, banqueCompte)
       const moisStr = banqueParsed.moisDispos.join(', ')
-      setSuccess(`${n} mouvement(s) importé(s) — compte ${banqueCompte} (${moisStr})`)
-      setBanqueParsed(null)
       const dernierMois = banqueParsed.moisDispos[banqueParsed.moisDispos.length - 1] || banqueMois
+      setBanqueParsed(null)
       await chargerBanque(banqueCompte, dernierMois)
       setBanqueMois(dernierMois)
+      // Auto-matching après import
+      const updatedMvts = [...banqueMouvements]
+      const lies = await autoLierMouvements(updatedMvts, updatedMvts)
+      setBanqueMouvements(updatedMvts)
+      const { updated } = await majLoyersDepuisVirements()
+      setSuccess(`${n} mouvement(s) importé(s) — ${lies} lié(s) — ${updated} loyer(s) mis à jour · compte ${banqueCompte} (${moisStr})`)
     } catch (e) { setError(e.message) }
     finally { setBanqueImporting(false) }
   }
@@ -471,30 +477,30 @@ export default function PageLocationsLongues() {
     } catch (e) { setError(e.message) }
   }
 
-  async function handleAutoLierCautions() {
-    const nonLies = banqueMouvements.filter(m => !m.etudiant_id && !m.etudiant)
-    if (!nonLies.length) { setSuccess('Aucun mouvement à lier'); return }
+  // Normalisation pour matching insensible aux accents
+  const norm = s => (s || '').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '')
+
+  // Matching automatique : associe les mouvements non liés à un étudiant
+  // Retourne le nombre de mouvements liés, met à jour la DB et l'état local
+  async function autoLierMouvements(mouvements, updatedMvts) {
+    const nonLies = mouvements.filter(m => !m.etudiant_id && !m.etudiant)
     let lies = 0
-    const updatedMvts = [...banqueMouvements]
     for (const m of nonLies) {
-      const haystack = `${m.libelle || ''} ${m.detail || ''}`.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '')
-      // Chercher par nom (+ prénom optionnel) dans libellé/détail
+      const haystack = norm(`${m.libelle || ''} ${m.detail || ''}`)
+      // 1. Par nom + prénom dans libellé/détail
       let match = etudiants.find(e => {
-        const nom = e.nom.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '')
-        if (!haystack.includes(nom)) return false
-        if (e.prenom) {
-          const prenom = e.prenom.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '')
-          return haystack.includes(prenom)
-        }
+        if (!norm(e.nom) || !haystack.includes(norm(e.nom))) return false
+        if (e.prenom) return haystack.includes(norm(e.prenom))
         return true
       })
-      // Sinon chercher par montant de caution
+      // 2. Par code bien dans libellé/détail
       if (!match) {
-        const candidats = etudiants.filter(e => e.bien?.code && hay.includes(norm(e.bien.code)))
+        const candidats = etudiants.filter(e => e.bien?.code && haystack.includes(norm(e.bien.code)))
         if (candidats.length === 1) match = candidats[0]
       }
+      // 3. Par montant exact (caution ou loyer_nu)
       if (!match && m.credit) {
-        const candidats = etudiants.filter(e => e.caution === m.credit)
+        const candidats = etudiants.filter(e => e.caution === m.credit || e.loyer_nu === m.credit)
         if (candidats.length === 1) match = candidats[0]
       }
       if (match) {
@@ -506,8 +512,14 @@ export default function PageLocationsLongues() {
         } catch { /* continuer */ }
       }
     }
+    return lies
+  }
+
+  async function handleAutoLierCautions() {
+    const updatedMvts = [...banqueMouvements]
+    const lies = await autoLierMouvements(banqueMouvements, updatedMvts)
     setBanqueMouvements(updatedMvts)
-    setSuccess(`${lies} mouvement(s) lié(s) automatiquement sur ${nonLies.length} non liés`)
+    setSuccess(`${lies} mouvement(s) lié(s) automatiquement sur ${banqueMouvements.filter(m => !m.etudiant_id && !m.etudiant).length + lies} non liés`)
   }
 
   async function handleMajLoyersDepuisVirements() {
