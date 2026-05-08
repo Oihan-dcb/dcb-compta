@@ -56,6 +56,86 @@ function detectCanal(libelle: string, montantCentimes: number): string {
   return montantCentimes > 0 ? 'credit' : 'debit'
 }
 
+// ── Auto-match LLD ────────────────────────────────────────────────────────────
+
+function normStr(s: string): string {
+  return (s || '').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '')
+}
+
+async function autoMatchLLD(db: ReturnType<typeof supabase>, agence: string): Promise<{ lies: number }> {
+  const [{ data: mvts }, { data: etudiants }] = await Promise.all([
+    db.from('lld_mouvement_bancaire')
+      .select('id, libelle, detail, credit, compte')
+      .eq('agence', agence)
+      .eq('statut', 'non_rapproche')
+      .is('etudiant_id', null),
+    db.from('etudiant')
+      .select('id, nom, prenom, caution, loyer_nu, bien:bien_id(code)')
+      .eq('agence', agence),
+  ])
+
+  if (!mvts?.length || !etudiants?.length) return { lies: 0 }
+
+  let lies = 0
+  for (const m of (mvts as any[])) {
+    const haystack = normStr(`${m.libelle || ''} ${m.detail || ''}`)
+    let match = (etudiants as any[]).find(e => {
+      if (!normStr(e.nom) || !haystack.includes(normStr(e.nom))) return false
+      if (e.prenom) return haystack.includes(normStr(e.prenom))
+      return true
+    })
+    if (!match) {
+      const candidats = (etudiants as any[]).filter(e => e.bien?.code && haystack.includes(normStr(e.bien.code)))
+      if (candidats.length === 1) match = candidats[0]
+    }
+    if (!match && m.credit) {
+      const candidats = (etudiants as any[]).filter(e => e.caution === m.credit || e.loyer_nu === m.credit)
+      if (candidats.length === 1) match = candidats[0]
+    }
+    if (match) {
+      const { error } = await db.from('lld_mouvement_bancaire')
+        .update({ etudiant_id: match.id, statut: 'rapproche' })
+        .eq('id', m.id)
+      if (!error) lies++
+    }
+  }
+  return { lies }
+}
+
+async function majLoyersLLD(db: ReturnType<typeof supabase>, agence: string): Promise<{ updated: number; skipped: number }> {
+  const { data: mvts } = await db.from('lld_mouvement_bancaire')
+    .select('id, etudiant_id, mois_releve, credit, date_operation')
+    .eq('agence', agence)
+    .eq('compte', 'loyers')
+    .eq('statut', 'rapproche')
+    .gt('credit', 0)
+
+  if (!mvts?.length) return { updated: 0, skipped: 0 }
+
+  let updated = 0, skipped = 0
+  for (const m of (mvts as any[])) {
+    if (!m.etudiant_id || !m.mois_releve) { skipped++; continue }
+
+    const { data: loyer } = await db.from('loyer_suivi')
+      .select('id, statut')
+      .eq('agence', agence)
+      .eq('etudiant_id', m.etudiant_id)
+      .eq('mois', m.mois_releve)
+      .in('statut', ['attendu', 'en_retard'])
+      .maybeSingle()
+
+    if (!loyer) { skipped++; continue }
+
+    const { error } = await db.from('loyer_suivi')
+      .update({ statut: 'recu', montant_recu: m.credit, date_reception: m.date_operation })
+      .eq('id', (loyer as any).id)
+
+    if (!error) updated++
+    else skipped++
+  }
+  return { updated, skipped }
+}
+
 // ── Actions ───────────────────────────────────────────────────────────────────
 
 async function syncTransactions(agence: string, accountLabel: string, dateFrom?: string, dateTo?: string) {
@@ -263,7 +343,16 @@ async function importStaged(agence: string, accountLabel: string, ids?: string[]
     }
   }
 
-  return { importe, erreurs }
+  // Pour le compte LLD loyers : auto-match + maj loyers automatiques
+  let matched = 0, loyersUpdated = 0
+  if (accountLabel === 'seq_lld') {
+    const matchResult = await autoMatchLLD(db, agence)
+    matched = matchResult.lies
+    const loyerResult = await majLoyersLLD(db, agence)
+    loyersUpdated = loyerResult.updated
+  }
+
+  return { importe, erreurs, matched, loyersUpdated }
 }
 
 // ── Serve ─────────────────────────────────────────────────────────────────────
