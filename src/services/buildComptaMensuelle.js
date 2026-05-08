@@ -236,7 +236,12 @@ export async function buildComptaMensuelle(mois) {
     const rembours    = remboursParBien[b.id]   || 0
     const menHt       = vent(b.id, 'MEN').ht
     const autoAbsorbable = Math.max(0, autoHt - menHt)
-    const virNet = Math.max(0, virHt2 - fraisLoy - fraisDirect - prestDeduct - deboursProp - ownerStayAbsorbByBien[b.id] - autoAbsorbable) + rembours
+    // Source de vérité : facture per-bien si validée, sinon calcul ventilation
+    const factureBienP3   = honByBien[b.id]
+    const factureValideP3 = factureBienP3?.statut && !['brouillon', 'calcul_en_cours'].includes(factureBienP3.statut)
+    const virNet = (factureBienP3?.montant_reversement != null && factureValideP3)
+      ? factureBienP3.montant_reversement
+      : Math.max(0, virHt2 - fraisLoy - fraisDirect - prestDeduct - deboursProp - ownerStayAbsorbByBien[b.id] - autoAbsorbable) + rembours
     loyParProprio[b.proprietaire_id] = (loyParProprio[b.proprietaire_id] || 0) + virNet
 
     // Accumuler les composantes par proprio pour le détail de l'alerte ECART_REVERSEMENT
@@ -295,9 +300,13 @@ export async function buildComptaMensuelle(mois) {
     const owner_stay_absorb = ownerStayAbsorbByBien[b.id] || 0
     // AUTO absorbable = AUTO non couvert par MEN (fallback Airbnb : MEN=0, AUTO pris sur LOY)
     const auto_absorbable = Math.max(0, auto.ht - men.ht)
-    // reversement = max(0, VIR − déductions) + remboursements
-    // Aligné sur facturesEvoliz.js — VIR est la base (inclut taxes passthrough le cas échéant)
-    const reversement_calcule = Math.max(0, vir.ht - frais_loy - frais_direct - prest_deduct - debours_prop - owner_stay_absorb - auto_absorbable) + remboursements
+    // Source de vérité : facture per-bien si validée (même source que le rapport PDF)
+    // Sinon : calcul depuis ventilation VIR
+    const factureBien4   = honByBien[b.id]
+    const factureValide4 = factureBien4?.statut && !['brouillon', 'calcul_en_cours'].includes(factureBien4.statut)
+    const reversement_calcule = (factureBien4?.montant_reversement != null && factureValide4)
+      ? factureBien4.montant_reversement
+      : Math.max(0, vir.ht - frais_loy - frais_direct - prest_deduct - debours_prop - owner_stay_absorb - auto_absorbable) + remboursements
 
     // Écart reversement au niveau proprio : Σ factures vs Σ reversement_calcule tous biens
     let ecart_reversement_proprio = null
