@@ -226,8 +226,8 @@ export async function buildComptaMensuelle(mois) {
     }
   }
 
-  // Biens actifs ce mois (au moins une resa ou de la ventilation)
-  const biensAvecResas   = new Set(resas.map(r => r.bien_id))
+  // Biens actifs ce mois : resas valides (exclure annulées sans frais) ou ventilation valide
+  const biensAvecResas   = new Set(resas.filter(r => !cancelledNoFeeIds.has(r.id)).map(r => r.bien_id))
   const biensAvecVentil  = new Set(ventils.map(v => v.bien_id))
   const biensActifs = biens.filter(b => biensAvecResas.has(b.id) || biensAvecVentil.has(b.id))
 
