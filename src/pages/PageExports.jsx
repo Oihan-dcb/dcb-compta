@@ -191,10 +191,12 @@ export default function PageExports() {
     Promise.all([
       supabase.from('reservation').select('bien_id').eq('mois_comptable', mois),
       supabase.from('ventilation').select('bien_id').eq('mois_comptable', mois),
-    ]).then(([{ data: resasData }, { data: ventilData }]) => {
+      supabase.from('loyer_suivi').select('etudiant:etudiant_id(bien_id)').eq('mois', mois).eq('agence', AGENCE),
+    ]).then(([{ data: resasData }, { data: ventilData }, { data: loyerData }]) => {
       const ids = [...new Set([
         ...(resasData || []).map(r => r.bien_id),
         ...(ventilData || []).map(v => v.bien_id),
+        ...(loyerData || []).map(l => l.etudiant?.bien_id),
       ].filter(Boolean))]
       if (ids.length === 0) return
       supabase.from('bien')
