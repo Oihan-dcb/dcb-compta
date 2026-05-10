@@ -75,27 +75,69 @@ Deno.serve(async (req) => {
     const tsMax = Math.floor(new Date(dateCloture + 'T23:59:59Z').getTime() / 1000)
     for (const code of codesManquants) {
       try {
-        let charges: any[] = []
+        let found = false
+
+        // Tentative 1 : PaymentIntents search par metadata (les metadata sont sur le PI)
         try {
-          const r1 = await stripeGet(`/v1/charges/search?query=${encodeURIComponent(`metadata['reservation_code']:'${code}'`)}&limit=10`)
-          charges = (r1.data ?? []).filter((c: any) => c.status === 'succeeded' && c.captured && c.created <= tsMax)
-        } catch (_) {}
-        if (!charges.length) {
-          try {
-            const r2 = await stripeGet(`/v1/charges/search?query=${encodeURIComponent(`description:'${code}'`)}&limit=10`)
-            charges = (r2.data ?? []).filter((c: any) => c.status === 'succeeded' && c.captured && c.created <= tsMax)
-          } catch (_) {}
+          const r1 = await stripeGet(
+            `/v1/payment_intents/search?query=${encodeURIComponent(`metadata['reservation_code']:'${code}'`)}&limit=10`
+          )
+          const pis = (r1.data ?? []).filter((pi: any) => pi.status === 'succeeded' && pi.created <= tsMax)
+          for (const pi of pis) {
+            candidatesFromStripe.push({
+              code,
+              chargeId: pi.latest_charge || pi.id,
+              date: new Date(pi.created * 1000).toISOString().slice(0, 10),
+              montant: pi.amount_received || pi.amount || 0,
+            })
+            found = true
+          }
+        } catch (e1: any) {
+          console.error(`[${code}] PI metadata search error:`, e1?.message)
         }
-        for (const ch of charges) {
-          candidatesFromStripe.push({
-            code,
-            chargeId: ch.id,
-            date: new Date(ch.created * 1000).toISOString().slice(0, 10),
-            montant: ch.amount_captured || ch.amount || 0,
-          })
+
+        // Tentative 2 : Charges search par metadata
+        if (!found) {
+          try {
+            const r2 = await stripeGet(
+              `/v1/charges/search?query=${encodeURIComponent(`metadata['reservation_code']:'${code}'`)}&limit=10`
+            )
+            const charges = (r2.data ?? []).filter((c: any) => c.status === 'succeeded' && c.captured && c.created <= tsMax)
+            for (const ch of charges) {
+              candidatesFromStripe.push({
+                code,
+                chargeId: ch.id,
+                date: new Date(ch.created * 1000).toISOString().slice(0, 10),
+                montant: ch.amount_captured || ch.amount || 0,
+              })
+              found = true
+            }
+          } catch (e2: any) {
+            console.error(`[${code}] Charge metadata search error:`, e2?.message)
+          }
+        }
+
+        // Tentative 3 : Charges search par description
+        if (!found) {
+          try {
+            const r3 = await stripeGet(
+              `/v1/charges/search?query=${encodeURIComponent(`description:'${code}'`)}&limit=10`
+            )
+            const charges = (r3.data ?? []).filter((c: any) => c.status === 'succeeded' && c.captured && c.created <= tsMax)
+            for (const ch of charges) {
+              candidatesFromStripe.push({
+                code,
+                chargeId: ch.id,
+                date: new Date(ch.created * 1000).toISOString().slice(0, 10),
+                montant: ch.amount_captured || ch.amount || 0,
+              })
+            }
+          } catch (e3: any) {
+            console.error(`[${code}] Charge description search error:`, e3?.message)
+          }
         }
       } catch (e: any) {
-        console.error('Stripe search:', code, e?.message)
+        console.error(`[${code}] Stripe search fatal:`, e?.message)
         log.errors++
       }
     }
