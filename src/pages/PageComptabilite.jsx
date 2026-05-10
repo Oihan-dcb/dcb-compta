@@ -989,13 +989,10 @@ function SequestreTempsReel() {
   const [error, setError]     = useState(null)
   const [genAt, setGenAt]     = useState(null)
   const [showDetail, setShowDetail] = useState(false)
-  const [showDebug, setShowDebug]   = useState(false)
-  const [debugRuns, setDebugRuns]   = useState([])
   const runId = useRef(0)
 
   const charger = useCallback(async () => {
     const thisRun = ++runId.current
-    setDebugRuns(prev => [{ id: thisRun, stale: false, ts: new Date().toLocaleTimeString('fr-FR'), status: 'START…' }, ...prev].slice(0, 10))
     setLoading(true); setError(null)
     try {
       const today = new Date().toISOString().slice(0, 10)
@@ -1038,7 +1035,6 @@ function SequestreTempsReel() {
       // → URL courte, pas de troncature silencieuse PostgREST
       const resaIdSet = new Set(resaIds)
       const payinByResa = {}
-      let pmtsRowCount = 0
       {
         let offset = 0
         while (true) {
@@ -1051,7 +1047,6 @@ function SequestreTempsReel() {
             .range(offset, offset + 999)
           if (pmtsErr) throw new Error(`reservation_paiement p${offset/1000}: ${pmtsErr.message}`)
           if (!pmts || pmts.length === 0) break
-          pmtsRowCount += pmts.length
           for (const p of pmts) {
             if (resaIdSet.has(p.reservation_id)) {
               payinByResa[p.reservation_id] = (payinByResa[p.reservation_id] || 0) + (p.montant || 0)
@@ -1097,7 +1092,6 @@ function SequestreTempsReel() {
       // Join via reservation!inner pour filtrer par bienIds — même raison que reservation_paiement
       const passesVentilesSet = new Set(passesVentiles.map(r => r.id))
       const ventilByResa = {}
-      let ventilRowCount = 0
       {
         let offset = 0
         while (true) {
@@ -1110,7 +1104,6 @@ function SequestreTempsReel() {
             .range(offset, offset + 999)
           if (ventilsErr) throw new Error(`ventilation p${offset/1000}: ${ventilsErr.message}`)
           if (!ventils || ventils.length === 0) break
-          ventilRowCount += ventils.length
           for (const v of ventils) {
             if (passesVentilesSet.has(v.reservation_id)) {
               const amt = v.montant_reel != null ? v.montant_reel : (v.montant_ht || 0)
@@ -1137,25 +1130,7 @@ function SequestreTempsReel() {
       const totalFiable     = totalFuturs
       const totalAnomalies  = anomalies.reduce((s, r) => s + (payinByResa[r.id] || 0), 0)
 
-      // ── DEBUG TEMPORAIRE ──
-      const stale = thisRun !== runId.current
-      const runEntry = {
-        id:               thisRun,
-        stale,
-        ts:               new Date().toLocaleTimeString('fr-FR'),
-        allResas:         allResas.length,
-        pmtsRows:         pmtsRowCount,
-        payinKeys:        Object.keys(payinByResa).length,
-        ventilRows:       ventilRowCount,
-        resasAvecPayin:   resasAvecPayin.length,
-        futurCount:       futurs.length,
-        residuelCount:    residuelPasses.length,
-        totalFuturs:      (totalFuturs / 100).toFixed(2),
-        totalResiduel:    (totalResiduel / 100).toFixed(2),
-      }
-      setDebugRuns(prev => [runEntry, ...prev].slice(0, 10))
-      if (stale) return
-      // ── FIN DEBUG ──
+      if (thisRun !== runId.current) return
 
       setData({
         futurs:          futurs.map(r => ({ ...r, payin: payinByResa[r.id] || 0 })),
@@ -1192,30 +1167,6 @@ function SequestreTempsReel() {
       </div>
 
       {error && <div style={{ background: '#FEF2F2', border: '1px solid #FECACA', borderRadius: 8, padding: '12px 16px', color: '#DC2626', marginBottom: 20 }}>{error}</div>}
-
-      {/* ── PANNEAU DEBUG TEMPORAIRE ── */}
-      <div style={{ marginBottom: 12 }}>
-        <button onClick={() => setShowDebug(v => !v)} style={{ fontSize: '0.75em', background: 'none', border: '1px solid #D9CEB8', borderRadius: 6, padding: '3px 10px', cursor: 'pointer', color: '#9C8E7D' }}>
-          {showDebug ? '▲ Masquer debug' : '▼ Debug chargements'}
-          {debugRuns.some(r => r.stale) && <span style={{ marginLeft: 6, color: '#DC2626', fontWeight: 700 }}>⚠ STALE détecté</span>}
-        </button>
-        {showDebug && (
-          <div style={{ marginTop: 8, background: '#1e1e1e', color: '#d4d4d4', borderRadius: 8, padding: '10px 14px', fontFamily: 'monospace', fontSize: '0.72em', lineHeight: 1.7 }}>
-            {debugRuns.length === 0 && <div style={{ color: '#888' }}>Aucun run enregistré</div>}
-            {debugRuns.map((r, i) => (
-              <div key={i} style={{ borderBottom: '1px solid #333', paddingBottom: 4, marginBottom: 4, color: r.stale ? '#f87171' : r.status === 'START…' ? '#facc15' : '#86efac' }}>
-                {r.status === 'START…'
-                  ? `▶ run#${r.id} [${r.ts}] START`
-                  : r.stale
-                    ? `✗ run#${r.id} [${r.ts}] STALE→ignoré | futurs=${r.futurCount} (${r.totalFuturs}€) | passés=${r.residuelCount} (${r.totalResiduel}€) | allResas=${r.allResas} | pmtsRows=${r.pmtsRows} payinKeys=${r.payinKeys} | ventilRows=${r.ventilRows}`
-                    : `✓ run#${r.id} [${r.ts}] OK | futurs=${r.futurCount} (${r.totalFuturs}€) | passés=${r.residuelCount} (${r.totalResiduel}€) | allResas=${r.allResas} | pmtsRows=${r.pmtsRows} payinKeys=${r.payinKeys} | ventilRows=${r.ventilRows}`
-                }
-              </div>
-            ))}
-          </div>
-        )}
-      </div>
-      {/* ── FIN DEBUG ── */}
       {loading && !data && <div style={{ textAlign: 'center', padding: 40, color: '#9C8E7D' }}>Chargement…</div>}
 
       {data && (() => {
