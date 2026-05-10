@@ -795,3 +795,28 @@ prestation_hors_forfait ──── prestation_type
 
 *Fichier généré dans le cadre de l'audit structurel DCB Compta — mars 2026.*
 *Ne pas modifier sans relecture du code source.*
+
+---
+
+### `sequestre_perimetre_mensuel`
+
+Table de configuration historique du périmètre de perception des loyers plateforme. Ajoutée mai 2026 pour le calcul de séquestre de clôture.
+
+| Champ | Type | Description | Notes |
+|---|---|---|---|
+| `id` | uuid PK | | |
+| `bien_id` | uuid FK → bien | | ON DELETE CASCADE |
+| `mois` | text | Format YYYY-MM | CHECK regex `^\d{4}-\d{2}$` |
+| `perception_loyer_plateforme` | boolean | DCB percevait-il les loyers Airbnb/Booking ce mois-là ? | DEFAULT true |
+| `source` | varchar(50) | 'manuel', 'confirmé', 'import' | DEFAULT 'manuel' |
+| `note` | text | Commentaire libre | |
+| `created_at` | timestamptz | | |
+| `updated_at` | timestamptz | Auto-mis à jour via trigger | |
+
+**Contrainte** : `UNIQUE(bien_id, mois)`
+
+**Comportement par défaut** : si aucune entrée n'existe pour un `bien_id + mois`, la perception est considérée comme `true` (DCB percevait par défaut). Ne créer une entrée que pour signaler un changement de statut.
+
+**Usage** : filtre appliqué dans `SequestreCloture` (PageComptabilite.jsx) sur les réservations Airbnb et Booking uniquement. Les canaux direct / stripe / manual ne sont **jamais** filtrés par ce périmètre.
+
+**Saisie** : via le sous-onglet "Périmètre mensuel" de l'onglet Séquestre → Clôture. Grille biens × 12 mois, upsert DB immédiat au clic.

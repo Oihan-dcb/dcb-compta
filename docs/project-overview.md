@@ -727,3 +727,36 @@ const normalizeLabel = l => LABEL_ALIASES[l?.toLowerCase()] ?? l
 ```
 
 **Fix data** (migration 124) : recalcul FMEN pour toutes les réservations Booking affectées + ajustement LOY/VIR en conséquence.
+
+## Session 10 mai 2026 — Exports per-bien + Séquestre clôture
+
+### Exports — filtre per-bien (`bienIds`)
+
+Pattern `bienIds = null` (pas de filtre) / `array` (filtre `.in('bien_id', bienIds)`) ajouté à tous les services d'export :
+- `exportDeboursPrestations`, `exportAutoDebours`, `exportFacturesEvoliz`, `buildComptaMensuelle`, `envoyerExportsComptable`
+
+`PageExports.jsx` — biens actifs du mois déterminés depuis 3 sources : `reservation`, `ventilation`, `loyer_suivi` (inclut LLD).
+
+Bugs corrigés dans `exportFacturesEvoliz` :
+- `bien:bien_id(hospitable_name)` était sur `facture_evoliz_ligne` (pas de FK) → déplacé sur `facture_evoliz`
+- `quantite` n'existe pas sur `facture_evoliz_ligne` → supprimé du SELECT
+
+### Séquestre Clôture — nouveau sous-onglet
+
+**`OngletSequestre`** (wrapper) → sous-onglets localStorage : `SequestreTempsReel` (ancien `OngletSequestre` renommé) + `SequestreCloture` (nouveau).
+
+**`SequestreCloture`** — séquestre comptable = encaissements reçus avant le 31/12/N pour séjours arrivant en N+1.
+
+Classification par canal :
+- Airbnb : VIR prouvé ≤ 31/12 + périmètre ok → `certain` ; VIR prouvé + périmètre false → `exclu_perimetre` ; pas de VIR → `exclu`
+- Booking : VIR prouvé → `certain` ; rapprochée sans VIR → `booking_sans_vir` ; rien → `absent`
+- Manual : paiement daté ≤ 31/12 → `certain_manuel` (hors total fiable) ; sinon → `a_verifier`
+- Direct/Stripe : paiement daté → `certain` ; rapprochée → `estime` ; sinon → `a_verifier`
+
+Sous-onglet interne **"Périmètre mensuel"** : grille biens × 12 mois, upsert DB immédiat (`sequestre_perimetre_mensuel`). Filtre s'applique Airbnb/Booking uniquement — direct/stripe/manual toujours analysés.
+
+**Migration Supabase** : table `sequestre_perimetre_mensuel` (bien_id, mois YYYY-MM, perception_loyer_plateforme boolean DEFAULT true, UNIQUE bien_id+mois).
+
+Paramétrable par année (défaut 2025). Recalcul automatique au changement de périmètre.
+
+Bug notable corrigé post-review : `final_status` absent du SELECT → toutes les resas passaient le filtre CANCELLED (r.final_status = undefined).
