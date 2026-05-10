@@ -998,7 +998,7 @@ function SequestreTempsReel() {
       // 1. Biens de l'agence
       const { data: biens } = await supabase.from('bien').select('id, code').eq('agence', AGENCE)
       const bienIds = (biens || []).map(b => b.id)
-      if (!bienIds.length) { setData({ futurs: [], residuelPasses: [], anomalies: [], futursAttenteAB: [], totalFuturs: 0, totalResiduel: 0, totalFiable: 0, totalAnomalies: 0, totalAttenteAB: 0 }); return }
+      if (!bienIds.length) { setData({ futurs: [], residuelPasses: [], anomalies: [], futursAttenteAB: [], futursAVerifier: [], totalFuturs: 0, totalResiduel: 0, totalFiable: 0, totalAnomalies: 0, totalAttenteAB: 0, totalAVerifier: 0 }); return }
 
       // 2. Toutes les réservations valides de l'agence (avec encaissement > 0)
       const CANCELLED = ['not_accepted', 'not accepted', 'declined', 'expired', 'cancelled']
@@ -1016,7 +1016,7 @@ function SequestreTempsReel() {
         ))
       }
       const resaIds = allResas.map(r => r.id)
-      if (!resaIds.length) { setData({ futurs: [], residuelPasses: [], anomalies: [], futursAttenteAB: [], totalFuturs: 0, totalResiduel: 0, totalFiable: 0, totalAnomalies: 0, totalAttenteAB: 0 }); return }
+      if (!resaIds.length) { setData({ futurs: [], residuelPasses: [], anomalies: [], futursAttenteAB: [], futursAVerifier: [], totalFuturs: 0, totalResiduel: 0, totalFiable: 0, totalAnomalies: 0, totalAttenteAB: 0, totalAVerifier: 0 }); return }
 
       // 3. PAYINs réels prouvés en banque = reservation_paiement avec mouvement_id IS NOT NULL
       const payinByResa = {}
@@ -1054,6 +1054,13 @@ function SequestreTempsReel() {
         !(payinByResa[r.id] > 0)
       )
 
+      // Futurs direct/manual/stripe sans PAYIN prouvé → "À vérifier"
+      const futursAVerifier = allResas.filter(r =>
+        r.departure_date > today &&
+        (r.platform === 'direct' || r.platform === 'manual' || r.platform === 'stripe') &&
+        !(payinByResa[r.id] > 0)
+      )
+
       // 5. Ventilation des séjours passés ventilés (hors VIR = code résultat, hors PREST = mémo)
       const passesIds = passesVentiles.map(r => r.id)
       const ventilByResa = {}
@@ -1062,7 +1069,7 @@ function SequestreTempsReel() {
           .from('ventilation')
           .select('reservation_id, code, montant_ht, montant_reel')
           .in('reservation_id', passesIds.slice(i, i + 400))
-          .not('code', 'in', '(VIR,PREST)')
+          .not('code', 'in', '(VIR,PREST,RGLM,SOLDE)')
         for (const v of ventils || []) {
           const amt = v.montant_reel != null ? v.montant_reel : (v.montant_ht || 0)
           ventilByResa[v.reservation_id] = (ventilByResa[v.reservation_id] || 0) + amt
@@ -1072,6 +1079,7 @@ function SequestreTempsReel() {
       // 6. Calcul totaux
       const totalFuturs     = futurs.reduce((s, r) => s + (payinByResa[r.id] || 0), 0)
       const totalAttenteAB  = futursAttenteAB.reduce((s, r) => s + (r.fin_revenue || 0), 0)
+      const totalAVerifier  = futursAVerifier.reduce((s, r) => s + (r.fin_revenue || 0), 0)
 
       const residuelPasses = passesVentiles.map(r => ({
         ...r,
@@ -1084,11 +1092,12 @@ function SequestreTempsReel() {
       const totalAnomalies  = anomalies.reduce((s, r) => s + (payinByResa[r.id] || 0), 0)
 
       setData({
-        futurs:         futurs.map(r => ({ ...r, payin: payinByResa[r.id] || 0 })),
+        futurs:          futurs.map(r => ({ ...r, payin: payinByResa[r.id] || 0 })),
         residuelPasses,
-        anomalies:      anomalies.map(r => ({ ...r, payin: payinByResa[r.id] || 0 })),
+        anomalies:       anomalies.map(r => ({ ...r, payin: payinByResa[r.id] || 0 })),
         futursAttenteAB: futursAttenteAB.map(r => ({ ...r, montantAttendu: r.fin_revenue || 0 })),
-        totalFuturs, totalResiduel, totalFiable, totalAnomalies, totalAttenteAB,
+        futursAVerifier: futursAVerifier.map(r => ({ ...r, montantAttendu: r.fin_revenue || 0 })),
+        totalFuturs, totalResiduel, totalFiable, totalAnomalies, totalAttenteAB, totalAVerifier,
       })
       setGenAt(new Date())
     } catch (e) {
@@ -1120,7 +1129,7 @@ function SequestreTempsReel() {
       {loading && !data && <div style={{ textAlign: 'center', padding: 40, color: '#9C8E7D' }}>Chargement…</div>}
 
       {data && (() => {
-        const { futurs, residuelPasses, anomalies, futursAttenteAB, totalFuturs, totalResiduel, totalFiable, totalAnomalies, totalAttenteAB } = data
+        const { futurs, residuelPasses, anomalies, futursAttenteAB, futursAVerifier, totalFuturs, totalResiduel, totalFiable, totalAnomalies, totalAttenteAB, totalAVerifier } = data
         const residuelOk = Math.abs(totalResiduel) < 100_00 // < 1€ de résidu = propre
         const residuelColor = Math.abs(totalResiduel) < 100_00 ? '#065F46' : Math.abs(totalResiduel) < 500_00 ? '#92400E' : '#DC2626'
 
@@ -1279,6 +1288,49 @@ function SequestreTempsReel() {
                           <td style={{ padding: '6px 10px', whiteSpace: 'nowrap' }}>{fmtDate(r.arrival_date)}</td>
                           <td style={{ padding: '6px 10px', whiteSpace: 'nowrap' }}>{fmtDate(r.departure_date)}</td>
                           <td style={{ padding: '6px 10px', textAlign: 'right', fontWeight: 600, fontVariantNumeric: 'tabular-nums', color: '#1D4ED8' }}>{fmt(r.montantAttendu)}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            )}
+
+            {/* ── À vérifier : direct/manual/stripe futurs sans PAYIN ── */}
+            {futursAVerifier.length > 0 && (
+              <div style={{ background: '#FFFBEB', border: '1px solid #FDE68A', borderRadius: 12, padding: '16px 20px' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 12 }}>
+                  <div style={{ flex: 1 }}>
+                    <div style={{ fontWeight: 700, color: '#92400E', fontSize: '0.92em' }}>
+                      À vérifier — acompte à contrôler — {futursAVerifier.length} résa{futursAVerifier.length > 1 ? 's' : ''}
+                    </div>
+                    <div style={{ fontSize: '0.78em', color: '#6B7280', marginTop: 2 }}>
+                      Direct / Manuel / Stripe futurs sans PAYIN prouvé en banque. Le paiement voyageur est attendu avant l'arrivée.
+                    </div>
+                  </div>
+                  <div style={{ fontSize: '1.1em', fontWeight: 700, color: '#92400E', fontVariantNumeric: 'tabular-nums', whiteSpace: 'nowrap' }}>
+                    {fmt(totalAVerifier)}
+                  </div>
+                </div>
+                <div style={{ overflowX: 'auto' }}>
+                  <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.84em' }}>
+                    <thead>
+                      <tr style={{ background: '#FEF3C7' }}>
+                        {['Bien', 'Code', 'Canal', 'Voyageur', 'Arrivée', 'Départ', 'Attendu (fin_revenue)'].map(h => (
+                          <th key={h} style={{ padding: '7px 10px', textAlign: h === 'Attendu (fin_revenue)' ? 'right' : 'left', fontWeight: 700, color: '#78350F', whiteSpace: 'nowrap', borderBottom: '1px solid #FDE68A' }}>{h}</th>
+                        ))}
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {futursAVerifier.sort((a, b) => a.arrival_date.localeCompare(b.arrival_date)).map((r, i) => (
+                        <tr key={r.id} style={{ borderBottom: '1px solid #FDE68A', background: i % 2 === 0 ? 'white' : '#FFFDF0' }}>
+                          <td style={{ padding: '6px 10px', fontWeight: 600, whiteSpace: 'nowrap' }}>{r.bien?.code || '—'}</td>
+                          <td style={{ padding: '6px 10px', fontFamily: 'monospace', fontSize: '0.85em', color: '#6B5843' }}>{r.code || '—'}</td>
+                          <td style={{ padding: '6px 10px' }}>{CANAL_LABEL[r.platform] || r.platform || '—'}</td>
+                          <td style={{ padding: '6px 10px' }}>{r.guest_name || '—'}</td>
+                          <td style={{ padding: '6px 10px', whiteSpace: 'nowrap' }}>{fmtDate(r.arrival_date)}</td>
+                          <td style={{ padding: '6px 10px', whiteSpace: 'nowrap' }}>{fmtDate(r.departure_date)}</td>
+                          <td style={{ padding: '6px 10px', textAlign: 'right', fontVariantNumeric: 'tabular-nums', color: '#92400E' }}>{fmt(r.montantAttendu)}</td>
                         </tr>
                       ))}
                     </tbody>
