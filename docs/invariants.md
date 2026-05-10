@@ -225,7 +225,7 @@ Aucun invariant actif violé à l'issue de la session du 12 avril 2026.
 
 | ID | Description | Statut |
 |---|---|---|
-| I-120 | Toute requête Supabase sur une table à volume élevé (>1000 lignes possibles : `reservation`, `ventilation`, `mouvement_bancaire`, `reservation_paiement`…) utilise une boucle de pagination `.range(offset, offset+999)`. Le gateway Supabase cloud plafonne silencieusement à 1000 lignes/requête même avec `.limit(N>1000)` — sans erreur, sans warning. `SequestreTempsReel` retournait 968 resas au lieu de 4591, causant un séquestre affiché de 5 938 € au lieu de 200 188 €. | ✅ Corrigé (session 10/05/2026) — `SequestreTempsReel` paginé. À appliquer à toute future requête volumineuse. |
+| I-120 | Toute requête Supabase paginée avec `.range()` **doit** inclure `.order('id')` (ou un tri stable). Sans `ORDER BY`, `OFFSET/LIMIT` est non-déterministe : le moteur retourne des tranches différentes à chaque appel, causant des doublons ou des lignes manquantes. `SequestreTempsReel` changeait de valeur à chaque actualisation pour cette raison. Corollaire : le gateway cloud plafonne à 1000 lignes/requête — toujours paginer les tables volumineuses. | ✅ Corrigé (session 10/05/2026) — `.order('id')` ajouté sur les 3 boucles de `SequestreTempsReel`. |
 
 ### Invariants ajoutés (3 mai 2026 — Anti ghost match systémique)
 
