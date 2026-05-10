@@ -38,6 +38,7 @@ Deno.serve(async (req) => {
       .not('ventilation_auto_id', 'is', null)
       .not('montant', 'is', null)
       .neq('statut', 'cancelled')
+      .neq('statut', 'refuse')
 
     if (error) return json({ error: error.message }, 500)
 
