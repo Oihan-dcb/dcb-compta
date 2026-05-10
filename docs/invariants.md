@@ -221,6 +221,12 @@ Aucun invariant actif violé à l'issue de la session du 12 avril 2026.
 | I-110 | Badge trésorerie et bloc Contrôle Trésorerie masqués pour `type_facture = 'debours'`. | ✅ Session 13/04/2026 |
 | I-111 | Le recalcul `allocate-encaissements` se déclenche automatiquement à chaque visite de la page Factures (arrière-plan). Aucun bouton manuel. | ✅ Session 13/04/2026 |
 
+### Invariant ajouté (10 mai 2026 — Pagination Supabase)
+
+| ID | Description | Statut |
+|---|---|---|
+| I-120 | Toute requête Supabase sur une table à volume élevé (>1000 lignes possibles : `reservation`, `ventilation`, `mouvement_bancaire`, `reservation_paiement`…) utilise une boucle de pagination `.range(offset, offset+999)`. Le gateway Supabase cloud plafonne silencieusement à 1000 lignes/requête même avec `.limit(N>1000)` — sans erreur, sans warning. `SequestreTempsReel` retournait 968 resas au lieu de 4591, causant un séquestre affiché de 5 938 € au lieu de 200 188 €. | ✅ Corrigé (session 10/05/2026) — `SequestreTempsReel` paginé. À appliquer à toute future requête volumineuse. |
+
 ### Invariants ajoutés (3 mai 2026 — Anti ghost match systémique)
 
 | ID | Description | Statut |

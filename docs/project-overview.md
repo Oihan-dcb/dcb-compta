@@ -760,3 +760,31 @@ Sous-onglet interne **"Périmètre mensuel"** : grille biens × 12 mois, upsert 
 Paramétrable par année (défaut 2025). Recalcul automatique au changement de périmètre.
 
 Bug notable corrigé post-review : `final_status` absent du SELECT → toutes les resas passaient le filtre CANCELLED (r.final_status = undefined).
+
+## Session 10 mai 2026 (suite) — Pagination Supabase + SequestreTempsReel
+
+### Bug critique : plafond silencieux 1000 lignes/requête Supabase
+
+**Symptôme** : `SequestreTempsReel` n'affichait que 5-6 resas dans "Acomptes futurs" malgré 22 resas avec VIRPayinProuvés confirmés en DB. Debug révèle `allResas.length=968` (après filtre) pour 4591 resas attendues.
+
+**Cause** : le gateway Supabase cloud plafonne silencieusement toutes les réponses REST à **1000 lignes/requête**, y compris quand `.limit(N > 1000)` est explicitement passé. La valeur `pgrst.max_rows = NULL` dans la config PostgREST n'annule pas cette limite — elle est imposée au niveau du gateway cloud, non configurable par projet.
+
+**Fix** : remplacer `.limit(10000)` par une **boucle de pagination `.range(offset, offset+999)`** :
+```js
+let offset = 0
+while (true) {
+  const { data: r } = await supabase.from('reservation')
+    .select(...)
+    .in('bien_id', batchBienIds)
+    .gt('fin_revenue', 0)
+    .range(offset, offset + 999)
+  if (!r || r.length === 0) break
+  allResas = allResas.concat(r.filter(...))
+  if (r.length < 1000) break
+  offset += 1000
+}
+```
+
+**Résultat** : Acomptes futurs 6 → 22 resas, Résidu passés ventilés 91 → 415 resas, Séquestre fiable 5 938 € → 200 188 €.
+
+**Règle à appliquer partout** : toute requête Supabase sur une table susceptible de dépasser 1000 lignes (reservation, ventilation, mouvement_bancaire…) doit utiliser cette boucle de pagination. Voir invariant I-120.
