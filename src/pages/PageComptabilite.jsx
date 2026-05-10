@@ -1004,18 +1004,24 @@ function SequestreTempsReel() {
       const CANCELLED = ['not_accepted', 'not accepted', 'declined', 'expired', 'cancelled']
       let allResas = []
       for (let i = 0; i < bienIds.length; i += 400) {
-        const { data: r } = await supabase
-          .from('reservation')
-          .select('id, code, platform, guest_name, arrival_date, departure_date, fin_revenue, ventilation_calculee, final_status, owner_stay, bien:bien_id(id, code)')
-          .in('bien_id', bienIds.slice(i, i + 400))
-          .gt('fin_revenue', 0)
-          .limit(10000)
-        console.log(`[DBG-RAW] batch i=${i} raw.length=${(r||[]).length}`)
-        allResas = allResas.concat((r || []).filter(r =>
-          !CANCELLED.includes(r.final_status) &&
-          !r.owner_stay &&
-          !/^[eé]tudiante?/i.test(r.guest_name || '')
-        ))
+        const batchBienIds = bienIds.slice(i, i + 400)
+        let offset = 0
+        while (true) {
+          const { data: r } = await supabase
+            .from('reservation')
+            .select('id, code, platform, guest_name, arrival_date, departure_date, fin_revenue, ventilation_calculee, final_status, owner_stay, bien:bien_id(id, code)')
+            .in('bien_id', batchBienIds)
+            .gt('fin_revenue', 0)
+            .range(offset, offset + 999)
+          if (!r || r.length === 0) break
+          allResas = allResas.concat(r.filter(r =>
+            !CANCELLED.includes(r.final_status) &&
+            !r.owner_stay &&
+            !/^[eé]tudiante?/i.test(r.guest_name || '')
+          ))
+          if (r.length < 1000) break
+          offset += 1000
+        }
       }
       const resaIds = allResas.map(r => r.id)
       if (!resaIds.length) { setData({ futurs: [], residuelPasses: [], anomalies: [], futursAttenteAB: [], futursAVerifier: [], totalFuturs: 0, totalResiduel: 0, totalFiable: 0, totalAnomalies: 0, totalAttenteAB: 0, totalAVerifier: 0 }); return }
@@ -1041,22 +1047,6 @@ function SequestreTempsReel() {
         }
       }
 
-      // DEBUG TEMP
-      console.log(`[DBG] bienIds.length=${bienIds.length} allResas.length=${allResas.length}`)
-      const debugBienIds = [
-        'b2082d04-0b18-41ad-8e69-0bc2c8cf496f', // PATXI
-        'c6e3780b-6e98-4cbd-b614-fdd06f59c173', // ONTZI
-        'b965131f-63a2-4f1d-85a2-375a522ce418', // GASQ
-        '3661e230-15e8-4a42-82f2-abeb5f9741b1', // CERES
-        '4156c337-47ef-474e-9de4-0789be28c9e3', // BELEZIA
-      ]
-      debugBienIds.forEach(id => console.log(`[DBG] bienId ${id} inBienIds=${bienIds.includes(id)}`))
-      const debugCodes = ['85TCHF','R34GYX','L2K15B','CV6MYW','F9F12D']
-      debugCodes.forEach(code => {
-        const r = allResas.find(r => r.code === code)
-        if (r) console.log(`[DBG] ${code} inAllResas=true payin=${payinByResa[r.id]} fin_revenue=${r.fin_revenue} departure=${r.departure_date}`)
-        else console.log(`[DBG] ${code} inAllResas=FALSE`)
-      })
 
       // Garder uniquement les resas avec au moins un PAYIN prouvé
       const resasAvecPayin = allResas.filter(r => (payinByResa[r.id] || 0) > 0)
