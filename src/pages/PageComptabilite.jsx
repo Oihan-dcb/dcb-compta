@@ -1569,11 +1569,13 @@ function SequestreTempsReel() {
 // ─────────────────────────────────────────────────────────────────────────────
 
 const STATUT_SEQ = {
-  certain:    { label: 'Certain',              color: '#065F46', bg: '#D1FAE5' },
-  estime:     { label: 'Estimé — hors total',  color: '#92400E', bg: '#FEF3C7' },
-  exclu:      { label: 'Exclu — non versé',    color: '#9C8E7D', bg: '#F3F4F6' },
-  a_verifier: { label: 'À vérifier',           color: '#7C3AED', bg: '#EDE9FE' },
-  absent:     { label: 'Absent',               color: '#9C8E7D', bg: '#F3F4F6' },
+  certain:          { label: 'Certain',                          color: '#065F46', bg: '#D1FAE5', inTotal: true  },
+  certain_manuel:   { label: 'Certain — manuel rapproché',       color: '#065F46', bg: '#D1FAE5', inTotal: false },
+  estime:           { label: 'Estimé — hors total',              color: '#92400E', bg: '#FEF3C7', inTotal: false },
+  booking_sans_vir: { label: 'À vérifier — Booking sans VIR daté', color: '#92400E', bg: '#FEF3C7', inTotal: false },
+  exclu:            { label: 'Exclu — Airbnb non versé',         color: '#9C8E7D', bg: '#F3F4F6', inTotal: false },
+  a_verifier:       { label: 'À vérifier',                       color: '#7C3AED', bg: '#EDE9FE', inTotal: false },
+  absent:           { label: 'Absent',                           color: '#9C8E7D', bg: '#F3F4F6', inTotal: false },
 }
 const CANAL_SEQ = { airbnb: 'Airbnb', booking: 'Booking', direct: 'Direct', manual: 'Manuel', stripe: 'Stripe' }
 
@@ -1605,7 +1607,7 @@ function SequestreCloture() {
       for (let i = 0; i < bienIds.length; i += 400) {
         const { data, error: e } = await supabase
           .from('reservation')
-          .select('id, code, platform, arrival_date, departure_date, fin_revenue, rapprochee, guest_name, bien:bien_id(id, code, hospitable_name)')
+          .select('id, code, platform, arrival_date, departure_date, fin_revenue, rapprochee, guest_name, final_status, bien:bien_id(id, code, hospitable_name)')
           .in('bien_id', bienIds.slice(i, i + 400))
           .gte('arrival_date', dateDebutSuivant)
         if (e) throw new Error(e.message)
@@ -1663,10 +1665,17 @@ function SequestreCloture() {
         } else if (r.platform === 'booking') {
           montant = r.fin_revenue || 0
           if (hasVirProuve) { statut = 'certain'; inTotal = true; dateEnc = virProuve.mouvement.date_operation }
-          else if (r.rapprochee) { statut = 'estime' }
+          else if (r.rapprochee) { statut = 'booking_sans_vir' }
           else { statut = 'absent' }
+        } else if (r.platform === 'manual') {
+          if (hasPmtProuve) {
+            statut = 'certain_manuel'; montant = pmtSomme
+            dateEnc = [...pmtProuves].sort((a, b) => (b.date_paiement || '').localeCompare(a.date_paiement || ''))[0]?.date_paiement
+          } else {
+            statut = 'a_verifier'; montant = r.fin_revenue || 0
+          }
         } else {
-          // direct, manual, stripe
+          // direct, stripe
           if (hasPmtProuve) {
             statut = 'certain'; montant = pmtSomme; inTotal = true
             dateEnc = [...pmtProuves].sort((a, b) => (b.date_paiement || '').localeCompare(a.date_paiement || ''))[0]?.date_paiement
@@ -1692,16 +1701,18 @@ function SequestreCloture() {
 
   const lignesFiltrees  = filtreStatut === 'tous' ? lignes : lignes.filter(l => l.statut === filtreStatut)
   const totalCertain    = lignes.filter(l => l.inTotal).reduce((s, l) => s + l.montant, 0)
-  const totalEstime     = lignes.filter(l => l.statut === 'estime').reduce((s, l) => s + l.montant, 0)
-  const totalHorsBilan  = lignes.filter(l => !l.inTotal && l.statut !== 'estime').reduce((s, l) => s + l.montant, 0)
+  const totalAVerifier  = lignes.filter(l => ['certain_manuel', 'estime', 'booking_sans_vir', 'a_verifier'].includes(l.statut)).reduce((s, l) => s + l.montant, 0)
+  const totalHorsBilan  = lignes.filter(l => ['exclu', 'absent'].includes(l.statut)).reduce((s, l) => s + l.montant, 0)
 
   const FILTRES = [
-    { key: 'tous',       label: 'Tous' },
-    { key: 'certain',    label: 'Certain' },
-    { key: 'estime',     label: 'Estimé' },
-    { key: 'a_verifier', label: 'À vérifier' },
-    { key: 'exclu',      label: 'Exclu' },
-    { key: 'absent',     label: 'Absent' },
+    { key: 'tous',             label: 'Tous' },
+    { key: 'certain',          label: 'Certain' },
+    { key: 'certain_manuel',   label: 'Certain — manuel' },
+    { key: 'estime',           label: 'Estimé' },
+    { key: 'booking_sans_vir', label: 'Booking sans VIR' },
+    { key: 'a_verifier',       label: 'À vérifier' },
+    { key: 'exclu',            label: 'Exclu' },
+    { key: 'absent',           label: 'Absent' },
   ]
 
   return (
@@ -1740,9 +1751,9 @@ function SequestreCloture() {
               <div style={{ fontSize: '0.75em', color: '#9C8E7D', marginTop: 3 }}>{lignes.filter(l => l.inTotal).length} résa(s) — inclus au bilan</div>
             </div>
             <div style={{ background: 'white', border: '1px solid var(--border)', borderRadius: 8, padding: '14px 18px' }}>
-              <div style={{ fontSize: '0.76em', color: '#6B5843', marginBottom: 4, textTransform: 'uppercase', letterSpacing: '0.05em' }}>Estimé (hors total fiable)</div>
-              <div style={{ fontSize: '1.4em', fontWeight: 700, color: '#92400E', fontVariantNumeric: 'tabular-nums' }}>{NF.format(totalEstime / 100)} €</div>
-              <div style={{ fontSize: '0.75em', color: '#9C8E7D', marginTop: 3 }}>{lignes.filter(l => l.statut === 'estime').length} résa(s) — à confirmer</div>
+              <div style={{ fontSize: '0.76em', color: '#6B5843', marginBottom: 4, textTransform: 'uppercase', letterSpacing: '0.05em' }}>À confirmer (hors total fiable)</div>
+              <div style={{ fontSize: '1.4em', fontWeight: 700, color: '#92400E', fontVariantNumeric: 'tabular-nums' }}>{NF.format(totalAVerifier / 100)} €</div>
+              <div style={{ fontSize: '0.75em', color: '#9C8E7D', marginTop: 3 }}>{lignes.filter(l => ['certain_manuel', 'estime', 'booking_sans_vir', 'a_verifier'].includes(l.statut)).length} résa(s) — estimé, manuel, à vérifier</div>
             </div>
             <div style={{ background: 'white', border: '1px solid var(--border)', borderRadius: 8, padding: '14px 18px' }}>
               <div style={{ fontSize: '0.76em', color: '#6B5843', marginBottom: 4, textTransform: 'uppercase', letterSpacing: '0.05em' }}>Informatif / exclus</div>
