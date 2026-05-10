@@ -117,11 +117,56 @@ export default function PageSmsReviews() {
   }
 
   // Manuel
-  const [manuelSms, setManuelSms]         = useState('')
-  const [manuelPhones, setManuelPhones]   = useState([]) // [{id, phone, name}]
-  const [manuelInput, setManuelInput]     = useState({ phone: '', name: '' })
-  const [manuelSending, setManuelSending] = useState(false)
-  const [manuelResults, setManuelResults] = useState(null)
+  const [manuelSms, setManuelSms]           = useState('')
+  const [manuelCtx, setManuelCtx]           = useState({ property: '', guestName: '', lang: 'FR', comment: '' })
+  const [manuelPhones, setManuelPhones]     = useState([]) // [{id, phone, name}]
+  const [manuelInput, setManuelInput]       = useState({ phone: '', name: '' })
+  const [manuelSending, setManuelSending]   = useState(false)
+  const [manuelGenerating, setManuelGenerating] = useState(false)
+  const [manuelResults, setManuelResults]   = useState(null)
+  const [manuelGoogleUrl, setManuelGoogleUrl] = useState(null)
+
+  // Charger google_review_url à l'ouverture de l'onglet
+  const chargerGoogleUrl = useCallback(async () => {
+    const { data } = await supabase.from('agency_config').select('google_review_url').eq('agence', AGENCE).single()
+    if (data?.google_review_url) setManuelGoogleUrl(data.google_review_url)
+  }, [])
+
+  const genererSmsLLM = async () => {
+    setManuelGenerating(true)
+    try {
+      const { lang, property, guestName, comment } = manuelCtx
+      const firstName = (guestName || '').split(' ')[0] || 'cher client'
+      const langLabel = lang === 'FR' ? 'français' : lang === 'EN' ? 'anglais' : 'espagnol'
+      const propName  = property || agenceLabel
+      const googleUrl = manuelGoogleUrl || ''
+      const zoneRule  = `- Ne mentionne AUCUNE région géographique dans le texte`
+      const inviteGoogle = lang === 'FR' ? 'Soutenez-nous sur Google →' : lang === 'EN' ? 'Support us on Google →' : 'Apóyanos en Google →'
+
+      const prompt = `Tu es l'assistant de ${agenceLabel}. ${comment
+        ? `Un voyageur vient de laisser un avis 5⭐ sur Airbnb pour "${propName}". Son commentaire : "${comment}"`
+        : `Rédige un message de remerciement pour un séjour à "${propName}".`}
+Rédige un SMS en ${langLabel} (160-220 caractères hors lien). Règles STRICTES :
+- Commence par "${firstName},"
+- Chaleureux et personnalisé${comment ? ', mentionne un élément précis du commentaire' : ''}
+- N'inclus AUCUNE URL dans le texte
+${zoneRule}
+- Termine EXACTEMENT par : "${inviteGoogle} — ${agenceLabel}"
+- Sans mention STOP
+Réponds UNIQUEMENT avec le texte du SMS. Le lien sera ajouté automatiquement après.`
+
+      const { data: { session } } = await supabase.auth.getSession()
+      const res = await fetch(`${SUPABASE_URL}/functions/v1/llm-analyse`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${session?.access_token || import.meta.env.VITE_SUPABASE_ANON_KEY}` },
+        body: JSON.stringify({ prompt, model: 'claude-haiku-4-5-20251001' }),
+      })
+      const data = await res.json()
+      if (data.text) setManuelSms(data.text + (googleUrl ? '\n' + googleUrl : ''))
+    } finally {
+      setManuelGenerating(false)
+    }
+  }
 
   const ajouterDestinataire = () => {
     const phone = manuelInput.phone.trim()
@@ -141,7 +186,7 @@ export default function PageSmsReviews() {
         hospitable_reservation_id: 'manuel-' + Math.random().toString(36).slice(2, 10),
         guest_name:    p.name || null,
         guest_phone:   p.phone,
-        property_name: 'Envoi manuel',
+        property_name: manuelCtx.property || 'Envoi manuel',
         preview_body:  manuelSms.trim(),
         send_at:       new Date().toISOString(),
         status:        'pending',
@@ -267,7 +312,8 @@ export default function PageSmsReviews() {
     if (tab === 'Campagnes') chargerCandidats()
     if (tab === 'Test' && !testComment) piocherCommentaire()
     if (tab === 'Queue') chargerQueue()
-  }, [tab, chargerCandidats, piocherCommentaire, testComment, chargerQueue])
+    if (tab === 'Manuel' && !manuelGoogleUrl) chargerGoogleUrl()
+  }, [tab, chargerCandidats, piocherCommentaire, testComment, chargerQueue, chargerGoogleUrl, manuelGoogleUrl])
 
   const callEdgeFn = async (body) => {
     const { data: { session } } = await supabase.auth.getSession()
@@ -664,10 +710,53 @@ export default function PageSmsReviews() {
       {/* ── MANUEL ── */}
       {tab === 'Manuel' && (
         <div style={{ maxWidth: 640 }}>
+          {/* Contexte LLM */}
+          <div style={{ background: 'var(--bg)', border: '1px solid var(--border)', borderRadius: 10, padding: '1.5rem', marginBottom: '1rem' }}>
+            <div style={{ fontWeight: 600, fontSize: '0.875rem', marginBottom: '0.75rem' }}>Contexte pour la génération LLM</div>
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.65rem', marginBottom: '0.65rem' }}>
+              <div>
+                <label style={{ display: 'block', fontSize: '0.78rem', color: '#888', marginBottom: '0.25rem' }}>Propriété</label>
+                <input value={manuelCtx.property} onChange={e => setManuelCtx(p => ({ ...p, property: e.target.value }))}
+                  placeholder="ex: 416 Harea" style={{ width: '100%', padding: '0.5rem 0.7rem', border: '1px solid var(--border)', borderRadius: 8, fontSize: '0.875rem', background: '#fff', boxSizing: 'border-box' }} />
+              </div>
+              <div>
+                <label style={{ display: 'block', fontSize: '0.78rem', color: '#888', marginBottom: '0.25rem' }}>Nom du client</label>
+                <input value={manuelCtx.guestName} onChange={e => setManuelCtx(p => ({ ...p, guestName: e.target.value }))}
+                  placeholder="ex: Marie Dupont" style={{ width: '100%', padding: '0.5rem 0.7rem', border: '1px solid var(--border)', borderRadius: 8, fontSize: '0.875rem', background: '#fff', boxSizing: 'border-box' }} />
+              </div>
+            </div>
+            <div style={{ marginBottom: '0.65rem' }}>
+              <label style={{ display: 'block', fontSize: '0.78rem', color: '#888', marginBottom: '0.25rem' }}>Commentaire Airbnb (optionnel)</label>
+              <textarea value={manuelCtx.comment} onChange={e => setManuelCtx(p => ({ ...p, comment: e.target.value }))}
+                placeholder="Coller le commentaire Airbnb ici pour un SMS plus personnalisé…"
+                rows={2} style={{ width: '100%', padding: '0.5rem 0.7rem', border: '1px solid var(--border)', borderRadius: 8, fontSize: '0.82rem', background: '#fff', resize: 'vertical', boxSizing: 'border-box', fontFamily: 'inherit' }} />
+            </div>
+            <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
+              <div style={{ display: 'flex', gap: '0.4rem' }}>
+                {['FR', 'EN', 'ES'].map(l => (
+                  <button key={l} onClick={() => setManuelCtx(p => ({ ...p, lang: l })) } style={{
+                    padding: '0.3rem 0.75rem', borderRadius: 8, cursor: 'pointer', fontSize: '0.8rem',
+                    background: manuelCtx.lang === l ? 'var(--brand)' : 'transparent',
+                    color: manuelCtx.lang === l ? '#fff' : 'var(--text)',
+                    border: `1px solid ${manuelCtx.lang === l ? 'var(--brand)' : 'var(--border)'}`,
+                    fontWeight: manuelCtx.lang === l ? 700 : 400,
+                  }}>{LANG_FLAG[l]} {l}</button>
+                ))}
+              </div>
+              <button onClick={genererSmsLLM} disabled={manuelGenerating} style={{
+                marginLeft: 'auto', padding: '0.45rem 1.1rem', background: manuelGenerating ? '#ccc' : '#2C2416',
+                color: '#fff', border: 'none', borderRadius: 8, cursor: manuelGenerating ? 'not-allowed' : 'pointer',
+                fontSize: '0.85rem', fontWeight: 700,
+              }}>
+                {manuelGenerating ? '⏳ Génération…' : '✨ Générer via LLM'}
+              </button>
+            </div>
+          </div>
+
           {/* SMS text */}
           <div style={{ background: 'var(--bg)', border: '1px solid var(--border)', borderRadius: 10, padding: '1.5rem', marginBottom: '1rem' }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.4rem' }}>
-              <label style={{ fontWeight: 600, fontSize: '0.875rem' }}>Texte du SMS</label>
+              <label style={{ fontWeight: 600, fontSize: '0.875rem' }}>Texte du SMS <span style={{ fontWeight: 400, color: '#aaa' }}>(éditable)</span></label>
               <span style={{ fontSize: '0.75rem', color: manuelSms.length > 320 ? '#b94a4a' : manuelSms.length > 160 ? '#8a7a4a' : '#999' }}>
                 {manuelSms.length} car. · {Math.ceil(manuelSms.length / 160) || 1} SMS
               </span>
@@ -675,9 +764,9 @@ export default function PageSmsReviews() {
             <textarea
               value={manuelSms}
               onChange={e => setManuelSms(e.target.value)}
-              placeholder="Tapez votre message ici…"
-              rows={5}
-              style={{ width: '100%', padding: '0.6rem 0.75rem', border: '1px solid var(--border)', borderRadius: 8, fontSize: '0.9rem', background: '#fff', resize: 'vertical', boxSizing: 'border-box', fontFamily: 'inherit', lineHeight: 1.5 }}
+              placeholder={manuelGenerating ? 'Génération en cours…' : 'Cliquez "Générer via LLM" ou tapez votre message ici…'}
+              rows={6}
+              style={{ width: '100%', padding: '0.6rem 0.75rem', border: '1px solid var(--border)', borderRadius: 8, fontSize: '0.875rem', background: '#fff', resize: 'vertical', boxSizing: 'border-box', fontFamily: 'inherit', lineHeight: 1.5 }}
             />
           </div>
 
@@ -748,7 +837,7 @@ export default function PageSmsReviews() {
             {manuelSending ? '⏳ Envoi…' : `▶ Envoyer à ${manuelPhones.length} destinataire${manuelPhones.length > 1 ? 's' : ''}`}
           </button>
           <p style={{ color: '#aaa', fontSize: '0.78rem', marginTop: '0.5rem', textAlign: 'center' }}>
-            Le texte est envoyé tel quel, sans modification par l'IA.
+            Le texte affiché est envoyé tel quel — modifiez-le avant d'envoyer si besoin.
           </p>
         </div>
       )}
