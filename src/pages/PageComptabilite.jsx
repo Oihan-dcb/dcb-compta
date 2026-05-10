@@ -1007,13 +1007,14 @@ function SequestreTempsReel() {
         const batchBienIds = bienIds.slice(i, i + 400)
         let offset = 0
         while (true) {
-          const { data: r } = await supabase
+          const { data: r, error: rErr } = await supabase
             .from('reservation')
             .select('id, code, platform, guest_name, arrival_date, departure_date, fin_revenue, ventilation_calculee, final_status, owner_stay, bien:bien_id(id, code)')
             .in('bien_id', batchBienIds)
             .gt('fin_revenue', 0)
             .order('id')
             .range(offset, offset + 999)
+          if (rErr) throw new Error(`reservation p${offset/1000}: ${rErr.message}`)
           if (!r || r.length === 0) break
           allResas = allResas.concat(r.filter(r =>
             !CANCELLED.includes(r.final_status) &&
@@ -1033,13 +1034,14 @@ function SequestreTempsReel() {
         const batchIds = resaIds.slice(i, i + 400)
         let offset = 0
         while (true) {
-          const { data: pmts } = await supabase
+          const { data: pmts, error: pmtsErr } = await supabase
             .from('reservation_paiement')
             .select('reservation_id, montant')
             .in('reservation_id', batchIds)
             .not('mouvement_id', 'is', null)
             .order('id')
             .range(offset, offset + 999)
+          if (pmtsErr) throw new Error(`reservation_paiement p${offset/1000}: ${pmtsErr.message}`)
           if (!pmts || pmts.length === 0) break
           for (const p of pmts) {
             payinByResa[p.reservation_id] = (payinByResa[p.reservation_id] || 0) + (p.montant || 0)
@@ -1087,13 +1089,14 @@ function SequestreTempsReel() {
         const batchIds = passesIds.slice(i, i + 400)
         let offset = 0
         while (true) {
-          const { data: ventils } = await supabase
+          const { data: ventils, error: ventilsErr } = await supabase
             .from('ventilation')
             .select('reservation_id, code, montant_ht, montant_reel')
             .in('reservation_id', batchIds)
             .not('code', 'in', '(VIR,PREST,RGLM,SOLDE)')
             .order('id')
             .range(offset, offset + 999)
+          if (ventilsErr) throw new Error(`ventilation p${offset/1000}: ${ventilsErr.message}`)
           if (!ventils || ventils.length === 0) break
           for (const v of ventils) {
             const amt = v.montant_reel != null ? v.montant_reel : (v.montant_ht || 0)
