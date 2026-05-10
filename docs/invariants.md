@@ -225,7 +225,7 @@ Aucun invariant actif violé à l'issue de la session du 12 avril 2026.
 
 | ID | Description | Statut |
 |---|---|---|
-| I-120 | Toute requête Supabase paginée avec `.range()` **doit** inclure `.order('id')` (ou un tri stable). Sans `ORDER BY`, `OFFSET/LIMIT` est non-déterministe : le moteur retourne des tranches différentes à chaque appel, causant des doublons ou des lignes manquantes. `SequestreTempsReel` changeait de valeur à chaque actualisation pour cette raison. Corollaire : le gateway cloud plafonne à 1000 lignes/requête — toujours paginer les tables volumineuses. | ✅ Corrigé (session 10/05/2026) — `.order('id')` ajouté sur les 3 boucles de `SequestreTempsReel`. |
+| I-120 | Toute requête Supabase paginée avec `.range()` **doit** inclure `.order('id')` (ou un tri stable). Sans `ORDER BY`, `OFFSET/LIMIT` est non-déterministe : le moteur retourne des tranches différentes à chaque appel, causant des doublons ou des lignes manquantes. **Effets concrets dans `SequestreTempsReel`** : (1) requête `reservation` (4710 rows, 5 pages) — 40 resas passées + 4 futurs manquaient, exclus de `resasAvecPayin`, faussant le compte (375 au lieu de 415) ; (2) requête `ventilation` (2275 rows, 3 pages nécessaires) — des entrées de ventilation étaient comptées 2× → `ventilByResa` gonflé → résiduel -44 828€ au lieu de -35 373€. Les deux bugs causaient un séquestre affiché de -9 496€ au lieu de +7 273€. Corollaire : le gateway cloud plafonne à 1000 lignes/requête — toujours paginer les tables volumineuses. | ✅ Corrigé (session 10/05/2026) — `.order('id')` ajouté sur les 3 boucles de `SequestreTempsReel`. |
 
 ### Invariants ajoutés (3 mai 2026 — Anti ghost match systémique)
 
