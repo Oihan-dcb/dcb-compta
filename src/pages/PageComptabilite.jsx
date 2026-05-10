@@ -1201,7 +1201,7 @@ function SequestreTempsReel() {
         ...(data?.futursStripeCaptures || []),
         ...(data?.futursAVerifier || []),
       ].filter(r => (r.platform === 'direct' || r.platform === 'stripe') && r.code?.startsWith('HOST-'))
-      if (!candidats.length) { setStripeLog({ found: 0, inserted: 0, errors: 0 }); return }
+      if (!candidats.length) { setStripeLog({ found: 0, inserted: 0, errors: 0, noCandidat: true }); return }
       const codes = candidats.map(r => r.code)
       const resaByCode = Object.fromEntries(candidats.map(r => [r.code, r.id]))
       const { data: res, error: efErr } = await supabase.functions.invoke('stripe-acomptes-sequestre', {
@@ -1242,8 +1242,12 @@ function SequestreTempsReel() {
             </button>
           )}
           {stripeLog && (
-            <span style={{ fontSize: '0.78em', color: stripeLog.error ? '#DC2626' : '#065F46' }}>
-              {stripeLog.error ? `Erreur : ${stripeLog.error}` : `${stripeLog.inserted} inséré(s) / ${stripeLog.found} trouvé(s)`}
+            <span style={{ fontSize: '0.78em', color: stripeLog.error ? '#DC2626' : stripeLog.noCandidat ? '#9C8E7D' : '#065F46' }}>
+              {stripeLog.error
+                ? `Erreur : ${stripeLog.error}`
+                : stripeLog.noCandidat
+                  ? 'Aucune résa direct/stripe future avec code HOST-* à contrôler'
+                  : `${stripeLog.inserted} inséré(s) / ${stripeLog.found} trouvé(s) dans Stripe`}
             </span>
           )}
           <button className="btn btn-secondary" onClick={charger} disabled={loading} style={{ padding: '6px 14px' }}>
