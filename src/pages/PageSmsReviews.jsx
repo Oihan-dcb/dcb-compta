@@ -7,7 +7,7 @@ const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL
 const AGENCE_LABELS = { dcb: 'Destination Côte Basque', lauian: 'Lauian Immo', bordeaux: 'Destination Bordeaux' }
 const agenceLabel = AGENCE_LABELS[AGENCE] || AGENCE.toUpperCase()
 
-const TABS = ['Dashboard', 'Queue', 'Logs', 'Test', 'Campagnes']
+const TABS = ['Dashboard', 'Queue', 'Logs', 'Test', 'Manuel', 'Campagnes']
 
 const STATUS_LABEL = { sent: 'Envoyé', error: 'Erreur', no_phone: 'Pas de tél.', skipped: 'Ignoré' }
 const STATUS_COLOR = { sent: '#5a8a5a', error: '#b94a4a', no_phone: '#8a7a4a', skipped: '#888' }
@@ -113,6 +113,57 @@ export default function PageSmsReviews() {
       setFlushing(false)
       chargerQueue()
       chargerLogs()
+    }
+  }
+
+  // Manuel
+  const [manuelSms, setManuelSms]         = useState('')
+  const [manuelPhones, setManuelPhones]   = useState([]) // [{id, phone, name}]
+  const [manuelInput, setManuelInput]     = useState({ phone: '', name: '' })
+  const [manuelSending, setManuelSending] = useState(false)
+  const [manuelResults, setManuelResults] = useState(null)
+
+  const ajouterDestinataire = () => {
+    const phone = manuelInput.phone.trim()
+    if (!phone) return
+    setManuelPhones(prev => [...prev, { id: Date.now(), phone, name: manuelInput.name.trim() }])
+    setManuelInput({ phone: '', name: '' })
+  }
+
+  const supprimerDestinataire = (id) => setManuelPhones(prev => prev.filter(p => p.id !== id))
+
+  const envoyerManuel = async () => {
+    if (!manuelPhones.length || !manuelSms.trim()) return
+    setManuelSending(true)
+    setManuelResults(null)
+    try {
+      const entries = manuelPhones.map(p => ({
+        hospitable_reservation_id: 'manuel-' + Math.random().toString(36).slice(2, 10),
+        guest_name:    p.name || null,
+        guest_phone:   p.phone,
+        property_name: 'Envoi manuel',
+        preview_body:  manuelSms.trim(),
+        send_at:       new Date().toISOString(),
+        status:        'pending',
+        agence:        AGENCE,
+        agence_label:  agenceLabel,
+      }))
+      const { error: insertErr } = await supabase.from('sms_queue').insert(entries)
+      if (insertErr) { setManuelResults({ error: insertErr.message }); return }
+
+      const { data: { session } } = await supabase.auth.getSession()
+      const res = await fetch(`${SUPABASE_URL}/functions/v1/process-sms-queue`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${session?.access_token || import.meta.env.VITE_SUPABASE_ANON_KEY}` },
+        body: JSON.stringify({ force: true }),
+      })
+      const data = await res.json()
+      setManuelResults(data)
+      if (!data.error) { setManuelPhones([]); setManuelSms('') }
+      chargerQueue()
+      chargerLogs()
+    } finally {
+      setManuelSending(false)
     }
   }
 
@@ -606,6 +657,98 @@ export default function PageSmsReviews() {
           </div>
           <p style={{ color: '#888', fontSize: '0.8rem', marginTop: '0.75rem' }}>
             Envoie un SMS de test (loggé avec statut "sent" dans la table sms_logs).
+          </p>
+        </div>
+      )}
+
+      {/* ── MANUEL ── */}
+      {tab === 'Manuel' && (
+        <div style={{ maxWidth: 640 }}>
+          {/* SMS text */}
+          <div style={{ background: 'var(--bg)', border: '1px solid var(--border)', borderRadius: 10, padding: '1.5rem', marginBottom: '1rem' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.4rem' }}>
+              <label style={{ fontWeight: 600, fontSize: '0.875rem' }}>Texte du SMS</label>
+              <span style={{ fontSize: '0.75rem', color: manuelSms.length > 320 ? '#b94a4a' : manuelSms.length > 160 ? '#8a7a4a' : '#999' }}>
+                {manuelSms.length} car. · {Math.ceil(manuelSms.length / 160) || 1} SMS
+              </span>
+            </div>
+            <textarea
+              value={manuelSms}
+              onChange={e => setManuelSms(e.target.value)}
+              placeholder="Tapez votre message ici…"
+              rows={5}
+              style={{ width: '100%', padding: '0.6rem 0.75rem', border: '1px solid var(--border)', borderRadius: 8, fontSize: '0.9rem', background: '#fff', resize: 'vertical', boxSizing: 'border-box', fontFamily: 'inherit', lineHeight: 1.5 }}
+            />
+          </div>
+
+          {/* Destinataires */}
+          <div style={{ background: 'var(--bg)', border: '1px solid var(--border)', borderRadius: 10, padding: '1.5rem', marginBottom: '1rem' }}>
+            <div style={{ fontWeight: 600, fontSize: '0.875rem', marginBottom: '0.75rem' }}>Destinataires</div>
+            <div style={{ display: 'flex', gap: '0.5rem', marginBottom: '0.75rem' }}>
+              <input
+                type="text"
+                placeholder="Nom (optionnel)"
+                value={manuelInput.name}
+                onChange={e => setManuelInput(p => ({ ...p, name: e.target.value }))}
+                style={{ flex: '0 0 140px', padding: '0.5rem 0.75rem', border: '1px solid var(--border)', borderRadius: 8, fontSize: '0.875rem', background: '#fff' }}
+              />
+              <input
+                type="tel"
+                placeholder="+33612345678"
+                value={manuelInput.phone}
+                onChange={e => setManuelInput(p => ({ ...p, phone: e.target.value }))}
+                onKeyDown={e => e.key === 'Enter' && ajouterDestinataire()}
+                style={{ flex: 1, padding: '0.5rem 0.75rem', border: '1px solid var(--border)', borderRadius: 8, fontSize: '0.875rem', background: '#fff', fontFamily: 'monospace' }}
+              />
+              <button onClick={ajouterDestinataire} style={{ padding: '0.5rem 1rem', background: 'var(--brand)', color: '#fff', border: 'none', borderRadius: 8, cursor: 'pointer', fontWeight: 700, fontSize: '0.85rem', whiteSpace: 'nowrap' }}>
+                + Ajouter
+              </button>
+            </div>
+
+            {manuelPhones.length === 0 && (
+              <div style={{ color: '#aaa', fontSize: '0.82rem', textAlign: 'center', padding: '1rem 0' }}>
+                Aucun destinataire — ajoutez des numéros ci-dessus
+              </div>
+            )}
+            {manuelPhones.length > 0 && (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '0.4rem' }}>
+                {manuelPhones.map(p => (
+                  <div key={p.id} style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', padding: '0.4rem 0.75rem', background: '#fff', border: '1px solid var(--border)', borderRadius: 8 }}>
+                    {p.name && <span style={{ fontWeight: 600, fontSize: '0.85rem', color: 'var(--text)', minWidth: 100 }}>{p.name}</span>}
+                    <span style={{ fontFamily: 'monospace', fontSize: '0.85rem', flex: 1, color: '#555' }}>{p.phone}</span>
+                    <button onClick={() => supprimerDestinataire(p.id)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#b94a4a', fontSize: '1rem', padding: '0 0.25rem', lineHeight: 1 }}>×</button>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+
+          {/* Résultat */}
+          {manuelResults && (
+            <div style={{ marginBottom: '1rem', padding: '0.75rem 1rem', borderRadius: 8, fontSize: '0.875rem', fontWeight: 600,
+              background: manuelResults.error ? '#b94a4a22' : '#5a8a5a22',
+              color: manuelResults.error ? '#b94a4a' : '#5a8a5a',
+              border: `1px solid ${manuelResults.error ? '#b94a4a55' : '#5a8a5a55'}` }}>
+              {manuelResults.error
+                ? `Erreur : ${manuelResults.error}`
+                : `✓ Traité : ${manuelResults.processed} · Envoyés : ${manuelResults.sent} · Erreurs : ${manuelResults.failed}`}
+            </div>
+          )}
+
+          {/* Bouton envoi */}
+          <button
+            onClick={envoyerManuel}
+            disabled={manuelSending || !manuelPhones.length || !manuelSms.trim()}
+            style={{
+              width: '100%', padding: '0.85rem', fontWeight: 700, fontSize: '0.95rem',
+              background: manuelSending || !manuelPhones.length || !manuelSms.trim() ? '#ccc' : 'var(--brand)',
+              color: '#fff', border: 'none', borderRadius: 8,
+              cursor: manuelSending || !manuelPhones.length || !manuelSms.trim() ? 'not-allowed' : 'pointer',
+            }}>
+            {manuelSending ? '⏳ Envoi…' : `▶ Envoyer à ${manuelPhones.length} destinataire${manuelPhones.length > 1 ? 's' : ''}`}
+          </button>
+          <p style={{ color: '#aaa', fontSize: '0.78rem', marginTop: '0.5rem', textAlign: 'center' }}>
+            Le texte est envoyé tel quel, sans modification par l'IA.
           </p>
         </div>
       )}
