@@ -189,7 +189,7 @@ export default function PageRapprochement() {
       setToken(HOSP_TOKEN)
       const stripeLog = await syncStripe()
       if (stripeLog.errors > 0 && !stripeLog.matched) throw new Error(`Stripe API inaccessible (${stripeLog.errors} erreur(s))`)
-      setSyncLog({ created: stripeLog.matched, updated: stripeLog.updated, errors: stripeLog.errors })
+      setSyncLog({ created: stripeLog.matched, updated: stripeLog.updated, errors: stripeLog.errors, errorDetails: stripeLog.errorDetails || [] })
     } catch (err) {
       setError('Erreur sync: ' + err.message)
     } finally {
@@ -339,6 +339,13 @@ export default function PageRapprochement() {
       {syncLog && (
         <div style={{ background: '#ECFDF5', border: '1px solid #6EE7B7', borderRadius: 8, padding: '12px 16px', marginBottom: 16, fontSize: 14 }}>
           <strong>Sync Stripe :</strong> {syncLog.created || 0} nouveau(x) payout(s) traité(s), {syncLog.updated || 0} mouvement(s) mis à jour{syncLog.created === 0 && !syncLog.errors ? <span style={{ color: '#666', marginLeft: 8 }}>— rien de nouveau</span> : null}{syncLog.errors > 0 ? <span style={{ color: '#B71C1C', marginLeft: 8 }}>{syncLog.errors} erreur(s)</span> : null}
+          {syncLog.errorDetails?.length > 0 && (
+            <ul style={{ margin: '8px 0 0', paddingLeft: 20, color: '#B71C1C', fontSize: 13 }}>
+              {syncLog.errorDetails.map((e, i) => (
+                <li key={i}><code>{e.payout_id}</code> — {e.message}</li>
+              ))}
+            </ul>
+          )}
         </div>
       )}
       {matchLog && (

@@ -26,7 +26,7 @@ async function stripeGet(path) {
  * Retourne { matched, inserted, updated, errors }
  */
 export async function syncStripe() {
-  const log = { matched: 0, inserted: 0, updated: 0, errors: 0 }
+  const log = { matched: 0, inserted: 0, updated: 0, errors: 0, errorDetails: [] }
   if (!STRIPE_KEY) { log.errors = 1; return log }
 
   try {
@@ -167,6 +167,7 @@ export async function syncStripe() {
       } catch (e) {
         console.error('syncStripe payout error:', po.payout_id, e)
         log.errors++
+        log.errorDetails.push({ payout_id: po.payout_id, message: e?.message || String(e) })
       }
     }
 
