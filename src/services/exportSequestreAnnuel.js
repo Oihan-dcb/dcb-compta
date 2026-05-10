@@ -195,6 +195,8 @@ export async function exportSequestreAnnuel(annee) {
   // 9. Génération CSV
   const sep = ';'
   const headers = ['Bien', 'Code résa', 'Date résa', 'Canal', 'Voyageur', 'Arrivée', 'Départ', 'Date enc.', 'Montant (€)', 'Statut']
+  lignes.sort((a, b) => (a.bien?.code || '').localeCompare(b.bien?.code || '', 'fr'))
+
   const rows = lignes.map(l => [
     l.bien?.code || '',
     l.code || '',
