@@ -197,8 +197,11 @@ export async function exportSequestreAnnuel(annee) {
   const headers = ['Bien', 'Code résa', 'Date résa', 'Canal', 'Voyageur', 'Arrivée', 'Départ', 'Date enc.', 'Montant (€)', 'Statut']
   lignes.sort((a, b) => (a.bien?.code || '').localeCompare(b.bien?.code || '', 'fr'))
 
+  // Préfixe espace insécable sur les codes purement numériques pour forcer l'alignement gauche dans Numbers/Excel
+  const txtCode = v => /^\d+$/.test(v || '') ? '\u00A0' + v : (v || '')
+
   const rows = lignes.map(l => [
-    l.bien?.code || '',
+    txtCode(l.bien?.code),
     l.code || '',
     fmt(l.dateCharge),
     CANAL_LABEL[l.platform] || l.platform || '',
