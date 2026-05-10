@@ -1013,7 +1013,7 @@ function SequestreTempsReel() {
         while (true) {
           const { data: r, error: rErr } = await supabase
             .from('reservation')
-            .select('id, code, platform, guest_name, arrival_date, departure_date, fin_revenue, ventilation_calculee, final_status, owner_stay, rapprochee, bien:bien_id(id, code)')
+            .select('id, code, platform, guest_name, arrival_date, departure_date, booking_date, fin_revenue, ventilation_calculee, final_status, owner_stay, rapprochee, bien:bien_id(id, code)')
             .in('bien_id', batchBienIds)
             .gt('fin_revenue', 0)
             .order('id')
@@ -1496,7 +1496,7 @@ function SequestreTempsReel() {
                   <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.84em' }}>
                     <thead>
                       <tr style={{ background: '#FEF3C7' }}>
-                        {['Bien', 'Code', 'Canal', 'Voyageur', 'Arrivée', 'Départ', 'Attendu (fin_revenue)'].map(h => (
+                        {['Bien', 'Code', 'Canal', 'Voyageur', 'Réservation', 'Arrivée', 'Départ', 'Attendu (fin_revenue)'].map(h => (
                           <th key={h} style={{ padding: '7px 10px', textAlign: h === 'Attendu (fin_revenue)' ? 'right' : 'left', fontWeight: 700, color: '#78350F', whiteSpace: 'nowrap', borderBottom: '1px solid #FDE68A' }}>{h}</th>
                         ))}
                       </tr>
@@ -1508,6 +1508,7 @@ function SequestreTempsReel() {
                           <td style={{ padding: '6px 10px', fontFamily: 'monospace', fontSize: '0.85em', color: '#6B5843' }}>{r.code || '—'}</td>
                           <td style={{ padding: '6px 10px' }}>{CANAL_LABEL[r.platform] || r.platform || '—'}</td>
                           <td style={{ padding: '6px 10px' }}>{r.guest_name || '—'}</td>
+                          <td style={{ padding: '6px 10px', whiteSpace: 'nowrap' }}>{fmtDate(r.booking_date)}</td>
                           <td style={{ padding: '6px 10px', whiteSpace: 'nowrap' }}>{fmtDate(r.arrival_date)}</td>
                           <td style={{ padding: '6px 10px', whiteSpace: 'nowrap' }}>{fmtDate(r.departure_date)}</td>
                           <td style={{ padding: '6px 10px', textAlign: 'right', fontVariantNumeric: 'tabular-nums', color: '#92400E' }}>{fmt(r.montantAttendu)}</td>
