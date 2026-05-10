@@ -1069,10 +1069,22 @@ function SequestreTempsReel() {
       // Garder uniquement les resas avec au moins un PAYIN prouvé
       const resasAvecPayin = allResas.filter(r => (payinByResa[r.id] || 0) > 0)
 
-      // 4. Tri en 3 catégories (prouvées) + 1 catégorie prévisionnelle
+      // 4. Tri en catégories
+      const currentMonth = today.slice(0, 7) // "YYYY-MM"
+
+      // Airbnb du mois à reverser : CI ce mois + CO déjà passé + PAYIN prouvé
+      // Airbnb vire le jour du CI → argent en séquestre → DCB reverse fin de mois
+      const airbnbDuMois    = resasAvecPayin.filter(r =>
+        r.platform === 'airbnb' &&
+        r.arrival_date.startsWith(currentMonth) &&
+        r.departure_date <= today
+      )
+      const airbnbDuMoisIds = new Set(airbnbDuMois.map(r => r.id))
+
       const futurs          = resasAvecPayin.filter(r => r.departure_date > today)
-      const passesVentiles  = resasAvecPayin.filter(r => r.departure_date <= today && r.ventilation_calculee)
-      const anomalies       = resasAvecPayin.filter(r => r.departure_date <= today && !r.ventilation_calculee)
+      // passés et anomalies excluent les airbnbDuMois (déjà comptés dans séquestre fiable)
+      const passesVentiles  = resasAvecPayin.filter(r => r.departure_date <= today && r.ventilation_calculee && !airbnbDuMoisIds.has(r.id))
+      const anomalies       = resasAvecPayin.filter(r => r.departure_date <= today && !r.ventilation_calculee && !airbnbDuMoisIds.has(r.id))
 
       // Futurs Airbnb/Booking sans PAYIN prouvé (payout arrive après le séjour → normal)
       const futursAttenteAB = allResas.filter(r =>
@@ -1116,9 +1128,10 @@ function SequestreTempsReel() {
       }
 
       // 6. Calcul totaux
-      const totalFuturs     = futurs.reduce((s, r) => s + (payinByResa[r.id] || 0), 0)
-      const totalAttenteAB  = futursAttenteAB.reduce((s, r) => s + (r.fin_revenue || 0), 0)
-      const totalAVerifier  = futursAVerifier.reduce((s, r) => s + (r.fin_revenue || 0), 0)
+      const totalFuturs       = futurs.reduce((s, r) => s + (payinByResa[r.id] || 0), 0)
+      const totalAirbnbDuMois = airbnbDuMois.reduce((s, r) => s + (payinByResa[r.id] || 0), 0)
+      const totalAttenteAB    = futursAttenteAB.reduce((s, r) => s + (r.fin_revenue || 0), 0)
+      const totalAVerifier    = futursAVerifier.reduce((s, r) => s + (r.fin_revenue || 0), 0)
 
       const residuelPasses = passesVentiles.map(r => ({
         ...r,
@@ -1127,18 +1140,19 @@ function SequestreTempsReel() {
         residuel: (payinByResa[r.id] || 0) - (ventilByResa[r.id] || 0),
       }))
       const totalResiduel   = residuelPasses.reduce((s, r) => s + r.residuel, 0)
-      const totalFiable     = totalFuturs
+      const totalFiable     = totalFuturs + totalAirbnbDuMois
       const totalAnomalies  = anomalies.reduce((s, r) => s + (payinByResa[r.id] || 0), 0)
 
       if (thisRun !== runId.current) return
 
       setData({
         futurs:          futurs.map(r => ({ ...r, payin: payinByResa[r.id] || 0 })),
+        airbnbDuMois:    airbnbDuMois.map(r => ({ ...r, payin: payinByResa[r.id] || 0 })),
         residuelPasses,
         anomalies:       anomalies.map(r => ({ ...r, payin: payinByResa[r.id] || 0 })),
         futursAttenteAB: futursAttenteAB.map(r => ({ ...r, montantAttendu: r.fin_revenue || 0 })),
         futursAVerifier: futursAVerifier.map(r => ({ ...r, montantAttendu: r.fin_revenue || 0 })),
-        totalFuturs, totalResiduel, totalFiable, totalAnomalies, totalAttenteAB, totalAVerifier,
+        totalFuturs, totalAirbnbDuMois, totalResiduel, totalFiable, totalAnomalies, totalAttenteAB, totalAVerifier,
       })
       setGenAt(new Date())
     } catch (e) {
@@ -1170,7 +1184,7 @@ function SequestreTempsReel() {
       {loading && !data && <div style={{ textAlign: 'center', padding: 40, color: '#9C8E7D' }}>Chargement…</div>}
 
       {data && (() => {
-        const { futurs, residuelPasses, anomalies, futursAttenteAB, futursAVerifier, totalFuturs, totalResiduel, totalFiable, totalAnomalies, totalAttenteAB, totalAVerifier } = data
+        const { futurs, airbnbDuMois, residuelPasses, anomalies, futursAttenteAB, futursAVerifier, totalFuturs, totalAirbnbDuMois, totalResiduel, totalFiable, totalAnomalies, totalAttenteAB, totalAVerifier } = data
         const residuelOk = Math.abs(totalResiduel) < 100_00 // < 1€ de résidu = propre
         const residuelColor = Math.abs(totalResiduel) < 100_00 ? '#065F46' : Math.abs(totalResiduel) < 500_00 ? '#92400E' : '#DC2626'
 
@@ -1196,6 +1210,15 @@ function SequestreTempsReel() {
                   </div>
                   <div style={{ fontSize: '1.1em', fontWeight: 700, color: '#065F46', fontVariantNumeric: 'tabular-nums' }}>{fmt(totalFuturs)}</div>
                 </div>
+                {airbnbDuMois.length > 0 && (
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '10px 14px', background: 'white', borderRadius: 8, border: '1px solid #FDE68A' }}>
+                    <div style={{ flex: 1 }}>
+                      <div style={{ fontSize: '0.85em', fontWeight: 600, color: 'var(--text)' }}>Airbnb du mois — à reverser fin de mois</div>
+                      <div style={{ fontSize: '0.75em', color: '#9C8E7D', marginTop: 2 }}>{airbnbDuMois.length} résa{airbnbDuMois.length > 1 ? 's' : ''} — CI ce mois, CO passé, payout reçu</div>
+                    </div>
+                    <div style={{ fontSize: '1.1em', fontWeight: 700, color: '#92400E', fontVariantNumeric: 'tabular-nums' }}>{fmt(totalAirbnbDuMois)}</div>
+                  </div>
+                )}
               </div>
 
               {/* Lien détail */}
@@ -1203,13 +1226,45 @@ function SequestreTempsReel() {
                 onClick={() => setShowDetail(d => !d)}
                 style={{ marginTop: 12, background: 'none', border: 'none', cursor: 'pointer', fontSize: '0.8em', color: '#065F46', textDecoration: 'underline', padding: 0 }}
               >
-                {showDetail ? 'Masquer le détail' : 'Voir le détail acomptes futurs'}
+                {showDetail ? 'Masquer le détail' : `Voir le détail (${futurs.length + airbnbDuMois.length} resas)`}
               </button>
             </div>
 
             {/* ── Détail (expandable) ── */}
             {showDetail && (
               <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+
+                {/* Airbnb du mois à reverser */}
+                {airbnbDuMois.length > 0 && (
+                  <div style={{ background: 'var(--bg-card, white)', border: '1px solid var(--border)', borderRadius: 8, overflow: 'hidden' }}>
+                    <div style={{ background: '#FFFBEB', padding: '8px 14px', fontSize: '0.78em', fontWeight: 700, color: '#92400E', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+                      Airbnb du mois — à reverser fin de mois · {airbnbDuMois.length} résa{airbnbDuMois.length > 1 ? 's' : ''}
+                    </div>
+                    <div style={{ overflowX: 'auto' }}>
+                      <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.84em' }}>
+                        <thead>
+                          <tr style={{ background: '#F7F3EC' }}>
+                            {['Bien', 'Code', 'Voyageur', 'Arrivée', 'Départ', 'PAYIN reçu'].map(h => (
+                              <th key={h} style={{ padding: '7px 10px', textAlign: h === 'PAYIN reçu' ? 'right' : 'left', fontWeight: 700, color: '#5C4B2A', whiteSpace: 'nowrap', borderBottom: '1px solid var(--border)' }}>{h}</th>
+                            ))}
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {[...airbnbDuMois].sort((a, b) => a.arrival_date.localeCompare(b.arrival_date)).map((r, i) => (
+                            <tr key={r.id} style={{ borderBottom: '1px solid var(--border)', background: i % 2 === 0 ? 'white' : '#FDFAF5' }}>
+                              <td style={{ padding: '6px 10px', fontWeight: 600, whiteSpace: 'nowrap' }}>{r.bien?.code || '—'}</td>
+                              <td style={{ padding: '6px 10px', fontFamily: 'monospace', fontSize: '0.85em', color: '#6B5843' }}>{r.code || '—'}</td>
+                              <td style={{ padding: '6px 10px' }}>{r.guest_name || '—'}</td>
+                              <td style={{ padding: '6px 10px', whiteSpace: 'nowrap' }}>{fmtDate(r.arrival_date)}</td>
+                              <td style={{ padding: '6px 10px', whiteSpace: 'nowrap' }}>{fmtDate(r.departure_date)}</td>
+                              <td style={{ padding: '6px 10px', textAlign: 'right', fontWeight: 600, fontVariantNumeric: 'tabular-nums', color: '#92400E' }}>{fmt(r.payin)}</td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                  </div>
+                )}
 
                 {/* Acomptes futurs */}
                 {futurs.length > 0 && (
