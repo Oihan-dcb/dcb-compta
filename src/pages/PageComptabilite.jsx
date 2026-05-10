@@ -1253,7 +1253,7 @@ function SequestreTempsReel() {
                       Prévisionnel Airbnb / Booking — {futursAttenteAB.length} résa{futursAttenteAB.length > 1 ? 's' : ''}
                     </div>
                     <div style={{ fontSize: '0.78em', color: '#6B7280', marginTop: 2 }}>
-                      Séjours futurs dont le payout n'est pas encore arrivé en banque (normal). Montant = fin_revenue attendu.
+                      Payout Airbnb/Booking autour du check-in (± délais bancaires) — pas encore reçu. Montant = fin_revenue attendu.
                     </div>
                   </div>
                   <div style={{ fontSize: '1.15em', fontWeight: 700, color: '#1D4ED8', fontVariantNumeric: 'tabular-nums', whiteSpace: 'nowrap' }}>
