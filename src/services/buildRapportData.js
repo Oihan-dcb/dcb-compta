@@ -91,6 +91,29 @@ export async function buildRapportData(bienId, propId, mois, opts = {}) {
   )
   const resaIds = resasValides.map(r => r.id)
 
+  // ── Détection prolongations ──────────────────────────────────────────────
+  // Même bien + même voyageur + dates consécutives + pas de frais ménage
+  const byBienGuest = {}
+  for (const r of resasValides) {
+    const key = `${r.bien_id}|${(r.guest_name || '').toLowerCase().trim()}`
+    if (!byBienGuest[key]) byBienGuest[key] = []
+    byBienGuest[key].push(r)
+  }
+  for (const group of Object.values(byBienGuest)) {
+    if (group.length < 2) continue
+    for (const r of group) {
+      const fees = r.reservation_fee || []
+      const cleaning = fees.find(f => f.label?.toLowerCase() === 'cleaning fee')?.amount || 0
+      const community = fees.find(f => f.label?.toLowerCase() === 'community fee')?.amount || 0
+      if (cleaning > 0 || community > 0) continue
+      const preceding = group.find(o => o.id !== r.id && (o.departure_date || '').substring(0, 10) === (r.arrival_date || '').substring(0, 10))
+      if (preceding) { r.isProlongation = true; r.originalResaCode = preceding.code }
+    }
+  }
+  for (const r of resasValides) {
+    if (!r.isProlongation && (r.guest_name || '').toLowerCase().includes('prolongation')) r.isProlongation = true
+  }
+
   // Pour mode_encaissement='proprio' : Airbnb/Booking sont perçus directement
   // par le proprio — pas de reversement DCB sur ces resas
   const PLATFORMS_DCB = ['direct', 'manual']

@@ -103,7 +103,7 @@ export function genererStatementHTML(proprio, mois, data) {
     <tr style="border-bottom:1px solid #ece8e2;${isCancelled ? 'opacity:0.65;' : ''}">
       <td style="padding:4px 5px;font-size:8.5px;color:#9c8c7a;font-family:monospace;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${r.code || '—'}</td>
       <td style="padding:4px 5px;font-size:9px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">
-        ${r.guest_name || '—'}${isCancelled ? ' <span style="font-size:7.5px;color:#9C8E7D;font-style:italic">(annulée)</span>' : ''}
+        ${r.guest_name || '—'}${isCancelled ? ' <span style="font-size:7.5px;color:#9C8E7D;font-style:italic">(annulée)</span>' : ''}${r.isProlongation ? ' <span style="font-size:7px;font-weight:700;color:#7C5F00;background:#FEF3C7;border:1px solid #FCD34D;border-radius:3px;padding:0 3px;">↗ prolongation</span>' : ''}
       </td>
       <td style="padding:4px 5px;font-size:9px;white-space:nowrap">
         <span style="display:inline-block;width:6px;height:6px;border-radius:50%;background:${platformColor(r.platform)};margin-right:3px;vertical-align:middle"></span>${platformLabel(r.platform)}

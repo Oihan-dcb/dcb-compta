@@ -190,7 +190,7 @@ export function genererRapportHTML(proprio, mois, data, colonnes = {}) {
             return `<tr style="background:${i % 2 === 0 ? '#F7F4EF' : '#fff'};">
               <td style="padding:5px 5px;color:#2C2416;white-space:nowrap;">${arrFR}</td>
               <td style="padding:5px 5px;color:#4A3728;white-space:nowrap;">${depFR}</td>
-              <td style="padding:5px 5px;color:#2C2416;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${r.guest_name || '—'}${isCancelledWithPayout ? ' <span style="font-size:9px;color:#9C8E7D;font-style:italic;">(annulée)</span>' : ''}</td>
+              <td style="padding:5px 5px;color:#2C2416;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${r.guest_name || '—'}${isCancelledWithPayout ? ' <span style="font-size:9px;color:#9C8E7D;font-style:italic;">(annulée)</span>' : ''}${r.isProlongation ? ` <span style="font-size:8px;font-weight:700;color:#7C5F00;background:#FEF3C7;border:1px solid #FCD34D;border-radius:3px;padding:0 3px;">↗ prolongation</span>` : ''}</td>
               <td style="padding:5px 4px;text-align:center;color:#4A3728;">${r.nights || '—'}</td>
               <td style="padding:5px 4px;text-align:center;">
                 <span style="display:inline-block;width:7px;height:7px;border-radius:50%;background:${platColor};margin-right:3px;vertical-align:middle;"></span>

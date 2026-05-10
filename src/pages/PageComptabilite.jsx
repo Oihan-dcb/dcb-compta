@@ -1708,6 +1708,28 @@ function SequestreCloture() {
         }
       }
 
+      // 3b. Charges Stripe (stripe_payout_line) pour détecter resas payées après clôture
+      // Si TOUTES les charges d'une résa sont > dateCloture → résa faite en N+1, exclure
+      const splCodes = resasAll
+        .filter(r => r.platform === 'direct' || r.platform === 'stripe')
+        .map(r => r.code).filter(Boolean)
+      const splByCode = {} // code → { avant: bool, apres: bool, minDate: string|null }
+      if (splCodes.length) {
+        for (let i = 0; i < splCodes.length; i += 400) {
+          const { data: spls } = await supabase
+            .from('stripe_payout_line')
+            .select('reservation_code, created_at')
+            .in('reservation_code', splCodes.slice(i, i + 400))
+          for (const s of spls || []) {
+            if (!splByCode[s.reservation_code]) splByCode[s.reservation_code] = { avant: false, apres: false, minDate: null }
+            if (s.created_at <= dateCloture) splByCode[s.reservation_code].avant = true
+            else splByCode[s.reservation_code].apres = true
+            if (!splByCode[s.reservation_code].minDate || s.created_at < splByCode[s.reservation_code].minDate)
+              splByCode[s.reservation_code].minDate = s.created_at
+          }
+        }
+      }
+
       // 4. Classifier
       const result = resasAll.map(r => {
         const virs  = virByResa[r.id] || []
@@ -1743,28 +1765,31 @@ function SequestreCloture() {
           if (hasPmtProuve) {
             statut = 'certain_manuel'; montant = pmtSomme
             dateEnc = [...pmtProuves].sort((a, b) => (b.date_paiement||'').localeCompare(a.date_paiement||''))[0]?.date_paiement
-          } else if (r.created_at && r.created_at.slice(0, 10) > dateCloture) {
-            // Résa créée après clôture → pas d'acompte possible en N
-            statut = 'exclu_post_cloture'; montant = r.fin_revenue || 0
           } else {
             statut = 'a_verifier_acompte'; montant = r.fin_revenue || 0
           }
         } else {
-          // direct, stripe — toujours analysé, pas de filtre périmètre
-          // La source de vérité est reservation_paiement (Stripe capturé <= dateCloture)
-          // Ne jamais utiliser fin_revenue comme montant certain
+          // direct, stripe — source de vérité = reservation_paiement
           if (hasPmtProuve) {
             statut = 'certain'; montant = pmtSomme; inTotal = true
             dateEnc = [...pmtProuves].sort((a, b) => (b.date_paiement||'').localeCompare(a.date_paiement||''))[0]?.date_paiement
-          } else if (r.created_at && r.created_at.slice(0, 10) > dateCloture) {
-            // Résa créée après clôture → pas d'acompte possible en N
-            statut = 'exclu_post_cloture'; montant = r.fin_revenue || 0
           } else {
-            statut = 'a_verifier_acompte'; montant = r.fin_revenue || 0
+            // Pas de paiement avant clôture — regarder stripe_payout_line
+            const spl = splByCode[r.code]
+            if (spl && spl.apres && !spl.avant) {
+              // Charge Stripe uniquement après clôture → résa faite en N+1, pas d'acompte 2025
+              statut = 'exclu_post_cloture'; montant = r.fin_revenue || 0
+            } else {
+              // Aucune charge Stripe OU charge avant clôture non encore dans paiements
+              statut = 'a_verifier_acompte'; montant = r.fin_revenue || 0
+            }
           }
         }
 
-        return { ...r, statut, montant, dateEnc, inTotal }
+        // Date 1ère charge Stripe = proxy de date de réservation (plus fiable que created_at DB)
+        const dateCharge = splByCode[r.code]?.minDate ?? null
+
+        return { ...r, statut, montant, dateEnc, inTotal, dateCharge }
       })
 
       setLignes(result)
@@ -1921,7 +1946,7 @@ function SequestreCloture() {
                         <tr key={l.id} style={{ borderBottom: '1px solid var(--border)', background: i % 2 === 0 ? 'white' : '#FDFAF5' }}>
                           <td style={{ padding: '7px 10px', whiteSpace: 'nowrap', fontWeight: 600 }}>{l.bien?.code || '—'}</td>
                           <td style={{ padding: '7px 10px', color: '#6B5843', fontSize: '0.85em', fontFamily: 'monospace' }}>{l.code || '—'}</td>
-                          <td style={{ padding: '7px 10px', whiteSpace: 'nowrap', color: '#6B5843', fontSize: '0.85em' }}>{l.created_at ? fmtDate(l.created_at.slice(0, 10)) : '—'}</td>
+                          <td style={{ padding: '7px 10px', whiteSpace: 'nowrap', color: l.dateCharge ? '#6B5843' : '#C4B49C', fontSize: '0.85em' }}>{l.dateCharge ? fmtDate(l.dateCharge) : '—'}</td>
                           <td style={{ padding: '7px 10px' }}>{CANAL_SEQ[l.platform] || l.platform || '—'}</td>
                           <td style={{ padding: '7px 10px' }}>{l.guest_name || '—'}</td>
                           <td style={{ padding: '7px 10px', whiteSpace: 'nowrap' }}>{fmtDate(l.arrival_date)}</td>
