@@ -6,6 +6,9 @@ const SUPABASE_SERVICE_KEY = Deno.env.get('SERVICE_ROLE_KEY') ?? Deno.env.get('S
 Deno.serve(async (req) => {
   if (req.method === 'OPTIONS') return new Response('ok', { headers: corsHeaders() })
 
+  const body        = await req.json().catch(() => ({}))
+  const force       = body?.force === true  // ignore send_at delay
+
   const supabase    = createClient(SUPABASE_URL, SUPABASE_SERVICE_KEY)
   const twilioSid   = Deno.env.get('TWILIO_ACCOUNT_SID')
   const twilioToken = Deno.env.get('TWILIO_AUTH_TOKEN')
@@ -30,13 +33,10 @@ Deno.serve(async (req) => {
     return json({ error: 'google_review_url non configuré (env GOOGLE_REVIEW_URL ou agency_config)' }, 500)
   }
 
-  // Récupère les SMS prêts à envoyer
-  const { data: pending, error } = await supabase
-    .from('sms_queue')
-    .select('*, agence_label')
-    .eq('status', 'pending')
-    .lte('send_at', new Date().toISOString())
-    .limit(20)
+  // Récupère les SMS prêts à envoyer (force=true ignore le délai send_at)
+  let query = supabase.from('sms_queue').select('*, agence_label').eq('status', 'pending').limit(20)
+  if (!force) query = query.lte('send_at', new Date().toISOString())
+  const { data: pending, error } = await query
 
   if (error) return json({ error: error.message }, 500)
   if (!pending?.length) return json({ processed: 0, sent: 0, failed: 0 })

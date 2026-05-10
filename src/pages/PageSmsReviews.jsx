@@ -99,7 +99,7 @@ export default function PageSmsReviews() {
         'Content-Type': 'application/json',
         'Authorization': `Bearer ${session?.access_token || import.meta.env.VITE_SUPABASE_ANON_KEY}`,
       },
-      body: JSON.stringify({}),
+      body: JSON.stringify({ force: true }),
     })
     const data = await res.json()
     setFlushResult(data)
