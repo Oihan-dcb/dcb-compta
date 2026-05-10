@@ -1009,6 +1009,7 @@ function SequestreTempsReel() {
           .select('id, code, platform, guest_name, arrival_date, departure_date, fin_revenue, ventilation_calculee, final_status, owner_stay, bien:bien_id(id, code)')
           .in('bien_id', bienIds.slice(i, i + 400))
           .gt('fin_revenue', 0)
+          .limit(10000)
         allResas = allResas.concat((r || []).filter(r =>
           !CANCELLED.includes(r.final_status) &&
           !r.owner_stay &&
