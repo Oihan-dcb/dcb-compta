@@ -1221,7 +1221,7 @@ function OngletRapport2025() {
 const thS = { padding: '10px 10px', fontWeight: 700, color: '#5C4B2A', textAlign: 'right', whiteSpace: 'nowrap' }
 const tdNumS = { padding: '7px 10px', textAlign: 'right', fontVariantNumeric: 'tabular-nums', whiteSpace: 'nowrap' }
 
-function OngletSequestre() {
+function SequestreTempsReel() {
   const [data, setData]     = useState(null)
   const [loading, setLoading] = useState(true)
   const [error, setError]   = useState(null)
@@ -1560,6 +1560,276 @@ function OngletSequestre() {
           </div>
         )
       })()}
+    </div>
+  )
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Séquestre clôture — encaissements avant le 31/12 pour séjours N+1
+// ─────────────────────────────────────────────────────────────────────────────
+
+const STATUT_SEQ = {
+  certain:    { label: 'Certain',              color: '#065F46', bg: '#D1FAE5' },
+  estime:     { label: 'Estimé — hors total',  color: '#92400E', bg: '#FEF3C7' },
+  exclu:      { label: 'Exclu — non versé',    color: '#9C8E7D', bg: '#F3F4F6' },
+  a_verifier: { label: 'À vérifier',           color: '#7C3AED', bg: '#EDE9FE' },
+  absent:     { label: 'Absent',               color: '#9C8E7D', bg: '#F3F4F6' },
+}
+const CANAL_SEQ = { airbnb: 'Airbnb', booking: 'Booking', direct: 'Direct', manual: 'Manuel', stripe: 'Stripe' }
+
+function SequestreCloture() {
+  const [anneeCloture, setAnneeCloture] = useState(2025)
+  const [lignes, setLignes]             = useState([])
+  const [loading, setLoading]           = useState(true)
+  const [error, setError]               = useState(null)
+  const [filtreStatut, setFiltreStatut] = useState('tous')
+
+  const dateCloture     = `${anneeCloture}-12-31`
+  const dateDebutSuivant = `${anneeCloture + 1}-01-01`
+
+  const fmtDate = d => d ? new Date(d + 'T00:00:00').toLocaleDateString('fr-FR') : '—'
+
+  const charger = useCallback(async () => {
+    setLoading(true)
+    setError(null)
+    setLignes([])
+    try {
+      // 1. Biens agence
+      const { data: biens } = await supabase.from('bien').select('id').eq('agence', AGENCE)
+      const bienIds = (biens || []).map(b => b.id)
+      if (!bienIds.length) { setLoading(false); return }
+
+      // 2. Réservations avec arrivée dans l'exercice suivant (N+1)
+      const CANCELLED = ['not_accepted', 'not accepted', 'declined', 'expired', 'cancelled']
+      let resasAll = []
+      for (let i = 0; i < bienIds.length; i += 400) {
+        const { data, error: e } = await supabase
+          .from('reservation')
+          .select('id, code, platform, arrival_date, departure_date, fin_revenue, rapprochee, guest_name, bien:bien_id(id, code, hospitable_name)')
+          .in('bien_id', bienIds.slice(i, i + 400))
+          .gte('arrival_date', dateDebutSuivant)
+        if (e) throw new Error(e.message)
+        resasAll = resasAll.concat((data || []).filter(r => !CANCELLED.includes(r.final_status)))
+      }
+
+      if (!resasAll.length) { setLignes([]); setLoading(false); return }
+      const resaIds = resasAll.map(r => r.id)
+
+      // 3. VIR ventilations avec date mouvement (Airbnb & Booking)
+      const virByResa = {}
+      for (let i = 0; i < resaIds.length; i += 400) {
+        const { data: virs } = await supabase
+          .from('ventilation')
+          .select('reservation_id, mouvement:mouvement_id(date_operation)')
+          .in('reservation_id', resaIds.slice(i, i + 400))
+          .eq('code', 'VIR')
+          .not('mouvement_id', 'is', null)
+        for (const v of virs || []) {
+          if (!virByResa[v.reservation_id]) virByResa[v.reservation_id] = []
+          virByResa[v.reservation_id].push(v)
+        }
+      }
+
+      // 4. Paiements réels avec date (direct, stripe, manual)
+      const pmtByResa = {}
+      for (let i = 0; i < resaIds.length; i += 400) {
+        const { data: pmts } = await supabase
+          .from('reservation_paiement')
+          .select('reservation_id, montant, date_paiement')
+          .in('reservation_id', resaIds.slice(i, i + 400))
+        for (const p of pmts || []) {
+          if (!pmtByResa[p.reservation_id]) pmtByResa[p.reservation_id] = []
+          pmtByResa[p.reservation_id].push(p)
+        }
+      }
+
+      // 5. Classifier chaque réservation
+      const result = resasAll.map(r => {
+        const virs  = virByResa[r.id] || []
+        const pmts  = pmtByResa[r.id] || []
+
+        const virProuve   = virs.find(v => v.mouvement?.date_operation && v.mouvement.date_operation <= dateCloture)
+        const pmtProuves  = pmts.filter(p => p.date_paiement && p.date_paiement <= dateCloture)
+        const pmtSomme    = pmtProuves.reduce((s, p) => s + (p.montant || 0), 0)
+        const hasPmtProuve = pmtProuves.length > 0
+        const hasVirProuve = !!virProuve
+
+        let statut, montant, dateEnc = null, inTotal = false
+
+        if (r.platform === 'airbnb') {
+          montant = r.fin_revenue || 0
+          if (hasVirProuve) { statut = 'certain'; inTotal = true; dateEnc = virProuve.mouvement.date_operation }
+          else { statut = 'exclu' }
+        } else if (r.platform === 'booking') {
+          montant = r.fin_revenue || 0
+          if (hasVirProuve) { statut = 'certain'; inTotal = true; dateEnc = virProuve.mouvement.date_operation }
+          else if (r.rapprochee) { statut = 'estime' }
+          else { statut = 'absent' }
+        } else {
+          // direct, manual, stripe
+          if (hasPmtProuve) {
+            statut = 'certain'; montant = pmtSomme; inTotal = true
+            dateEnc = [...pmtProuves].sort((a, b) => (b.date_paiement || '').localeCompare(a.date_paiement || ''))[0]?.date_paiement
+          } else if (r.rapprochee) {
+            statut = 'estime'; montant = r.fin_revenue || 0
+          } else {
+            statut = 'a_verifier'; montant = r.fin_revenue || 0
+          }
+        }
+
+        return { ...r, statut, montant, dateEnc, inTotal }
+      })
+
+      setLignes(result)
+    } catch (e) {
+      setError(e.message)
+    } finally {
+      setLoading(false)
+    }
+  }, [anneeCloture]) // eslint-disable-line react-hooks/exhaustive-deps
+
+  useEffect(() => { charger() }, [charger])
+
+  const lignesFiltrees  = filtreStatut === 'tous' ? lignes : lignes.filter(l => l.statut === filtreStatut)
+  const totalCertain    = lignes.filter(l => l.inTotal).reduce((s, l) => s + l.montant, 0)
+  const totalEstime     = lignes.filter(l => l.statut === 'estime').reduce((s, l) => s + l.montant, 0)
+  const totalHorsBilan  = lignes.filter(l => !l.inTotal && l.statut !== 'estime').reduce((s, l) => s + l.montant, 0)
+
+  const FILTRES = [
+    { key: 'tous',       label: 'Tous' },
+    { key: 'certain',    label: 'Certain' },
+    { key: 'estime',     label: 'Estimé' },
+    { key: 'a_verifier', label: 'À vérifier' },
+    { key: 'exclu',      label: 'Exclu' },
+    { key: 'absent',     label: 'Absent' },
+  ]
+
+  return (
+    <div>
+      {/* Sélecteur d'année + description */}
+      <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 20, flexWrap: 'wrap' }}>
+        <span style={{ color: '#5C4B2A', fontWeight: 600, fontSize: '0.9em' }}>Clôture exercice</span>
+        <select value={anneeCloture} onChange={e => setAnneeCloture(Number(e.target.value))}
+          style={{ border: '1px solid var(--border)', borderRadius: 6, padding: '4px 10px', background: 'white', fontSize: '0.9em' }}>
+          {[2024, 2025, 2026].map(a => <option key={a} value={a}>{a}</option>)}
+        </select>
+        <span style={{ color: '#9C8E7D', fontSize: '0.82em' }}>
+          Séjours arrivant à partir du {fmtDate(dateDebutSuivant)} · encaissements avant le {fmtDate(dateCloture)}
+        </span>
+        <button onClick={charger}
+          style={{ marginLeft: 'auto', padding: '5px 14px', background: 'var(--brand)', color: 'white', border: 'none', borderRadius: 6, cursor: 'pointer', fontSize: '0.85em' }}>
+          ↺ Rafraîchir
+        </button>
+      </div>
+
+      {error && (
+        <div style={{ padding: 12, background: '#FEF2F2', border: '1px solid #FCA5A5', borderRadius: 6, color: '#DC2626', marginBottom: 16, fontSize: '0.88em' }}>
+          {error}
+        </div>
+      )}
+
+      {loading ? (
+        <div style={{ textAlign: 'center', padding: 48, color: '#9C8E7D' }}>Chargement…</div>
+      ) : (
+        <>
+          {/* Cartes récap */}
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 12, marginBottom: 20 }}>
+            <div style={{ background: 'white', border: '1px solid var(--border)', borderRadius: 8, padding: '14px 18px' }}>
+              <div style={{ fontSize: '0.76em', color: '#6B5843', marginBottom: 4, textTransform: 'uppercase', letterSpacing: '0.05em' }}>Séquestre certain</div>
+              <div style={{ fontSize: '1.4em', fontWeight: 700, color: '#065F46', fontVariantNumeric: 'tabular-nums' }}>{NF.format(totalCertain / 100)} €</div>
+              <div style={{ fontSize: '0.75em', color: '#9C8E7D', marginTop: 3 }}>{lignes.filter(l => l.inTotal).length} résa(s) — inclus au bilan</div>
+            </div>
+            <div style={{ background: 'white', border: '1px solid var(--border)', borderRadius: 8, padding: '14px 18px' }}>
+              <div style={{ fontSize: '0.76em', color: '#6B5843', marginBottom: 4, textTransform: 'uppercase', letterSpacing: '0.05em' }}>Estimé (hors total fiable)</div>
+              <div style={{ fontSize: '1.4em', fontWeight: 700, color: '#92400E', fontVariantNumeric: 'tabular-nums' }}>{NF.format(totalEstime / 100)} €</div>
+              <div style={{ fontSize: '0.75em', color: '#9C8E7D', marginTop: 3 }}>{lignes.filter(l => l.statut === 'estime').length} résa(s) — à confirmer</div>
+            </div>
+            <div style={{ background: 'white', border: '1px solid var(--border)', borderRadius: 8, padding: '14px 18px' }}>
+              <div style={{ fontSize: '0.76em', color: '#6B5843', marginBottom: 4, textTransform: 'uppercase', letterSpacing: '0.05em' }}>Informatif / exclus</div>
+              <div style={{ fontSize: '1.4em', fontWeight: 700, color: '#9C8E7D', fontVariantNumeric: 'tabular-nums' }}>{NF.format(totalHorsBilan / 100)} €</div>
+              <div style={{ fontSize: '0.75em', color: '#9C8E7D', marginTop: 3 }}>{lignes.filter(l => !l.inTotal && l.statut !== 'estime').length} résa(s) — hors bilan</div>
+            </div>
+          </div>
+
+          {/* Filtres */}
+          <div style={{ display: 'flex', gap: 6, marginBottom: 14, flexWrap: 'wrap' }}>
+            {FILTRES.map(f => {
+              const count = f.key === 'tous' ? lignes.length : lignes.filter(l => l.statut === f.key).length
+              return (
+                <button key={f.key} onClick={() => setFiltreStatut(f.key)}
+                  style={{ padding: '4px 12px', borderRadius: 20, border: '1px solid var(--border)', background: filtreStatut === f.key ? 'var(--brand)' : 'white', color: filtreStatut === f.key ? 'white' : '#5C4B2A', cursor: 'pointer', fontSize: '0.82em', fontWeight: filtreStatut === f.key ? 700 : 400 }}>
+                  {f.label} ({count})
+                </button>
+              )
+            })}
+          </div>
+
+          {/* Tableau */}
+          {lignesFiltrees.length === 0 ? (
+            <div style={{ textAlign: 'center', padding: 40, color: '#9C8E7D' }}>Aucune réservation pour ce filtre.</div>
+          ) : (
+            <div style={{ overflowX: 'auto' }}>
+              <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.87em' }}>
+                <thead>
+                  <tr style={{ background: '#F7F3EC' }}>
+                    {['Bien', 'Résa', 'Canal', 'Voyageur', 'Arrivée', 'Départ', 'Date enc.', 'Montant', 'Statut'].map(h => (
+                      <th key={h} style={{ padding: '8px 10px', textAlign: h === 'Montant' ? 'right' : 'left', fontWeight: 700, color: '#5C4B2A', whiteSpace: 'nowrap', borderBottom: '1px solid var(--border)' }}>{h}</th>
+                    ))}
+                  </tr>
+                </thead>
+                <tbody>
+                  {lignesFiltrees.map((l, i) => {
+                    const sl = STATUT_SEQ[l.statut] || { label: l.statut, color: '#5C4B2A', bg: '#F7F3EC' }
+                    return (
+                      <tr key={l.id} style={{ borderBottom: '1px solid var(--border)', background: i % 2 === 0 ? 'white' : '#FDFAF5' }}>
+                        <td style={{ padding: '7px 10px', whiteSpace: 'nowrap', fontWeight: 600 }}>{l.bien?.code || '—'}</td>
+                        <td style={{ padding: '7px 10px', color: '#6B5843', fontSize: '0.85em', fontFamily: 'monospace' }}>{l.code || '—'}</td>
+                        <td style={{ padding: '7px 10px' }}>{CANAL_SEQ[l.platform] || l.platform || '—'}</td>
+                        <td style={{ padding: '7px 10px' }}>{l.guest_name || '—'}</td>
+                        <td style={{ padding: '7px 10px', whiteSpace: 'nowrap' }}>{fmtDate(l.arrival_date)}</td>
+                        <td style={{ padding: '7px 10px', whiteSpace: 'nowrap' }}>{fmtDate(l.departure_date)}</td>
+                        <td style={{ padding: '7px 10px', whiteSpace: 'nowrap', color: l.dateEnc ? '#065F46' : '#9C8E7D' }}>{fmtDate(l.dateEnc)}</td>
+                        <td style={{ padding: '7px 10px', textAlign: 'right', fontVariantNumeric: 'tabular-nums', whiteSpace: 'nowrap', fontWeight: l.inTotal ? 700 : 400, color: l.inTotal ? '#065F46' : '#5C4B2A' }}>{NF.format(l.montant / 100)} €</td>
+                        <td style={{ padding: '7px 10px' }}>
+                          <span style={{ display: 'inline-block', padding: '2px 8px', borderRadius: 12, background: sl.bg, color: sl.color, fontSize: '0.82em', fontWeight: 600, whiteSpace: 'nowrap' }}>{sl.label}</span>
+                        </td>
+                      </tr>
+                    )
+                  })}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </>
+      )}
+    </div>
+  )
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Wrapper OngletSequestre — sous-onglets Temps réel / Clôture
+// ─────────────────────────────────────────────────────────────────────────────
+
+function OngletSequestre() {
+  const [vue, setVue] = useState(() => localStorage.getItem('seq_vue') || 'realtime')
+  const switchVue = v => { setVue(v); localStorage.setItem('seq_vue', v) }
+
+  const tabStyle = k => ({
+    padding: '7px 18px', border: 'none', background: 'none', cursor: 'pointer',
+    fontWeight: vue === k ? 700 : 400,
+    color: vue === k ? 'var(--brand)' : '#9C8E7D',
+    borderBottom: vue === k ? '2px solid var(--brand)' : '2px solid transparent',
+    marginBottom: -1, fontSize: '0.93em', transition: 'color 0.15s',
+  })
+
+  return (
+    <div>
+      <div style={{ display: 'flex', borderBottom: '1px solid var(--border)', marginBottom: 24 }}>
+        <button onClick={() => switchVue('realtime')} style={tabStyle('realtime')}>Temps réel</button>
+        <button onClick={() => switchVue('cloture')}  style={tabStyle('cloture')}>Clôture</button>
+      </div>
+      {vue === 'realtime' && <SequestreTempsReel />}
+      {vue === 'cloture'  && <SequestreCloture />}
     </div>
   )
 }
