@@ -1034,22 +1034,28 @@ function SequestreTempsReel() {
       if (!resaIds.length) { setData({ futurs: [], residuelPasses: [], anomalies: [], futursAttenteAB: [], futursAVerifier: [], totalFuturs: 0, totalResiduel: 0, totalFiable: 0, totalAnomalies: 0, totalAttenteAB: 0, totalAVerifier: 0 }); return }
 
       // 3. PAYINs réels prouvés en banque = reservation_paiement avec mouvement_id IS NOT NULL
+      // Join via reservation!inner pour filtrer par bienIds (~50 items) au lieu de resaIds (~4500+)
+      // → URL courte, pas de troncature silencieuse PostgREST
+      const resaIdSet = new Set(resaIds)
       const payinByResa = {}
-      for (let i = 0; i < resaIds.length; i += 400) {
-        const batchIds = resaIds.slice(i, i + 400)
+      let pmtsRowCount = 0
+      {
         let offset = 0
         while (true) {
           const { data: pmts, error: pmtsErr } = await supabase
             .from('reservation_paiement')
-            .select('reservation_id, montant')
-            .in('reservation_id', batchIds)
+            .select('reservation_id, montant, reservation!inner(bien_id)')
+            .filter('reservation.bien_id', 'in', `(${bienIds.join(',')})`)
             .not('mouvement_id', 'is', null)
             .order('id')
             .range(offset, offset + 999)
           if (pmtsErr) throw new Error(`reservation_paiement p${offset/1000}: ${pmtsErr.message}`)
           if (!pmts || pmts.length === 0) break
+          pmtsRowCount += pmts.length
           for (const p of pmts) {
-            payinByResa[p.reservation_id] = (payinByResa[p.reservation_id] || 0) + (p.montant || 0)
+            if (resaIdSet.has(p.reservation_id)) {
+              payinByResa[p.reservation_id] = (payinByResa[p.reservation_id] || 0) + (p.montant || 0)
+            }
           }
           if (pmts.length < 1000) break
           offset += 1000
@@ -1088,24 +1094,28 @@ function SequestreTempsReel() {
       )
 
       // 5. Ventilation des séjours passés ventilés (hors VIR = code résultat, hors PREST = mémo)
-      const passesIds = passesVentiles.map(r => r.id)
+      // Join via reservation!inner pour filtrer par bienIds — même raison que reservation_paiement
+      const passesVentilesSet = new Set(passesVentiles.map(r => r.id))
       const ventilByResa = {}
-      for (let i = 0; i < passesIds.length; i += 400) {
-        const batchIds = passesIds.slice(i, i + 400)
+      let ventilRowCount = 0
+      {
         let offset = 0
         while (true) {
           const { data: ventils, error: ventilsErr } = await supabase
             .from('ventilation')
-            .select('reservation_id, code, montant_ht, montant_reel')
-            .in('reservation_id', batchIds)
+            .select('reservation_id, code, montant_ht, montant_reel, reservation!inner(bien_id)')
+            .filter('reservation.bien_id', 'in', `(${bienIds.join(',')})`)
             .not('code', 'in', '(VIR,PREST,RGLM,SOLDE)')
             .order('id')
             .range(offset, offset + 999)
           if (ventilsErr) throw new Error(`ventilation p${offset/1000}: ${ventilsErr.message}`)
           if (!ventils || ventils.length === 0) break
+          ventilRowCount += ventils.length
           for (const v of ventils) {
-            const amt = v.montant_reel != null ? v.montant_reel : (v.montant_ht || 0)
-            ventilByResa[v.reservation_id] = (ventilByResa[v.reservation_id] || 0) + amt
+            if (passesVentilesSet.has(v.reservation_id)) {
+              const amt = v.montant_reel != null ? v.montant_reel : (v.montant_ht || 0)
+              ventilByResa[v.reservation_id] = (ventilByResa[v.reservation_id] || 0) + amt
+            }
           }
           if (ventils.length < 1000) break
           offset += 1000
@@ -1134,7 +1144,9 @@ function SequestreTempsReel() {
         stale,
         ts:               new Date().toLocaleTimeString('fr-FR'),
         allResas:         allResas.length,
+        pmtsRows:         pmtsRowCount,
         payinKeys:        Object.keys(payinByResa).length,
+        ventilRows:       ventilRowCount,
         resasAvecPayin:   resasAvecPayin.length,
         futurCount:       futurs.length,
         residuelCount:    residuelPasses.length,
@@ -1195,8 +1207,8 @@ function SequestreTempsReel() {
                 {r.status === 'START…'
                   ? `▶ run#${r.id} [${r.ts}] START`
                   : r.stale
-                    ? `✗ run#${r.id} [${r.ts}] STALE→ignoré | futurs=${r.futurCount} (${r.totalFuturs}€) | passés=${r.residuelCount} (${r.totalResiduel}€) | allResas=${r.allResas} | payinKeys=${r.payinKeys}`
-                    : `✓ run#${r.id} [${r.ts}] OK | futurs=${r.futurCount} (${r.totalFuturs}€) | passés=${r.residuelCount} (${r.totalResiduel}€) | allResas=${r.allResas} | payinKeys=${r.payinKeys}`
+                    ? `✗ run#${r.id} [${r.ts}] STALE→ignoré | futurs=${r.futurCount} (${r.totalFuturs}€) | passés=${r.residuelCount} (${r.totalResiduel}€) | allResas=${r.allResas} | pmtsRows=${r.pmtsRows} payinKeys=${r.payinKeys} | ventilRows=${r.ventilRows}`
+                    : `✓ run#${r.id} [${r.ts}] OK | futurs=${r.futurCount} (${r.totalFuturs}€) | passés=${r.residuelCount} (${r.totalResiduel}€) | allResas=${r.allResas} | pmtsRows=${r.pmtsRows} payinKeys=${r.payinKeys} | ventilRows=${r.ventilRows}`
                 }
               </div>
             ))}
