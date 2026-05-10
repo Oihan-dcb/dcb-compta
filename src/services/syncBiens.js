@@ -55,9 +55,10 @@ export async function syncBiens() {
       if (e1) throw e1
     }
 
-    // Mettre à jour les existants SANS toucher gestion_loyer
+    // Mettre à jour les existants SANS toucher gestion_loyer ni code (code éditable manuellement)
     for (const p of existants) {
-      const { error: e2 } = await supabase.from('bien').update(p).eq('hospitable_id', p.hospitable_id)
+      const { code: _code, ...pSansCode } = p
+      const { error: e2 } = await supabase.from('bien').update(pSansCode).eq('hospitable_id', p.hospitable_id)
       if (e2) console.warn('syncBiens update error:', e2.message)
     }
     const upserted = { data: [] } // compatibilité
