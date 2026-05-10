@@ -154,7 +154,7 @@ function computeDureeHeures(dtstart: string, dtend: string): number | null {
   if (!start || !end) return null
   const diffMs = end.getTime() - start.getTime()
   if (diffMs <= 0) return null
-  return Math.round((diffMs / 3600000) * 10) / 10
+  return Math.round((diffMs / 3600000) * 100) / 100
 }
 
 function parseIcalDate(s) {
