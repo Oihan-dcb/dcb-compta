@@ -253,7 +253,7 @@ export async function buildRapportData(bienId, propId, mois, opts = {}) {
       arrival_date: r.arrival_date,
       guest_name: r.guest_name,
       libelle: 'Ménage séjour propriétaire',
-      montant: (r.fmen || 0) + (ventByResa[r.id]?.AUTO?.montant_ht || 0),
+      montant: (r.fin_revenue || 0) > 0 ? (r.fmen || 0) + (ventByResa[r.id]?.AUTO?.montant_ht || 0) : 0,
       a_saisir: !ventByResa[r.id]?.FMEN && (r.fin_revenue || 0) > 0,
     }))
   const ownerStayMenageTotal = ownerStayList.reduce((s, r) => s + r.montant, 0)

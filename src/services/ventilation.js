@@ -502,7 +502,7 @@ export async function calculerVentilationResa(resa) {
 
     const lignes = []
     if (fmenTTC > 0) lignes.push(ligneTVA('FMEN', 'Forfait ménage séjour propriétaire', fmenHT, bien, resa, null, fmenTTC))
-    if (autoHT > 0)  lignes.push(ligneHorsTVA('AUTO', 'Débours auto-entrepreneur', autoHT, bien, resa))
+    if (autoHT > 0 && men > 0) lignes.push(ligneHorsTVA('AUTO', 'Débours auto-entrepreneur', autoHT, bien, resa))
 
     if (lignes.length > 0) {
       const { error } = await supabase.from('ventilation').insert(lignes)

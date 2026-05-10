@@ -1572,6 +1572,7 @@ function SequestreTempsReel() {
 const STATUT_SEQ = {
   certain:              { label: 'Certain',                                color: '#065F46', bg: '#D1FAE5' },
   certain_manuel:       { label: 'Certain — manuel rapproché',             color: '#065F46', bg: '#D1FAE5' },
+  booking_prevu:        { label: 'Booking — payout prévu',                 color: '#1D4ED8', bg: '#DBEAFE' },
   a_verifier_acompte:   { label: 'À vérifier — acompte 2025 à contrôler', color: '#7C3AED', bg: '#EDE9FE' },
   booking_sans_vir:     { label: 'À vérifier — Booking sans VIR daté',    color: '#92400E', bg: '#FEF3C7' },
   exclu:                { label: 'Exclu — Airbnb non versé',               color: '#9C8E7D', bg: '#F3F4F6' },
@@ -1691,12 +1692,29 @@ function SequestreCloture() {
         }
       }
 
-      // Airbnb et Booking sans VIRPayinProuvé avant clôture = jamais dans le séquestre DCB
+      // Airbnb sans VIRPayinProuvé = exclu. Booking sans VIRPayinProuvé = gardé si booking_payout_line connue
       resasAll = resasAll.filter(r => {
-        if (r.platform !== 'airbnb' && r.platform !== 'booking') return true
-        const virs = virByResa[r.id] || []
-        return virs.some(v => v.mouvement?.date_operation && v.mouvement.date_operation <= dateCloture)
+        if (r.platform === 'airbnb') {
+          const virs = virByResa[r.id] || []
+          return virs.some(v => v.mouvement?.date_operation && v.mouvement.date_operation <= dateCloture)
+        }
+        return true // Booking, direct, stripe, manual : on garde, on classifiera après
       })
+
+      // Fetch booking_payout_line pour les resas Booking (payout prévu en N+1)
+      const bookingCodes = resasAll.filter(r => r.platform === 'booking').map(r => r.code).filter(Boolean)
+      const bplByCode = {}
+      if (bookingCodes.length) {
+        for (let i = 0; i < bookingCodes.length; i += 400) {
+          const { data: bpls } = await supabase
+            .from('booking_payout_line')
+            .select('booking_ref, payout_date, amount_cents, checkin')
+            .in('booking_ref', bookingCodes.slice(i, i + 400))
+          for (const b of bpls || []) {
+            if (!bplByCode[b.booking_ref]) bplByCode[b.booking_ref] = b
+          }
+        }
+      }
       if (!resasAll.length) { setLignes([]); setLoading(false); return }
 
       // 3. Paiements réels (direct, stripe, manual)
@@ -1751,18 +1769,24 @@ function SequestreCloture() {
           montant = r.fin_revenue || 0
           if (hasVirProuve) {
             dateEnc = virProuve.mouvement.date_operation
-            // Filtre périmètre mensuel : s'applique uniquement à Airbnb & Booking
             if (percevait(bienId, dateEnc) === false) {
               statut = 'exclu_perimetre'
             } else {
               statut = 'certain'; inTotal = true
             }
-          } else if (r.platform === 'booking' && r.rapprochee) {
-            statut = 'booking_sans_vir'
-          } else if (r.platform === 'airbnb') {
-            statut = 'exclu' // Airbnb non versé avant clôture
+          } else if (r.platform === 'booking') {
+            const bpl = bplByCode[r.code]
+            if (bpl) {
+              // Payout connu via booking_payout_line → informatif comptable
+              statut = 'booking_prevu'
+              dateEnc = bpl.payout_date
+              montant = bpl.amount_cents || r.fin_revenue || 0
+            } else {
+              // Pas dans booking_payout_line → inconnu, masquer
+              statut = 'absent'
+            }
           } else {
-            statut = 'absent'
+            statut = 'exclu' // Airbnb non versé (déjà filtré mais sécurité)
           }
         } else if (r.platform === 'manual') {
           // Toujours analysé — pas de filtre périmètre
@@ -1799,7 +1823,7 @@ function SequestreCloture() {
           : (splByCode[r.code]?.minDate ?? null)
 
         return { ...r, statut, montant, dateEnc, inTotal, dateCharge }
-      }).filter(l => l.statut !== 'exclu_post_cloture')
+      }).filter(l => l.statut !== 'exclu_post_cloture' && l.statut !== 'absent')
 
       setLignes(result)
     } catch (e) {
@@ -1815,13 +1839,14 @@ function SequestreCloture() {
 
   const lignesFiltrees = filtreStatut === 'tous' ? lignes : lignes.filter(l => l.statut === filtreStatut)
   const totalCertain   = lignes.filter(l => l.statut === 'certain').reduce((s, l) => s + l.montant, 0)
-  const totalAVerifier = lignes.filter(l => ['certain_manuel', 'a_verifier_acompte', 'booking_sans_vir', 'a_verifier'].includes(l.statut)).reduce((s, l) => s + l.montant, 0)
+  const totalAVerifier = lignes.filter(l => ['certain_manuel', 'booking_prevu', 'a_verifier_acompte', 'booking_sans_vir', 'a_verifier'].includes(l.statut)).reduce((s, l) => s + l.montant, 0)
   const totalHorsBilan = lignes.filter(l => ['exclu', 'exclu_perimetre', 'absent'].includes(l.statut)).reduce((s, l) => s + l.montant, 0)
 
   const FILTRES = [
     { key: 'tous',               label: 'Tous' },
     { key: 'certain',            label: 'Certain' },
     { key: 'certain_manuel',     label: 'Certain — manuel' },
+    { key: 'booking_prevu',      label: 'Booking prévu' },
     { key: 'a_verifier_acompte', label: 'Acompte à contrôler' },
     { key: 'booking_sans_vir',   label: 'Booking sans VIR' },
     { key: 'a_verifier',         label: 'À vérifier' },
@@ -1912,7 +1937,7 @@ function SequestreCloture() {
               <div style={{ background: 'white', border: '1px solid var(--border)', borderRadius: 8, padding: '14px 18px' }}>
                 <div style={{ fontSize: '0.76em', color: '#6B5843', marginBottom: 4, textTransform: 'uppercase', letterSpacing: '0.05em' }}>À confirmer (hors total fiable)</div>
                 <div style={{ fontSize: '1.4em', fontWeight: 700, color: '#92400E', fontVariantNumeric: 'tabular-nums' }}>{NF.format(totalAVerifier / 100)} €</div>
-                <div style={{ fontSize: '0.75em', color: '#9C8E7D', marginTop: 3 }}>{lignes.filter(l => ['certain_manuel', 'a_verifier_acompte', 'booking_sans_vir', 'a_verifier'].includes(l.statut)).length} résa(s)</div>
+                <div style={{ fontSize: '0.75em', color: '#9C8E7D', marginTop: 3 }}>{lignes.filter(l => ['certain_manuel', 'booking_prevu', 'a_verifier_acompte', 'booking_sans_vir', 'a_verifier'].includes(l.statut)).length} résa(s)</div>
               </div>
               <div style={{ background: 'white', border: '1px solid var(--border)', borderRadius: 8, padding: '14px 18px' }}>
                 <div style={{ fontSize: '0.76em', color: '#6B5843', marginBottom: 4, textTransform: 'uppercase', letterSpacing: '0.05em' }}>Informatif / exclus</div>
