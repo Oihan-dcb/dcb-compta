@@ -1581,27 +1581,68 @@ const CANAL_SEQ = { airbnb: 'Airbnb', booking: 'Booking', direct: 'Direct', manu
 
 function SequestreCloture() {
   const [anneeCloture, setAnneeCloture] = useState(2025)
+  const [biensList, setBiensList]       = useState([])   // tous les biens agence (chargé une fois)
+  const [biensCoches, setBiensCoches]   = useState(null) // null = tous; Set = sélection manuelle
+  const [periMetreOpen, setPeriMetreOpen] = useState(false)
   const [lignes, setLignes]             = useState([])
-  const [loading, setLoading]           = useState(true)
+  const [loading, setLoading]           = useState(false)
   const [error, setError]               = useState(null)
   const [filtreStatut, setFiltreStatut] = useState('tous')
 
-  const dateCloture     = `${anneeCloture}-12-31`
-  const dateDebutSuivant = `${anneeCloture + 1}-01-01`
-
   const fmtDate = d => d ? new Date(d + 'T00:00:00').toLocaleDateString('fr-FR') : '—'
 
-  const charger = useCallback(async () => {
+  // Charge la liste complète des biens agence (une seule fois)
+  useEffect(() => {
+    supabase.from('bien').select('id, code, hospitable_name').eq('agence', AGENCE).order('code')
+      .then(({ data }) => setBiensList(data || []))
+  }, [])
+
+  // Restaure la sélection persistée quand l'année change
+  useEffect(() => {
+    const key = `sequestre_cloture_biens_${anneeCloture}`
+    const saved = localStorage.getItem(key)
+    if (saved) {
+      try { setBiensCoches(new Set(JSON.parse(saved))) }
+      catch { setBiensCoches(null) }
+    } else {
+      setBiensCoches(null)
+    }
+  }, [anneeCloture])
+
+  // ids effectifs : null = tous les biens de l'agence
+  const effectiveBienIds = useMemo(() => {
+    if (!biensList.length) return []
+    return biensCoches === null ? biensList.map(b => b.id) : [...biensCoches]
+  }, [biensList, biensCoches])
+
+  const toggleBien = id => {
+    setBiensCoches(prev => {
+      const current = prev ?? new Set(biensList.map(b => b.id))
+      const next = new Set(current)
+      if (next.has(id)) next.delete(id); else next.add(id)
+      localStorage.setItem(`sequestre_cloture_biens_${anneeCloture}`, JSON.stringify([...next]))
+      return next
+    })
+  }
+
+  const setTousBiens = checked => {
+    const next = checked ? new Set(biensList.map(b => b.id)) : new Set()
+    setBiensCoches(next)
+    localStorage.setItem(`sequestre_cloture_biens_${anneeCloture}`, JSON.stringify([...next]))
+  }
+
+  const nbCoches = biensCoches === null ? biensList.length : biensCoches.size
+  const filtreActif = biensCoches !== null && biensCoches.size < biensList.length
+
+  const charger = useCallback(async (bienIds) => {
+    if (!bienIds.length) { setLignes([]); return }
     setLoading(true)
     setError(null)
     setLignes([])
+    const dateCloture      = `${anneeCloture}-12-31`
+    const dateDebutSuivant = `${anneeCloture + 1}-01-01`
     try {
-      // 1. Biens agence
-      const { data: biens } = await supabase.from('bien').select('id').eq('agence', AGENCE)
-      const bienIds = (biens || []).map(b => b.id)
-      if (!bienIds.length) { setLoading(false); return }
-
-      // 2. Réservations avec arrivée dans l'exercice suivant (N+1)
+      // 1. Réservations avec arrivée dans l'exercice suivant (N+1), périmètre figé
       const CANCELLED = ['not_accepted', 'not accepted', 'declined', 'expired', 'cancelled']
       let resasAll = []
       for (let i = 0; i < bienIds.length; i += 400) {
@@ -1617,7 +1658,7 @@ function SequestreCloture() {
       if (!resasAll.length) { setLignes([]); setLoading(false); return }
       const resaIds = resasAll.map(r => r.id)
 
-      // 3. VIR ventilations avec date mouvement (Airbnb & Booking)
+      // 2. VIR ventilations avec date mouvement (Airbnb & Booking)
       const virByResa = {}
       for (let i = 0; i < resaIds.length; i += 400) {
         const { data: virs } = await supabase
@@ -1632,7 +1673,7 @@ function SequestreCloture() {
         }
       }
 
-      // 4. Paiements réels avec date (direct, stripe, manual)
+      // 3. Paiements réels avec date (direct, stripe, manual)
       const pmtByResa = {}
       for (let i = 0; i < resaIds.length; i += 400) {
         const { data: pmts } = await supabase
@@ -1645,14 +1686,14 @@ function SequestreCloture() {
         }
       }
 
-      // 5. Classifier chaque réservation
+      // 4. Classifier chaque réservation
       const result = resasAll.map(r => {
         const virs  = virByResa[r.id] || []
         const pmts  = pmtByResa[r.id] || []
 
-        const virProuve   = virs.find(v => v.mouvement?.date_operation && v.mouvement.date_operation <= dateCloture)
-        const pmtProuves  = pmts.filter(p => p.date_paiement && p.date_paiement <= dateCloture)
-        const pmtSomme    = pmtProuves.reduce((s, p) => s + (p.montant || 0), 0)
+        const virProuve    = virs.find(v => v.mouvement?.date_operation && v.mouvement.date_operation <= dateCloture)
+        const pmtProuves   = pmts.filter(p => p.date_paiement && p.date_paiement <= dateCloture)
+        const pmtSomme     = pmtProuves.reduce((s, p) => s + (p.montant || 0), 0)
         const hasPmtProuve = pmtProuves.length > 0
         const hasVirProuve = !!virProuve
 
@@ -1695,9 +1736,12 @@ function SequestreCloture() {
     } finally {
       setLoading(false)
     }
-  }, [anneeCloture]) // eslint-disable-line react-hooks/exhaustive-deps
+  }, [anneeCloture])
 
-  useEffect(() => { charger() }, [charger])
+  // Relance le calcul dès que les ids effectifs changent (année, sélection, chargement initial)
+  useEffect(() => {
+    if (effectiveBienIds.length > 0) charger(effectiveBienIds)
+  }, [charger, effectiveBienIds])
 
   const lignesFiltrees  = filtreStatut === 'tous' ? lignes : lignes.filter(l => l.statut === filtreStatut)
   const totalCertain    = lignes.filter(l => l.inTotal).reduce((s, l) => s + l.montant, 0)
@@ -1715,23 +1759,63 @@ function SequestreCloture() {
     { key: 'absent',           label: 'Absent' },
   ]
 
+  const dateCloture      = `${anneeCloture}-12-31`
+  const dateDebutSuivant = `${anneeCloture + 1}-01-01`
+
   return (
     <div>
-      {/* Sélecteur d'année + description */}
-      <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 20, flexWrap: 'wrap' }}>
+      {/* Sélecteur d'année + bouton périmètre */}
+      <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 12, flexWrap: 'wrap' }}>
         <span style={{ color: '#5C4B2A', fontWeight: 600, fontSize: '0.9em' }}>Clôture exercice</span>
         <select value={anneeCloture} onChange={e => setAnneeCloture(Number(e.target.value))}
           style={{ border: '1px solid var(--border)', borderRadius: 6, padding: '4px 10px', background: 'white', fontSize: '0.9em' }}>
           {[2024, 2025, 2026].map(a => <option key={a} value={a}>{a}</option>)}
         </select>
         <span style={{ color: '#9C8E7D', fontSize: '0.82em' }}>
-          Séjours arrivant à partir du {fmtDate(dateDebutSuivant)} · encaissements avant le {fmtDate(dateCloture)}
+          Séjours arrivant à partir du {fmtDate(dateDebutSuivant)} · encaissés avant le {fmtDate(dateCloture)}
         </span>
-        <button onClick={charger}
-          style={{ marginLeft: 'auto', padding: '5px 14px', background: 'var(--brand)', color: 'white', border: 'none', borderRadius: 6, cursor: 'pointer', fontSize: '0.85em' }}>
+        <button onClick={() => setPeriMetreOpen(o => !o)}
+          style={{ marginLeft: 'auto', padding: '5px 14px', background: filtreActif ? '#FEF3C7' : 'white', color: filtreActif ? '#92400E' : '#5C4B2A', border: `1px solid ${filtreActif ? '#F59E0B' : 'var(--border)'}`, borderRadius: 6, cursor: 'pointer', fontSize: '0.85em', fontWeight: filtreActif ? 600 : 400 }}>
+          {periMetreOpen ? '▲' : '▼'} Périmètre {nbCoches}/{biensList.length} bien{biensList.length > 1 ? 's' : ''}
+        </button>
+        <button onClick={() => charger(effectiveBienIds)}
+          style={{ padding: '5px 14px', background: 'var(--brand)', color: 'white', border: 'none', borderRadius: 6, cursor: 'pointer', fontSize: '0.85em' }}>
           ↺ Rafraîchir
         </button>
       </div>
+
+      {/* Panneau périmètre historique */}
+      {periMetreOpen && (
+        <div style={{ background: '#FFFBF0', border: '1px solid #F59E0B', borderRadius: 8, padding: '14px 16px', marginBottom: 16 }}>
+          <div style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'space-between', marginBottom: 8 }}>
+            <div>
+              <span style={{ fontWeight: 700, color: '#5C4B2A', fontSize: '0.88em' }}>Périmètre historique de perception des loyers — exercice {anneeCloture}</span>
+              <div style={{ fontSize: '0.78em', color: '#9C8E7D', marginTop: 2 }}>Ne pas se fier au statut actuel dans l'onglet Biens — il peut avoir changé depuis. Décocher les biens pour lesquels DCB ne percevait pas les loyers sur cet exercice.</div>
+            </div>
+            <div style={{ display: 'flex', gap: 6, flexShrink: 0, marginLeft: 16 }}>
+              <button onClick={() => setTousBiens(true)}  style={{ fontSize: '0.78em', padding: '3px 9px', border: '1px solid var(--border)', borderRadius: 5, background: 'white', cursor: 'pointer', color: '#5C4B2A' }}>Tout</button>
+              <button onClick={() => setTousBiens(false)} style={{ fontSize: '0.78em', padding: '3px 9px', border: '1px solid var(--border)', borderRadius: 5, background: 'white', cursor: 'pointer', color: '#5C4B2A' }}>Aucun</button>
+            </div>
+          </div>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(180px, 1fr))', gap: '4px 16px', maxHeight: 260, overflowY: 'auto' }}>
+            {biensList.map(b => {
+              const checked = biensCoches === null || biensCoches.has(b.id)
+              return (
+                <label key={b.id} style={{ display: 'flex', alignItems: 'center', gap: 7, cursor: 'pointer', padding: '3px 0', fontSize: '0.85em', color: checked ? '#2C2416' : '#9C8E7D' }}>
+                  <input type="checkbox" checked={checked} onChange={() => toggleBien(b.id)}
+                    style={{ accentColor: 'var(--brand)', width: 14, height: 14, flexShrink: 0 }} />
+                  <span style={{ fontWeight: checked ? 500 : 400 }}>{b.code || b.hospitable_name || b.id.slice(0, 8)}</span>
+                </label>
+              )
+            })}
+          </div>
+          {filtreActif && (
+            <div style={{ marginTop: 8, fontSize: '0.78em', color: '#92400E', fontWeight: 600 }}>
+              ⚠ Périmètre restreint — {nbCoches} bien{nbCoches > 1 ? 's' : ''} sélectionné{nbCoches > 1 ? 's' : ''} sur {biensList.length}. Sélection sauvegardée pour l'exercice {anneeCloture}.
+            </div>
+          )}
+        </div>
+      )}
 
       {error && (
         <div style={{ padding: 12, background: '#FEF2F2', border: '1px solid #FCA5A5', borderRadius: 6, color: '#DC2626', marginBottom: 16, fontSize: '0.88em' }}>
