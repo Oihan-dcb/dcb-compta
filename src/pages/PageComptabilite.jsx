@@ -998,7 +998,7 @@ function SequestreTempsReel() {
       // 1. Biens de l'agence
       const { data: biens } = await supabase.from('bien').select('id, code').eq('agence', AGENCE)
       const bienIds = (biens || []).map(b => b.id)
-      if (!bienIds.length) { setData({ futurs: [], residuelPasses: [], anomalies: [], totalFuturs: 0, totalResiduel: 0, totalFiable: 0, totalAnomalies: 0 }); return }
+      if (!bienIds.length) { setData({ futurs: [], residuelPasses: [], anomalies: [], futursAttenteAB: [], totalFuturs: 0, totalResiduel: 0, totalFiable: 0, totalAnomalies: 0, totalAttenteAB: 0 }); return }
 
       // 2. Toutes les réservations valides de l'agence (avec encaissement > 0)
       const CANCELLED = ['not_accepted', 'not accepted', 'declined', 'expired', 'cancelled']
@@ -1016,7 +1016,7 @@ function SequestreTempsReel() {
         ))
       }
       const resaIds = allResas.map(r => r.id)
-      if (!resaIds.length) { setData({ futurs: [], residuelPasses: [], anomalies: [], totalFuturs: 0, totalResiduel: 0, totalFiable: 0, totalAnomalies: 0 }); return }
+      if (!resaIds.length) { setData({ futurs: [], residuelPasses: [], anomalies: [], futursAttenteAB: [], totalFuturs: 0, totalResiduel: 0, totalFiable: 0, totalAnomalies: 0, totalAttenteAB: 0 }); return }
 
       // 3. PAYINs réels prouvés en banque = reservation_paiement avec mouvement_id IS NOT NULL
       const payinByResa = {}
@@ -1042,10 +1042,17 @@ function SequestreTempsReel() {
       // Garder uniquement les resas avec au moins un PAYIN prouvé
       const resasAvecPayin = allResas.filter(r => (payinByResa[r.id] || 0) > 0)
 
-      // 4. Tri en 3 catégories
+      // 4. Tri en 3 catégories (prouvées) + 1 catégorie prévisionnelle
       const futurs          = resasAvecPayin.filter(r => r.departure_date > today)
       const passesVentiles  = resasAvecPayin.filter(r => r.departure_date <= today && r.ventilation_calculee)
       const anomalies       = resasAvecPayin.filter(r => r.departure_date <= today && !r.ventilation_calculee)
+
+      // Futurs Airbnb/Booking sans PAYIN prouvé (payout arrive après le séjour → normal)
+      const futursAttenteAB = allResas.filter(r =>
+        r.departure_date > today &&
+        (r.platform === 'airbnb' || r.platform === 'booking') &&
+        !(payinByResa[r.id] > 0)
+      )
 
       // 5. Ventilation des séjours passés ventilés (hors VIR = code résultat, hors PREST = mémo)
       const passesIds = passesVentiles.map(r => r.id)
@@ -1063,7 +1070,8 @@ function SequestreTempsReel() {
       }
 
       // 6. Calcul totaux
-      const totalFuturs   = futurs.reduce((s, r) => s + (payinByResa[r.id] || 0), 0)
+      const totalFuturs     = futurs.reduce((s, r) => s + (payinByResa[r.id] || 0), 0)
+      const totalAttenteAB  = futursAttenteAB.reduce((s, r) => s + (r.fin_revenue || 0), 0)
 
       const residuelPasses = passesVentiles.map(r => ({
         ...r,
@@ -1079,7 +1087,8 @@ function SequestreTempsReel() {
         futurs:         futurs.map(r => ({ ...r, payin: payinByResa[r.id] || 0 })),
         residuelPasses,
         anomalies:      anomalies.map(r => ({ ...r, payin: payinByResa[r.id] || 0 })),
-        totalFuturs, totalResiduel, totalFiable, totalAnomalies,
+        futursAttenteAB: futursAttenteAB.map(r => ({ ...r, montantAttendu: r.fin_revenue || 0 })),
+        totalFuturs, totalResiduel, totalFiable, totalAnomalies, totalAttenteAB,
       })
       setGenAt(new Date())
     } catch (e) {
@@ -1111,7 +1120,7 @@ function SequestreTempsReel() {
       {loading && !data && <div style={{ textAlign: 'center', padding: 40, color: '#9C8E7D' }}>Chargement…</div>}
 
       {data && (() => {
-        const { futurs, residuelPasses, anomalies, totalFuturs, totalResiduel, totalFiable, totalAnomalies } = data
+        const { futurs, residuelPasses, anomalies, futursAttenteAB, totalFuturs, totalResiduel, totalFiable, totalAnomalies, totalAttenteAB } = data
         const residuelOk = Math.abs(totalResiduel) < 100_00 // < 1€ de résidu = propre
         const residuelColor = Math.abs(totalResiduel) < 100_00 ? '#065F46' : Math.abs(totalResiduel) < 500_00 ? '#92400E' : '#DC2626'
 
@@ -1232,6 +1241,49 @@ function SequestreTempsReel() {
                     </div>
                   </div>
                 )}
+              </div>
+            )}
+
+            {/* ── Prévisionnel Airbnb / Booking ── */}
+            {futursAttenteAB.length > 0 && (
+              <div style={{ background: '#EFF6FF', border: '1px solid #BFDBFE', borderRadius: 12, padding: '16px 20px' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 12 }}>
+                  <div style={{ flex: 1 }}>
+                    <div style={{ fontWeight: 700, color: '#1D4ED8', fontSize: '0.92em' }}>
+                      Prévisionnel Airbnb / Booking — {futursAttenteAB.length} résa{futursAttenteAB.length > 1 ? 's' : ''}
+                    </div>
+                    <div style={{ fontSize: '0.78em', color: '#6B7280', marginTop: 2 }}>
+                      Séjours futurs dont le payout n'est pas encore arrivé en banque (normal). Montant = fin_revenue attendu.
+                    </div>
+                  </div>
+                  <div style={{ fontSize: '1.15em', fontWeight: 700, color: '#1D4ED8', fontVariantNumeric: 'tabular-nums', whiteSpace: 'nowrap' }}>
+                    {fmt(totalAttenteAB)}
+                  </div>
+                </div>
+                <div style={{ overflowX: 'auto' }}>
+                  <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.84em' }}>
+                    <thead>
+                      <tr style={{ background: '#DBEAFE' }}>
+                        {['Bien', 'Code', 'Canal', 'Voyageur', 'Arrivée', 'Départ', 'Attendu'].map(h => (
+                          <th key={h} style={{ padding: '7px 10px', textAlign: h === 'Attendu' ? 'right' : 'left', fontWeight: 700, color: '#1E3A8A', whiteSpace: 'nowrap', borderBottom: '1px solid #BFDBFE' }}>{h}</th>
+                        ))}
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {futursAttenteAB.sort((a, b) => a.arrival_date.localeCompare(b.arrival_date)).map((r, i) => (
+                        <tr key={r.id} style={{ borderBottom: '1px solid #DBEAFE', background: i % 2 === 0 ? 'white' : '#F0F7FF' }}>
+                          <td style={{ padding: '6px 10px', fontWeight: 600, whiteSpace: 'nowrap' }}>{r.bien?.code || '—'}</td>
+                          <td style={{ padding: '6px 10px', fontFamily: 'monospace', fontSize: '0.85em', color: '#6B5843' }}>{r.code || '—'}</td>
+                          <td style={{ padding: '6px 10px' }}>{CANAL_LABEL[r.platform] || r.platform || '—'}</td>
+                          <td style={{ padding: '6px 10px' }}>{r.guest_name || '—'}</td>
+                          <td style={{ padding: '6px 10px', whiteSpace: 'nowrap' }}>{fmtDate(r.arrival_date)}</td>
+                          <td style={{ padding: '6px 10px', whiteSpace: 'nowrap' }}>{fmtDate(r.departure_date)}</td>
+                          <td style={{ padding: '6px 10px', textAlign: 'right', fontWeight: 600, fontVariantNumeric: 'tabular-nums', color: '#1D4ED8' }}>{fmt(r.montantAttendu)}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
               </div>
             )}
 
