@@ -51,6 +51,7 @@ export default function PageSmsReviews() {
   const [queue, setQueue]             = useState([])
   const [loadingQueue, setLoadingQueue] = useState(false)
   const [flushResult, setFlushResult] = useState(null)
+  const [flushing, setFlushing]       = useState(false)
   const [expandedQueue, setExpandedQueue] = useState(null)
   const [generatingPreviews, setGeneratingPreviews] = useState(false)
   const [previewResult, setPreviewResult] = useState(null)
@@ -92,19 +93,27 @@ export default function PageSmsReviews() {
 
   const flushQueue = async () => {
     setFlushResult(null)
-    const { data: { session } } = await supabase.auth.getSession()
-    const res = await fetch(`${SUPABASE_URL}/functions/v1/process-sms-queue`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'Authorization': `Bearer ${session?.access_token || import.meta.env.VITE_SUPABASE_ANON_KEY}`,
-      },
-      body: JSON.stringify({ force: true }),
-    })
-    const data = await res.json()
-    setFlushResult(data)
-    chargerQueue()
-    chargerLogs()
+    setFlushing(true)
+    // Polling pendant le traitement pour animer les lignes
+    const poll = setInterval(() => chargerQueue(), 800)
+    try {
+      const { data: { session } } = await supabase.auth.getSession()
+      const res = await fetch(`${SUPABASE_URL}/functions/v1/process-sms-queue`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${session?.access_token || import.meta.env.VITE_SUPABASE_ANON_KEY}`,
+        },
+        body: JSON.stringify({ force: true }),
+      })
+      const data = await res.json()
+      setFlushResult(data)
+    } finally {
+      clearInterval(poll)
+      setFlushing(false)
+      chargerQueue()
+      chargerLogs()
+    }
   }
 
   // Campagnes
@@ -375,8 +384,8 @@ export default function PageSmsReviews() {
               <button onClick={genererApercus} disabled={generatingPreviews} style={{ padding: '0.4rem 0.75rem', background: 'transparent', border: '1px solid var(--border)', borderRadius: 8, cursor: generatingPreviews ? 'not-allowed' : 'pointer', fontSize: '0.8rem', opacity: generatingPreviews ? 0.6 : 1 }}>
                 {generatingPreviews ? '⏳ Génération…' : '💬 Générer aperçus'}
               </button>
-              <button onClick={flushQueue} style={{ padding: '0.4rem 1rem', background: 'var(--brand)', color: '#fff', border: 'none', borderRadius: 8, cursor: 'pointer', fontSize: '0.8rem', fontWeight: 700 }}>
-                ▶ Traiter maintenant
+              <button onClick={flushQueue} disabled={flushing} style={{ padding: '0.4rem 1rem', background: 'var(--brand)', color: '#fff', border: 'none', borderRadius: 8, cursor: flushing ? 'not-allowed' : 'pointer', fontSize: '0.8rem', fontWeight: 700, opacity: flushing ? 0.7 : 1 }}>
+                {flushing ? '⏳ Envoi…' : '▶ Traiter maintenant'}
               </button>
             </div>
           </div>
