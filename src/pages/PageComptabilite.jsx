@@ -1691,9 +1691,9 @@ function SequestreCloture() {
         }
       }
 
-      // Airbnb sans VIR avant clôture = jamais dans le séquestre DCB → ne pas charger
+      // Airbnb et Booking sans VIRPayinProuvé avant clôture = jamais dans le séquestre DCB
       resasAll = resasAll.filter(r => {
-        if (r.platform !== 'airbnb') return true
+        if (r.platform !== 'airbnb' && r.platform !== 'booking') return true
         const virs = virByResa[r.id] || []
         return virs.some(v => v.mouvement?.date_operation && v.mouvement.date_operation <= dateCloture)
       })
