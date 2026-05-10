@@ -1011,7 +1011,7 @@ function SequestreTempsReel() {
         while (true) {
           const { data: r, error: rErr } = await supabase
             .from('reservation')
-            .select('id, code, platform, guest_name, arrival_date, departure_date, fin_revenue, ventilation_calculee, final_status, owner_stay, bien:bien_id(id, code)')
+            .select('id, code, platform, guest_name, arrival_date, departure_date, fin_revenue, ventilation_calculee, final_status, owner_stay, rapprochee, bien:bien_id(id, code)')
             .in('bien_id', batchBienIds)
             .gt('fin_revenue', 0)
             .order('id')
@@ -1092,6 +1092,7 @@ function SequestreTempsReel() {
         r.departure_date > today &&
         (r.platform === 'direct' || r.platform === 'manual' || r.platform === 'stripe') &&
         !(payinByResa[r.id] > 0) &&
+        !r.rapprochee &&
         r.final_status !== 'request'
       )
 
