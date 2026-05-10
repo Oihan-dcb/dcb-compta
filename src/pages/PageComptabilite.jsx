@@ -1663,11 +1663,11 @@ function SequestreCloture() {
       for (let i = 0; i < bienIds.length; i += 400) {
         const { data, error: e } = await supabase
           .from('reservation')
-          .select('id, code, platform, arrival_date, departure_date, fin_revenue, rapprochee, guest_name, final_status, bien:bien_id(id, code, hospitable_name)')
+          .select('id, code, platform, arrival_date, departure_date, fin_revenue, rapprochee, guest_name, final_status, owner_stay, created_at, bien:bien_id(id, code, hospitable_name)')
           .in('bien_id', bienIds.slice(i, i + 400))
           .gte('arrival_date', dateDebutSuivant)
         if (e) throw new Error(e.message)
-        resasAll = resasAll.concat((data || []).filter(r => !CANCELLED.includes(r.final_status)))
+        resasAll = resasAll.concat((data || []).filter(r => !CANCELLED.includes(r.final_status) && !r.owner_stay))
       }
       if (!resasAll.length) { setLignes([]); setLoading(false); return }
       const resaIds = resasAll.map(r => r.id)
@@ -1821,7 +1821,7 @@ function SequestreCloture() {
               try {
                 const res = await syncStripeAcomptesSequestre(lignes, dateCloture)
                 setSyncLog(res)
-                if (res.inserted > 0) await charger()
+                if (res.found > 0 || res.inserted > 0) await charger()
               } finally { setSyncingStripe(false) }
             }}
             style={{ padding: '5px 14px', background: '#635BFF', color: 'white', border: 'none', borderRadius: 6, cursor: 'pointer', fontSize: '0.85em', opacity: (syncingStripe || loading) ? 0.6 : 1 }}>
@@ -1901,7 +1901,7 @@ function SequestreCloture() {
                 <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.87em' }}>
                   <thead>
                     <tr style={{ background: '#F7F3EC' }}>
-                      {['Bien', 'Résa', 'Canal', 'Voyageur', 'Arrivée', 'Départ', 'Date enc.', 'Montant', 'Statut'].map(h => (
+                      {['Bien', 'Résa', 'Date résa', 'Canal', 'Voyageur', 'Arrivée', 'Départ', 'Date enc.', 'Montant', 'Statut'].map(h => (
                         <th key={h} style={{ padding: '8px 10px', textAlign: h === 'Montant' ? 'right' : 'left', fontWeight: 700, color: '#5C4B2A', whiteSpace: 'nowrap', borderBottom: '1px solid var(--border)' }}>{h}</th>
                       ))}
                     </tr>
@@ -1913,6 +1913,7 @@ function SequestreCloture() {
                         <tr key={l.id} style={{ borderBottom: '1px solid var(--border)', background: i % 2 === 0 ? 'white' : '#FDFAF5' }}>
                           <td style={{ padding: '7px 10px', whiteSpace: 'nowrap', fontWeight: 600 }}>{l.bien?.code || '—'}</td>
                           <td style={{ padding: '7px 10px', color: '#6B5843', fontSize: '0.85em', fontFamily: 'monospace' }}>{l.code || '—'}</td>
+                          <td style={{ padding: '7px 10px', whiteSpace: 'nowrap', color: '#6B5843', fontSize: '0.85em' }}>{l.created_at ? fmtDate(l.created_at.slice(0, 10)) : '—'}</td>
                           <td style={{ padding: '7px 10px' }}>{CANAL_SEQ[l.platform] || l.platform || '—'}</td>
                           <td style={{ padding: '7px 10px' }}>{l.guest_name || '—'}</td>
                           <td style={{ padding: '7px 10px', whiteSpace: 'nowrap' }}>{fmtDate(l.arrival_date)}</td>

@@ -152,7 +152,15 @@ export default function TableReservations({ reservations, onSelect, onRefresh, l
                   </div>
                 )}
               </td>
-              <td>{r.guest_name || '—'}</td>
+              <td>
+                <span>{r.guest_name || '—'}</span>
+                {r.isProlongation && (
+                  <span title={r.originalResaCode ? `Prolongation de ${r.originalResaCode}` : 'Prolongation — ménage rattaché à la résa originale'}
+                    style={{ marginLeft: 6, fontSize: '0.72em', fontWeight: 700, color: '#7C5F00', background: '#FEF3C7', border: '1px solid #FCD34D', borderRadius: 4, padding: '1px 5px', verticalAlign: 'middle', whiteSpace: 'nowrap' }}>
+                    ↗ Suite
+                  </span>
+                )}
+              </td>
               <td>
                 {r.final_status === 'cancelled'
                   ? <span className="badge" style={{ background: '#fee2e2', color: '#dc2626', borderRadius: 4, padding: '2px 6px', fontSize: '0.75em', fontWeight: 600 }}>Annulée</span>

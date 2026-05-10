@@ -335,45 +335,81 @@ async function importStaged(agence: string, accountLabel: string, ids?: string[]
       let insertedId: string | null = null
 
       if (accountLabel === 'seq_lld') {
-        // → lld_mouvement_bancaire (compte loyers)
-        const { data: mvt, error: mvtErr } = await db.from('lld_mouvement_bancaire')
-          .upsert({
-            numero_operation: `POWENS_${tx.powens_transaction_id}`,
-            date_operation: tx.date_operation,
-            libelle: tx.libelle,
-            detail: tx.detail,
-            credit,
-            debit,
-            compte: 'loyers',
-            mois_releve: moisReleve,
-            statut: 'non_rapproche',
-            agence,
-          }, { onConflict: 'numero_operation,compte,agence' })
+        // Dédup par empreinte (date + detail + montant) — Powens peut réassigner des IDs différents
+        // à la même transaction bancaire entre deux syncs
+        let existingQ = db.from('lld_mouvement_bancaire')
           .select('id')
-          .single()
-        if (mvtErr) throw new Error(mvtErr.message)
-        insertedId = mvt.id
+          .eq('agence', agence)
+          .eq('compte', 'loyers')
+          .eq('date_operation', tx.date_operation)
+          .eq('detail', tx.detail || '')
+        if (credit !== null) existingQ = existingQ.eq('credit', credit)
+        else existingQ = existingQ.is('credit', null)
+        if (debit !== null) existingQ = existingQ.eq('debit', debit)
+        else existingQ = existingQ.is('debit', null)
+        const { data: existing } = await existingQ.maybeSingle()
+
+        if (existing) {
+          // Transaction déjà présente — marquer comme importée sans créer de doublon
+          insertedId = existing.id
+        } else {
+          // → lld_mouvement_bancaire (compte loyers)
+          const { data: mvt, error: mvtErr } = await db.from('lld_mouvement_bancaire')
+            .insert({
+              numero_operation: `POWENS_${tx.powens_transaction_id}`,
+              date_operation: tx.date_operation,
+              libelle: tx.libelle,
+              detail: tx.detail,
+              credit,
+              debit,
+              compte: 'loyers',
+              mois_releve: moisReleve,
+              statut: 'non_rapproche',
+              agence,
+            })
+            .select('id')
+            .single()
+          if (mvtErr) throw new Error(mvtErr.message)
+          insertedId = mvt.id
+        }
       } else {
         // seq_lc, courant → mouvement_bancaire
-        const canal = detectCanal(tx.libelle || '', tx.montant_centimes)
-        const { data: mvt, error: mvtErr } = await db.from('mouvement_bancaire')
-          .upsert({
-            numero_operation: `POWENS_${tx.powens_transaction_id}`,
-            date_operation: tx.date_operation,
-            libelle: tx.libelle,
-            detail: tx.detail,
-            credit,
-            debit,
-            canal,
-            source: `Powens_${accountLabel}`,
-            mois_releve: moisReleve,
-            statut_matching: 'en_attente',
-            agence,
-          }, { onConflict: 'numero_operation' })
+        // Dédup par empreinte — Powens peut réassigner des IDs différents entre syncs
+        let existingMbQ = db.from('mouvement_bancaire')
           .select('id')
-          .single()
-        if (mvtErr) throw new Error(mvtErr.message)
-        insertedId = mvt.id
+          .eq('agence', agence)
+          .eq('source', `Powens_${accountLabel}`)
+          .eq('date_operation', tx.date_operation)
+          .eq('detail', tx.detail || '')
+        if (credit !== null) existingMbQ = existingMbQ.eq('credit', credit)
+        else existingMbQ = existingMbQ.is('credit', null)
+        if (debit !== null) existingMbQ = existingMbQ.eq('debit', debit)
+        else existingMbQ = existingMbQ.is('debit', null)
+        const { data: existingMb } = await existingMbQ.maybeSingle()
+
+        if (existingMb) {
+          insertedId = existingMb.id
+        } else {
+          const canal = detectCanal(tx.libelle || '', tx.montant_centimes)
+          const { data: mvt, error: mvtErr } = await db.from('mouvement_bancaire')
+            .insert({
+              numero_operation: `POWENS_${tx.powens_transaction_id}`,
+              date_operation: tx.date_operation,
+              libelle: tx.libelle,
+              detail: tx.detail,
+              credit,
+              debit,
+              canal,
+              source: `Powens_${accountLabel}`,
+              mois_releve: moisReleve,
+              statut_matching: 'en_attente',
+              agence,
+            })
+            .select('id')
+            .single()
+          if (mvtErr) throw new Error(mvtErr.message)
+          insertedId = mvt.id
+        }
       }
 
       await db.from('powens_transaction_raw').update({

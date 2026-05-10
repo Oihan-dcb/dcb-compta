@@ -57,6 +57,33 @@ export default function PageReservations() {
     setLoading(true); setError(null)
     try {
       const [resas, recapData] = await Promise.all([getReservationsMois(mois), getRecapVentilation(mois)])
+      // Détection prolongations : même bien + même voyageur + dates consécutives + pas de frais ménage
+      const byBienGuest = {}
+      for (const r of resas) {
+        const key = `${r.bien?.id}|${(r.guest_name || '').toLowerCase().trim()}`
+        if (!byBienGuest[key]) byBienGuest[key] = []
+        byBienGuest[key].push(r)
+      }
+      for (const group of Object.values(byBienGuest)) {
+        if (group.length < 2) continue
+        for (const r of group) {
+          const fees = r.reservation_fee || []
+          const cleaning = fees.find(f => f.label?.toLowerCase() === 'cleaning fee')?.amount || 0
+          const community = fees.find(f => f.label?.toLowerCase() === 'community fee')?.amount || 0
+          if (cleaning > 0 || community > 0) continue
+          const preceding = group.find(o => o.id !== r.id && (o.departure_date || '').substring(0, 10) === (r.arrival_date || '').substring(0, 10))
+          if (preceding) {
+            r.isProlongation = true
+            r.originalResaCode = preceding.code
+          }
+        }
+      }
+      // Critère B : guest_name contient "prolongation"
+      for (const r of resas) {
+        if (!r.isProlongation && (r.guest_name || '').toLowerCase().includes('prolongation')) {
+          r.isProlongation = true
+        }
+      }
       setReservations(resas); setRecap(recapData)
       // Ouvrir le modal si ?code= dans l'URL (venant du Rapprochement)
       const codeParam = searchParams.get('code')

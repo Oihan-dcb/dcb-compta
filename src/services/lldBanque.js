@@ -239,7 +239,7 @@ export async function autoMatcherVirementsProprioLLD(agence = AGENCE) {
       .gt('debit', 0),
     supabase
       .from('virement_proprio_suivi')
-      .select('id, montant, etudiant(proprietaire(nom, prenom))')
+      .select('id, montant, etudiant:etudiant_id(proprietaire:proprietaire_id(nom, prenom))')
       .eq('agence', agence)
       .eq('statut', 'a_virer'),
   ])

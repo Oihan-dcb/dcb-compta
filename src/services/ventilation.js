@@ -80,6 +80,30 @@ export async function calculerVentilationMois(mois) {
 
   if (error) throw error
 
+  // ── Détection prolongations (critère A) ──────────────────────────────────
+  // Même bien + même voyageur + dates consécutives + aucun frais ménage
+  // Le critère B (guest_name contient "prolongation") est géré dans _calculerLignes
+  const resasByBienGuest = {}
+  for (const r of reservations || []) {
+    const key = `${r.bien_id}|${(r.guest_name || '').toLowerCase().trim()}`
+    if (!resasByBienGuest[key]) resasByBienGuest[key] = []
+    resasByBienGuest[key].push(r)
+  }
+  for (const group of Object.values(resasByBienGuest)) {
+    if (group.length < 2) continue
+    for (const r of group) {
+      const fees = r.reservation_fee || []
+      const cleaningFee = fees.find(f => f.label?.toLowerCase() === 'cleaning fee')?.amount || 0
+      const communityFee = fees.find(f => f.label?.toLowerCase() === 'community fee')?.amount || 0
+      if (cleaningFee > 0 || communityFee > 0) continue
+      const preceding = group.find(other => other.id !== r.id && (other.departure_date || '').substring(0, 10) === (r.arrival_date || '').substring(0, 10))
+      if (preceding) {
+        r.isProlongation = true
+        r.originalResaId = preceding.id
+      }
+    }
+  }
+
   let total = 0
   let errors = 0
   let skipped = 0
@@ -224,6 +248,10 @@ export function _calculerLignes(resa) {
   const isDirect = resa.platform === 'direct' || resa.platform === 'manual'
   const isCancelled = STATUTS_NON_VENTILABLES.includes(resa.final_status)
 
+  // Prolongation : critère B (guest_name) ou flag pré-calculé par calculerVentilationMois (critère A)
+  const isProlongation = resa.isProlongation === true ||
+    (resa.guest_name || '').toLowerCase().includes('prolongation')
+
   // Réservation annulée mais fin_revenue > 0 (frais d'annulation) → ventiler normalement
   // Cas cancelled + fin_revenue === 0 : géré par calculerVentilationResa (appel DB)
 
@@ -267,8 +295,10 @@ export function _calculerLignes(resa) {
     .reduce((s, f) => s + (f.amount || 0), 0)
 
   // AUTO = provision AE (hors TVA)
-  // Pour les réservations annulées non-directes (Airbnb/Booking avec frais) : pas de provision AE
-  const aeAmount = isCancelled ? 0 : (bien.provision_ae_ref || 0)
+  // Annulées : pas d'AE.
+  // Prolongations explicites : le ménage est sur la résa originale.
+  // Direct/manual sans frais ménage (communityFee=0) : pas de ménage à provisionner.
+  const aeAmount = (isCancelled || isProlongation || (isDirect && menageBrut === 0)) ? 0 : (bien.provision_ae_ref || 0)
 
   // Taxes pass-through - Airbnb ET Booking reversent certaines taxes directement (Remitted)
   const isRemitted = t => t.label?.toLowerCase().includes('remitted')
@@ -429,6 +459,7 @@ export function _calculerLignes(resa) {
 
   return {
     lignes,
+    isProlongation,
     fallbackAirbnb: airbnbFallbackActif ? {
       motif: 'airbnb_fees_missing',
       forfait_dcb_ref: bien.forfait_dcb_ref,
@@ -502,7 +533,17 @@ export async function calculerVentilationResa(resa) {
   }
 
   // Calcul pur — délégué à _calculerLignes
-  const { lignes, fallbackAirbnb } = _calculerLignes(resa)
+  const { lignes, fallbackAirbnb, isProlongation } = _calculerLignes(resa)
+
+  // Log prolongation détectée
+  if (isProlongation) {
+    logOp({
+      categorie: 'ventilation', action: 'prolongation_detected', source: 'app', statut: 'ok',
+      mois_comptable: resa.mois_comptable,
+      message: `Prolongation détectée : AUTO/FMEN supprimés, mission ménage à migrer vers résa originale`,
+      meta: { code: resa.code, bien: resa.bien?.code, originalResaId: resa.originalResaId || null },
+    }).catch(() => {})
+  }
 
   // Traçabilité : log explicite si fallback Airbnb activé
   if (fallbackAirbnb) {
@@ -527,13 +568,26 @@ export async function calculerVentilationResa(resa) {
   // Sauvegarder montant_reel et mouvement_id avant suppression (pour restauration après recalcul)
   const { data: existingLines } = await supabase
     .from('ventilation')
-    .select('code, montant_reel, mouvement_id')
+    .select('id, code, montant_reel, mouvement_id')
     .eq('reservation_id', resa.id)
   const existingReels = {}
   const existingMouvements = {}
   for (const l of existingLines || []) {
     if (l.montant_reel != null) existingReels[l.code] = l.montant_reel
     if (l.mouvement_id != null) existingMouvements[l.code] = l.mouvement_id
+  }
+
+  // Si prolongation : capturer mission_menage liée à l'AUTO avant suppression
+  let missionToMigrate = null
+  let autoMontantReel = null
+  if (isProlongation) {
+    const existingAuto = (existingLines || []).find(l => l.code === 'AUTO')
+    if (existingAuto) {
+      autoMontantReel = existingAuto.montant_reel
+      const { data: mission } = await supabase
+        .from('mission_menage').select('id').eq('ventilation_auto_id', existingAuto.id).maybeSingle()
+      missionToMigrate = mission?.id || null
+    }
   }
 
   // Supprimer les ventilations existantes pour cette résa
@@ -549,6 +603,8 @@ export async function calculerVentilationResa(resa) {
 
   // Restaurer montant_reel et mouvement_id (liens banque sur VIR préservés après recalcul)
   const codesToRestore = new Set([...Object.keys(existingReels), ...Object.keys(existingMouvements)])
+  // Ne pas restaurer AUTO sur les prolongations : pas de ligne AUTO créée, migration séparée ci-dessous
+  if (isProlongation) codesToRestore.delete('AUTO')
   for (const code of codesToRestore) {
     const patch = {}
     if (existingReels[code] != null) patch.montant_reel = existingReels[code]
@@ -561,6 +617,34 @@ export async function calculerVentilationResa(resa) {
     .from('reservation')
     .update({ ventilation_calculee: true })
     .eq('id', resa.id)
+
+  // Migration mission_menage vers la résa originale (prolongations uniquement)
+  if (isProlongation && missionToMigrate) {
+    let originalResaId = resa.originalResaId || null
+    if (!originalResaId) {
+      // Fallback DB : résa du même bien dont departure_date = notre arrival_date (cross-mois)
+      const { data: originalResa } = await supabase
+        .from('reservation').select('id')
+        .eq('bien_id', resa.bien_id)
+        .eq('departure_date', (resa.arrival_date || '').substring(0, 10))
+        .neq('id', resa.id)
+        .maybeSingle()
+      originalResaId = originalResa?.id || null
+    }
+    if (originalResaId) {
+      const { data: originalAuto } = await supabase
+        .from('ventilation').select('id')
+        .eq('reservation_id', originalResaId).eq('code', 'AUTO').maybeSingle()
+      if (originalAuto?.id) {
+        await supabase.from('mission_menage')
+          .update({ ventilation_auto_id: originalAuto.id }).eq('id', missionToMigrate)
+        if (autoMontantReel != null) {
+          await supabase.from('ventilation')
+            .update({ montant_reel: autoMontantReel }).eq('id', originalAuto.id)
+        }
+      }
+    }
+  }
 
   // CF-PAE3 : relier mission_menage.ventilation_auto_id à la ligne AUTO
   const { data: ligneAuto } = await supabase

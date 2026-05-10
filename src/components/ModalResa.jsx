@@ -352,6 +352,18 @@ export default function ModalResa({ resa, onClose, onSaved }) {
           <button onClick={onClose} style={{ background: 'none', border: 'none', fontSize: '1.5rem', cursor: 'pointer', color: '#666' }}>×</button>
         </div>
 
+        {/* Prolongation */}
+        {resa.isProlongation && (
+          <div style={{ marginBottom: 14, padding: '8px 14px', background: '#FFFBEB', border: '1px solid #FCD34D', borderRadius: 8, fontSize: '0.88em', display: 'flex', alignItems: 'center', gap: 8 }}>
+            <span style={{ fontSize: '1.1em' }}>↗</span>
+            <span style={{ color: '#78350F' }}>
+              <strong>Prolongation de séjour</strong>
+              {resa.originalResaCode && <> — ménage rattaché à <span className="mono" style={{ fontWeight: 700 }}>{resa.originalResaCode}</span></>}
+              {!resa.originalResaCode && <> — ménage rattaché à la résa originale</>}
+            </span>
+          </div>
+        )}
+
         {/* Infos */}
         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8, marginBottom: 16, fontSize: '0.9em' }}>
           {[

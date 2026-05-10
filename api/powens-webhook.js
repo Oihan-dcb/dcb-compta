@@ -21,15 +21,18 @@ export default async function handler(req, res) {
   if (!SERVICE_KEY) return res.status(500).json({ error: 'Service key manquante' })
 
   const event = req.body
-  const eventType = event?.event || event?.type
 
-  // On ne traite que ACCOUNT_SYNCED
+  // Powens envoie directement {id, name, ...} sans wrapper event_type
+  // Le webhook est enregistré spécifiquement pour ACCOUNT_SYNCED donc tout POST = ACCOUNT_SYNCED
+  // On accepte aussi un champ event/type explicite si présent (compatibilité future)
+  const eventType = event?.event || event?.type || 'ACCOUNT_SYNCED'
+
   if (eventType !== 'ACCOUNT_SYNCED') {
     return res.status(200).json({ ignored: true, event: eventType })
   }
 
-  // Identifier le compte concerné
-  const accountId = String(event?.account?.id || event?.id_account || '')
+  // Identifier le compte concerné — l'Account est directement à la racine du payload
+  const accountId = String(event?.id || event?.account?.id || event?.id_account || '')
   const mapping = ACCOUNT_MAP[accountId]
 
   if (!mapping) {
