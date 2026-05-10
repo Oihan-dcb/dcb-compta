@@ -1484,15 +1484,21 @@ function SequestreCloture() {
               statut = 'certain'; inTotal = true
             }
           } else if (r.platform === 'booking') {
-            const bpl = bplByCode[r.code]
-            if (bpl) {
-              // Payout connu via booking_payout_line → informatif comptable
-              statut = 'booking_prevu'
-              dateEnc = bpl.payout_date
-              montant = bpl.amount_cents || r.fin_revenue || 0
+            const bd = r.booking_date ? r.booking_date.slice(0, 10) : null
+            if (bd && bd > dateCloture) {
+              // Résa bookée après clôture → exclure
+              statut = 'exclu_post_cloture'; montant = r.fin_revenue || 0
             } else {
-              // Pas dans booking_payout_line → inconnu, masquer
-              statut = 'absent'
+              const bpl = bplByCode[r.code]
+              if (bpl) {
+                // Payout connu via booking_payout_line → informatif comptable
+                statut = 'booking_prevu'
+                dateEnc = bpl.payout_date
+                montant = bpl.amount_cents || r.fin_revenue || 0
+              } else {
+                // Pas dans booking_payout_line → inconnu, masquer
+                statut = 'absent'
+              }
             }
           } else {
             statut = 'exclu_perimetre' // Airbnb VIR prouvé mais hors périmètre (ne devrait pas arriver ici)
