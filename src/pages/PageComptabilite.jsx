@@ -1091,7 +1091,8 @@ function SequestreTempsReel() {
       const futursAVerifier = allResas.filter(r =>
         r.departure_date > today &&
         (r.platform === 'direct' || r.platform === 'manual' || r.platform === 'stripe') &&
-        !(payinByResa[r.id] > 0)
+        !(payinByResa[r.id] > 0) &&
+        r.final_status !== 'request'
       )
 
       // 5. Ventilation des séjours passés ventilés (hors VIR = code résultat, hors PREST = mémo)
