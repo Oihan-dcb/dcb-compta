@@ -181,7 +181,7 @@ export default function PageRapports() {
 
   const saveMenageProprio = async (row) => {
     const montantCents = Math.round(parseFloat(saisirMontant.replace(',', '.')) * 100)
-    if (isNaN(montantCents) || montantCents <= 0) return
+    if (isNaN(montantCents) || montantCents < 0) return
     setSavingMenage(true)
     try {
       await supabase.from('ventilation').upsert({

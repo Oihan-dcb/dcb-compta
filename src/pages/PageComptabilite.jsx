@@ -1664,7 +1664,7 @@ function SequestreCloture() {
       for (let i = 0; i < bienIds.length; i += 400) {
         const { data, error: e } = await supabase
           .from('reservation')
-          .select('id, code, platform, arrival_date, departure_date, fin_revenue, rapprochee, guest_name, final_status, owner_stay, created_at, bien:bien_id(id, code, hospitable_name)')
+          .select('id, code, platform, arrival_date, departure_date, fin_revenue, rapprochee, guest_name, final_status, owner_stay, booking_date, bien:bien_id(id, code, hospitable_name)')
           .in('bien_id', bienIds.slice(i, i + 400))
           .gte('arrival_date', dateDebutSuivant)
         if (e) throw new Error(e.message)
@@ -1774,20 +1774,25 @@ function SequestreCloture() {
             statut = 'certain'; montant = pmtSomme; inTotal = true
             dateEnc = [...pmtProuves].sort((a, b) => (b.date_paiement||'').localeCompare(a.date_paiement||''))[0]?.date_paiement
           } else {
-            // Pas de paiement avant clôture — regarder stripe_payout_line
+            // Pas de paiement avant clôture
+            // Priorité 1 : booking_date (source fiable Hospitable)
+            const bd = r.booking_date ? r.booking_date.slice(0, 10) : null
+            // Priorité 2 : stripe_payout_line (charge uniquement après clôture)
             const spl = splByCode[r.code]
-            if (spl && spl.apres && !spl.avant) {
-              // Charge Stripe uniquement après clôture → résa faite en N+1, pas d'acompte 2025
+            const splPostOnly = spl && spl.apres && !spl.avant
+            if ((bd && bd > dateCloture) || (!bd && splPostOnly)) {
+              // Résa faite en N+1 → pas d'acompte 2025 possible
               statut = 'exclu_post_cloture'; montant = r.fin_revenue || 0
             } else {
-              // Aucune charge Stripe OU charge avant clôture non encore dans paiements
               statut = 'a_verifier_acompte'; montant = r.fin_revenue || 0
             }
           }
         }
 
-        // Date 1ère charge Stripe = proxy de date de réservation (plus fiable que created_at DB)
-        const dateCharge = splByCode[r.code]?.minDate ?? null
+        // Date de réservation : booking_date Hospitable en priorité, sinon 1ère charge Stripe
+        const dateCharge = r.booking_date
+          ? r.booking_date.slice(0, 10)
+          : (splByCode[r.code]?.minDate ?? null)
 
         return { ...r, statut, montant, dateEnc, inTotal, dateCharge }
       })
