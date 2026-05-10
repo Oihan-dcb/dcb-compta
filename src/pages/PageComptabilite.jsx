@@ -1508,7 +1508,7 @@ function SequestreTempsReel() {
                           <td style={{ padding: '6px 10px', fontFamily: 'monospace', fontSize: '0.85em', color: '#6B5843' }}>{r.code || '—'}</td>
                           <td style={{ padding: '6px 10px' }}>{CANAL_LABEL[r.platform] || r.platform || '—'}</td>
                           <td style={{ padding: '6px 10px' }}>{r.guest_name || '—'}</td>
-                          <td style={{ padding: '6px 10px', whiteSpace: 'nowrap' }}>{fmtDate(r.booking_date)}</td>
+                          <td style={{ padding: '6px 10px', whiteSpace: 'nowrap' }}>{fmtDate(r.booking_date?.slice(0, 10))}</td>
                           <td style={{ padding: '6px 10px', whiteSpace: 'nowrap' }}>{fmtDate(r.arrival_date)}</td>
                           <td style={{ padding: '6px 10px', whiteSpace: 'nowrap' }}>{fmtDate(r.departure_date)}</td>
                           <td style={{ padding: '6px 10px', textAlign: 'right', fontVariantNumeric: 'tabular-nums', color: '#92400E' }}>{fmt(r.montantAttendu)}</td>
