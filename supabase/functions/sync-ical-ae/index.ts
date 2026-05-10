@@ -82,6 +82,7 @@ Deno.serve(async (req) => {
         statut: 'planifie',
         type_mission: 'checkout',
         imputation: 'ventilation_dcb',
+        duree_prevue: computeDureeHeures(evt.dtstart, evt.dtend),
       }
 
       const { error: upsertErr } = await sb.from('mission_menage')
@@ -127,12 +128,33 @@ function parseIcal(text) {
       const key = line.substring(0, col).toLowerCase().replace(/;[^:]+/, '')
       const val = line.substring(col + 1)
       if (key === 'dtstart') current.dtstart = val
+      else if (key === 'dtend') current.dtend = val
       else if (key === 'summary') current.summary = val
       else if (key === 'uid') current.uid = val
       else if (key === 'status') current.status = val
     }
   }
   return events
+}
+
+function parseDatetime(s: string): Date | null {
+  if (!s) return null
+  const clean = s.replace(/[^0-9T]/g, '')
+  if (/^\d{8}$/.test(clean)) {
+    return new Date(parseInt(clean.substring(0,4)), parseInt(clean.substring(4,6))-1, parseInt(clean.substring(6,8)))
+  }
+  const m = clean.match(/^(\d{4})(\d{2})(\d{2})T(\d{2})(\d{2})(\d{2})/)
+  if (m) return new Date(Date.UTC(+m[1], +m[2]-1, +m[3], +m[4], +m[5], +m[6]))
+  return null
+}
+
+function computeDureeHeures(dtstart: string, dtend: string): number | null {
+  const start = parseDatetime(dtstart)
+  const end = parseDatetime(dtend)
+  if (!start || !end) return null
+  const diffMs = end.getTime() - start.getTime()
+  if (diffMs <= 0) return null
+  return Math.round((diffMs / 3600000) * 10) / 10
 }
 
 function parseIcalDate(s) {
