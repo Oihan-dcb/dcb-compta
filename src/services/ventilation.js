@@ -124,13 +124,21 @@ export async function calculerVentilationMois(mois) {
     }
   }
 
+  const prolongations = (reservations || [])
+    .filter(r => r.isProlongation)
+    .map(r => ({
+      code: r.code,
+      originalResaId: r.originalResaId || null,
+      originalResaCode: (reservations || []).find(o => o.id === r.originalResaId)?.code || null,
+    }))
+
   logOp({
     categorie: 'ventilation', action: 'compute', mois_comptable: mois,
     statut: errors > 0 ? 'warning' : 'ok', source: 'app',
-    message: `Ventilation ${mois} : ${total} résa(s) calculée(s)${skipped > 0 ? ', ' + skipped + ' verrouillée(s)' : ''}${errors > 0 ? ', ' + errors + ' erreur(s)' : ''}`,
-    meta: { total, skipped, errors, errorDetails },
+    message: `Ventilation ${mois} : ${total} résa(s) calculée(s)${skipped > 0 ? ', ' + skipped + ' verrouillée(s)' : ''}${errors > 0 ? ', ' + errors + ' erreur(s)' : ''}${prolongations.length > 0 ? `, ${prolongations.length} prolongation(s)` : ''}`,
+    meta: { total, skipped, errors, errorDetails, prolongations },
   }).catch(() => {})
-  return { total, skipped, errors, errorDetails }
+  return { total, skipped, errors, errorDetails, prolongations }
 }
 
 /**

@@ -157,7 +157,7 @@ export default function TableReservations({ reservations, onSelect, onRefresh, l
                 {r.isProlongation && (
                   <span title={r.originalResaCode ? `Prolongation de ${r.originalResaCode}` : 'Prolongation — ménage rattaché à la résa originale'}
                     style={{ marginLeft: 6, fontSize: '0.72em', fontWeight: 700, color: '#7C5F00', background: '#FEF3C7', border: '1px solid #FCD34D', borderRadius: 4, padding: '1px 5px', verticalAlign: 'middle', whiteSpace: 'nowrap' }}>
-                    ↗ Suite
+                    ↗ Prolongation
                   </span>
                 )}
               </td>

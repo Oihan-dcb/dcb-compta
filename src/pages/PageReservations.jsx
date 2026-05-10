@@ -275,6 +275,16 @@ export default function PageReservations() {
             {ventilResult.skipped > 0 && ` · ${ventilResult.skipped} verrouillée${ventilResult.skipped > 1 ? 's' : ''}`}
             {ventilResult.errors > 0 && ` · ⚠ ${ventilResult.errors} erreur${ventilResult.errors > 1 ? 's' : ''}`}
           </div>
+          {ventilResult.prolongations?.length > 0 && (
+            <ul style={{ margin: '6px 0 0', paddingLeft: 18, fontSize: '0.82em' }}>
+              {ventilResult.prolongations.map((p, i) => (
+                <li key={i}>
+                  ↗ <strong>{p.code}</strong> traité comme prolongation
+                  {p.originalResaCode && <> — ménage rattaché à <strong>{p.originalResaCode}</strong></>}
+                </li>
+              ))}
+            </ul>
+          )}
           {ventilResult.errorDetails?.length > 0 && (
             <ul style={{ margin: '6px 0 0', paddingLeft: 18, fontSize: '0.82em' }}>
               {ventilResult.errorDetails.map((e, i) => (

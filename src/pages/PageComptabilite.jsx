@@ -1576,6 +1576,7 @@ const STATUT_SEQ = {
   booking_sans_vir:     { label: 'À vérifier — Booking sans VIR daté',    color: '#92400E', bg: '#FEF3C7' },
   exclu:                { label: 'Exclu — Airbnb non versé',               color: '#9C8E7D', bg: '#F3F4F6' },
   exclu_perimetre:      { label: 'Exclu — hors périmètre',                 color: '#6B5843', bg: '#FEF9F0' },
+  exclu_post_cloture:   { label: 'Exclu — résa après clôture',             color: '#9C8E7D', bg: '#F3F4F6' },
   a_verifier:           { label: 'À vérifier',                             color: '#7C3AED', bg: '#EDE9FE' },
   absent:               { label: 'Absent',                                 color: '#9C8E7D', bg: '#F3F4F6' },
 }
@@ -1742,6 +1743,9 @@ function SequestreCloture() {
           if (hasPmtProuve) {
             statut = 'certain_manuel'; montant = pmtSomme
             dateEnc = [...pmtProuves].sort((a, b) => (b.date_paiement||'').localeCompare(a.date_paiement||''))[0]?.date_paiement
+          } else if (r.created_at && r.created_at.slice(0, 10) > dateCloture) {
+            // Résa créée après clôture → pas d'acompte possible en N
+            statut = 'exclu_post_cloture'; montant = r.fin_revenue || 0
           } else {
             statut = 'a_verifier_acompte'; montant = r.fin_revenue || 0
           }
@@ -1752,6 +1756,9 @@ function SequestreCloture() {
           if (hasPmtProuve) {
             statut = 'certain'; montant = pmtSomme; inTotal = true
             dateEnc = [...pmtProuves].sort((a, b) => (b.date_paiement||'').localeCompare(a.date_paiement||''))[0]?.date_paiement
+          } else if (r.created_at && r.created_at.slice(0, 10) > dateCloture) {
+            // Résa créée après clôture → pas d'acompte possible en N
+            statut = 'exclu_post_cloture'; montant = r.fin_revenue || 0
           } else {
             statut = 'a_verifier_acompte'; montant = r.fin_revenue || 0
           }
@@ -1775,7 +1782,7 @@ function SequestreCloture() {
   const lignesFiltrees = filtreStatut === 'tous' ? lignes : lignes.filter(l => l.statut === filtreStatut)
   const totalCertain   = lignes.filter(l => l.statut === 'certain').reduce((s, l) => s + l.montant, 0)
   const totalAVerifier = lignes.filter(l => ['certain_manuel', 'a_verifier_acompte', 'booking_sans_vir', 'a_verifier'].includes(l.statut)).reduce((s, l) => s + l.montant, 0)
-  const totalHorsBilan = lignes.filter(l => ['exclu', 'exclu_perimetre', 'absent'].includes(l.statut)).reduce((s, l) => s + l.montant, 0)
+  const totalHorsBilan = lignes.filter(l => ['exclu', 'exclu_perimetre', 'exclu_post_cloture', 'absent'].includes(l.statut)).reduce((s, l) => s + l.montant, 0)
 
   const FILTRES = [
     { key: 'tous',               label: 'Tous' },
@@ -1786,6 +1793,7 @@ function SequestreCloture() {
     { key: 'a_verifier',         label: 'À vérifier' },
     { key: 'exclu_perimetre',    label: 'Hors périmètre' },
     { key: 'exclu',              label: 'Exclu' },
+    { key: 'exclu_post_cloture', label: 'Après clôture' },
     { key: 'absent',             label: 'Absent' },
   ]
 
@@ -1876,7 +1884,7 @@ function SequestreCloture() {
               <div style={{ background: 'white', border: '1px solid var(--border)', borderRadius: 8, padding: '14px 18px' }}>
                 <div style={{ fontSize: '0.76em', color: '#6B5843', marginBottom: 4, textTransform: 'uppercase', letterSpacing: '0.05em' }}>Informatif / exclus</div>
                 <div style={{ fontSize: '1.4em', fontWeight: 700, color: '#9C8E7D', fontVariantNumeric: 'tabular-nums' }}>{NF.format(totalHorsBilan / 100)} €</div>
-                <div style={{ fontSize: '0.75em', color: '#9C8E7D', marginTop: 3 }}>{lignes.filter(l => ['exclu', 'exclu_perimetre', 'absent'].includes(l.statut)).length} résa(s) — hors bilan</div>
+                <div style={{ fontSize: '0.75em', color: '#9C8E7D', marginTop: 3 }}>{lignes.filter(l => ['exclu', 'exclu_perimetre', 'exclu_post_cloture', 'absent'].includes(l.statut)).length} résa(s) — hors bilan</div>
               </div>
             </div>
 
