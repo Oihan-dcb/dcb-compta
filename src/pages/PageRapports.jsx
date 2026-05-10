@@ -494,6 +494,7 @@ FORMAT :
         new Promise((_, reject) => setTimeout(() => reject(new Error('timeout')), 30000)),
       ])
       if (llmErr) throw llmErr
+      if (llmData?.error) throw new Error(llmData.error)
       const txt = llmData?.text || ''
       if (txt) {
         setLlmAnalyse(cleanLlmText(txt))
@@ -536,6 +537,7 @@ FORMAT :
         new Promise((_, reject) => setTimeout(() => reject(new Error('timeout')), 30000)),
       ])
       if (llmErr) throw llmErr
+      if (llmData?.error) throw new Error(llmData.error)
       const txt = llmData?.text || ''
       if (txt) {
         setLlmContexte(cleanLlmText(txt))
@@ -586,6 +588,7 @@ FORMAT :
         new Promise((_, reject) => setTimeout(() => reject(new Error('timeout')), 30000)),
       ])
       if (llmErr) throw llmErr
+      if (llmData?.error) throw new Error(llmData.error)
       const txt = llmData?.text || ''
       if (txt) {
         setLlmTendances(cleanLlmText(txt))

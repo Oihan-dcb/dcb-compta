@@ -14,12 +14,12 @@ Deno.serve(async (req) => {
     })
   }
   if (prompt.length > 20000) {
-    return new Response(JSON.stringify({ error: 'prompt trop long (max 20000)' }), {
+    return new Response(JSON.stringify({ error: `prompt trop long (${prompt.length} chars, max 20000)` }), {
       status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' },
     })
   }
-  if (system !== undefined && (typeof system !== 'string' || system.length > 4000)) {
-    return new Response(JSON.stringify({ error: 'system invalide (string, max 4000)' }), {
+  if (system !== undefined && (typeof system !== 'string' || system.length > 8000)) {
+    return new Response(JSON.stringify({ error: `system invalide (string, max 8000) — reçu ${typeof system === 'string' ? system.length + ' chars' : typeof system}` }), {
       status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' },
     })
   }
@@ -48,9 +48,9 @@ Deno.serve(async (req) => {
 
   if (!res.ok) {
     const err = await res.text()
-    return new Response(JSON.stringify({ error: err }), {
-      status: res.status,
-      headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+    // Retourner 200 avec { error } pour que le client voie le vrai message
+    return new Response(JSON.stringify({ error: `Anthropic ${res.status}: ${err}` }), {
+      status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' },
     })
   }
 
