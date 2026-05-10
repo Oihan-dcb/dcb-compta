@@ -1569,80 +1569,92 @@ function SequestreTempsReel() {
 // ─────────────────────────────────────────────────────────────────────────────
 
 const STATUT_SEQ = {
-  certain:          { label: 'Certain',                          color: '#065F46', bg: '#D1FAE5', inTotal: true  },
-  certain_manuel:   { label: 'Certain — manuel rapproché',       color: '#065F46', bg: '#D1FAE5', inTotal: false },
-  estime:           { label: 'Estimé — hors total',              color: '#92400E', bg: '#FEF3C7', inTotal: false },
-  booking_sans_vir: { label: 'À vérifier — Booking sans VIR daté', color: '#92400E', bg: '#FEF3C7', inTotal: false },
-  exclu:            { label: 'Exclu — Airbnb non versé',         color: '#9C8E7D', bg: '#F3F4F6', inTotal: false },
-  a_verifier:       { label: 'À vérifier',                       color: '#7C3AED', bg: '#EDE9FE', inTotal: false },
-  absent:           { label: 'Absent',                           color: '#9C8E7D', bg: '#F3F4F6', inTotal: false },
+  certain:          { label: 'Certain',                              color: '#065F46', bg: '#D1FAE5' },
+  certain_manuel:   { label: 'Certain — manuel rapproché',           color: '#065F46', bg: '#D1FAE5' },
+  estime:           { label: 'Estimé — hors total',                  color: '#92400E', bg: '#FEF3C7' },
+  booking_sans_vir: { label: 'À vérifier — Booking sans VIR daté',   color: '#92400E', bg: '#FEF3C7' },
+  exclu:            { label: 'Exclu — Airbnb non versé',             color: '#9C8E7D', bg: '#F3F4F6' },
+  exclu_perimetre:  { label: 'Exclu — hors périmètre',               color: '#6B5843', bg: '#FEF9F0' },
+  a_verifier:       { label: 'À vérifier',                           color: '#7C3AED', bg: '#EDE9FE' },
+  absent:           { label: 'Absent',                               color: '#9C8E7D', bg: '#F3F4F6' },
 }
 const CANAL_SEQ = { airbnb: 'Airbnb', booking: 'Booking', direct: 'Direct', manual: 'Manuel', stripe: 'Stripe' }
 
+
 function SequestreCloture() {
-  const [anneeCloture, setAnneeCloture] = useState(2025)
-  const [biensList, setBiensList]       = useState([])   // tous les biens agence (chargé une fois)
-  const [biensCoches, setBiensCoches]   = useState(null) // null = tous; Set = sélection manuelle
-  const [periMetreOpen, setPeriMetreOpen] = useState(false)
-  const [lignes, setLignes]             = useState([])
-  const [loading, setLoading]           = useState(false)
-  const [error, setError]               = useState(null)
-  const [filtreStatut, setFiltreStatut] = useState('tous')
+  const [anneeCloture, setAnneeCloture]   = useState(2025)
+  const [vue, setVue]                     = useState('calcul') // 'calcul' | 'perimetre'
+  const [biensList, setBiensList]         = useState([])
+  const [perimetre, setPerimetre]         = useState([])
+  const [perimetreLoading, setPerimetreLoading] = useState(false)
+  const [lignes, setLignes]               = useState([])
+  const [loading, setLoading]             = useState(false)
+  const [error, setError]                 = useState(null)
+  const [filtreStatut, setFiltreStatut]   = useState('tous')
 
   const fmtDate = d => d ? new Date(d + 'T00:00:00').toLocaleDateString('fr-FR') : '—'
 
-  // Charge la liste complète des biens agence (une seule fois)
+  // ── Charge tous les biens agence (une seule fois) ─────────────────────────
   useEffect(() => {
     supabase.from('bien').select('id, code, hospitable_name').eq('agence', AGENCE).order('code')
       .then(({ data }) => setBiensList(data || []))
   }, [])
 
-  // Restaure la sélection persistée quand l'année change
-  useEffect(() => {
-    const key = `sequestre_cloture_biens_${anneeCloture}`
-    const saved = localStorage.getItem(key)
-    if (saved) {
-      try { setBiensCoches(new Set(JSON.parse(saved))) }
-      catch { setBiensCoches(null) }
-    } else {
-      setBiensCoches(null)
-    }
-  }, [anneeCloture])
+  // ── Charge le périmètre mensuel DB pour l'année ───────────────────────────
+  const chargerPerimetre = useCallback(async () => {
+    if (!biensList.length) return
+    setPerimetreLoading(true)
+    const { data } = await supabase
+      .from('sequestre_perimetre_mensuel')
+      .select('bien_id, mois, perception_loyer_plateforme, source, note')
+      .in('bien_id', biensList.map(b => b.id))
+      .gte('mois', `${anneeCloture}-01`)
+      .lte('mois', `${anneeCloture}-12`)
+    setPerimetre(data || [])
+    setPerimetreLoading(false)
+  }, [anneeCloture, biensList])
 
-  // ids effectifs : null = tous les biens de l'agence
-  const effectiveBienIds = useMemo(() => {
-    if (!biensList.length) return []
-    return biensCoches === null ? biensList.map(b => b.id) : [...biensCoches]
-  }, [biensList, biensCoches])
+  useEffect(() => { chargerPerimetre() }, [chargerPerimetre])
 
-  const toggleBien = id => {
-    setBiensCoches(prev => {
-      const current = prev ?? new Set(biensList.map(b => b.id))
-      const next = new Set(current)
-      if (next.has(id)) next.delete(id); else next.add(id)
-      localStorage.setItem(`sequestre_cloture_biens_${anneeCloture}`, JSON.stringify([...next]))
-      return next
+  // ── Map {bien_id|mois → boolean} pour lookup O(1) ────────────────────────
+  const perimetreMap = useMemo(() => {
+    const m = {}
+    for (const p of perimetre) m[`${p.bien_id}|${p.mois}`] = p.perception_loyer_plateforme
+    return m
+  }, [perimetre])
+
+  // ── Toggle une cellule (upsert DB + mise à jour locale optimiste) ─────────
+  const togglePerimetre = async (bien_id, mois, currentValue) => {
+    const newValue = !currentValue
+    setPerimetre(prev => {
+      const idx = prev.findIndex(p => p.bien_id === bien_id && p.mois === mois)
+      if (idx >= 0) return prev.map((p, i) => i === idx ? { ...p, perception_loyer_plateforme: newValue } : p)
+      return [...prev, { bien_id, mois, perception_loyer_plateforme: newValue, source: 'manuel' }]
     })
+    await supabase.from('sequestre_perimetre_mensuel').upsert(
+      { bien_id, mois, perception_loyer_plateforme: newValue, source: 'manuel', updated_at: new Date().toISOString() },
+      { onConflict: 'bien_id,mois' }
+    )
   }
 
-  const setTousBiens = checked => {
-    const next = checked ? new Set(biensList.map(b => b.id)) : new Set()
-    setBiensCoches(next)
-    localStorage.setItem(`sequestre_cloture_biens_${anneeCloture}`, JSON.stringify([...next]))
-  }
-
-  const nbCoches = biensCoches === null ? biensList.length : biensCoches.size
-  const filtreActif = biensCoches !== null && biensCoches.size < biensList.length
-
-  const charger = useCallback(async (bienIds) => {
-    if (!bienIds.length) { setLignes([]); return }
-    setLoading(true)
-    setError(null)
-    setLignes([])
+  // ── Calcul séquestre ──────────────────────────────────────────────────────
+  const charger = useCallback(async () => {
+    if (!biensList.length) return
+    setLoading(true); setError(null); setLignes([])
     const dateCloture      = `${anneeCloture}-12-31`
     const dateDebutSuivant = `${anneeCloture + 1}-01-01`
+    const bienIds = biensList.map(b => b.id)
+
+    // Helper : DCB percevait-il les loyers plateforme pour ce bien ce mois ?
+    // Défaut true si aucune entrée en DB (comportement historique par défaut)
+    const percevait = (bien_id, dateStr) => {
+      if (!dateStr) return null
+      const key = `${bien_id}|${dateStr.slice(0, 7)}`
+      return key in perimetreMap ? perimetreMap[key] : true
+    }
+
     try {
-      // 1. Réservations avec arrivée dans l'exercice suivant (N+1), périmètre figé
+      // 1. Réservations arrivant en N+1
       const CANCELLED = ['not_accepted', 'not accepted', 'declined', 'expired', 'cancelled']
       let resasAll = []
       for (let i = 0; i < bienIds.length; i += 400) {
@@ -1654,7 +1666,6 @@ function SequestreCloture() {
         if (e) throw new Error(e.message)
         resasAll = resasAll.concat((data || []).filter(r => !CANCELLED.includes(r.final_status)))
       }
-
       if (!resasAll.length) { setLignes([]); setLoading(false); return }
       const resaIds = resasAll.map(r => r.id)
 
@@ -1665,15 +1676,14 @@ function SequestreCloture() {
           .from('ventilation')
           .select('reservation_id, mouvement:mouvement_id(date_operation)')
           .in('reservation_id', resaIds.slice(i, i + 400))
-          .eq('code', 'VIR')
-          .not('mouvement_id', 'is', null)
+          .eq('code', 'VIR').not('mouvement_id', 'is', null)
         for (const v of virs || []) {
           if (!virByResa[v.reservation_id]) virByResa[v.reservation_id] = []
           virByResa[v.reservation_id].push(v)
         }
       }
 
-      // 3. Paiements réels avec date (direct, stripe, manual)
+      // 3. Paiements réels (direct, stripe, manual)
       const pmtByResa = {}
       for (let i = 0; i < resaIds.length; i += 400) {
         const { data: pmts } = await supabase
@@ -1686,40 +1696,49 @@ function SequestreCloture() {
         }
       }
 
-      // 4. Classifier chaque réservation
+      // 4. Classifier
       const result = resasAll.map(r => {
         const virs  = virByResa[r.id] || []
         const pmts  = pmtByResa[r.id] || []
-
-        const virProuve    = virs.find(v => v.mouvement?.date_operation && v.mouvement.date_operation <= dateCloture)
-        const pmtProuves   = pmts.filter(p => p.date_paiement && p.date_paiement <= dateCloture)
-        const pmtSomme     = pmtProuves.reduce((s, p) => s + (p.montant || 0), 0)
+        const virProuve   = virs.find(v => v.mouvement?.date_operation && v.mouvement.date_operation <= dateCloture)
+        const pmtProuves  = pmts.filter(p => p.date_paiement && p.date_paiement <= dateCloture)
+        const pmtSomme    = pmtProuves.reduce((s, p) => s + (p.montant || 0), 0)
         const hasPmtProuve = pmtProuves.length > 0
         const hasVirProuve = !!virProuve
 
         let statut, montant, dateEnc = null, inTotal = false
+        const bienId = r.bien?.id
 
-        if (r.platform === 'airbnb') {
+        if (r.platform === 'airbnb' || r.platform === 'booking') {
           montant = r.fin_revenue || 0
-          if (hasVirProuve) { statut = 'certain'; inTotal = true; dateEnc = virProuve.mouvement.date_operation }
-          else { statut = 'exclu' }
-        } else if (r.platform === 'booking') {
-          montant = r.fin_revenue || 0
-          if (hasVirProuve) { statut = 'certain'; inTotal = true; dateEnc = virProuve.mouvement.date_operation }
-          else if (r.rapprochee) { statut = 'booking_sans_vir' }
-          else { statut = 'absent' }
+          if (hasVirProuve) {
+            dateEnc = virProuve.mouvement.date_operation
+            // Filtre périmètre mensuel : s'applique uniquement à Airbnb & Booking
+            if (percevait(bienId, dateEnc) === false) {
+              statut = 'exclu_perimetre'
+            } else {
+              statut = 'certain'; inTotal = true
+            }
+          } else if (r.platform === 'booking' && r.rapprochee) {
+            statut = 'booking_sans_vir'
+          } else if (r.platform === 'airbnb') {
+            statut = 'exclu' // Airbnb non versé avant clôture
+          } else {
+            statut = 'absent'
+          }
         } else if (r.platform === 'manual') {
+          // Toujours analysé — pas de filtre périmètre
           if (hasPmtProuve) {
             statut = 'certain_manuel'; montant = pmtSomme
-            dateEnc = [...pmtProuves].sort((a, b) => (b.date_paiement || '').localeCompare(a.date_paiement || ''))[0]?.date_paiement
+            dateEnc = [...pmtProuves].sort((a, b) => (b.date_paiement||'').localeCompare(a.date_paiement||''))[0]?.date_paiement
           } else {
             statut = 'a_verifier'; montant = r.fin_revenue || 0
           }
         } else {
-          // direct, stripe
+          // direct, stripe — toujours analysé, pas de filtre périmètre
           if (hasPmtProuve) {
             statut = 'certain'; montant = pmtSomme; inTotal = true
-            dateEnc = [...pmtProuves].sort((a, b) => (b.date_paiement || '').localeCompare(a.date_paiement || ''))[0]?.date_paiement
+            dateEnc = [...pmtProuves].sort((a, b) => (b.date_paiement||'').localeCompare(a.date_paiement||''))[0]?.date_paiement
           } else if (r.rapprochee) {
             statut = 'estime'; montant = r.fin_revenue || 0
           } else {
@@ -1736,17 +1755,16 @@ function SequestreCloture() {
     } finally {
       setLoading(false)
     }
-  }, [anneeCloture])
+  }, [anneeCloture, perimetreMap, biensList])
 
-  // Relance le calcul dès que les ids effectifs changent (année, sélection, chargement initial)
   useEffect(() => {
-    if (effectiveBienIds.length > 0) charger(effectiveBienIds)
-  }, [charger, effectiveBienIds])
+    if (biensList.length > 0) charger()
+  }, [charger, biensList.length])
 
-  const lignesFiltrees  = filtreStatut === 'tous' ? lignes : lignes.filter(l => l.statut === filtreStatut)
-  const totalCertain    = lignes.filter(l => l.inTotal).reduce((s, l) => s + l.montant, 0)
-  const totalAVerifier  = lignes.filter(l => ['certain_manuel', 'estime', 'booking_sans_vir', 'a_verifier'].includes(l.statut)).reduce((s, l) => s + l.montant, 0)
-  const totalHorsBilan  = lignes.filter(l => ['exclu', 'absent'].includes(l.statut)).reduce((s, l) => s + l.montant, 0)
+  const lignesFiltrees = filtreStatut === 'tous' ? lignes : lignes.filter(l => l.statut === filtreStatut)
+  const totalCertain   = lignes.filter(l => l.statut === 'certain').reduce((s, l) => s + l.montant, 0)
+  const totalAVerifier = lignes.filter(l => ['certain_manuel', 'estime', 'booking_sans_vir', 'a_verifier'].includes(l.statut)).reduce((s, l) => s + l.montant, 0)
+  const totalHorsBilan = lignes.filter(l => ['exclu', 'exclu_perimetre', 'absent'].includes(l.statut)).reduce((s, l) => s + l.montant, 0)
 
   const FILTRES = [
     { key: 'tous',             label: 'Tous' },
@@ -1755,17 +1773,27 @@ function SequestreCloture() {
     { key: 'estime',           label: 'Estimé' },
     { key: 'booking_sans_vir', label: 'Booking sans VIR' },
     { key: 'a_verifier',       label: 'À vérifier' },
+    { key: 'exclu_perimetre',  label: 'Hors périmètre' },
     { key: 'exclu',            label: 'Exclu' },
     { key: 'absent',           label: 'Absent' },
   ]
 
   const dateCloture      = `${anneeCloture}-12-31`
   const dateDebutSuivant = `${anneeCloture + 1}-01-01`
+  const moisAnnee = Array.from({ length: 12 }, (_, i) => `${anneeCloture}-${String(i + 1).padStart(2, '0')}`)
+
+  const tabSStyle = k => ({
+    padding: '5px 14px', border: 'none', background: 'none', cursor: 'pointer', fontSize: '0.88em',
+    fontWeight: vue === k ? 700 : 400,
+    color: vue === k ? 'var(--brand)' : '#9C8E7D',
+    borderBottom: vue === k ? '2px solid var(--brand)' : '2px solid transparent',
+    marginBottom: -1,
+  })
 
   return (
     <div>
-      {/* Sélecteur d'année + bouton périmètre */}
-      <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 12, flexWrap: 'wrap' }}>
+      {/* En-tête : sélecteur année + rafraîchir */}
+      <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 0, flexWrap: 'wrap' }}>
         <span style={{ color: '#5C4B2A', fontWeight: 600, fontSize: '0.9em' }}>Clôture exercice</span>
         <select value={anneeCloture} onChange={e => setAnneeCloture(Number(e.target.value))}
           style={{ border: '1px solid var(--border)', borderRadius: 6, padding: '4px 10px', background: 'white', fontSize: '0.9em' }}>
@@ -1774,48 +1802,19 @@ function SequestreCloture() {
         <span style={{ color: '#9C8E7D', fontSize: '0.82em' }}>
           Séjours arrivant à partir du {fmtDate(dateDebutSuivant)} · encaissés avant le {fmtDate(dateCloture)}
         </span>
-        <button onClick={() => setPeriMetreOpen(o => !o)}
-          style={{ marginLeft: 'auto', padding: '5px 14px', background: filtreActif ? '#FEF3C7' : 'white', color: filtreActif ? '#92400E' : '#5C4B2A', border: `1px solid ${filtreActif ? '#F59E0B' : 'var(--border)'}`, borderRadius: 6, cursor: 'pointer', fontSize: '0.85em', fontWeight: filtreActif ? 600 : 400 }}>
-          {periMetreOpen ? '▲' : '▼'} Périmètre {nbCoches}/{biensList.length} bien{biensList.length > 1 ? 's' : ''}
-        </button>
-        <button onClick={() => charger(effectiveBienIds)}
-          style={{ padding: '5px 14px', background: 'var(--brand)', color: 'white', border: 'none', borderRadius: 6, cursor: 'pointer', fontSize: '0.85em' }}>
+        <button onClick={charger}
+          style={{ marginLeft: 'auto', padding: '5px 14px', background: 'var(--brand)', color: 'white', border: 'none', borderRadius: 6, cursor: 'pointer', fontSize: '0.85em' }}>
           ↺ Rafraîchir
         </button>
       </div>
 
-      {/* Panneau périmètre historique */}
-      {periMetreOpen && (
-        <div style={{ background: '#FFFBF0', border: '1px solid #F59E0B', borderRadius: 8, padding: '14px 16px', marginBottom: 16 }}>
-          <div style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'space-between', marginBottom: 8 }}>
-            <div>
-              <span style={{ fontWeight: 700, color: '#5C4B2A', fontSize: '0.88em' }}>Périmètre historique de perception des loyers — exercice {anneeCloture}</span>
-              <div style={{ fontSize: '0.78em', color: '#9C8E7D', marginTop: 2 }}>Ne pas se fier au statut actuel dans l'onglet Biens — il peut avoir changé depuis. Décocher les biens pour lesquels DCB ne percevait pas les loyers sur cet exercice.</div>
-            </div>
-            <div style={{ display: 'flex', gap: 6, flexShrink: 0, marginLeft: 16 }}>
-              <button onClick={() => setTousBiens(true)}  style={{ fontSize: '0.78em', padding: '3px 9px', border: '1px solid var(--border)', borderRadius: 5, background: 'white', cursor: 'pointer', color: '#5C4B2A' }}>Tout</button>
-              <button onClick={() => setTousBiens(false)} style={{ fontSize: '0.78em', padding: '3px 9px', border: '1px solid var(--border)', borderRadius: 5, background: 'white', cursor: 'pointer', color: '#5C4B2A' }}>Aucun</button>
-            </div>
-          </div>
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(180px, 1fr))', gap: '4px 16px', maxHeight: 260, overflowY: 'auto' }}>
-            {biensList.map(b => {
-              const checked = biensCoches === null || biensCoches.has(b.id)
-              return (
-                <label key={b.id} style={{ display: 'flex', alignItems: 'center', gap: 7, cursor: 'pointer', padding: '3px 0', fontSize: '0.85em', color: checked ? '#2C2416' : '#9C8E7D' }}>
-                  <input type="checkbox" checked={checked} onChange={() => toggleBien(b.id)}
-                    style={{ accentColor: 'var(--brand)', width: 14, height: 14, flexShrink: 0 }} />
-                  <span style={{ fontWeight: checked ? 500 : 400 }}>{b.code || b.hospitable_name || b.id.slice(0, 8)}</span>
-                </label>
-              )
-            })}
-          </div>
-          {filtreActif && (
-            <div style={{ marginTop: 8, fontSize: '0.78em', color: '#92400E', fontWeight: 600 }}>
-              ⚠ Périmètre restreint — {nbCoches} bien{nbCoches > 1 ? 's' : ''} sélectionné{nbCoches > 1 ? 's' : ''} sur {biensList.length}. Sélection sauvegardée pour l'exercice {anneeCloture}.
-            </div>
-          )}
-        </div>
-      )}
+      {/* Sous-onglets Calcul / Périmètre mensuel */}
+      <div style={{ display: 'flex', borderBottom: '1px solid var(--border)', marginBottom: 20, marginTop: 14 }}>
+        <button onClick={() => setVue('calcul')}    style={tabSStyle('calcul')}>Calcul clôture</button>
+        <button onClick={() => setVue('perimetre')} style={tabSStyle('perimetre')}>
+          Périmètre mensuel {perimetreLoading ? '…' : ''}
+        </button>
+      </div>
 
       {error && (
         <div style={{ padding: 12, background: '#FEF2F2', border: '1px solid #FCA5A5', borderRadius: 6, color: '#DC2626', marginBottom: 16, fontSize: '0.88em' }}>
@@ -1823,71 +1822,127 @@ function SequestreCloture() {
         </div>
       )}
 
-      {loading ? (
-        <div style={{ textAlign: 'center', padding: 48, color: '#9C8E7D' }}>Chargement…</div>
-      ) : (
-        <>
-          {/* Cartes récap */}
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 12, marginBottom: 20 }}>
-            <div style={{ background: 'white', border: '1px solid var(--border)', borderRadius: 8, padding: '14px 18px' }}>
-              <div style={{ fontSize: '0.76em', color: '#6B5843', marginBottom: 4, textTransform: 'uppercase', letterSpacing: '0.05em' }}>Séquestre certain</div>
-              <div style={{ fontSize: '1.4em', fontWeight: 700, color: '#065F46', fontVariantNumeric: 'tabular-nums' }}>{NF.format(totalCertain / 100)} €</div>
-              <div style={{ fontSize: '0.75em', color: '#9C8E7D', marginTop: 3 }}>{lignes.filter(l => l.inTotal).length} résa(s) — inclus au bilan</div>
+      {/* ── VUE CALCUL ─────────────────────────────────────────────────────── */}
+      {vue === 'calcul' && (
+        loading ? (
+          <div style={{ textAlign: 'center', padding: 48, color: '#9C8E7D' }}>Chargement…</div>
+        ) : (
+          <>
+            {/* Cartes récap */}
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 12, marginBottom: 20 }}>
+              <div style={{ background: 'white', border: '1px solid var(--border)', borderRadius: 8, padding: '14px 18px' }}>
+                <div style={{ fontSize: '0.76em', color: '#6B5843', marginBottom: 4, textTransform: 'uppercase', letterSpacing: '0.05em' }}>Séquestre certain</div>
+                <div style={{ fontSize: '1.4em', fontWeight: 700, color: '#065F46', fontVariantNumeric: 'tabular-nums' }}>{NF.format(totalCertain / 100)} €</div>
+                <div style={{ fontSize: '0.75em', color: '#9C8E7D', marginTop: 3 }}>{lignes.filter(l => l.statut === 'certain').length} résa(s) — inclus au bilan</div>
+              </div>
+              <div style={{ background: 'white', border: '1px solid var(--border)', borderRadius: 8, padding: '14px 18px' }}>
+                <div style={{ fontSize: '0.76em', color: '#6B5843', marginBottom: 4, textTransform: 'uppercase', letterSpacing: '0.05em' }}>À confirmer (hors total fiable)</div>
+                <div style={{ fontSize: '1.4em', fontWeight: 700, color: '#92400E', fontVariantNumeric: 'tabular-nums' }}>{NF.format(totalAVerifier / 100)} €</div>
+                <div style={{ fontSize: '0.75em', color: '#9C8E7D', marginTop: 3 }}>{lignes.filter(l => ['certain_manuel', 'estime', 'booking_sans_vir', 'a_verifier'].includes(l.statut)).length} résa(s)</div>
+              </div>
+              <div style={{ background: 'white', border: '1px solid var(--border)', borderRadius: 8, padding: '14px 18px' }}>
+                <div style={{ fontSize: '0.76em', color: '#6B5843', marginBottom: 4, textTransform: 'uppercase', letterSpacing: '0.05em' }}>Informatif / exclus</div>
+                <div style={{ fontSize: '1.4em', fontWeight: 700, color: '#9C8E7D', fontVariantNumeric: 'tabular-nums' }}>{NF.format(totalHorsBilan / 100)} €</div>
+                <div style={{ fontSize: '0.75em', color: '#9C8E7D', marginTop: 3 }}>{lignes.filter(l => ['exclu', 'exclu_perimetre', 'absent'].includes(l.statut)).length} résa(s) — hors bilan</div>
+              </div>
             </div>
-            <div style={{ background: 'white', border: '1px solid var(--border)', borderRadius: 8, padding: '14px 18px' }}>
-              <div style={{ fontSize: '0.76em', color: '#6B5843', marginBottom: 4, textTransform: 'uppercase', letterSpacing: '0.05em' }}>À confirmer (hors total fiable)</div>
-              <div style={{ fontSize: '1.4em', fontWeight: 700, color: '#92400E', fontVariantNumeric: 'tabular-nums' }}>{NF.format(totalAVerifier / 100)} €</div>
-              <div style={{ fontSize: '0.75em', color: '#9C8E7D', marginTop: 3 }}>{lignes.filter(l => ['certain_manuel', 'estime', 'booking_sans_vir', 'a_verifier'].includes(l.statut)).length} résa(s) — estimé, manuel, à vérifier</div>
-            </div>
-            <div style={{ background: 'white', border: '1px solid var(--border)', borderRadius: 8, padding: '14px 18px' }}>
-              <div style={{ fontSize: '0.76em', color: '#6B5843', marginBottom: 4, textTransform: 'uppercase', letterSpacing: '0.05em' }}>Informatif / exclus</div>
-              <div style={{ fontSize: '1.4em', fontWeight: 700, color: '#9C8E7D', fontVariantNumeric: 'tabular-nums' }}>{NF.format(totalHorsBilan / 100)} €</div>
-              <div style={{ fontSize: '0.75em', color: '#9C8E7D', marginTop: 3 }}>{lignes.filter(l => !l.inTotal && l.statut !== 'estime').length} résa(s) — hors bilan</div>
-            </div>
-          </div>
 
-          {/* Filtres */}
-          <div style={{ display: 'flex', gap: 6, marginBottom: 14, flexWrap: 'wrap' }}>
-            {FILTRES.map(f => {
-              const count = f.key === 'tous' ? lignes.length : lignes.filter(l => l.statut === f.key).length
-              return (
-                <button key={f.key} onClick={() => setFiltreStatut(f.key)}
-                  style={{ padding: '4px 12px', borderRadius: 20, border: '1px solid var(--border)', background: filtreStatut === f.key ? 'var(--brand)' : 'white', color: filtreStatut === f.key ? 'white' : '#5C4B2A', cursor: 'pointer', fontSize: '0.82em', fontWeight: filtreStatut === f.key ? 700 : 400 }}>
-                  {f.label} ({count})
-                </button>
-              )
-            })}
-          </div>
+            {/* Filtres */}
+            <div style={{ display: 'flex', gap: 6, marginBottom: 14, flexWrap: 'wrap' }}>
+              {FILTRES.map(f => {
+                const count = f.key === 'tous' ? lignes.length : lignes.filter(l => l.statut === f.key).length
+                return (
+                  <button key={f.key} onClick={() => setFiltreStatut(f.key)}
+                    style={{ padding: '4px 12px', borderRadius: 20, border: '1px solid var(--border)', background: filtreStatut === f.key ? 'var(--brand)' : 'white', color: filtreStatut === f.key ? 'white' : '#5C4B2A', cursor: 'pointer', fontSize: '0.82em', fontWeight: filtreStatut === f.key ? 700 : 400 }}>
+                    {f.label} ({count})
+                  </button>
+                )
+              })}
+            </div>
 
-          {/* Tableau */}
-          {lignesFiltrees.length === 0 ? (
-            <div style={{ textAlign: 'center', padding: 40, color: '#9C8E7D' }}>Aucune réservation pour ce filtre.</div>
+            {/* Tableau */}
+            {lignesFiltrees.length === 0 ? (
+              <div style={{ textAlign: 'center', padding: 40, color: '#9C8E7D' }}>Aucune réservation pour ce filtre.</div>
+            ) : (
+              <div style={{ overflowX: 'auto' }}>
+                <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.87em' }}>
+                  <thead>
+                    <tr style={{ background: '#F7F3EC' }}>
+                      {['Bien', 'Résa', 'Canal', 'Voyageur', 'Arrivée', 'Départ', 'Date enc.', 'Montant', 'Statut'].map(h => (
+                        <th key={h} style={{ padding: '8px 10px', textAlign: h === 'Montant' ? 'right' : 'left', fontWeight: 700, color: '#5C4B2A', whiteSpace: 'nowrap', borderBottom: '1px solid var(--border)' }}>{h}</th>
+                      ))}
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {lignesFiltrees.map((l, i) => {
+                      const sl = STATUT_SEQ[l.statut] || { label: l.statut, color: '#5C4B2A', bg: '#F7F3EC' }
+                      return (
+                        <tr key={l.id} style={{ borderBottom: '1px solid var(--border)', background: i % 2 === 0 ? 'white' : '#FDFAF5' }}>
+                          <td style={{ padding: '7px 10px', whiteSpace: 'nowrap', fontWeight: 600 }}>{l.bien?.code || '—'}</td>
+                          <td style={{ padding: '7px 10px', color: '#6B5843', fontSize: '0.85em', fontFamily: 'monospace' }}>{l.code || '—'}</td>
+                          <td style={{ padding: '7px 10px' }}>{CANAL_SEQ[l.platform] || l.platform || '—'}</td>
+                          <td style={{ padding: '7px 10px' }}>{l.guest_name || '—'}</td>
+                          <td style={{ padding: '7px 10px', whiteSpace: 'nowrap' }}>{fmtDate(l.arrival_date)}</td>
+                          <td style={{ padding: '7px 10px', whiteSpace: 'nowrap' }}>{fmtDate(l.departure_date)}</td>
+                          <td style={{ padding: '7px 10px', whiteSpace: 'nowrap', color: l.dateEnc ? '#065F46' : '#9C8E7D' }}>{fmtDate(l.dateEnc)}</td>
+                          <td style={{ padding: '7px 10px', textAlign: 'right', fontVariantNumeric: 'tabular-nums', whiteSpace: 'nowrap', fontWeight: l.statut === 'certain' ? 700 : 400, color: l.statut === 'certain' ? '#065F46' : '#5C4B2A' }}>{NF.format(l.montant / 100)} €</td>
+                          <td style={{ padding: '7px 10px' }}>
+                            <span style={{ display: 'inline-block', padding: '2px 8px', borderRadius: 12, background: sl.bg, color: sl.color, fontSize: '0.82em', fontWeight: 600, whiteSpace: 'nowrap' }}>{sl.label}</span>
+                          </td>
+                        </tr>
+                      )
+                    })}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </>
+        )
+      )}
+
+      {/* ── VUE PÉRIMÈTRE MENSUEL ──────────────────────────────────────────── */}
+      {vue === 'perimetre' && (
+        <div>
+          <div style={{ fontSize: '0.82em', color: '#9C8E7D', marginBottom: 14, lineHeight: 1.5 }}>
+            <strong style={{ color: '#5C4B2A' }}>Périmètre historique de perception des loyers — exercice {anneeCloture}.</strong>{` `}
+            Coché = DCB percevait les loyers plateforme (Airbnb/Booking) ce mois-là.
+            Ce filtre s'applique uniquement aux canaux Airbnb et Booking.
+            Les réservations direct/stripe/manual sont toujours analysées.
+            Les modifications sont sauvegardées immédiatement en base.
+          </div>
+          {perimetreLoading ? (
+            <div style={{ textAlign: 'center', padding: 40, color: '#9C8E7D' }}>Chargement…</div>
           ) : (
             <div style={{ overflowX: 'auto' }}>
-              <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.87em' }}>
+              <table style={{ borderCollapse: 'collapse', fontSize: '0.84em' }}>
                 <thead>
                   <tr style={{ background: '#F7F3EC' }}>
-                    {['Bien', 'Résa', 'Canal', 'Voyageur', 'Arrivée', 'Départ', 'Date enc.', 'Montant', 'Statut'].map(h => (
-                      <th key={h} style={{ padding: '8px 10px', textAlign: h === 'Montant' ? 'right' : 'left', fontWeight: 700, color: '#5C4B2A', whiteSpace: 'nowrap', borderBottom: '1px solid var(--border)' }}>{h}</th>
+                    <th style={{ padding: '8px 14px', textAlign: 'left', borderBottom: '1px solid var(--border)', fontWeight: 700, color: '#5C4B2A', position: 'sticky', left: 0, background: '#F7F3EC', zIndex: 1, minWidth: 110 }}>Bien</th>
+                    {moisAnnee.map((m, i) => (
+                      <th key={m} style={{ padding: '6px 0', textAlign: 'center', borderBottom: '1px solid var(--border)', borderLeft: '1px solid var(--border)', fontWeight: 600, color: '#5C4B2A', minWidth: 48 }}>
+                        {MOIS_FR[i]}
+                      </th>
                     ))}
                   </tr>
                 </thead>
                 <tbody>
-                  {lignesFiltrees.map((l, i) => {
-                    const sl = STATUT_SEQ[l.statut] || { label: l.statut, color: '#5C4B2A', bg: '#F7F3EC' }
+                  {biensList.map((b, bi) => {
+                    const rowBg = bi % 2 === 0 ? 'white' : '#FDFAF5'
                     return (
-                      <tr key={l.id} style={{ borderBottom: '1px solid var(--border)', background: i % 2 === 0 ? 'white' : '#FDFAF5' }}>
-                        <td style={{ padding: '7px 10px', whiteSpace: 'nowrap', fontWeight: 600 }}>{l.bien?.code || '—'}</td>
-                        <td style={{ padding: '7px 10px', color: '#6B5843', fontSize: '0.85em', fontFamily: 'monospace' }}>{l.code || '—'}</td>
-                        <td style={{ padding: '7px 10px' }}>{CANAL_SEQ[l.platform] || l.platform || '—'}</td>
-                        <td style={{ padding: '7px 10px' }}>{l.guest_name || '—'}</td>
-                        <td style={{ padding: '7px 10px', whiteSpace: 'nowrap' }}>{fmtDate(l.arrival_date)}</td>
-                        <td style={{ padding: '7px 10px', whiteSpace: 'nowrap' }}>{fmtDate(l.departure_date)}</td>
-                        <td style={{ padding: '7px 10px', whiteSpace: 'nowrap', color: l.dateEnc ? '#065F46' : '#9C8E7D' }}>{fmtDate(l.dateEnc)}</td>
-                        <td style={{ padding: '7px 10px', textAlign: 'right', fontVariantNumeric: 'tabular-nums', whiteSpace: 'nowrap', fontWeight: l.inTotal ? 700 : 400, color: l.inTotal ? '#065F46' : '#5C4B2A' }}>{NF.format(l.montant / 100)} €</td>
-                        <td style={{ padding: '7px 10px' }}>
-                          <span style={{ display: 'inline-block', padding: '2px 8px', borderRadius: 12, background: sl.bg, color: sl.color, fontSize: '0.82em', fontWeight: 600, whiteSpace: 'nowrap' }}>{sl.label}</span>
+                      <tr key={b.id} style={{ borderBottom: '1px solid var(--border)' }}>
+                        <td style={{ padding: '5px 14px', fontWeight: 600, whiteSpace: 'nowrap', position: 'sticky', left: 0, background: rowBg, zIndex: 1, color: '#2C2416' }}>
+                          {b.code || b.hospitable_name || '—'}
                         </td>
+                        {moisAnnee.map(m => {
+                          const key = `${b.id}|${m}`
+                          const checked = key in perimetreMap ? perimetreMap[key] : true
+                          return (
+                            <td key={m} style={{ padding: '4px 0', textAlign: 'center', borderLeft: '1px solid var(--border)', background: checked ? rowBg : '#FEF9F0' }}>
+                              <input type="checkbox" checked={checked} onChange={() => togglePerimetre(b.id, m, checked)}
+                                style={{ accentColor: 'var(--brand)', width: 15, height: 15, cursor: 'pointer' }} />
+                            </td>
+                          )
+                        })}
                       </tr>
                     )
                   })}
@@ -1895,7 +1950,7 @@ function SequestreCloture() {
               </table>
             </div>
           )}
-        </>
+        </div>
       )}
     </div>
   )
