@@ -1010,6 +1010,7 @@ function SequestreTempsReel() {
           .in('bien_id', bienIds.slice(i, i + 400))
           .gt('fin_revenue', 0)
           .limit(10000)
+        console.log(`[DBG-RAW] batch i=${i} raw.length=${(r||[]).length}`)
         allResas = allResas.concat((r || []).filter(r =>
           !CANCELLED.includes(r.final_status) &&
           !r.owner_stay &&
