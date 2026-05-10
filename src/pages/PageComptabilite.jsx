@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, useMemo } from 'react'
+import { useState, useEffect, useCallback, useMemo, useRef } from 'react'
 import MoisSelector, { MOIS_FR } from '../components/MoisSelector'
 import { useMoisPersisted } from '../hooks/useMoisPersisted'
 import { supabase } from '../lib/supabase'
@@ -989,10 +989,13 @@ function SequestreTempsReel() {
   const [error, setError]     = useState(null)
   const [genAt, setGenAt]     = useState(null)
   const [showDetail, setShowDetail] = useState(false)
+  const [showDebug, setShowDebug]   = useState(false)
+  const [debugRuns, setDebugRuns]   = useState([])
   const runId = useRef(0)
 
   const charger = useCallback(async () => {
     const thisRun = ++runId.current
+    setDebugRuns(prev => [{ id: thisRun, stale: false, ts: new Date().toLocaleTimeString('fr-FR'), status: 'START…' }, ...prev].slice(0, 10))
     setLoading(true); setError(null)
     try {
       const today = new Date().toISOString().slice(0, 10)
@@ -1126,10 +1129,19 @@ function SequestreTempsReel() {
 
       // ── DEBUG TEMPORAIRE ──
       const stale = thisRun !== runId.current
-      console.group(`[SequestreDebug run#${thisRun}${stale ? ' STALE→ignoré' : ''}] ${new Date().toISOString()}`)
-      console.log('allResas:', allResas.length, '| payinByResa keys:', Object.keys(payinByResa).length, '| resasAvecPayin:', resasAvecPayin.length, '| futurs:', futurs.length, '| totalFuturs:', (totalFuturs/100).toFixed(2)+'€')
-      console.log('futurs codes+payin:', futurs.map(r => `${r.code}=${payinByResa[r.id]}`).sort().join(' | '))
-      console.groupEnd()
+      const runEntry = {
+        id:               thisRun,
+        stale,
+        ts:               new Date().toLocaleTimeString('fr-FR'),
+        allResas:         allResas.length,
+        payinKeys:        Object.keys(payinByResa).length,
+        resasAvecPayin:   resasAvecPayin.length,
+        futurCount:       futurs.length,
+        residuelCount:    residuelPasses.length,
+        totalFuturs:      (totalFuturs / 100).toFixed(2),
+        totalResiduel:    (totalResiduel / 100).toFixed(2),
+      }
+      setDebugRuns(prev => [runEntry, ...prev].slice(0, 10))
       if (stale) return
       // ── FIN DEBUG ──
 
@@ -1168,6 +1180,30 @@ function SequestreTempsReel() {
       </div>
 
       {error && <div style={{ background: '#FEF2F2', border: '1px solid #FECACA', borderRadius: 8, padding: '12px 16px', color: '#DC2626', marginBottom: 20 }}>{error}</div>}
+
+      {/* ── PANNEAU DEBUG TEMPORAIRE ── */}
+      <div style={{ marginBottom: 12 }}>
+        <button onClick={() => setShowDebug(v => !v)} style={{ fontSize: '0.75em', background: 'none', border: '1px solid #D9CEB8', borderRadius: 6, padding: '3px 10px', cursor: 'pointer', color: '#9C8E7D' }}>
+          {showDebug ? '▲ Masquer debug' : '▼ Debug chargements'}
+          {debugRuns.some(r => r.stale) && <span style={{ marginLeft: 6, color: '#DC2626', fontWeight: 700 }}>⚠ STALE détecté</span>}
+        </button>
+        {showDebug && (
+          <div style={{ marginTop: 8, background: '#1e1e1e', color: '#d4d4d4', borderRadius: 8, padding: '10px 14px', fontFamily: 'monospace', fontSize: '0.72em', lineHeight: 1.7 }}>
+            {debugRuns.length === 0 && <div style={{ color: '#888' }}>Aucun run enregistré</div>}
+            {debugRuns.map((r, i) => (
+              <div key={i} style={{ borderBottom: '1px solid #333', paddingBottom: 4, marginBottom: 4, color: r.stale ? '#f87171' : r.status === 'START…' ? '#facc15' : '#86efac' }}>
+                {r.status === 'START…'
+                  ? `▶ run#${r.id} [${r.ts}] START`
+                  : r.stale
+                    ? `✗ run#${r.id} [${r.ts}] STALE→ignoré | futurs=${r.futurCount} (${r.totalFuturs}€) | passés=${r.residuelCount} (${r.totalResiduel}€) | allResas=${r.allResas} | payinKeys=${r.payinKeys}`
+                    : `✓ run#${r.id} [${r.ts}] OK | futurs=${r.futurCount} (${r.totalFuturs}€) | passés=${r.residuelCount} (${r.totalResiduel}€) | allResas=${r.allResas} | payinKeys=${r.payinKeys}`
+                }
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+      {/* ── FIN DEBUG ── */}
       {loading && !data && <div style={{ textAlign: 'center', padding: 40, color: '#9C8E7D' }}>Chargement…</div>}
 
       {data && (() => {
