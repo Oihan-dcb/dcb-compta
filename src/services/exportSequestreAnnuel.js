@@ -212,11 +212,21 @@ export async function exportSequestreAnnuel(annee) {
   const totalCertain   = lignes.filter(l => l.statut === 'certain' || l.statut === 'certain_manuel').reduce((s, l) => s + l.montant, 0)
   const totalAVerifier = lignes.filter(l => l.statut === 'booking_prevu' || l.statut === 'a_verifier_acompte').reduce((s, l) => s + l.montant, 0)
 
+  const totalHorsPerimetre = lignes.filter(l => l.statut === 'exclu_perimetre').reduce((s, l) => s + l.montant, 0)
+  const nbCertain   = lignes.filter(l => l.statut === 'certain' || l.statut === 'certain_manuel').length
+  const nbAttente   = lignes.filter(l => l.statut === 'booking_prevu' || l.statut === 'a_verifier_acompte').length
+
   const escCol = v => `"${String(v).replace(/"/g, '""')}"`
+  const E = (v, bold) => escCol(v)  // alias
   const lines = [
-    `Séquestre clôture ${annee} — Export DCB${sep}${sep}${sep}${sep}${sep}${sep}${sep}${sep}${sep}`,
-    `Certain${sep}${sep}${sep}${sep}${sep}${sep}${sep}${sep}${fmtEuros(totalCertain)}${sep}`,
-    `À confirmer${sep}${sep}${sep}${sep}${sep}${sep}${sep}${sep}${fmtEuros(totalAVerifier)}${sep}`,
+    `"SÉQUESTRE CLÔTURE ${annee}"${sep}"Généré le ${new Date().toLocaleDateString('fr-FR')}"${sep.repeat(8)}`,
+    sep.repeat(9),
+    `"RÉCAPITULATIF"${sep.repeat(7)}"MONTANT"${sep}`,
+    `"Séquestre certain (prouvé en banque)"${sep.repeat(5)}${sep}"${nbCertain} résa${nbCertain > 1 ? 's' : ''}"${sep}"${fmtEuros(totalCertain)}"${sep}`,
+    `"En attente de paiement (Booking / acompte)"${sep.repeat(5)}${sep}"${nbAttente} résa${nbAttente > 1 ? 's' : ''}"${sep}"${fmtEuros(totalAVerifier)}"${sep}`,
+    ...(totalHorsPerimetre > 0 ? [`"Hors périmètre (informatif)"${sep.repeat(5)}${sep}${sep}"${fmtEuros(totalHorsPerimetre)}"${sep}`] : []),
+    `"TOTAL"${sep.repeat(6)}${sep}"${lignes.length} résa${lignes.length > 1 ? 's' : ''}"${sep}"${fmtEuros(totalCertain + totalAVerifier)}"${sep}`,
+    sep.repeat(9),
     '',
     headers.map(escCol).join(sep),
     ...rows.map(r => r.map(escCol).join(sep)),
