@@ -627,7 +627,10 @@ FORMAT :
       else if (which === 'analyse') await _genererAnalyse()
       else if (which === 'contexte') await _genererContexte()
       else if (which === 'tendances') await _genererTendances()
-    } catch (e) { console.warn('LLM génération failed:', e.message) }
+    } catch (e) {
+      console.warn('LLM génération failed:', e.message)
+      setError('Erreur génération LLM : ' + (e.message || String(e)))
+    }
     finally { setGeneratingBloc(null) }
   }
 
