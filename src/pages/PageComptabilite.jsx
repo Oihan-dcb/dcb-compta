@@ -1116,7 +1116,7 @@ function SequestreTempsReel() {
         residuel: (payinByResa[r.id] || 0) - (ventilByResa[r.id] || 0),
       }))
       const totalResiduel   = residuelPasses.reduce((s, r) => s + r.residuel, 0)
-      const totalFiable     = totalFuturs + totalResiduel
+      const totalFiable     = totalFuturs
       const totalAnomalies  = anomalies.reduce((s, r) => s + (payinByResa[r.id] || 0), 0)
 
       setData({
@@ -1183,18 +1183,6 @@ function SequestreTempsReel() {
                   </div>
                   <div style={{ fontSize: '1.1em', fontWeight: 700, color: '#065F46', fontVariantNumeric: 'tabular-nums' }}>{fmt(totalFuturs)}</div>
                 </div>
-
-                {/* Résidu passés ventilés */}
-                <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '10px 14px', background: 'white', borderRadius: 8, border: `1px solid ${residuelOk ? '#D1FAE5' : '#FDE68A'}` }}>
-                  <div style={{ flex: 1 }}>
-                    <div style={{ fontSize: '0.85em', fontWeight: 600, color: 'var(--text)' }}>Résidu séjours passés ventilés</div>
-                    <div style={{ fontSize: '0.75em', color: '#9C8E7D', marginTop: 2 }}>
-                      {residuelPasses.length} résa{residuelPasses.length > 1 ? 's' : ''} — PAYIN − ventilation
-                      {residuelOk ? ' · propre' : ' · écart à surveiller'}
-                    </div>
-                  </div>
-                  <div style={{ fontSize: '1.1em', fontWeight: 700, color: residuelColor, fontVariantNumeric: 'tabular-nums' }}>{fmt(totalResiduel)}</div>
-                </div>
               </div>
 
               {/* Lien détail */}
@@ -1202,7 +1190,7 @@ function SequestreTempsReel() {
                 onClick={() => setShowDetail(d => !d)}
                 style={{ marginTop: 12, background: 'none', border: 'none', cursor: 'pointer', fontSize: '0.8em', color: '#065F46', textDecoration: 'underline', padding: 0 }}
               >
-                {showDetail ? 'Masquer le détail' : 'Voir le détail ligne par ligne'}
+                {showDetail ? 'Masquer le détail' : 'Voir le détail acomptes futurs'}
               </button>
             </div>
 
@@ -1243,39 +1231,59 @@ function SequestreTempsReel() {
                   </div>
                 )}
 
-                {/* Résidu séjours passés */}
-                {residuelPasses.length > 0 && (
-                  <div style={{ background: 'var(--bg-card, white)', border: '1px solid var(--border)', borderRadius: 8, overflow: 'hidden' }}>
-                    <div style={{ background: '#F0FDF4', padding: '8px 14px', fontSize: '0.78em', fontWeight: 700, color: '#065F46', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
-                      Résidu séjours passés — {residuelPasses.length} résa{residuelPasses.length > 1 ? 's' : ''}
+              </div>
+            )}
+
+            {/* ── Diagnostic — Séjours passés ventilés (hors séquestre) ── */}
+            {residuelPasses.length > 0 && (
+              <div style={{ background: '#F7F3EC', border: '1px solid #D9CEB8', borderRadius: 12, padding: '16px 20px' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 8 }}>
+                  <div style={{ flex: 1 }}>
+                    <div style={{ fontWeight: 700, color: '#5C4B2A', fontSize: '0.88em', textTransform: 'uppercase', letterSpacing: '0.06em' }}>
+                      Diagnostic — séjours passés ventilés
                     </div>
-                    <div style={{ overflowX: 'auto' }}>
-                      <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.84em' }}>
-                        <thead>
-                          <tr style={{ background: '#F7F3EC' }}>
-                            {['Bien', 'Code', 'Voyageur', 'Départ', 'PAYIN', 'Ventilation', 'Résidu'].map(h => (
-                              <th key={h} style={{ padding: '7px 10px', textAlign: ['PAYIN','Ventilation','Résidu'].includes(h) ? 'right' : 'left', fontWeight: 700, color: '#5C4B2A', whiteSpace: 'nowrap', borderBottom: '1px solid var(--border)' }}>{h}</th>
-                            ))}
-                          </tr>
-                        </thead>
-                        <tbody>
-                          {residuelPasses.sort((a, b) => b.arrival_date.localeCompare(a.arrival_date)).map((r, i) => {
-                            const col = Math.abs(r.residuel) < 100_00 ? '#065F46' : '#92400E'
-                            return (
-                              <tr key={r.id} style={{ borderBottom: '1px solid var(--border)', background: i % 2 === 0 ? 'white' : '#FDFAF5' }}>
-                                <td style={{ padding: '6px 10px', fontWeight: 600, whiteSpace: 'nowrap' }}>{r.bien?.code || '—'}</td>
-                                <td style={{ padding: '6px 10px', fontFamily: 'monospace', fontSize: '0.85em', color: '#6B5843' }}>{r.code || '—'}</td>
-                                <td style={{ padding: '6px 10px' }}>{r.guest_name || '—'}</td>
-                                <td style={{ padding: '6px 10px', whiteSpace: 'nowrap' }}>{fmtDate(r.departure_date)}</td>
-                                <td style={{ padding: '6px 10px', textAlign: 'right', fontVariantNumeric: 'tabular-nums' }}>{fmt(r.payin)}</td>
-                                <td style={{ padding: '6px 10px', textAlign: 'right', fontVariantNumeric: 'tabular-nums', color: '#6B5843' }}>{fmt(r.ventil)}</td>
-                                <td style={{ padding: '6px 10px', textAlign: 'right', fontWeight: 700, fontVariantNumeric: 'tabular-nums', color: col }}>{fmt(r.residuel)}</td>
-                              </tr>
-                            )
-                          })}
-                        </tbody>
-                      </table>
+                    <div style={{ fontSize: '0.75em', color: '#9C8E7D', marginTop: 2 }}>
+                      {residuelPasses.length} résa{residuelPasses.length > 1 ? 's' : ''} — contribution = 0 dans le séquestre fiable · PAYIN − ventilation affiché à titre de contrôle uniquement
                     </div>
+                  </div>
+                  <div style={{ textAlign: 'right' }}>
+                    <div style={{ fontSize: '0.72em', color: '#9C8E7D', marginBottom: 2 }}>Écart PAYIN − ventil.</div>
+                    <div style={{ fontSize: '1em', fontWeight: 700, color: residuelColor, fontVariantNumeric: 'tabular-nums' }}>{fmt(totalResiduel)}</div>
+                  </div>
+                </div>
+                <button
+                  onClick={() => setShowDetail(d => !d)}
+                  style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: '0.78em', color: '#9C8E7D', textDecoration: 'underline', padding: 0 }}
+                >
+                  {showDetail ? 'Masquer le détail' : 'Voir le détail ligne par ligne'}
+                </button>
+                {showDetail && residuelPasses.length > 0 && (
+                  <div style={{ marginTop: 10, overflowX: 'auto' }}>
+                    <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.84em' }}>
+                      <thead>
+                        <tr style={{ background: '#EAE3D4' }}>
+                          {['Bien', 'Code', 'Voyageur', 'Départ', 'PAYIN', 'Ventilation', 'Écart'].map(h => (
+                            <th key={h} style={{ padding: '7px 10px', textAlign: ['PAYIN','Ventilation','Écart'].includes(h) ? 'right' : 'left', fontWeight: 700, color: '#5C4B2A', whiteSpace: 'nowrap', borderBottom: '1px solid #D9CEB8' }}>{h}</th>
+                          ))}
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {residuelPasses.sort((a, b) => b.departure_date.localeCompare(a.departure_date)).map((r, i) => {
+                          const col = Math.abs(r.residuel) < 100_00 ? '#5C4B2A' : '#92400E'
+                          return (
+                            <tr key={r.id} style={{ borderBottom: '1px solid #EAE3D4', background: i % 2 === 0 ? 'white' : '#FDFAF5' }}>
+                              <td style={{ padding: '6px 10px', fontWeight: 600, whiteSpace: 'nowrap' }}>{r.bien?.code || '—'}</td>
+                              <td style={{ padding: '6px 10px', fontFamily: 'monospace', fontSize: '0.85em', color: '#6B5843' }}>{r.code || '—'}</td>
+                              <td style={{ padding: '6px 10px' }}>{r.guest_name || '—'}</td>
+                              <td style={{ padding: '6px 10px', whiteSpace: 'nowrap' }}>{fmtDate(r.departure_date)}</td>
+                              <td style={{ padding: '6px 10px', textAlign: 'right', fontVariantNumeric: 'tabular-nums' }}>{fmt(r.payin)}</td>
+                              <td style={{ padding: '6px 10px', textAlign: 'right', fontVariantNumeric: 'tabular-nums', color: '#6B5843' }}>{fmt(r.ventil)}</td>
+                              <td style={{ padding: '6px 10px', textAlign: 'right', fontWeight: 700, fontVariantNumeric: 'tabular-nums', color: col }}>{fmt(r.residuel)}</td>
+                            </tr>
+                          )
+                        })}
+                      </tbody>
+                    </table>
                   </div>
                 )}
               </div>
