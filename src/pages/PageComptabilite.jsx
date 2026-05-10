@@ -1668,7 +1668,11 @@ function SequestreCloture() {
           .in('bien_id', bienIds.slice(i, i + 400))
           .gte('arrival_date', dateDebutSuivant)
         if (e) throw new Error(e.message)
-        resasAll = resasAll.concat((data || []).filter(r => !CANCELLED.includes(r.final_status) && !r.owner_stay))
+        resasAll = resasAll.concat((data || []).filter(r =>
+          !CANCELLED.includes(r.final_status) &&
+          !r.owner_stay &&
+          !/^[eé]tudiante?/i.test(r.guest_name || '')
+        ))
       }
       if (!resasAll.length) { setLignes([]); setLoading(false); return }
       const resaIds = resasAll.map(r => r.id)
