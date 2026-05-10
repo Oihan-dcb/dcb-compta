@@ -984,11 +984,13 @@ const thS = { padding: '10px 10px', fontWeight: 700, color: '#5C4B2A', textAlign
 const tdNumS = { padding: '7px 10px', textAlign: 'right', fontVariantNumeric: 'tabular-nums', whiteSpace: 'nowrap' }
 
 function SequestreTempsReel() {
-  const [data, setData]       = useState(null)
-  const [loading, setLoading] = useState(true)
-  const [error, setError]     = useState(null)
-  const [genAt, setGenAt]     = useState(null)
+  const [data, setData]           = useState(null)
+  const [loading, setLoading]     = useState(true)
+  const [error, setError]         = useState(null)
+  const [genAt, setGenAt]         = useState(null)
   const [showDetail, setShowDetail] = useState(false)
+  const [syncingStripe, setSyncingStripe] = useState(false)
+  const [stripeLog, setStripeLog] = useState(null)
   const runId = useRef(0)
 
   const charger = useCallback(async () => {
@@ -1000,7 +1002,7 @@ function SequestreTempsReel() {
       // 1. Biens de l'agence
       const { data: biens } = await supabase.from('bien').select('id, code').eq('agence', AGENCE)
       const bienIds = (biens || []).map(b => b.id)
-      if (!bienIds.length) { setData({ futurs: [], residuelPasses: [], anomalies: [], totalFuturs: 0, totalResiduel: 0, totalFiable: 0, totalAnomalies: 0 }); return }
+      if (!bienIds.length) { setData({ futurs: [], residuelPasses: [], anomalies: [], futursStripeCaptures: [], futursAVerifier: [], totalFuturs: 0, totalResiduel: 0, totalFiable: 0, totalAnomalies: 0, totalStripeCaptures: 0, totalAVerifier: 0 }); return }
 
       // 2. Toutes les réservations valides de l'agence (avec encaissement > 0)
       const CANCELLED = ['not_accepted', 'not accepted', 'declined', 'expired', 'cancelled']
@@ -1028,7 +1030,7 @@ function SequestreTempsReel() {
         }
       }
       const resaIds = allResas.map(r => r.id)
-      if (!resaIds.length) { setData({ futurs: [], residuelPasses: [], anomalies: [], totalFuturs: 0, totalResiduel: 0, totalFiable: 0, totalAnomalies: 0 }); return }
+      if (!resaIds.length) { setData({ futurs: [], residuelPasses: [], anomalies: [], futursStripeCaptures: [], futursAVerifier: [], totalFuturs: 0, totalResiduel: 0, totalFiable: 0, totalAnomalies: 0, totalStripeCaptures: 0, totalAVerifier: 0 }); return }
 
       // 3. PAYINs réels prouvés en banque = reservation_paiement avec mouvement_id IS NOT NULL
       // Join via reservation!inner pour filtrer par bienIds (~50 items) au lieu de resaIds (~4500+)
@@ -1053,6 +1055,32 @@ function SequestreTempsReel() {
             }
           }
           if (pmts.length < 1000) break
+          offset += 1000
+        }
+      }
+
+      // 3b. Charges Stripe capturées mais pas encore virées en banque
+      // = reservation_paiement avec mouvement_id IS NULL et note = 'stripe_charge:ch_...'
+      const stripeCaptureByResa = {}
+      {
+        let offset = 0
+        while (true) {
+          const { data: spmts, error: spErr } = await supabase
+            .from('reservation_paiement')
+            .select('reservation_id, montant, reservation!inner(bien_id)')
+            .filter('reservation.bien_id', 'in', `(${bienIds.join(',')})`)
+            .is('mouvement_id', null)
+            .like('note', 'stripe_charge:%')
+            .order('id')
+            .range(offset, offset + 999)
+          if (spErr) throw new Error(`stripe_captures p${offset/1000}: ${spErr.message}`)
+          if (!spmts || spmts.length === 0) break
+          for (const p of spmts) {
+            if (resaIdSet.has(p.reservation_id)) {
+              stripeCaptureByResa[p.reservation_id] = (stripeCaptureByResa[p.reservation_id] || 0) + (p.montant || 0)
+            }
+          }
+          if (spmts.length < 1000) break
           offset += 1000
         }
       }
@@ -1087,14 +1115,17 @@ function SequestreTempsReel() {
       const anomalies       = resasAvecPayin.filter(r => r.departure_date <= today && !r.ventilation_calculee && !airbnbDuMoisIds.has(r.id))
 
 
-      // Futurs direct/manual/stripe sans PAYIN prouvé → "À vérifier"
-      const futursAVerifier = allResas.filter(r =>
+      // Futurs direct/manual/stripe sans PAYIN banque prouvé
+      const directFuturs = allResas.filter(r =>
         r.departure_date > today &&
         (r.platform === 'direct' || r.platform === 'manual' || r.platform === 'stripe') &&
         !(payinByResa[r.id] > 0) &&
-        !r.rapprochee &&
         r.final_status !== 'request'
       )
+      // Stripe capturé (preuve reservation_paiement note=stripe_charge:...) — en attente virement banque
+      const futursStripeCaptures = directFuturs.filter(r => stripeCaptureByResa[r.id] != null)
+      // Aucune preuve ni banque ni Stripe → À vérifier
+      const futursAVerifier = directFuturs.filter(r => stripeCaptureByResa[r.id] == null)
 
       // 5. Ventilation des séjours passés ventilés (hors VIR = code résultat, hors PREST = mémo)
       // Join via reservation!inner pour filtrer par bienIds — même raison que reservation_paiement
@@ -1124,9 +1155,10 @@ function SequestreTempsReel() {
       }
 
       // 6. Calcul totaux
-      const totalFuturs       = futurs.reduce((s, r) => s + (payinByResa[r.id] || 0), 0)
-      const totalAirbnbDuMois = airbnbDuMois.reduce((s, r) => s + (payinByResa[r.id] || 0), 0)
-      const totalAVerifier    = futursAVerifier.reduce((s, r) => s + (r.fin_revenue || 0), 0)
+      const totalFuturs          = futurs.reduce((s, r) => s + (payinByResa[r.id] || 0), 0)
+      const totalAirbnbDuMois    = airbnbDuMois.reduce((s, r) => s + (payinByResa[r.id] || 0), 0)
+      const totalStripeCaptures  = futursStripeCaptures.reduce((s, r) => s + (stripeCaptureByResa[r.id] || 0), 0)
+      const totalAVerifier       = futursAVerifier.reduce((s, r) => s + (r.fin_revenue || 0), 0)
 
 
       const residuelPasses = passesVentiles.map(r => ({
@@ -1142,12 +1174,13 @@ function SequestreTempsReel() {
       if (thisRun !== runId.current) return
 
       setData({
-        futurs:          futurs.map(r => ({ ...r, payin: payinByResa[r.id] || 0 })),
-        airbnbDuMois:    airbnbDuMois.map(r => ({ ...r, payin: payinByResa[r.id] || 0 })),
+        futurs:               futurs.map(r => ({ ...r, payin: payinByResa[r.id] || 0 })),
+        airbnbDuMois:         airbnbDuMois.map(r => ({ ...r, payin: payinByResa[r.id] || 0 })),
         residuelPasses,
-        anomalies:       anomalies.map(r => ({ ...r, payin: payinByResa[r.id] || 0 })),
-        futursAVerifier: futursAVerifier.map(r => ({ ...r, montantAttendu: r.fin_revenue || 0 })),
-        totalFuturs, totalAirbnbDuMois, totalResiduel, totalFiable, totalAnomalies, totalAVerifier,
+        anomalies:            anomalies.map(r => ({ ...r, payin: payinByResa[r.id] || 0 })),
+        futursStripeCaptures: futursStripeCaptures.map(r => ({ ...r, stripeMontant: stripeCaptureByResa[r.id] || 0 })),
+        futursAVerifier:      futursAVerifier.map(r => ({ ...r, montantAttendu: r.fin_revenue || 0 })),
+        totalFuturs, totalAirbnbDuMois, totalResiduel, totalFiable, totalAnomalies, totalStripeCaptures, totalAVerifier,
       })
       setGenAt(new Date())
     } catch (e) {
@@ -1158,6 +1191,32 @@ function SequestreTempsReel() {
   }, [])
 
   useEffect(() => { charger() }, [charger])
+
+  const syncStripeAcomptes = useCallback(async () => {
+    setSyncingStripe(true); setStripeLog(null)
+    try {
+      const today = new Date().toISOString().slice(0, 10)
+      // Candidats = futursStripeCaptures (déjà en DB) + futursAVerifier direct/stripe (à chercher)
+      const candidats = [
+        ...(data?.futursStripeCaptures || []),
+        ...(data?.futursAVerifier || []),
+      ].filter(r => (r.platform === 'direct' || r.platform === 'stripe') && r.code?.startsWith('HOST-'))
+      if (!candidats.length) { setStripeLog({ found: 0, inserted: 0, errors: 0 }); return }
+      const codes = candidats.map(r => r.code)
+      const resaByCode = Object.fromEntries(candidats.map(r => [r.code, r.id]))
+      const { data: res, error: efErr } = await supabase.functions.invoke('stripe-acomptes-sequestre', {
+        body: { codes, dateCloture: today, resaByCode },
+      })
+      if (efErr) throw new Error(efErr.message)
+      if (!res?.ok) throw new Error(res?.error || 'Erreur Edge Function')
+      setStripeLog({ found: res.found ?? 0, inserted: res.inserted ?? 0, errors: res.errors ?? 0 })
+      await charger()
+    } catch (e) {
+      setStripeLog({ error: e.message })
+    } finally {
+      setSyncingStripe(false)
+    }
+  }, [data, charger])
 
   const fmtDate = d => d ? new Date(d + 'T00:00:00').toLocaleDateString('fr-FR') : '—'
   const CANAL_LABEL = { airbnb: 'Airbnb', booking: 'Booking', direct: 'Direct', manual: 'Manuel', stripe: 'Stripe' }
@@ -1170,16 +1229,34 @@ function SequestreTempsReel() {
           Séquestre — état au {new Date().toLocaleDateString('fr-FR')}
         </div>
         {genAt && <div style={{ fontSize: '0.8em', color: '#9C8E7D' }}>calculé le <strong>{genAt.toLocaleString('fr-FR')}</strong></div>}
-        <button className="btn btn-secondary" onClick={charger} disabled={loading} style={{ marginLeft: 'auto', padding: '6px 14px' }}>
-          {loading ? '…' : '↺'}
-        </button>
+        <div style={{ marginLeft: 'auto', display: 'flex', gap: 8, alignItems: 'center' }}>
+          {HAS_STRIPE_SEQUESTRE && (
+            <button
+              className="btn btn-secondary"
+              onClick={syncStripeAcomptes}
+              disabled={syncingStripe || loading || !data}
+              title="Interroge Stripe pour confirmer les paiements capturés (direct/stripe)"
+              style={{ padding: '6px 12px', fontSize: '0.82em' }}
+            >
+              {syncingStripe ? '…' : '⚡ Sync Stripe acomptes'}
+            </button>
+          )}
+          {stripeLog && (
+            <span style={{ fontSize: '0.78em', color: stripeLog.error ? '#DC2626' : '#065F46' }}>
+              {stripeLog.error ? `Erreur : ${stripeLog.error}` : `${stripeLog.inserted} inséré(s) / ${stripeLog.found} trouvé(s)`}
+            </span>
+          )}
+          <button className="btn btn-secondary" onClick={charger} disabled={loading} style={{ padding: '6px 14px' }}>
+            {loading ? '…' : '↺'}
+          </button>
+        </div>
       </div>
 
       {error && <div style={{ background: '#FEF2F2', border: '1px solid #FECACA', borderRadius: 8, padding: '12px 16px', color: '#DC2626', marginBottom: 20 }}>{error}</div>}
       {loading && !data && <div style={{ textAlign: 'center', padding: 40, color: '#9C8E7D' }}>Chargement…</div>}
 
       {data && (() => {
-        const { futurs, airbnbDuMois, residuelPasses, anomalies, futursAVerifier, totalFuturs, totalAirbnbDuMois, totalResiduel, totalFiable, totalAnomalies, totalAVerifier } = data
+        const { futurs, airbnbDuMois, residuelPasses, anomalies, futursStripeCaptures, futursAVerifier, totalFuturs, totalAirbnbDuMois, totalResiduel, totalFiable, totalAnomalies, totalStripeCaptures, totalAVerifier } = data
         const residuelOk = Math.abs(totalResiduel) < 100_00 // < 1€ de résidu = propre
         const residuelColor = Math.abs(totalResiduel) < 100_00 ? '#065F46' : Math.abs(totalResiduel) < 500_00 ? '#92400E' : '#DC2626'
 
@@ -1349,6 +1426,49 @@ function SequestreTempsReel() {
                     </table>
                   </div>
                 )}
+              </div>
+            )}
+
+            {/* ── Stripe capturé — en attente virement bancaire ── */}
+            {futursStripeCaptures.length > 0 && (
+              <div style={{ background: '#EEF2FF', border: '1px solid #A5B4FC', borderRadius: 12, padding: '16px 20px' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 12 }}>
+                  <div style={{ flex: 1 }}>
+                    <div style={{ fontWeight: 700, color: '#3730A3', fontSize: '0.92em' }}>
+                      Stripe capturé — en attente virement bancaire — {futursStripeCaptures.length} résa{futursStripeCaptures.length > 1 ? 's' : ''}
+                    </div>
+                    <div style={{ fontSize: '0.78em', color: '#6B7280', marginTop: 2 }}>
+                      Paiement confirmé par Stripe (charge capturée) mais payout pas encore reçu en banque. Non inclus dans le séquestre fiable.
+                    </div>
+                  </div>
+                  <div style={{ fontSize: '1.1em', fontWeight: 700, color: '#3730A3', fontVariantNumeric: 'tabular-nums', whiteSpace: 'nowrap' }}>
+                    {fmt(totalStripeCaptures)}
+                  </div>
+                </div>
+                <div style={{ overflowX: 'auto' }}>
+                  <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.84em' }}>
+                    <thead>
+                      <tr style={{ background: '#E0E7FF' }}>
+                        {['Bien', 'Code', 'Canal', 'Voyageur', 'Arrivée', 'Départ', 'Capturé Stripe'].map(h => (
+                          <th key={h} style={{ padding: '7px 10px', textAlign: h === 'Capturé Stripe' ? 'right' : 'left', fontWeight: 700, color: '#312E81', whiteSpace: 'nowrap', borderBottom: '1px solid #A5B4FC' }}>{h}</th>
+                        ))}
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {[...futursStripeCaptures].sort((a, b) => a.arrival_date.localeCompare(b.arrival_date)).map((r, i) => (
+                        <tr key={r.id} style={{ borderBottom: '1px solid #C7D2FE', background: i % 2 === 0 ? 'white' : '#F5F3FF' }}>
+                          <td style={{ padding: '6px 10px', fontWeight: 600, whiteSpace: 'nowrap' }}>{r.bien?.code || '—'}</td>
+                          <td style={{ padding: '6px 10px', fontFamily: 'monospace', fontSize: '0.85em', color: '#4338CA' }}>{r.code || '—'}</td>
+                          <td style={{ padding: '6px 10px' }}>{CANAL_LABEL[r.platform] || r.platform || '—'}</td>
+                          <td style={{ padding: '6px 10px' }}>{r.guest_name || '—'}</td>
+                          <td style={{ padding: '6px 10px', whiteSpace: 'nowrap' }}>{fmtDate(r.arrival_date)}</td>
+                          <td style={{ padding: '6px 10px', whiteSpace: 'nowrap' }}>{fmtDate(r.departure_date)}</td>
+                          <td style={{ padding: '6px 10px', textAlign: 'right', fontVariantNumeric: 'tabular-nums', color: '#3730A3', fontWeight: 600 }}>{fmt(r.stripeMontant)}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
               </div>
             )}
 
