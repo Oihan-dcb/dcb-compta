@@ -1,16 +1,13 @@
 /**
  * stripe-acomptes-sequestre
  *
- * Cherche dans Stripe les acomptes capturés avant dateCloture pour une liste
- * de codes de réservation directes (HOST-XXXX). Insère dans reservation_paiement.
- * La clé Stripe reste côté serveur — ne jamais exposer via VITE_.
+ * Pour chaque code de réservation directe (HOST-XXXX) :
+ * 1. Cherche dans stripe_payout_line les charges capturées avant dateCloture
+ * 2. Fallback : Stripe Search API (metadata ou description)
+ * Insère dans reservation_paiement (mouvement_id null) si pas déjà présent.
  *
  * Body JSON : { codes: string[], dateCloture: string, resaByCode: Record<string, string> }
- *   - codes        : codes réservation à chercher (ex: ['HOST-J323DH'])
- *   - dateCloture  : '2025-12-31'
- *   - resaByCode   : mapping code → reservation_id (UUID)
- *
- * Retourne : { found: number, inserted: number, errors: number }
+ * Retourne  : { found: number, inserted: number, errors: number }
  */
 
 import { createClient } from 'npm:@supabase/supabase-js@2'
@@ -25,7 +22,7 @@ async function stripeGet(path: string) {
   const r = await fetch('https://api.stripe.com' + path, {
     headers: { Authorization: 'Bearer ' + STRIPE_SECRET },
   })
-  if (!r.ok) throw new Error('Stripe ' + r.status + ' — ' + path)
+  if (!r.ok) throw new Error('Stripe ' + r.status)
   return r.json()
 }
 
@@ -34,85 +31,103 @@ Deno.serve(async (req) => {
     return new Response('ok', { headers: { 'Access-Control-Allow-Origin': '*', 'Access-Control-Allow-Headers': 'authorization, content-type' } })
   }
 
-  if (!STRIPE_SECRET) {
-    return Response.json({ ok: false, error: 'STRIPE_SECRET_KEY non configuré' }, { status: 500 })
-  }
-
   let codes: string[], dateCloture: string, resaByCode: Record<string, string>
   try {
     ({ codes, dateCloture, resaByCode } = await req.json())
   } catch {
     return Response.json({ ok: false, error: 'Body JSON invalide' }, { status: 400 })
   }
-
   if (!codes?.length || !dateCloture || !resaByCode) {
     return Response.json({ ok: false, error: 'Paramètres manquants' }, { status: 400 })
   }
 
-  const tsMax = Math.floor(new Date(dateCloture + 'T23:59:59Z').getTime() / 1000)
   const log = { found: 0, inserted: 0, errors: 0 }
 
-  for (const code of codes) {
-    const reservationId = resaByCode[code]
+  // ── Étape 1 : stripe_payout_line déjà en DB ───────────────────────────────
+  // Les charges déjà syncées ont created_at = date de capture réelle.
+  // C'est la source de vérité la plus fiable — pas besoin d'appeler Stripe.
+  const { data: splRows } = await supabase
+    .from('stripe_payout_line')
+    .select('reservation_code, stripe_charge_id, created_at, montant_net')
+    .in('reservation_code', codes)
+    .lte('created_at', dateCloture)
+
+  type SplCandidate = { code: string; chargeId: string; date: string; montant: number }
+  const candidatesFromDB: SplCandidate[] = (splRows ?? []).map((r: any) => ({
+    code: r.reservation_code,
+    chargeId: r.stripe_charge_id,
+    date: r.created_at,
+    montant: r.montant_net,
+  }))
+
+  // ── Étape 2 : fallback Stripe Search pour codes sans résultat en DB ────────
+  const codesInDB = new Set(candidatesFromDB.map(c => c.code))
+  const codesManquants = codes.filter(c => !codesInDB.has(c))
+  const candidatesFromStripe: SplCandidate[] = []
+
+  if (codesManquants.length && STRIPE_SECRET) {
+    const tsMax = Math.floor(new Date(dateCloture + 'T23:59:59Z').getTime() / 1000)
+    for (const code of codesManquants) {
+      try {
+        let charges: any[] = []
+        try {
+          const r1 = await stripeGet(`/v1/charges/search?query=${encodeURIComponent(`metadata['reservation_code']:'${code}'`)}&limit=10`)
+          charges = (r1.data ?? []).filter((c: any) => c.status === 'succeeded' && c.captured && c.created <= tsMax)
+        } catch (_) {}
+        if (!charges.length) {
+          try {
+            const r2 = await stripeGet(`/v1/charges/search?query=${encodeURIComponent(`description:'${code}'`)}&limit=10`)
+            charges = (r2.data ?? []).filter((c: any) => c.status === 'succeeded' && c.captured && c.created <= tsMax)
+          } catch (_) {}
+        }
+        for (const ch of charges) {
+          candidatesFromStripe.push({
+            code,
+            chargeId: ch.id,
+            date: new Date(ch.created * 1000).toISOString().slice(0, 10),
+            montant: ch.amount_captured || ch.amount || 0,
+          })
+        }
+      } catch (e: any) {
+        console.error('Stripe search:', code, e?.message)
+        log.errors++
+      }
+    }
+  }
+
+  const allCandidates = [...candidatesFromDB, ...candidatesFromStripe]
+
+  // ── Étape 3 : insérer reservation_paiement pour les acomptes prouvés ───────
+  for (const c of allCandidates) {
+    const reservationId = resaByCode[c.code]
     if (!reservationId) continue
 
+    const noteId = `stripe_charge:${c.chargeId}`
     try {
-      let charges: any[] = []
+      // Doublon par note (charge_id)
+      const { data: exist } = await supabase
+        .from('reservation_paiement')
+        .select('id')
+        .eq('reservation_id', reservationId)
+        .eq('note', noteId)
+        .maybeSingle()
+      if (exist) continue
 
-      // 1. Chercher par metadata reservation_code (Hospitable peuple ce champ)
-      try {
-        const r1 = await stripeGet(
-          `/v1/charges/search?query=${encodeURIComponent(`metadata['reservation_code']:'${code}'`)}&limit=10`
-        )
-        charges = (r1.data ?? []).filter((c: any) =>
-          c.status === 'succeeded' && c.captured && c.created <= tsMax
-        )
-      } catch (_) { /* search API peut ne pas être disponible */ }
-
-      // 2. Fallback : chercher par description (Hospitable inclut le code)
-      if (!charges.length) {
-        try {
-          const r2 = await stripeGet(
-            `/v1/charges/search?query=${encodeURIComponent(`description:'${code}'`)}&limit=10`
-          )
-          charges = (r2.data ?? []).filter((c: any) =>
-            c.status === 'succeeded' && c.captured && c.created <= tsMax
-          )
-        } catch (_) {}
-      }
-
-      if (!charges.length) continue
       log.found++
+      const { error } = await supabase.from('reservation_paiement').insert({
+        reservation_id: reservationId,
+        mouvement_id: null,
+        montant: c.montant,
+        date_paiement: c.date,
+        type_paiement: 'acompte',
+        description_paiement: `Stripe acompte séquestre — ${c.code}`,
+        note: noteId,
+      })
 
-      for (const ch of charges) {
-        const datePaiement = new Date(ch.created * 1000).toISOString().slice(0, 10)
-        const montant = ch.amount_captured || ch.amount || 0
-        const noteId = `stripe_charge:${ch.id}`
-
-        // Vérifier doublon
-        const { data: exist } = await supabase
-          .from('reservation_paiement')
-          .select('id')
-          .eq('reservation_id', reservationId)
-          .eq('note', noteId)
-          .maybeSingle()
-        if (exist) continue
-
-        const { error } = await supabase.from('reservation_paiement').insert({
-          reservation_id: reservationId,
-          mouvement_id: null,
-          montant,
-          date_paiement: datePaiement,
-          type_paiement: 'acompte',
-          description_paiement: `Stripe acompte séquestre — ${code}`,
-          note: noteId,
-        })
-
-        if (!error) log.inserted++
-        else if (error.code !== '23505') log.errors++
-      }
+      if (!error) log.inserted++
+      else if (error.code !== '23505') log.errors++
     } catch (e: any) {
-      console.error('stripe-acomptes-sequestre:', code, e?.message)
+      console.error('insert reservation_paiement:', c.code, e?.message)
       log.errors++
     }
   }
