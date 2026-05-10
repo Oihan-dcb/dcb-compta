@@ -989,8 +989,10 @@ function SequestreTempsReel() {
   const [error, setError]     = useState(null)
   const [genAt, setGenAt]     = useState(null)
   const [showDetail, setShowDetail] = useState(false)
+  const runId = useRef(0)
 
   const charger = useCallback(async () => {
+    const thisRun = ++runId.current
     setLoading(true); setError(null)
     try {
       const today = new Date().toISOString().slice(0, 10)
@@ -1123,10 +1125,12 @@ function SequestreTempsReel() {
       const totalAnomalies  = anomalies.reduce((s, r) => s + (payinByResa[r.id] || 0), 0)
 
       // ── DEBUG TEMPORAIRE ──
-      console.group(`[SequestreDebug] ${new Date().toISOString()}`)
+      const stale = thisRun !== runId.current
+      console.group(`[SequestreDebug run#${thisRun}${stale ? ' STALE→ignoré' : ''}] ${new Date().toISOString()}`)
       console.log('allResas:', allResas.length, '| payinByResa keys:', Object.keys(payinByResa).length, '| resasAvecPayin:', resasAvecPayin.length, '| futurs:', futurs.length, '| totalFuturs:', (totalFuturs/100).toFixed(2)+'€')
-      console.log('futurs IDs+payin:', futurs.map(r => `${r.code}=${payinByResa[r.id]}`).join(', '))
+      console.log('futurs codes+payin:', futurs.map(r => `${r.code}=${payinByResa[r.id]}`).sort().join(' | '))
       console.groupEnd()
+      if (stale) return
       // ── FIN DEBUG ──
 
       setData({
