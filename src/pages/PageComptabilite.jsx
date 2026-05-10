@@ -1119,19 +1119,6 @@ function SequestreTempsReel() {
       const totalFiable     = totalFuturs
       const totalAnomalies  = anomalies.reduce((s, r) => s + (payinByResa[r.id] || 0), 0)
 
-      // ── DEBUG TEMPORAIRE — retirer après diagnostic ──
-      const nbPayins = Object.keys(payinByResa).length
-      console.group(`[SequestreDebug] refresh @ ${new Date().toISOString()}`)
-      console.log('1. allResas total:', allResas.length)
-      console.log('2. reservation_paiement chargées (resas avec PAYIN):', nbPayins)
-      console.log('3. resasAvecPayin:', resasAvecPayin.length)
-      console.log('4. futurs count:', futurs.length)
-      console.log('5. totalFuturs (cts):', totalFuturs, '→', (totalFuturs/100).toFixed(2), '€')
-      console.log('6. liste futurs:')
-      futurs.forEach(r => console.log('  ', r.id, r.code, r.platform, 'payin=', payinByResa[r.id], 'fin_rev=', r.fin_revenue, 'dep=', r.departure_date))
-      console.groupEnd()
-      // ── FIN DEBUG ──
-
       setData({
         futurs:          futurs.map(r => ({ ...r, payin: payinByResa[r.id] || 0 })),
         residuelPasses,
