@@ -1286,7 +1286,7 @@ function SequestreTempsReel() {
 const STATUT_SEQ = {
   certain:              { label: 'Certain',                                color: '#065F46', bg: '#D1FAE5' },
   certain_manuel:       { label: 'Certain — manuel rapproché',             color: '#065F46', bg: '#D1FAE5' },
-  booking_prevu:        { label: 'Booking — payout prévu',                 color: '#1D4ED8', bg: '#DBEAFE' },
+  booking_prevu:        { label: 'En attente de paiement par Booking',     color: '#1D4ED8', bg: '#DBEAFE' },
   a_verifier_acompte:   { label: 'Acompte à contrôler',                   color: '#7C3AED', bg: '#EDE9FE' },
   exclu_perimetre:      { label: 'Exclu — hors périmètre',                 color: '#6B5843', bg: '#FEF9F0' },
 }
@@ -1570,7 +1570,7 @@ function SequestreCloture() {
     { key: 'tous',               label: 'Tous' },
     { key: 'certain',            label: 'Certain' },
     { key: 'certain_manuel',     label: 'Certain — manuel' },
-    { key: 'booking_prevu',      label: 'Booking prévu' },
+    { key: 'booking_prevu',      label: 'En attente Booking' },
     { key: 'a_verifier_acompte', label: 'Acompte à contrôler' },
     { key: 'exclu_perimetre',    label: 'Hors périmètre' },
   ]
