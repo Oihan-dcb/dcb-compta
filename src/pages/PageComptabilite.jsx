@@ -1231,7 +1231,7 @@ function SequestreTempsReel() {
                           </tr>
                         </thead>
                         <tbody>
-                          {residuelPasses.sort((a, b) => b.departure_date.localeCompare(a.departure_date)).map((r, i) => {
+                          {residuelPasses.sort((a, b) => b.arrival_date.localeCompare(a.arrival_date)).map((r, i) => {
                             const col = Math.abs(r.residuel) < 100_00 ? '#065F46' : '#92400E'
                             return (
                               <tr key={r.id} style={{ borderBottom: '1px solid var(--border)', background: i % 2 === 0 ? 'white' : '#FDFAF5' }}>
