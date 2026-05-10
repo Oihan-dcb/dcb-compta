@@ -211,8 +211,9 @@ export default function PageExports() {
           if (error) { console.error('PageExports biens filter:', error); return }
           const list = data || []
           setBiens(list)
+          const saved = (() => { try { return JSON.parse(localStorage.getItem(`exports_filter_${mois}`) || 'null') } catch { return null } })()
           const init = {}
-          for (const b of list) init[b.id] = true
+          for (const b of list) init[b.id] = saved ? (saved[b.id] !== false) : true
           setBienFilter(init)
         })
     })
@@ -420,14 +421,14 @@ export default function PageExports() {
                 <button
                   className="btn btn-secondary"
                   style={{ fontSize: '0.78em', padding: '3px 10px' }}
-                  onClick={() => setBienFilter(prev => { const n = {}; for (const k of Object.keys(prev)) n[k] = true; return n })}
+                  onClick={() => setBienFilter(prev => { const n = {}; for (const k of Object.keys(prev)) n[k] = true; localStorage.setItem(`exports_filter_${mois}`, JSON.stringify(n)); return n })}
                 >
                   Tout
                 </button>
                 <button
                   className="btn btn-secondary"
                   style={{ fontSize: '0.78em', padding: '3px 10px' }}
-                  onClick={() => setBienFilter(prev => { const n = {}; for (const k of Object.keys(prev)) n[k] = false; return n })}
+                  onClick={() => setBienFilter(prev => { const n = {}; for (const k of Object.keys(prev)) n[k] = false; localStorage.setItem(`exports_filter_${mois}`, JSON.stringify(n)); return n })}
                 >
                   Aucun
                 </button>
@@ -444,7 +445,7 @@ export default function PageExports() {
                           <input
                             type="checkbox"
                             checked={bienFilter[b.id] !== false}
-                            onChange={e => setBienFilter(prev => ({ ...prev, [b.id]: e.target.checked }))}
+                            onChange={e => setBienFilter(prev => { const n = { ...prev, [b.id]: e.target.checked }; localStorage.setItem(`exports_filter_${mois}`, JSON.stringify(n)); return n })}
                           />
                           <span style={{ color: bienFilter[b.id] !== false ? 'var(--text)' : '#B0A090' }}>
                             {b.hospitable_name || b.code}
