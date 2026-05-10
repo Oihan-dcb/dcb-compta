@@ -50,6 +50,7 @@ async function fetchAll(path: string, params: Record<string, any> = {}) {
 Deno.serve(async (req) => {
   if (req.method === 'OPTIONS') return new Response('ok', { headers: cors })
 
+  try {
   const body = await req.json().catch(() => ({}))
   const mois: string | undefined = body.mois  // optionnel, format YYYY-MM
 
@@ -213,15 +214,18 @@ Deno.serve(async (req) => {
             else { smsQueued++; console.log('SMS queued (sync-reviews):', resaHospId, guestPhone) }
           } else {
             // Log no_phone pour ne pas retenter à chaque sync
-            await sb.from('sms_logs').insert({
-              hospitable_reservation_id: resaHospId,
-              guest_name:    guestName,
-              guest_phone:   null,
-              language:      'FR',
-              rating:        row.rating,
-              status:        'no_phone',
-              error_message: 'No guest phone in reservation table (sync-reviews)',
-            }).catch(() => {})
+            // Note: PostgrestBuilder n'a pas .catch() en Deno — on utilise try/catch
+            try {
+              await sb.from('sms_logs').insert({
+                hospitable_reservation_id: resaHospId,
+                guest_name:    guestName,
+                guest_phone:   null,
+                language:      'FR',
+                rating:        row.rating,
+                status:        'no_phone',
+                error_message: 'No guest phone in reservation table (sync-reviews)',
+              })
+            } catch (_) {}
           }
         }
       }
@@ -233,6 +237,10 @@ Deno.serve(async (req) => {
 
   console.log(`sync-reviews: ${synced} ok, ${errors} errors / ${total} reviews, ${biens.length} properties, ${smsQueued} SMS queued`)
   return json({ ok: true, total, synced, errors, smsQueued, properties: biens.length })
+  } catch (e: any) {
+    console.error('sync-reviews UNCAUGHT:', e?.message, e?.stack)
+    return json({ error: e?.message ?? String(e), stack: e?.stack }, 200)
+  }
 })
 
 // ─── Helpers SMS ─────────────────────────────────────────────

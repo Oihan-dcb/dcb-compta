@@ -39,7 +39,7 @@ Deno.serve(async (req) => {
     .limit(20)
 
   if (error) return json({ error: error.message }, 500)
-  if (!pending?.length) return json({ processed: 0 })
+  if (!pending?.length) return json({ processed: 0, sent: 0, failed: 0 })
 
   let sent = 0, failed = 0
 
