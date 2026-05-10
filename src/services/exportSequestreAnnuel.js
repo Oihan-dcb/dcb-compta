@@ -9,7 +9,7 @@ import { AGENCE } from '../lib/agence'
 const STATUT_LABEL = {
   certain:            'Certain',
   certain_manuel:     'Certain — manuel',
-  booking_prevu:      'Booking prévu',
+  booking_prevu:      'En attente de paiement par Booking',
   a_verifier_acompte: 'Acompte à contrôler',
   exclu_perimetre:    'Hors périmètre',
 }
@@ -155,9 +155,14 @@ export async function exportSequestreAnnuel(annee) {
         dateEnc = virProuve.mouvement.date_operation
         statut  = percevait(bienId, dateEnc) === false ? 'exclu_perimetre' : 'certain'
       } else if (r.platform === 'booking') {
-        const bpl = bplByCode[r.code]
-        if (bpl) { statut = 'booking_prevu'; dateEnc = bpl.payout_date; montant = bpl.amount_cents || montant }
-        else statut = 'absent'
+        const bd = r.booking_date ? r.booking_date.slice(0, 10) : null
+        if (bd && bd > dateCloture) {
+          statut = 'exclu_post_cloture'; montant = r.fin_revenue || 0
+        } else {
+          const bpl = bplByCode[r.code]
+          if (bpl) { statut = 'booking_prevu'; dateEnc = bpl.payout_date; montant = bpl.amount_cents || montant }
+          else statut = 'absent'
+        }
       } else {
         statut = 'exclu'
       }
