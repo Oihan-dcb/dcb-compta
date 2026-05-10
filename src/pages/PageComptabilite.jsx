@@ -1119,6 +1119,13 @@ function SequestreTempsReel() {
       const totalFiable     = totalFuturs
       const totalAnomalies  = anomalies.reduce((s, r) => s + (payinByResa[r.id] || 0), 0)
 
+      // ── DEBUG TEMPORAIRE ──
+      console.group(`[SequestreDebug] ${new Date().toISOString()}`)
+      console.log('allResas:', allResas.length, '| payinByResa keys:', Object.keys(payinByResa).length, '| resasAvecPayin:', resasAvecPayin.length, '| futurs:', futurs.length, '| totalFuturs:', (totalFuturs/100).toFixed(2)+'€')
+      console.log('futurs IDs+payin:', futurs.map(r => `${r.code}=${payinByResa[r.id]}`).join(', '))
+      console.groupEnd()
+      // ── FIN DEBUG ──
+
       setData({
         futurs:          futurs.map(r => ({ ...r, payin: payinByResa[r.id] || 0 })),
         residuelPasses,
