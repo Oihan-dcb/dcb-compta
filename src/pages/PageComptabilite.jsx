@@ -1686,6 +1686,14 @@ function SequestreCloture() {
         }
       }
 
+      // Airbnb sans VIR avant clôture = jamais dans le séquestre DCB → ne pas charger
+      resasAll = resasAll.filter(r => {
+        if (r.platform !== 'airbnb') return true
+        const virs = virByResa[r.id] || []
+        return virs.some(v => v.mouvement?.date_operation && v.mouvement.date_operation <= dateCloture)
+      })
+      if (!resasAll.length) { setLignes([]); setLoading(false); return }
+
       // 3. Paiements réels (direct, stripe, manual)
       const pmtByResa = {}
       for (let i = 0; i < resaIds.length; i += 400) {
