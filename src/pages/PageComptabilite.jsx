@@ -1029,13 +1029,21 @@ function SequestreTempsReel() {
       // 3. PAYINs réels prouvés en banque = reservation_paiement avec mouvement_id IS NOT NULL
       const payinByResa = {}
       for (let i = 0; i < resaIds.length; i += 400) {
-        const { data: pmts } = await supabase
-          .from('reservation_paiement')
-          .select('reservation_id, montant')
-          .in('reservation_id', resaIds.slice(i, i + 400))
-          .not('mouvement_id', 'is', null)
-        for (const p of pmts || []) {
-          payinByResa[p.reservation_id] = (payinByResa[p.reservation_id] || 0) + (p.montant || 0)
+        const batchIds = resaIds.slice(i, i + 400)
+        let offset = 0
+        while (true) {
+          const { data: pmts } = await supabase
+            .from('reservation_paiement')
+            .select('reservation_id, montant')
+            .in('reservation_id', batchIds)
+            .not('mouvement_id', 'is', null)
+            .range(offset, offset + 999)
+          if (!pmts || pmts.length === 0) break
+          for (const p of pmts) {
+            payinByResa[p.reservation_id] = (payinByResa[p.reservation_id] || 0) + (p.montant || 0)
+          }
+          if (pmts.length < 1000) break
+          offset += 1000
         }
       }
 
@@ -1074,14 +1082,22 @@ function SequestreTempsReel() {
       const passesIds = passesVentiles.map(r => r.id)
       const ventilByResa = {}
       for (let i = 0; i < passesIds.length; i += 400) {
-        const { data: ventils } = await supabase
-          .from('ventilation')
-          .select('reservation_id, code, montant_ht, montant_reel')
-          .in('reservation_id', passesIds.slice(i, i + 400))
-          .not('code', 'in', '(VIR,PREST,RGLM,SOLDE)')
-        for (const v of ventils || []) {
-          const amt = v.montant_reel != null ? v.montant_reel : (v.montant_ht || 0)
-          ventilByResa[v.reservation_id] = (ventilByResa[v.reservation_id] || 0) + amt
+        const batchIds = passesIds.slice(i, i + 400)
+        let offset = 0
+        while (true) {
+          const { data: ventils } = await supabase
+            .from('ventilation')
+            .select('reservation_id, code, montant_ht, montant_reel')
+            .in('reservation_id', batchIds)
+            .not('code', 'in', '(VIR,PREST,RGLM,SOLDE)')
+            .range(offset, offset + 999)
+          if (!ventils || ventils.length === 0) break
+          for (const v of ventils) {
+            const amt = v.montant_reel != null ? v.montant_reel : (v.montant_ht || 0)
+            ventilByResa[v.reservation_id] = (ventilByResa[v.reservation_id] || 0) + amt
+          }
+          if (ventils.length < 1000) break
+          offset += 1000
         }
       }
 
