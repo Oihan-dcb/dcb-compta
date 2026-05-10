@@ -152,7 +152,7 @@ export async function syncStripe() {
                 montant: line?.montant_net ?? null,
                 date_paiement: line?.created_at ?? null,
                 type_paiement: line?.terme ? 'partiel' : 'total',
-              }).catch(() => {})
+              })
             }
             // Calculer si la réservation est totalement payée
             const { data: allPaiements } = await supabase.from('reservation_paiement')
