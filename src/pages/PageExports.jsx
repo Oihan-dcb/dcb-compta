@@ -11,6 +11,7 @@ import { exportDeboursPrestations, exportDeboursPrestationsCombined } from '../s
 import { buildComptaMensuelle, downloadComptaCSV, exportComptaCSV } from '../services/buildComptaMensuelle'
 import { envoyerExportsComptable } from '../services/envoyerExportsComptable'
 import { genererSCTVirementsProprios, genererSCTHonorairesDCB, genererSCTVirementsPropriosLC, genererSCTInternesLC } from '../services/exportSCT'
+import { exportSequestreAnnuel } from '../services/exportSequestreAnnuel'
 
 const moisCourant = new Date().toISOString().slice(0, 7)
 
@@ -165,6 +166,8 @@ export default function PageExports() {
     rapprochement: false, auto: false, factures: false, compta: false, achats: false, bilan_lld: false
   })
   const [sendingEmail, setSendingEmail] = useState(false)
+
+  const [anneeSequestre, setAnneeSequestre] = useState(new Date().getFullYear() - 1)
 
   const [biens, setBiens] = useState([])
   const [bienFilter, setBienFilter] = useState({})
@@ -694,6 +697,52 @@ export default function PageExports() {
               finally { setLoading(prev => ({ ...prev, sct_internes_lc: false })) }
             }}
             format="XML"
+          />
+        </div>
+      </section>
+
+      {/* SÉQUESTRE ANNUEL */}
+      <section style={{ marginBottom: 32 }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 14 }}>
+          <h2 style={{ fontSize: '1em', fontWeight: 700, color: '#9C8E7D', textTransform: 'uppercase', letterSpacing: '0.08em', margin: 0 }}>
+            Séquestre annuel
+          </h2>
+          <select
+            value={anneeSequestre}
+            onChange={e => setAnneeSequestre(Number(e.target.value))}
+            style={{ border: '1px solid var(--border)', borderRadius: 6, padding: '3px 10px', background: 'white', fontSize: '0.88em' }}
+          >
+            {[2024, 2025, 2026].map(a => <option key={a} value={a}>{a}</option>)}
+          </select>
+        </div>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+          <ExportCard
+            titre="Clôture séquestre"
+            description={`Réservations arrivant en ${anneeSequestre + 1} avec acompte encaissé avant le 31/12/${anneeSequestre} — statuts certain, booking prévu, à contrôler`}
+            loading={loading.sequestre_annuel}
+            onClick={async () => {
+              setLoading(prev => ({ ...prev, sequestre_annuel: true }))
+              setError(null)
+              try {
+                const csv = await exportSequestreAnnuel(anneeSequestre)
+                downloadCSVBlob(csv, `DCB_Sequestre_Cloture_${anneeSequestre}.csv`)
+              } catch (err) { setError(err.message) }
+              finally { setLoading(prev => ({ ...prev, sequestre_annuel: false })) }
+            }}
+            onPreview={async () => {
+              setLoading(prev => ({ ...prev, sequestre_annuel_preview: true }))
+              setError(null)
+              try {
+                const csv = await exportSequestreAnnuel(anneeSequestre)
+                setPreview({
+                  titre: `Séquestre clôture ${anneeSequestre}`,
+                  csv,
+                  downloadFn: () => downloadCSVBlob(csv, `DCB_Sequestre_Cloture_${anneeSequestre}.csv`),
+                })
+              } catch (err) { setError(err.message) }
+              finally { setLoading(prev => ({ ...prev, sequestre_annuel_preview: false })) }
+            }}
+            loadingPreview={loading.sequestre_annuel_preview}
           />
         </div>
       </section>
