@@ -632,7 +632,12 @@ FORMAT :
       else if (which === 'tendances') await _genererTendances()
     } catch (e) {
       console.warn('LLM génération failed:', e.message)
-      setError('Erreur génération LLM : ' + (e.message || String(e)))
+      const msg = e.message || String(e)
+      if (msg.includes('credit balance is too low') || msg.includes('too low')) {
+        setError('__NO_CREDITS__')
+      } else {
+        setError('Erreur génération LLM : ' + msg)
+      }
     }
     finally { setGeneratingBloc(null) }
   }
@@ -895,7 +900,17 @@ FORMAT :
         </button>
       </div>
 
-{error && <div style={{ background: '#FEE2E2', color: '#DC2626', padding: '10px 14px', borderRadius: 8, marginBottom: 16 }}>{error}</div>}
+{error && (
+  error === '__NO_CREDITS__'
+    ? <div style={{ background: '#FEF3C7', color: '#92400E', padding: '10px 14px', borderRadius: 8, marginBottom: 16, display: 'flex', alignItems: 'center', gap: 12 }}>
+        Crédits Anthropic épuisés — la génération LLM est indisponible.
+        <a href="https://console.anthropic.com/settings/billing" target="_blank" rel="noopener noreferrer"
+          style={{ background: '#92400E', color: '#fff', padding: '4px 12px', borderRadius: 6, fontSize: '0.85em', textDecoration: 'none', whiteSpace: 'nowrap' }}>
+          Recharger les crédits →
+        </a>
+      </div>
+    : <div style={{ background: '#FEE2E2', color: '#DC2626', padding: '10px 14px', borderRadius: 8, marginBottom: 16 }}>{error}</div>
+)}
       {loading && !data && <div style={{ color: '#9C8E7D', marginBottom: 16 }}>Chargement…</div>}
 
       {data && (
