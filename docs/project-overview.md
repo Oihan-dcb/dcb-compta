@@ -788,3 +788,33 @@ while (true) {
 **Résultat** : Acomptes futurs 6 → 22 resas, Résidu passés ventilés 91 → 415 resas, Séquestre fiable 5 938 € → 200 188 €.
 
 **Règle à appliquer partout** : toute requête Supabase sur une table susceptible de dépasser 1000 lignes (reservation, ventilation, mouvement_bancaire…) doit utiliser cette boucle de pagination. Voir invariant I-120.
+
+## Session 10 mai 2026 (fin) — Fluctuation SequestreTempsReel sur prod
+
+### Bug : valeurs fluctuantes à chaque refresh (non-déterminisme)
+
+**Symptôme** : valeurs correctes (21 futurs, 42 646€) seulement ~1 refresh sur 5. Autres runs : 17–20 futurs, 29 000–40 000€. `passés` fluctuait également (304–415 resas, résiduel -27 000 à -35 000€).
+
+**Diagnostic** : panneau debug UI (requestId + compteurs par run) confirme :
+- `allResas=4591` stable → requête `reservation` OK
+- `payinKeys` fluctuait entre 330 et 448 → requête `reservation_paiement` incohérente
+- Aucun run STALE → pas de race condition
+
+**Cause** : `.in('reservation_id', batchIds)` avec 400 UUIDs par batch encode ~15 000 chars dans l'URL (`?reservation_id=in.(uuid1,uuid2,...)`). PostgREST retournait silencieusement `[]` sans erreur sur certains batchs surchargés → la boucle `while(true)` s'arrêtait prématurément → lignes manquantes. Non-déterministe car variable selon la charge réseau/serveur.
+
+**Fix** : remplacer le batch `.in('reservation_id', largeArray)` par un JOIN `reservation!inner(bien_id)` filtré sur `bienIds` (~50 items → URL courte), avec filtrage résiduel en mémoire via `Set`. Même correction sur `ventilation`.
+
+```js
+// Avant : 12 batchs × ~15k chars URL
+for (let i = 0; i < resaIds.length; i += 400) { ... .in('reservation_id', batch400) }
+
+// Après : requête unique paginée, URL courte
+supabase.from('reservation_paiement')
+  .select('reservation_id, montant, reservation!inner(bien_id)')
+  .filter('reservation.bien_id', 'in', `(${bienIds.join(',')})`)
+  .not('mouvement_id', 'is', null)
+  .order('id').range(offset, offset + 999)
+// + filtrage en mémoire : if (resaIdSet.has(p.reservation_id))
+```
+
+**Résultat** : 5 refreshes consécutifs → valeurs identiques 21 futurs (42 646€) / 415 passés (-35 373€). Voir invariant I-121.
