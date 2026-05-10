@@ -1795,7 +1795,7 @@ function SequestreCloture() {
           : (splByCode[r.code]?.minDate ?? null)
 
         return { ...r, statut, montant, dateEnc, inTotal, dateCharge }
-      })
+      }).filter(l => l.statut !== 'exclu_post_cloture')
 
       setLignes(result)
     } catch (e) {
@@ -1812,7 +1812,7 @@ function SequestreCloture() {
   const lignesFiltrees = filtreStatut === 'tous' ? lignes : lignes.filter(l => l.statut === filtreStatut)
   const totalCertain   = lignes.filter(l => l.statut === 'certain').reduce((s, l) => s + l.montant, 0)
   const totalAVerifier = lignes.filter(l => ['certain_manuel', 'a_verifier_acompte', 'booking_sans_vir', 'a_verifier'].includes(l.statut)).reduce((s, l) => s + l.montant, 0)
-  const totalHorsBilan = lignes.filter(l => ['exclu', 'exclu_perimetre', 'exclu_post_cloture', 'absent'].includes(l.statut)).reduce((s, l) => s + l.montant, 0)
+  const totalHorsBilan = lignes.filter(l => ['exclu', 'exclu_perimetre', 'absent'].includes(l.statut)).reduce((s, l) => s + l.montant, 0)
 
   const FILTRES = [
     { key: 'tous',               label: 'Tous' },
@@ -1823,7 +1823,6 @@ function SequestreCloture() {
     { key: 'a_verifier',         label: 'À vérifier' },
     { key: 'exclu_perimetre',    label: 'Hors périmètre' },
     { key: 'exclu',              label: 'Exclu' },
-    { key: 'exclu_post_cloture', label: 'Après clôture' },
     { key: 'absent',             label: 'Absent' },
   ]
 
@@ -1914,7 +1913,7 @@ function SequestreCloture() {
               <div style={{ background: 'white', border: '1px solid var(--border)', borderRadius: 8, padding: '14px 18px' }}>
                 <div style={{ fontSize: '0.76em', color: '#6B5843', marginBottom: 4, textTransform: 'uppercase', letterSpacing: '0.05em' }}>Informatif / exclus</div>
                 <div style={{ fontSize: '1.4em', fontWeight: 700, color: '#9C8E7D', fontVariantNumeric: 'tabular-nums' }}>{NF.format(totalHorsBilan / 100)} €</div>
-                <div style={{ fontSize: '0.75em', color: '#9C8E7D', marginTop: 3 }}>{lignes.filter(l => ['exclu', 'exclu_perimetre', 'exclu_post_cloture', 'absent'].includes(l.statut)).length} résa(s) — hors bilan</div>
+                <div style={{ fontSize: '0.75em', color: '#9C8E7D', marginTop: 3 }}>{lignes.filter(l => ['exclu', 'exclu_perimetre', 'absent'].includes(l.statut)).length} résa(s) — hors bilan</div>
               </div>
             </div>
 
