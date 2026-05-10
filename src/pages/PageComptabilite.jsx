@@ -1794,7 +1794,12 @@ function SequestreCloture() {
             statut = 'certain_manuel'; montant = pmtSomme
             dateEnc = [...pmtProuves].sort((a, b) => (b.date_paiement||'').localeCompare(a.date_paiement||''))[0]?.date_paiement
           } else {
-            statut = 'a_verifier_acompte'; montant = r.fin_revenue || 0
+            const bd = r.booking_date ? r.booking_date.slice(0, 10) : null
+            if (bd && bd <= dateCloture) {
+              statut = 'a_verifier_acompte'; montant = r.fin_revenue || 0
+            } else {
+              statut = 'exclu_post_cloture'; montant = r.fin_revenue || 0
+            }
           }
         } else {
           // direct, stripe — source de vérité = reservation_paiement
@@ -1807,12 +1812,16 @@ function SequestreCloture() {
             const bd = r.booking_date ? r.booking_date.slice(0, 10) : null
             // Priorité 2 : stripe_payout_line (charge uniquement après clôture)
             const spl = splByCode[r.code]
-            const splPostOnly = spl && spl.apres && !spl.avant
-            if ((bd && bd > dateCloture) || (!bd && splPostOnly)) {
-              // Résa faite en N+1 → pas d'acompte 2025 possible
-              statut = 'exclu_post_cloture'; montant = r.fin_revenue || 0
-            } else {
+            const splAvant = spl && spl.avant
+            // exclu_post_cloture si : booking_date > clôture, OU booking_date null sans charge Stripe avant clôture
+            // Seule une preuve d'antériorité (booking_date <= clôture OU splAvant) maintient à_verifier
+            if (bd && bd <= dateCloture) {
               statut = 'a_verifier_acompte'; montant = r.fin_revenue || 0
+            } else if (!bd && splAvant) {
+              statut = 'a_verifier_acompte'; montant = r.fin_revenue || 0
+            } else {
+              // Pas de preuve que la résa date d'avant clôture → exclure
+              statut = 'exclu_post_cloture'; montant = r.fin_revenue || 0
             }
           }
         }
