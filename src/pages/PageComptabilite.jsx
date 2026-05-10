@@ -1214,7 +1214,7 @@ function SequestreTempsReel() {
                           </tr>
                         </thead>
                         <tbody>
-                          {futurs.sort((a, b) => a.arrival_date.localeCompare(b.arrival_date)).map((r, i) => (
+                          {[...futurs].sort((a, b) => a.arrival_date.localeCompare(b.arrival_date)).map((r, i) => (
                             <tr key={r.id} style={{ borderBottom: '1px solid var(--border)', background: i % 2 === 0 ? 'white' : '#FDFAF5' }}>
                               <td style={{ padding: '6px 10px', fontWeight: 600, whiteSpace: 'nowrap' }}>{r.bien?.code || '—'}</td>
                               <td style={{ padding: '6px 10px', fontFamily: 'monospace', fontSize: '0.85em', color: '#6B5843' }}>{r.code || '—'}</td>
@@ -1268,7 +1268,7 @@ function SequestreTempsReel() {
                         </tr>
                       </thead>
                       <tbody>
-                        {residuelPasses.sort((a, b) => b.departure_date.localeCompare(a.departure_date)).map((r, i) => {
+                        {[...residuelPasses].sort((a, b) => b.departure_date.localeCompare(a.departure_date)).map((r, i) => {
                           const col = Math.abs(r.residuel) < 100_00 ? '#5C4B2A' : '#92400E'
                           return (
                             <tr key={r.id} style={{ borderBottom: '1px solid #EAE3D4', background: i % 2 === 0 ? 'white' : '#FDFAF5' }}>
@@ -1315,7 +1315,7 @@ function SequestreTempsReel() {
                       </tr>
                     </thead>
                     <tbody>
-                      {futursAttenteAB.sort((a, b) => a.arrival_date.localeCompare(b.arrival_date)).map((r, i) => (
+                      {[...futursAttenteAB].sort((a, b) => a.arrival_date.localeCompare(b.arrival_date)).map((r, i) => (
                         <tr key={r.id} style={{ borderBottom: '1px solid #DBEAFE', background: i % 2 === 0 ? 'white' : '#F0F7FF' }}>
                           <td style={{ padding: '6px 10px', fontWeight: 600, whiteSpace: 'nowrap' }}>{r.bien?.code || '—'}</td>
                           <td style={{ padding: '6px 10px', fontFamily: 'monospace', fontSize: '0.85em', color: '#6B5843' }}>{r.code || '—'}</td>
@@ -1358,7 +1358,7 @@ function SequestreTempsReel() {
                       </tr>
                     </thead>
                     <tbody>
-                      {futursAVerifier.sort((a, b) => a.arrival_date.localeCompare(b.arrival_date)).map((r, i) => (
+                      {[...futursAVerifier].sort((a, b) => a.arrival_date.localeCompare(b.arrival_date)).map((r, i) => (
                         <tr key={r.id} style={{ borderBottom: '1px solid #FDE68A', background: i % 2 === 0 ? 'white' : '#FFFDF0' }}>
                           <td style={{ padding: '6px 10px', fontWeight: 600, whiteSpace: 'nowrap' }}>{r.bien?.code || '—'}</td>
                           <td style={{ padding: '6px 10px', fontFamily: 'monospace', fontSize: '0.85em', color: '#6B5843' }}>{r.code || '—'}</td>
@@ -1402,7 +1402,7 @@ function SequestreTempsReel() {
                       </tr>
                     </thead>
                     <tbody>
-                      {anomalies.sort((a, b) => b.departure_date.localeCompare(a.departure_date)).map((r, i) => (
+                      {[...anomalies].sort((a, b) => b.departure_date.localeCompare(a.departure_date)).map((r, i) => (
                         <tr key={r.id} style={{ borderBottom: '1px solid #FECACA', background: i % 2 === 0 ? 'white' : '#FFF5F5' }}>
                           <td style={{ padding: '6px 10px', fontWeight: 600, whiteSpace: 'nowrap' }}>{r.bien?.code || '—'}</td>
                           <td style={{ padding: '6px 10px', fontFamily: 'monospace', fontSize: '0.85em', color: '#6B5843' }}>{r.code || '—'}</td>
