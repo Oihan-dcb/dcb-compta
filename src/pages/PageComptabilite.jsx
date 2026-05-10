@@ -1012,6 +1012,7 @@ function SequestreTempsReel() {
             .select('id, code, platform, guest_name, arrival_date, departure_date, fin_revenue, ventilation_calculee, final_status, owner_stay, bien:bien_id(id, code)')
             .in('bien_id', batchBienIds)
             .gt('fin_revenue', 0)
+            .order('id')
             .range(offset, offset + 999)
           if (!r || r.length === 0) break
           allResas = allResas.concat(r.filter(r =>
@@ -1037,6 +1038,7 @@ function SequestreTempsReel() {
             .select('reservation_id, montant')
             .in('reservation_id', batchIds)
             .not('mouvement_id', 'is', null)
+            .order('id')
             .range(offset, offset + 999)
           if (!pmts || pmts.length === 0) break
           for (const p of pmts) {
@@ -1090,6 +1092,7 @@ function SequestreTempsReel() {
             .select('reservation_id, code, montant_ht, montant_reel')
             .in('reservation_id', batchIds)
             .not('code', 'in', '(VIR,PREST,RGLM,SOLDE)')
+            .order('id')
             .range(offset, offset + 999)
           if (!ventils || ventils.length === 0) break
           for (const v of ventils) {
