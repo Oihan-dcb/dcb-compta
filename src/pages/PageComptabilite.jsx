@@ -1573,13 +1573,8 @@ const STATUT_SEQ = {
   certain:              { label: 'Certain',                                color: '#065F46', bg: '#D1FAE5' },
   certain_manuel:       { label: 'Certain — manuel rapproché',             color: '#065F46', bg: '#D1FAE5' },
   booking_prevu:        { label: 'Booking — payout prévu',                 color: '#1D4ED8', bg: '#DBEAFE' },
-  a_verifier_acompte:   { label: 'À vérifier — acompte 2025 à contrôler', color: '#7C3AED', bg: '#EDE9FE' },
-  booking_sans_vir:     { label: 'À vérifier — Booking sans VIR daté',    color: '#92400E', bg: '#FEF3C7' },
-  exclu:                { label: 'Exclu — Airbnb non versé',               color: '#9C8E7D', bg: '#F3F4F6' },
+  a_verifier_acompte:   { label: 'Acompte à contrôler',                   color: '#7C3AED', bg: '#EDE9FE' },
   exclu_perimetre:      { label: 'Exclu — hors périmètre',                 color: '#6B5843', bg: '#FEF9F0' },
-  exclu_post_cloture:   { label: 'Exclu — résa après clôture',             color: '#9C8E7D', bg: '#F3F4F6' },
-  a_verifier:           { label: 'À vérifier',                             color: '#7C3AED', bg: '#EDE9FE' },
-  absent:               { label: 'Absent',                                 color: '#9C8E7D', bg: '#F3F4F6' },
 }
 const CANAL_SEQ = { airbnb: 'Airbnb', booking: 'Booking', direct: 'Direct', manual: 'Manuel', stripe: 'Stripe' }
 
@@ -1786,7 +1781,7 @@ function SequestreCloture() {
               statut = 'absent'
             }
           } else {
-            statut = 'exclu' // Airbnb non versé (déjà filtré mais sécurité)
+            statut = 'exclu_perimetre' // Airbnb VIR prouvé mais hors périmètre (ne devrait pas arriver ici)
           }
         } else if (r.platform === 'manual') {
           // Toujours analysé — pas de filtre périmètre
@@ -1832,7 +1827,7 @@ function SequestreCloture() {
           : (splByCode[r.code]?.minDate ?? null)
 
         return { ...r, statut, montant, dateEnc, inTotal, dateCharge }
-      }).filter(l => l.statut !== 'exclu_post_cloture' && l.statut !== 'absent')
+      }).filter(l => l.statut !== 'exclu_post_cloture' && l.statut !== 'absent' && l.statut !== 'exclu')
 
       setLignes(result)
     } catch (e) {
@@ -1847,9 +1842,9 @@ function SequestreCloture() {
   }, [charger, biensList.length])
 
   const lignesFiltrees = filtreStatut === 'tous' ? lignes : lignes.filter(l => l.statut === filtreStatut)
-  const totalCertain   = lignes.filter(l => l.statut === 'certain').reduce((s, l) => s + l.montant, 0)
-  const totalAVerifier = lignes.filter(l => ['certain_manuel', 'booking_prevu', 'a_verifier_acompte', 'booking_sans_vir', 'a_verifier'].includes(l.statut)).reduce((s, l) => s + l.montant, 0)
-  const totalHorsBilan = lignes.filter(l => ['exclu', 'exclu_perimetre', 'absent'].includes(l.statut)).reduce((s, l) => s + l.montant, 0)
+  const totalCertain   = lignes.filter(l => l.statut === 'certain' || l.statut === 'certain_manuel').reduce((s, l) => s + l.montant, 0)
+  const totalAVerifier = lignes.filter(l => l.statut === 'booking_prevu' || l.statut === 'a_verifier_acompte').reduce((s, l) => s + l.montant, 0)
+  const totalHorsBilan = lignes.filter(l => l.statut === 'exclu_perimetre').reduce((s, l) => s + l.montant, 0)
 
   const FILTRES = [
     { key: 'tous',               label: 'Tous' },
@@ -1857,11 +1852,7 @@ function SequestreCloture() {
     { key: 'certain_manuel',     label: 'Certain — manuel' },
     { key: 'booking_prevu',      label: 'Booking prévu' },
     { key: 'a_verifier_acompte', label: 'Acompte à contrôler' },
-    { key: 'booking_sans_vir',   label: 'Booking sans VIR' },
-    { key: 'a_verifier',         label: 'À vérifier' },
     { key: 'exclu_perimetre',    label: 'Hors périmètre' },
-    { key: 'exclu',              label: 'Exclu' },
-    { key: 'absent',             label: 'Absent' },
   ]
 
   const dateCloture      = `${anneeCloture}-12-31`
@@ -1941,17 +1932,17 @@ function SequestreCloture() {
               <div style={{ background: 'white', border: '1px solid var(--border)', borderRadius: 8, padding: '14px 18px' }}>
                 <div style={{ fontSize: '0.76em', color: '#6B5843', marginBottom: 4, textTransform: 'uppercase', letterSpacing: '0.05em' }}>Séquestre certain</div>
                 <div style={{ fontSize: '1.4em', fontWeight: 700, color: '#065F46', fontVariantNumeric: 'tabular-nums' }}>{NF.format(totalCertain / 100)} €</div>
-                <div style={{ fontSize: '0.75em', color: '#9C8E7D', marginTop: 3 }}>{lignes.filter(l => l.statut === 'certain').length} résa(s) — inclus au bilan</div>
+                <div style={{ fontSize: '0.75em', color: '#9C8E7D', marginTop: 3 }}>{lignes.filter(l => l.statut === 'certain' || l.statut === 'certain_manuel').length} résa(s) — Airbnb/Booking/manuel prouvés</div>
               </div>
               <div style={{ background: 'white', border: '1px solid var(--border)', borderRadius: 8, padding: '14px 18px' }}>
-                <div style={{ fontSize: '0.76em', color: '#6B5843', marginBottom: 4, textTransform: 'uppercase', letterSpacing: '0.05em' }}>À confirmer (hors total fiable)</div>
+                <div style={{ fontSize: '0.76em', color: '#6B5843', marginBottom: 4, textTransform: 'uppercase', letterSpacing: '0.05em' }}>À confirmer</div>
                 <div style={{ fontSize: '1.4em', fontWeight: 700, color: '#92400E', fontVariantNumeric: 'tabular-nums' }}>{NF.format(totalAVerifier / 100)} €</div>
-                <div style={{ fontSize: '0.75em', color: '#9C8E7D', marginTop: 3 }}>{lignes.filter(l => ['certain_manuel', 'booking_prevu', 'a_verifier_acompte', 'booking_sans_vir', 'a_verifier'].includes(l.statut)).length} résa(s)</div>
+                <div style={{ fontSize: '0.75em', color: '#9C8E7D', marginTop: 3 }}>{lignes.filter(l => l.statut === 'booking_prevu' || l.statut === 'a_verifier_acompte').length} résa(s) — Booking prévu + acomptes</div>
               </div>
               <div style={{ background: 'white', border: '1px solid var(--border)', borderRadius: 8, padding: '14px 18px' }}>
-                <div style={{ fontSize: '0.76em', color: '#6B5843', marginBottom: 4, textTransform: 'uppercase', letterSpacing: '0.05em' }}>Informatif / exclus</div>
+                <div style={{ fontSize: '0.76em', color: '#6B5843', marginBottom: 4, textTransform: 'uppercase', letterSpacing: '0.05em' }}>Hors périmètre</div>
                 <div style={{ fontSize: '1.4em', fontWeight: 700, color: '#9C8E7D', fontVariantNumeric: 'tabular-nums' }}>{NF.format(totalHorsBilan / 100)} €</div>
-                <div style={{ fontSize: '0.75em', color: '#9C8E7D', marginTop: 3 }}>{lignes.filter(l => ['exclu', 'exclu_perimetre', 'absent'].includes(l.statut)).length} résa(s) — hors bilan</div>
+                <div style={{ fontSize: '0.75em', color: '#9C8E7D', marginTop: 3 }}>{lignes.filter(l => l.statut === 'exclu_perimetre').length} résa(s) — hors bilan</div>
               </div>
             </div>
 
