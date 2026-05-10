@@ -12,6 +12,11 @@
 
 import { createClient } from 'npm:@supabase/supabase-js@2'
 
+const CORS = {
+  'Access-Control-Allow-Origin': '*',
+  'Access-Control-Allow-Headers': 'authorization, content-type',
+}
+
 const STRIPE_SECRET = Deno.env.get('STRIPE_SECRET_KEY') ?? ''
 const SUPABASE_URL  = Deno.env.get('SUPABASE_URL') ?? ''
 const SERVICE_KEY   = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? ''
@@ -28,17 +33,17 @@ async function stripeGet(path: string) {
 
 Deno.serve(async (req) => {
   if (req.method === 'OPTIONS') {
-    return new Response('ok', { headers: { 'Access-Control-Allow-Origin': '*', 'Access-Control-Allow-Headers': 'authorization, content-type' } })
+    return new Response('ok', { headers: CORS })
   }
 
   let codes: string[], dateCloture: string, resaByCode: Record<string, string>
   try {
     ({ codes, dateCloture, resaByCode } = await req.json())
   } catch {
-    return Response.json({ ok: false, error: 'Body JSON invalide' }, { status: 400 })
+    return Response.json({ ok: false, error: 'Body JSON invalide' }, { status: 400, headers: CORS })
   }
   if (!codes?.length || !dateCloture || !resaByCode) {
-    return Response.json({ ok: false, error: 'Paramètres manquants' }, { status: 400 })
+    return Response.json({ ok: false, error: 'Paramètres manquants' }, { status: 400, headers: CORS })
   }
 
   const log = { found: 0, inserted: 0, errors: 0 }
@@ -132,5 +137,5 @@ Deno.serve(async (req) => {
     }
   }
 
-  return Response.json({ ok: true, ...log })
+  return Response.json({ ok: true, ...log }, { headers: CORS })
 })
