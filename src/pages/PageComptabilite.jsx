@@ -3,6 +3,7 @@ import MoisSelector, { MOIS_FR } from '../components/MoisSelector'
 import { useMoisPersisted } from '../hooks/useMoisPersisted'
 import { supabase } from '../lib/supabase'
 import { buildComptaMensuelle } from '../services/buildComptaMensuelle'
+import { syncStripeAcomptesSequestre, HAS_STRIPE_SEQUESTRE } from '../services/syncStripeAcomptesSequestre'
 import { AGENCE } from '../lib/agence'
 
 const moisCourant = new Date().toISOString().slice(0, 7)
@@ -1569,14 +1570,14 @@ function SequestreTempsReel() {
 // ─────────────────────────────────────────────────────────────────────────────
 
 const STATUT_SEQ = {
-  certain:          { label: 'Certain',                              color: '#065F46', bg: '#D1FAE5' },
-  certain_manuel:   { label: 'Certain — manuel rapproché',           color: '#065F46', bg: '#D1FAE5' },
-  estime:           { label: 'Estimé — hors total',                  color: '#92400E', bg: '#FEF3C7' },
-  booking_sans_vir: { label: 'À vérifier — Booking sans VIR daté',   color: '#92400E', bg: '#FEF3C7' },
-  exclu:            { label: 'Exclu — Airbnb non versé',             color: '#9C8E7D', bg: '#F3F4F6' },
-  exclu_perimetre:  { label: 'Exclu — hors périmètre',               color: '#6B5843', bg: '#FEF9F0' },
-  a_verifier:       { label: 'À vérifier',                           color: '#7C3AED', bg: '#EDE9FE' },
-  absent:           { label: 'Absent',                               color: '#9C8E7D', bg: '#F3F4F6' },
+  certain:              { label: 'Certain',                                color: '#065F46', bg: '#D1FAE5' },
+  certain_manuel:       { label: 'Certain — manuel rapproché',             color: '#065F46', bg: '#D1FAE5' },
+  a_verifier_acompte:   { label: 'À vérifier — acompte 2025 à contrôler', color: '#7C3AED', bg: '#EDE9FE' },
+  booking_sans_vir:     { label: 'À vérifier — Booking sans VIR daté',    color: '#92400E', bg: '#FEF3C7' },
+  exclu:                { label: 'Exclu — Airbnb non versé',               color: '#9C8E7D', bg: '#F3F4F6' },
+  exclu_perimetre:      { label: 'Exclu — hors périmètre',                 color: '#6B5843', bg: '#FEF9F0' },
+  a_verifier:           { label: 'À vérifier',                             color: '#7C3AED', bg: '#EDE9FE' },
+  absent:               { label: 'Absent',                                 color: '#9C8E7D', bg: '#F3F4F6' },
 }
 const CANAL_SEQ = { airbnb: 'Airbnb', booking: 'Booking', direct: 'Direct', manual: 'Manuel', stripe: 'Stripe' }
 
@@ -1591,6 +1592,8 @@ function SequestreCloture() {
   const [loading, setLoading]             = useState(false)
   const [error, setError]                 = useState(null)
   const [filtreStatut, setFiltreStatut]   = useState('tous')
+  const [syncingStripe, setSyncingStripe] = useState(false)
+  const [syncLog, setSyncLog]             = useState(null)
 
   const fmtDate = d => d ? new Date(d + 'T00:00:00').toLocaleDateString('fr-FR') : '—'
 
@@ -1732,17 +1735,17 @@ function SequestreCloture() {
             statut = 'certain_manuel'; montant = pmtSomme
             dateEnc = [...pmtProuves].sort((a, b) => (b.date_paiement||'').localeCompare(a.date_paiement||''))[0]?.date_paiement
           } else {
-            statut = 'a_verifier'; montant = r.fin_revenue || 0
+            statut = 'a_verifier_acompte'; montant = r.fin_revenue || 0
           }
         } else {
           // direct, stripe — toujours analysé, pas de filtre périmètre
+          // La source de vérité est reservation_paiement (Stripe capturé <= dateCloture)
+          // Ne jamais utiliser fin_revenue comme montant certain
           if (hasPmtProuve) {
             statut = 'certain'; montant = pmtSomme; inTotal = true
             dateEnc = [...pmtProuves].sort((a, b) => (b.date_paiement||'').localeCompare(a.date_paiement||''))[0]?.date_paiement
-          } else if (r.rapprochee) {
-            statut = 'estime'; montant = r.fin_revenue || 0
           } else {
-            statut = 'a_verifier'; montant = r.fin_revenue || 0
+            statut = 'a_verifier_acompte'; montant = r.fin_revenue || 0
           }
         }
 
@@ -1763,19 +1766,19 @@ function SequestreCloture() {
 
   const lignesFiltrees = filtreStatut === 'tous' ? lignes : lignes.filter(l => l.statut === filtreStatut)
   const totalCertain   = lignes.filter(l => l.statut === 'certain').reduce((s, l) => s + l.montant, 0)
-  const totalAVerifier = lignes.filter(l => ['certain_manuel', 'estime', 'booking_sans_vir', 'a_verifier'].includes(l.statut)).reduce((s, l) => s + l.montant, 0)
+  const totalAVerifier = lignes.filter(l => ['certain_manuel', 'a_verifier_acompte', 'booking_sans_vir', 'a_verifier'].includes(l.statut)).reduce((s, l) => s + l.montant, 0)
   const totalHorsBilan = lignes.filter(l => ['exclu', 'exclu_perimetre', 'absent'].includes(l.statut)).reduce((s, l) => s + l.montant, 0)
 
   const FILTRES = [
-    { key: 'tous',             label: 'Tous' },
-    { key: 'certain',          label: 'Certain' },
-    { key: 'certain_manuel',   label: 'Certain — manuel' },
-    { key: 'estime',           label: 'Estimé' },
-    { key: 'booking_sans_vir', label: 'Booking sans VIR' },
-    { key: 'a_verifier',       label: 'À vérifier' },
-    { key: 'exclu_perimetre',  label: 'Hors périmètre' },
-    { key: 'exclu',            label: 'Exclu' },
-    { key: 'absent',           label: 'Absent' },
+    { key: 'tous',               label: 'Tous' },
+    { key: 'certain',            label: 'Certain' },
+    { key: 'certain_manuel',     label: 'Certain — manuel' },
+    { key: 'a_verifier_acompte', label: 'Acompte à contrôler' },
+    { key: 'booking_sans_vir',   label: 'Booking sans VIR' },
+    { key: 'a_verifier',         label: 'À vérifier' },
+    { key: 'exclu_perimetre',    label: 'Hors périmètre' },
+    { key: 'exclu',              label: 'Exclu' },
+    { key: 'absent',             label: 'Absent' },
   ]
 
   const dateCloture      = `${anneeCloture}-12-31`
@@ -1802,11 +1805,33 @@ function SequestreCloture() {
         <span style={{ color: '#9C8E7D', fontSize: '0.82em' }}>
           Séjours arrivant à partir du {fmtDate(dateDebutSuivant)} · encaissés avant le {fmtDate(dateCloture)}
         </span>
+        {HAS_STRIPE_SEQUESTRE && (
+          <button
+            disabled={syncingStripe || loading}
+            onClick={async () => {
+              setSyncingStripe(true); setSyncLog(null)
+              try {
+                const res = await syncStripeAcomptesSequestre(lignes, dateCloture)
+                setSyncLog(res)
+                if (res.inserted > 0) await charger()
+              } finally { setSyncingStripe(false) }
+            }}
+            style={{ padding: '5px 14px', background: '#635BFF', color: 'white', border: 'none', borderRadius: 6, cursor: 'pointer', fontSize: '0.85em', opacity: (syncingStripe || loading) ? 0.6 : 1 }}>
+            {syncingStripe ? '⏳ Recherche…' : '⚡ Acomptes Stripe'}
+          </button>
+        )}
         <button onClick={charger}
-          style={{ marginLeft: 'auto', padding: '5px 14px', background: 'var(--brand)', color: 'white', border: 'none', borderRadius: 6, cursor: 'pointer', fontSize: '0.85em' }}>
+          style={{ marginLeft: HAS_STRIPE_SEQUESTRE ? 0 : 'auto', padding: '5px 14px', background: 'var(--brand)', color: 'white', border: 'none', borderRadius: 6, cursor: 'pointer', fontSize: '0.85em' }}>
           ↺ Rafraîchir
         </button>
       </div>
+      {syncLog && (
+        <div style={{ fontSize: '0.82em', color: syncLog.errors ? '#DC2626' : '#065F46', marginTop: 6, marginBottom: -8 }}>
+          Stripe : {syncLog.found} résa(s) trouvée(s), {syncLog.inserted} paiement(s) inséré(s)
+          {syncLog.errors > 0 && `, ${syncLog.errors} erreur(s)`}
+          {syncLog.inserted === 0 && syncLog.errors === 0 && ' — aucun nouveau paiement trouvé'}
+        </div>
+      )}
 
       {/* Sous-onglets Calcul / Périmètre mensuel */}
       <div style={{ display: 'flex', borderBottom: '1px solid var(--border)', marginBottom: 20, marginTop: 14 }}>
@@ -1838,7 +1863,7 @@ function SequestreCloture() {
               <div style={{ background: 'white', border: '1px solid var(--border)', borderRadius: 8, padding: '14px 18px' }}>
                 <div style={{ fontSize: '0.76em', color: '#6B5843', marginBottom: 4, textTransform: 'uppercase', letterSpacing: '0.05em' }}>À confirmer (hors total fiable)</div>
                 <div style={{ fontSize: '1.4em', fontWeight: 700, color: '#92400E', fontVariantNumeric: 'tabular-nums' }}>{NF.format(totalAVerifier / 100)} €</div>
-                <div style={{ fontSize: '0.75em', color: '#9C8E7D', marginTop: 3 }}>{lignes.filter(l => ['certain_manuel', 'estime', 'booking_sans_vir', 'a_verifier'].includes(l.statut)).length} résa(s)</div>
+                <div style={{ fontSize: '0.75em', color: '#9C8E7D', marginTop: 3 }}>{lignes.filter(l => ['certain_manuel', 'a_verifier_acompte', 'booking_sans_vir', 'a_verifier'].includes(l.statut)).length} résa(s)</div>
               </div>
               <div style={{ background: 'white', border: '1px solid var(--border)', borderRadius: 8, padding: '14px 18px' }}>
                 <div style={{ fontSize: '0.76em', color: '#6B5843', marginBottom: 4, textTransform: 'uppercase', letterSpacing: '0.05em' }}>Informatif / exclus</div>
