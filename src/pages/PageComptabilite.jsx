@@ -1040,6 +1040,23 @@ function SequestreTempsReel() {
         }
       }
 
+      // DEBUG TEMP
+      console.log(`[DBG] bienIds.length=${bienIds.length} allResas.length=${allResas.length}`)
+      const debugBienIds = [
+        'b2082d04-0b18-41ad-8e69-0bc2c8cf496f', // PATXI
+        'c6e3780b-6e98-4cbd-b614-fdd06f59c173', // ONTZI
+        'b965131f-63a2-4f1d-85a2-375a522ce418', // GASQ
+        '3661e230-15e8-4a42-82f2-abeb5f9741b1', // CERES
+        '4156c337-47ef-474e-9de4-0789be28c9e3', // BELEZIA
+      ]
+      debugBienIds.forEach(id => console.log(`[DBG] bienId ${id} inBienIds=${bienIds.includes(id)}`))
+      const debugCodes = ['85TCHF','R34GYX','L2K15B','CV6MYW','F9F12D']
+      debugCodes.forEach(code => {
+        const r = allResas.find(r => r.code === code)
+        if (r) console.log(`[DBG] ${code} inAllResas=true payin=${payinByResa[r.id]} fin_revenue=${r.fin_revenue} departure=${r.departure_date}`)
+        else console.log(`[DBG] ${code} inAllResas=FALSE`)
+      })
+
       // Garder uniquement les resas avec au moins un PAYIN prouvé
       const resasAvecPayin = allResas.filter(r => (payinByResa[r.id] || 0) > 0)
 
