@@ -1031,6 +1031,14 @@ function SequestreTempsReel() {
         }
       }
 
+      // Plafonner le PAYIN à fin_revenue par resa
+      // (certains reservation_paiement Stripe contiennent le batch total au lieu du montant par resa)
+      for (const r of allResas) {
+        if (payinByResa[r.id] != null && r.fin_revenue > 0) {
+          payinByResa[r.id] = Math.min(payinByResa[r.id], r.fin_revenue)
+        }
+      }
+
       // Garder uniquement les resas avec au moins un PAYIN prouvé
       const resasAvecPayin = allResas.filter(r => (payinByResa[r.id] || 0) > 0)
 
@@ -1047,7 +1055,7 @@ function SequestreTempsReel() {
           .from('ventilation')
           .select('reservation_id, code, montant_ht, montant_reel')
           .in('reservation_id', passesIds.slice(i, i + 400))
-          .not('code', 'in', '("VIR","PREST")')
+          .not('code', 'in', '(VIR,PREST)')
         for (const v of ventils || []) {
           const amt = v.montant_reel != null ? v.montant_reel : (v.montant_ht || 0)
           ventilByResa[v.reservation_id] = (ventilByResa[v.reservation_id] || 0) + amt
