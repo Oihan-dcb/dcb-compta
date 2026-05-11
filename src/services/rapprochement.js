@@ -487,7 +487,8 @@ export async function getResasEnAttentePayin(mois) {
       id, code, platform, guest_name, arrival_date, departure_date, nights,
       fin_revenue, final_status, rapprochee, mois_comptable,
       bien!inner (id, code, hospitable_name, gestion_loyer, agence),
-      ventilation (montant_ttc, code)
+      ventilation (montant_ttc, code),
+      reservation_paiement (montant)
     `)
     .neq('rapprochee', true)
     .gte('mois_comptable', dateMin)
