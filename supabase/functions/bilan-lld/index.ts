@@ -147,15 +147,17 @@ serve(async (req) => {
     const [{ data: agency }, { data: loyers }, { data: virements }] = await Promise.all([
       supabase.from('agency_config').select('label, resend_from_email, email_comptable').eq('agence', agence).single(),
       supabase.from('loyer_suivi')
-        .select('*, etudiant(nom, prenom, loyer_nu, supplement_loyer, charges_eau, charges_copro, charges_internet, bien(code))')
+        .select('*, etudiant(nom, prenom, loyer_nu, supplement_loyer, charges_eau, charges_copro, charges_internet, archived, bien(code))')
         .eq('agence', agence).eq('mois', mois).order('created_at'),
       supabase.from('virement_proprio_suivi')
-        .select('*, etudiant(nom, prenom, proprietaire(nom, prenom))')
+        .select('*, etudiant(nom, prenom, archived, proprietaire(nom, prenom))')
         .eq('agence', agence).eq('mois', mois).order('created_at'),
     ])
 
     const agenceLabel = agency?.label || 'Destination Côte Basque'
-    const html = genHTML(mois, loyers || [], virements || [], agenceLabel)
+    const loyersFiltres    = (loyers    || []).filter((l: any) => !l.etudiant?.archived)
+    const virementsFiltres = (virements || []).filter((v: any) => !v.etudiant?.archived)
+    const html = genHTML(mois, loyersFiltres, virementsFiltres, agenceLabel)
 
     // Générer le PDF via Puppeteer
     const pdfRes = await fetch(`${APP_URL}/api/generate-pdf`, {
