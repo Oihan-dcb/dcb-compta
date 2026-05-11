@@ -20,6 +20,10 @@ const SIBLING_URLS = {
   bordeaux: null,
 }
 const siblingUrl = SIBLING_URLS[AGENCE] || null
+
+const ALLOWED_EMAILS = (import.meta.env.VITE_ALLOWED_ADMIN_EMAILS || '')
+  .split(',').map(e => e.trim().toLowerCase()).filter(Boolean)
+
 import PageBiens from './pages/PageBiens'
 import PageReservations from './pages/PageReservations'
 import PageBanque from './pages/PageBanque'
@@ -44,6 +48,89 @@ import PageTaxeSejour from './pages/PageTaxeSejour'
 import BugReportButton from './components/BugReportButton'
 import './App.css'
 
+// ── Écran de chargement ───────────────────────────────────────────────────────
+function LoadingScreen() {
+  return (
+    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '100vh', background: '#F7F3EC' }}>
+      <div style={{ fontSize: 13, color: '#8C7B65' }}>Chargement…</div>
+    </div>
+  )
+}
+
+// ── Écran de login ────────────────────────────────────────────────────────────
+function LoginScreen() {
+  const [email, setEmail] = useState('')
+  const [password, setPassword] = useState('')
+  const [loading, setLoading] = useState(false)
+  const [error, setError] = useState(null)
+
+  async function handleSubmit(e) {
+    e.preventDefault()
+    setLoading(true)
+    setError(null)
+    const { error: err } = await supabase.auth.signInWithPassword({ email: email.trim(), password })
+    if (err) setError(err.message)
+    setLoading(false)
+  }
+
+  const inp = { width: '100%', padding: '10px 12px', border: '1px solid #D9CEB8', borderRadius: 8, fontSize: 14, background: '#fff', outline: 'none', boxSizing: 'border-box' }
+
+  return (
+    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '100vh', background: '#F7F3EC' }}>
+      <div style={{ background: '#fff', borderRadius: 16, boxShadow: '0 4px 24px rgba(0,0,0,.10)', padding: '40px 36px', width: 340, maxWidth: '90vw' }}>
+        <div style={{ fontWeight: 800, fontSize: 18, color: '#2C2416', marginBottom: 4 }}>{agenceLabel.icon} Compta</div>
+        <div style={{ fontSize: 13, color: '#8C7B65', marginBottom: 28 }}>Accès réservé aux équipes DCB</div>
+        <form onSubmit={handleSubmit} style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+          <input
+            type="email"
+            placeholder="Email"
+            value={email}
+            onChange={e => setEmail(e.target.value)}
+            required
+            style={inp}
+          />
+          <input
+            type="password"
+            placeholder="Mot de passe"
+            value={password}
+            onChange={e => setPassword(e.target.value)}
+            required
+            style={inp}
+          />
+          {error && <div style={{ fontSize: 12, color: '#ef4444', background: '#fef2f2', padding: '8px 10px', borderRadius: 6 }}>{error}</div>}
+          <button
+            type="submit"
+            disabled={loading}
+            style={{ marginTop: 4, padding: '11px', background: '#CC9933', color: '#fff', border: 'none', borderRadius: 8, fontWeight: 700, fontSize: 14, cursor: loading ? 'not-allowed' : 'pointer', opacity: loading ? 0.7 : 1 }}>
+            {loading ? 'Connexion…' : 'Se connecter'}
+          </button>
+        </form>
+      </div>
+    </div>
+  )
+}
+
+// ── Écran accès non autorisé ──────────────────────────────────────────────────
+function UnauthorizedScreen({ email, onLogout }) {
+  return (
+    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '100vh', background: '#F7F3EC' }}>
+      <div style={{ background: '#fff', borderRadius: 16, boxShadow: '0 4px 24px rgba(0,0,0,.10)', padding: '40px 36px', width: 340, maxWidth: '90vw', textAlign: 'center' }}>
+        <div style={{ fontSize: 32, marginBottom: 12 }}>🚫</div>
+        <div style={{ fontWeight: 700, fontSize: 16, color: '#2C2416', marginBottom: 8 }}>Accès non autorisé</div>
+        <div style={{ fontSize: 13, color: '#8C7B65', marginBottom: 24 }}>
+          Le compte <strong>{email}</strong> n'est pas autorisé à accéder à cette application.
+        </div>
+        <button
+          onClick={onLogout}
+          style={{ padding: '9px 20px', background: '#D9CEB8', color: '#2C2416', border: 'none', borderRadius: 8, fontWeight: 600, fontSize: 13, cursor: 'pointer' }}>
+          Se déconnecter
+        </button>
+      </div>
+    </div>
+  )
+}
+
+// ── Navigation ────────────────────────────────────────────────────────────────
 function AgencyLogo() {
   const location = useLocation()
   if (!siblingUrl) return (
@@ -102,7 +189,9 @@ function ConfigDropdown() {
   )
 }
 
+// ── App principale ────────────────────────────────────────────────────────────
 export default function App() {
+  const [session, setSession] = useState(undefined) // undefined = en cours de vérification
   const [nbEnAttente, setNbEnAttente] = useState(0)
   const _now = new Date()
   const _lastDay = new Date(_now.getFullYear(), _now.getMonth() + 1, 0).getDate()
@@ -111,7 +200,18 @@ export default function App() {
   const showNavetteBadge = _daysUntilSend >= 0 && _daysUntilSend <= 5
   const navetteBadgeColor = _daysUntilSend <= 1 ? '#ef4444' : _daysUntilSend === 2 ? '#f97316' : _daysUntilSend === 3 ? '#f59e0b' : '#22c55e'
 
+  // Auth
   useEffect(() => {
+    supabase.auth.getSession().then(({ data: { session } }) => setSession(session ?? null))
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
+      setSession(session ?? null)
+    })
+    return () => subscription.unsubscribe()
+  }, [])
+
+  // Badge prestations (seulement si authentifié)
+  useEffect(() => {
+    if (!session) return
     const mois = new Date().toISOString().slice(0, 7)
     const chargerBadge = () => {
       supabase.from('prestation_hors_forfait').select('id', { count: 'exact' })
@@ -125,7 +225,16 @@ export default function App() {
       )
       .subscribe()
     return () => { supabase.removeChannel(channel) }
-  }, [])
+  }, [session])
+
+  // États auth
+  if (session === undefined) return <LoadingScreen />
+  if (!session) return <LoginScreen />
+
+  const userEmail = session.user?.email?.toLowerCase() || ''
+  if (ALLOWED_EMAILS.length > 0 && !ALLOWED_EMAILS.includes(userEmail)) {
+    return <UnauthorizedScreen email={session.user?.email} onLogout={() => supabase.auth.signOut()} />
+  }
 
   return (
     <BrowserRouter>
@@ -164,6 +273,12 @@ export default function App() {
             <NavLink to="/locations-longues" className={({isActive}) => isActive ? 'nav-link active' : 'nav-link'}>Loc-longues</NavLink>
             <NavLink to="/achats" className={({isActive}) => isActive ? 'nav-link active' : 'nav-link'}>Achats</NavLink>
             <ConfigDropdown />
+            <button
+              onClick={() => supabase.auth.signOut()}
+              title={`Connecté : ${session.user?.email}`}
+              style={{ background: 'none', border: '1px solid var(--border)', borderRadius: 6, padding: '4px 10px', fontSize: 12, color: '#8C7B65', cursor: 'pointer', marginLeft: 4 }}>
+              ⎋
+            </button>
           </nav>
         </header>
         <BugReportButton source="compta" />
