@@ -47,7 +47,7 @@ function achatsToCSV(factures) {
   return [header, ...rows].join('\n')
 }
 
-export async function envoyerExportsComptable(mois, destinataire, cc, exports, message, bienIds = null) {
+export async function envoyerExportsComptable(mois, destinataire, cc, exports, message, bienIds = null, bienActif = {}) {
   const { prefix } = agenceInfo
   const attachments = []
 
@@ -68,7 +68,7 @@ export async function envoyerExportsComptable(mois, destinataire, cc, exports, m
 
   if (exports.includes('compta')) {
     const data = await buildComptaMensuelle(mois, bienIds)
-    const csv = exportComptaCSV(data)
+    const csv = exportComptaCSV(data, bienActif)
     attachments.push({ filename: `${prefix}_Comptabilite_${mois}.csv`, content: encodeBase64UTF8(csv) })
   }
 

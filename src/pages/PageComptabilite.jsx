@@ -48,6 +48,28 @@ export default function PageComptabilite() {
   // Reversements faits (bien_id → fait_at ISO string)
   const [reversementsFaits, setReversementsFaits] = useState({})
 
+  // Biens actifs (bien_id → boolean, défaut true). Persisté par mois.
+  const [bienActif, setBienActif] = useState({})
+  useEffect(() => {
+    try { setBienActif(JSON.parse(localStorage.getItem(`compta_bien_actif_${mois}`) || '{}')) }
+    catch { setBienActif({}) }
+  }, [mois])
+  useEffect(() => {
+    try { localStorage.setItem(`compta_bien_actif_${mois}`, JSON.stringify(bienActif)) } catch {}
+  }, [bienActif, mois])
+  const isActif = (r) => {
+    if (r._isGroup && r._childrenBienIds) return r._childrenBienIds.every(id => bienActif[id] !== false)
+    return bienActif[r.bien_id] !== false
+  }
+  const toggleActif = (r) => {
+    if (r._isGroup && r._childrenBienIds) {
+      const allActive = r._childrenBienIds.every(id => bienActif[id] !== false)
+      setBienActif(prev => { const n = { ...prev }; r._childrenBienIds.forEach(id => { n[id] = !allActive }); return n })
+    } else {
+      setBienActif(prev => ({ ...prev, [r.bien_id]: bienActif[r.bien_id] === false }))
+    }
+  }
+
   // Filtres
   const [filterProprio, setFilterProprio] = useState('')
   const [filterStatutFacture, setFilterStatutFacture] = useState('')
@@ -353,14 +375,17 @@ export default function PageComptabilite() {
       )}
 
       {/* Cartes stats */}
-      {data && (
+      {data && (() => {
+        const actRows = data.rows.filter(r => bienActif[r.bien_id] !== false)
+        const asum = k => actRows.reduce((s, r) => s + (r[k] || 0), 0)
+        return (
         <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap', marginBottom: 24 }}>
           <StatCard label="Biens actifs" value={data.metadata.nb_rows} sub={`${data.metadata.nb_biens} total`} />
-          <StatCard label="HON TTC" value={fmt(data.totals.hon_ttc)} sub={`HT ${fmt(data.totals.hon_ht)}`} />
-          <StatCard label="FMEN TTC" value={fmt(data.totals.fmen_ttc)} sub={`HT ${fmt(data.totals.fmen_ht)}`} />
+          <StatCard label="HON TTC" value={fmt(asum('hon_ttc'))} sub={`HT ${fmt(asum('hon_ht'))}`} />
+          <StatCard label="FMEN TTC" value={fmt(asum('fmen_ttc'))} sub={`HT ${fmt(asum('fmen_ht'))}`} />
           <StatCard label="AUTO HT" value={fmt(data.totals.auto_ht)} />
-          <StatCard label="LOY HT" value={fmt(data.totals.loy_ht)} />
-          <StatCard label="TAXE HT" value={fmt(data.totals.taxe_ht)} />
+          <StatCard label="LOY HT" value={fmt(asum('loy_ht'))} />
+          <StatCard label="TAXE HT" value={fmt(asum('taxe_ht'))} />
           <StatCard label="Réservations" value={data.totals.nb_resas} sub={`${data.totals.nb_rapprochees} rappr. · ${data.totals.nb_non_rapprochees} non rappr.`} />
           {data.fraisStripe && (
             <div style={{ background: '#F5F3FF', border: '1px solid #635BFF', borderRadius: 10, padding: '14px 18px', minWidth: 130 }}>
@@ -370,7 +395,7 @@ export default function PageComptabilite() {
             </div>
           )}
         </div>
-      )}
+      )})()}
 
       {/* Filtres */}
       <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', marginBottom: 16, alignItems: 'center' }}>
@@ -421,6 +446,7 @@ export default function PageComptabilite() {
           <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.82em' }}>
             <thead>
               <tr style={{ background: 'var(--bg)', borderBottom: '2px solid var(--border)' }}>
+                <th style={{ ...th, width: 32, textAlign: 'center' }} title="Actif dans les totaux"></th>
                 <th style={th}>Bien</th>
                 <th style={th}>Propriétaire</th>
                 {col('resas')       && <th style={{ ...th, textAlign: 'right' }}>Resas</th>}
@@ -455,28 +481,31 @@ export default function PageComptabilite() {
                 </tr>
               )}
               {groupedView.flatMap((item, i) => {
-                const renderCells = (r, isChild) => <>
-                  {col('resas')    && <td style={{ ...td, textAlign: 'right', opacity: isChild ? 0.8 : 1 }}>{r.nb_resas}</td>}
+                const dash = <span style={{ color: '#C5BAB0' }}>—</span>
+                const renderCells = (r, isChild) => {
+                  const actif = isActif(r)
+                  return <>
+                  {col('resas')    && <td style={{ ...td, textAlign: 'right', opacity: isChild ? 0.8 : 1 }}>{actif ? r.nb_resas : dash}</td>}
                   {col('rappr')    && <td style={{ ...td, textAlign: 'right' }}>
-                    {r.nb_rapprochees > 0 ? <span style={{ color: '#059669', fontWeight: 600 }}>{r.nb_rapprochees}</span> : <span style={{ color: '#9C8E7D' }}>0</span>}
-                    {r.nb_non_rapprochees > 0 && <span style={{ color: '#f59e0b', marginLeft: 4 }}>({r.nb_non_rapprochees})</span>}
+                    {actif ? (r.nb_rapprochees > 0 ? <span style={{ color: '#059669', fontWeight: 600 }}>{r.nb_rapprochees}</span> : <span style={{ color: '#9C8E7D' }}>0</span>) : dash}
+                    {actif && r.nb_non_rapprochees > 0 && <span style={{ color: '#f59e0b', marginLeft: 4 }}>({r.nb_non_rapprochees})</span>}
                   </td>}
                   {col('non_vent') && <td style={{ ...td, textAlign: 'right' }}>
-                    {r.nb_non_ventilees > 0 ? <span style={{ color: '#ef4444', fontWeight: 600 }}>{r.nb_non_ventilees}</span> : <span style={{ color: '#9C8E7D' }}>0</span>}
+                    {actif ? (r.nb_non_ventilees > 0 ? <span style={{ color: '#ef4444', fontWeight: 600 }}>{r.nb_non_ventilees}</span> : <span style={{ color: '#9C8E7D' }}>0</span>) : dash}
                   </td>}
-                  {col('hon_ht')      && <td style={{ ...td, textAlign: 'right', fontVariantNumeric: 'tabular-nums' }}>{r.hon_ht ? fmtN(r.hon_ht) : '—'}</td>}
-                  {col('hon_tva')     && <td style={{ ...td, textAlign: 'right', fontVariantNumeric: 'tabular-nums' }}>{r.hon_tva ? fmtN(r.hon_tva) : '—'}</td>}
-                  {col('hon_ttc')     && <td style={{ ...td, textAlign: 'right', fontVariantNumeric: 'tabular-nums', fontWeight: r.hon_ttc ? 600 : 400 }}>{r.hon_ttc ? fmtN(r.hon_ttc) : '—'}</td>}
-                  {col('com_ttc')     && <td style={{ ...td, textAlign: 'right', fontVariantNumeric: 'tabular-nums', fontWeight: r.com_ttc ? 600 : 400 }}>{r.com_ttc ? fmtN(r.com_ttc) : '—'}</td>}
-                  {col('fmen_ht')     && <td style={{ ...td, textAlign: 'right', fontVariantNumeric: 'tabular-nums' }}>{r.fmen_ht ? fmtN(r.fmen_ht) : '—'}</td>}
-                  {col('fmen_tva')    && <td style={{ ...td, textAlign: 'right', fontVariantNumeric: 'tabular-nums' }}>{r.fmen_tva ? fmtN(r.fmen_tva) : '—'}</td>}
-                  {col('fmen_ttc')    && <td style={{ ...td, textAlign: 'right', fontVariantNumeric: 'tabular-nums' }}>{r.fmen_ttc ? fmtN(r.fmen_ttc) : '—'}</td>}
+                  {col('hon_ht')      && <td style={{ ...td, textAlign: 'right', fontVariantNumeric: 'tabular-nums' }}>{actif ? (r.hon_ht ? fmtN(r.hon_ht) : '—') : dash}</td>}
+                  {col('hon_tva')     && <td style={{ ...td, textAlign: 'right', fontVariantNumeric: 'tabular-nums' }}>{actif ? (r.hon_tva ? fmtN(r.hon_tva) : '—') : dash}</td>}
+                  {col('hon_ttc')     && <td style={{ ...td, textAlign: 'right', fontVariantNumeric: 'tabular-nums', fontWeight: actif && r.hon_ttc ? 600 : 400 }}>{actif ? (r.hon_ttc ? fmtN(r.hon_ttc) : '—') : dash}</td>}
+                  {col('com_ttc')     && <td style={{ ...td, textAlign: 'right', fontVariantNumeric: 'tabular-nums', fontWeight: actif && r.com_ttc ? 600 : 400 }}>{actif ? (r.com_ttc ? fmtN(r.com_ttc) : '—') : dash}</td>}
+                  {col('fmen_ht')     && <td style={{ ...td, textAlign: 'right', fontVariantNumeric: 'tabular-nums' }}>{actif ? (r.fmen_ht ? fmtN(r.fmen_ht) : '—') : dash}</td>}
+                  {col('fmen_tva')    && <td style={{ ...td, textAlign: 'right', fontVariantNumeric: 'tabular-nums' }}>{actif ? (r.fmen_tva ? fmtN(r.fmen_tva) : '—') : dash}</td>}
+                  {col('fmen_ttc')    && <td style={{ ...td, textAlign: 'right', fontVariantNumeric: 'tabular-nums' }}>{actif ? (r.fmen_ttc ? fmtN(r.fmen_ttc) : '—') : dash}</td>}
                   {col('auto_ht')     && <td style={{ ...td, textAlign: 'right', fontVariantNumeric: 'tabular-nums' }}>{r.auto_ht ? fmtN(r.auto_ht) : '—'}</td>}
-                  {col('loy_ht')              && <td style={{ ...td, textAlign: 'right', fontVariantNumeric: 'tabular-nums' }}>{r.loy_ht ? fmtN(r.loy_ht) : '—'}</td>}
-                  {col('frais_loy')           && <td style={{ ...td, textAlign: 'right', fontVariantNumeric: 'tabular-nums' }}>{r.frais_loy ? <span style={{ color: '#E65100' }}>-{fmtN(r.frais_loy)}</span> : '—'}</td>}
-                  {col('prest_deduct')        && <td style={{ ...td, textAlign: 'right', fontVariantNumeric: 'tabular-nums' }}>{r.prest_deduct ? <span style={{ color: '#E65100' }}>-{fmtN(r.prest_deduct)}</span> : '—'}</td>}
-                  {col('taxe')                && <td style={{ ...td, textAlign: 'right', fontVariantNumeric: 'tabular-nums' }}>{r.taxe_ht ? fmtN(r.taxe_ht) : '—'}</td>}
-                  {col('reversement_calcule') && <td style={{ ...td, textAlign: 'right', fontVariantNumeric: 'tabular-nums', fontWeight: r.reversement_calcule ? 600 : 400 }}>{r.reversement_calcule ? fmtN(r.reversement_calcule) : '—'}</td>}
+                  {col('loy_ht')              && <td style={{ ...td, textAlign: 'right', fontVariantNumeric: 'tabular-nums' }}>{actif ? (r.loy_ht ? fmtN(r.loy_ht) : '—') : dash}</td>}
+                  {col('frais_loy')           && <td style={{ ...td, textAlign: 'right', fontVariantNumeric: 'tabular-nums' }}>{actif ? (r.frais_loy ? <span style={{ color: '#E65100' }}>-{fmtN(r.frais_loy)}</span> : '—') : dash}</td>}
+                  {col('prest_deduct')        && <td style={{ ...td, textAlign: 'right', fontVariantNumeric: 'tabular-nums' }}>{actif ? (r.prest_deduct ? <span style={{ color: '#E65100' }}>-{fmtN(r.prest_deduct)}</span> : '—') : dash}</td>}
+                  {col('taxe')                && <td style={{ ...td, textAlign: 'right', fontVariantNumeric: 'tabular-nums' }}>{actif ? (r.taxe_ht ? fmtN(r.taxe_ht) : '—') : dash}</td>}
+                  {col('reversement_calcule') && <td style={{ ...td, textAlign: 'right', fontVariantNumeric: 'tabular-nums', fontWeight: actif && r.reversement_calcule ? 600 : 400 }}>{actif ? (r.reversement_calcule ? fmtN(r.reversement_calcule) : '—') : dash}</td>}
                   {col('fait') && <td style={{ ...td, textAlign: 'center' }}>
                     {!isChild && (() => {
                       let faitAt, handleClick
@@ -547,11 +576,15 @@ export default function PageComptabilite() {
                     )}
                   </td>
                 </>
+                }
 
                 if (item.type === 'single') {
                   const r = item.row
                   return [
                     <tr key={r.bien_id} style={{ background: r.alert_level === 'error' ? '#FFF8F8' : i % 2 === 0 ? 'var(--bg-card)' : 'var(--bg)', borderBottom: '1px solid var(--border)' }}>
+                      <td style={{ ...td, textAlign: 'center', width: 32 }}>
+                        <input type="checkbox" checked={isActif(r)} onChange={() => toggleActif(r)} style={{ cursor: 'pointer', accentColor: 'var(--brand)' }} />
+                      </td>
                       <td style={td}>
                         <span style={{ fontWeight: 600 }}>{r.bien_code || '—'}</span>
                         {r.bien_nom && <div style={{ fontSize: '0.85em', color: '#9C8E7D', maxWidth: 140, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{r.bien_nom}</div>}
@@ -568,6 +601,9 @@ export default function PageComptabilite() {
                 return [
                   // Ligne parent
                   <tr key={`group_${key}`} style={{ background: '#FBF7EE', borderBottom: '1px solid var(--border)', borderLeft: '3px solid var(--brand)' }}>
+                    <td style={{ ...td, textAlign: 'center', width: 32 }}>
+                      <input type="checkbox" checked={isActif(parent)} onChange={() => toggleActif(parent)} style={{ cursor: 'pointer', accentColor: 'var(--brand)' }} />
+                    </td>
                     <td style={{ ...td, fontWeight: 700 }}>
                       <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
                         <button onClick={() => toggleGroup(key)} style={{ background: 'none', border: 'none', cursor: 'pointer', padding: '0 2px', color: 'var(--brand)', fontSize: '0.9em', lineHeight: 1 }}>
@@ -585,6 +621,9 @@ export default function PageComptabilite() {
                   // Lignes enfants (si dépliées)
                   ...(!expanded ? [] : children.map(r => (
                     <tr key={r.bien_id} style={{ background: '#FAF8F4', borderBottom: '1px solid var(--border)' }}>
+                      <td style={{ ...td, textAlign: 'center', width: 32 }}>
+                        <input type="checkbox" checked={isActif(r)} onChange={() => toggleActif(r)} style={{ cursor: 'pointer', accentColor: 'var(--brand)' }} />
+                      </td>
                       <td style={{ ...td, paddingLeft: 28 }}>
                         <span style={{ fontWeight: 600, fontSize: '0.9em' }}>{r.bien_code || '—'}</span>
                         {r.bien_nom && <div style={{ fontSize: '0.8em', color: '#9C8E7D', maxWidth: 130, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{r.bien_nom}</div>}
@@ -597,27 +636,31 @@ export default function PageComptabilite() {
               })}
             </tbody>
             {/* Ligne totaux */}
-            {data && rowsFiltrees.length > 0 && (
+            {data && rowsFiltrees.length > 0 && (() => {
+              const actifs = rowsFiltrees.filter(r => bienActif[r.bien_id] !== false)
+              const tsum = (arr, k) => arr.reduce((s, r) => s + (r[k] || 0), 0)
+              return (
               <tfoot>
                 <tr style={{ background: 'var(--bg)', borderTop: '2px solid var(--brand)', fontWeight: 700 }}>
+                  <td style={td} />
                   <td style={{ ...td, color: 'var(--brand)' }}>TOTAL</td>
                   <td style={td} />
-                  {col('resas')       && <td style={{ ...td, textAlign: 'right' }}>{rowsFiltrees.reduce((s, r) => s + r.nb_resas, 0)}</td>}
-                  {col('rappr')       && <td style={{ ...td, textAlign: 'right' }}>{rowsFiltrees.reduce((s, r) => s + r.nb_rapprochees, 0)}</td>}
-                  {col('non_vent')    && <td style={{ ...td, textAlign: 'right' }}>{rowsFiltrees.reduce((s, r) => s + r.nb_non_ventilees, 0)}</td>}
-                  {col('hon_ht')      && <td style={{ ...td, textAlign: 'right' }}>{fmtN(rowsFiltrees.reduce((s, r) => s + r.hon_ht,   0))}</td>}
-                  {col('hon_tva')     && <td style={{ ...td, textAlign: 'right' }}>{fmtN(rowsFiltrees.reduce((s, r) => s + r.hon_tva,  0))}</td>}
-                  {col('hon_ttc')     && <td style={{ ...td, textAlign: 'right' }}>{fmtN(rowsFiltrees.reduce((s, r) => s + r.hon_ttc,  0))}</td>}
-                  {col('com_ttc')     && <td style={{ ...td, textAlign: 'right' }}>{fmtN(rowsFiltrees.reduce((s, r) => s + r.com_ttc,  0))}</td>}
-                  {col('fmen_ht')     && <td style={{ ...td, textAlign: 'right' }}>{fmtN(rowsFiltrees.reduce((s, r) => s + r.fmen_ht,  0))}</td>}
-                  {col('fmen_tva')    && <td style={{ ...td, textAlign: 'right' }}>{fmtN(rowsFiltrees.reduce((s, r) => s + r.fmen_tva, 0))}</td>}
-                  {col('fmen_ttc')    && <td style={{ ...td, textAlign: 'right' }}>{fmtN(rowsFiltrees.reduce((s, r) => s + r.fmen_ttc, 0))}</td>}
-                  {col('auto_ht')     && <td style={{ ...td, textAlign: 'right' }}>{fmtN(rowsFiltrees.reduce((s, r) => s + r.auto_ht,  0))}</td>}
-                  {col('loy_ht')              && <td style={{ ...td, textAlign: 'right' }}>{fmtN(rowsFiltrees.reduce((s, r) => s + r.loy_ht,              0))}</td>}
-                  {col('frais_loy')           && <td style={{ ...td, textAlign: 'right', color: '#E65100' }}>{fmtN(rowsFiltrees.reduce((s, r) => s + r.frais_loy,          0))}</td>}
-                  {col('prest_deduct')        && <td style={{ ...td, textAlign: 'right', color: '#E65100' }}>{fmtN(rowsFiltrees.reduce((s, r) => s + r.prest_deduct,        0))}</td>}
-                  {col('taxe')                && <td style={{ ...td, textAlign: 'right' }}>{fmtN(rowsFiltrees.reduce((s, r) => s + r.taxe_ht,             0))}</td>}
-                  {col('reversement_calcule') && <td style={{ ...td, textAlign: 'right' }}>{fmtN(rowsFiltrees.reduce((s, r) => s + r.reversement_calcule, 0))}</td>}
+                  {col('resas')       && <td style={{ ...td, textAlign: 'right' }}>{tsum(actifs, 'nb_resas')}</td>}
+                  {col('rappr')       && <td style={{ ...td, textAlign: 'right' }}>{tsum(actifs, 'nb_rapprochees')}</td>}
+                  {col('non_vent')    && <td style={{ ...td, textAlign: 'right' }}>{tsum(actifs, 'nb_non_ventilees')}</td>}
+                  {col('hon_ht')      && <td style={{ ...td, textAlign: 'right' }}>{fmtN(tsum(actifs, 'hon_ht'))}</td>}
+                  {col('hon_tva')     && <td style={{ ...td, textAlign: 'right' }}>{fmtN(tsum(actifs, 'hon_tva'))}</td>}
+                  {col('hon_ttc')     && <td style={{ ...td, textAlign: 'right' }}>{fmtN(tsum(actifs, 'hon_ttc'))}</td>}
+                  {col('com_ttc')     && <td style={{ ...td, textAlign: 'right' }}>{fmtN(tsum(actifs, 'com_ttc'))}</td>}
+                  {col('fmen_ht')     && <td style={{ ...td, textAlign: 'right' }}>{fmtN(tsum(actifs, 'fmen_ht'))}</td>}
+                  {col('fmen_tva')    && <td style={{ ...td, textAlign: 'right' }}>{fmtN(tsum(actifs, 'fmen_tva'))}</td>}
+                  {col('fmen_ttc')    && <td style={{ ...td, textAlign: 'right' }}>{fmtN(tsum(actifs, 'fmen_ttc'))}</td>}
+                  {col('auto_ht')     && <td style={{ ...td, textAlign: 'right' }}>{fmtN(tsum(rowsFiltrees, 'auto_ht'))}</td>}
+                  {col('loy_ht')              && <td style={{ ...td, textAlign: 'right' }}>{fmtN(tsum(actifs, 'loy_ht'))}</td>}
+                  {col('frais_loy')           && <td style={{ ...td, textAlign: 'right', color: '#E65100' }}>{fmtN(tsum(actifs, 'frais_loy'))}</td>}
+                  {col('prest_deduct')        && <td style={{ ...td, textAlign: 'right', color: '#E65100' }}>{fmtN(tsum(actifs, 'prest_deduct'))}</td>}
+                  {col('taxe')                && <td style={{ ...td, textAlign: 'right' }}>{fmtN(tsum(actifs, 'taxe_ht'))}</td>}
+                  {col('reversement_calcule') && <td style={{ ...td, textAlign: 'right' }}>{fmtN(tsum(actifs, 'reversement_calcule'))}</td>}
                   {col('fait')               && <td style={{ ...td, textAlign: 'center', fontSize: '0.8em', color: '#9C8E7D' }}>{Object.keys(reversementsFaits).length > 0 ? `${Object.keys(reversementsFaits).length} ✅` : ''}</td>}
                   {col('facture')             && <td style={td} />}
                   {col('reversement_facture') && <td style={td} />}
@@ -625,7 +668,8 @@ export default function PageComptabilite() {
                   <td style={td} />
                 </tr>
               </tfoot>
-            )}
+              )
+            })()}
           </table>
         </div>
       )}

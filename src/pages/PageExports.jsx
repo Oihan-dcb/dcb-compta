@@ -271,11 +271,13 @@ export default function PageExports() {
     setError(null)
     try {
       const data = await buildComptaMensuelle(mois, selectedBienIds)
-      const csv = exportComptaCSV(data)
+      let bienActif = {}
+      try { bienActif = JSON.parse(localStorage.getItem(`compta_bien_actif_${mois}`) || '{}') } catch {}
+      const csv = exportComptaCSV(data, bienActif)
       setPreview({
         titre: `Comptabilité mensuelle — ${mois}`,
         csv,
-        downloadFn: () => downloadComptaCSV(data),
+        downloadFn: () => downloadCSVBlob(csv, `DCB_Comptabilite_${mois}.csv`),
       })
     } catch (err) {
       setError(err.message)
@@ -320,7 +322,10 @@ export default function PageExports() {
     setError(null)
     try {
       const data = await buildComptaMensuelle(mois, selectedBienIds)
-      downloadComptaCSV(data)
+      let bienActif = {}
+      try { bienActif = JSON.parse(localStorage.getItem(`compta_bien_actif_${mois}`) || '{}') } catch {}
+      const csv = exportComptaCSV(data, bienActif)
+      downloadCSVBlob(csv, `DCB_Comptabilite_${mois}.csv`)
     } catch (err) {
       setError(err.message)
     } finally {
@@ -355,7 +360,9 @@ export default function PageExports() {
     setError(null)
     setSuccess(null)
     try {
-      await envoyerExportsComptable(mois, emailDest, emailCC, exportsSelectionnes, emailMessage, selectedBienIds)
+      let bienActifEmail = {}
+      try { bienActifEmail = JSON.parse(localStorage.getItem(`compta_bien_actif_${mois}`) || '{}') } catch {}
+      await envoyerExportsComptable(mois, emailDest, emailCC, exportsSelectionnes, emailMessage, selectedBienIds, bienActifEmail)
       setSuccess('Email envoyé avec succès')
       setShowEmailForm(false)
       setEmailDest(''); setEmailCC(''); setEmailMessage('')

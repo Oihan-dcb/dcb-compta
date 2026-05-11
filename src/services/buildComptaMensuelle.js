@@ -567,8 +567,10 @@ export async function buildComptaMensuelle(mois, bienIds = null) {
  * Transforme le résultat de buildComptaMensuelle en CSV téléchargeable.
  * Aucune logique métier — consomme directement les rows.
  */
-export function exportComptaCSV(data) {
+export function exportComptaCSV(data, bienActif = {}) {
+  const isActif = (id) => bienActif[id] !== false
   const fmt = (c) => c != null ? (c / 100).toFixed(2) : '0.00'
+  const masked = (val, actif) => actif ? val : ''
   const headers = [
     'Bien code', 'Bien nom', 'Propriétaire',
     'Nb réservations', 'Rapprochées', 'Non rapprochées', 'Non ventilées',
@@ -609,56 +611,63 @@ export function exportComptaCSV(data) {
         const faitAtGroupe = children.map(c => c.reversement_fait_at).find(v => v != null) ?? null
         const faitStrGroupe = faitAtGroupe ? (() => { const d = new Date(faitAtGroupe); return `OUI — ${d.toLocaleDateString('fr-FR', { day: '2-digit', month: '2-digit' })} ${d.toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' })}h` })() : ''
         // Ligne parent agrégée
+        const groupeActif = children.some(c => isActif(c.bien_id))
+        const actifChildren = children.filter(c => isActif(c.bien_id))
+        const nsumA = key => actifChildren.reduce((s, c) => s + (c[key] || 0), 0)
         csvRows.push([
           glabel,
           '(groupe)',
           first.proprietaire_nom,
-          nsum('nb_resas'), nsum('nb_rapprochees'), nsum('nb_non_rapprochees'), nsum('nb_non_ventilees'),
-          fmt(nsum('hon_ht')), fmt(nsum('hon_tva')), fmt(nsum('hon_ttc')),
-          fmt(nsum('fmen_ht')), fmt(nsum('fmen_tva')), fmt(nsum('fmen_ttc')),
-          fmt(nsum('auto_ht')), fmt(nsum('loy_ht')), fmt(nsum('frais_loy')), fmt(nsum('taxe_ht')), fmt(nsum('reversement_calcule')), faitStrGroupe,
-          first.facture_statut || '',
-          fmt(reversementFactureGroupe),
-          first.ecart_reversement_proprio != null ? fmt(first.ecart_reversement_proprio) : '',
+          masked(nsumA('nb_resas'), groupeActif), masked(nsumA('nb_rapprochees'), groupeActif), masked(nsumA('nb_non_rapprochees'), groupeActif), masked(nsumA('nb_non_ventilees'), groupeActif),
+          masked(fmt(nsumA('hon_ht')), groupeActif), masked(fmt(nsumA('hon_tva')), groupeActif), masked(fmt(nsumA('hon_ttc')), groupeActif),
+          masked(fmt(nsumA('fmen_ht')), groupeActif), masked(fmt(nsumA('fmen_tva')), groupeActif), masked(fmt(nsumA('fmen_ttc')), groupeActif),
+          fmt(nsum('auto_ht')), masked(fmt(nsumA('loy_ht')), groupeActif), masked(fmt(nsumA('frais_loy')), groupeActif), masked(fmt(nsumA('taxe_ht')), groupeActif), masked(fmt(nsumA('reversement_calcule')), groupeActif), masked(faitStrGroupe, groupeActif),
+          masked(first.facture_statut || '', groupeActif),
+          masked(fmt(reversementFactureGroupe), groupeActif),
+          masked(first.ecart_reversement_proprio != null ? fmt(first.ecart_reversement_proprio) : '', groupeActif),
           [...new Set(children.flatMap(c => c.alert_codes))].join(' | '),
         ])
       }
       // Ligne enfant indentée
+      const enfantActif = isActif(r.bien_id)
       const faitEnfant = r.reversement_fait_at ? (() => { const d = new Date(r.reversement_fait_at); return `OUI — ${d.toLocaleDateString('fr-FR', { day: '2-digit', month: '2-digit' })} ${d.toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' })}h` })() : ''
       csvRows.push([
         '  ' + (r.bien_code || ''),
         '  ' + (r.bien_nom || ''),
         r.proprietaire_nom,
-        r.nb_resas, r.nb_rapprochees, r.nb_non_rapprochees, r.nb_non_ventilees,
-        fmt(r.hon_ht), fmt(r.hon_tva), fmt(r.hon_ttc),
-        fmt(r.fmen_ht), fmt(r.fmen_tva), fmt(r.fmen_ttc),
-        fmt(r.auto_ht), fmt(r.loy_ht), fmt(r.frais_loy), fmt(r.taxe_ht), fmt(r.reversement_calcule), faitEnfant,
+        masked(r.nb_resas, enfantActif), masked(r.nb_rapprochees, enfantActif), masked(r.nb_non_rapprochees, enfantActif), masked(r.nb_non_ventilees, enfantActif),
+        masked(fmt(r.hon_ht), enfantActif), masked(fmt(r.hon_tva), enfantActif), masked(fmt(r.hon_ttc), enfantActif),
+        masked(fmt(r.fmen_ht), enfantActif), masked(fmt(r.fmen_tva), enfantActif), masked(fmt(r.fmen_ttc), enfantActif),
+        fmt(r.auto_ht), masked(fmt(r.loy_ht), enfantActif), masked(fmt(r.frais_loy), enfantActif), masked(fmt(r.taxe_ht), enfantActif), masked(fmt(r.reversement_calcule), enfantActif), masked(faitEnfant, enfantActif),
         '', '', '', r.alert_codes.join(' | '),
       ])
     } else {
+      const rowActif = isActif(r.bien_id)
       const faitStr = r.reversement_fait_at ? (() => { const d = new Date(r.reversement_fait_at); return `OUI — ${d.toLocaleDateString('fr-FR', { day: '2-digit', month: '2-digit' })} ${d.toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' })}h` })() : ''
       csvRows.push([
         r.bien_code, r.bien_nom, r.proprietaire_nom,
-        r.nb_resas, r.nb_rapprochees, r.nb_non_rapprochees, r.nb_non_ventilees,
-        fmt(r.hon_ht), fmt(r.hon_tva), fmt(r.hon_ttc),
-        fmt(r.fmen_ht), fmt(r.fmen_tva), fmt(r.fmen_ttc),
-        fmt(r.auto_ht), fmt(r.loy_ht), fmt(r.frais_loy), fmt(r.taxe_ht), fmt(r.reversement_calcule), faitStr,
-        r.facture_statut || '',
-        fmt(r.facture_montant_reversement),
-        r.ecart_reversement_proprio != null ? fmt(r.ecart_reversement_proprio) : '',
+        masked(r.nb_resas, rowActif), masked(r.nb_rapprochees, rowActif), masked(r.nb_non_rapprochees, rowActif), masked(r.nb_non_ventilees, rowActif),
+        masked(fmt(r.hon_ht), rowActif), masked(fmt(r.hon_tva), rowActif), masked(fmt(r.hon_ttc), rowActif),
+        masked(fmt(r.fmen_ht), rowActif), masked(fmt(r.fmen_tva), rowActif), masked(fmt(r.fmen_ttc), rowActif),
+        fmt(r.auto_ht), masked(fmt(r.loy_ht), rowActif), masked(fmt(r.frais_loy), rowActif), masked(fmt(r.taxe_ht), rowActif), masked(fmt(r.reversement_calcule), rowActif), masked(faitStr, rowActif),
+        masked(r.facture_statut || '', rowActif),
+        masked(fmt(r.facture_montant_reversement), rowActif),
+        masked(r.ecart_reversement_proprio != null ? fmt(r.ecart_reversement_proprio) : '', rowActif),
         r.alert_codes.join(' | '),
       ])
     }
   }
   const rows = csvRows
-  // Ligne totaux
+  // Ligne totaux (actifs uniquement sauf auto_ht)
+  const actifRows = data.rows.filter(r => isActif(r.bien_id))
+  const asum = k => actifRows.reduce((s, r) => s + (r[k] || 0), 0)
   const t = data.totals
   rows.push([
     'TOTAL', '', '',
-    t.nb_resas, t.nb_rapprochees, t.nb_non_rapprochees, t.nb_non_ventilees,
-    fmt(t.hon_ht), fmt(t.hon_tva), fmt(t.hon_ttc),
-    fmt(t.fmen_ht), fmt(t.fmen_tva), fmt(t.fmen_ttc),
-    fmt(t.auto_ht), fmt(t.loy_ht), fmt(t.taxe_ht),
+    asum('nb_resas'), asum('nb_rapprochees'), asum('nb_non_rapprochees'), asum('nb_non_ventilees'),
+    fmt(asum('hon_ht')), fmt(asum('hon_tva')), fmt(asum('hon_ttc')),
+    fmt(asum('fmen_ht')), fmt(asum('fmen_tva')), fmt(asum('fmen_ttc')),
+    fmt(t.auto_ht), fmt(asum('loy_ht')), fmt(asum('taxe_ht')),
     '', '', '', '',
   ])
 
