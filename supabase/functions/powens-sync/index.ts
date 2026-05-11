@@ -374,11 +374,10 @@ async function importStaged(agence: string, accountLabel: string, ids?: string[]
         }
       } else {
         // seq_lc, courant → mouvement_bancaire
-        // Dédup par empreinte — Powens peut réassigner des IDs différents entre syncs
+        // Dédup par empreinte — indépendant de la source (csv, CaisseEpargne, Powens_*)
         let existingMbQ = db.from('mouvement_bancaire')
           .select('id')
           .eq('agence', agence)
-          .eq('source', `Powens_${accountLabel}`)
           .eq('date_operation', tx.date_operation)
           .eq('detail', tx.detail || '')
         if (credit !== null) existingMbQ = existingMbQ.eq('credit', credit)
