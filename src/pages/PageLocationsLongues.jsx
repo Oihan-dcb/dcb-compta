@@ -122,8 +122,6 @@ export default function PageLocationsLongues() {
   const [formEtudiant, setFormEtudiant] = useState(FORM_ETUDIANT_EMPTY)
   const [saving, setSaving] = useState(false)
 
-  // Bilan mensuel
-  const [generatingBilan, setGeneratingBilan] = useState(false)
 
   // Archivage / suppression
   const [voirArchives, setVoirArchives] = useState(false)
@@ -390,23 +388,6 @@ export default function PageLocationsLongues() {
     }
   }
 
-  // ── Bilan mensuel ─────────────────────────────────────────────────────
-  async function genererBilan(envoyer_email = false) {
-    setGeneratingBilan(envoyer_email ? 'envoyer' : 'apercu')
-    setError(null)
-    try {
-      const { data, error } = await supabase.functions.invoke('bilan-lld', {
-        body: { mois, agence: AGENCE, envoyer_email },
-      })
-      if (error) throw error
-      if (data?.pdf_url) window.open(data.pdf_url, '_blank')
-      setSuccess(data?.email_envoye ? 'Bilan envoyé au comptable ✓' : 'Bilan généré')
-    } catch (e) {
-      setError(e.message)
-    } finally {
-      setGeneratingBilan(false)
-    }
-  }
 
   // ── Banque LLD ─────────────────────────────────────────────────────────
   async function chargerBanque(compte, mois) {
@@ -744,20 +725,6 @@ export default function PageLocationsLongues() {
             <>
               <MoisSelector mois={mois} setMois={setMois} moisDispos={[moisCourant]} />
               <button className="btn btn-secondary" onClick={chargerMensuel} disabled={loading}>↺</button>
-              {loyers.length > 0 && (
-                <>
-                  <button className="btn btn-secondary" onClick={() => genererBilan(false)}
-                    disabled={!!generatingBilan}
-                    title="Aperçu PDF sans envoi">
-                    {generatingBilan === 'apercu' ? <><span className="spinner" /> PDF…</> : '👁 Aperçu'}
-                  </button>
-                  <button className="btn btn-secondary" onClick={() => genererBilan(true)}
-                    disabled={!!generatingBilan}
-                    title="Générer et envoyer au comptable">
-                    {generatingBilan === 'envoyer' ? <><span className="spinner" /> Envoi…</> : '📤 Comptable'}
-                  </button>
-                </>
-              )}
               {loyers.length === 0 && (
                 <button className="btn btn-primary" onClick={initialiserMois} disabled={loading}>
                   Initialiser le mois
