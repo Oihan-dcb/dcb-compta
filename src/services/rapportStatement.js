@@ -202,8 +202,8 @@ export function genererStatementHTML(proprio, mois, data) {
   </div>
 </div>
 
-<div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:16px">
-  <div style="background:#F7F4EC;border-radius:7px;padding:12px 14px">
+<div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:16px;align-items:stretch">
+  <div style="background:#F7F4EC;border-radius:7px;padding:12px 14px;box-sizing:border-box;display:flex;flex-direction:column">
     <div style="font-size:8.5px;letter-spacing:0.08em;text-transform:uppercase;color:#9c8c7a;margin-bottom:8px">Charges DCB</div>
     <div style="display:flex;justify-content:space-between;padding:3px 0;border-bottom:1px solid #ece8e2;font-size:10px">
       <span style="color:#9c8c7a">Commissions DCB (HON)</span><span style="font-weight:500">${fmt(honTotal)}</span>
@@ -226,11 +226,11 @@ export function genererStatementHTML(proprio, mois, data) {
       <span style="color:#9c8c7a">${escapeNonAscii(f.libelle || 'Frais HA proprio.')}</span><span>${fmt(montant)}</span>
     </div>`
     }).join('')}
-    <div style="display:flex;justify-content:space-between;padding:6px 0 0;font-weight:700;font-size:10.5px">
+    <div style="display:flex;justify-content:space-between;padding:6px 0 0;font-weight:700;font-size:10.5px;margin-top:auto">
       <span>Total dû à DCB</span><span style="color:#CC9933">${fmt(totalManager)}</span>
     </div>
   </div>
-  <div style="background:#F7F4EC;border-radius:7px;padding:12px 14px">
+  <div style="background:#F7F4EC;border-radius:7px;padding:12px 14px;box-sizing:border-box;display:flex;flex-direction:column">
     <div style="font-size:8.5px;letter-spacing:0.08em;text-transform:uppercase;color:#9c8c7a;margin-bottom:8px">Reversement propriétaire</div>
     <div style="display:flex;justify-content:space-between;padding:3px 0;border-bottom:1px solid #ece8e2;font-size:10px">
       <span style="color:#9c8c7a">Total revenus voyageurs (brut)</span><span>${fmt(grossTotal)}</span>
@@ -268,7 +268,7 @@ export function genererStatementHTML(proprio, mois, data) {
     ${ownerStayMenageTotal > 0 ? `<div style="display:flex;justify-content:space-between;padding:3px 0;border-bottom:1px solid #ece8e2;font-size:10px">
       <span style="color:#9c8c7a">Ménage(s) séjour propriétaire</span><span style="color:#DC2626">− ${fmt(ownerStayMenageTotal)}</span>
     </div>` : ''}
-    <div style="display:flex;justify-content:space-between;padding:6px 0 0;font-weight:700;font-size:10.5px">
+    <div style="display:flex;justify-content:space-between;padding:6px 0 0;font-weight:700;font-size:10.5px;margin-top:auto">
       <span>Total reversement</span><span style="color:#2d7a50">${fmt(totalDuOwner)}</span>
     </div>
   </div>
