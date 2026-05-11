@@ -44,7 +44,7 @@ export async function exportFacturesEvoliz(mois, bienIds = null) {
     'envoye_evoliz': 'Envoyée Evoliz', 'payee': 'Payée'
   }
 
-  const lignes = (factures || []).map(f => {
+  const lignes = (factures || []).filter(f => (f.lignes?.length || 0) > 0).map(f => {
     const proprio = f.proprietaire
     const proprioNom = proprio ? `${proprio.prenom || ''} ${proprio.nom}`.trim() : ''
     const lignesDetail = (f.lignes || []).map(l =>
@@ -55,7 +55,7 @@ export async function exportFacturesEvoliz(mois, bienIds = null) {
       proprioNom,
       f.bien?.hospitable_name || '',
       typeLabels[f.type_facture] || f.type_facture,
-      f.numero_facture || '',
+      f.numero_facture || f.id_evoliz || '',
       statutLabels[f.statut] || f.statut || '',
       f.created_at ? format(new Date(f.created_at), 'dd/MM/yyyy', { locale: fr }) : '',
       f.date_emission ? format(new Date(f.date_emission), 'dd/MM/yyyy', { locale: fr }) : '',
