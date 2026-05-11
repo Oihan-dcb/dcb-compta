@@ -6,7 +6,9 @@
  *            id_mouvement / id_reservations / code_reservations /
  *            Date opération / Libellé virement / Référence /
  *            Entrée EUR / Sortie EUR / Statut / canal_bancaire_detecte /
- *            date_operation_iso / montant_signe_eur / sens_mouvement / Bien(s)
+ *            date_operation_iso / montant_signe_eur / sens_mouvement / Bien(s) /
+ *            Voyageur(s) / Plateforme / Date arrivée / Date départ / Nuits /
+ *            Revenu net EUR / Nb réservations
  */
 import { getMouvementsMois } from './rapprochement'
 
@@ -62,6 +64,13 @@ export async function exportRapprochementBancaire(mois) {
     'montant_signe_eur',
     'sens_mouvement',
     'Bien(s)',
+    'Voyageur(s)',
+    'Plateforme',
+    'Date arrivée',
+    'Date départ',
+    'Nuits',
+    'Revenu net EUR',
+    'Nb réservations',
   ]
 
   const rows = mouvements.map(m => {
@@ -91,6 +100,13 @@ export async function exportRapprochementBancaire(mois) {
       montantSigne,
       sens,
       r?.bien_name || '',
+      r?.guest_name || '',
+      r?.platform || '',
+      fmtDate(r?.arrival_date),
+      fmtDate(r?.departure_date),
+      r?.nights != null ? String(r.nights) : '',
+      r?.fin_revenue != null ? fmtMontant(r.fin_revenue) : '',
+      r?.nb_resas != null ? String(r.nb_resas) : '',
     ]
   })
 
