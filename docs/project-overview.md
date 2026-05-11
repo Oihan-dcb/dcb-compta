@@ -818,3 +818,22 @@ supabase.from('reservation_paiement')
 ```
 
 **Résultat** : 5 refreshes consécutifs → valeurs identiques 21 futurs (42 646€) / 415 passés (-35 373€). Voir invariant I-121.
+
+## Session 10 mai 2026 (soirée) — Rapprochement PAYINs Airbnb + doublons Powens
+
+### Feature : liaison des PAYINs Airbnb mai non liés
+
+4 PAYINs Airbnb de mai 2026 liés manuellement à leurs mouvements bancaires (`payout_hospitable.mouvement_id` + `mouvement_bancaire.statut_matching = 'rapproché'`) :
+- 209,56€ (01/05 → MB 04/05), 560,23€ (01/05 → MB 04/05), 3 029,71€ (04/05 → MB 06/05), 414,32€ (05/05 → MB 07/05)
+- Écarts 2–3j normaux car 01/05 (Fête du Travail) et 08/05 (Victoire) sont fériés.
+- 5e payout (423,28€, 11/05) = payout synthétique pour résa Lucas Bernardino — check-in 11/05, MB attendu J+2.
+
+### Bug découvert et corrigé : doublons CSV/Powens dans mouvement_bancaire
+
+**Symptôme** : chaque transaction bancaire apparaissait deux fois en base — une fois importée via relevé `CaisseEpargne` (avec libellé "VIR SEPA AIRBNB…"), une fois via `Powens_seq_lc` (libellé vide). Les doublons Powens apparaissaient en "En attente / Inconnu" dans l'UI de rapprochement.
+
+**Cause** : l'import Powens insère les transactions sans vérifier l'existence d'un MB identique (même date + même montant). Pas de contrainte d'unicité en base.
+
+**Correction** : 63 doublons `Powens_seq_lc` supprimés manuellement (avril–mai 2026). Voir invariant I-122.
+
+**À implémenter** dans l'import Powens (en cours de dev) : dédoublonnage avant insertion — vérifier `(date_operation, credit)` existant, ou contrainte UNIQUE `(date_operation, credit, debit, canal)`.

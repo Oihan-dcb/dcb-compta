@@ -256,6 +256,8 @@ Aucun invariant actif violé à l'issue de la session du 12 avril 2026.
 
 **Total actuel** : 0 invariants violés actifs (⚠ I-60 partiellement couvert), 20 corrigés, 34 nouveaux, sur 75 documentés.
 
+| I-122 | **L'import Powens crée des doublons de mouvement_bancaire.** Powens (`Powens_seq_lc`) importe les mêmes transactions que le relevé CSV (`CaisseEpargne`) mais sans libellé (libellé vide). Résultat : pour chaque transaction réelle, deux entrées en base — une avec label (`CaisseEpargne`, rapprochée), une vide (`Powens_seq_lc`, en attente). **Constaté le 10/05/2026** : 63 doublons Powens identifiés (avril–mai 2026), supprimés manuellement. **Fix à implémenter dans l'import Powens** : avant insertion, vérifier qu'aucun MB de même `date_operation` et même `credit` n'existe déjà — si oui, ignorer l'entrée Powens. Contrainte de déduplication à ajouter : `UNIQUE (date_operation, credit, debit, canal)` ou dédoublonnage applicatif. | ❌ **Bug actif** — import Powens en cours de développement. Dédoublonnage absent. |
+
 ---
 
 *Fichier généré dans le cadre de l'audit structurel DCB Compta — mars 2026.*

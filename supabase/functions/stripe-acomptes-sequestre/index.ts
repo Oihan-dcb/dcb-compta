@@ -82,7 +82,10 @@ Deno.serve(async (req) => {
           const r1 = await stripeGet(
             `/v1/payment_intents/search?query=${encodeURIComponent(`metadata['reservation_code']:'${code}'`)}&limit=10`
           )
-          const pis = (r1.data ?? []).filter((pi: any) => pi.status === 'succeeded' && pi.created <= tsMax)
+          const pis = (r1.data ?? []).filter((pi: any) =>
+            (pi.status === 'succeeded' || pi.status === 'requires_capture') && pi.created <= tsMax
+          )
+          console.log(`[${code}] PI search: ${r1.data?.length ?? 0} résultats, ${pis.length} après filtre`)
           for (const pi of pis) {
             candidatesFromStripe.push({
               code,
@@ -102,7 +105,7 @@ Deno.serve(async (req) => {
             const r2 = await stripeGet(
               `/v1/charges/search?query=${encodeURIComponent(`metadata['reservation_code']:'${code}'`)}&limit=10`
             )
-            const charges = (r2.data ?? []).filter((c: any) => c.status === 'succeeded' && c.captured && c.created <= tsMax)
+            const charges = (r2.data ?? []).filter((c: any) => (c.status === 'succeeded' || c.status === 'pending') && c.created <= tsMax)
             for (const ch of charges) {
               candidatesFromStripe.push({
                 code,
@@ -123,7 +126,7 @@ Deno.serve(async (req) => {
             const r3 = await stripeGet(
               `/v1/charges/search?query=${encodeURIComponent(`description:'${code}'`)}&limit=10`
             )
-            const charges = (r3.data ?? []).filter((c: any) => c.status === 'succeeded' && c.captured && c.created <= tsMax)
+            const charges = (r3.data ?? []).filter((c: any) => (c.status === 'succeeded' || c.status === 'pending') && c.created <= tsMax)
             for (const ch of charges) {
               candidatesFromStripe.push({
                 code,
