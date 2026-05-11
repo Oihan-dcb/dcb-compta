@@ -289,7 +289,6 @@ export function genererStatementHTML(proprio, mois, data) {
       ${showLoy ? '<col style="width:9%">' : ''}
       <col style="width:9%">
       <col style="width:6%">
-      <col style="width:12%">
     </colgroup>
     <thead>
       <tr style="background:#EDEBE5;border-bottom:2px solid #CC9933">
