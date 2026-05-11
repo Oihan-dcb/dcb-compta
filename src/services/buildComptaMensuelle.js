@@ -597,6 +597,14 @@ export function exportComptaCSV(data) {
         const nsum = key => children.reduce((s, c) => s + (c[key] || 0), 0)
         const first = children[0]
         const glabel = GROUPE_LABELS[gk] || gk
+        // Réversement facturé : dédupliquer par facture_id (les biens d'un groupe partagent
+        // souvent la même facture globale proprio — sommer naïvement multiplierait le montant)
+        const facturesTotaux = new Map()
+        for (const c of children) {
+          if (c.facture_id != null && !facturesTotaux.has(c.facture_id))
+            facturesTotaux.set(c.facture_id, c.facture_montant_reversement || 0)
+        }
+        const reversementFactureGroupe = [...facturesTotaux.values()].reduce((s, v) => s + v, 0)
         // Ligne parent agrégée — "Virement fait" vide (agrégé de plusieurs biens)
         csvRows.push([
           glabel,
@@ -607,7 +615,7 @@ export function exportComptaCSV(data) {
           fmt(nsum('fmen_ht')), fmt(nsum('fmen_tva')), fmt(nsum('fmen_ttc')),
           fmt(nsum('auto_ht')), fmt(nsum('loy_ht')), fmt(nsum('frais_loy')), fmt(nsum('taxe_ht')), fmt(nsum('reversement_calcule')), '',
           first.facture_statut || '',
-          fmt(nsum('facture_montant_reversement')),
+          fmt(reversementFactureGroupe),
           first.ecart_reversement_proprio != null ? fmt(first.ecart_reversement_proprio) : '',
           [...new Set(children.flatMap(c => c.alert_codes))].join(' | '),
         ])
