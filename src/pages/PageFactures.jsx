@@ -44,8 +44,7 @@ const [pushing, setPushing] = useState(false)
   const [comFacture, setComFacture] = useState(null)
   const [generatingCOM, setGeneratingCOM] = useState(false)
   const [pushingCOM, setPushingCOM] = useState(false)
-  const [syncingNumeros, setSyncingNumeros] = useState(false)
-
+  
   // Contrôle virements propriétaires
   const [virementsSortants, setVirementsSortants] = useState([])
   const [liensVirements, setLiensVirements] = useState({})   // facture_id → mouvement_id
@@ -413,10 +412,12 @@ const [pushing, setPushing] = useState(false)
       const [f, s] = await Promise.all([getFacturesMois(mois), getStatsFactures(mois)])
       setFactures(f)
       setStats(s)
-      // Afficher les données existantes immédiatement
       chargerSoldesControle(f)
-      // Recalculer les encaissements en arrière-plan puis rafraîchir
       calculerEncaissements(f)
+      // Sync silencieuse des numéros Evoliz en arrière-plan
+      syncNumerosEvoliz(mois).then(({ updated }) => {
+        if (updated > 0) getFacturesMois(mois).then(f2 => setFactures(f2))
+      }).catch(() => {})
     } catch (err) {
       setError(err.message)
     } finally {
@@ -524,23 +525,7 @@ const [pushing, setPushing] = useState(false)
         <div style={{ display: 'flex', gap: 10, alignItems: 'center' }}>
           <MoisSelector mois={mois} setMois={setMois} moisDispos={moisDispos} />
           <button className="btn btn-secondary" onClick={charger} disabled={loading}>↺</button>
-          <button
-            className="btn btn-secondary"
-            onClick={async () => {
-              setSyncingNumeros(true)
-              try {
-                const { updated } = await syncNumerosEvoliz(mois)
-                if (updated > 0) { await charger(); setSuccess(`${updated} numéro(s) de facture récupéré(s) depuis Evoliz`) }
-                else setSuccess('Aucun nouveau numéro à récupérer')
-              } catch (e) { setError(e.message) }
-              finally { setSyncingNumeros(false) }
-            }}
-            disabled={syncingNumeros}
-            title="Récupérer les numéros des factures confirmées dans Evoliz"
-          >
-            {syncingNumeros ? <><span className="spinner" /> Sync…</> : '↓ Numéros Evoliz'}
-          </button>
-          {computingAlloc && <span style={{ fontSize: 12, color: 'var(--text-muted)' }}><span className="spinner" /> Trésorerie…</span>}
+{computingAlloc && <span style={{ fontSize: 12, color: 'var(--text-muted)' }}><span className="spinner" /> Trésorerie…</span>}
           <button
             className="btn btn-secondary"
             onClick={validerTout}
