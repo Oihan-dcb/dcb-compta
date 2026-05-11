@@ -501,6 +501,9 @@ export async function getResasEnAttentePayin(mois) {
     if (r.bien?.agence !== AGENCE) return false
     if (r.final_status === 'not accepted') return false
     if (r.final_status === 'cancelled') return false
+    // Biens sans gestion loyer : l'OTA paye directement le proprio → on n'attend aucun PAYIN Airbnb/Booking
+    // Resas manual/direct/stripe : toujours afficher (l'agence encaisse)
+    if (!r.bien?.gestion_loyer && ['airbnb', 'booking'].includes(r.platform)) return false
     return true
   })
 }
