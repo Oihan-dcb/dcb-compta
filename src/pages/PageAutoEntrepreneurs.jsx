@@ -136,7 +136,7 @@ export default function PageAutoEntrepreneurs() {
   async function creerStaffRoom(aeUserId) {
     const r = await fetch('/api/create-staff-room', {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: { 'Content-Type': 'application/json', 'x-internal-secret': import.meta.env.VITE_INTERNAL_API_SECRET },
       body: JSON.stringify({ ae_user_id: aeUserId }),
     })
     const d = await r.json()
@@ -549,7 +549,7 @@ export default function PageAutoEntrepreneurs() {
       try {
         const r = await fetch('/api/ae-action', {
           method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
+          headers: { 'Content-Type': 'application/json', 'x-internal-secret': import.meta.env.VITE_INTERNAL_API_SECRET },
           body: JSON.stringify({ action: 'sync', ae_id: ae.id, mois: moisCible })
         })
         const d = await r.json()

@@ -9,7 +9,7 @@ const PROXY = '/api/powens-proxy'
 async function call(fn, body) {
   const res = await fetch(PROXY, {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
+    headers: { 'Content-Type': 'application/json', 'x-internal-secret': import.meta.env.VITE_INTERNAL_API_SECRET },
     body: JSON.stringify({ fn, ...body }),
   })
   const data = await res.json()

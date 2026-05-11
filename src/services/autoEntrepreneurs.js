@@ -56,7 +56,7 @@ export async function createAEWithAuth(ae, email) {
   // 3. Appeler via la route Vercel proxy (serveur→serveur, pas de CORS)
   const fnResp = await fetch('/api/ae-action', {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
+    headers: { 'Content-Type': 'application/json', 'x-internal-secret': import.meta.env.VITE_INTERNAL_API_SECRET },
     body: JSON.stringify({ action: 'create', ae_id: data.id, email, password })
   })
   if (!fnResp.ok) throw new Error('Erreur serveur: ' + fnResp.status)
@@ -70,7 +70,7 @@ export async function createAEAccess(ae_id, email) {
   const password = 'DCB' + Math.random().toString(36).slice(2, 8).toUpperCase() + Math.floor(Math.random() * 100)
   const fnResp = await fetch('/api/ae-action', {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
+    headers: { 'Content-Type': 'application/json', 'x-internal-secret': import.meta.env.VITE_INTERNAL_API_SECRET },
     body: JSON.stringify({ action: 'create', ae_id, email, password })
   })
   const data = await fnResp.json()
@@ -82,7 +82,7 @@ export async function resetAEPassword(ae_id, email) {
   const password = 'DCB' + Math.random().toString(36).slice(2, 8).toUpperCase() + Math.floor(Math.random() * 100)
   const fnResp = await fetch('/api/ae-action', {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
+    headers: { 'Content-Type': 'application/json', 'x-internal-secret': import.meta.env.VITE_INTERNAL_API_SECRET },
     body: JSON.stringify({ action: 'reset', ae_id, email, password })
   })
   if (!fnResp.ok) throw new Error('Erreur serveur: ' + fnResp.status)

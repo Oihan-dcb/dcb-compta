@@ -686,7 +686,7 @@ FORMAT :
       const html = getHTML()
       const response = await fetch('/api/generate-pdf', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 'Content-Type': 'application/json', 'x-internal-secret': import.meta.env.VITE_INTERNAL_API_SECRET },
         body: JSON.stringify({ html, orientation: useStatement ? 'landscape' : 'portrait' }),
       })
       if (!response.ok) {
@@ -732,7 +732,7 @@ FORMAT :
           console.log('[envoyer] étape 3 — fetch /api/generate-pdf')
           const pdfRes = await fetch('/api/generate-pdf', {
             method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
+            headers: { 'Content-Type': 'application/json', 'x-internal-secret': import.meta.env.VITE_INTERNAL_API_SECRET },
             body: JSON.stringify({ html: statementHtml, orientation: 'landscape' }),
           })
           console.log('[envoyer] generate-pdf status:', pdfRes.status)

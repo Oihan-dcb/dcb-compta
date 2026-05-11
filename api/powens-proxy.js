@@ -6,19 +6,30 @@
 
 const SUPABASE_URL = 'https://omuncchvypbtxkpalwcr.supabase.co'
 const REDIRECT_URI = 'https://dcb-compta.vercel.app/api/powens-callback'
+const INTERNAL_SECRET = process.env.INTERNAL_API_SECRET
+
+const FN_ALLOWLIST = ['powens-auth', 'powens-sync']
 
 export default async function handler(req, res) {
-  res.setHeader('Access-Control-Allow-Origin', '*')
+  res.setHeader('Access-Control-Allow-Origin', 'https://dcb-compta.vercel.app')
   res.setHeader('Access-Control-Allow-Methods', 'POST, OPTIONS')
-  res.setHeader('Access-Control-Allow-Headers', 'Content-Type')
+  res.setHeader('Access-Control-Allow-Headers', 'Content-Type, x-internal-secret')
   if (req.method === 'OPTIONS') return res.status(200).end()
   if (req.method !== 'POST') return res.status(405).json({ error: 'Method not allowed' })
+
+  if (!INTERNAL_SECRET || req.headers['x-internal-secret'] !== INTERNAL_SECRET) {
+    return res.status(403).json({ error: 'Forbidden' })
+  }
 
   const SERVICE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY
   if (!SERVICE_KEY) return res.status(500).json({ error: 'Service key manquante' })
 
   const { fn, ...body } = req.body
   if (!fn) return res.status(400).json({ error: 'fn requis' })
+
+  if (!FN_ALLOWLIST.includes(fn)) {
+    return res.status(400).json({ error: `fn non autorisé : ${fn}` })
+  }
 
   // Injecter la redirectUri avec agence+accountLabel pour que le callback sache quel compte traiter
   if (body.action === 'init_webview') {

@@ -5,9 +5,15 @@ export const config = {
   maxDuration: 30,
 }
 
+const INTERNAL_SECRET = process.env.INTERNAL_API_SECRET
+
 export default async function handler(req, res) {
   if (req.method !== 'POST') {
     return res.status(405).json({ error: 'Method not allowed' })
+  }
+
+  if (!INTERNAL_SECRET || req.headers['x-internal-secret'] !== INTERNAL_SECRET) {
+    return res.status(403).json({ error: 'Forbidden' })
   }
 
   const { html, orientation = 'portrait' } = req.body || {}
