@@ -91,8 +91,8 @@ export async function envoyerExportsComptable(mois, destinataire, cc, exports, m
 
   if (exports.includes('bilan_lld')) {
     const path = `bilans/${AGENCE}-${mois}.pdf`
-    const { data: blob, error } = await supabase.storage.from('bilans').download(path)
-    if (error) throw new Error(`Bilan LLD introuvable (${path}) — générez-le d'abord depuis la page Étudiants`)
+    const { data: blob, error } = await supabase.storage.from('etudiant-documents').download(path)
+    if (error) throw new Error(`Bilan LLD introuvable — générez-le d'abord depuis la page Exports`)
     const b64 = await blobToBase64(blob)
     attachments.push({ filename: `${prefix}_Bilan_LLD_${mois}.pdf`, content: b64, content_type: 'application/pdf' })
   }
