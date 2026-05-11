@@ -78,12 +78,12 @@ export function montantVirementProprio(e) {
 export async function listerLoyersMois(mois, agence = AGENCE) {
   const { data, error } = await supabase
     .from('loyer_suivi')
-    .select('*, etudiant (id, nom, prenom, email, telephone, loyer_nu, supplement_loyer, charges_eau, charges_copro, charges_internet, honoraires_dcb, bien_id, proprietaire_id, jour_paiement_attendu, bien (code))')
+    .select('*, etudiant (id, nom, prenom, email, telephone, loyer_nu, supplement_loyer, charges_eau, charges_copro, charges_internet, honoraires_dcb, bien_id, proprietaire_id, jour_paiement_attendu, archived, bien (code))')
     .eq('agence', agence)
     .eq('mois', mois)
     .order('created_at')
   if (error) throw error
-  return data
+  return (data || []).filter(l => !l.etudiant?.archived)
 }
 
 export async function initialiserLoyersMois(mois, agence = AGENCE) {

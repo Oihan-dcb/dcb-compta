@@ -183,13 +183,13 @@ export async function genererSCTVirementsProprios(mois, agence = AGENCE) {
 
   const { data: virements, error: errVir } = await supabase
     .from('virement_proprio_suivi')
-    .select('id, montant, etudiant(nom, prenom, proprietaire(nom, prenom, iban, bic))')
+    .select('id, montant, etudiant(nom, prenom, archived, proprietaire(nom, prenom, iban, bic))')
     .eq('agence', agence)
     .eq('mois', mois)
     .eq('statut', 'a_virer')
   if (errVir) throw errVir
 
-  const valid = (virements || []).filter(v => v.etudiant?.proprietaire?.iban && v.montant > 0)
+  const valid = (virements || []).filter(v => !v.etudiant?.archived && v.etudiant?.proprietaire?.iban && v.montant > 0)
   if (!valid.length) throw new Error(`Aucun virement propriétaire à effectuer pour ${mois} (avec IBAN configuré)`)
 
   const transactions = valid.map((v, i) => {
@@ -234,13 +234,13 @@ export async function genererSCTHonorairesDCB(mois, agence = AGENCE) {
 
   const { data: loyers, error: errLoy } = await supabase
     .from('loyer_suivi')
-    .select('etudiant(honoraires_dcb)')
+    .select('etudiant(honoraires_dcb, archived)')
     .eq('agence', agence)
     .eq('mois', mois)
     .eq('statut', 'recu')
   if (errLoy) throw errLoy
 
-  const totalHon = (loyers || []).reduce((s, l) => s + (l.etudiant?.honoraires_dcb || 0), 0)
+  const totalHon = (loyers || []).filter(l => !l.etudiant?.archived).reduce((s, l) => s + (l.etudiant?.honoraires_dcb || 0), 0)
   if (!totalHon) throw new Error(`Aucun honoraire DCB à virer pour ${mois} (aucun loyer reçu avec honoraires)`)
 
   const debtorNom = config.agence_titulaire || 'DESTINATION COTE BASQUE'
