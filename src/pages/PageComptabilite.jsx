@@ -227,6 +227,7 @@ export default function PageComptabilite() {
             alert_count: allAlerts.length,
             alert_level: allAlerts.some(a => a.level === 'error') ? 'error' : allAlerts.some(a => a.level === 'warning') ? 'warning' : null,
             alert_codes: [...new Set(allAlerts.map(a => a.code))],
+            _childrenBienIds: children.map(c => c.bien_id),
           }
           result.push({ type: 'group', key: gk, parent, children })
         }
@@ -478,13 +479,34 @@ export default function PageComptabilite() {
                   {col('reversement_calcule') && <td style={{ ...td, textAlign: 'right', fontVariantNumeric: 'tabular-nums', fontWeight: r.reversement_calcule ? 600 : 400 }}>{r.reversement_calcule ? fmtN(r.reversement_calcule) : '—'}</td>}
                   {col('fait') && <td style={{ ...td, textAlign: 'center' }}>
                     {!isChild && (() => {
-                      const faitAt = reversementsFaits[r.bien_id]
+                      let faitAt, handleClick
+                      if (r._isGroup && r._childrenBienIds?.length) {
+                        const allFait = r._childrenBienIds.every(id => !!reversementsFaits[id])
+                        faitAt = allFait ? reversementsFaits[r._childrenBienIds[0]] : null
+                        handleClick = async () => {
+                          const fait_at = new Date().toISOString()
+                          if (allFait) {
+                            await Promise.all(r._childrenBienIds.map(id =>
+                              supabase.from('reversement_fait').delete().eq('bien_id', id).eq('mois', mois).eq('agence', AGENCE)
+                            ))
+                            setReversementsFaits(prev => { const n = { ...prev }; r._childrenBienIds.forEach(id => delete n[id]); return n })
+                          } else {
+                            await Promise.all(r._childrenBienIds.map(id =>
+                              supabase.from('reversement_fait').upsert({ bien_id: id, mois, agence: AGENCE, fait_at }, { onConflict: 'bien_id,mois,agence' })
+                            ))
+                            setReversementsFaits(prev => { const n = { ...prev }; r._childrenBienIds.forEach(id => { n[id] = fait_at }); return n })
+                          }
+                        }
+                      } else {
+                        faitAt = reversementsFaits[r.bien_id]
+                        handleClick = () => toggleFait(r.bien_id, faitAt)
+                      }
                       const d = faitAt ? new Date(faitAt) : null
                       const label = d
                         ? `Virement fait le ${d.toLocaleDateString('fr-FR', { day: '2-digit', month: '2-digit' })} à ${d.toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' })}h`
                         : ''
                       return (
-                        <div title={label} style={{ display: 'inline-flex', alignItems: 'center', gap: 4, cursor: 'pointer' }} onClick={() => toggleFait(r.bien_id, faitAt)}>
+                        <div title={label} style={{ display: 'inline-flex', alignItems: 'center', gap: 4, cursor: 'pointer' }} onClick={handleClick}>
                           <span style={{ fontSize: 18, color: faitAt ? '#059669' : '#D9CEB8', lineHeight: 1 }}>
                             {faitAt ? '✅' : '○'}
                           </span>
