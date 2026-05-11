@@ -357,3 +357,43 @@ export async function pousserFactureCOMVersEvoliz(factureId, totals, mois) {
     throw err
   }
 }
+
+// ============================================================
+// SYNC NUMÉROS DEPUIS EVOLIZ
+// ============================================================
+
+/**
+ * Pour toutes les factures envoye_evoliz sans numero_facture,
+ * récupère le document_number depuis Evoliz et met à jour la DB.
+ * @param {string} mois - ex: "2026-05"
+ * @returns {{ updated: number, skipped: number }}
+ */
+export async function syncNumerosEvoliz(mois) {
+  const { data: factures, error } = await supabase
+    .from('facture_evoliz')
+    .select('id, id_evoliz')
+    .eq('mois', mois)
+    .eq('statut', 'envoye_evoliz')
+    .is('numero_facture', null)
+    .not('id_evoliz', 'is', null)
+    .neq('id_evoliz', 'N/A')
+
+  if (error) throw error
+  if (!factures?.length) return { updated: 0, skipped: 0 }
+
+  let updated = 0, skipped = 0
+  for (const f of factures) {
+    try {
+      const inv = await evolizCall('getInvoice', { invoiceId: f.id_evoliz })
+      const numero = inv?.document_number || null
+      if (!numero) { skipped++; continue }
+      await supabase.from('facture_evoliz')
+        .update({ numero_facture: numero })
+        .eq('id', f.id)
+      updated++
+    } catch {
+      skipped++
+    }
+  }
+  return { updated, skipped }
+}

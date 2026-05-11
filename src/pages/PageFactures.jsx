@@ -7,7 +7,7 @@ import {
   getStatsFactures,
   getFactureCOM, genererFactureCOM, validerFactureCOM,
 } from '../services/facturesEvoliz'
-import { pousserFacturesMoisVersEvoliz, pingEvoliz, pousserFactureCOMVersEvoliz } from '../services/evoliz'
+import { pousserFacturesMoisVersEvoliz, pingEvoliz, pousserFactureCOMVersEvoliz, syncNumerosEvoliz } from '../services/evoliz'
 import { formatMontant } from '../lib/hospitable'
 
 const moisCourant = new Date().toISOString().substring(0, 7)
@@ -44,6 +44,7 @@ const [pushing, setPushing] = useState(false)
   const [comFacture, setComFacture] = useState(null)
   const [generatingCOM, setGeneratingCOM] = useState(false)
   const [pushingCOM, setPushingCOM] = useState(false)
+  const [syncingNumeros, setSyncingNumeros] = useState(false)
 
   // Contrôle virements propriétaires
   const [virementsSortants, setVirementsSortants] = useState([])
@@ -523,6 +524,22 @@ const [pushing, setPushing] = useState(false)
         <div style={{ display: 'flex', gap: 10, alignItems: 'center' }}>
           <MoisSelector mois={mois} setMois={setMois} moisDispos={moisDispos} />
           <button className="btn btn-secondary" onClick={charger} disabled={loading}>↺</button>
+          <button
+            className="btn btn-secondary"
+            onClick={async () => {
+              setSyncingNumeros(true)
+              try {
+                const { updated } = await syncNumerosEvoliz(mois)
+                if (updated > 0) { await charger(); setSuccess(`${updated} numéro(s) de facture récupéré(s) depuis Evoliz`) }
+                else setSuccess('Aucun nouveau numéro à récupérer')
+              } catch (e) { setError(e.message) }
+              finally { setSyncingNumeros(false) }
+            }}
+            disabled={syncingNumeros}
+            title="Récupérer les numéros des factures confirmées dans Evoliz"
+          >
+            {syncingNumeros ? <><span className="spinner" /> Sync…</> : '↓ Numéros Evoliz'}
+          </button>
           {computingAlloc && <span style={{ fontSize: 12, color: 'var(--text-muted)' }}><span className="spinner" /> Trésorerie…</span>}
           <button
             className="btn btn-secondary"
