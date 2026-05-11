@@ -1,11 +1,16 @@
 /**
  * exportRapprochementBancaire(mois)
- * Export simplifié des PAYINs séquestre.
+ * Export du rapprochement bancaire mensuel.
  *
- * Colonnes : Canal / Bien / Date PAYIN / Date CI / Client / ID Réservation /
- *            Montant reçu (€) / Montant attendu (€) / Statut
+ * Colonnes : version_export / date_export / mois_comptable / uuid_ligne /
+ *            id_mouvement / id_reservations / code_reservations /
+ *            Date opération / Libellé virement / Référence /
+ *            Entrée EUR / Sortie EUR / Statut / canal_bancaire_detecte /
+ *            date_operation_iso / montant_signe_eur / sens_mouvement / Bien(s)
  */
 import { getMouvementsMois } from './rapprochement'
+
+const VERSION_EXPORT = '1'
 
 function q(v) {
   if (v == null || v === '') return '""'
@@ -24,16 +29,6 @@ function fmtMontant(cents) {
   return (Number(cents) / 100).toFixed(2)
 }
 
-function fmtCanal(canal) {
-  if (!canal) return ''
-  const c = canal.toLowerCase()
-  if (c === 'airbnb')  return 'Airbnb'
-  if (c === 'booking') return 'Booking'
-  if (c === 'stripe')  return 'Stripe'
-  if (c === 'direct')  return 'Direct'
-  return canal
-}
-
 function fmtStatut(statut) {
   if (!statut) return ''
   if (statut === 'rapproche')    return 'Rapproché'
@@ -46,35 +41,58 @@ function fmtStatut(statut) {
 
 export async function exportRapprochementBancaire(mois) {
   const mouvements = await getMouvementsMois(mois)
+  const dateExport = new Date().toISOString().slice(0, 10)
 
   const headers = [
-    'Canal',
-    'Bien',
-    'Date PAYIN',
-    'Date CI',
-    'Client',
-    'ID Réservation',
-    'Montant reçu (€)',
-    'Montant attendu (€)',
+    'version_export',
+    'date_export',
+    'mois_comptable',
+    'uuid_ligne',
+    'id_mouvement',
+    'id_reservations',
+    'code_reservations',
+    'Date opération',
+    'Libellé virement',
+    'Référence',
+    'Entrée EUR',
+    'Sortie EUR',
     'Statut',
+    'canal_bancaire_detecte',
+    'date_operation_iso',
+    'montant_signe_eur',
+    'sens_mouvement',
+    'Bien(s)',
   ]
 
-  const rows = mouvements
-    .filter(m => (m.credit || 0) > 0)
-    .map(m => {
-      const r = m._resa
-      return [
-        fmtCanal(m.canal),
-        r?.bien_name   || '',
-        fmtDate(m.date_operation),
-        fmtDate(r?.arrival_date),
-        r?.guest_name  || '',
-        r?.codes?.join(', ') || '',
-        fmtMontant(m.credit),
-        r?.fin_revenue != null ? fmtMontant(r.fin_revenue) : '',
-        fmtStatut(m.statut_matching),
-      ]
-    })
+  const rows = mouvements.map(m => {
+    const r = m._resa
+    const credit = m.credit || 0
+    const debit  = m.debit  || 0
+    const sens   = credit > 0 ? 'CREDIT' : 'DEBIT'
+    const montantSigne = credit > 0
+      ? fmtMontant(credit)
+      : debit > 0 ? '-' + fmtMontant(debit) : '0.00'
+    return [
+      VERSION_EXPORT,
+      dateExport,
+      mois,
+      m.id || '',
+      m.id || '',
+      r?.reservation_ids?.join(', ') || '',
+      r?.codes?.join(', ') || '',
+      fmtDate(m.date_operation),
+      m.libelle || '',
+      m.numero_operation || '',
+      credit > 0 ? fmtMontant(credit) : '',
+      debit  > 0 ? fmtMontant(debit)  : '',
+      fmtStatut(m.statut_matching),
+      m.canal || '',
+      String(m.date_operation || '').slice(0, 10),
+      montantSigne,
+      sens,
+      r?.bien_name || '',
+    ]
+  })
 
   const lines = [headers, ...rows].map(row => row.map(q).join(';')).join('\n')
   return '\uFEFF' + lines
