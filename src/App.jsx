@@ -231,8 +231,23 @@ export default function App() {
   if (session === undefined) return <LoadingScreen />
   if (!session) return <LoginScreen />
 
+  if (ALLOWED_EMAILS.length === 0) {
+    return (
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '100vh', background: '#F7F3EC' }}>
+        <div style={{ background: '#fff', borderRadius: 16, boxShadow: '0 4px 24px rgba(0,0,0,.10)', padding: '40px 36px', width: 380, maxWidth: '90vw', textAlign: 'center' }}>
+          <div style={{ fontSize: 32, marginBottom: 12 }}>⚠️</div>
+          <div style={{ fontWeight: 700, fontSize: 16, color: '#2C2416', marginBottom: 8 }}>Configuration sécurité manquante</div>
+          <div style={{ fontSize: 13, color: '#8C7B65', marginBottom: 24 }}>La variable <code>VITE_ALLOWED_ADMIN_EMAILS</code> n'est pas définie. L'application ne peut pas démarrer.</div>
+          <button onClick={() => supabase.auth.signOut()} style={{ padding: '9px 20px', background: '#D9CEB8', color: '#2C2416', border: 'none', borderRadius: 8, fontWeight: 600, fontSize: 13, cursor: 'pointer' }}>
+            Se déconnecter
+          </button>
+        </div>
+      </div>
+    )
+  }
+
   const userEmail = session.user?.email?.toLowerCase() || ''
-  if (ALLOWED_EMAILS.length > 0 && !ALLOWED_EMAILS.includes(userEmail)) {
+  if (!ALLOWED_EMAILS.includes(userEmail)) {
     return <UnauthorizedScreen email={session.user?.email} onLogout={() => supabase.auth.signOut()} />
   }
 
