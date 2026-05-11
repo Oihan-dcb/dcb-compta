@@ -605,7 +605,10 @@ export function exportComptaCSV(data) {
             facturesTotaux.set(c.facture_id, c.facture_montant_reversement || 0)
         }
         const reversementFactureGroupe = [...facturesTotaux.values()].reduce((s, v) => s + v, 0)
-        // Ligne parent agrégée — "Virement fait" vide (agrégé de plusieurs biens)
+        // Virement fait : premier enfant avec reversement_fait_at (groupe = 1 virement partagé)
+        const faitAtGroupe = children.map(c => c.reversement_fait_at).find(v => v != null) ?? null
+        const faitStrGroupe = faitAtGroupe ? (() => { const d = new Date(faitAtGroupe); return `OUI — ${d.toLocaleDateString('fr-FR', { day: '2-digit', month: '2-digit' })} ${d.toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' })}h` })() : ''
+        // Ligne parent agrégée
         csvRows.push([
           glabel,
           '(groupe)',
@@ -613,7 +616,7 @@ export function exportComptaCSV(data) {
           nsum('nb_resas'), nsum('nb_rapprochees'), nsum('nb_non_rapprochees'), nsum('nb_non_ventilees'),
           fmt(nsum('hon_ht')), fmt(nsum('hon_tva')), fmt(nsum('hon_ttc')),
           fmt(nsum('fmen_ht')), fmt(nsum('fmen_tva')), fmt(nsum('fmen_ttc')),
-          fmt(nsum('auto_ht')), fmt(nsum('loy_ht')), fmt(nsum('frais_loy')), fmt(nsum('taxe_ht')), fmt(nsum('reversement_calcule')), '',
+          fmt(nsum('auto_ht')), fmt(nsum('loy_ht')), fmt(nsum('frais_loy')), fmt(nsum('taxe_ht')), fmt(nsum('reversement_calcule')), faitStrGroupe,
           first.facture_statut || '',
           fmt(reversementFactureGroupe),
           first.ecart_reversement_proprio != null ? fmt(first.ecart_reversement_proprio) : '',
