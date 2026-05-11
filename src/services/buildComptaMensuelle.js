@@ -217,7 +217,9 @@ export async function buildComptaMensuelle(mois, bienIds = null) {
 
   // Owner stay : FMEN TTC + AUTO HT par bien (depuis ventilation, réservations owner_stay)
   // Identique à facturesEvoliz.js — absorbés par LOY résiduel, réduit le reversement
-  const osResaIds = new Set(resas.filter(r => r.owner_stay).map(r => r.id))
+  // Seuls les owner stays avec fin_revenue > 0 (proprio paie le ménage) sont absorbés sur le LOY.
+  // Si fin_revenue = null (séjour gratuit), l'AUTO ne réduit pas le reversement — aligné sur buildRapportData.
+  const osResaIds = new Set(resas.filter(r => r.owner_stay && (r.fin_revenue || 0) > 0).map(r => r.id))
   const osVentByBien = {}
   if (osResaIds.size > 0) {
     for (const v of ventils) {

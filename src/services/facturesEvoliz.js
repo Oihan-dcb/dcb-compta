@@ -127,7 +127,7 @@ async function prechargerDonneesFacturation(mois, bienIds, proprietaireIds) {
       .eq('owner_stay', false).neq('final_status', 'cancelled').gt('fin_revenue', 0),
 
     supabase.from('reservation')
-      .select('id, bien_id')
+      .select('id, bien_id, fin_revenue')
       .in('bien_id', bienIds).eq('mois_comptable', mois)
       .eq('owner_stay', true).eq('platform', 'manual'),
 
@@ -231,7 +231,8 @@ async function genererFactureGroupe(proprio, biens, mois, ctx) {
       !PLATFORMS_DCB_FACT.includes(resaPlatMapFact.get(v.reservation_id) || '')
   }
 
-  const osResaIds = new Set((ownerStayResas || []).map(r => r.id))
+  // Seuls les owner stays avec fin_revenue > 0 sont absorbés sur le LOY — aligné sur buildRapportData.
+  const osResaIds = new Set((ownerStayResas || []).filter(r => (r.fin_revenue || 0) > 0).map(r => r.id))
 
   const osVentByBien = new Map()
   if (osResaIds.size > 0) {
