@@ -24,7 +24,7 @@ export async function buildComptaMensuelle(mois, bienIds = null) {
   // ── Phase 1 : chargement parallèle ──────────────────────────────────────
   let biensQuery = supabase
     .from('bien')
-    .select('id, code, hospitable_name, listed, proprietaire_id, groupe_facturation, proprietaire:proprietaire_id(id, nom, prenom)')
+    .select('id, code, hospitable_name, listed, proprietaire_id, groupe_facturation, gestion_loyer, proprietaire:proprietaire_id(id, nom, prenom)')
     .eq('agence', AGENCE)
   if (bienIds) biensQuery = biensQuery.in('id', bienIds)
 
@@ -296,7 +296,8 @@ export async function buildComptaMensuelle(mois, bienIds = null) {
     const bienResas   = resasByBien[b.id] || []
     const resasGuest  = bienResas.filter(r =>
       !r.owner_stay &&
-      (!STATUTS_NON_VENTILABLES.includes(r.final_status) || (r.fin_revenue || 0) > 0)
+      (!STATUTS_NON_VENTILABLES.includes(r.final_status) || (r.fin_revenue || 0) > 0) &&
+      (b.gestion_loyer !== false || !['airbnb', 'booking'].includes(r.platform))
     )
     const nb_resas            = resasGuest.length
     const nb_rapprochees      = resasGuest.filter(r =>  r.rapprochee).length
