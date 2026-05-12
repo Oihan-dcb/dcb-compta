@@ -9,38 +9,39 @@ Deno.serve(async (req) => {
   if (req.method === 'OPTIONS') return new Response('ok', { headers: corsHeaders })
 
   try {
-    const { ae_id, email, password } = await req.json()
-    if (!ae_id || !email || !password) {
-      return new Response(JSON.stringify({ error: 'ae_id, email et password requis' }), {
+    const { ae_id, email } = await req.json()
+    if (!ae_id || !email) {
+      return new Response(JSON.stringify({ error: 'ae_id et email requis' }), {
         status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' }
       })
     }
 
-    // Client admin avec service_role (disponible via env Supabase)
     const supabaseAdmin = createClient(
       Deno.env.get('SUPABASE_URL') ?? '',
       Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? ''
     )
 
-    // Créer le compte Auth
-    const { data: authData, error: authErr } = await supabaseAdmin.auth.admin.createUser({
+    // Créer le compte Auth via invite — génère un lien unique valable 24h
+    const { data: linkData, error: linkErr } = await supabaseAdmin.auth.admin.generateLink({
+      type: 'invite',
       email,
-      password,
-      email_confirm: true
     })
-    if (authErr) throw authErr
+    if (linkErr) throw linkErr
 
-    // Lier l'ae_user_id à la fiche AE
+    const userId = linkData.user.id
+
+    // Lier l'ae_user_id à la fiche AE (sans mdp_temporaire)
     const { error: updateErr } = await supabaseAdmin
       .from('auto_entrepreneur')
-      .update({ ae_user_id: authData.user.id, mdp_temporaire: password })
+      .update({ ae_user_id: userId })
       .eq('id', ae_id)
     if (updateErr) throw updateErr
 
-    return new Response(JSON.stringify({ 
-      success: true, 
-      user_id: authData.user.id,
-      email: authData.user.email
+    return new Response(JSON.stringify({
+      success: true,
+      user_id: userId,
+      email: linkData.user.email,
+      link: linkData.properties.action_link,
     }), {
       headers: { ...corsHeaders, 'Content-Type': 'application/json' }
     })

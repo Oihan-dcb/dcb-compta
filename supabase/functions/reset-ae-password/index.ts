@@ -5,16 +5,6 @@ const corsHeaders = {
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
 }
 
-// Génère un mot de passe aléatoire lisible (8 caractères alphanumériques)
-function genererMotDePasse() {
-  const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZabcdefghjkmnpqrstuvwxyz23456789'
-  let mdp = ''
-  for (let i = 0; i < 8; i++) {
-    mdp += chars[Math.floor(Math.random() * chars.length)]
-  }
-  return mdp
-}
-
 Deno.serve(async (req) => {
   if (req.method === 'OPTIONS') return new Response('ok', { headers: corsHeaders })
 
@@ -31,7 +21,6 @@ Deno.serve(async (req) => {
       Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? ''
     )
 
-    // Récupérer l'ae_user_id depuis la fiche AE
     const { data: ae, error: aeErr } = await supabaseAdmin
       .from('auto_entrepreneur')
       .select('ae_user_id, email')
@@ -39,27 +28,17 @@ Deno.serve(async (req) => {
       .single()
     if (aeErr) throw aeErr
     if (!ae?.ae_user_id) throw new Error('Aucun compte Auth lié à cet AE (ae_user_id null)')
+    if (!ae?.email) throw new Error('Email manquant sur la fiche AE')
 
-    // Générer le nouveau mot de passe
-    const newPassword = genererMotDePasse()
-
-    // Mettre à jour le mot de passe dans Supabase Auth
-    const { error: authErr } = await supabaseAdmin.auth.admin.updateUserById(
-      ae.ae_user_id,
-      { password: newPassword }
-    )
-    if (authErr) throw authErr
-
-    // Synchroniser mdp_temporaire en base (CF-PAE1 / CF-PAE2)
-    const { error: updateErr } = await supabaseAdmin
-      .from('auto_entrepreneur')
-      .update({ mdp_temporaire: newPassword })
-      .eq('id', ae_id)
-    if (updateErr) throw updateErr
+    const { data: linkData, error: linkErr } = await supabaseAdmin.auth.admin.generateLink({
+      type: 'recovery',
+      email: ae.email,
+    })
+    if (linkErr) throw linkErr
 
     return new Response(JSON.stringify({
       success: true,
-      password: newPassword,
+      link: linkData.properties.action_link,
       email: ae.email,
     }), {
       headers: { ...corsHeaders, 'Content-Type': 'application/json' }

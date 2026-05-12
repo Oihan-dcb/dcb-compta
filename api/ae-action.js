@@ -12,13 +12,13 @@ export default async function handler(req, res) {
   }
 
   try {
-    const { action, ae_id, email, password, mois } = req.body
+    const { action, ae_id, email, mois } = req.body
     if (!action || !ae_id) return res.status(400).json({ error: 'action et ae_id requis' })
     const SUPABASE_URL = 'https://omuncchvypbtxkpalwcr.supabase.co'
     const ANON_KEY = process.env.VITE_SUPABASE_ANON_KEY
     let slug, payload
-    if (action === 'create') { slug = 'create-ae-user'; payload = { ae_id, email, password } }
-    else if (action === 'reset') { slug = 'reset-ae-password'; payload = { ae_id, email, password } }
+    if (action === 'create') { slug = 'create-ae-user'; payload = { ae_id, email } }
+    else if (action === 'reset') { slug = 'reset-ae-password'; payload = { ae_id } }
     else if (action === 'sync') { slug = 'sync-ical-ae'; payload = { ae_id, mois } }
     else return res.status(400).json({ error: 'action invalide' })
     const fnResp = await fetch(`${SUPABASE_URL}/functions/v1/${slug}`, {

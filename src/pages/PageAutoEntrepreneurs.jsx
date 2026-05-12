@@ -511,20 +511,20 @@ export default function PageAutoEntrepreneurs() {
   function change(k, v) { setForm(f => ({ ...f, [k]: v })) }
 
   async function resetMdp(ae) {
-    if (!ae.email) { setError('Email requis pour réinitialiser le mot de passe'); return }
+    if (!ae.email) { setError('Email requis pour générer un lien d\'accès'); return }
     const isReset = !!ae.ae_user_id
     setConfirmModal({
       message: isReset
-        ? `Régénérer le mot de passe de ${ae.prenom} ${ae.nom} ?\nUn nouveau mot de passe temporaire sera généré.`
-        : `Créer l'accès portail pour ${ae.prenom} ${ae.nom} ?\nUn mot de passe temporaire sera généré et l'AE lié à un compte Auth.`,
+        ? `Générer un lien de réinitialisation pour ${ae.prenom} ${ae.nom} ?\nUn lien sécurisé valable 24h sera créé.`
+        : `Créer l'accès portail pour ${ae.prenom} ${ae.nom} ?\nUn lien d'invitation sécurisé sera créé et l'AE lié à un compte Auth.`,
       onConfirm: async () => {
         setConfirmModal(null)
         setSaving(true)
         try {
           const result = isReset
-            ? await resetAEPassword(ae.id, ae.email)
+            ? await resetAEPassword(ae.id)
             : await createAEAccess(ae.id, ae.email)
-          setSuccess(`Mot de passe : ${result?.password}`)
+          setSuccess(isReset ? `Lien créé pour ${result?.email} ✓` : `Accès créé pour ${ae.email} ✓`)
           // Après création d'accès : sync groupes + créer staff_room dans PowerHouse
           if (!isReset && result?.ae_user_id) {
             await syncGroupMemberships(result.ae_user_id)
@@ -590,9 +590,8 @@ export default function PageAutoEntrepreneurs() {
     })
   }
 
-  function genererHtmlAcces(ae) {
+  function genererHtmlAcces(ae, link) {
     const portailUrl = 'https://staff-app.destinationcotebasque.com'
-    const mdp = ae.mdp_temporaire || '(non disponible)'
     const prenom = ae.prenom || ae.nom || 'Bonjour'
     return `<!DOCTYPE html><html lang="fr"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"></head>
 <body style="margin:0;padding:0;background:#F7F3EC;font-family:Arial,Helvetica,sans-serif;">
@@ -612,10 +611,12 @@ export default function PageAutoEntrepreneurs() {
     <div style="background:#F7F3EC;border-radius:10px;padding:20px 24px;margin-bottom:28px;">
       <div style="font-size:11px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;color:#CC9933;margin-bottom:14px;">Vos accès</div>
       <table style="width:100%;border-collapse:collapse;">
-        <tr><td style="padding:6px 0;font-size:12px;color:#9C8E7D;width:110px;">Adresse</td><td style="padding:6px 0;"><a href="${portailUrl}" style="color:#CC9933;font-weight:700;font-size:13px;text-decoration:none;">${portailUrl}</a></td></tr>
-        <tr><td style="padding:6px 0;font-size:12px;color:#9C8E7D;">Email</td><td style="padding:6px 0;font-size:13px;color:#2C2416;font-family:monospace;">${ae.email || '—'}</td></tr>
-        <tr><td style="padding:6px 0;font-size:12px;color:#9C8E7D;">Mot de passe</td><td style="padding:6px 0;font-size:13px;color:#2C2416;font-family:monospace;font-weight:700;">${mdp}</td></tr>
+        <tr><td style="padding:6px 0;font-size:12px;color:#9C8E7D;width:110px;">Email</td><td style="padding:6px 0;font-size:13px;color:#2C2416;font-family:monospace;">${ae.email || '—'}</td></tr>
       </table>
+      <div style="margin-top:16px;text-align:center;">
+        <a href="${link || portailUrl}" style="display:inline-block;background:#CC9933;color:#fff;font-weight:700;font-size:14px;padding:12px 28px;border-radius:8px;text-decoration:none;letter-spacing:.02em;">Accéder à DCB &amp; Moi →</a>
+        <div style="font-size:11px;color:#9C8E7D;margin-top:8px;">Ce lien est personnel et valable 24h</div>
+      </div>
     </div>
 
     <!-- 2 actions -->
@@ -683,9 +684,8 @@ export default function PageAutoEntrepreneurs() {
 
   async function envoyerIdentifiants(ae) {
     const portailUrl = 'https://staff-app.destinationcotebasque.com'
-    const mdp = ae.mdp_temporaire || '(non disponible - recréer le compte)'
     const prenom = ae.prenom || ae.nom || ''
-    const msg = `Bonjour ${prenom},\n\nDCB & Moi — On remplace WhatsApp\n\nÀ partir de maintenant on passe sur DCB & Moi pour tous nos échanges internes.\n\n👉 ${portailUrl}\n\nVos accès :\nEmail : ${ae.email}\nMot de passe : ${mdp}\n\n---\n2 choses à faire maintenant\n\n1. Ajoutez-la sur votre écran d'accueil\nSur iPhone : ouvrez le lien dans Safari → bouton Partager ↑ → "Sur l'écran d'accueil"\nSur Android : ouvrez dans Chrome → menu ⋮ → "Ajouter à l'écran d'accueil"\n\n2. Acceptez les notifications quand ça vous le demande\nC'est comme ça que vous recevrez les messages en temps réel.\n\n---\nDes questions, écrivez-moi.`
+    const msg = `Bonjour ${prenom},\n\nDCB & Moi — On remplace WhatsApp\n\nÀ partir de maintenant on passe sur DCB & Moi pour tous nos échanges internes.\n\n👉 ${portailUrl}\n\nVotre email de connexion : ${ae.email || '—'}\nUn lien de connexion vous a été envoyé par email.\n\n---\n2 choses à faire maintenant\n\n1. Ajoutez-la sur votre écran d'accueil\nSur iPhone : ouvrez le lien dans Safari → bouton Partager ↑ → "Sur l'écran d'accueil"\nSur Android : ouvrez dans Chrome → menu ⋮ → "Ajouter à l'écran d'accueil"\n\n2. Acceptez les notifications quand ça vous le demande\nC'est comme ça que vous recevrez les messages en temps réel.\n\n---\nDes questions, écrivez-moi.`
     await navigator.clipboard.writeText(msg)
     setSuccess('Message copié !')
     setTimeout(() => setSuccess(null), 3000)
@@ -695,7 +695,16 @@ export default function PageAutoEntrepreneurs() {
     if (!ae.email) { setError('Email requis'); return }
     setSaving(true); setError(null)
     try {
-      const html = genererHtmlAcces(ae)
+      // Générer un lien (invite si pas de compte, recovery sinon)
+      const linkResp = await fetch('/api/ae-action', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'x-internal-secret': import.meta.env.VITE_INTERNAL_API_SECRET },
+        body: JSON.stringify(ae.ae_user_id ? { action: 'reset', ae_id: ae.id } : { action: 'create', ae_id: ae.id, email: ae.email })
+      })
+      const linkData = await linkResp.json()
+      if (!linkResp.ok || linkData?.error) throw new Error(linkData?.error || 'Erreur génération lien')
+      if (!ae.ae_user_id && linkData.ae_user_id) await fetch('/api/ae-action', {}) // ae_user_id est mis à jour par la fonction
+      const html = genererHtmlAcces(ae, linkData.link)
       const { data: r, error: e } = await supabase.functions.invoke('smtp-send', {
         body: { to: ae.email, subject: 'DCB & Moi — Vos accès à l\'application', html }
       })
@@ -830,8 +839,8 @@ export default function PageAutoEntrepreneurs() {
                 {ae.type === 'staff' && <div style={{ background: '#fef3c7', color: '#92400e', borderRadius: 6, padding: '4px 10px', fontSize: 12, fontWeight: 700 }}>🌅 DCB Staff</div>}
                     {ae.email && <button onClick={() => envoyerEmailAcces(ae)} title="Envoyer email de bienvenue avec accès" style={{ background: '#f0fdf4', color: '#16a34a', border: '1px solid #bbf7d0', borderRadius: 6, padding: '6px 10px', fontSize: 12, cursor: 'pointer' }}>📧 Email accès</button>}
                     <button onClick={() => envoyerIdentifiants(ae)} title="Copier message avec identifiants" style={{ background: '#f9fafb', color: '#374151', border: '1px solid #e5e7eb', borderRadius: 6, padding: '6px 10px', fontSize: 12, cursor: 'pointer' }}>📋 Copier</button>
-                    {(!ae.mdp_temporaire || !ae.ae_user_id) && ae.email && (
-                      <button onClick={() => resetMdp(ae)} title="Créer/réinitialiser le mot de passe" style={{ background: '#fff7ed', color: '#c2410c', border: '1px solid #fed7aa', borderRadius: 6, padding: '6px 10px', fontSize: 12, cursor: 'pointer' }}>🔑 {ae.ae_user_id ? 'Regen mdp' : 'Créer accès'}</button>
+                    {ae.email && (
+                      <button onClick={() => resetMdp(ae)} title={ae.ae_user_id ? 'Générer un lien de réinitialisation' : 'Créer l\'accès portail'} style={{ background: '#fff7ed', color: '#c2410c', border: '1px solid #fed7aa', borderRadius: 6, padding: '6px 10px', fontSize: 12, cursor: 'pointer' }}>🔑 {ae.ae_user_id ? 'Renvoi lien' : 'Créer accès'}</button>
                     )}
                     <button onClick={() => ouvrir(ae)} style={{ background: '#f3f4f6', border: 'none', borderRadius: 6, padding: '6px 12px', fontSize: 12, cursor: 'pointer', fontWeight: 600 }}>Modifier</button>
                     <button onClick={() => supprimer(ae.id)} style={{ background: '#fee2e2', color: '#dc2626', border: 'none', borderRadius: 6, padding: '6px 10px', fontSize: 12, cursor: 'pointer' }}>✕</button>
