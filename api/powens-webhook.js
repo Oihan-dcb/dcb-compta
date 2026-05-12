@@ -3,15 +3,12 @@
  * Reçoit les événements Powens (ACCOUNT_SYNCED, etc.)
  * et déclenche automatiquement sync + import pour le compte concerné.
  *
- * Signature : HMAC-SHA256 du raw body avec POWENS_WEBHOOK_SECRET
- * Header attendu : X-Powens-Signature: sha256=<hex>
- * (configurable dans le dashboard Powens → Webhooks → Secret)
+ * Authentification : token secret dans l'URL query string
+ * URL à enregistrer dans Powens : .../api/powens-webhook?secret=<POWENS_WEBHOOK_SECRET>
+ * Powens ne supporte pas la signature HMAC native.
  */
 
-import { createHmac, timingSafeEqual } from 'crypto'
-
-// Désactiver le body parser Vercel — on a besoin du raw body pour vérifier le HMAC
-export const config = { api: { bodyParser: false } }
+import { timingSafeEqual } from 'crypto'
 
 const SUPABASE_URL          = 'https://omuncchvypbtxkpalwcr.supabase.co'
 const POWENS_WEBHOOK_SECRET = process.env.POWENS_WEBHOOK_SECRET
@@ -23,24 +20,14 @@ const ACCOUNT_MAP = {
   '12': { agence: 'dcb', accountLabel: 'seq_lc' },
 }
 
-function readRawBody(req) {
-  return new Promise((resolve, reject) => {
-    let data = ''
-    req.on('data', chunk => { data += chunk })
-    req.on('end', () => resolve(data))
-    req.on('error', reject)
-  })
-}
-
-function verifySignature(rawBody, header, secret) {
-  // Format attendu : "sha256=<hex>" — même convention que GitHub / Stripe
-  if (!header) return false
-  const received = header.startsWith('sha256=') ? header.slice(7) : header
-  const expected = createHmac('sha256', secret).update(rawBody, 'utf8').digest('hex')
+function verifySecret(received, expected) {
+  // Comparaison timing-safe pour éviter les timing attacks
   try {
-    return timingSafeEqual(Buffer.from(received, 'hex'), Buffer.from(expected, 'hex'))
+    const a = Buffer.from(received || '', 'utf8')
+    const b = Buffer.from(expected, 'utf8')
+    if (a.length !== b.length) return false
+    return timingSafeEqual(a, b)
   } catch {
-    // timingSafeEqual lève si les buffers ont des longueurs différentes
     return false
   }
 }
@@ -51,28 +38,19 @@ export default async function handler(req, res) {
   const SERVICE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY
   if (!SERVICE_KEY) return res.status(500).json({ error: 'Service key manquante' })
 
-  // Lire le raw body avant tout
-  const rawBody = await readRawBody(req)
-
-  // Vérifier la signature Powens
+  // Vérifier le token secret dans l'URL (?secret=...)
   if (!POWENS_WEBHOOK_SECRET) {
     console.error('powens-webhook: POWENS_WEBHOOK_SECRET non configuré — webhook rejeté')
     return res.status(500).json({ error: 'Webhook secret non configuré' })
   }
 
-  const sigHeader = req.headers['x-powens-signature'] || req.headers['x-signature'] || ''
-  if (!verifySignature(rawBody, sigHeader, POWENS_WEBHOOK_SECRET)) {
-    console.warn('powens-webhook: signature invalide — requête rejetée')
-    return res.status(401).json({ error: 'Signature invalide' })
+  const receivedSecret = req.query?.secret || ''
+  if (!verifySecret(receivedSecret, POWENS_WEBHOOK_SECRET)) {
+    console.warn('powens-webhook: secret invalide — requête rejetée')
+    return res.status(401).json({ error: 'Non autorisé' })
   }
 
-  // Parser le body après vérification
-  let event
-  try {
-    event = JSON.parse(rawBody)
-  } catch {
-    return res.status(400).json({ error: 'Payload JSON invalide' })
-  }
+  const event = req.body
 
   // Powens envoie directement {id, name, ...} sans wrapper event_type
   const eventType = event?.event || event?.type || 'ACCOUNT_SYNCED'
