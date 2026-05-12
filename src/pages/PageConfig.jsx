@@ -2,7 +2,7 @@ import { AGENCE } from '../lib/agence'
 import { useState, useEffect } from 'react'
 import { pingEvoliz, getPaytermsEvoliz } from '../services/evoliz'
 import { syncProprietairesEvoliz } from '../services/syncProprietaires'
-import { formatMontant, setToken } from '../lib/hospitable'
+import { formatMontant } from '../lib/hospitable'
 import { calculerVentilationMois } from '../services/ventilation'
 import { lancerMatchingAuto } from '../services/rapprochement'
 import { resetEtRematcher } from '../services/rapprochement'
@@ -524,19 +524,21 @@ export default function PageConfig() {
             {[
               { key: 'VITE_SUPABASE_URL', val: import.meta.env.VITE_SUPABASE_URL },
               { key: 'VITE_SUPABASE_ANON_KEY', val: import.meta.env.VITE_SUPABASE_ANON_KEY },
-              { key: 'VITE_HOSPITABLE_TOKEN', val: import.meta.env.VITE_HOSPITABLE_TOKEN },
+              { key: 'HOSPITABLE_TOKEN', val: 'server-side', serverSide: true },
               { key: 'VITE_EVOLIZ_COMPANY_ID', val: import.meta.env.VITE_EVOLIZ_COMPANY_ID },
-            ].map(({ key, val }) => (
+            ].map(({ key, val, serverSide }) => (
               <tr key={key}>
                 <td style={{ fontFamily: 'monospace', fontSize: 12 }}>{key}</td>
                 <td>
-                  {val
-                    ? <span className="badge badge-success">✓ Configuré</span>
-                    : <span className="badge badge-danger">✗ Manquant</span>
+                  {serverSide
+                    ? <span className="badge badge-success">✓ Côté serveur</span>
+                    : val
+                      ? <span className="badge badge-success">✓ Configuré</span>
+                      : <span className="badge badge-danger">✗ Manquant</span>
                   }
                 </td>
                 <td style={{ fontSize: 12, color: 'var(--text-muted)', fontFamily: 'monospace' }}>
-                  {val ? val.substring(0, 30) + (val.length > 30 ? '…' : '') : '—'}
+                  {serverSide ? '(non exposé)' : val ? val.substring(0, 30) + (val.length > 30 ? '…' : '') : '—'}
                 </td>
               </tr>
             ))}

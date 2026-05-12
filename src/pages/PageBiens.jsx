@@ -2,10 +2,7 @@ import { useState, useEffect } from 'react'
 import { AGENCE } from '../lib/agence'
 import { syncBiens, getBiens } from '../services/syncBiens'
 import { getProprietaires } from '../services/syncProprietaires'
-import { setToken } from '../lib/hospitable'
 import { formatMontant } from '../lib/hospitable'
-
-const HOSP_TOKEN = import.meta.env.VITE_HOSPITABLE_TOKEN
 
 export default function PageBiens() {
   const [biens, setBiens] = useState([])
@@ -16,7 +13,6 @@ export default function PageBiens() {
   const [error, setError] = useState(null)
 
   useEffect(() => {
-    if (HOSP_TOKEN) setToken(HOSP_TOKEN)
     chargerBiens()
   }, [])
 

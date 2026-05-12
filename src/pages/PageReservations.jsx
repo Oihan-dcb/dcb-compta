@@ -6,12 +6,11 @@ import { useMoisPersisted } from '../hooks/useMoisPersisted'
 import { supabase } from '../lib/supabase'
 import { syncReservations, getReservationsMois } from '../services/syncReservations'
 import { calculerVentilationMois, getRecapVentilation, calculerVentilationResa } from '../services/ventilation'
-import { setToken, formatMontant } from '../lib/hospitable'
+import { formatMontant } from '../lib/hospitable'
 import ModalResa from '../components/ModalResa'
 import TableReservations from '../components/TableReservations'
 import TableVentilation from '../components/TableVentilation'
 
-const HOSP_TOKEN = import.meta.env.VITE_HOSPITABLE_TOKEN
 export default function PageReservations() {
   const [mois, setMois] = useMoisPersisted()
   const [moisDispos, setMoisDispos] = useState([])
@@ -33,7 +32,6 @@ export default function PageReservations() {
   const [ventilantManuelles, setVentilantManuelles] = useState(false)
 
   useEffect(() => {
-    if (HOSP_TOKEN) setToken(HOSP_TOKEN)
     charger()
   }, [mois])
   useEffect(() => { chargerMoisDispos() }, [])

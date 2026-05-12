@@ -1,26 +1,20 @@
 /**
  * Client API Hospitable v2
- * Base URL : https://public.api.hospitable.com/v2
- * Auth : Bearer PAT token
+ * Les appels transitent par /api/hospitable-proxy (token serveur, jamais exposé)
  * Montants : en centimes (48489 = €484.89)
  */
 
-const BASE_URL = 'https://public.api.hospitable.com/v2'
-
-// Le token est stocké en Supabase (table config) ou en env pour le dev
-let _token = null
-
-export function setToken(token) {
-  _token = token
-}
+import { supabase } from './supabase'
 
 async function apiFetch(path, params = {}) {
-  if (!_token) throw new Error('Token Hospitable non configuré')
+  const { data: { session } } = await supabase.auth.getSession()
+  if (!session) throw new Error('Session expirée — veuillez vous reconnecter')
 
-  const url = new URL(`${BASE_URL}${path}`)
+  const url = new URL('/api/hospitable-proxy', window.location.origin)
+  url.searchParams.set('path', path)
   Object.entries(params).forEach(([key, val]) => {
     if (Array.isArray(val)) {
-      val.forEach(v => url.searchParams.append(`${key}[]`, v))
+      val.forEach(v => url.searchParams.append(key, v))
     } else if (val !== undefined && val !== null) {
       url.searchParams.set(key, val)
     }
@@ -28,14 +22,14 @@ async function apiFetch(path, params = {}) {
 
   const res = await fetch(url.toString(), {
     headers: {
-      Authorization: `Bearer ${_token}`,
+      Authorization: `Bearer ${session.access_token}`,
       Accept: 'application/json',
     },
   })
 
   if (!res.ok) {
     const err = await res.json().catch(() => ({}))
-    throw new Error(`Hospitable API ${res.status}: ${err.message || url.pathname}`)
+    throw new Error(`Hospitable API ${res.status}: ${err.message || err.error || path}`)
   }
 
   return res.json()
@@ -63,60 +57,55 @@ async function fetchAll(path, params = {}, pageSize = 50) {
 
 /**
  * Récupère tous les biens actifs
- * @returns {Promise<Array>} Liste des biens
  */
 export async function fetchProperties() {
-  return fetchAll('/properties')
+  return fetchAll('/v2/properties')
 }
 
 /**
  * Récupère les réservations d'un ou plusieurs biens avec financials
  * @param {string[]} propertyIds - Liste d'IDs Hospitable
- * @param {Object} opts - Options (startDate, endDate, limit)
- * @returns {Promise<Array>} Liste des réservations avec financials
+ * @param {Object} opts - Options (startDate, endDate)
  */
 export async function fetchReservations(propertyIds, opts = {}) {
   if (!propertyIds || propertyIds.length === 0) return []
 
   const params = {
-    properties: propertyIds,   // sera transformé en properties[] par apiFetch
-    include: 'financials,guests,guest',  // guest pour avoir first_name/last_name
+    properties: propertyIds,
+    include: 'financials,guests,guest',
   }
   if (opts.startDate) params.start_date = opts.startDate
   if (opts.endDate) params.end_date = opts.endDate
 
-  return fetchAll('/reservations', params)
+  return fetchAll('/v2/reservations', params)
 }
 
 /**
  * Récupère les transactions financières
- * @param {Object} opts - Options
  */
 export async function fetchTransactions(opts = {}) {
   const params = { include: 'reservation' }
   if (opts.propertyIds) params.properties = opts.propertyIds
 
-  return fetchAll('/transactions', params)
+  return fetchAll('/v2/transactions', params)
 }
 
 /**
  * Récupère une page de payouts (sans transactions)
  */
 export async function fetchPayoutsList({ page = 1, per_page = 100 } = {}) {
-  return apiFetch('/payouts', { page, per_page })
+  return apiFetch('/v2/payouts', { page, per_page })
 }
 
 /**
- * Récupère un payout avec ses transactions détaillées (une entrée par réservation)
+ * Récupère un payout avec ses transactions détaillées
  */
 export async function fetchPayoutDetail(uuid) {
-  return apiFetch(`/payouts/${uuid}`, { include: 'transactions' })
+  return apiFetch(`/v2/payouts/${uuid}`, { include: 'transactions' })
 }
 
 /**
  * Formate un montant en centimes en euros
- * @param {number} centimes
- * @returns {string} ex: "€484.89"
  */
 export function formatMontant(centimes) {
   if (centimes === null || centimes === undefined) return '—'

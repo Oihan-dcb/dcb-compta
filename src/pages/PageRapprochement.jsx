@@ -7,15 +7,12 @@ import {
   lancerMatchingAuto, matcherManuellement, marquerNonIdentifie, annulerRapprochement
 } from '../services/rapprochement'
 import { syncStripe, HAS_STRIPE } from '../services/syncStripe'
-import { setToken } from '../lib/hospitable'
 
 import MoisSelector from '../components/MoisSelector'
 import ModalResa from '../components/ModalResa'
 import { useMoisPersisted } from '../hooks/useMoisPersisted'
 import { format } from 'date-fns'
 import { fr } from 'date-fns/locale'
-const HOSP_TOKEN = import.meta.env.VITE_HOSPITABLE_TOKEN
-
 const moisCourant = new Date().toISOString().substring(0, 7)
 
 const CANAL_LABEL = {
@@ -185,8 +182,6 @@ export default function PageRapprochement() {
     setSyncLog(null)
     setError(null)
     try {
-      if (!HOSP_TOKEN) throw new Error('Token Hospitable non configuré (VITE_HOSPITABLE_TOKEN)')
-      setToken(HOSP_TOKEN)
       const stripeLog = await syncStripe()
       if (stripeLog.errors > 0 && !stripeLog.matched) throw new Error(`Stripe API inaccessible (${stripeLog.errors} erreur(s))`)
       setSyncLog({ created: stripeLog.matched, updated: stripeLog.updated, errors: stripeLog.errors, errorDetails: stripeLog.errorDetails || [] })

@@ -8,7 +8,7 @@ import { parserFichierBancaire, importerMouvementsBancaires } from '../services/
 import { syncPayoutsFromHospitable } from '../services/syncPayouts'
 
 import MoisSelector from '../components/MoisSelector'
-import { formatMontant, setToken } from '../lib/hospitable'
+import { formatMontant } from '../lib/hospitable'
 import { format } from 'date-fns'
 import { fr } from 'date-fns/locale'
 
@@ -48,8 +48,6 @@ export default function PageBanque() {
   const [syncingPayouts, setSyncingPayouts] = useState(false)
   const bookingRef = useRef()
 
-  const HOSP_TOKEN = import.meta.env.VITE_HOSPITABLE_TOKEN
-
   useEffect(() => { charger() }, [mois])
 
   async function charger() {
@@ -85,8 +83,6 @@ export default function PageBanque() {
   }
 
   async function handleSyncPayouts() {
-    if (!HOSP_TOKEN) return setError('Token Hospitable non configuré (VITE_HOSPITABLE_TOKEN)')
-    setToken(HOSP_TOKEN)
     setSyncingPayouts(true)
     setSyncPayoutsLog(null)
     try {
