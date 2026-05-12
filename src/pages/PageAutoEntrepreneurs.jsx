@@ -524,7 +524,15 @@ export default function PageAutoEntrepreneurs() {
           const result = isReset
             ? await resetAEPassword(ae.id)
             : await createAEAccess(ae.id, ae.email)
-          setSuccess(isReset ? `Lien créé pour ${result?.email} ✓` : `Accès créé pour ${ae.email} ✓`)
+          // Envoyer l'email avec le lien généré
+          if (result?.link) {
+            const html = genererHtmlAcces(ae, result.link)
+            const { data: r, error: e } = await supabase.functions.invoke('smtp-send', {
+              body: { to: ae.email, subject: 'DCB & Moi — Vos accès à l\'application', html }
+            })
+            if (e || !r?.ok) throw new Error(e?.message || r?.error || 'Erreur envoi email')
+          }
+          setSuccess(isReset ? `Lien envoyé à ${result?.email || ae.email} ✓` : `Accès créé — email envoyé à ${ae.email} ✓`)
           // Après création d'accès : sync groupes + créer staff_room dans PowerHouse
           if (!isReset && result?.ae_user_id) {
             await syncGroupMemberships(result.ae_user_id)
