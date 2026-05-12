@@ -1,0 +1,200 @@
+// POST /api/sync-stripe
+// Synchronise les payouts Stripe vers mouvement_bancaire + stripe_payout_line
+// Requis : JWT Supabase valide + email dans ALLOWED_ADMIN_EMAILS
+// Body : { agence }
+
+const { createClient } = require('@supabase/supabase-js')
+
+const STRIPE_KEY      = process.env.STRIPE_KEY
+const SUPABASE_URL    = process.env.SUPABASE_URL    || 'https://omuncchvypbtxkpalwcr.supabase.co'
+const SUPABASE_ANON_KEY  = process.env.SUPABASE_ANON_KEY
+const SUPABASE_SERVICE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY
+const ALLOWED_EMAILS  = (process.env.ALLOWED_ADMIN_EMAILS || '')
+  .split(',').map(e => e.trim().toLowerCase()).filter(Boolean)
+
+async function stripeGet(path) {
+  const r = await fetch('https://api.stripe.com' + path, {
+    headers: { Authorization: 'Bearer ' + STRIPE_KEY }
+  })
+  if (!r.ok) throw new Error('Stripe API error: ' + r.status + ' ' + path)
+  return r.json()
+}
+
+module.exports = async function handler(req, res) {
+  res.setHeader('Access-Control-Allow-Origin', 'https://dcb-compta.vercel.app')
+  res.setHeader('Access-Control-Allow-Methods', 'POST, OPTIONS')
+  res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization')
+  if (req.method === 'OPTIONS') return res.status(200).end()
+  if (req.method !== 'POST') return res.status(405).json({ error: 'POST uniquement' })
+
+  if (!STRIPE_KEY)       return res.status(500).json({ error: 'STRIPE_KEY non configuré' })
+  if (!SUPABASE_ANON_KEY) return res.status(500).json({ error: 'SUPABASE_ANON_KEY non configuré' })
+  if (!SUPABASE_SERVICE_KEY) return res.status(500).json({ error: 'SUPABASE_SERVICE_ROLE_KEY non configuré' })
+
+  // 1. Vérifier JWT Supabase
+  const token = (req.headers.authorization || '').replace(/^Bearer\s+/i, '').trim()
+  if (!token) return res.status(401).json({ error: 'Token manquant' })
+
+  const authRes = await fetch(`${SUPABASE_URL}/auth/v1/user`, {
+    headers: { apikey: SUPABASE_ANON_KEY, Authorization: 'Bearer ' + token }
+  })
+  if (!authRes.ok) return res.status(401).json({ error: 'Non authentifié' })
+  const { email } = await authRes.json()
+
+  // 2. Vérifier email admin
+  if (!ALLOWED_EMAILS.length) return res.status(500).json({ error: 'ALLOWED_ADMIN_EMAILS non configuré' })
+  if (!ALLOWED_EMAILS.includes((email || '').toLowerCase())) {
+    return res.status(403).json({ error: 'Accès refusé' })
+  }
+
+  const { agence } = req.body || {}
+  if (!agence) return res.status(400).json({ error: 'agence requis' })
+
+  const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_KEY)
+  const log = { matched: 0, inserted: 0, updated: 0, errors: 0, errorDetails: [] }
+
+  try {
+    // 1. Charger tous les payouts Stripe
+    let allPayouts = []
+    let url = '/v1/payouts?limit=100&status=paid'
+    while (url) {
+      const r = await stripeGet(url)
+      allPayouts.push(...r.data)
+      url = r.has_more
+        ? `/v1/payouts?limit=100&status=paid&starting_after=${r.data[r.data.length - 1].id}`
+        : null
+    }
+
+    // 2. Mouvements Stripe en attente pour cette agence
+    const { data: mouvs } = await supabase
+      .from('mouvement_bancaire')
+      .select('id, credit, statut_matching')
+      .eq('canal', 'stripe')
+      .eq('agence', agence)
+      .gte('credit', 100)
+
+    // 3. Payout_ids déjà traités
+    const { data: existingLines } = await supabase
+      .from('stripe_payout_line')
+      .select('stripe_payout_id, mouvement_bancaire(statut_matching)')
+    const alreadyDone = new Set(
+      (existingLines || [])
+        .filter(l => l.mouvement_bancaire?.statut_matching === 'rapproche')
+        .map(l => l.stripe_payout_id)
+    )
+
+    // 4. Matcher payouts aux mouvements
+    const used = new Set()
+    const matches = []
+    for (const po of allPayouts) {
+      if (alreadyDone.has(po.id)) continue
+      const mouv = mouvs?.find(m => !used.has(m.id) && Math.abs(m.credit - po.amount) <= 2)
+      if (mouv) {
+        matches.push({ payout_id: po.id, mouvement_id: mouv.id, amount: po.amount })
+        used.add(mouv.id)
+      }
+    }
+    log.matched = matches.length
+    if (!matches.length) return res.status(200).json(log)
+
+    // 5. Pour chaque payout, récupérer les transactions et insérer les lignes
+    for (const po of matches) {
+      try {
+        const txns = await stripeGet(`/v1/balance/history?payout=${po.payout_id}&limit=100`)
+        const payTxns = txns.data.filter(t => t.type === 'payment' || t.type === 'charge')
+        if (!payTxns.length) continue
+
+        const charges = await Promise.all(
+          payTxns.map(t => {
+            if (!t.source) return Promise.resolve({})
+            if (t.source.startsWith('pi_')) {
+              return stripeGet(`/v1/charges?payment_intent=${t.source}&limit=1`).then(r => r.data?.[0] || {})
+            }
+            return stripeGet(`/v1/charges/${t.source}`)
+          })
+        )
+
+        const lines = payTxns.map((tx, i) => {
+          const ch = charges[i]
+          let code = ch.metadata?.reservation_code || null
+          let terme = null
+          if (!code && tx.description) {
+            const m = tx.description.match(/HOST-([A-Z0-9]+)/)
+            if (m) code = 'HOST-' + m[1]
+            const tm = tx.description.match(/Term (\d)\/(\d)/)
+            if (tm) terme = tm[1] + '/' + tm[2]
+          }
+          return {
+            stripe_payout_id: po.payout_id,
+            mouvement_id: po.mouvement_id,
+            stripe_charge_id: ch.id || null,
+            reservation_code: code,
+            type_ligne: !code ? 'extra' : (terme ? 'paiement_partiel' : 'reservation'),
+            terme: terme || null,
+            montant_brut: tx.amount,
+            montant_net: tx.net,
+            description: tx.description || null,
+            guest_name: ch.billing_details?.name || null,
+            created_at: new Date(tx.created * 1000).toISOString().slice(0, 10)
+          }
+        })
+
+        const { error: insertErr } = await supabase
+          .from('stripe_payout_line')
+          .upsert(lines, { onConflict: 'stripe_charge_id', ignoreDuplicates: true })
+        if (!insertErr) log.inserted += lines.length
+
+        const totalBrut = lines.reduce((s, l) => s + l.montant_brut, 0)
+        const totalNet  = lines.reduce((s, l) => s + l.montant_net, 0)
+        const frais     = ((totalBrut - totalNet) / 100).toFixed(2)
+        const extras    = lines.filter(l => l.type_ligne === 'extra').length
+        const detail    = `Stripe | ${lines.length} paiements${extras > 0 ? ` + ${extras} extra` : ''} | frais: ${frais}\u20AC`
+
+        await supabase
+          .from('mouvement_bancaire')
+          .update({ statut_matching: 'rapproche', detail })
+          .eq('id', po.mouvement_id)
+        log.updated++
+
+        const codes = [...new Set(lines.map(l => l.reservation_code).filter(Boolean))]
+        if (codes.length) {
+          const { data: resas } = await supabase
+            .from('reservation')
+            .select('id, code, fin_revenue')
+            .in('code', codes)
+          for (const resa of (resas || [])) {
+            const { data: existRp } = await supabase.from('reservation_paiement')
+              .select('id').eq('reservation_id', resa.id).eq('mouvement_id', po.mouvement_id).maybeSingle()
+            if (!existRp) {
+              const line = lines.find(l => l.reservation_code === resa.code)
+              await supabase.from('reservation_paiement').insert({
+                reservation_id: resa.id,
+                mouvement_id: po.mouvement_id,
+                montant: line?.montant_net ?? null,
+                date_paiement: line?.created_at ?? null,
+                type_paiement: line?.terme ? 'partiel' : 'total',
+              })
+            }
+            const { data: allPaiements } = await supabase.from('reservation_paiement')
+              .select('montant').eq('reservation_id', resa.id)
+            const totalRecu = (allPaiements || []).reduce((s, p) => s + (p.montant || 0), 0)
+            const finRev    = resa.fin_revenue || 0
+            const estComplet = finRev === 0 || totalRecu >= finRev * 0.99
+            await supabase.from('reservation').update({ rapprochee: estComplet }).eq('id', resa.id)
+          }
+        }
+
+      } catch (e) {
+        console.error('sync-stripe payout error:', po.payout_id, e)
+        log.errors++
+        log.errorDetails.push({ payout_id: po.payout_id, message: e?.message || String(e) })
+      }
+    }
+
+  } catch (e) {
+    console.error('sync-stripe error:', e)
+    log.errors++
+  }
+
+  return res.status(200).json(log)
+}
