@@ -3,13 +3,13 @@
 // Requis : JWT Supabase valide + email dans ALLOWED_ADMIN_EMAILS
 // Body : { agence }
 
-const { createClient } = require('@supabase/supabase-js')
+import { createClient } from '@supabase/supabase-js'
 
-const STRIPE_KEY      = process.env.STRIPE_KEY
-const SUPABASE_URL    = process.env.SUPABASE_URL    || 'https://omuncchvypbtxkpalwcr.supabase.co'
+const STRIPE_KEY         = process.env.STRIPE_KEY
+const SUPABASE_URL       = process.env.SUPABASE_URL    || 'https://omuncchvypbtxkpalwcr.supabase.co'
 const SUPABASE_ANON_KEY  = process.env.SUPABASE_ANON_KEY
 const SUPABASE_SERVICE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY
-const ALLOWED_EMAILS  = (process.env.ALLOWED_ADMIN_EMAILS || '')
+const ALLOWED_EMAILS     = (process.env.ALLOWED_ADMIN_EMAILS || '')
   .split(',').map(e => e.trim().toLowerCase()).filter(Boolean)
 
 async function stripeGet(path) {
@@ -20,15 +20,15 @@ async function stripeGet(path) {
   return r.json()
 }
 
-module.exports = async function handler(req, res) {
+export default async function handler(req, res) {
   res.setHeader('Access-Control-Allow-Origin', 'https://dcb-compta.vercel.app')
   res.setHeader('Access-Control-Allow-Methods', 'POST, OPTIONS')
   res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization')
   if (req.method === 'OPTIONS') return res.status(200).end()
   if (req.method !== 'POST') return res.status(405).json({ error: 'POST uniquement' })
 
-  if (!STRIPE_KEY)       return res.status(500).json({ error: 'STRIPE_KEY non configuré' })
-  if (!SUPABASE_ANON_KEY) return res.status(500).json({ error: 'SUPABASE_ANON_KEY non configuré' })
+  if (!STRIPE_KEY)           return res.status(500).json({ error: 'STRIPE_KEY non configuré' })
+  if (!SUPABASE_ANON_KEY)    return res.status(500).json({ error: 'SUPABASE_ANON_KEY non configuré' })
   if (!SUPABASE_SERVICE_KEY) return res.status(500).json({ error: 'SUPABASE_SERVICE_ROLE_KEY non configuré' })
 
   // 1. Vérifier JWT Supabase
