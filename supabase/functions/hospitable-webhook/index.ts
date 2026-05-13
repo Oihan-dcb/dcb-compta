@@ -88,9 +88,27 @@ async function handleReservation(supabase: any, event: string, data: any): Promi
   if (event === 'reservation.cancelled') {
     const { data: resa } = await supabase
       .from('reservation')
-      .select('id, mois_comptable')
+      .select('id, mois_comptable, bien(agence)')
       .eq('hospitable_id', hospId)
       .single()
+
+    // Vérifier clôture avant d'écrire l'annulation
+    if (resa?.mois_comptable) {
+      const agenceResa = (resa.bien as any)?.agence || 'dcb'
+      const { data: clotureAnn } = await supabase
+        .from('cloture_comptable')
+        .select('cloture_ventil')
+        .eq('mois', resa.mois_comptable)
+        .eq('agence', agenceResa)
+        .maybeSingle()
+      if (clotureAnn?.cloture_ventil) {
+        await supabase.from('webhook_pending').insert({
+          mois: resa.mois_comptable, agence: agenceResa,
+          event, payload: data, reason: 'mois_cloture',
+        })
+        return `pending (annulation) — mois clôturé ${resa.mois_comptable}`
+      }
+    }
 
     await supabase.from('reservation')
       .update({ final_status: 'cancelled', ventilation_calculee: false })
@@ -119,6 +137,34 @@ async function handleReservation(supabase: any, event: string, data: any): Promi
 
   if (!bien) return 'bien not found: ' + propertyId
 
+  // ── Vérification clôture comptable ─────────────────────────────────────────
+  const arrival       = data.arrival_date?.substring(0, 10)
+  const moisComptable = arrival?.substring(0, 7) || null
+  const agenceBien    = bien.agence || 'dcb'
+
+  if (moisComptable) {
+    const { data: cloture } = await supabase
+      .from('cloture_comptable')
+      .select('cloture_ventil')
+      .eq('mois', moisComptable)
+      .eq('agence', agenceBien)
+      .maybeSingle()
+
+    if (cloture?.cloture_ventil) {
+      // Mois clôturé → mettre en file d'attente
+      await supabase.from('webhook_pending').insert({
+        mois:        moisComptable,
+        agence:      agenceBien,
+        event,
+        payload:     data,
+        reason:      'mois_cloture',
+      })
+      console.log(`Webhook mis en attente (mois clôturé ${moisComptable}):`, data.code)
+      return `pending — mois clôturé ${moisComptable}`
+    }
+  }
+  // ── Fin vérification clôture ────────────────────────────────────────────────
+
   const fin        = data.financials?.host || {}
   const fees       = [
     ...(fin.guest_fees   || []).map((f: any) => ({ ...f, fee_type: 'guest_fee' })),
@@ -127,8 +173,7 @@ async function handleReservation(supabase: any, event: string, data: any): Promi
     ...(fin.adjustments  || []).map((f: any) => ({ ...f, fee_type: 'adjustment' })),
   ]
 
-  const arrival        = data.arrival_date?.substring(0, 10)
-  const moisComptable  = arrival?.substring(0, 7) || null
+  // arrival et moisComptable déjà définis plus haut (check clôture)
   const finalStatus    = data.reservation_status?.current?.category || data.status || 'accepted'
   const guestFirst    = data.guest?.first_name || null
   // guest_name : Hospitable webhook inclut guest.first_name + last_name dans les payloads

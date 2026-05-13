@@ -1716,6 +1716,9 @@ function SequestreCloture() {
     setLoading(true); setError(null); setLignes([])
     const dateCloture      = `${anneeCloture}-12-31`
     const dateDebutSuivant = `${anneeCloture + 1}-01-01`
+    // Stripe paie ~30 j après la charge (payout mensuel).
+    // Seules les charges antérieures au 1er déc arrivent en banque avant le 31/12.
+    const dateSeuilStripe  = `${anneeCloture}-12-01`
     const bienIds = biensList.map(b => b.id)
 
     // Helper : DCB percevait-il les loyers plateforme pour ce bien ce mois ?
@@ -1812,7 +1815,9 @@ function SequestreCloture() {
             .in('reservation_code', splCodes.slice(i, i + 400))
           for (const s of spls || []) {
             if (!splByCode[s.reservation_code]) splByCode[s.reservation_code] = { avant: false, apres: false, minDate: null }
-            if (s.created_at <= dateCloture) splByCode[s.reservation_code].avant = true
+            // Utilise dateSeuilStripe (1er déc) et non dateCloture (31 déc) :
+            // une charge de décembre est payée en janvier → ne compte pas comme séquestre 2025
+            if (s.created_at < dateSeuilStripe) splByCode[s.reservation_code].avant = true
             else splByCode[s.reservation_code].apres = true
             if (!splByCode[s.reservation_code].minDate || s.created_at < splByCode[s.reservation_code].minDate)
               splByCode[s.reservation_code].minDate = s.created_at
@@ -1850,10 +1855,15 @@ function SequestreCloture() {
             } else {
               const bpl = bplByCode[r.code]
               if (bpl) {
-                // Payout connu via booking_payout_line → informatif comptable
-                statut = 'booking_prevu'
-                dateEnc = bpl.payout_date
-                montant = bpl.amount_cents || r.fin_revenue || 0
+                if (bpl.payout_date && bpl.payout_date > dateCloture) {
+                  // Payout Booking après clôture → exclure du séquestre
+                  statut = 'exclu_post_cloture'; montant = bpl.amount_cents || r.fin_revenue || 0
+                } else {
+                  // Payout connu et avant clôture → informatif comptable
+                  statut = 'booking_prevu'
+                  dateEnc = bpl.payout_date
+                  montant = bpl.amount_cents || r.fin_revenue || 0
+                }
               } else {
                 // Pas dans booking_payout_line → inconnu, masquer
                 statut = 'absent'
@@ -1887,9 +1897,9 @@ function SequestreCloture() {
             // Priorité 2 : stripe_payout_line (charge uniquement après clôture)
             const spl = splByCode[r.code]
             const splAvant = spl && spl.avant
-            // exclu_post_cloture si : booking_date > clôture, OU booking_date null sans charge Stripe avant clôture
-            // Seule une preuve d'antériorité (booking_date <= clôture OU splAvant) maintient à_verifier
-            if (bd && bd <= dateCloture) {
+            // exclu_post_cloture si : booking_date >= dateSeuilStripe (déc ou +), OU booking_date null sans charge Stripe avant seuil
+            // Seule une preuve d'antériorité avant le 1er déc (= payout reçu avant le 31/12) maintient à_verifier
+            if (bd && bd < dateSeuilStripe) {
               statut = 'a_verifier_acompte'; montant = r.fin_revenue || 0
             } else if (!bd && splAvant) {
               statut = 'a_verifier_acompte'; montant = r.fin_revenue || 0

@@ -175,6 +175,8 @@ serve(async (req) => {
         if (payload?.period) params.set('period', payload.period)
         if (payload?.dateFrom) { params.set('period', 'custom'); params.set('date_min', payload.dateFrom) }
         if (payload?.dateTo) params.set('date_max', payload.dateTo)
+        if (payload?.page) params.set('page', String(payload.page))
+        if (payload?.per_page) params.set('per_page', String(payload.per_page))
         const qs = params.toString() ? `?${params}` : ''
         result = await evolizReq('GET', `/invoices${qs}`, company)
         break

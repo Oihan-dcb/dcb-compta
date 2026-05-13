@@ -45,6 +45,7 @@ import PageAchats from './pages/PageAchats'
 import PageAgence from './pages/PageAgence'
 import PageProprietaires from './pages/PageProprietaires'
 import PageTaxeSejour from './pages/PageTaxeSejour'
+import PageCloture from './pages/PageCloture'
 import BugReportButton from './components/BugReportButton'
 import './App.css'
 
@@ -148,7 +149,7 @@ function ConfigDropdown() {
   const [open, setOpen] = useState(false)
   const ref = useRef(null)
   const location = useLocation()
-  const configPaths = ['/import', '/journal', '/config', '/bugs', '/exports', '/agence', '/taxe-sejour', '/proprietaires']
+  const configPaths = ['/import', '/journal', '/config', '/bugs', '/exports', '/agence', '/taxe-sejour', '/proprietaires', '/cloture']
   const isActive = configPaths.some(p => location.pathname === p)
 
   useEffect(() => {
@@ -176,6 +177,7 @@ function ConfigDropdown() {
             { to: '/journal', label: 'Journal' },
             { to: '/bugs', label: '🐛 Bugs' },
             { to: '/config', label: 'Paramètres' },
+            { to: '/cloture', label: '🔒 Clôture' },
           ].map(({ to, label }) => (
             <NavLink key={to} to={to} onClick={() => setOpen(false)}
               className={({ isActive }) => isActive ? 'nav-link active' : 'nav-link'}
@@ -321,6 +323,7 @@ export default function App() {
             <Route path="/agence" element={<PageAgence />} />
             <Route path="/proprietaires" element={<PageProprietaires />} />
             <Route path="/taxe-sejour" element={<PageTaxeSejour />} />
+            <Route path="/cloture" element={<PageCloture />} />
           </Routes>
         </main>
       </div>
