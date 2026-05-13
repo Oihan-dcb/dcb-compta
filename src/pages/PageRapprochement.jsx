@@ -314,14 +314,14 @@ export default function PageRapprochement() {
         <div style={{ display: 'flex', gap: 10, alignItems: 'center', flexWrap: 'wrap' }}>
           <MoisSelector mois={mois} setMois={setMois} moisDispos={moisDispos} />
           {HAS_STRIPE && (
-            <button onClick={lancerSync} disabled={syncing || matching}
-              style={{ background: syncing ? '#aaa' : '#635BFF', color: '#fff', border: 'none', borderRadius: 8, padding: '8px 18px', fontWeight: 600, cursor: (syncing || matching) ? 'not-allowed' : 'pointer', fontSize: 14 }}>
-              {syncing ? '⏳ Sync...' : '↻ Match Stripe'}
+            <button onClick={lancerSync} disabled={syncing || matching || moisBloque}
+              style={{ background: (syncing || moisBloque) ? '#aaa' : '#635BFF', color: '#fff', border: 'none', borderRadius: 8, padding: '8px 18px', fontWeight: 600, cursor: (syncing || matching || moisBloque) ? 'not-allowed' : 'pointer', fontSize: 14 }}>
+              {syncing ? '⏳ Sync...' : moisBloque ? '🔒 Match Stripe' : '↻ Match Stripe'}
             </button>
           )}
-          <button onClick={lancerAuto} disabled={matching || syncing}
-            style={{ background: matching ? '#aaa' : '#CC9933', color: '#fff', border: 'none', borderRadius: 8, padding: '8px 18px', fontWeight: 600, cursor: (matching || syncing) ? 'not-allowed' : 'pointer', fontSize: 14 }}>
-            {matching ? '⏳ Matching...' : '⚡ Matching auto'}
+          <button onClick={lancerAuto} disabled={matching || syncing || moisBloque}
+            style={{ background: (matching || moisBloque) ? '#aaa' : '#CC9933', color: '#fff', border: 'none', borderRadius: 8, padding: '8px 18px', fontWeight: 600, cursor: (matching || syncing || moisBloque) ? 'not-allowed' : 'pointer', fontSize: 14 }}>
+            {matching ? '⏳ Matching...' : moisBloque ? '🔒 Matching auto' : '⚡ Matching auto'}
           </button>
           <button onClick={charger} disabled={loading}
             style={{ background: '#f0f4ff', color: '#CC9933', border: '1.5px solid #CC9933', borderRadius: 8, padding: '8px 14px', fontWeight: 600, cursor: loading ? 'not-allowed' : 'pointer', fontSize: 14 }}>

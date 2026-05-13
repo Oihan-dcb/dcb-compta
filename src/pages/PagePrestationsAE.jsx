@@ -268,17 +268,17 @@ export default function PagePrestationsAE() {
                       ✏️ Modifier
                     </button>
                     {p.statut === 'en_attente' && <>
-                      <button onClick={() => valider(p.id)} disabled={saving}
+                      <button onClick={() => valider(p.id)} disabled={saving || moisBloque}
                         style={{ background: '#f0fdf4', color: '#16a34a', border: '1px solid #bbf7d0', borderRadius: 6, padding: '5px 10px', fontSize: 12, cursor: 'pointer', fontWeight: 700 }}>
                         ✓ Valider
                       </button>
-                      <button onClick={() => annuler(p.id)} disabled={saving}
+                      <button onClick={() => annuler(p.id)} disabled={saving || moisBloque}
                         style={{ background: '#fef2f2', color: '#dc2626', border: '1px solid #fecaca', borderRadius: 6, padding: '5px 10px', fontSize: 12, cursor: 'pointer', fontWeight: 700 }}>
                         ✕ Annuler
                       </button>
                     </>}
                     {p.statut === 'valide' && (
-                      <button onClick={() => annuler(p.id)} disabled={saving}
+                      <button onClick={() => annuler(p.id)} disabled={saving || moisBloque}
                         style={{ background: '#fef2f2', color: '#dc2626', border: '1px solid #fecaca', borderRadius: 6, padding: '5px 10px', fontSize: 12, cursor: 'pointer' }}>
                         Annuler
                       </button>
@@ -363,7 +363,7 @@ export default function PagePrestationsAE() {
             </div>
             <div style={{ display: 'flex', gap: 10, justifyContent: 'flex-end', marginTop: 20 }}>
               <button onClick={() => setEditing(null)} style={{ background: '#f3f4f6', border: 'none', borderRadius: 8, padding: '9px 18px', fontSize: 13, cursor: 'pointer', fontWeight: 600 }}>Annuler</button>
-              <button onClick={sauvegarderModif} disabled={saving}
+              <button onClick={sauvegarderModif} disabled={saving || moisBloque}
                 style={{ background: '#1a3a6e', color: '#fff', border: 'none', borderRadius: 8, padding: '9px 18px', fontSize: 13, fontWeight: 600, cursor: 'pointer' }}>
                 {saving ? '...' : '✓ Enregistrer'}
               </button>

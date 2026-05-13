@@ -18,7 +18,7 @@ export function useMoisCloture(mois, etape) {
     setLoading(true)
     getCloture(mois, AGENCE).then(c => {
       if (!cancelled) { setCloture(c); setLoading(false) }
-    })
+    }).catch(() => { if (!cancelled) setLoading(false) })
     return () => { cancelled = true }
   }, [mois])
 

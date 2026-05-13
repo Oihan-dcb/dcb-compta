@@ -111,7 +111,8 @@ export async function rouvrirEtape(mois, agence, etape, userEmail, note) {
   }
 
   // Append dans reouvertures (ne jamais écraser)
-  const reouvertures = [...(current?.reouvertures || []), {
+  const existing = Array.isArray(current?.reouvertures) ? current.reouvertures : []
+  const reouvertures = [...existing, {
     etape, at: new Date().toISOString(), by: userEmail, note,
   }]
 

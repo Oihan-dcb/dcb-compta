@@ -86,6 +86,7 @@ export default function PageBanque() {
   }
 
   async function handleSyncPayouts() {
+    if (moisBloque) { setError('🔒 Mois clôturé (Rapprochement) — sync impossible.'); return }
     setSyncingPayouts(true)
     setSyncPayoutsLog(null)
     try {
@@ -223,9 +224,9 @@ export default function PageBanque() {
           </label>
           <button
             onClick={handleSyncPayouts}
-            disabled={syncingPayouts}
-            style={{ cursor: syncingPayouts ? 'wait' : 'pointer', background:'#FF5A5F', color:'#fff', border:'none', borderRadius:8, padding:'8px 14px', fontWeight:600, fontSize:14, display:'inline-flex', alignItems:'center', gap:6 }}>
-            {syncingPayouts ? '⏳ Sync...' : '🔄 Sync Airbnb'}
+            disabled={syncingPayouts || moisBloque}
+            style={{ cursor: (syncingPayouts || moisBloque) ? 'not-allowed' : 'pointer', background: moisBloque ? '#aaa' : '#FF5A5F', color:'#fff', border:'none', borderRadius:8, padding:'8px 14px', fontWeight:600, fontSize:14, display:'inline-flex', alignItems:'center', gap:6 }}>
+            {syncingPayouts ? '⏳ Sync...' : moisBloque ? '🔒 Sync Airbnb' : '🔄 Sync Airbnb'}
           </button>
           <button
             onClick={() => setSuppression(suppression ? null : { source: 'CaisseEpargne', mois, count: mouvements.length })}
