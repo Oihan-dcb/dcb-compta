@@ -5,6 +5,7 @@ import { syncProprietairesEvoliz } from '../services/syncProprietaires'
 import { formatMontant } from '../lib/hospitable'
 import { calculerVentilationMois } from '../services/ventilation'
 import { lancerMatchingAuto } from '../services/rapprochement'
+import { getAllClotures } from '../services/cloture'
 import { resetEtRematcher } from '../services/rapprochement'
 import { getPowensStatus, connectPowens, syncAllPowensAccounts, setupPowensWebhook } from '../services/powens'
 import { autoMatcherMouvementsLLD, majLoyersDepuisVirements } from '../services/lldBanque'
@@ -58,6 +59,16 @@ export default function PageConfig() {
       m++; if (m > 12) { m = 1; y++ }
     }
 
+    // Exclure les mois clôturés (étape ventil)
+    const clotures = await getAllClotures()
+    const clotureSet = new Set(
+      clotures.filter(c => c.agence === AGENCE && c.cloture_ventil).map(c => c.mois)
+    )
+    const moisActifs = allMois.filter(m => !clotureSet.has(m))
+    if (clotureSet.size > 0) {
+      update('vent', 'pending', `${clotureSet.size} mois clôturé(s) ignorés`)
+    }
+
     // Timer
     const startTime = Date.now()
     const timerInterval = setInterval(() => {
@@ -68,7 +79,7 @@ export default function PageConfig() {
     update('vent', 'running')
     try {
       let total = 0, errors = 0
-      for (const mois of allMois) {
+      for (const mois of moisActifs) {
         const v = await calculerVentilationMois(mois)
         total += (v?.total || 0)
         errors += (v?.errors || 0)
@@ -76,11 +87,11 @@ export default function PageConfig() {
       update('vent', 'ok', `${total} résa(s) ventilée(s)${errors ? ` — ${errors} erreur(s)` : ''}`)
     } catch(e) { update('vent', 'error', e.message); setVentError(e.message) }
 
-    // 2. Matching
+    // 2. Matching (même filtre clôture)
     update('matching', 'running')
     try {
       let total = 0
-      for (const mois of allMois) {
+      for (const mois of moisActifs) {
         const r = await lancerMatchingAuto(mois)
         total += (r?.matched || 0)
       }

@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef } from 'react'
+import { useMoisCloture, BanniereCloture } from '../hooks/useMoisCloture'
 import { getMouvementsMois, getMoisDispos } from '../services/banque'
 import { useMoisPersisted } from '../hooks/useMoisPersisted'
 import { supabase } from '../lib/supabase'
@@ -48,6 +49,8 @@ export default function PageBanque() {
   const [syncingPayouts, setSyncingPayouts] = useState(false)
   const bookingRef = useRef()
 
+  const { bloque: moisBloque } = useMoisCloture(mois, 'rappro')
+
   useEffect(() => { charger() }, [mois])
 
   async function charger() {
@@ -96,6 +99,7 @@ export default function PageBanque() {
   }
 
   async function supprimerMouvement(id) {
+    if (moisBloque) { setError('🔒 Mois clôturé (Rapprochement) — modification impossible.'); return }
     setConfirmModal({
       message: 'Supprimer ce mouvement bancaire ?\nCette action est irréversible.',
       onConfirm: async () => {
@@ -118,6 +122,7 @@ export default function PageBanque() {
 
   async function supprimerMois() {
     if (!suppression) return
+    if (moisBloque) { setError('🔒 Mois clôturé (Rapprochement) — suppression impossible.'); return }
     setSupprimant(true)
     try {
       // CF-BQ2 : nettoyer les tables liées pour les mouvements rapprochés avant suppression
@@ -166,6 +171,7 @@ export default function PageBanque() {
 
   async function confirmerImport() {
     if (!preview) return
+    if (moisBloque) { setError('🔒 Mois clôturé (Rapprochement) — import impossible.'); return }
     setImporting(true)
     try {
       const result = await importerMouvementsBancaires(preview.rows)
@@ -229,6 +235,7 @@ export default function PageBanque() {
         </div>
       </div>
 
+      {moisBloque && <BanniereCloture etape="rappro" />}
       {error && <div className='alert alert-error'>{error}</div>}
 
       {importResult && (

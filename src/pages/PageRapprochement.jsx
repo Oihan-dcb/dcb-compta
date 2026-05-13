@@ -11,6 +11,7 @@ import { syncStripe, HAS_STRIPE } from '../services/syncStripe'
 import MoisSelector from '../components/MoisSelector'
 import ModalResa from '../components/ModalResa'
 import { useMoisPersisted } from '../hooks/useMoisPersisted'
+import { useMoisCloture, BanniereCloture } from '../hooks/useMoisCloture'
 import { format } from 'date-fns'
 import { fr } from 'date-fns/locale'
 const moisCourant = new Date().toISOString().substring(0, 7)
@@ -65,6 +66,7 @@ export default function PageRapprochement() {
   const [syncing, setSyncing] = useState(false)
   const [syncLog, setSyncLog] = useState(null)
 
+  const { bloque: moisBloque } = useMoisCloture(mois, 'rappro')
 
   // Ouvrir le modal de détail d'une réservation depuis le rapprochement
   function ouvrirResa(resaCode) {
@@ -195,6 +197,7 @@ export default function PageRapprochement() {
   }
 
   async function lancerAuto() {
+    if (moisBloque) { setError('🔒 Mois clôturé (Rapprochement) — matching impossible.'); return }
     matchingInProgressRef.current = true
     setMatching(true)
     setMatchLog(null)
@@ -213,6 +216,7 @@ export default function PageRapprochement() {
 
   async function confirmerMatchManuel() {
     if (!mouvSelId || resasSel.length === 0) return
+    if (moisBloque) { setError('🔒 Mois clôturé (Rapprochement) — rapprochement manuel impossible.'); return }
     setSaving(true)
     setSoldeInfo(null)
     try {
@@ -264,6 +268,7 @@ export default function PageRapprochement() {
   }
 
   async function marquerInconnu(id) {
+    if (moisBloque) { setError('🔒 Mois clôturé (Rapprochement) — modification impossible.'); return }
     try {
       await marquerNonIdentifie(id)
       await charger()
@@ -273,6 +278,7 @@ export default function PageRapprochement() {
   }
 
   async function annuler(id) {
+    if (moisBloque) { setError('🔒 Mois clôturé (Rapprochement) — annulation impossible.'); return }
     try {
       await annulerRapprochement(id)
       await charger()
@@ -297,6 +303,7 @@ export default function PageRapprochement() {
 
   return (
     <div className="page-rapprochement" style={{ padding: '24px', maxWidth: '1400px', margin: '0 auto' }}>
+      {moisBloque && <BanniereCloture etape="rappro" />}
 
       {/* HEADER */}
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 24, flexWrap: 'wrap', gap: 12 }}>

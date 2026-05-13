@@ -2,6 +2,7 @@ import { AGENCE } from '../lib/agence'
 import { useState, useEffect } from 'react'
 import { supabase } from '../lib/supabase'
 import { useMoisPersisted } from '../hooks/useMoisPersisted'
+import { useMoisCloture, BanniereCloture } from '../hooks/useMoisCloture'
 
 const STATUT_LABEL = { en_attente: 'En attente', valide: 'Validé', annule: 'Annulé' }
 const STATUT_COLOR = { en_attente: '#f59e0b', valide: '#16a34a', annule: '#dc2626' }
@@ -23,6 +24,8 @@ export default function PagePrestationsAE() {
   const [confirmModal, setConfirmModal] = useState(null)
   const [counts, setCounts] = useState({ en_attente: 0, valide: 0, annule: 0 })
   const [totals, setTotals] = useState({ en_attente: 0, valide: 0, annule: 0 })
+
+  const { bloque: moisBloque } = useMoisCloture(mois, 'facturat')
 
   useEffect(() => {
     charger()
@@ -95,6 +98,7 @@ export default function PagePrestationsAE() {
   }
 
   async function valider(id) {
+    if (moisBloque) { setError('🔒 Mois clôturé (Facturation) — validation impossible.'); return }
     setSaving(true)
     try {
       await supabase.from('prestation_hors_forfait')
@@ -108,6 +112,7 @@ export default function PagePrestationsAE() {
   }
 
   async function annuler(id) {
+    if (moisBloque) { setError('🔒 Mois clôturé (Facturation) — annulation impossible.'); return }
     setConfirmModal({
       message: 'Annuler cette prestation ?\nElle passera en statut \u00ab annulée \u00bb.',
       onConfirm: async () => {
@@ -127,6 +132,7 @@ export default function PagePrestationsAE() {
   }
 
   async function sauvegarderModif() {
+    if (moisBloque) { setError('🔒 Mois clôturé (Facturation) — modification impossible.'); return }
     setSaving(true)
     setError(null)
     try {
@@ -198,6 +204,7 @@ export default function PagePrestationsAE() {
       </div>
 
       {success && <div style={{ background: '#DCFCE7', borderRadius: 8, padding: '10px 16px', marginBottom: 14, fontSize: 13, color: '#15803D' }}>✓ {success}</div>}
+      {moisBloque && <BanniereCloture etape="facturat" />}
       {error && <div style={{ background: '#FEE2E2', borderRadius: 8, padding: '10px 16px', marginBottom: 14, fontSize: 13, color: '#B91C1C' }}>✕ {error}</div>}
 
       {/* Filtres */}
