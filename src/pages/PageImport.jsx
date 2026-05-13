@@ -3,6 +3,8 @@ import { analyseCSV, importHospitableCSV, fusionnerDoublons } from '../services/
 import { useNavigate } from 'react-router-dom'
 import { format } from 'date-fns'
 import { fr } from 'date-fns/locale'
+import { getAllClotures } from '../services/cloture'
+import { AGENCE } from '../lib/agence'
 
 const PLATFORM_COLORS = { airbnb: '#FF5A5F', booking: '#003580', direct: '#2563EB' }
 
@@ -16,6 +18,7 @@ export default function PageImport() {
   const [error, setError] = useState(null)
   const [fusionResult, setFusionResult] = useState(null)
   const [progress, setProgress] = useState(null) // { step, pct }
+  const [moisClotures, setMoisClotures] = useState(new Set()) // mois avec cloture_ventil
   const fileRef = useRef()
   const navigate = useNavigate()
 
@@ -25,10 +28,17 @@ export default function PageImport() {
     setLoading(true)
     setError(null)
     try {
-      const { rows: r, parMois: m, total } = await analyseCSV(file)
+      const [{ rows: r, parMois: m }, clotures] = await Promise.all([
+        analyseCSV(file),
+        getAllClotures(),
+      ])
+      const locked = new Set(
+        clotures.filter(c => c.agence === AGENCE && c.cloture_ventil).map(c => c.mois)
+      )
+      setMoisClotures(locked)
       setRows(r)
       setParMois(m)
-      setSelected(m.map(x => x.mois)) // tout sélectionner par défaut
+      setSelected(m.map(x => x.mois).filter(mois => !locked.has(mois))) // exclure les clôturés
       setStep('select')
     } catch (err) {
       setError(err.message)
@@ -38,20 +48,25 @@ export default function PageImport() {
   }
 
   function toggleMois(mois) {
+    if (moisClotures.has(mois)) return // clôturé, non-sélectionnable
     setSelected(s => s.includes(mois) ? s.filter(x => x !== mois) : [...s, mois])
   }
 
   function toggleAll() {
-    setSelected(s => s.length === parMois.length ? [] : parMois.map(x => x.mois))
+    const selectables = parMois.map(x => x.mois).filter(m => !moisClotures.has(m))
+    setSelected(s => s.length === selectables.length ? [] : selectables)
   }
 
   async function lancerImport() {
     if (selected.length === 0) return
+    // Filet de sécurité final : exclure les mois clôturés même si sélectionnés par erreur
+    const selectedFiltres = selected.filter(m => !moisClotures.has(m))
+    if (selectedFiltres.length === 0) { setError('Tous les mois sélectionnés sont clôturés.'); return }
     setStep('importing')
     setLoading(true)
     setError(null)
     try {
-      const r = await importHospitableCSV(rows, selected, (p) => setProgress(p))
+      const r = await importHospitableCSV(rows, selectedFiltres, (p) => setProgress(p))
       setResult(r)
       setStep('done')
     } catch (err) {
@@ -72,7 +87,7 @@ export default function PageImport() {
     if (fileRef.current) fileRef.current.value = ''
   }
 
-  const totalSelected = parMois.filter(m => selected.includes(m.mois)).reduce((s, m) => s + m.total, 0)
+  const totalSelected = parMois.filter(m => selected.includes(m.mois) && !moisClotures.has(m.mois)).reduce((s, m) => s + m.total, 0)
 
   return (
     <div className="page">
@@ -140,31 +155,43 @@ export default function PageImport() {
             </button>
           </div>
 
+          {moisClotures.size > 0 && (
+            <div style={{ background: '#FEF3C7', border: '1.5px solid #F59E0B', borderRadius: 8, padding: '10px 14px', marginBottom: 14, fontSize: 13, color: '#92400E' }}>
+              🔒 <strong>{moisClotures.size} mois clôturé(s)</strong> — ces mois sont verrouillés (étape Ventilation) et ne peuvent pas être importés.
+            </div>
+          )}
+
           <div style={{display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(260px, 1fr))', gap: 10, marginBottom: 24}}>
             {parMois.map(m => {
               const isSelected = selected.includes(m.mois)
+              const isCloture = moisClotures.has(m.mois)
               const [year, month] = m.mois.split('-')
               const label = format(new Date(parseInt(year), parseInt(month) - 1, 1), 'MMMM yyyy', {locale: fr})
               return (
                 <div
                   key={m.mois}
-                  onClick={() => toggleMois(m.mois)}
+                  onClick={() => !isCloture && toggleMois(m.mois)}
                   style={{
-                    padding: '12px 16px', borderRadius: 8, cursor: 'pointer',
-                    border: `2px solid ${isSelected ? 'var(--brand)' : 'var(--border)'}`,
-                    background: isSelected ? 'var(--brand-pale)' : 'var(--bg-card)',
+                    padding: '12px 16px', borderRadius: 8,
+                    cursor: isCloture ? 'not-allowed' : 'pointer',
+                    border: `2px solid ${isCloture ? '#D9CEB8' : isSelected ? 'var(--brand)' : 'var(--border)'}`,
+                    background: isCloture ? '#F5F0E8' : isSelected ? 'var(--brand-pale)' : 'var(--bg-card)',
+                    opacity: isCloture ? 0.6 : 1,
                     display: 'flex', justifyContent: 'space-between', alignItems: 'center',
                     transition: 'all 0.15s',
                   }}>
                   <div>
-                    <div style={{fontWeight: 600, textTransform: 'capitalize'}}>{label}</div>
+                    <div style={{fontWeight: 600, textTransform: 'capitalize', display: 'flex', alignItems: 'center', gap: 6}}>
+                      {isCloture && <span style={{fontSize: 13}}>🔒</span>}
+                      {label}
+                    </div>
                     <div style={{fontSize: '0.8em', color: 'var(--text-muted)', marginTop: 2}}>
-                      {m.platforms.map(p => (
-                        <span key={p} style={{
-                          marginRight: 4, color: PLATFORM_COLORS[p] || '#888',
-                          fontWeight: 500
-                        }}>{p}</span>
-                      ))}
+                      {isCloture
+                        ? <span style={{color: '#B45309', fontWeight: 500}}>Clôturé — non importable</span>
+                        : m.platforms.map(p => (
+                          <span key={p} style={{ marginRight: 4, color: PLATFORM_COLORS[p] || '#888', fontWeight: 500 }}>{p}</span>
+                        ))
+                      }
                     </div>
                   </div>
                   <div style={{textAlign: 'right'}}>
