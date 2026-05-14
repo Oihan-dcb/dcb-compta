@@ -1,5 +1,6 @@
 import { supabase } from '../lib/supabase'
 import { AGENCE } from '../lib/agence'
+import { authPost } from '../lib/authFetch'
 
 export async function getAutoEntrepreneurs() {
   const { data, error } = await supabase
@@ -51,37 +52,22 @@ export async function createAEWithAuth(ae, email) {
   if (error) throw error
 
   // 2. Appeler via la route Vercel proxy — génère un lien d'invitation
-  const fnResp = await fetch('/api/ae-action', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json', 'x-internal-secret': import.meta.env.VITE_INTERNAL_API_SECRET },
-    body: JSON.stringify({ action: 'create', ae_id: data.id, email })
-  })
-  if (!fnResp.ok) throw new Error('Erreur serveur: ' + fnResp.status)
-  const fnData = await fnResp.json()
+  const { ok, data: fnData } = await authPost('/api/ae-action', { action: 'create', ae_id: data.id, email })
+  if (!ok) throw new Error('Erreur serveur: ' + (fnData?.error || ok))
   if (fnData?.error) throw new Error(fnData.error)
 
   return { ae: data, email, link: fnData.link }
 }
 
 export async function createAEAccess(ae_id, email) {
-  const fnResp = await fetch('/api/ae-action', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json', 'x-internal-secret': import.meta.env.VITE_INTERNAL_API_SECRET },
-    body: JSON.stringify({ action: 'create', ae_id, email })
-  })
-  const data = await fnResp.json()
-  if (!fnResp.ok || data?.error) throw new Error(data?.error || `Erreur serveur ${fnResp.status}`)
+  const { ok, data } = await authPost('/api/ae-action', { action: 'create', ae_id, email })
+  if (!ok || data?.error) throw new Error(data?.error || 'Erreur serveur')
   return { link: data.link, ae_user_id: data.user_id }
 }
 
 export async function resetAEPassword(ae_id) {
-  const fnResp = await fetch('/api/ae-action', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json', 'x-internal-secret': import.meta.env.VITE_INTERNAL_API_SECRET },
-    body: JSON.stringify({ action: 'reset', ae_id })
-  })
-  if (!fnResp.ok) throw new Error('Erreur serveur: ' + fnResp.status)
-  const data = await fnResp.json()
+  const { ok, data } = await authPost('/api/ae-action', { action: 'reset', ae_id })
+  if (!ok) throw new Error('Erreur serveur: ' + (data?.error || ok))
   if (data?.error) throw new Error(data.error)
   return { link: data.link, email: data.email }
 }

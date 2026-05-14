@@ -2,6 +2,7 @@ import { AGENCE } from '../lib/agence'
 import { useState, useEffect } from 'react'
 import { getAutoEntrepreneurs, saveAutoEntrepreneur, deleteAutoEntrepreneur, createAEWithAuth, createAEAccess, resetAEPassword } from '../services/autoEntrepreneurs'
 import { supabase } from '../lib/supabase'
+import { authPost } from '../lib/authFetch'
 
 function escapeHtml(str) {
   if (!str) return ''
@@ -133,13 +134,8 @@ export default function PageAutoEntrepreneurs() {
   }
 
   async function creerStaffRoom(aeUserId) {
-    const r = await fetch('/api/create-staff-room', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json', 'x-internal-secret': import.meta.env.VITE_INTERNAL_API_SECRET },
-      body: JSON.stringify({ ae_user_id: aeUserId }),
-    })
-    const d = await r.json()
-    if (!r.ok) throw new Error(d.error || 'Erreur création rooms')
+    const { ok, data: d } = await authPost('/api/create-staff-room', { ae_user_id: aeUserId })
+    if (!ok) throw new Error(d?.error || 'Erreur création rooms')
   }
 
   async function createGroup() {
@@ -554,12 +550,7 @@ export default function PageAutoEntrepreneurs() {
     const results = []
     for (const ae of liste) {
       try {
-        const r = await fetch('/api/ae-action', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json', 'x-internal-secret': import.meta.env.VITE_INTERNAL_API_SECRET },
-          body: JSON.stringify({ action: 'sync', ae_id: ae.id, mois: moisCible })
-        })
-        const d = await r.json()
+        const { ok: rOk, data: d } = await authPost('/api/ae-action', { action: 'sync', ae_id: ae.id, mois: moisCible })
         results.push({ nom: ae.prenom + ' ' + ae.nom, ...d })
       } catch (err) {
         results.push({ nom: ae.prenom + ' ' + ae.nom, error: err.message })
@@ -703,13 +694,10 @@ export default function PageAutoEntrepreneurs() {
     setSaving(true); setError(null)
     try {
       // Générer un lien (invite si pas de compte, recovery sinon)
-      const linkResp = await fetch('/api/ae-action', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', 'x-internal-secret': import.meta.env.VITE_INTERNAL_API_SECRET },
-        body: JSON.stringify(ae.ae_user_id ? { action: 'reset', ae_id: ae.id } : { action: 'create', ae_id: ae.id, email: ae.email })
-      })
-      const linkData = await linkResp.json()
-      if (!linkResp.ok || linkData?.error) throw new Error(linkData?.error || 'Erreur génération lien')
+      const { ok: linkOk, data: linkData } = await authPost('/api/ae-action',
+        ae.ae_user_id ? { action: 'reset', ae_id: ae.id } : { action: 'create', ae_id: ae.id, email: ae.email }
+      )
+      if (!linkOk || linkData?.error) throw new Error(linkData?.error || 'Erreur génération lien')
       if (!ae.ae_user_id && linkData.ae_user_id) await fetch('/api/ae-action', {}) // ae_user_id est mis à jour par la fonction
       const html = genererHtmlAcces(ae, linkData.link)
       const { data: r, error: e } = await supabase.functions.invoke('smtp-send', {

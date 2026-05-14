@@ -2,6 +2,7 @@ import { useState, useEffect, useCallback, useRef } from 'react'
 import MoisSelector, { MOIS_FR } from '../components/MoisSelector'
 import { useMoisPersisted } from '../hooks/useMoisPersisted'
 import { supabase } from '../lib/supabase'
+import { authPost, authPostRaw } from '../lib/authFetch'
 import {
   genererRapportHTML, envoyerRapportEmail
 } from '../services/rapportProprietaire'
@@ -684,11 +685,7 @@ FORMAT :
     setGeneratingPDF(true)
     try {
       const html = getHTML()
-      const response = await fetch('/api/generate-pdf', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', 'x-internal-secret': import.meta.env.VITE_INTERNAL_API_SECRET },
-        body: JSON.stringify({ html, orientation: useStatement ? 'landscape' : 'portrait' }),
-      })
+      const response = await authPostRaw('/api/generate-pdf', { html, orientation: useStatement ? 'landscape' : 'portrait' })
       if (!response.ok) {
         const err = await response.json()
         throw new Error(err.error || 'Erreur génération PDF')
@@ -730,11 +727,7 @@ FORMAT :
           console.log('[envoyer] étape 2 — genererStatementHTML')
           const statementHtml = genererStatementHTML(data.proprio, mois, rapportData)
           console.log('[envoyer] étape 3 — fetch /api/generate-pdf')
-          const pdfRes = await fetch('/api/generate-pdf', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json', 'x-internal-secret': import.meta.env.VITE_INTERNAL_API_SECRET },
-            body: JSON.stringify({ html: statementHtml, orientation: 'landscape' }),
-          })
+          const pdfRes = await authPostRaw('/api/generate-pdf', { html: statementHtml, orientation: 'landscape' })
           console.log('[envoyer] generate-pdf status:', pdfRes.status)
           if (pdfRes.ok) {
             const ab = await pdfRes.arrayBuffer()

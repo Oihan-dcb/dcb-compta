@@ -4,12 +4,19 @@
  * Jamais d'appel direct aux Edge Functions depuis le navigateur
  */
 
+import { supabase } from '../lib/supabase'
+
 const PROXY = '/api/powens-proxy'
 
 async function call(fn, body) {
+  const { data: { session } } = await supabase.auth.getSession()
+  if (!session) throw new Error('Session expirée — veuillez vous reconnecter')
   const res = await fetch(PROXY, {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json', 'x-internal-secret': import.meta.env.VITE_INTERNAL_API_SECRET },
+    headers: {
+      'Content-Type': 'application/json',
+      Authorization: `Bearer ${session.access_token}`,
+    },
     body: JSON.stringify({ fn, ...body }),
   })
   const data = await res.json()
