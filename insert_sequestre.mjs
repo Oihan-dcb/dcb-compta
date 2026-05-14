@@ -1,8 +1,10 @@
+// Usage : SUPABASE_URL=https://... SUPABASE_KEY=<anon_or_service_key> node insert_sequestre.mjs
 import { createClient } from '@supabase/supabase-js'
 import { readFileSync } from 'fs'
 
-const url = 'https://omuncchvypbtxkpalwcr.supabase.co'
-const key = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im9tdW5jY2h2eXBidHhrcGFsd2NyIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzI4OTE4NzIsImV4cCI6MjA4ODQ2Nzg3Mn0.jvPn6LkBfT1eeHmkGI-_vAD2pdM_Y0JWgtbJAG-DLjM'
+const url = process.env.SUPABASE_URL || 'https://omuncchvypbtxkpalwcr.supabase.co'
+const key = process.env.SUPABASE_KEY
+if (!key) { console.error('SUPABASE_KEY manquante'); process.exit(1) }
 
 const supabase = createClient(url, key)
 
