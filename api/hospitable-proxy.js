@@ -70,5 +70,10 @@ export default async function handler(req, res) {
     headers: { Authorization: 'Bearer ' + HOSPITABLE_TOKEN, Accept: 'application/json' }
   })
   const data = await hospRes.json()
+  // En cas d'erreur, normalise le message pour le client
+  if (!hospRes.ok) {
+    const msg = data?.message || data?.error || data?.errors?.[0]?.message || JSON.stringify(data)
+    return res.status(hospRes.status).json({ message: msg })
+  }
   return res.status(hospRes.status).json(data)
 }

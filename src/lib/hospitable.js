@@ -41,7 +41,7 @@ async function fetchAll(path, params = {}, pageSize = 50) {
   let all = []
 
   while (true) {
-    const data = await apiFetch(path, { ...params, limit: pageSize, page })
+    const data = await apiFetch(path, { ...params, per_page: pageSize, page })
     const items = data.data || []
     all = all.concat(items)
 
@@ -72,7 +72,7 @@ export async function fetchReservations(propertyIds, opts = {}) {
 
   const params = {
     properties: propertyIds,
-    include: 'financials,guests,guest',
+    include: 'financials,guest',
   }
   if (opts.startDate) params.start_date = opts.startDate
   if (opts.endDate) params.end_date = opts.endDate

@@ -61,10 +61,16 @@ serve(async (req) => {
     // ── 1. Réservations du mois (agence uniquement) ───────────────────────────
     const { data: biensAgence, error: biensErr } = await supabase
       .from('bien')
-      .select('id')
+      .select('id, mode_encaissement')
       .eq('agence', agence)
     if (biensErr) throw biensErr
     const biensDcbIds = (biensAgence || []).map(b => b.id)
+    // Biens où la plateforme encaisse directement pour le proprio (Airbnb/Booking → proprio)
+    // DCB ne reçoit jamais ces virements → exclure des anomalies (miroir de PageFactures PLATFORMS_DCB_CTRL)
+    const PLATFORMS_DCB_CTRL = new Set(['direct', 'manual'])
+    const biensProprio = new Set(
+      (biensAgence || []).filter(b => b.mode_encaissement === 'proprio').map(b => b.id)
+    )
     if (!biensDcbIds.length) {
       return jsonResp({
         reservations_total: 0, prouvees: 0, non_prouvees: 0, anomalies: 0,
@@ -81,19 +87,26 @@ serve(async (req) => {
       .in('bien_id', biensDcbIds)
 
     if (resasErr) throw resasErr
-    if (!resas?.length) {
+
+    // Exclure les resas proprio_encaissé : biens mode_encaissement='proprio' sur plateforme non-DCB
+    // (Airbnb/Booking vire directement au proprio — DCB ne reçoit jamais ces montants)
+    const resasFiltered = (resas || []).filter(r =>
+      !biensProprio.has(r.bien_id) || PLATFORMS_DCB_CTRL.has(r.platform)
+    )
+
+    if (!resasFiltered.length) {
       return jsonResp({
         reservations_total: 0, prouvees: 0, non_prouvees: 0, anomalies: 0,
         message: 'Aucune réservation pour ce mois',
       })
     }
 
-    const resaIds = resas.map(r => r.id)
-    const resaById: Record<string, typeof resas[0]> = {}
+    const resaIds = resasFiltered.map(r => r.id)
+    const resaById: Record<string, typeof resasFiltered[0]> = {}
     // Maps inverses pour chemins 4 et 5
     const resaIdByPlatformId: Record<string, string> = {}  // booking_ref → reservation_id
     const resaIdByCode: Record<string, string> = {}        // reservation.code → reservation_id
-    for (const r of resas) {
+    for (const r of resasFiltered) {
       resaById[r.id] = r
       if (r.platform === 'booking' && r.platform_id) resaIdByPlatformId[r.platform_id] = r.id
       if (r.code) resaIdByCode[r.code] = r.id
@@ -276,7 +289,7 @@ serve(async (req) => {
     let prouvees = 0
     let nonProuvees = 0
 
-    for (const resa of resas) {
+    for (const resa of resasFiltered) {
       const mbMap = linksByResa.get(resa.id)
       const links = mbMap ? [...mbMap.values()] : []
 
@@ -338,7 +351,7 @@ serve(async (req) => {
     }
 
     // ── 5. Persistance allocations : DELETE auto + INSERT ─────────────────────
-    const uniqueBienIds = [...new Set(resas.map(r => r.bien_id))]
+    const uniqueBienIds = [...new Set(resasFiltered.map(r => r.bien_id))]
     if (uniqueBienIds.length > 0) {
       const { error: delErr } = await supabase
         .from('encaissement_allocation')
@@ -380,7 +393,7 @@ serve(async (req) => {
 
     // ── 7. Résumé ──────────────────────────────────────────────────────────────
     return jsonResp({
-      reservations_total: resas.length,
+      reservations_total: resasFiltered.length,
       prouvees,
       non_prouvees: nonProuvees,
       anomalies: detectedAnomalies.length,
