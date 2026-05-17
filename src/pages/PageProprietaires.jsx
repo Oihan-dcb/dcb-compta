@@ -678,6 +678,9 @@ function TabPortailOwner({ proprio, visConfig, visLoading, visErr, visOk, invite
         )}
       </div>
 
+      {/* ── Accès secondaires ── */}
+      <SecondaryAccessSection proprio={proprio} />
+
       {/* ── Profil de visibilité ── */}
       <div style={{ marginBottom: 20 }}>
         <div style={{ fontSize: 11, fontWeight: 700, letterSpacing: 1.5, textTransform: 'uppercase', color: 'var(--text-muted)', marginBottom: 10 }}>Profil de visibilité</div>
@@ -786,6 +789,187 @@ function TabPortailOwner({ proprio, visConfig, visLoading, visErr, visOk, invite
           </Section>
         </div>
       </div>
+    </div>
+  )
+}
+
+// ── Accès secondaires — co-propriétaires avec accès portail ──────────────────
+
+function SecondaryAccessSection({ proprio }) {
+  const [secondaries, setSecondaries] = useState(null) // null = pas encore chargé
+  const [showForm, setShowForm]       = useState(false)
+  const [form, setForm]               = useState({ prenom: '', nom: '', email: '' })
+  const [saving, setSaving]           = useState(false)
+  const [err, setErr]                 = useState(null)
+  const [inviting, setInviting]       = useState({}) // { [id]: bool }
+  const [inviteOk, setInviteOk]       = useState({}) // { [id]: bool }
+
+  useEffect(() => {
+    supabase
+      .from('proprietaire')
+      .select('id, prenom, nom, email, auth_user_id, actif')
+      .eq('parent_proprietaire_id', proprio.id)
+      .then(({ data }) => setSecondaries(data || []))
+  }, [proprio.id])
+
+  async function creerEtInviter() {
+    if (!form.nom.trim() || !form.email.trim()) return
+    setSaving(true); setErr(null)
+    try {
+      const { data: created, error: insErr } = await supabase
+        .from('proprietaire')
+        .insert({
+          prenom:                 form.prenom.trim() || null,
+          nom:                    form.nom.trim(),
+          email:                  form.email.trim().toLowerCase(),
+          parent_proprietaire_id: proprio.id,
+          agence:                 proprio.agence || AGENCE,
+          actif:                  true,
+          taux_commission:        0,
+        })
+        .select('id, prenom, nom, email, auth_user_id, actif')
+        .single()
+      if (insErr) throw new Error(insErr.message)
+
+      // Envoi immédiat de l'invitation
+      const { error: invErr } = await supabase.functions.invoke('owner-portal-invite', {
+        body: { proprio_id: created.id, email: created.email }
+      })
+      if (invErr) throw new Error(invErr.message)
+
+      setSecondaries(s => [...(s || []), created])
+      setInviteOk(o => ({ ...o, [created.id]: true }))
+      setTimeout(() => setInviteOk(o => ({ ...o, [created.id]: false })), 4000)
+      setForm({ prenom: '', nom: '', email: '' })
+      setShowForm(false)
+    } catch (e) { setErr(e.message) }
+    finally { setSaving(false) }
+  }
+
+  async function renvoyerInvite(sec) {
+    setInviting(v => ({ ...v, [sec.id]: true }))
+    try {
+      await supabase.functions.invoke('owner-portal-invite', {
+        body: { proprio_id: sec.id, email: sec.email }
+      })
+      setInviteOk(o => ({ ...o, [sec.id]: true }))
+      setTimeout(() => setInviteOk(o => ({ ...o, [sec.id]: false })), 4000)
+    } catch (e) { setErr(e.message) }
+    finally { setInviting(v => ({ ...v, [sec.id]: false })) }
+  }
+
+  async function supprimerSecondaire(secId) {
+    if (!window.confirm('Supprimer cet accès secondaire ?')) return
+    await supabase.from('proprietaire').delete().eq('id', secId)
+    setSecondaries(s => s.filter(x => x.id !== secId))
+  }
+
+  return (
+    <div style={{ background: 'var(--cream)', border: '1px solid var(--border)', borderRadius: 8, padding: '14px 16px', marginBottom: 20 }}>
+      <div style={{ fontSize: 11, fontWeight: 700, letterSpacing: 1.5, textTransform: 'uppercase', color: 'var(--text-muted)', marginBottom: 10 }}>
+        Accès secondaires
+      </div>
+
+      {err && <div className="alert alert-error" style={{ marginBottom: 10 }}>✗ {err}</div>}
+
+      {/* Liste des secondaires existants */}
+      {secondaries === null && <div style={{ fontSize: 12, color: 'var(--text-muted)' }}>Chargement…</div>}
+      {secondaries?.map(sec => (
+        <div key={sec.id} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '8px 0', borderBottom: '1px solid var(--border)', gap: 10 }}>
+          <div>
+            <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--text)' }}>
+              {sec.prenom} {sec.nom}
+            </div>
+            <div style={{ fontSize: 11, color: 'var(--text-muted)', marginTop: 1 }}>
+              {sec.email}
+              {sec.auth_user_id
+                ? <span style={{ marginLeft: 8, color: '#15803D', fontWeight: 600 }}>✓ Actif</span>
+                : <span style={{ marginLeft: 8, color: 'var(--warning)', fontWeight: 600 }}>En attente</span>
+              }
+            </div>
+          </div>
+          <div style={{ display: 'flex', gap: 6, alignItems: 'center', flexShrink: 0 }}>
+            {inviteOk[sec.id] && (
+              <span style={{ fontSize: 11, color: '#15803D' }}>✓ Envoyé</span>
+            )}
+            <button
+              className="btn btn-secondary btn-sm"
+              disabled={inviting[sec.id]}
+              onClick={() => renvoyerInvite(sec)}
+              style={{ fontSize: 11, padding: '4px 10px' }}
+            >
+              {inviting[sec.id] ? '⏳' : '📬'}
+            </button>
+            <button
+              onClick={() => supprimerSecondaire(sec.id)}
+              style={{ background: 'none', border: 'none', fontSize: 15, cursor: 'pointer', color: 'var(--error)', padding: '2px 4px' }}
+              title="Supprimer"
+            >
+              ×
+            </button>
+          </div>
+        </div>
+      ))}
+
+      {secondaries?.length === 0 && !showForm && (
+        <div style={{ fontSize: 12, color: 'var(--text-muted)', marginBottom: 10 }}>
+          Aucun accès secondaire — ajoutez un co-propriétaire ou conjoint.
+        </div>
+      )}
+
+      {/* Formulaire ajout */}
+      {showForm ? (
+        <div style={{ marginTop: 12, display: 'flex', flexDirection: 'column', gap: 8 }}>
+          <div style={{ display: 'flex', gap: 8 }}>
+            <input
+              type="text"
+              placeholder="Prénom"
+              value={form.prenom}
+              onChange={e => setForm(f => ({ ...f, prenom: e.target.value }))}
+              style={{ flex: 1, fontSize: 13, padding: '7px 10px', border: '1.5px solid var(--border)', borderRadius: 6 }}
+            />
+            <input
+              type="text"
+              placeholder="Nom *"
+              value={form.nom}
+              onChange={e => setForm(f => ({ ...f, nom: e.target.value }))}
+              style={{ flex: 1, fontSize: 13, padding: '7px 10px', border: '1.5px solid var(--border)', borderRadius: 6 }}
+            />
+          </div>
+          <input
+            type="email"
+            placeholder="Email *"
+            value={form.email}
+            onChange={e => setForm(f => ({ ...f, email: e.target.value }))}
+            style={{ fontSize: 13, padding: '7px 10px', border: '1.5px solid var(--border)', borderRadius: 6 }}
+          />
+          <div style={{ display: 'flex', gap: 8 }}>
+            <button
+              className="btn btn-primary btn-sm"
+              disabled={saving || !form.nom.trim() || !form.email.trim()}
+              onClick={creerEtInviter}
+              style={{ fontSize: 12 }}
+            >
+              {saving ? '⏳ Création…' : '📬 Créer et inviter'}
+            </button>
+            <button
+              className="btn btn-secondary btn-sm"
+              onClick={() => { setShowForm(false); setErr(null) }}
+              style={{ fontSize: 12 }}
+            >
+              Annuler
+            </button>
+          </div>
+        </div>
+      ) : (
+        <button
+          className="btn btn-secondary btn-sm"
+          onClick={() => setShowForm(true)}
+          style={{ marginTop: secondaries?.length ? 10 : 0, fontSize: 12 }}
+        >
+          + Ajouter un accès secondaire
+        </button>
+      )}
     </div>
   )
 }
