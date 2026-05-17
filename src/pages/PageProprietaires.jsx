@@ -703,10 +703,12 @@ function TabPortailOwner({ proprio, visConfig, visLoading, visErr, visOk, invite
         <div>
           <Section title="Relevé — Revenus">
             <Toggle field="revenus_bruts"     label="Revenus bruts voyageurs" />
+            <Toggle field="hebergement_net"   label="Hébergement net (net plateforme)" />
             <Toggle field="commission_base"   label="Commission DCB" />
             <Toggle field="commission_detail" label="Détail commission" />
             <Toggle field="menage"            label="Déduction ménage" />
             <Toggle field="prestations"       label="Déduction prestations" />
+            <Toggle field="achats_proprio"    label="Achats propriétaire" />
             <Toggle field="taxe_sejour"       label="Taxe de séjour" />
             <Toggle field="frais_divers"      label="Frais divers" />
           </Section>
