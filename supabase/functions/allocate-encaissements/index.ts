@@ -80,7 +80,7 @@ serve(async (req) => {
 
     const { data: resas, error: resasErr } = await supabase
       .from('reservation')
-      .select('id, bien_id, fin_revenue, platform, mois_comptable, platform_id, code')
+      .select('id, bien_id, fin_revenue, platform, mois_comptable, platform_id, code, final_status, owner_stay')
       .eq('mois_comptable', mois)
       .eq('owner_stay', false)
       .gt('fin_revenue', 0)
@@ -116,7 +116,13 @@ serve(async (req) => {
 
     // ── 2. Récupérer tous les liens bancaires en parallèle ────────────────────
 
-    const [ventilationRes, rpRes, payoutRes, bookingPayoutRes, stripePayoutRes] = await Promise.all([
+    // Resas annulées avec frais : on vérifie si un reservation_paiement existe (mouvement_id ou non)
+    // Si oui → déjà comptabilisé, pas d'anomalie à générer
+    const cancelledResaIds = resasFiltered
+      .filter(r => r.final_status === 'cancelled')
+      .map(r => r.id)
+
+    const [ventilationRes, rpRes, payoutRes, bookingPayoutRes, stripePayoutRes, cancelledRpRes] = await Promise.all([
 
       // Chemin 1 : ventilation.mouvement_id (legacy + reversements manuels)
       supabase
@@ -155,6 +161,15 @@ serve(async (req) => {
             .in('reservation_code', allResaCodes)
             .not('mouvement_id', 'is', null)
         : Promise.resolve({ data: [] as any[], error: null }),
+
+      // Chemin 6 : reservation_paiement pour annulées (sans filtre mouvement_id)
+      // Permet de détecter les annulations avec frais déjà comptabilisées même sans rapprochement bancaire
+      cancelledResaIds.length > 0
+        ? supabase
+            .from('reservation_paiement')
+            .select('reservation_id')
+            .in('reservation_id', cancelledResaIds)
+        : Promise.resolve({ data: [] as any[], error: null }),
     ])
 
     if (ventilationRes.error) throw new Error(`Erreur ventilation: ${ventilationRes.error.message}`)
@@ -162,6 +177,12 @@ serve(async (req) => {
     if (payoutRes.error) throw new Error(`Erreur payout_reservation: ${payoutRes.error.message}`)
     if (bookingPayoutRes.error) throw new Error(`Erreur booking_payout_line: ${bookingPayoutRes.error.message}`)
     if (stripePayoutRes.error) throw new Error(`Erreur stripe_payout_line: ${stripePayoutRes.error.message}`)
+    if (cancelledRpRes.error) throw new Error(`Erreur cancelled_reservation_paiement: ${cancelledRpRes.error.message}`)
+
+    // Set des resas annulées qui ont au moins un reservation_paiement → pas d'anomalie
+    const cancelledWithPayment = new Set(
+      (cancelledRpRes.data || []).map((r: any) => r.reservation_id)
+    )
 
     // ── 3. Construire la map : reservation_id → liens dédupliqués par mb_id ──
     // Ordre de priorité : ventilation > reservation_paiement > payout_hospitable
@@ -294,6 +315,12 @@ serve(async (req) => {
       const links = mbMap ? [...mbMap.values()] : []
 
       if (links.length === 0) {
+        // Annulation avec frais déjà comptabilisée via reservation_paiement → pas d'anomalie
+        if (resa.final_status === 'cancelled' && cancelledWithPayment.has(resa.id)) {
+          prouvees++
+          continue
+        }
+
         nonProuvees++
         detectedAnomalies.push({
           reservation_id: resa.id,
