@@ -451,19 +451,20 @@ serve(async (req) => {
   if (body.mois) {
     moisList = [body.mois]
   } else {
-    // Auto : mois courant + 2 mois précédents non clôturés
-    const now = new Date()
-    const candidats: string[] = []
-    for (let i = 0; i <= 2; i++) {
-      const d = new Date(now.getFullYear(), now.getMonth() - i, 1)
-      candidats.push(`${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`)
-    }
+    // Auto : tous les mois ayant des réservations avec revenue (passés ET futurs),
+    // hors mois clôturés (cloture_ventil = true)
+    const { data: moisAvecResas } = await supa.from('reservation')
+      .select('mois_comptable')
+      .gt('fin_revenue', 0)
+      .not('mois_comptable', 'is', null)
+    const moisUniques = [...new Set((moisAvecResas || []).map((r: { mois_comptable: string }) => r.mois_comptable))]
 
-    // Filtrer : exclure les mois avec cloture_ventil = true
-    const { data: clotures } = await supa.from('cloture_comptable')
-      .select('mois').eq('agence', agenceTarget).eq('cloture_ventil', true).in('mois', candidats)
-    const moisClos = new Set((clotures || []).map((c: { mois: string }) => c.mois))
-    moisList = candidats.filter(m => !moisClos.has(m))
+    if (moisUniques.length > 0) {
+      const { data: clotures } = await supa.from('cloture_comptable')
+        .select('mois').eq('agence', agenceTarget).eq('cloture_ventil', true).in('mois', moisUniques)
+      const moisClos = new Set((clotures || []).map((c: { mois: string }) => c.mois))
+      moisList = moisUniques.filter(m => !moisClos.has(m)).sort()
+    }
   }
 
   if (moisList.length === 0) {
