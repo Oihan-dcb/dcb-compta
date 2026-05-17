@@ -536,27 +536,27 @@ function ModalFiche({ proprio, onClose, onSaved }) {
               )}
             </div>
           )}
-        </div>
 
-        {/* ── Portail Owner ── */}
-        {tab === 'portail' && (
-          <TabPortailOwner
-            proprio={proprio}
-            visConfig={visConfig}
-            visLoading={visLoading}
-            visErr={visErr}
-            visOk={visOk}
-            inviteOk={inviteOk}
-            authEmail={authEmail}
-            sendingInvite={sendingInvite}
-            onLoad={loadVisConfig}
-            onApplyProfil={applyProfil}
-            onChangeVis={delta => setVisConfig(v => ({ ...v, ...delta }))}
-            onSetAuthEmail={setAuthEmail}
-            onSendInvite={sendPortailInvite}
-            PROFILS={PROFILS}
-          />
-        )}
+          {/* ── Portail Owner ── */}
+          {tab === 'portail' && (
+            <TabPortailOwner
+              proprio={proprio}
+              visConfig={visConfig}
+              visLoading={visLoading}
+              visErr={visErr}
+              visOk={visOk}
+              inviteOk={inviteOk}
+              authEmail={authEmail}
+              sendingInvite={sendingInvite}
+              onLoad={loadVisConfig}
+              onApplyProfil={applyProfil}
+              onChangeVis={delta => setVisConfig(v => ({ ...v, ...delta }))}
+              onSetAuthEmail={setAuthEmail}
+              onSendInvite={sendPortailInvite}
+              PROFILS={PROFILS}
+            />
+          )}
+        </div>
 
         {/* Footer — sauvegarde seulement pour identité + bancaire */}
         {(tab === 'identite' || tab === 'bancaire') && (
