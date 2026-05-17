@@ -17,3 +17,9 @@ ALTER TABLE owner_visibility_config
 ALTER TABLE owner_visibility_config
   ADD COLUMN IF NOT EXISTS langue text NOT NULL DEFAULT 'fr'
     CHECK (langue IN ('fr','en'));
+
+-- Migration 140 (ajoutée ici) : policy pour rôle authenticated
+-- dcb-compta utilise un compte connecté → rôle authenticated, pas anon
+DROP POLICY IF EXISTS "authenticated_all_owner_visibility_config" ON owner_visibility_config;
+CREATE POLICY "authenticated_all_owner_visibility_config" ON owner_visibility_config
+  FOR ALL TO authenticated USING (true) WITH CHECK (true);
