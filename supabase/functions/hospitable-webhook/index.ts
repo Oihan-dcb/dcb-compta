@@ -1,4 +1,5 @@
 import { createClient } from 'npm:@supabase/supabase-js@2'
+import { logError } from '../_shared/logError.ts'
 
 const SUPABASE_URL = Deno.env.get('SUPABASE_URL')!
 const SUPABASE_SERVICE_KEY = Deno.env.get('SERVICE_ROLE_KEY')!
@@ -64,6 +65,7 @@ Deno.serve(async (req) => {
     console.error('Webhook error:', err)
     status  = 'error'
     message = err?.message || String(err)
+    await logError({ source: 'edge_hospitable-webhook', message: err.message, stack: err.stack, context: { event, data_id: data?.id } })
   }
 
   // Tracer dans webhook_log

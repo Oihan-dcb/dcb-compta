@@ -14,6 +14,7 @@
 
 import { serve } from 'https://deno.land/std@0.168.0/http/server.ts'
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
+import { logError } from '../_shared/logError.ts'
 
 const CORS = {
   'Access-Control-Allow-Origin': '*',
@@ -477,6 +478,7 @@ serve(async (req) => {
       const res = await calculerVentilationMois(mois, agenceTarget, supa, dryRun)
       resultats.push(res)
     } catch (err) {
+      await logError({ source: 'edge_ventilation-auto', message: (err as Error).message, stack: (err as Error).stack, context: { mois } })
       resultats.push({ mois, error: (err as Error).message })
     }
   }

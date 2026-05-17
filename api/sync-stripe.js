@@ -4,6 +4,7 @@
 // Body : { agence }
 
 import { createClient } from '@supabase/supabase-js'
+import { logApiError } from './_logError.js'
 
 const STRIPE_KEY         = process.env.STRIPE_KEY
 const SUPABASE_URL       = process.env.SUPABASE_URL    || 'https://omuncchvypbtxkpalwcr.supabase.co'
@@ -193,6 +194,7 @@ export default async function handler(req, res) {
 
   } catch (e) {
     console.error('sync-stripe error:', e)
+    await logApiError('api_sync-stripe', e)
     log.errors++
   }
 

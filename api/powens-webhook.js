@@ -9,6 +9,7 @@
  */
 
 import { timingSafeEqual } from 'crypto'
+import { logApiError } from './_logError.js'
 
 const SUPABASE_URL          = 'https://omuncchvypbtxkpalwcr.supabase.co'
 const POWENS_WEBHOOK_SECRET = process.env.POWENS_WEBHOOK_SECRET
@@ -105,6 +106,7 @@ export default async function handler(req, res) {
       importErrors: importData.erreurs,
     })
   } catch (err) {
+    await logApiError('api_powens-webhook', err)
     return res.status(500).json({ error: err.message })
   }
 }
