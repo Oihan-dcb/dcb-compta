@@ -252,7 +252,7 @@ function ModalFiche({ proprio, onClose, onSaved }) {
 
   return (
     <div className="modal-overlay" onClick={onClose}>
-      <div className="modal" style={{ maxWidth: 740 }} onClick={e => e.stopPropagation()}>
+      <div className="modal" style={{ maxWidth: 980 }} onClick={e => e.stopPropagation()}>
         <div className="modal-header">
           <div>
             <h2 style={{ margin: 0 }}>{form.nom} {form.prenom}</h2>
@@ -662,7 +662,8 @@ function TabPortailOwner({ proprio, visConfig, visLoading, visErr, visOk, authEm
       </div>
 
       {/* Config détaillée */}
-      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 24 }}>
+      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 20 }}>
+        {/* Colonne 1 */}
         <div>
           <Section title="Revenus">
             <Toggle field="revenus_bruts"     label="Revenus bruts voyageurs" />
@@ -677,49 +678,59 @@ function TabPortailOwner({ proprio, visConfig, visLoading, visErr, visOk, authEm
           <Section title="Virements">
             <Toggle field="statut_virement"  label="Statut virement" />
             <Toggle field="date_virement"    label="Date virement" />
-            <Toggle field="rapprochement"    label="Rapprochement bancaire (VIRPayinProuvé)" />
+            <Toggle field="rapprochement"    label="Rapprochement bancaire" />
             <Toggle field="montant_vir_reel" label="Montant VIRProprioRéel" />
           </Section>
 
+          <Section title="Performance">
+            <Toggle field="taux_occupation"     label="Taux d'occupation" />
+            <Toggle field="prix_moyen"          label="Prix moyen / nuit (ADR)" />
+            <Toggle field="revpar"              label="RevPAR" />
+            <Toggle field="comparaison_n1"      label="Comparaison N-1" />
+            <Toggle field="benchmark_marche"    label="Benchmark marché" />
+            <Toggle field="recommandations_dcb" label="Recommandations DCB" />
+            <Toggle field="projection_revenus"  label="Projection revenus" />
+          </Section>
+        </div>
+
+        {/* Colonne 2 */}
+        <div>
           <Section title="Réservations">
             <Toggle field="plateforme"        label="Plateforme (Airbnb, Booking…)" />
-            <Toggle field="voyageur_complet"  label="Nom complet voyageur (sinon prénom seul)" />
+            <Toggle field="voyageur_complet"  label="Nom complet voyageur" />
             <Toggle field="voyageur_contact"  label="Email / téléphone voyageur" />
             <Toggle field="notes_voyageur"    label="Note et avis voyageur" />
           </Section>
 
           <Section title="Planning">
-            <Toggle field="planning_reservations"    label="Réservations" />
-            <Toggle field="planning_blocages"        label="Périodes bloquées" />
-            <Toggle field="planning_motif_blocage"   label="Motif des blocages" />
-            <Toggle field="planning_menage_date"     label="Date ménages" />
-            <Toggle field="planning_menage_heure"    label="Heure ménages" />
-            <Toggle field="demande_blocage_dates"    label="Peut demander blocage dates" />
+            <Toggle field="planning_reservations"  label="Réservations" />
+            <Toggle field="planning_blocages"      label="Périodes bloquées" />
+            <Toggle field="planning_motif_blocage" label="Motif des blocages" />
+            <Toggle field="planning_menage_date"   label="Date ménages" />
+            <Toggle field="planning_menage_heure"  label="Heure ménages" />
+            <Toggle field="demande_blocage_dates"  label="Peut demander blocage dates" />
+          </Section>
+
+          <Section title="Demandes & Communication">
+            <Toggle field="demandes_actives"    label="Module demandes/tickets actif" />
+            <Toggle field="notifications_email" label="Notifications email" />
+            <Toggle field="notifications_sms"   label="Notifications SMS" />
           </Section>
         </div>
 
+        {/* Colonne 3 */}
         <div>
-          <Section title="Performance">
-            <Toggle field="taux_occupation"    label="Taux d'occupation" />
-            <Toggle field="prix_moyen"         label="Prix moyen / nuit (ADR)" />
-            <Toggle field="revpar"             label="RevPAR" />
-            <Toggle field="comparaison_n1"     label="Comparaison N-1" />
-            <Toggle field="benchmark_marche"   label="Benchmark marché" />
-            <Toggle field="recommandations_dcb" label="Recommandations DCB" />
-            <Toggle field="projection_revenus" label="Projection revenus" />
-          </Section>
-
           <Section title="Ménages & Maintenance">
-            <Toggle field="menage_date"           label="Date dernier/prochain ménage" />
-            <Toggle field="menage_statut"         label="Statut mission" />
+            <Toggle field="menage_date"              label="Date dernier/prochain ménage" />
+            <Toggle field="menage_statut"            label="Statut mission" />
             <Toggle field="prestations_extras_liste" label="Liste prestations extras" />
-            <Toggle field="prestations_montant"   label="Montant unitaire prestations" />
-            <Toggle field="menage_photos"         label="Photos avant/après" />
-            <Toggle field="menage_incidents"      label="Incidents signalés" />
-            <Toggle field="maintenance_actif"     label="Module maintenance" />
-            <Toggle field="maintenance_devis"     label="Voir devis" disabled={!v.maintenance_actif} />
-            <Toggle field="maintenance_validation" label="Peut valider devis" disabled={!v.maintenance_actif} />
-            <Toggle field="maintenance_factures"  label="Voir factures travaux" disabled={!v.maintenance_actif} />
+            <Toggle field="prestations_montant"      label="Montant unitaire prestations" />
+            <Toggle field="menage_photos"            label="Photos avant/après" />
+            <Toggle field="menage_incidents"         label="Incidents signalés" />
+            <Toggle field="maintenance_actif"        label="Module maintenance" />
+            <Toggle field="maintenance_devis"        label="Voir devis"           disabled={!v.maintenance_actif} />
+            <Toggle field="maintenance_validation"   label="Peut valider devis"   disabled={!v.maintenance_actif} />
+            <Toggle field="maintenance_factures"     label="Voir factures travaux" disabled={!v.maintenance_actif} />
           </Section>
 
           <Section title="Documents">
@@ -730,12 +741,6 @@ function TabPortailOwner({ proprio, visConfig, visLoading, visErr, visOk, authEm
             <Toggle field="documents_contrats"    label="Contrats de prestation" />
             <Toggle field="documents_inventaire"  label="Inventaire" />
             <Toggle field="documents_photos"      label="Photos du bien" />
-          </Section>
-
-          <Section title="Demandes & Communication">
-            <Toggle field="demandes_actives"   label="Module demandes/tickets actif" />
-            <Toggle field="notifications_email" label="Notifications email" />
-            <Toggle field="notifications_sms"   label="Notifications SMS" />
           </Section>
         </div>
       </div>
