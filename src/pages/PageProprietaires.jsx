@@ -75,10 +75,10 @@ function ModalFiche({ proprio, onClose, onSaved }) {
   }
 
   const PROFIL_PRESETS = {
-    essentiel:    { revenus_bruts: false, commission_base: true, commission_detail: false, menage: false, prestations: false, taxe_sejour: false, statut_virement: true, date_virement: true, rapprochement: false, taux_occupation: false, prix_moyen: false, comparaison_n1: false, plateforme: false, voyageur_complet: false, notes_voyageur: false, menage_date: false, maintenance_actif: false, documents_mandat: true, documents_factures: true, documents_releves: true, demandes_actives: true },
-    standard:     { revenus_bruts: false, commission_base: true, commission_detail: false, menage: true, prestations: true, taxe_sejour: false, statut_virement: true, date_virement: true, rapprochement: false, taux_occupation: true, prix_moyen: false, comparaison_n1: false, plateforme: true, voyageur_complet: false, notes_voyageur: false, menage_date: true, maintenance_actif: false, documents_mandat: true, documents_factures: true, documents_releves: true, demandes_actives: true },
-    transparent:  { revenus_bruts: true, commission_base: true, commission_detail: true, menage: true, prestations: true, taxe_sejour: true, statut_virement: true, date_virement: true, rapprochement: false, taux_occupation: true, prix_moyen: true, comparaison_n1: false, plateforme: true, voyageur_complet: false, notes_voyageur: false, menage_date: true, maintenance_actif: false, documents_mandat: true, documents_factures: true, documents_releves: true, demandes_actives: true },
-    investisseur: { revenus_bruts: true, commission_base: true, commission_detail: true, menage: true, prestations: true, taxe_sejour: true, statut_virement: true, date_virement: true, rapprochement: true, taux_occupation: true, prix_moyen: true, comparaison_n1: true, plateforme: true, voyageur_complet: false, notes_voyageur: true, menage_date: true, maintenance_actif: true, documents_mandat: true, documents_factures: true, documents_releves: true, demandes_actives: true },
+    essentiel:    { revenus_bruts: false, commission_base: true, commission_detail: false, menage: false, prestations: false, taxe_sejour: false, statut_virement: true, date_virement: true, rapprochement: false, taux_occupation: false, prix_moyen: false, comparaison_n1: false, plateforme: false, voyageur_complet: false, note_voyageur: false, menage_date: false, maintenance_actif: false, documents_mandat: true, documents_factures: true, documents_releves: true, demandes_actives: true },
+    standard:     { revenus_bruts: false, commission_base: true, commission_detail: false, menage: true, prestations: true, taxe_sejour: false, statut_virement: true, date_virement: true, rapprochement: false, taux_occupation: true, prix_moyen: false, comparaison_n1: false, plateforme: true, voyageur_complet: false, note_voyageur: false, menage_date: true, maintenance_actif: false, documents_mandat: true, documents_factures: true, documents_releves: true, demandes_actives: true },
+    transparent:  { revenus_bruts: true, commission_base: true, commission_detail: true, menage: true, prestations: true, taxe_sejour: true, statut_virement: true, date_virement: true, rapprochement: false, taux_occupation: true, prix_moyen: true, comparaison_n1: false, plateforme: true, voyageur_complet: false, note_voyageur: false, menage_date: true, maintenance_actif: false, documents_mandat: true, documents_factures: true, documents_releves: true, demandes_actives: true },
+    investisseur: { revenus_bruts: true, commission_base: true, commission_detail: true, menage: true, prestations: true, taxe_sejour: true, statut_virement: true, date_virement: true, rapprochement: true, taux_occupation: true, prix_moyen: true, comparaison_n1: true, plateforme: true, voyageur_complet: false, note_voyageur: true, menage_date: true, maintenance_actif: true, documents_mandat: true, documents_factures: true, documents_releves: true, demandes_actives: true },
   }
 
   const [visConfig, setVisConfig] = useState(null)
@@ -86,8 +86,9 @@ function ModalFiche({ proprio, onClose, onSaved }) {
   const [visSaving, setVisSaving] = useState(false)
   const [visOk, setVisOk] = useState(false)
   const [visErr, setVisErr] = useState(null)
-  const [authEmail, setAuthEmail] = useState(proprio.auth_user_id ? proprio.email || '' : '')
+  const [authEmail, setAuthEmail] = useState(proprio.email || '')
   const [sendingInvite, setSendingInvite] = useState(false)
+  const [inviteOk, setInviteOk] = useState(false)
 
   async function loadVisConfig() {
     if (visConfig !== null) return
@@ -120,12 +121,11 @@ function ModalFiche({ proprio, onClose, onSaved }) {
     if (!authEmail) return
     setSendingInvite(true); setVisErr(null)
     try {
-      // Invite via Supabase Admin (service role needed — appel edge function ou API directe)
-      const { error } = await supabase.functions.invoke('owner-portal-invite', {
+      const { data, error } = await supabase.functions.invoke('owner-portal-invite', {
         body: { proprio_id: proprio.id, email: authEmail }
       })
       if (error) throw new Error(error.message)
-      setVisOk(true); setTimeout(() => setVisOk(false), 2000)
+      setInviteOk(true); setTimeout(() => setInviteOk(false), 4000)
     } catch (e) { setVisErr(e.message) }
     finally { setSendingInvite(false) }
   }
@@ -546,6 +546,7 @@ function ModalFiche({ proprio, onClose, onSaved }) {
             visLoading={visLoading}
             visErr={visErr}
             visOk={visOk}
+            inviteOk={inviteOk}
             authEmail={authEmail}
             sendingInvite={sendingInvite}
             onLoad={loadVisConfig}
@@ -588,7 +589,7 @@ function ModalFiche({ proprio, onClose, onSaved }) {
 
 // ── Onglet Portail Owner — config visibilité ──────────────────────────────────
 
-function TabPortailOwner({ proprio, visConfig, visLoading, visErr, visOk, authEmail, sendingInvite, onLoad, onApplyProfil, onChangeVis, onSetAuthEmail, onSendInvite, PROFILS }) {
+function TabPortailOwner({ proprio, visConfig, visLoading, visErr, visOk, inviteOk, authEmail, sendingInvite, onLoad, onApplyProfil, onChangeVis, onSetAuthEmail, onSendInvite, PROFILS }) {
   useEffect(() => { onLoad() }, [])
 
   if (visLoading) return <div style={{ padding: 32, textAlign: 'center', color: 'var(--text-muted)' }}>Chargement…</div>
@@ -621,31 +622,57 @@ function TabPortailOwner({ proprio, visConfig, visLoading, visErr, visOk, authEm
   return (
     <div>
       {visErr && <div className="alert alert-error" style={{ marginBottom: 12 }}>✗ {visErr}</div>}
-      {visOk  && <div className="alert alert-success" style={{ marginBottom: 12 }}>✓ Sauvegardé</div>}
+      {visOk  && <div className="alert alert-success" style={{ marginBottom: 12 }}>✓ Configuration sauvegardée</div>}
 
-      {/* Statut accès portail */}
-      <div style={{ background: portailActif ? 'var(--success-bg, #dcfce7)' : 'var(--cream)', border: `1px solid ${portailActif ? '#bbf7d0' : 'var(--border)'}`, borderRadius: 8, padding: '12px 14px', marginBottom: 20, display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12 }}>
-        <div>
-          <div style={{ fontSize: 13, fontWeight: 700, color: portailActif ? '#15803d' : 'var(--text-muted)' }}>
-            {portailActif ? '✓ Portail actif' : '○ Portail non activé'}
+      {/* ── Compte portail ── */}
+      <div style={{ background: portailActif ? '#F0FDF4' : 'var(--cream)', border: `1px solid ${portailActif ? '#BBF7D0' : 'var(--border)'}`, borderRadius: 8, padding: '14px 16px', marginBottom: 20 }}>
+        <div style={{ fontSize: 11, fontWeight: 700, letterSpacing: 1.5, textTransform: 'uppercase', color: 'var(--text-muted)', marginBottom: 10 }}>Compte portail</div>
+
+        {portailActif ? (
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, flexWrap: 'wrap' }}>
+            <div>
+              <div style={{ fontSize: 13, fontWeight: 700, color: '#15803D' }}>✓ Portail actif</div>
+              <div style={{ fontSize: 12, color: 'var(--text-muted)', marginTop: 2 }}>{proprio.email || '—'}</div>
+            </div>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 6, alignItems: 'flex-end' }}>
+              <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+                <input type="email" value={authEmail} onChange={e => onSetAuthEmail(e.target.value)}
+                  placeholder={proprio.email || 'email@proprio.com'}
+                  style={{ fontSize: 12, padding: '5px 9px', border: '1.5px solid var(--border)', borderRadius: 6, width: 200 }} />
+                <button className="btn btn-secondary btn-sm" disabled={sendingInvite || !authEmail} onClick={onSendInvite}>
+                  {sendingInvite ? '⏳' : '📬 Renvoyer le lien'}
+                </button>
+              </div>
+              {inviteOk && (
+                <div style={{ fontSize: 12, color: '#15803D', background: '#DCFCE7', borderRadius: 6, padding: '4px 10px' }}>
+                  ✓ Email envoyé à {authEmail}
+                </div>
+              )}
+            </div>
           </div>
-          <div style={{ fontSize: 12, color: 'var(--text-muted)', marginTop: 2 }}>
-            {portailActif ? `Accès lié à ${proprio.email || '?'}` : 'Envoyer une invitation pour activer l\'accès'}
-          </div>
-        </div>
-        {!portailActif && (
-          <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
-            <input type="email" value={authEmail} onChange={e => onSetAuthEmail(e.target.value)}
-              placeholder={proprio.email || 'email@proprio.com'}
-              style={{ fontSize: 13, padding: '6px 10px', border: '1.5px solid var(--border)', borderRadius: 6, width: 200 }} />
-            <button className="btn btn-primary btn-sm" disabled={sendingInvite || !authEmail} onClick={onSendInvite}>
-              {sendingInvite ? '⏳' : '📬 Inviter'}
-            </button>
+        ) : (
+          <div>
+            <div style={{ fontSize: 13, color: 'var(--text-muted)', marginBottom: 10 }}>
+              ○ Portail non activé — envoyez une invitation pour créer l'accès
+            </div>
+            <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
+              <input type="email" value={authEmail} onChange={e => onSetAuthEmail(e.target.value)}
+                placeholder={proprio.email || 'email@proprio.com'}
+                style={{ fontSize: 13, padding: '7px 10px', border: '1.5px solid var(--border)', borderRadius: 6, flex: 1, minWidth: 200 }} />
+              <button className="btn btn-primary btn-sm" disabled={sendingInvite || !authEmail} onClick={onSendInvite}>
+                {sendingInvite ? '⏳ Envoi…' : '📬 Envoyer l\'invitation'}
+              </button>
+            </div>
+            {inviteOk && (
+              <div style={{ fontSize: 12, color: '#15803D', background: '#DCFCE7', borderRadius: 6, padding: '6px 10px', marginTop: 8 }}>
+                ✓ Email d'invitation envoyé à {authEmail} — lien valide 24h
+              </div>
+            )}
           </div>
         )}
       </div>
 
-      {/* Profil prédéfini */}
+      {/* ── Profil de visibilité ── */}
       <div style={{ marginBottom: 20 }}>
         <div style={{ fontSize: 11, fontWeight: 700, letterSpacing: 1.5, textTransform: 'uppercase', color: 'var(--text-muted)', marginBottom: 10 }}>Profil de visibilité</div>
         <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
@@ -661,13 +688,13 @@ function TabPortailOwner({ proprio, visConfig, visLoading, visErr, visOk, authEm
         )}
       </div>
 
-      {/* Config détaillée */}
+      {/* ── Config détaillée ── */}
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 20 }}>
-        {/* Colonne 1 */}
+        {/* Colonne 1 — Financier */}
         <div>
-          <Section title="Revenus">
+          <Section title="Relevé — Revenus">
             <Toggle field="revenus_bruts"     label="Revenus bruts voyageurs" />
-            <Toggle field="commission_base"   label="Commission DCB (base)" />
+            <Toggle field="commission_base"   label="Commission DCB" />
             <Toggle field="commission_detail" label="Détail commission" />
             <Toggle field="menage"            label="Déduction ménage" />
             <Toggle field="prestations"       label="Déduction prestations" />
@@ -675,62 +702,70 @@ function TabPortailOwner({ proprio, visConfig, visLoading, visErr, visOk, authEm
             <Toggle field="frais_divers"      label="Frais divers" />
           </Section>
 
-          <Section title="Virements">
+          <Section title="Relevé — Virement">
             <Toggle field="statut_virement"  label="Statut virement" />
             <Toggle field="date_virement"    label="Date virement" />
             <Toggle field="rapprochement"    label="Rapprochement bancaire" />
-            <Toggle field="montant_vir_reel" label="Montant VIRProprioRéel" />
+            <Toggle field="montant_vir_reel" label="VIRProprioRéel (montant réel)" />
           </Section>
 
           <Section title="Performance">
             <Toggle field="taux_occupation"     label="Taux d'occupation" />
+            <Toggle field="nuits_vendues"        label="Nuits vendues" />
             <Toggle field="prix_moyen"          label="Prix moyen / nuit (ADR)" />
             <Toggle field="revpar"              label="RevPAR" />
             <Toggle field="comparaison_n1"      label="Comparaison N-1" />
-            <Toggle field="benchmark_marche"    label="Benchmark marché" />
-            <Toggle field="recommandations_dcb" label="Recommandations DCB" />
-            <Toggle field="projection_revenus"  label="Projection revenus" />
+            <Toggle field="benchmark_marche"       label="Benchmark marché" />
+            <Toggle field="recommandations_dcb"  label="Recommandations DCB" />
+            <Toggle field="projection_revenus"   label="Projection revenus" />
           </Section>
         </div>
 
-        {/* Colonne 2 */}
+        {/* Colonne 2 — Réservations & Planning */}
         <div>
           <Section title="Réservations">
             <Toggle field="plateforme"        label="Plateforme (Airbnb, Booking…)" />
             <Toggle field="voyageur_complet"  label="Nom complet voyageur" />
             <Toggle field="voyageur_contact"  label="Email / téléphone voyageur" />
-            <Toggle field="notes_voyageur"    label="Note et avis voyageur" />
+            <Toggle field="note_voyageur"     label="Note et avis voyageur" />
           </Section>
 
           <Section title="Planning">
             <Toggle field="planning_reservations"  label="Réservations" />
             <Toggle field="planning_blocages"      label="Périodes bloquées" />
             <Toggle field="planning_motif_blocage" label="Motif des blocages" />
+            <Toggle field="planning_sejours_proprio" label="Séjours proprio" />
             <Toggle field="planning_menage_date"   label="Date ménages" />
             <Toggle field="planning_menage_heure"  label="Heure ménages" />
             <Toggle field="demande_blocage_dates"  label="Peut demander blocage dates" />
           </Section>
 
-          <Section title="Demandes & Communication">
-            <Toggle field="demandes_actives"    label="Module demandes/tickets actif" />
+          <Section title="Demandes & Notifications">
+            <Toggle field="demandes_actives"    label="Module demandes actif" />
+            <Toggle field="messagerie"          label="Messagerie directe" />
             <Toggle field="notifications_email" label="Notifications email" />
             <Toggle field="notifications_sms"   label="Notifications SMS" />
           </Section>
         </div>
 
-        {/* Colonne 3 */}
+        {/* Colonne 3 — Opérationnel & Documents */}
         <div>
-          <Section title="Ménages & Maintenance">
+          <Section title="Ménages">
             <Toggle field="menage_date"              label="Date dernier/prochain ménage" />
             <Toggle field="menage_statut"            label="Statut mission" />
             <Toggle field="prestations_extras_liste" label="Liste prestations extras" />
-            <Toggle field="prestations_montant"      label="Montant unitaire prestations" />
+            <Toggle field="prestations_montant"      label="Montant prestations" />
             <Toggle field="menage_photos"            label="Photos avant/après" />
+            <Toggle field="menage_remarques"         label="Remarques" />
             <Toggle field="menage_incidents"         label="Incidents signalés" />
-            <Toggle field="maintenance_actif"        label="Module maintenance" />
-            <Toggle field="maintenance_devis"        label="Voir devis"           disabled={!v.maintenance_actif} />
-            <Toggle field="maintenance_validation"   label="Peut valider devis"   disabled={!v.maintenance_actif} />
-            <Toggle field="maintenance_factures"     label="Voir factures travaux" disabled={!v.maintenance_actif} />
+          </Section>
+
+          <Section title="Maintenance">
+            <Toggle field="maintenance_actif"      label="Module maintenance" />
+            <Toggle field="maintenance_devis"      label="Voir devis"           disabled={!v.maintenance_actif} />
+            <Toggle field="maintenance_validation" label="Peut valider devis"   disabled={!v.maintenance_actif} />
+            <Toggle field="maintenance_statut"     label="Statut travaux"       disabled={!v.maintenance_actif} />
+            <Toggle field="maintenance_factures"   label="Voir factures"        disabled={!v.maintenance_actif} />
           </Section>
 
           <Section title="Documents">
@@ -738,7 +773,8 @@ function TabPortailOwner({ proprio, visConfig, visLoading, visErr, visOk, authEm
             <Toggle field="documents_factures"    label="Factures DCB" />
             <Toggle field="documents_releves"     label="Relevés mensuels PDF" />
             <Toggle field="documents_diagnostics" label="Diagnostics techniques" />
-            <Toggle field="documents_contrats"    label="Contrats de prestation" />
+            <Toggle field="documents_contrats"    label="Contrats" />
+            <Toggle field="documents_attestations" label="Attestations" />
             <Toggle field="documents_inventaire"  label="Inventaire" />
             <Toggle field="documents_photos"      label="Photos du bien" />
           </Section>
