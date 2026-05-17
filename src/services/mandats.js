@@ -7,7 +7,9 @@ export async function getProprietairesComplets() {
     .select(`
       *,
       bien(id, code, hospitable_name, listed, agence),
-      mandat_gestion(*)
+      mandat_gestion(*),
+      owner_visibility_config(profil, demandes_actives),
+      owner_requests(id, statut)
     `)
     .eq('agence', AGENCE)
     .order('nom')

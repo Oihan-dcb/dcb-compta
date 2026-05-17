@@ -96,7 +96,31 @@ export default function PageRapports() {
   const [saisirMenageId, setSaisirMenageId] = useState(null)
   const [saisirMontant, setSaisirMontant] = useState('')
   const [savingMenage, setSavingMenage] = useState(false)
+  const [statutPortail, setStatutPortail] = useState('idle') // idle | sending | sent | no_push | error
   const reqRef = useRef(0)
+
+  const PORTAIL_OWNER_API = import.meta.env.VITE_PORTAIL_OWNER_URL || 'https://portail-owner.destinationcotebasque.com'
+
+  async function envoyerAuPortail() {
+    if (!selectedPropId || !mois) return
+    setStatutPortail('sending')
+    try {
+      const { data: { session } } = await supabase.auth.getSession()
+      const res = await fetch(`${PORTAIL_OWNER_API}/api/push-owner`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${session.access_token}`,
+        },
+        body: JSON.stringify({ proprio_id: selectedPropId, bien_id: selectedBienId, mois, type: 'releve' }),
+      })
+      const json = await res.json()
+      setStatutPortail(res.ok ? (json.sent > 0 ? 'sent' : 'no_push') : 'error')
+    } catch {
+      setStatutPortail('error')
+    }
+    setTimeout(() => setStatutPortail('idle'), 4000)
+  }
 
   useEffect(() => {
     supabase
@@ -1353,6 +1377,23 @@ FORMAT :
                 style={{ fontSize: '0.85em', padding: '8px 14px', background: 'var(--brand)', color: '#fff', border: 'none', opacity: statut === 'sending' ? 0.6 : 1 }}
                 onClick={envoyer} disabled={statut === 'sending' || !email}>
                 {statut === 'sending' ? '…' : 'Envoyer'}
+              </button>
+              <button
+                style={{
+                  fontSize: '0.85em', padding: '8px 14px', border: '1.5px solid var(--brand)',
+                  borderRadius: 8, background: statutPortail === 'sent' ? '#DCFCE7' : 'white',
+                  color: statutPortail === 'sent' ? '#15803D' : 'var(--brand)',
+                  cursor: 'pointer', fontWeight: 600, opacity: statutPortail === 'sending' ? 0.6 : 1,
+                }}
+                onClick={envoyerAuPortail}
+                disabled={statutPortail === 'sending' || !selectedPropId}
+                title="Notifie le propriétaire que son relevé est disponible dans son espace portail"
+              >
+                {statutPortail === 'sending' ? '…'
+                  : statutPortail === 'sent'    ? '📲 Notifié ✓'
+                  : statutPortail === 'no_push' ? '📲 (pas de push)'
+                  : statutPortail === 'error'   ? '📲 Erreur'
+                  : '📲 Portail'}
               </button>
             </div>
             {statut === 'error' && erreurDetail && (

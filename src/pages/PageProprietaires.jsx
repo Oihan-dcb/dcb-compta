@@ -42,7 +42,7 @@ function badgeStatutMandat(statut) {
 // ── Modale fiche proprio ───────────────────────────────────────────────────────
 
 function ModalFiche({ proprio, onClose, onSaved }) {
-  const [tab, setTab] = useState('identite')
+  const [tab, setTab] = useState(proprio._openTab || 'identite')
   const [form, setForm] = useState({
     nom:            proprio.nom || '',
     prenom:         proprio.prenom || '',
@@ -64,6 +64,71 @@ function ModalFiche({ proprio, onClose, onSaved }) {
   const [err, setErr]         = useState(null)
   const [ok, setOk]           = useState(false)
   const [syncing, setSyncing] = useState(false)
+
+  // ── Portail Owner — visibilité ─────────────────────────────────────────
+  const PROFILS = {
+    essentiel:    { label: 'Essentiel',    desc: 'Net + planning + documents uniquement' },
+    standard:     { label: 'Standard',     desc: 'Standard + réservations + ménages + statut virement' },
+    transparent:  { label: 'Transparent',  desc: 'Standard + revenus bruts + détail commission + performance' },
+    investisseur: { label: 'Investisseur', desc: 'Tout sauf données AE — pour proprios pilotant leur rendement' },
+    personnalise: { label: 'Personnalisé', desc: 'Config champ par champ' },
+  }
+
+  const PROFIL_PRESETS = {
+    essentiel:    { revenus_bruts: false, commission_base: true, commission_detail: false, menage: false, prestations: false, taxe_sejour: false, statut_virement: true, date_virement: true, rapprochement: false, taux_occupation: false, prix_moyen: false, comparaison_n1: false, plateforme: false, voyageur_complet: false, notes_voyageur: false, menage_date: false, maintenance_actif: false, documents_mandat: true, documents_factures: true, documents_releves: true, demandes_actives: true },
+    standard:     { revenus_bruts: false, commission_base: true, commission_detail: false, menage: true, prestations: true, taxe_sejour: false, statut_virement: true, date_virement: true, rapprochement: false, taux_occupation: true, prix_moyen: false, comparaison_n1: false, plateforme: true, voyageur_complet: false, notes_voyageur: false, menage_date: true, maintenance_actif: false, documents_mandat: true, documents_factures: true, documents_releves: true, demandes_actives: true },
+    transparent:  { revenus_bruts: true, commission_base: true, commission_detail: true, menage: true, prestations: true, taxe_sejour: true, statut_virement: true, date_virement: true, rapprochement: false, taux_occupation: true, prix_moyen: true, comparaison_n1: false, plateforme: true, voyageur_complet: false, notes_voyageur: false, menage_date: true, maintenance_actif: false, documents_mandat: true, documents_factures: true, documents_releves: true, demandes_actives: true },
+    investisseur: { revenus_bruts: true, commission_base: true, commission_detail: true, menage: true, prestations: true, taxe_sejour: true, statut_virement: true, date_virement: true, rapprochement: true, taux_occupation: true, prix_moyen: true, comparaison_n1: true, plateforme: true, voyageur_complet: false, notes_voyageur: true, menage_date: true, maintenance_actif: true, documents_mandat: true, documents_factures: true, documents_releves: true, demandes_actives: true },
+  }
+
+  const [visConfig, setVisConfig] = useState(null)
+  const [visLoading, setVisLoading] = useState(false)
+  const [visSaving, setVisSaving] = useState(false)
+  const [visOk, setVisOk] = useState(false)
+  const [visErr, setVisErr] = useState(null)
+  const [authEmail, setAuthEmail] = useState(proprio.auth_user_id ? proprio.email || '' : '')
+  const [sendingInvite, setSendingInvite] = useState(false)
+
+  async function loadVisConfig() {
+    if (visConfig !== null) return
+    setVisLoading(true)
+    const { data } = await supabase.from('owner_visibility_config').select('*').eq('proprietaire_id', proprio.id).single()
+    setVisConfig(data || { profil: 'standard', ...PROFIL_PRESETS.standard })
+    setVisLoading(false)
+  }
+
+  async function saveVisConfig() {
+    setVisSaving(true); setVisErr(null)
+    try {
+      const payload = { ...visConfig, proprietaire_id: proprio.id, agence: AGENCE }
+      const { error } = await supabase.from('owner_visibility_config').upsert(payload, { onConflict: 'proprietaire_id' })
+      if (error) throw new Error(error.message)
+      setVisOk(true); setTimeout(() => setVisOk(false), 2000)
+    } catch (e) { setVisErr(e.message) }
+    finally { setVisSaving(false) }
+  }
+
+  async function applyProfil(profil) {
+    if (profil === 'personnalise') {
+      setVisConfig(v => ({ ...v, profil }))
+      return
+    }
+    setVisConfig(v => ({ ...v, profil, ...(PROFIL_PRESETS[profil] || {}) }))
+  }
+
+  async function sendPortailInvite() {
+    if (!authEmail) return
+    setSendingInvite(true); setVisErr(null)
+    try {
+      // Invite via Supabase Admin (service role needed — appel edge function ou API directe)
+      const { error } = await supabase.functions.invoke('owner-portal-invite', {
+        body: { proprio_id: proprio.id, email: authEmail }
+      })
+      if (error) throw new Error(error.message)
+      setVisOk(true); setTimeout(() => setVisOk(false), 2000)
+    } catch (e) { setVisErr(e.message) }
+    finally { setSendingInvite(false) }
+  }
 
   async function syncDepuisEvoliz() {
     if (!proprio.id_evoliz) return
@@ -182,6 +247,7 @@ function ModalFiche({ proprio, onClose, onSaved }) {
     { id: 'bancaire', label: 'Bancaire' },
     { id: 'mandats',  label: `Mandats (${mandats.length})` },
     { id: 'biens',    label: `Biens (${biens.length})` },
+    { id: 'portail',  label: '🏠 Portail Owner' },
   ]
 
   return (
@@ -472,6 +538,25 @@ function ModalFiche({ proprio, onClose, onSaved }) {
           )}
         </div>
 
+        {/* ── Portail Owner ── */}
+        {tab === 'portail' && (
+          <TabPortailOwner
+            proprio={proprio}
+            visConfig={visConfig}
+            visLoading={visLoading}
+            visErr={visErr}
+            visOk={visOk}
+            authEmail={authEmail}
+            sendingInvite={sendingInvite}
+            onLoad={loadVisConfig}
+            onApplyProfil={applyProfil}
+            onChangeVis={delta => setVisConfig(v => ({ ...v, ...delta }))}
+            onSetAuthEmail={setAuthEmail}
+            onSendInvite={sendPortailInvite}
+            PROFILS={PROFILS}
+          />
+        )}
+
         {/* Footer — sauvegarde seulement pour identité + bancaire */}
         {(tab === 'identite' || tab === 'bancaire') && (
           <div className="modal-footer">
@@ -486,6 +571,173 @@ function ModalFiche({ proprio, onClose, onSaved }) {
             <button className="btn btn-secondary" onClick={onClose}>Fermer</button>
           </div>
         )}
+        {tab === 'portail' && (
+          <div className="modal-footer">
+            <button className="btn btn-secondary" onClick={onClose}>Fermer</button>
+            {visConfig && (
+              <button className="btn btn-primary" disabled={visSaving} onClick={saveVisConfig}>
+                {visSaving ? 'Enregistrement…' : 'Sauvegarder la config'}
+              </button>
+            )}
+          </div>
+        )}
+      </div>
+    </div>
+  )
+}
+
+// ── Onglet Portail Owner — config visibilité ──────────────────────────────────
+
+function TabPortailOwner({ proprio, visConfig, visLoading, visErr, visOk, authEmail, sendingInvite, onLoad, onApplyProfil, onChangeVis, onSetAuthEmail, onSendInvite, PROFILS }) {
+  useEffect(() => { onLoad() }, [])
+
+  if (visLoading) return <div style={{ padding: 32, textAlign: 'center', color: 'var(--text-muted)' }}>Chargement…</div>
+
+  const v = visConfig || {}
+  const portailActif = !!proprio.auth_user_id
+
+  function Toggle({ field, label, disabled }) {
+    return (
+      <label style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '7px 0', borderBottom: '1px solid var(--border)', cursor: disabled ? 'not-allowed' : 'pointer', opacity: disabled ? 0.5 : 1 }}>
+        <span style={{ fontSize: 13, color: 'var(--text)' }}>{label}</span>
+        <input type="checkbox" checked={!!v[field]} disabled={disabled}
+          onChange={e => onChangeVis({ [field]: e.target.checked, profil: 'personnalise' })}
+          style={{ width: 16, height: 16, accentColor: 'var(--brand)' }} />
+      </label>
+    )
+  }
+
+  function Section({ title, children }) {
+    return (
+      <div style={{ marginBottom: 20 }}>
+        <div style={{ fontSize: 11, fontWeight: 700, letterSpacing: 1.5, textTransform: 'uppercase', color: 'var(--text-muted)', marginBottom: 8, paddingBottom: 4, borderBottom: '2px solid var(--brand)' }}>
+          {title}
+        </div>
+        {children}
+      </div>
+    )
+  }
+
+  return (
+    <div>
+      {visErr && <div className="alert alert-error" style={{ marginBottom: 12 }}>✗ {visErr}</div>}
+      {visOk  && <div className="alert alert-success" style={{ marginBottom: 12 }}>✓ Sauvegardé</div>}
+
+      {/* Statut accès portail */}
+      <div style={{ background: portailActif ? 'var(--success-bg, #dcfce7)' : 'var(--cream)', border: `1px solid ${portailActif ? '#bbf7d0' : 'var(--border)'}`, borderRadius: 8, padding: '12px 14px', marginBottom: 20, display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12 }}>
+        <div>
+          <div style={{ fontSize: 13, fontWeight: 700, color: portailActif ? '#15803d' : 'var(--text-muted)' }}>
+            {portailActif ? '✓ Portail actif' : '○ Portail non activé'}
+          </div>
+          <div style={{ fontSize: 12, color: 'var(--text-muted)', marginTop: 2 }}>
+            {portailActif ? `Accès lié à ${proprio.email || '?'}` : 'Envoyer une invitation pour activer l\'accès'}
+          </div>
+        </div>
+        {!portailActif && (
+          <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+            <input type="email" value={authEmail} onChange={e => onSetAuthEmail(e.target.value)}
+              placeholder={proprio.email || 'email@proprio.com'}
+              style={{ fontSize: 13, padding: '6px 10px', border: '1.5px solid var(--border)', borderRadius: 6, width: 200 }} />
+            <button className="btn btn-primary btn-sm" disabled={sendingInvite || !authEmail} onClick={onSendInvite}>
+              {sendingInvite ? '⏳' : '📬 Inviter'}
+            </button>
+          </div>
+        )}
+      </div>
+
+      {/* Profil prédéfini */}
+      <div style={{ marginBottom: 20 }}>
+        <div style={{ fontSize: 11, fontWeight: 700, letterSpacing: 1.5, textTransform: 'uppercase', color: 'var(--text-muted)', marginBottom: 10 }}>Profil de visibilité</div>
+        <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
+          {Object.entries(PROFILS).map(([key, p]) => (
+            <button key={key} onClick={() => onApplyProfil(key)}
+              style={{ padding: '8px 14px', borderRadius: 8, border: `2px solid ${v.profil === key ? 'var(--brand)' : 'var(--border)'}`, background: v.profil === key ? 'var(--brand-pale, #fff8ec)' : 'white', color: v.profil === key ? 'var(--brand)' : 'var(--text-muted)', fontSize: 12, fontWeight: v.profil === key ? 700 : 500, cursor: 'pointer' }}>
+              {p.label}
+            </button>
+          ))}
+        </div>
+        {v.profil && PROFILS[v.profil] && (
+          <div style={{ fontSize: 12, color: 'var(--text-muted)', marginTop: 8 }}>{PROFILS[v.profil].desc}</div>
+        )}
+      </div>
+
+      {/* Config détaillée */}
+      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 24 }}>
+        <div>
+          <Section title="Revenus">
+            <Toggle field="revenus_bruts"     label="Revenus bruts voyageurs" />
+            <Toggle field="commission_base"   label="Commission DCB (base)" />
+            <Toggle field="commission_detail" label="Détail commission" />
+            <Toggle field="menage"            label="Déduction ménage" />
+            <Toggle field="prestations"       label="Déduction prestations" />
+            <Toggle field="taxe_sejour"       label="Taxe de séjour" />
+            <Toggle field="frais_divers"      label="Frais divers" />
+          </Section>
+
+          <Section title="Virements">
+            <Toggle field="statut_virement"  label="Statut virement" />
+            <Toggle field="date_virement"    label="Date virement" />
+            <Toggle field="rapprochement"    label="Rapprochement bancaire (VIRPayinProuvé)" />
+            <Toggle field="montant_vir_reel" label="Montant VIRProprioRéel" />
+          </Section>
+
+          <Section title="Réservations">
+            <Toggle field="plateforme"        label="Plateforme (Airbnb, Booking…)" />
+            <Toggle field="voyageur_complet"  label="Nom complet voyageur (sinon prénom seul)" />
+            <Toggle field="voyageur_contact"  label="Email / téléphone voyageur" />
+            <Toggle field="notes_voyageur"    label="Note et avis voyageur" />
+          </Section>
+
+          <Section title="Planning">
+            <Toggle field="planning_reservations"    label="Réservations" />
+            <Toggle field="planning_blocages"        label="Périodes bloquées" />
+            <Toggle field="planning_motif_blocage"   label="Motif des blocages" />
+            <Toggle field="planning_menage_date"     label="Date ménages" />
+            <Toggle field="planning_menage_heure"    label="Heure ménages" />
+            <Toggle field="demande_blocage_dates"    label="Peut demander blocage dates" />
+          </Section>
+        </div>
+
+        <div>
+          <Section title="Performance">
+            <Toggle field="taux_occupation"    label="Taux d'occupation" />
+            <Toggle field="prix_moyen"         label="Prix moyen / nuit (ADR)" />
+            <Toggle field="revpar"             label="RevPAR" />
+            <Toggle field="comparaison_n1"     label="Comparaison N-1" />
+            <Toggle field="benchmark_marche"   label="Benchmark marché" />
+            <Toggle field="recommandations_dcb" label="Recommandations DCB" />
+            <Toggle field="projection_revenus" label="Projection revenus" />
+          </Section>
+
+          <Section title="Ménages & Maintenance">
+            <Toggle field="menage_date"           label="Date dernier/prochain ménage" />
+            <Toggle field="menage_statut"         label="Statut mission" />
+            <Toggle field="prestations_extras_liste" label="Liste prestations extras" />
+            <Toggle field="prestations_montant"   label="Montant unitaire prestations" />
+            <Toggle field="menage_photos"         label="Photos avant/après" />
+            <Toggle field="menage_incidents"      label="Incidents signalés" />
+            <Toggle field="maintenance_actif"     label="Module maintenance" />
+            <Toggle field="maintenance_devis"     label="Voir devis" disabled={!v.maintenance_actif} />
+            <Toggle field="maintenance_validation" label="Peut valider devis" disabled={!v.maintenance_actif} />
+            <Toggle field="maintenance_factures"  label="Voir factures travaux" disabled={!v.maintenance_actif} />
+          </Section>
+
+          <Section title="Documents">
+            <Toggle field="documents_mandat"      label="Mandat de gestion" />
+            <Toggle field="documents_factures"    label="Factures DCB" />
+            <Toggle field="documents_releves"     label="Relevés mensuels PDF" />
+            <Toggle field="documents_diagnostics" label="Diagnostics techniques" />
+            <Toggle field="documents_contrats"    label="Contrats de prestation" />
+            <Toggle field="documents_inventaire"  label="Inventaire" />
+            <Toggle field="documents_photos"      label="Photos du bien" />
+          </Section>
+
+          <Section title="Demandes & Communication">
+            <Toggle field="demandes_actives"   label="Module demandes/tickets actif" />
+            <Toggle field="notifications_email" label="Notifications email" />
+            <Toggle field="notifications_sms"   label="Notifications SMS" />
+          </Section>
+        </div>
       </div>
     </div>
   )
@@ -1203,12 +1455,13 @@ export default function PageProprietaires() {
                 <th>Mandat</th>
                 <th>Evoliz</th>
                 <th>Commission</th>
+                <th>Portail</th>
                 <th></th>
               </tr>
             </thead>
             <tbody>
               {filtres.length === 0 && (
-                <tr><td colSpan={8} style={{ textAlign: 'center', color: 'var(--text-muted)', padding: 32 }}>
+                <tr><td colSpan={9} style={{ textAlign: 'center', color: 'var(--text-muted)', padding: 32 }}>
                   Aucun résultat
                 </td></tr>
               )}
@@ -1217,6 +1470,9 @@ export default function PageProprietaires() {
                 const biensListed = biensAgence.filter(b => b.listed)
                 const mandatActif = (p.mandat_gestion || []).find(m => m.statut === 'actif')
                 const taux = mandatActif?.taux_commission ?? p.taux_commission
+                const portailActif = !!p.auth_user_id
+                const portailProfil = p.owner_visibility_config?.[0]?.profil
+                const demandesEnCours = (p.owner_requests || []).filter(r => ['recu','en_cours'].includes(r.statut)).length
 
                 return (
                   <tr key={p.id} style={{ cursor: 'pointer' }} onClick={() => setSelected(p)}>
@@ -1258,6 +1514,30 @@ export default function PageProprietaires() {
                     </td>
                     <td style={{ fontVariantNumeric: 'tabular-nums' }}>
                       {taux != null ? `${Number(taux).toFixed(1)}%` : <span style={{ color: 'var(--text-muted)' }}>—</span>}
+                    </td>
+                    <td onClick={e => e.stopPropagation()}>
+                      {portailActif ? (
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: 3 }}>
+                          <span className="badge badge-success" style={{ fontSize: 11 }}>✓ Actif</span>
+                          {portailProfil && (
+                            <span style={{ fontSize: 10, color: 'var(--text-muted)', textTransform: 'capitalize' }}>{portailProfil}</span>
+                          )}
+                          {demandesEnCours > 0 && (
+                            <span className="badge badge-warning" style={{ fontSize: 10 }}>
+                              {demandesEnCours} demande{demandesEnCours > 1 ? 's' : ''}
+                            </span>
+                          )}
+                        </div>
+                      ) : (
+                        <button
+                          className="btn btn-secondary btn-sm"
+                          style={{ fontSize: 11, whiteSpace: 'nowrap' }}
+                          title="Activer le portail pour ce proprio"
+                          onClick={e => { e.stopPropagation(); setSelected({ ...p, _openTab: 'portail' }) }}
+                        >
+                          + Inviter
+                        </button>
+                      )}
                     </td>
                     <td>
                       <div style={{ display: 'flex', gap: 4 }}>

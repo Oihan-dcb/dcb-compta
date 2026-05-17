@@ -169,14 +169,20 @@ export async function buildRapportData(bienId, propId, mois, opts = {}) {
     .filter(p => ['deduction_loy', 'debours_proprio'].includes(p.type_imputation) && p.reservation_id)
     .sort((a, b) => (a.date_prestation || '').localeCompare(b.date_prestation || ''))
     .forEach(p => {
-      extraByResa[p.reservation_id] = (extraByResa[p.reservation_id] || 0) + (p.montant || 0)
-      extrasParResa.push({ ...p, libelle: p.description || p.prestation_type?.nom || '—' })
+      const isStaff = p.type_imputation === 'deduction_loy' && p.ae?.type === 'staff'
+      const montantEffectif = isStaff ? Math.round((p.montant || 0) * 1.20) : (p.montant || 0)
+      extraByResa[p.reservation_id] = (extraByResa[p.reservation_id] || 0) + montantEffectif
+      extrasParResa.push({ ...p, libelle: p.description || p.prestation_type?.nom || '—', isStaff, montant_ht: p.montant, montant_ttc: montantEffectif })
     })
 
   const extrasGlobaux = (prestations || [])
     .filter(p => ['deduction_loy', 'debours_proprio'].includes(p.type_imputation) && !p.reservation_id)
     .sort((a, b) => (a.date_prestation || '').localeCompare(b.date_prestation || ''))
-    .map(p => ({ ...p, libelle: p.description || p.prestation_type?.nom || '—' }))
+    .map(p => {
+      const isStaff = p.type_imputation === 'deduction_loy' && p.ae?.type === 'staff'
+      const montantEffectif = isStaff ? Math.round((p.montant || 0) * 1.20) : (p.montant || 0)
+      return { ...p, libelle: p.description || p.prestation_type?.nom || '—', isStaff, montant_ht: p.montant, montant_ttc: montantEffectif }
+    })
 
   const haownerList = (prestations || [])
     .filter(p => p.type_imputation === 'haowner')

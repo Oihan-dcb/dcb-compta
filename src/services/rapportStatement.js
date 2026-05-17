@@ -141,15 +141,15 @@ export function genererStatementHTML(proprio, mois, data) {
         <tr style="border-bottom:1px solid #ece8e2">
           <td style="padding:3px 8px;color:#9c8c7a">${p.date_prestation ? p.date_prestation.substring(5).split('-').reverse().join('/') : '—'}</td>
           <td style="padding:3px 8px">${p.libelle || p.description || '—'}</td>
-          <td style="padding:3px 8px;color:#9c8c7a">Débours</td>
-          <td style="padding:3px 8px;text-align:right">${fmt(p.montant)}</td>
+          <td style="padding:3px 8px;color:#9c8c7a">${p.isStaff ? 'Débours (TVA 20%)' : 'Débours'}</td>
+          <td style="padding:3px 8px;text-align:right">${p.isStaff ? `${fmt(p.montant_ht)} HT <span style="font-size:8px;color:#9c8c7a">→ ${fmt(p.montant_ttc)} TTC</span>` : fmt(p.montant_ttc ?? p.montant)}</td>
         </tr>`).join('')}
         ${extrasParResa.map(p => `
         <tr style="border-bottom:1px solid #ece8e2">
           <td style="padding:3px 8px;color:#9c8c7a">${p.date_prestation ? p.date_prestation.substring(5).split('-').reverse().join('/') : '—'}</td>
           <td style="padding:3px 8px">${p.libelle || p.description || '—'}</td>
-          <td style="padding:3px 8px;color:#9c8c7a">Débours (résa)</td>
-          <td style="padding:3px 8px;text-align:right">${fmt(p.montant)}</td>
+          <td style="padding:3px 8px;color:#9c8c7a">${p.isStaff ? 'Débours résa (TVA 20%)' : 'Débours (résa)'}</td>
+          <td style="padding:3px 8px;text-align:right">${p.isStaff ? `${fmt(p.montant_ht)} HT <span style="font-size:8px;color:#9c8c7a">→ ${fmt(p.montant_ttc)} TTC</span>` : fmt(p.montant_ttc ?? p.montant)}</td>
         </tr>`).join('')}
         ${haownerList.map(p => `
         <tr style="border-bottom:1px solid #ece8e2">
