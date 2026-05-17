@@ -17,7 +17,13 @@ const TYPE_LABELS = {
   sci:         'SCI',
   societe:     'Société',
   indivision:  'Indivision',
+  client:      'Client',
+  etudiant:    'Étudiant',
+  fournisseur: 'Fournisseur',
+  autre:       'Autre',
 }
+
+const TYPES_PROPRIO = new Set(['particulier', 'sci', 'societe', 'indivision'])
 
 const MANDAT_STATUT_LABELS = {
   actif:             'Actif',
@@ -1386,6 +1392,7 @@ export default function PageProprietaires() {
   const [err, setErr]             = useState(null)
   const [recherche, setRecherche] = useState('')
   const [filtreActif, setFiltreActif] = useState('actif') // 'actif' | 'archive' | 'tous'
+  const [filtreCategorie, setFiltreCategorie] = useState('proprios') // 'proprios' | 'autres' | 'tous'
   const [selected, setSelected]   = useState(null)
   const [previsionnel, setPrevisionnel] = useState(null)
 
@@ -1407,6 +1414,11 @@ export default function PageProprietaires() {
     .filter(p => {
       if (filtreActif === 'actif')   return p.actif !== false
       if (filtreActif === 'archive') return p.actif === false
+      return true
+    })
+    .filter(p => {
+      if (filtreCategorie === 'proprios') return !p.type_proprio || TYPES_PROPRIO.has(p.type_proprio)
+      if (filtreCategorie === 'autres')   return p.type_proprio && !TYPES_PROPRIO.has(p.type_proprio)
       return true
     })
     .filter(p => {
@@ -1467,17 +1479,26 @@ export default function PageProprietaires() {
 
       {/* Toolbar */}
       <div className="toolbar">
-        <input className="form-input" placeholder="Rechercher un propriétaire…"
+        <input className="form-input" placeholder="Rechercher…"
           value={recherche} onChange={e => setRecherche(e.target.value)}
-          style={{ maxWidth: 280 }} />
+          style={{ maxWidth: 220 }} />
         <div style={{ display: 'flex', gap: 4 }}>
           {[['actif', 'Actifs'], ['archive', 'Archivés'], ['tous', 'Tous']].map(([v, l]) => (
             <button key={v} className={`btn btn-sm ${filtreActif === v ? 'btn-primary' : 'btn-secondary'}`}
               onClick={() => setFiltreActif(v)}>{l}</button>
           ))}
         </div>
+        <div style={{ display: 'flex', gap: 0, border: '1px solid var(--border)', borderRadius: 6, overflow: 'hidden' }}>
+          {[['proprios','🏠 Proprios'], ['autres','🔀 Autres'], ['tous','Tous']].map(([v, l]) => (
+            <button key={v}
+              onClick={() => setFiltreCategorie(v)}
+              style={{ padding: '5px 10px', border: 'none', fontSize: 12, fontWeight: filtreCategorie === v ? 700 : 400, background: filtreCategorie === v ? 'var(--brand)' : 'white', color: filtreCategorie === v ? 'white' : 'var(--text-muted)', cursor: 'pointer' }}>
+              {l}
+            </button>
+          ))}
+        </div>
         <span style={{ fontSize: 12, color: 'var(--text-muted)', marginLeft: 'auto' }}>
-          {filtres.length} propriétaire{filtres.length !== 1 ? 's' : ''}
+          {filtres.length} entrée{filtres.length !== 1 ? 's' : ''}
         </span>
       </div>
 
@@ -1521,8 +1542,22 @@ export default function PageProprietaires() {
                       <div style={{ fontWeight: 600 }}>{p.nom}{p.prenom ? ' ' + p.prenom : ''}</div>
                       {p.email && <div style={{ fontSize: 11, color: 'var(--text-muted)' }}>{p.email}</div>}
                     </td>
-                    <td>
-                      <span className="badge badge-neutral">{TYPE_LABELS[p.type_proprio] || 'Particulier'}</span>
+                    <td onClick={e => e.stopPropagation()}>
+                      {filtreCategorie !== 'proprios' ? (
+                        <select
+                          value={p.type_proprio || 'particulier'}
+                          onChange={async e => {
+                            const newType = e.target.value
+                            await supabase.from('proprietaire').update({ type_proprio: newType }).eq('id', p.id)
+                            setProprios(prev => prev.map(x => x.id === p.id ? { ...x, type_proprio: newType } : x))
+                          }}
+                          style={{ fontSize: 12, padding: '3px 6px', border: '1px solid var(--border)', borderRadius: 5, background: 'white', cursor: 'pointer' }}
+                        >
+                          {Object.entries(TYPE_LABELS).map(([v, l]) => <option key={v} value={v}>{l}</option>)}
+                        </select>
+                      ) : (
+                        <span className="badge badge-neutral">{TYPE_LABELS[p.type_proprio] || 'Particulier'}</span>
+                      )}
                     </td>
                     <td>
                       {biensListed.length > 0 ? (
