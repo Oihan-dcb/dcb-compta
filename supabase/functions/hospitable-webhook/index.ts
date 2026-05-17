@@ -205,6 +205,7 @@ async function handleReservation(supabase: any, event: string, data: any): Promi
     fin_host_service_fee:(fin.host_fees || []).reduce((s: number, f: any) => s + f.amount, 0) || null,
     fin_taxes_total:     (fin.taxes     || []).reduce((s: number, t: any) => s + t.amount, 0) || null,
     fin_currency:        fin.currency || 'EUR',
+    booking_date:        data.booking_date || null,
     mois_comptable:      moisComptable,
     hospitable_raw:      data,
     synced_at:           new Date().toISOString(),
