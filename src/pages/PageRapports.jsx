@@ -106,7 +106,7 @@ export default function PageRapports() {
     setStatutPortail('sending')
     try {
       const { data: { session } } = await supabase.auth.getSession()
-      const res = await fetch(`${PORTAIL_OWNER_API}/api/push-owner`, {
+      const res = await fetch(`${PORTAIL_OWNER_API}/api/notify-proprio`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -115,7 +115,7 @@ export default function PageRapports() {
         body: JSON.stringify({ proprio_id: selectedPropId, bien_id: selectedBienId, mois, type: 'releve' }),
       })
       const json = await res.json()
-      setStatutPortail(res.ok ? (json.sent > 0 ? 'sent' : 'no_push') : 'error')
+      setStatutPortail(res.ok ? (json.sent ? 'sent' : 'no_push') : 'error')
     } catch {
       setStatutPortail('error')
     }
