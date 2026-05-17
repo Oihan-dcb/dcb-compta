@@ -864,18 +864,26 @@ async function _lierViaPayout(mouvementId, resaIds, mvt = null, statut = 'rappro
   if (!resaIds.length) return
   // Créer les FK (reservation_paiement) EN PREMIER — le statut rapproché ne doit être
   // positionné qu'une fois les liens en place (évite les ghost matches en cas d'erreur mid-séquence)
+  //
+  // montant par resa = min(fin_revenue, mvt.credit)
+  //   → pour un batch multi-resas : chaque resa reçoit son propre montant (fin_revenue), pas le total du virement
+  //   → pour une resa seule : min(fin_revenue, credit) ≈ credit (les 2 sont proches, quelques centimes d'écart possible)
   if (mvt) {
-    const paiements = resaIds.map(rid => ({
-      reservation_id: rid,
-      mouvement_id: mouvementId,
-      montant: mvt.credit,
-      date_paiement: mvt.date_operation,
-      type_paiement: 'total',
-    }))
-    await supabase.from('reservation_paiement').upsert(paiements, {
-      onConflict: 'reservation_id,mouvement_id',
-      ignoreDuplicates: true
-    })
+    for (const rid of resaIds) {
+      const { data: resa } = await supabase.from('reservation').select('fin_revenue').eq('id', rid).single()
+      const finRev = resa?.fin_revenue || 0
+      const montant = finRev > 0 ? Math.min(finRev, mvt.credit) : mvt.credit
+      await supabase.from('reservation_paiement').upsert({
+        reservation_id: rid,
+        mouvement_id: mouvementId,
+        montant,
+        date_paiement: mvt.date_operation,
+        type_paiement: 'total',
+      }, {
+        onConflict: 'reservation_id,mouvement_id',
+        ignoreDuplicates: true
+      })
+    }
   }
   // Statut mis à jour APRÈS création des liens FK
   await supabase.from('mouvement_bancaire').update({ statut_matching: statut }).eq('id', mouvementId)
