@@ -1894,14 +1894,13 @@ function SequestreCloture() {
             // Pas de paiement avant clôture
             // Priorité 1 : booking_date (source fiable Hospitable)
             const bd = r.booking_date ? r.booking_date.slice(0, 10) : null
-            // Priorité 2 : stripe_payout_line (charge uniquement après clôture)
+            // Priorité 2 : stripe_payout_line (charge avant le seuil 1er déc = preuve d'antériorité)
             const spl = splByCode[r.code]
             const splAvant = spl && spl.avant
-            // exclu_post_cloture si : booking_date >= dateSeuilStripe (déc ou +), OU booking_date null sans charge Stripe avant seuil
-            // Seule une preuve d'antériorité avant le 1er déc (= payout reçu avant le 31/12) maintient à_verifier
-            if (bd && bd < dateSeuilStripe) {
-              statut = 'a_verifier_acompte'; montant = r.fin_revenue || 0
-            } else if (!bd && splAvant) {
+            // a_verifier_acompte si : booking_date <= dateCloture (résa faite avant la clôture)
+            // OU charge Stripe prouvée avant le 1er déc (splAvant)
+            // Sinon : booking_date null sans preuve → exclu_post_cloture
+            if ((bd && bd <= dateCloture) || splAvant) {
               statut = 'a_verifier_acompte'; montant = r.fin_revenue || 0
             } else {
               // Pas de preuve que la résa date d'avant clôture → exclure
