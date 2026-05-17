@@ -121,12 +121,60 @@ Deno.serve(async (req) => {
     })
     if (linkErr) throw linkErr
 
+    const magicLink = linkData.properties.action_link
+    const nomProprio = [proprio.prenom, proprio.nom].filter(Boolean).join(' ') || emailLower
+
+    // ── Envoyer le lien par email via smtp-send ───────────────────────────────
+    const supabaseUrl  = Deno.env.get('SUPABASE_URL') ?? ''
+    const anonKey      = Deno.env.get('SUPABASE_ANON_KEY') ?? ''
+    let emailSent = false
+    try {
+      const emailRes = await fetch(`${supabaseUrl}/functions/v1/smtp-send`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${anonKey}` },
+        body: JSON.stringify({
+          to: [emailLower],
+          subject: 'Votre accès au portail propriétaire — Destination Côte Basque',
+          html: `
+<div style="font-family:Arial,sans-serif;max-width:520px;margin:0 auto;color:#2C2416">
+  <div style="background:#EAE3D4;border-bottom:3px solid #CC9933;padding:20px 24px">
+    <div style="font-size:18px;font-weight:700;color:#CC9933">Destination Côte Basque</div>
+    <div style="font-size:10px;letter-spacing:3px;text-transform:uppercase;color:#6B5E4E;margin-top:2px">Conciergerie · Location · Gestion</div>
+  </div>
+  <div style="padding:28px 24px">
+    <p style="font-size:15px;font-weight:600;margin:0 0 16px">Bonjour ${nomProprio},</p>
+    <p style="font-size:14px;line-height:1.7;margin:0 0 20px">
+      L'équipe Destination Côte Basque vous invite à accéder à votre espace propriétaire en ligne.
+      Vous pourrez y consulter vos réservations, vos relevés mensuels et communiquer avec notre équipe.
+    </p>
+    <p style="font-size:14px;line-height:1.7;margin:0 0 20px">
+      Cliquez sur le bouton ci-dessous pour accéder à votre espace (lien valide 24h) :
+    </p>
+    <a href="${magicLink}" style="display:inline-block;background:#CC9933;color:#fff;text-decoration:none;padding:12px 24px;border-radius:8px;font-weight:600;font-size:14px">
+      Accéder à mon espace →
+    </a>
+    <p style="font-size:12px;color:#8C7B65;margin:24px 0 0;line-height:1.6">
+      Si le bouton ne fonctionne pas, copiez ce lien dans votre navigateur :<br>
+      <a href="${magicLink}" style="color:#CC9933;word-break:break-all">${magicLink}</a>
+    </p>
+    <p style="font-size:12px;color:#8C7B65;margin:16px 0 0;line-height:1.6">
+      Destination Côte Basque — Conciergerie et gestion locative à Biarritz
+    </p>
+  </div>
+</div>`,
+        }),
+      })
+      emailSent = emailRes.ok
+    } catch (_e) {
+      // Email non bloquant — le magic_link est retourné dans la réponse
+    }
+
     return new Response(JSON.stringify({
       success: true,
       user_id: userId,
       email: emailLower,
-      magic_link: linkData.properties.action_link,
-      // Le magic link est à envoyer par email via Resend (ou copier/coller manuellement)
+      magic_link: magicLink,
+      email_sent: emailSent,
     }), {
       headers: { ...corsHeaders, 'Content-Type': 'application/json' }
     })
