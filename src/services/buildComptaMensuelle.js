@@ -717,18 +717,43 @@ export function exportComptaCSV(data, bienActif = {}) {
     }
   }
   const rows = csvRows
-  // Ligne totaux (actifs uniquement sauf auto_ht)
-  const actifRows = data.rows.filter(r => isActif(r.bien_id))
-  const asum = k => actifRows.reduce((s, r) => s + (r[k] || 0), 0)
-  const t = data.totals
+  // Lignes totaux (3 lignes : DCB / FMEN Lauian / Global)
+  const actifRows    = data.rows.filter(r => isActif(r.bien_id))
+  const actifDCB     = actifRows.filter(r => !r.is_lauian_client)
+  const actifLau     = actifRows.filter(r =>  r.is_lauian_client)
+  const asum  = (arr, k) => arr.reduce((s, r) => s + (r[k] || 0), 0)
+
+  // Total DCB
   rows.push([
-    'TOTAL', '', '',
-    asum('nb_resas'), asum('nb_rapprochees'), asum('nb_non_rapprochees'), asum('nb_non_ventilees'),
-    fmt(asum('hon_ht')), fmt(asum('hon_tva')), fmt(asum('hon_ttc')),
-    fmt(asum('fmen_ht')), fmt(asum('fmen_tva')), fmt(asum('fmen_ttc')),
-    fmt(t.auto_ht), fmt(asum('prest_deduct')), fmt(t.auto_ht + asum('prest_deduct')), fmt(asum('loy_ht')), fmt(asum('taxe_ht')),
+    'TOTAL DCB', '', '',
+    asum(actifDCB, 'nb_resas'), asum(actifDCB, 'nb_rapprochees'), asum(actifDCB, 'nb_non_rapprochees'), asum(actifDCB, 'nb_non_ventilees'),
+    fmt(asum(actifDCB, 'hon_ht')), fmt(asum(actifDCB, 'hon_tva')), fmt(asum(actifDCB, 'hon_ttc')),
+    fmt(asum(actifDCB, 'fmen_ht')), fmt(asum(actifDCB, 'fmen_tva')), fmt(asum(actifDCB, 'fmen_ttc')),
+    fmt(asum(actifDCB, 'auto_ht')), fmt(asum(actifDCB, 'prest_deduct')), fmt(asum(actifDCB, 'auto_ht') + asum(actifDCB, 'prest_deduct')),
+    fmt(asum(actifDCB, 'loy_ht')), fmt(asum(actifDCB, 'frais_loy')), fmt(asum(actifDCB, 'taxe_ht')), fmt(asum(actifDCB, 'reversement_calcule')), '',
     '', '', '', '',
   ])
+  // Total FMEN Lauian (uniquement si des lignes Lauian existent)
+  if (actifLau.length > 0) {
+    rows.push([
+      'TOTAL FMEN Lauian', '', '',
+      '', '', '', '',
+      '', '', '',
+      fmt(asum(actifLau, 'fmen_ht')), fmt(asum(actifLau, 'fmen_tva')), fmt(asum(actifLau, 'fmen_ttc')),
+      '', '', '', '', '', '', '', '',
+      '', '', '', '',
+    ])
+    // Total Global
+    rows.push([
+      'TOTAL GLOBAL', '', '',
+      asum(actifRows, 'nb_resas'), asum(actifRows, 'nb_rapprochees'), asum(actifRows, 'nb_non_rapprochees'), asum(actifRows, 'nb_non_ventilees'),
+      fmt(asum(actifRows, 'hon_ht')), fmt(asum(actifRows, 'hon_tva')), fmt(asum(actifRows, 'hon_ttc')),
+      fmt(asum(actifRows, 'fmen_ht')), fmt(asum(actifRows, 'fmen_tva')), fmt(asum(actifRows, 'fmen_ttc')),
+      fmt(asum(actifRows, 'auto_ht')), fmt(asum(actifRows, 'prest_deduct')), fmt(asum(actifRows, 'auto_ht') + asum(actifRows, 'prest_deduct')),
+      fmt(asum(actifRows, 'loy_ht')), fmt(asum(actifRows, 'frais_loy')), fmt(asum(actifRows, 'taxe_ht')), fmt(asum(actifRows, 'reversement_calcule')), '',
+      '', '', '', '',
+    ])
+  }
 
   let csv = [headers, ...rows]
     .map(row => row.map(v => `"${String(v ?? '').replace(/"/g, '""')}"`).join(','))

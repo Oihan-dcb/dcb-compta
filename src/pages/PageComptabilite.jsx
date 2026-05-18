@@ -644,37 +644,100 @@ export default function PageComptabilite() {
             </tbody>
             {/* Ligne totaux */}
             {data && rowsFiltrees.length > 0 && (() => {
-              const actifs = rowsFiltrees.filter(r => bienActif[r.bien_id] !== false)
+              const actifs      = rowsFiltrees.filter(r => bienActif[r.bien_id] !== false)
+              const actifsDCB   = actifs.filter(r => !r.is_lauian_client)
+              const actifsLau   = actifs.filter(r =>  r.is_lauian_client)
               const tsum = (arr, k) => arr.reduce((s, r) => s + (r[k] || 0), 0)
               return (
               <tfoot>
-                <tr style={{ background: 'var(--bg)', borderTop: '2px solid var(--brand)', fontWeight: 700 }}>
+                {/* Ligne Total DCB */}
+                <tr style={{ background: '#F7F3EC', borderTop: '2px solid var(--brand)', fontWeight: 700 }}>
                   <td style={td} />
-                  <td style={{ ...td, color: 'var(--brand)' }}>TOTAL</td>
+                  <td style={{ ...td, color: 'var(--brand)', whiteSpace: 'nowrap' }}>TOTAL DCB</td>
                   <td style={td} />
-                  {col('resas')       && <td style={{ ...td, textAlign: 'right' }}>{tsum(actifs, 'nb_resas')}</td>}
-                  {col('rappr')       && <td style={{ ...td, textAlign: 'right' }}>{tsum(actifs, 'nb_rapprochees')}</td>}
-                  {col('non_vent')    && <td style={{ ...td, textAlign: 'right' }}>{tsum(actifs, 'nb_non_ventilees')}</td>}
-                  {col('hon_ht')      && <td style={{ ...td, textAlign: 'right' }}>{fmtN(tsum(actifs, 'hon_ht'))}</td>}
-                  {col('hon_tva')     && <td style={{ ...td, textAlign: 'right' }}>{fmtN(tsum(actifs, 'hon_tva'))}</td>}
-                  {col('hon_ttc')     && <td style={{ ...td, textAlign: 'right' }}>{fmtN(tsum(actifs, 'hon_ttc'))}</td>}
-                  {col('com_ttc')     && <td style={{ ...td, textAlign: 'right' }}>{fmtN(tsum(actifs, 'com_ttc'))}</td>}
-                  {col('fmen_ht')     && <td style={{ ...td, textAlign: 'right' }}>{fmtN(tsum(actifs, 'fmen_ht'))}</td>}
-                  {col('fmen_tva')    && <td style={{ ...td, textAlign: 'right' }}>{fmtN(tsum(actifs, 'fmen_tva'))}</td>}
-                  {col('fmen_ttc')    && <td style={{ ...td, textAlign: 'right' }}>{fmtN(tsum(actifs, 'fmen_ttc'))}</td>}
-                  {col('auto_ht')     && <td style={{ ...td, textAlign: 'right' }}>{fmtN(tsum(rowsFiltrees, 'auto_ht'))}</td>}
-                  {col('loy_ht')              && <td style={{ ...td, textAlign: 'right' }}>{fmtN(tsum(actifs, 'loy_ht'))}</td>}
-                  {col('frais_loy')           && <td style={{ ...td, textAlign: 'right', color: '#E65100' }}>{fmtN(tsum(actifs, 'frais_loy'))}</td>}
-                  {col('prest_deduct')        && <td style={{ ...td, textAlign: 'right', color: '#E65100' }}>{fmtN(tsum(actifs, 'prest_deduct'))}</td>}
-                  {col('total_auto_ht')       && <td style={{ ...td, textAlign: 'right', fontWeight: 700 }}>{fmtN(tsum(rowsFiltrees, 'auto_ht') + tsum(actifs, 'prest_deduct'))}</td>}
-                  {col('taxe')                && <td style={{ ...td, textAlign: 'right' }}>{fmtN(tsum(actifs, 'taxe_ht'))}</td>}
-                  {col('reversement_calcule') && <td style={{ ...td, textAlign: 'right' }}>{fmtN(tsum(actifs, 'reversement_calcule'))}</td>}
+                  {col('resas')       && <td style={{ ...td, textAlign: 'right' }}>{tsum(actifsDCB, 'nb_resas')}</td>}
+                  {col('rappr')       && <td style={{ ...td, textAlign: 'right' }}>{tsum(actifsDCB, 'nb_rapprochees')}</td>}
+                  {col('non_vent')    && <td style={{ ...td, textAlign: 'right' }}>{tsum(actifsDCB, 'nb_non_ventilees')}</td>}
+                  {col('hon_ht')      && <td style={{ ...td, textAlign: 'right' }}>{fmtN(tsum(actifsDCB, 'hon_ht'))}</td>}
+                  {col('hon_tva')     && <td style={{ ...td, textAlign: 'right' }}>{fmtN(tsum(actifsDCB, 'hon_tva'))}</td>}
+                  {col('hon_ttc')     && <td style={{ ...td, textAlign: 'right' }}>{fmtN(tsum(actifsDCB, 'hon_ttc'))}</td>}
+                  {col('com_ttc')     && <td style={{ ...td, textAlign: 'right' }}>{fmtN(tsum(actifsDCB, 'com_ttc'))}</td>}
+                  {col('fmen_ht')     && <td style={{ ...td, textAlign: 'right' }}>{fmtN(tsum(actifsDCB, 'fmen_ht'))}</td>}
+                  {col('fmen_tva')    && <td style={{ ...td, textAlign: 'right' }}>{fmtN(tsum(actifsDCB, 'fmen_tva'))}</td>}
+                  {col('fmen_ttc')    && <td style={{ ...td, textAlign: 'right' }}>{fmtN(tsum(actifsDCB, 'fmen_ttc'))}</td>}
+                  {col('auto_ht')     && <td style={{ ...td, textAlign: 'right' }}>{fmtN(tsum(actifsDCB, 'auto_ht'))}</td>}
+                  {col('loy_ht')              && <td style={{ ...td, textAlign: 'right' }}>{fmtN(tsum(actifsDCB, 'loy_ht'))}</td>}
+                  {col('frais_loy')           && <td style={{ ...td, textAlign: 'right', color: '#E65100' }}>{fmtN(tsum(actifsDCB, 'frais_loy'))}</td>}
+                  {col('prest_deduct')        && <td style={{ ...td, textAlign: 'right', color: '#E65100' }}>{fmtN(tsum(actifsDCB, 'prest_deduct'))}</td>}
+                  {col('total_auto_ht')       && <td style={{ ...td, textAlign: 'right' }}>{fmtN(tsum(actifsDCB, 'auto_ht') + tsum(actifsDCB, 'prest_deduct'))}</td>}
+                  {col('taxe')                && <td style={{ ...td, textAlign: 'right' }}>{fmtN(tsum(actifsDCB, 'taxe_ht'))}</td>}
+                  {col('reversement_calcule') && <td style={{ ...td, textAlign: 'right' }}>{fmtN(tsum(actifsDCB, 'reversement_calcule'))}</td>}
                   {col('fait')               && <td style={{ ...td, textAlign: 'center', fontSize: '0.8em', color: '#9C8E7D' }}>{Object.keys(reversementsFaits).length > 0 ? `${Object.keys(reversementsFaits).length} ✅` : ''}</td>}
                   {col('facture')             && <td style={td} />}
                   {col('reversement_facture') && <td style={td} />}
                   {col('ecart_facture')       && <td style={td} />}
                   <td style={td} />
                 </tr>
+                {/* Ligne Total FMEN Lauian (uniquement si des lignes Lauian existent) */}
+                {actifsLau.length > 0 && (
+                  <tr style={{ background: '#FFFBEB', borderTop: '1px solid #f59e0b', fontWeight: 700 }}>
+                    <td style={td} />
+                    <td style={{ ...td, color: '#92400e', whiteSpace: 'nowrap' }}>TOTAL FMEN Lauian</td>
+                    <td style={td} />
+                    {col('resas')       && <td style={td} />}
+                    {col('rappr')       && <td style={td} />}
+                    {col('non_vent')    && <td style={td} />}
+                    {col('hon_ht')      && <td style={td} />}
+                    {col('hon_tva')     && <td style={td} />}
+                    {col('hon_ttc')     && <td style={td} />}
+                    {col('com_ttc')     && <td style={td} />}
+                    {col('fmen_ht')     && <td style={{ ...td, textAlign: 'right', color: '#92400e' }}>{fmtN(tsum(actifsLau, 'fmen_ht'))}</td>}
+                    {col('fmen_tva')    && <td style={{ ...td, textAlign: 'right', color: '#92400e' }}>{fmtN(tsum(actifsLau, 'fmen_tva'))}</td>}
+                    {col('fmen_ttc')    && <td style={{ ...td, textAlign: 'right', color: '#92400e' }}>{fmtN(tsum(actifsLau, 'fmen_ttc'))}</td>}
+                    {col('auto_ht')     && <td style={td} />}
+                    {col('loy_ht')              && <td style={td} />}
+                    {col('frais_loy')           && <td style={td} />}
+                    {col('prest_deduct')        && <td style={td} />}
+                    {col('total_auto_ht')       && <td style={td} />}
+                    {col('taxe')                && <td style={td} />}
+                    {col('reversement_calcule') && <td style={td} />}
+                    {col('fait')               && <td style={td} />}
+                    {col('facture')             && <td style={td} />}
+                    {col('reversement_facture') && <td style={td} />}
+                    {col('ecart_facture')       && <td style={td} />}
+                    <td style={td} />
+                  </tr>
+                )}
+                {/* Ligne Total Global */}
+                {actifsLau.length > 0 && (
+                  <tr style={{ background: '#EAE3D4', borderTop: '2px solid var(--border)', fontWeight: 700 }}>
+                    <td style={td} />
+                    <td style={{ ...td, color: 'var(--text)', whiteSpace: 'nowrap' }}>TOTAL GLOBAL</td>
+                    <td style={td} />
+                    {col('resas')       && <td style={{ ...td, textAlign: 'right' }}>{tsum(actifs, 'nb_resas')}</td>}
+                    {col('rappr')       && <td style={{ ...td, textAlign: 'right' }}>{tsum(actifs, 'nb_rapprochees')}</td>}
+                    {col('non_vent')    && <td style={{ ...td, textAlign: 'right' }}>{tsum(actifs, 'nb_non_ventilees')}</td>}
+                    {col('hon_ht')      && <td style={{ ...td, textAlign: 'right' }}>{fmtN(tsum(actifs, 'hon_ht'))}</td>}
+                    {col('hon_tva')     && <td style={{ ...td, textAlign: 'right' }}>{fmtN(tsum(actifs, 'hon_tva'))}</td>}
+                    {col('hon_ttc')     && <td style={{ ...td, textAlign: 'right' }}>{fmtN(tsum(actifs, 'hon_ttc'))}</td>}
+                    {col('com_ttc')     && <td style={{ ...td, textAlign: 'right' }}>{fmtN(tsum(actifs, 'com_ttc'))}</td>}
+                    {col('fmen_ht')     && <td style={{ ...td, textAlign: 'right' }}>{fmtN(tsum(actifs, 'fmen_ht'))}</td>}
+                    {col('fmen_tva')    && <td style={{ ...td, textAlign: 'right' }}>{fmtN(tsum(actifs, 'fmen_tva'))}</td>}
+                    {col('fmen_ttc')    && <td style={{ ...td, textAlign: 'right' }}>{fmtN(tsum(actifs, 'fmen_ttc'))}</td>}
+                    {col('auto_ht')     && <td style={{ ...td, textAlign: 'right' }}>{fmtN(tsum(actifs, 'auto_ht'))}</td>}
+                    {col('loy_ht')              && <td style={{ ...td, textAlign: 'right' }}>{fmtN(tsum(actifs, 'loy_ht'))}</td>}
+                    {col('frais_loy')           && <td style={{ ...td, textAlign: 'right', color: '#E65100' }}>{fmtN(tsum(actifs, 'frais_loy'))}</td>}
+                    {col('prest_deduct')        && <td style={{ ...td, textAlign: 'right', color: '#E65100' }}>{fmtN(tsum(actifs, 'prest_deduct'))}</td>}
+                    {col('total_auto_ht')       && <td style={{ ...td, textAlign: 'right' }}>{fmtN(tsum(actifs, 'auto_ht') + tsum(actifs, 'prest_deduct'))}</td>}
+                    {col('taxe')                && <td style={{ ...td, textAlign: 'right' }}>{fmtN(tsum(actifs, 'taxe_ht'))}</td>}
+                    {col('reversement_calcule') && <td style={{ ...td, textAlign: 'right' }}>{fmtN(tsum(actifs, 'reversement_calcule'))}</td>}
+                    {col('fait')               && <td style={td} />}
+                    {col('facture')             && <td style={td} />}
+                    {col('reversement_facture') && <td style={td} />}
+                    {col('ecart_facture')       && <td style={td} />}
+                    <td style={td} />
+                  </tr>
+                )}
               </tfoot>
               )
             })()}
