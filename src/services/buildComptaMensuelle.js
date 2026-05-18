@@ -252,9 +252,11 @@ export async function buildComptaMensuelle(mois, bienIds = null) {
   }
 
   // Biens actifs ce mois : resas valides (exclure annulées sans frais) ou ventilation valide
-  const biensAvecResas   = new Set(resas.filter(r => !cancelledNoFeeIds.has(r.id)).map(r => r.bien_id))
-  const biensAvecVentil  = new Set(ventils.map(v => v.bien_id))
-  const biensActifs = biens.filter(b => biensAvecResas.has(b.id) || biensAvecVentil.has(b.id))
+  // ou mission_menage AE externe (auto_ht à comptabiliser même sans résa ce mois)
+  const biensAvecResas    = new Set(resas.filter(r => !cancelledNoFeeIds.has(r.id)).map(r => r.bien_id))
+  const biensAvecVentil   = new Set(ventils.map(v => v.bien_id))
+  const biensAvecMissions = new Set((missionsData || []).filter(m => m.ae?.type !== 'staff').map(m => m.bien_id))
+  const biensActifs = biens.filter(b => biensAvecResas.has(b.id) || biensAvecVentil.has(b.id) || biensAvecMissions.has(b.id))
 
   // ── Phase 3 : ownerStayAbsorbByBien + Σ reversement_calcule par proprio ────
   // Formule alignée sur facturesEvoliz.js :
