@@ -577,7 +577,7 @@ export function exportComptaCSV(data, bienActif = {}) {
     'Nb réservations', 'Rapprochées', 'Non rapprochées', 'Non ventilées',
     'HON HT', 'HON TVA', 'HON TTC',
     'FMEN HT', 'FMEN TVA', 'FMEN TTC',
-    'AUTO HT', 'LOY HT', 'Frais HA proprio.', 'TAXE HT', 'Réversement calculé', 'Virement fait',
+    'AUTO HT', 'Prest. déduit', 'Total AUTO HT', 'LOY HT', 'Frais HA proprio.', 'TAXE HT', 'Réversement calculé', 'Virement fait',
     'Statut facture', 'Réversement facturé', 'Écart facture', 'Alertes',
   ]
   // Regrouper les biens par groupe_facturation pour le CSV
@@ -622,7 +622,7 @@ export function exportComptaCSV(data, bienActif = {}) {
           masked(nsumA('nb_resas'), groupeActif), masked(nsumA('nb_rapprochees'), groupeActif), masked(nsumA('nb_non_rapprochees'), groupeActif), masked(nsumA('nb_non_ventilees'), groupeActif),
           masked(fmt(nsumA('hon_ht')), groupeActif), masked(fmt(nsumA('hon_tva')), groupeActif), masked(fmt(nsumA('hon_ttc')), groupeActif),
           masked(fmt(nsumA('fmen_ht')), groupeActif), masked(fmt(nsumA('fmen_tva')), groupeActif), masked(fmt(nsumA('fmen_ttc')), groupeActif),
-          fmt(nsum('auto_ht')), masked(fmt(nsumA('loy_ht')), groupeActif), masked(fmt(nsumA('frais_loy')), groupeActif), masked(fmt(nsumA('taxe_ht')), groupeActif), masked(fmt(nsumA('reversement_calcule')), groupeActif), masked(faitStrGroupe, groupeActif),
+          fmt(nsum('auto_ht')), masked(fmt(nsumA('prest_deduct')), groupeActif), fmt(nsum('auto_ht') + nsumA('prest_deduct')), masked(fmt(nsumA('loy_ht')), groupeActif), masked(fmt(nsumA('frais_loy')), groupeActif), masked(fmt(nsumA('taxe_ht')), groupeActif), masked(fmt(nsumA('reversement_calcule')), groupeActif), masked(faitStrGroupe, groupeActif),
           masked(first.facture_statut || '', groupeActif),
           masked(fmt(reversementFactureGroupe), groupeActif),
           masked(first.ecart_reversement_proprio != null ? fmt(first.ecart_reversement_proprio) : '', groupeActif),
@@ -639,7 +639,7 @@ export function exportComptaCSV(data, bienActif = {}) {
         masked(r.nb_resas, enfantActif), masked(r.nb_rapprochees, enfantActif), masked(r.nb_non_rapprochees, enfantActif), masked(r.nb_non_ventilees, enfantActif),
         masked(fmt(r.hon_ht), enfantActif), masked(fmt(r.hon_tva), enfantActif), masked(fmt(r.hon_ttc), enfantActif),
         masked(fmt(r.fmen_ht), enfantActif), masked(fmt(r.fmen_tva), enfantActif), masked(fmt(r.fmen_ttc), enfantActif),
-        fmt(r.auto_ht), masked(fmt(r.loy_ht), enfantActif), masked(fmt(r.frais_loy), enfantActif), masked(fmt(r.taxe_ht), enfantActif), masked(fmt(r.reversement_calcule), enfantActif), masked(faitEnfant, enfantActif),
+        fmt(r.auto_ht), masked(fmt(r.prest_deduct), enfantActif), fmt((r.auto_ht || 0) + (r.prest_deduct || 0)), masked(fmt(r.loy_ht), enfantActif), masked(fmt(r.frais_loy), enfantActif), masked(fmt(r.taxe_ht), enfantActif), masked(fmt(r.reversement_calcule), enfantActif), masked(faitEnfant, enfantActif),
         '', '', '', r.alert_codes.join(' | '),
       ])
     } else {
@@ -650,7 +650,7 @@ export function exportComptaCSV(data, bienActif = {}) {
         masked(r.nb_resas, rowActif), masked(r.nb_rapprochees, rowActif), masked(r.nb_non_rapprochees, rowActif), masked(r.nb_non_ventilees, rowActif),
         masked(fmt(r.hon_ht), rowActif), masked(fmt(r.hon_tva), rowActif), masked(fmt(r.hon_ttc), rowActif),
         masked(fmt(r.fmen_ht), rowActif), masked(fmt(r.fmen_tva), rowActif), masked(fmt(r.fmen_ttc), rowActif),
-        fmt(r.auto_ht), masked(fmt(r.loy_ht), rowActif), masked(fmt(r.frais_loy), rowActif), masked(fmt(r.taxe_ht), rowActif), masked(fmt(r.reversement_calcule), rowActif), masked(faitStr, rowActif),
+        fmt(r.auto_ht), masked(fmt(r.prest_deduct), rowActif), fmt((r.auto_ht || 0) + (r.prest_deduct || 0)), masked(fmt(r.loy_ht), rowActif), masked(fmt(r.frais_loy), rowActif), masked(fmt(r.taxe_ht), rowActif), masked(fmt(r.reversement_calcule), rowActif), masked(faitStr, rowActif),
         masked(r.facture_statut || '', rowActif),
         masked(fmt(r.facture_montant_reversement), rowActif),
         masked(r.ecart_reversement_proprio != null ? fmt(r.ecart_reversement_proprio) : '', rowActif),
@@ -668,7 +668,7 @@ export function exportComptaCSV(data, bienActif = {}) {
     asum('nb_resas'), asum('nb_rapprochees'), asum('nb_non_rapprochees'), asum('nb_non_ventilees'),
     fmt(asum('hon_ht')), fmt(asum('hon_tva')), fmt(asum('hon_ttc')),
     fmt(asum('fmen_ht')), fmt(asum('fmen_tva')), fmt(asum('fmen_ttc')),
-    fmt(t.auto_ht), fmt(asum('loy_ht')), fmt(asum('taxe_ht')),
+    fmt(t.auto_ht), fmt(asum('prest_deduct')), fmt(t.auto_ht + asum('prest_deduct')), fmt(asum('loy_ht')), fmt(asum('taxe_ht')),
     '', '', '', '',
   ])
 

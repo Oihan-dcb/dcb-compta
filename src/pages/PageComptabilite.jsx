@@ -91,6 +91,7 @@ export default function PageComptabilite() {
     { key: 'loy_ht',               label: 'LOY HT',        def: true },
     { key: 'frais_loy',            label: 'Frais HA proprio.', def: false },
     { key: 'prest_deduct',         label: 'Prest. déduit',    def: false },
+    { key: 'total_auto_ht',        label: 'Total AUTO HT',    def: true },
     { key: 'taxe',                 label: 'TAXE',          def: true },
     { key: 'reversement_calcule',  label: 'Reversement',   def: true },
     { key: 'fait',                 label: 'Fait',          def: true },
@@ -463,6 +464,7 @@ export default function PageComptabilite() {
                 {col('loy_ht')              && <th style={{ ...th, textAlign: 'right' }}>LOY HT</th>}
                 {col('frais_loy')           && <th style={{ ...th, textAlign: 'right' }}>Frais HA proprio.</th>}
                 {col('prest_deduct')        && <th style={{ ...th, textAlign: 'right' }}>Prest. déduit</th>}
+                {col('total_auto_ht')       && <th style={{ ...th, textAlign: 'right' }}>Total AUTO HT</th>}
                 {col('taxe')                && <th style={{ ...th, textAlign: 'right' }}>TAXE</th>}
                 {col('reversement_calcule') && <th style={{ ...th, textAlign: 'right' }}>Reversement</th>}
                 {col('fait')               && <th style={{ ...th, textAlign: 'center' }}>Fait</th>}
@@ -504,6 +506,7 @@ export default function PageComptabilite() {
                   {col('loy_ht')              && <td style={{ ...td, textAlign: 'right', fontVariantNumeric: 'tabular-nums' }}>{actif ? (r.loy_ht ? fmtN(r.loy_ht) : '—') : dash}</td>}
                   {col('frais_loy')           && <td style={{ ...td, textAlign: 'right', fontVariantNumeric: 'tabular-nums' }}>{actif ? (r.frais_loy ? <span style={{ color: '#E65100' }}>-{fmtN(r.frais_loy)}</span> : '—') : dash}</td>}
                   {col('prest_deduct')        && <td style={{ ...td, textAlign: 'right', fontVariantNumeric: 'tabular-nums' }}>{actif ? (r.prest_deduct ? <span style={{ color: '#E65100' }}>-{fmtN(r.prest_deduct)}</span> : '—') : dash}</td>}
+                  {col('total_auto_ht')       && <td style={{ ...td, textAlign: 'right', fontVariantNumeric: 'tabular-nums', fontWeight: 600 }}>{fmtN((r.auto_ht || 0) + (r.prest_deduct || 0))}</td>}
                   {col('taxe')                && <td style={{ ...td, textAlign: 'right', fontVariantNumeric: 'tabular-nums' }}>{actif ? (r.taxe_ht ? fmtN(r.taxe_ht) : '—') : dash}</td>}
                   {col('reversement_calcule') && <td style={{ ...td, textAlign: 'right', fontVariantNumeric: 'tabular-nums', fontWeight: actif && r.reversement_calcule ? 600 : 400 }}>{actif ? (r.reversement_calcule ? fmtN(r.reversement_calcule) : '—') : dash}</td>}
                   {col('fait') && <td style={{ ...td, textAlign: 'center' }}>
@@ -659,6 +662,7 @@ export default function PageComptabilite() {
                   {col('loy_ht')              && <td style={{ ...td, textAlign: 'right' }}>{fmtN(tsum(actifs, 'loy_ht'))}</td>}
                   {col('frais_loy')           && <td style={{ ...td, textAlign: 'right', color: '#E65100' }}>{fmtN(tsum(actifs, 'frais_loy'))}</td>}
                   {col('prest_deduct')        && <td style={{ ...td, textAlign: 'right', color: '#E65100' }}>{fmtN(tsum(actifs, 'prest_deduct'))}</td>}
+                  {col('total_auto_ht')       && <td style={{ ...td, textAlign: 'right', fontWeight: 700 }}>{fmtN(tsum(rowsFiltrees, 'auto_ht') + tsum(actifs, 'prest_deduct'))}</td>}
                   {col('taxe')                && <td style={{ ...td, textAlign: 'right' }}>{fmtN(tsum(actifs, 'taxe_ht'))}</td>}
                   {col('reversement_calcule') && <td style={{ ...td, textAlign: 'right' }}>{fmtN(tsum(actifs, 'reversement_calcule'))}</td>}
                   {col('fait')               && <td style={{ ...td, textAlign: 'center', fontSize: '0.8em', color: '#9C8E7D' }}>{Object.keys(reversementsFaits).length > 0 ? `${Object.keys(reversementsFaits).length} ✅` : ''}</td>}
