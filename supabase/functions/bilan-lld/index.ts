@@ -138,9 +138,10 @@ serve(async (req) => {
     const { mois, agence = 'dcb', email_destinataire, envoyer_email = true } = await req.json()
     if (!mois) throw new Error('mois requis')
 
-    const SUPABASE_URL = Deno.env.get('SUPABASE_URL')!
-    const SERVICE_KEY  = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!
-    const APP_URL      = Deno.env.get('APP_URL')!
+    const SUPABASE_URL      = Deno.env.get('SUPABASE_URL')!
+    const SERVICE_KEY       = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!
+    const APP_URL           = Deno.env.get('APP_URL')!
+    const INTERNAL_SECRET   = Deno.env.get('INTERNAL_API_SECRET')!
 
     const supabase = createClient(SUPABASE_URL, SERVICE_KEY)
 
@@ -161,10 +162,13 @@ serve(async (req) => {
     const agenceLabel = agency?.label || 'Destination Côte Basque'
     const html = genHTML(mois, loyers || [], virements || [], agenceLabel)
 
-    // Générer le PDF via Puppeteer
+    // Générer le PDF via Puppeteer (appel server-to-server avec secret interne)
     const pdfRes = await fetch(`${APP_URL}/api/generate-pdf`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${INTERNAL_SECRET}`,
+      },
       body: JSON.stringify({ html }),
     })
     if (!pdfRes.ok) throw new Error(`generate-pdf error: ${await pdfRes.text()}`)

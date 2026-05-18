@@ -17,17 +17,23 @@ export default async function handler(req, res) {
   if (req.method === 'OPTIONS') return res.status(200).end()
   if (req.method !== 'POST') return res.status(405).json({ error: 'Method not allowed' })
 
-  // Vérifier JWT Supabase
+  // Vérifier JWT Supabase (ou secret interne pour appels server-to-server)
   const token = (req.headers.authorization || '').replace(/^Bearer\s+/i, '').trim()
   if (!token) return res.status(401).json({ error: 'Token manquant' })
-  const authRes = await fetch(`${SUPABASE_URL}/auth/v1/user`, {
-    headers: { apikey: SUPABASE_ANON_KEY, Authorization: 'Bearer ' + token }
-  })
-  if (!authRes.ok) return res.status(401).json({ error: 'Non authentifié' })
-  const { email } = await authRes.json()
-  if (!ALLOWED_EMAILS.length) return res.status(500).json({ error: 'ALLOWED_ADMIN_EMAILS non configuré' })
-  if (!ALLOWED_EMAILS.includes((email || '').toLowerCase())) {
-    return res.status(403).json({ error: 'Accès refusé' })
+
+  const INTERNAL_SECRET = process.env.INTERNAL_API_SECRET
+  const isInternalCall = INTERNAL_SECRET && token === INTERNAL_SECRET
+
+  if (!isInternalCall) {
+    const authRes = await fetch(`${SUPABASE_URL}/auth/v1/user`, {
+      headers: { apikey: SUPABASE_ANON_KEY, Authorization: 'Bearer ' + token }
+    })
+    if (!authRes.ok) return res.status(401).json({ error: 'Non authentifié' })
+    const { email } = await authRes.json()
+    if (!ALLOWED_EMAILS.length) return res.status(500).json({ error: 'ALLOWED_ADMIN_EMAILS non configuré' })
+    if (!ALLOWED_EMAILS.includes((email || '').toLowerCase())) {
+      return res.status(403).json({ error: 'Accès refusé' })
+    }
   }
 
   const { html, orientation = 'portrait' } = req.body || {}
