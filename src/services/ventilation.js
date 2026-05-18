@@ -95,7 +95,9 @@ export async function calculerVentilationMois(mois) {
       const fees = r.reservation_fee || []
       const cleaningFee = fees.find(f => f.label?.toLowerCase() === 'cleaning fee')?.amount || 0
       const communityFee = fees.find(f => f.label?.toLowerCase() === 'community fee')?.amount || 0
-      if (cleaningFee > 0 || communityFee > 0) continue
+      // Pour les réservations manuelles, le community fee est la commission DCB, pas un frais ménage
+      const blocksProlongation = cleaningFee > 0 || (r.platform !== 'manual' && communityFee > 0)
+      if (blocksProlongation) continue
       const preceding = group.find(other => other.id !== r.id && (other.departure_date || '').substring(0, 10) === (r.arrival_date || '').substring(0, 10))
       if (preceding) {
         r.isProlongation = true

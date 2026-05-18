@@ -68,7 +68,9 @@ export default function PageReservations() {
           const fees = r.reservation_fee || []
           const cleaning = fees.find(f => f.label?.toLowerCase() === 'cleaning fee')?.amount || 0
           const community = fees.find(f => f.label?.toLowerCase() === 'community fee')?.amount || 0
-          if (cleaning > 0 || community > 0) continue
+          // Pour les réservations manuelles, le community fee est la commission DCB, pas un frais ménage
+          const blocksProlongation = cleaning > 0 || (r.platform !== 'manual' && community > 0)
+          if (blocksProlongation) continue
           const preceding = group.find(o => o.id !== r.id && (o.departure_date || '').substring(0, 10) === (r.arrival_date || '').substring(0, 10))
           if (preceding) {
             r.isProlongation = true
