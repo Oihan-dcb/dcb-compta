@@ -185,8 +185,11 @@ export default function PageRapports() {
       supabase.from('reservation').select('bien_id').eq('mois_comptable', mois)
         .or('fin_revenue.gt.0,final_status.not.in.("cancelled","not_accepted","not accepted","declined","expired")'),
       supabase.from('bien_notes').select('bien_id').eq('mois', mois).not('rapport_envoye_at', 'is', null),
-    ]).then(([{ data: resasBiens }, { data: rapports }]) => {
-      setBienIdsActifs(new Set((resasBiens || []).map(r => r.bien_id)))
+      supabase.from('prestation_hors_forfait').select('bien_id').eq('mois', mois).eq('statut', 'valide'),
+    ]).then(([{ data: resasBiens }, { data: rapports }, { data: prestBiens }]) => {
+      const ids = new Set((resasBiens || []).map(r => r.bien_id))
+      ;(prestBiens || []).forEach(p => ids.add(p.bien_id))
+      setBienIdsActifs(ids)
       setBiensEnvoyes(new Set((rapports || []).map(r => r.bien_id)))
     })
   }, [mois])

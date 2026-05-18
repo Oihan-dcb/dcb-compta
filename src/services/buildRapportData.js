@@ -284,11 +284,16 @@ export async function buildRapportData(bienId, propId, mois, opts = {}) {
   // Le surplus owner stay est facturé séparément (ligne "Ménage séjour propriétaire") — ne pas déduire deux fois
   const loyDisponiblePourOwnerStay = Math.max(0, loyTotal - totalDebours - totalHaowner - fraisDeductionLoy)
   const ownerStayAbsorbBranche2 = Math.min(ownerStayMenageTotal, loyDisponiblePourOwnerStay)
+  // Cas sans réservation mais avec débours (ex: ménage hors forfait isolé) :
+  // virTotal = 0, virementNet peut être négatif = créance DCB à récupérer sur le proprio
+  const virementNetBase = virTotal - totalDebours - totalHaowner - fraisDeductionLoy - ownerStayAbsorbBranche2
   const virementNet = (facture?.montant_reversement > 0 &&
                        facture?.statut !== 'brouillon' &&
                        facture?.statut !== 'calcul_en_cours')
     ? facture.montant_reversement
-    : Math.max(0, virTotal - totalDebours - totalHaowner - fraisDeductionLoy - ownerStayAbsorbBranche2)
+    : (resaIds.length === 0 && extrasGlobaux.length > 0
+        ? virementNetBase          // créance négative autorisée (pas de Math.max)
+        : Math.max(0, virementNetBase))
 
   // ── Avis clients ─────────────────────────────────────────────────────────
   const nextMoisStr = m === 12 ? `${y + 1}-01` : `${y}-${String(m + 1).padStart(2, '0')}`

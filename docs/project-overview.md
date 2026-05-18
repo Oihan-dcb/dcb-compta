@@ -837,3 +837,18 @@ supabase.from('reservation_paiement')
 **Correction** : 63 doublons `Powens_seq_lc` supprimés manuellement (avril–mai 2026). Voir invariant I-122.
 
 **À implémenter** dans l'import Powens (en cours de dev) : dédoublonnage avant insertion — vérifier `(date_operation, credit)` existant, ou contrainte UNIQUE `(date_operation, credit, debit, canal)`.
+
+## Session 18 mai 2026 — Fix : ménage hors forfait sans réservation
+
+### Bug : bien avec `debours_proprio` mais 0 réservation sur le mois
+
+**Symptôme** : si un bien a uniquement une prestation `type_imputation='debours_proprio'` (ménage hors forfait facturé en extra) pour un mois donné, sans aucune réservation :
+- Le proprio disparaissait du dropdown de PageRapports (exclu de `bienIdsActifs`)
+- La facture Evoliz AE débours n'était jamais créée (`genererFactureDebours` court-circuitait sur `autoBien === 0`)
+- `virementNet` affiché 0 au lieu d'une créance négative
+
+**Corrections appliquées (3 fichiers)** :
+
+- `PageRapports.jsx` — `bienIdsActifs` enrichi avec un 3e fetch `prestation_hors_forfait` (union des bien_ids resas + prestations)
+- `facturesEvoliz.js` — `genererFactureDebours` : peek `deboursPropTotal` avant le guard `continue` ; condition modifiée en `autoBien === 0 && osAutoHT === 0 && deboursPropTotal === 0`
+- `buildRapportData.js` — `virementNet` : quand `resaIds.length === 0` et `extrasGlobaux.length > 0`, suppression du `Math.max(0, …)` → créance négative autorisée (DCB a avancé, proprio doit)

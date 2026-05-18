@@ -791,7 +791,13 @@ async function genererFactureDebours(proprio, biens, mois, ctx) {
 
     const osAutoHT = osAutoByBien.get(bien.id) || 0
 
-    if (autoBien === 0 && osAutoHT === 0) continue
+    // Vérifier si ce bien a des débours_proprio même sans ventilation AUTO
+    const bienPrestPeek  = prestByBien.get(bien.id) || []
+    const deboursPropTotal = bienPrestPeek
+      .filter(function(p) { return p.type_imputation === 'debours_proprio' })
+      .reduce(function(s, p) { return s + (p.montant || 0) }, 0)
+
+    if (autoBien === 0 && osAutoHT === 0 && deboursPropTotal === 0) continue
 
     let montantAFacturer = 0
     let debPropSurplus   = 0
