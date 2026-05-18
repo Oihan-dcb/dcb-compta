@@ -28,6 +28,15 @@ export async function buildComptaMensuelle(mois, bienIds = null) {
     .eq('agence', AGENCE)
   if (bienIds) biensQuery = biensQuery.in('id', bienIds)
 
+  // Missions AE du mois de réalisation (montant réel facturé, pas provision ventilation)
+  let missionsQuery = supabase
+    .from('mission_menage')
+    .select('bien_id, montant, ae:ae_id(type)')
+    .eq('mois', mois)
+    .neq('statut', 'cancelled')
+    .not('montant', 'is', null)
+  if (bienIds) missionsQuery = missionsQuery.in('bien_id', bienIds)
+
   const [
     { data: biensData,         error: biensErr         },
     { data: resasData,         error: resasErr         },
@@ -40,6 +49,7 @@ export async function buildComptaMensuelle(mois, bienIds = null) {
     { data: prestDeductData,   error: prestDeductErr   },
     { data: prestDeboursData,  error: prestDeboursErr  },
     { data: reversementFaitData },
+    { data: missionsData },
   ] = await Promise.all([
     biensQuery,
     supabase
@@ -104,6 +114,7 @@ export async function buildComptaMensuelle(mois, bienIds = null) {
       .select('bien_id, fait_at')
       .eq('mois', mois)
       .eq('agence', AGENCE),
+    missionsQuery,
   ])
 
   if (biensErr)  throw new Error(`buildComptaMensuelle — biens: ${biensErr.message}`)
@@ -147,6 +158,15 @@ export async function buildComptaMensuelle(mois, bienIds = null) {
     ventilAgg[key].ttc += (v.montant_ttc || 0)
   }
   const vent = (bienId, code) => ventilAgg[`${bienId}::${code}`] || { ht: 0, tva: 0, ttc: 0 }
+
+  // AUTO HT par bien — calculé depuis mission_menage.montant par mois de réalisation
+  // (règle métier : les ménages sont facturés par les AEs le mois de la réalisation,
+  //  pas le mois comptable de la réservation)
+  const autoByBien = {}
+  for (const m of (missionsData || [])) {
+    if (m.ae?.type === 'staff') continue  // staff DCB → pas un débours AE externe
+    autoByBien[m.bien_id] = (autoByBien[m.bien_id] || 0) + (m.montant || 0)
+  }
 
   // Factures honoraires — une par bien (bien_id non null) ou une globale (bien_id null)
   // Index par bien_id pour lookup rapide par ligne
@@ -245,7 +265,7 @@ export async function buildComptaMensuelle(mois, bienIds = null) {
   for (const b of biensActifs) {
     // LOY résiduel après toutes les déductions standard (ordre = facturesEvoliz)
     const loyHt      = vent(b.id, 'LOY').ht
-    const autoHt     = vent(b.id, 'AUTO').ht
+    const autoHt     = autoByBien[b.id] || 0  // mois de réalisation mission, pas mois_comptable resa
     const fraisLoy   = fraisLoyByBien[b.id]    || 0
     const prestDeduct = prestDeductByBien[b.id] || 0
     const deboursProp = deboursPropByBien[b.id] || 0
@@ -308,7 +328,7 @@ export async function buildComptaMensuelle(mois, bienIds = null) {
     const hon  = vent(b.id, 'HON')
     const fmen = vent(b.id, 'FMEN')
     const men  = vent(b.id, 'MEN')
-    const auto = vent(b.id, 'AUTO')
+    const auto = { ht: autoByBien[b.id] || 0 }  // mois de réalisation mission
     const loy  = vent(b.id, 'LOY')
     const vir  = vent(b.id, 'VIR')
     const taxe = vent(b.id, 'TAXE')
