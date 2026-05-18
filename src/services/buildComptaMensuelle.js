@@ -570,19 +570,36 @@ export async function buildComptaMensuelle(mois, bienIds = null) {
     }
   }
 
-  // FMEN Lauian facturé par DCB — agrégé séparément pour affichage dans les stats
+  // FMEN Lauian facturé par DCB — lignes dans le tableau + total stats
   let lauianFmenTotal = { ht: 0, tva: 0, ttc: 0 }
   if (AGENCE === 'dcb') {
     const { data: lauianFacts } = await supabase
       .from('facture_evoliz')
-      .select('total_ht, total_tva, total_ttc')
+      .select('id, bien_id, proprietaire_id, total_ht, total_tva, total_ttc, statut, bien:bien_id(code, hospitable_name), proprietaire:proprietaire_id(nom, prenom)')
       .eq('mois', mois)
       .eq('agence', 'dcb')
       .eq('type_facture', 'lauian_fmen')
-    lauianFmenTotal = {
-      ht:  (lauianFacts || []).reduce(function(s, f) { return s + (f.total_ht  || 0) }, 0),
-      tva: (lauianFacts || []).reduce(function(s, f) { return s + (f.total_tva || 0) }, 0),
-      ttc: (lauianFacts || []).reduce(function(s, f) { return s + (f.total_ttc || 0) }, 0),
+    for (const f of (lauianFacts || [])) {
+      lauianFmenTotal.ht  += f.total_ht  || 0
+      lauianFmenTotal.tva += f.total_tva || 0
+      lauianFmenTotal.ttc += f.total_ttc || 0
+      const pNom = f.proprietaire ? `${f.proprietaire.nom}${f.proprietaire.prenom ? ' ' + f.proprietaire.prenom : ''}` : null
+      // Ligne spéciale "client Lauian" — apparaît dans le tableau et l'export mais hors totaux DCB
+      rows.push({
+        bien_id: f.bien_id, bien_code: f.bien?.code || null, bien_nom: f.bien?.hospitable_name || null,
+        proprietaire_id: f.proprietaire_id, proprietaire_nom: pNom,
+        is_lauian_client: true,
+        nb_resas: 0, nb_rapprochees: 0, nb_non_rapprochees: 0, nb_non_ventilees: 0,
+        hon_ht: 0, hon_tva: 0, hon_ttc: 0,
+        fmen_ht: f.total_ht || 0, fmen_tva: f.total_tva || 0, fmen_ttc: f.total_ttc || 0,
+        auto_ht: 0, loy_ht: 0, taxe_ht: 0, com_ht: 0, com_tva: 0, com_ttc: 0,
+        frais_loy: 0, frais_direct: 0, prest_deduct: 0, debours_prop: 0,
+        owner_stay_absorb: 0, auto_absorbable: 0, remboursements: 0,
+        reversement_calcule: 0, groupe_facturation: null,
+        facture_id: f.id, facture_statut: f.statut, facture_montant_reversement: null,
+        ecart_reversement_proprio: null, reversement_fait_at: null,
+        alert_count: 0, alert_level: null, alert_codes: [], alerts: [],
+      })
     }
   }
 
@@ -685,7 +702,9 @@ export function exportComptaCSV(data, bienActif = {}) {
       const rowActif = isActif(r.bien_id)
       const faitStr = r.reversement_fait_at ? (() => { const d = new Date(r.reversement_fait_at); return `OUI — ${d.toLocaleDateString('fr-FR', { day: '2-digit', month: '2-digit' })} ${d.toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' })}h` })() : ''
       csvRows.push([
-        r.bien_code, r.bien_nom, r.proprietaire_nom,
+        r.is_lauian_client ? `${r.bien_code} [FMEN Lauian]` : r.bien_code,
+        r.is_lauian_client ? `${r.bien_nom || ''} (client Lauian)` : r.bien_nom,
+        r.proprietaire_nom,
         masked(r.nb_resas, rowActif), masked(r.nb_rapprochees, rowActif), masked(r.nb_non_rapprochees, rowActif), masked(r.nb_non_ventilees, rowActif),
         masked(fmt(r.hon_ht), rowActif), masked(fmt(r.hon_tva), rowActif), masked(fmt(r.hon_ttc), rowActif),
         masked(fmt(r.fmen_ht), rowActif), masked(fmt(r.fmen_tva), rowActif), masked(fmt(r.fmen_ttc), rowActif),

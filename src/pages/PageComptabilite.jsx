@@ -513,7 +513,7 @@ export default function PageComptabilite() {
                   {col('taxe')                && <td style={{ ...td, textAlign: 'right', fontVariantNumeric: 'tabular-nums' }}>{actif ? (r.taxe_ht ? fmtN(r.taxe_ht) : '—') : dash}</td>}
                   {col('reversement_calcule') && <td style={{ ...td, textAlign: 'right', fontVariantNumeric: 'tabular-nums', fontWeight: actif && r.reversement_calcule ? 600 : 400 }}>{actif ? (r.reversement_calcule ? fmtN(r.reversement_calcule) : '—') : dash}</td>}
                   {col('fait') && <td style={{ ...td, textAlign: 'center' }}>
-                    {!isChild && (() => {
+                    {!isChild && !r.is_lauian_client && (() => {
                       let faitAt, handleClick
                       if (r._isGroup && r._childrenBienIds?.length) {
                         const allFait = r._childrenBienIds.every(id => !!reversementsFaits[id])
@@ -587,12 +587,13 @@ export default function PageComptabilite() {
                 if (item.type === 'single') {
                   const r = item.row
                   return [
-                    <tr key={r.bien_id} style={{ background: r.alert_level === 'error' ? '#FFF8F8' : i % 2 === 0 ? 'var(--bg-card)' : 'var(--bg)', borderBottom: '1px solid var(--border)' }}>
+                    <tr key={r.bien_id} style={{ background: r.is_lauian_client ? '#FFFBEB' : r.alert_level === 'error' ? '#FFF8F8' : i % 2 === 0 ? 'var(--bg-card)' : 'var(--bg)', borderBottom: '1px solid var(--border)', borderLeft: r.is_lauian_client ? '3px solid #f59e0b' : undefined }}>
                       <td style={{ ...td, textAlign: 'center', width: 32 }}>
-                        <input type="checkbox" checked={isActif(r)} onChange={() => toggleActif(r)} style={{ cursor: 'pointer', accentColor: 'var(--brand)' }} />
+                        {!r.is_lauian_client && <input type="checkbox" checked={isActif(r)} onChange={() => toggleActif(r)} style={{ cursor: 'pointer', accentColor: 'var(--brand)' }} />}
                       </td>
                       <td style={td}>
                         <span style={{ fontWeight: 600 }}>{r.bien_code || '—'}</span>
+                        {r.is_lauian_client && <span style={{ fontSize: '0.7em', fontWeight: 700, padding: '1px 5px', borderRadius: 4, background: '#fef3c7', color: '#92400e', marginLeft: 5, verticalAlign: 'middle' }}>client Lauian</span>}
                         {r.bien_nom && <div style={{ fontSize: '0.85em', color: '#9C8E7D', maxWidth: 140, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{r.bien_nom}</div>}
                       </td>
                       <td style={td}>{r.proprietaire_nom || <span style={{ color: '#9C8E7D', fontStyle: 'italic' }}>—</span>}</td>
