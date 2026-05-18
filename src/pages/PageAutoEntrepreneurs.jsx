@@ -547,15 +547,18 @@ export default function PageAutoEntrepreneurs() {
     const moisCible = moisParam || syncMois
     if (!liste.length) return
     setSyncing(true); setSyncResults(null); setError(null)
-    const results = []
-    for (const ae of liste) {
+    const syncOne = async (ae) => {
       try {
-        const { ok: rOk, data: d } = await authPost('/api/ae-action', { action: 'sync', ae_id: ae.id, mois: moisCible })
-        results.push({ nom: ae.prenom + ' ' + ae.nom, ...d })
+        const { data: d } = await Promise.race([
+          authPost('/api/ae-action', { action: 'sync', ae_id: ae.id, mois: moisCible }),
+          new Promise((_, reject) => setTimeout(() => reject(new Error('Timeout (30s)')), 30000)),
+        ])
+        return { nom: ae.prenom + ' ' + ae.nom, ...d }
       } catch (err) {
-        results.push({ nom: ae.prenom + ' ' + ae.nom, error: err.message })
+        return { nom: ae.prenom + ' ' + ae.nom, error: err.message }
       }
     }
+    const results = await Promise.all(liste.map(ae => syncOne(ae)))
     setSyncResults(results)
     setSyncing(false)
   }
