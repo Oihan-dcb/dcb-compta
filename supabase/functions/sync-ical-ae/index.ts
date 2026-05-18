@@ -139,7 +139,6 @@ async function lierMissionResa(
     const { data: resa } = await sb.from('reservation')
       .select('id')
       .eq('bien_id', bien_id)
-      .eq('mois_comptable', mois)
       .eq('final_status', 'accepted')
       .eq('departure_date', depDate)
       .maybeSingle()
