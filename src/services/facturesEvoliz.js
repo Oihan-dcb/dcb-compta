@@ -805,7 +805,11 @@ async function genererFactureDebours(proprio, biens, mois, ctx) {
     let osAutoSurplus    = 0
 
     if (bien.mode_encaissement === 'proprio') {
-      montantAFacturer = autoBien + osAutoHT
+      // En mode proprio, pas de LOY disponible → debours_proprio non absorbable, surplus total
+      const bienPrest = prestByBien.get(bien.id) || []
+      debPropItems = bienPrest.filter(function(p) { return p.type_imputation === 'debours_proprio' })
+      debPropSurplus = debPropItems.reduce(function(s, p) { return s + (p.montant || 0) }, 0)
+      montantAFacturer = autoBien + osAutoHT + debPropSurplus
     } else {
       const loyBien = bienVentil
         .filter(function(l) { return l.code === 'LOY' })
