@@ -26,7 +26,7 @@ const MENTION_MANDAT = "Conformément au mandat de gestion, les honoraires de ge
  * @param {string} mois - YYYY-MM
  */
 export async function genererFacturesMois(mois) {
-  const log = { created: 0, updated: 0, skipped: 0, errors: 0, resteAPayer: 0, deboursCreated: 0, deboursUpdated: 0 }
+  const log = { created: 0, updated: 0, skipped: 0, errors: 0, resteAPayer: 0, deboursCreated: 0, deboursUpdated: 0, lauianFmenCreated: 0, lauianFmenUpdated: 0 }
 
   // RÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂ©cupÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂ©rer tous les propriÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂ©taires avec des biens actifs
   const { data: proprietaires, error: propErr } = await supabase
@@ -83,6 +83,49 @@ export async function genererFacturesMois(mois) {
     }
   }
 
+  // ── Factures FMEN Lauian (DCB uniquement) ──────────────────────────────────
+  // DCB gère le ménage pour tous les biens Lauian — facturé séparément aux proprios Lauian
+  if (AGENCE === 'dcb') {
+    const { data: proprietairesLauian } = await supabase
+      .from('proprietaire')
+      .select(`id, nom, prenom, id_evoliz, iban, bien!inner(id, hospitable_name, code, listed, agence, provision_ae_ref, forfait_dcb_ref, has_ae, mode_encaissement, groupe_facturation)`)
+      .eq('bien.listed', true)
+      .eq('bien.agence', 'lauian')
+      .eq('actif', true)
+
+    if (proprietairesLauian?.length) {
+      const lauianPropMap = new Map()
+      for (const p of proprietairesLauian) {
+        if (!lauianPropMap.has(p.id)) lauianPropMap.set(p.id, { ...p, biens: [] })
+        lauianPropMap.get(p.id).biens.push(...p.bien)
+      }
+      const lauianBienIds = [...lauianPropMap.values()].flatMap(p => p.biens.map(b => b.id))
+      const lauianPropIds = [...lauianPropMap.keys()]
+      const ctxLauian = await prechargerDonneesFacturation(mois, lauianBienIds, lauianPropIds, 'dcb')
+
+      for (const [, proprio] of lauianPropMap) {
+        const groupes = {}
+        for (const bien of proprio.biens) {
+          const key = bien.groupe_facturation ? `groupe_${bien.groupe_facturation}` : `bien_${bien.id}`
+          if (!groupes[key]) groupes[key] = []
+          groupes[key].push(bien)
+        }
+        for (const [key, biens] of Object.entries(groupes)) {
+          try {
+            const fmen = await genererFactureLauianFMEN(proprio, biens, mois, ctxLauian)
+            if (fmen && !fmen.skipped) {
+              if (fmen.created) log.lauianFmenCreated++
+              else log.lauianFmenUpdated++
+            }
+          } catch (err) {
+            console.error(`Erreur FMEN Lauian ${proprio.nom} [${key}]:`, err)
+            log.errors++
+          }
+        }
+      }
+    }
+  }
+
   // CF-P1 dcb_direct : récap interne uniquement (pas de facturation propriétaire)
   // allBienIds déjà calculé avant le préchargement
   const { data: dcbDirectItems } = await supabase
@@ -98,7 +141,7 @@ export async function genererFacturesMois(mois) {
   logOp({
     categorie: 'facture', action: 'generate', mois_comptable: mois,
     statut: log.errors > 0 ? 'warning' : 'ok', source: 'app',
-    message: `Factures ${mois} : ${log.created} créée(s), ${log.updated} mise(s) à jour${log.skipped > 0 ? ', ' + log.skipped + ' ignorée(s) (déjà envoyée(s))' : ''}, ${log.deboursCreated + log.deboursUpdated} débours${log.errors > 0 ? ', ' + log.errors + ' erreur(s)' : ''}`,
+    message: `Factures ${mois} : ${log.created} créée(s), ${log.updated} mise(s) à jour${log.skipped > 0 ? ', ' + log.skipped + ' ignorée(s) (déjà envoyée(s))' : ''}, ${log.deboursCreated + log.deboursUpdated} débours${log.lauianFmenCreated + log.lauianFmenUpdated > 0 ? ', ' + (log.lauianFmenCreated + log.lauianFmenUpdated) + ' FMEN Lauian' : ''}${log.errors > 0 ? ', ' + log.errors + ' erreur(s)' : ''}`,
     meta: log,
   }).catch(() => {})
   return log
@@ -107,7 +150,7 @@ export async function genererFacturesMois(mois) {
 /**
  * GÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂ©nÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂ¨re ou met ÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂ  jour la facture mensuelle d'un propriÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂ©taire
  */
-async function prechargerDonneesFacturation(mois, bienIds, proprietaireIds) {
+async function prechargerDonneesFacturation(mois, bienIds, proprietaireIds, agenceFactures = AGENCE) {
   const [
     { data: ventilData },
     { data: resaData },
@@ -148,8 +191,8 @@ async function prechargerDonneesFacturation(mois, bienIds, proprietaireIds) {
 
     supabase.from('facture_evoliz')
       .select('id, statut, proprietaire_id, bien_id, type_facture')
-      .in('proprietaire_id', proprietaireIds).eq('mois', mois).eq('agence', AGENCE)
-      .in('type_facture', ['honoraires', 'debours']),
+      .in('proprietaire_id', proprietaireIds).eq('mois', mois).eq('agence', agenceFactures)
+      .in('type_facture', ['honoraires', 'debours', 'lauian_fmen']),
   ])
 
   const facturesExistantes = new Map()
@@ -389,9 +432,10 @@ async function genererFactureGroupe(proprio, biens, mois, ctx) {
   const osFmenSurplusHT  = Math.round(osFmenSurplusGlobalTTC / 1.20)
   const osFmenSurplusTVA = osFmenSurplusGlobalTTC - osFmenSurplusHT
 
-  // Totaux facture (inclut owner stay FMEN surplus facturé séparément + frais directs)
-  const totalHT = com.ht + menConsolide.ht + div.ht + haownerHT + osFmenSurplusHT + fraisDirectHT
-  const totalTVA = com.tva + menConsolide.tva + div.tva + haownerTVA + osFmenSurplusTVA + fraisDirectTVA
+  // Totaux facture — en mode Lauian, FMEN est facturé par DCB (pas par Lauian)
+  const inclureFMEN = AGENCE !== 'lauian'
+  const totalHT  = com.ht  + (inclureFMEN ? menConsolide.ht  : 0) + div.ht  + haownerHT  + (inclureFMEN ? osFmenSurplusHT  : 0) + fraisDirectHT
+  const totalTVA = com.tva + (inclureFMEN ? menConsolide.tva : 0) + div.tva + haownerTVA + (inclureFMEN ? osFmenSurplusTVA : 0) + fraisDirectTVA
   const totalTTC = totalHT + totalTVA
 
   // ownerStayAbsorbTotal = part couverte par LOY → réduit le reversement
@@ -508,7 +552,8 @@ async function genererFactureGroupe(proprio, biens, mois, ctx) {
     })
   }
 
-  if (menConsolide.ht > 0) {
+  // FMEN exclu des factures Lauian — c'est DCB qui facture le ménage aux proprios Lauian
+  if (menConsolide.ht > 0 && AGENCE !== 'lauian') {
     lignes.push({
       facture_id: factureId,
       code: 'FMEN',
@@ -626,8 +671,8 @@ async function genererFactureGroupe(proprio, biens, mois, ctx) {
     })
   }
 
-  // Owner stay FMEN surplus : ligne prestation de service par bien (TVA 20%)
-  for (const [, { osFmenSurplus, bienName }] of ownerStaySurplusByBien) {
+  // Owner stay FMEN surplus : ligne prestation de service par bien (TVA 20%) — exclu en mode Lauian
+  for (const [, { osFmenSurplus, bienName }] of (AGENCE !== 'lauian' ? ownerStaySurplusByBien : new Map())) {
     if (osFmenSurplus <= 0) continue
     const osHT  = Math.round(osFmenSurplus / 1.20)
     const osTVA = osFmenSurplus - osHT
@@ -982,18 +1027,92 @@ async function genererFactureDebours(proprio, biens, mois, ctx) {
   return { created, factureId, totalHT, totalTTC: totalHT }
 }
 
+/**
+ * Génère (DCB context) la facture FMEN pour un bien Lauian
+ * DCB est prestataire ménage pour tous les biens Lauian — facturation séparée de la facture Lauian
+ */
+async function genererFactureLauianFMEN(proprio, biens, mois, ctx) {
+  const bienIds = biens.map(function(b) { return b.id })
+  const bienId  = biens.length === 1 ? biens[0].id : null
+
+  const fmenVentil = ctx.ventilationGlobale.filter(function(v) {
+    return bienIds.includes(v.bien_id) && v.code === 'FMEN'
+  })
+  if (fmenVentil.length === 0) return null
+
+  const fmenHT  = fmenVentil.reduce(function(s, v) { return s + (v.montant_ht  || 0) }, 0)
+  const fmenTVA = fmenVentil.reduce(function(s, v) { return s + (v.montant_tva || 0) }, 0)
+  const fmenTTC = fmenVentil.reduce(function(s, v) { return s + (v.montant_ttc || 0) }, 0)
+  if (fmenHT === 0) return null
+
+  const existing = ctx.facturesExistantes.get(
+    `${proprio.id}__${bienId ?? 'null'}__lauian_fmen`
+  ) ?? null
+
+  if (existing && ['envoye_evoliz', 'payee'].includes(existing.statut)) {
+    return { created: false, skipped: true }
+  }
+
+  const libelleGroupe = biens.length === 1 ? biens[0].hospitable_name : biens.map(function(b) { return b.code }).join(', ')
+
+  const factureData = {
+    proprietaire_id:     proprio.id,
+    mois,
+    agence:              AGENCE,
+    bien_id:             bienId,
+    type_facture:        'lauian_fmen',
+    total_ht:            fmenHT,
+    total_tva:           fmenTVA,
+    total_ttc:           fmenTTC,
+    montant_reversement: null,
+    statut:              'brouillon',
+    solde_negatif:       false,
+  }
+
+  let factureId
+  let created = false
+
+  if (existing) {
+    await supabase.from('facture_evoliz').update(factureData).eq('id', existing.id)
+    factureId = existing.id
+  } else {
+    const { data: newFacture } = await supabase
+      .from('facture_evoliz').insert(factureData).select('id').single()
+    if (!newFacture?.id) throw new Error(
+      `genererFactureLauianFMEN: INSERT failed — proprio=${proprio.id} mois=${mois}`
+    )
+    factureId = newFacture.id
+    created = true
+  }
+
+  await supabase.from('facture_evoliz_ligne').delete().eq('facture_id', factureId)
+  await supabase.from('facture_evoliz_ligne').insert({
+    facture_id:  factureId,
+    code:        'FMEN',
+    libelle:     'Forfait ménage, linge et frais de service — prestation DCB',
+    description: `${libelleGroupe} — ménage géré par DCB — ${mois}`,
+    montant_ht:  fmenHT,
+    taux_tva:    20,
+    montant_tva: fmenTVA,
+    montant_ttc: fmenTTC,
+    ordre:       1,
+  })
+
+  return { created, factureId, totalHT: fmenHT, totalTTC: fmenTTC }
+}
+
 export async function getFacturesMois(mois) {
   const { data, error } = await supabase
     .from('facture_evoliz')
     .select(`
       *,
-      bien (id, code),
+      bien (id, code, agence),
       proprietaire (id, nom, prenom, email, iban, id_evoliz, bien(id, code, groupe_facturation)),
       facture_evoliz_ligne (*)
     `)
     .eq('mois', mois)
     .eq('agence', AGENCE)
-    .neq('type_facture', 'com')
+    .in('type_facture', ['honoraires', 'debours', 'lauian_fmen'])
     .order('created_at')
 
   if (error) throw error

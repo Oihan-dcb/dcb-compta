@@ -384,6 +384,9 @@ export default function PageComptabilite() {
           <StatCard label="Biens actifs" value={data.metadata.nb_rows} sub={`${data.metadata.nb_biens} total`} />
           <StatCard label="HON TTC" value={fmt(asum('hon_ttc'))} sub={`HT ${fmt(asum('hon_ht'))}`} />
           <StatCard label="FMEN TTC" value={fmt(asum('fmen_ttc'))} sub={`HT ${fmt(asum('fmen_ht'))}`} />
+          {data.lauianFmenTotal?.ttc > 0 && (
+            <StatCard label="FMEN Lauian TTC" value={fmt(data.lauianFmenTotal.ttc)} sub={`HT ${fmt(data.lauianFmenTotal.ht)}`} />
+          )}
           <StatCard label="AUTO HT" value={fmt(data.totals.auto_ht)} />
           <StatCard label="LOY HT" value={fmt(asum('loy_ht'))} />
           <StatCard label="TAXE HT" value={fmt(asum('taxe_ht'))} />

@@ -47,6 +47,7 @@ import PageProprietaires from './pages/PageProprietaires'
 import PageTaxeSejour from './pages/PageTaxeSejour'
 import PageCloture from './pages/PageCloture'
 import PageDemandesOwner from './pages/PageDemandesOwner'
+import PageLauian from './pages/PageLauian'
 import BugReportButton from './components/BugReportButton'
 import './App.css'
 
@@ -291,6 +292,9 @@ export default function App() {
             <NavLink to="/sms-reviews" className={({isActive}) => isActive ? 'nav-link active' : 'nav-link'}>SMS Reviews</NavLink>
             <NavLink to="/locations-longues" className={({isActive}) => isActive ? 'nav-link active' : 'nav-link'}>Loc-longues</NavLink>
             <NavLink to="/achats" className={({isActive}) => isActive ? 'nav-link active' : 'nav-link'}>Achats</NavLink>
+            {AGENCE === 'dcb' && (
+              <NavLink to="/lauian" className={({isActive}) => isActive ? 'nav-link active' : 'nav-link'}>Lauian</NavLink>
+            )}
             <ConfigDropdown />
             <button
               onClick={() => supabase.auth.signOut()}
@@ -327,6 +331,7 @@ export default function App() {
             <Route path="/demandes-owner" element={<PageDemandesOwner />} />
             <Route path="/taxe-sejour" element={<PageTaxeSejour />} />
             <Route path="/cloture" element={<PageCloture />} />
+            {AGENCE === 'dcb' && <Route path="/lauian" element={<PageLauian />} />}
           </Routes>
         </main>
       </div>

@@ -568,12 +568,29 @@ export async function buildComptaMensuelle(mois, bienIds = null) {
     }
   }
 
+  // FMEN Lauian facturé par DCB — agrégé séparément pour affichage dans les stats
+  let lauianFmenTotal = { ht: 0, tva: 0, ttc: 0 }
+  if (AGENCE === 'dcb') {
+    const { data: lauianFacts } = await supabase
+      .from('facture_evoliz')
+      .select('total_ht, total_tva, total_ttc')
+      .eq('mois', mois)
+      .eq('agence', 'dcb')
+      .eq('type_facture', 'lauian_fmen')
+    lauianFmenTotal = {
+      ht:  (lauianFacts || []).reduce(function(s, f) { return s + (f.total_ht  || 0) }, 0),
+      tva: (lauianFacts || []).reduce(function(s, f) { return s + (f.total_tva || 0) }, 0),
+      ttc: (lauianFacts || []).reduce(function(s, f) { return s + (f.total_ttc || 0) }, 0),
+    }
+  }
+
   return {
     mois,
     rows,
     totals,
     alerts,
     fraisStripe,
+    lauianFmenTotal,
     metadata: {
       generated_at:       new Date().toISOString(),
       nb_biens:           biens.length,

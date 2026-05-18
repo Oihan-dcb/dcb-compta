@@ -720,6 +720,20 @@ const [pushing, setPushing] = useState(false)
                             Débours AE
                           </span>
                         )}
+                        {f.type_facture === 'lauian_fmen' && (
+                          <span style={{ fontSize: 10, fontWeight: 700, background: '#fef9c3',
+                                         color: '#854d0e', borderRadius: 4, padding: '2px 6px',
+                                         marginLeft: 8, verticalAlign: 'middle' }}>
+                            FMEN Lauian
+                          </span>
+                        )}
+                        {f.bien?.agence === 'lauian' && f.type_facture !== 'lauian_fmen' && (
+                          <span style={{ fontSize: 10, fontWeight: 700, background: '#fef3c7',
+                                         color: '#92400e', borderRadius: 4, padding: '2px 6px',
+                                         marginLeft: 8, verticalAlign: 'middle' }}>
+                            LAU
+                          </span>
+                        )}
                       </div>
                     </div>
                   </div>
