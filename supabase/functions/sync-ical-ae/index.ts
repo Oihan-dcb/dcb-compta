@@ -90,6 +90,14 @@ Deno.serve(async (req) => {
 
       if (upsertErr) { skipped++; continue }
       created++
+
+      // Lier reservation_id + ventilation_auto_id pour les Cleaning/Check-out
+      // (Check-in et Maintenance n'ont pas de ventilation AUTO associée)
+      const titreLC = titre.toLowerCase()
+      const isCleaningOrCheckout = titreLC.startsWith('cleaning') || titreLC.startsWith('check-out') || titreLC.startsWith('checkout')
+      if (bien && evt.uid && isCleaningOrCheckout) {
+        await lierMissionResa(sb, { ical_uid: evt.uid, bien_id: bien.id, date_mission: dateStr, mois })
+      }
     }
 
     // Réconciliation : missions en DB non présentes dans le feed → cancelled
@@ -114,6 +122,44 @@ Deno.serve(async (req) => {
     return new Response(JSON.stringify({ error: err.message }), { status: 500 })
   }
 })
+
+// ─── Liaison mission ↔ réservation ↔ ventilation AUTO ─────────────────────
+// Cherche la résa accepted dont departure_date = date_mission ou date_mission+1
+// (ménage la veille du départ), puis remonte le ventilation_auto_id.
+async function lierMissionResa(
+  sb: ReturnType<typeof createClient>,
+  { ical_uid, bien_id, date_mission, mois }: { ical_uid: string; bien_id: string; date_mission: string; mois: string }
+) {
+  // Priorité : date exacte → lendemain (ménage veille)
+  for (const offset of [0, 1]) {
+    const d = new Date(date_mission + 'T12:00:00Z')
+    d.setDate(d.getDate() + offset)
+    const depDate = d.toISOString().substring(0, 10)
+
+    const { data: resa } = await sb.from('reservation')
+      .select('id')
+      .eq('bien_id', bien_id)
+      .eq('mois_comptable', mois)
+      .eq('final_status', 'accepted')
+      .eq('departure_date', depDate)
+      .maybeSingle()
+
+    if (!resa) continue
+
+    const { data: ventil } = await sb.from('ventilation')
+      .select('id')
+      .eq('reservation_id', resa.id)
+      .eq('code', 'AUTO')
+      .maybeSingle()
+
+    await sb.from('mission_menage')
+      .update({ reservation_id: resa.id, ventilation_auto_id: ventil?.id ?? null })
+      .eq('ical_uid', ical_uid)
+      .is('reservation_id', null)  // ne pas écraser un lien déjà établi
+
+    break
+  }
+}
 
 function parseIcal(text) {
   const events = []
