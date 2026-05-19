@@ -1,3 +1,11 @@
+@font-face {
+  font-family: 'Northwell';
+  src: url('/fonts/Northwell.ttf') format('truetype');
+  font-weight: normal;
+  font-style: normal;
+  font-display: swap;
+}
+
 /* DCB Compta - Global styles */
 * { box-sizing: border-box; }
 body { margin: 0; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Arial, sans-serif; background: #f0f4f8; }
