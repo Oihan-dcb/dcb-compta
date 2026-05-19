@@ -120,6 +120,7 @@ function ModalBien({ bien, onClose, saveField, saving }) {
 export default function PageBiens() {
   const [biens, setBiens] = useState([])
   const [filtreAgence, setFiltreAgence] = useState(AGENCE)
+  const [filtreStatut, setFiltreStatut] = useState('actifs')
   const [loading, setLoading] = useState(true)
   const [syncing, setSyncing] = useState(false)
   const [syncResult, setSyncResult] = useState(null)
@@ -374,13 +375,30 @@ export default function PageBiens() {
           </button>
         </div>
       ) : (<>
-              <div style={{marginBottom:10,display:'flex',gap:6,alignItems:'center'}}>
-                <span style={{fontSize:12,color:'#888'}}>Agence :</span>
-                {['dcb','lauian','tous'].map(a => (
-                  <button key={a} onClick={() => setFiltreAgence(a)} style={{padding:'2px 8px',borderRadius:4,border:'1px solid',fontSize:11,cursor:'pointer',background:filtreAgence===a?(a==='lauian'?'#FEF3C7':a==='dcb'?'#FFF8EC':'#F3F4F6'):'#fff',color:filtreAgence===a?(a==='lauian'?'#B45309':a==='dcb'?'#CC9933':'#374151'):'#888',borderColor:filtreAgence===a?(a==='lauian'?'#F59E0B':a==='dcb'?'#CC9933':'#9CA3AF'):'#E5E7EB'}}>
-                    {a==='tous'?'Tous':a==='dcb'?'DCB':'Lauian'}
-                  </button>
-                ))}
+              <div style={{marginBottom:10,display:'flex',gap:12,alignItems:'center',flexWrap:'wrap'}}>
+                <div style={{display:'flex',gap:6,alignItems:'center'}}>
+                  <span style={{fontSize:12,color:'#888'}}>Agence :</span>
+                  {['dcb','lauian','tous'].map(a => (
+                    <button key={a} onClick={() => setFiltreAgence(a)} style={{padding:'2px 8px',borderRadius:4,border:'1px solid',fontSize:11,cursor:'pointer',background:filtreAgence===a?(a==='lauian'?'#FEF3C7':a==='dcb'?'#FFF8EC':'#F3F4F6'):'#fff',color:filtreAgence===a?(a==='lauian'?'#B45309':a==='dcb'?'#CC9933':'#374151'):'#888',borderColor:filtreAgence===a?(a==='lauian'?'#F59E0B':a==='dcb'?'#CC9933':'#9CA3AF'):'#E5E7EB'}}>
+                      {a==='tous'?'Tous':a==='dcb'?'DCB':'Lauian'}
+                    </button>
+                  ))}
+                </div>
+                <div style={{display:'flex',gap:6,alignItems:'center'}}>
+                  <span style={{fontSize:12,color:'#888'}}>Statut :</span>
+                  {[['actifs','Actifs'],['non_publies','Non publiés']].map(([val,label]) => {
+                    const count = biens.filter(b =>
+                      (filtreAgence === 'tous' || (b.agence || 'dcb') === filtreAgence) &&
+                      (val === 'actifs' ? b.listed : !b.listed)
+                    ).length
+                    const active = filtreStatut === val
+                    return (
+                      <button key={val} onClick={() => setFiltreStatut(val)} style={{padding:'2px 8px',borderRadius:4,border:'1px solid',fontSize:11,cursor:'pointer',background:active?(val==='actifs'?'#F0FDF4':'#FFF7F0'):'#fff',color:active?(val==='actifs'?'#16a34a':'#9a3412'):'#888',borderColor:active?(val==='actifs'?'#86EFAC':'#FDBA74'):'#E5E7EB'}}>
+                        {label} <span style={{opacity:0.7}}>({count})</span>
+                      </button>
+                    )
+                  })}
+                </div>
               </div>
 
         {/* Matrice iCal */}
@@ -463,7 +481,10 @@ export default function PageBiens() {
               </tr>
             </thead>
             <tbody>
-              {biens.filter(b => filtreAgence === "tous" || (b.agence || "dcb") === filtreAgence).map(bien => (
+              {biens.filter(b =>
+                (filtreAgence === "tous" || (b.agence || "dcb") === filtreAgence) &&
+                (filtreStatut === 'actifs' ? b.listed : !b.listed)
+              ).map(bien => (
                 <tr key={bien.id}>
                   <td>
                     <div
