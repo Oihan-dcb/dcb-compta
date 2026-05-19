@@ -274,6 +274,30 @@ async function handleReservation(supabase: any, event: string, data: any): Promi
     }).catch((e: any) => console.error('push-resa-notif error (non-fatal):', e?.message))
   }
 
+  // Push notification "Réservation annulée" au proprio
+  if ((event === 'reservation.updated' || event === 'reservation.cancelled') && finalStatus === 'cancelled' && bien?.id) {
+    const portailUrl = Deno.env.get('PORTAIL_OWNER_URL') || 'https://dcb-portail-owner.vercel.app'
+    fetch(`${portailUrl}/api/push-resa-notif`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${SUPABASE_SERVICE_KEY}`,
+      },
+      body: JSON.stringify({
+        bien_id: bien.id,
+        reservation: {
+          arrival_date:   arrival,
+          departure_date: data.departure_date?.substring(0, 10),
+          guest_name:     guestName,
+          platform,
+          nights:         data.nights,
+          cancelled:      true,
+        },
+      }),
+      signal: AbortSignal.timeout(8000),
+    }).catch((e: any) => console.error('push-resa-annul error (non-fatal):', e?.message))
+  }
+
   // Hospitable embarque parfois l'avis dans le payload reservation (pas d'événement review.* séparé)
   if (data.review && typeof data.review === 'object') {
     const reviewPayload = {
