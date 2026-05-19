@@ -20,7 +20,7 @@ function ModalBien({ bien, onClose, saveField, saving }) {
   return (
     <div onClick={onClose} style={{
       position: 'fixed', inset: 0, background: 'rgba(44,36,22,0.45)',
-      zIndex: 1000, display: 'flex', alignItems: 'center', justifyContent: 'center'
+      zIndex: 9999, display: 'flex', alignItems: 'center', justifyContent: 'center'
     }}>
       <div onClick={e => e.stopPropagation()} style={{
         background: '#fff', borderRadius: 12, width: 520, maxWidth: '95vw',
@@ -110,7 +110,7 @@ export default function PageBiens() {
   const [syncing, setSyncing] = useState(false)
   const [syncResult, setSyncResult] = useState(null)
   const [error, setError] = useState(null)
-  const [selectedBienId, setSelectedBienId] = useState(null)
+  const [selectedBien, setSelectedBien] = useState(null)
 
   useEffect(() => {
     chargerBiens()
@@ -263,8 +263,6 @@ export default function PageBiens() {
       setBiens(prev => prev.map(b => b.id === bienId ? { ...b, agence: next } : b))
     } catch (err) { setError('Erreur : ' + err.message) }
   }
-
-  const selectedBien = selectedBienId ? biens.find(b => b.id === selectedBienId) : null
 
   const biensDCB = biens.filter(b => (b.agence || AGENCE) === AGENCE)
   const biensActifs = biensDCB.filter(b => b.listed)
@@ -443,7 +441,7 @@ export default function PageBiens() {
                   <td>
                     <div
                       style={{ fontWeight: 500, cursor: 'pointer', color: 'var(--brand, #CC9933)', textDecoration: 'underline', textDecorationStyle: 'dotted', textUnderlineOffset: 3 }}
-                      onClick={() => setSelectedBienId(bien.id)}
+                      onClick={() => setSelectedBien(bien)}
                       title="Ouvrir la fiche bien"
                     >{bien.hospitable_name}</div>
                     <div style={{ fontSize: 11, color: 'var(--text-muted)', fontFamily: 'monospace' }}>
@@ -696,7 +694,7 @@ export default function PageBiens() {
       {selectedBien && (
         <ModalBien
           bien={selectedBien}
-          onClose={() => setSelectedBienId(null)}
+          onClose={() => setSelectedBien(null)}
           saveField={saveField}
           saving={saving}
         />
