@@ -762,13 +762,7 @@ function TabPortailOwner({ proprio, visConfig, visLoading, visErr, visOk, invite
         {/* Colonne 3 — Opérationnel & Documents */}
         <div>
           <Section title="Ménages">
-            <Toggle field="menage_date"              label="Date dernier/prochain ménage" />
-            <Toggle field="menage_statut"            label="Statut mission" />
-            <Toggle field="prestations_extras_liste" label="Liste prestations extras" />
-            <Toggle field="prestations_montant"      label="Montant prestations" />
-            <Toggle field="menage_photos"            label="Photos avant/après" />
-            <Toggle field="menage_remarques"         label="Remarques" />
-            <Toggle field="menage_incidents"         label="Incidents signalés" />
+            <Toggle field="menage_date" label="Date dernier/prochain ménage" />
           </Section>
 
           <Section title="Maintenance">
