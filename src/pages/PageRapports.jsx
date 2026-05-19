@@ -49,7 +49,7 @@ function PlatformLogo({ platform, ownerStay, size = 18 }) {
   return (
     <span style={{ display: 'inline-flex', alignItems: 'center', gap: 5 }}>
       <img src="/logo-dcb.svg" width={size} height={size} style={{ display: 'block', objectFit: 'contain', flexShrink: 0 }} alt="DCB" />
-      <span style={{ fontFamily: "'Questrial', sans-serif", fontSize: '0.78em', fontWeight: 600, color: '#CC9933', whiteSpace: 'nowrap' }}>{label}</span>
+      <span style={{ fontFamily: "'Questrial', sans-serif", fontSize: '0.92em', fontWeight: 600, color: '#CC9933', whiteSpace: 'nowrap' }}>{label}</span>
     </span>
   )
 }
