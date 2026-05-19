@@ -151,7 +151,7 @@ function ConfigDropdown() {
   const [open, setOpen] = useState(false)
   const ref = useRef(null)
   const location = useLocation()
-  const configPaths = ['/import', '/journal', '/config', '/bugs', '/exports', '/agence', '/taxe-sejour', '/proprietaires', '/demandes-owner', '/cloture']
+  const configPaths = ['/import', '/journal', '/config', '/bugs', '/exports', '/agence', '/taxe-sejour', '/proprietaires', '/demandes-owner', '/cloture', '/sms-reviews']
   const isActive = configPaths.some(p => location.pathname === p)
 
   useEffect(() => {
@@ -176,6 +176,7 @@ function ConfigDropdown() {
             { to: '/proprietaires', label: 'Propriétaires' },
             { to: '/demandes-owner', label: '🏠 Demandes Owner' },
             { to: '/taxe-sejour', label: 'Taxe de séjour' },
+            { to: '/sms-reviews', label: 'Reviews' },
             { to: '/import', label: 'Import CSV' },
             { to: '/journal', label: 'Journal' },
             { to: '/bugs', label: '🐛 Bugs' },
@@ -289,7 +290,6 @@ export default function App() {
             <NavLink to="/factures" className={({isActive}) => isActive ? 'nav-link active' : 'nav-link'}>Facturation</NavLink>
             <NavLink to="/comptabilite" className={({isActive}) => isActive ? 'nav-link active' : 'nav-link'}>Comptabilité</NavLink>
             <NavLink to="/exports" className={({isActive}) => isActive ? 'nav-link active' : 'nav-link'}>Exports</NavLink>
-            <NavLink to="/sms-reviews" className={({isActive}) => isActive ? 'nav-link active' : 'nav-link'}>Reviews</NavLink>
             <NavLink to="/locations-longues" className={({isActive}) => isActive ? 'nav-link active' : 'nav-link'}>Loc-longues</NavLink>
             <NavLink to="/achats" className={({isActive}) => isActive ? 'nav-link active' : 'nav-link'}>Achats</NavLink>
             {AGENCE === 'dcb' && (
