@@ -81,10 +81,10 @@ function ModalFiche({ proprio, onClose, onSaved }) {
   }
 
   const PROFIL_PRESETS = {
-    essentiel:    { revenus_bruts: false, commission_base: true, commission_detail: false, menage: false, prestations: false, taxe_sejour: false, statut_virement: true, date_virement: true, rapprochement: false, taux_occupation: false, prix_moyen: false, comparaison_n1: false, plateforme: false, voyageur_complet: false, note_voyageur: false, menage_date: false, maintenance_actif: false, documents_mandat: true, documents_factures: true, documents_releves: true, demandes_actives: true },
-    standard:     { revenus_bruts: false, commission_base: true, commission_detail: false, menage: true, prestations: true, taxe_sejour: false, statut_virement: true, date_virement: true, rapprochement: false, taux_occupation: true, prix_moyen: false, comparaison_n1: false, plateforme: true, voyageur_complet: false, note_voyageur: false, menage_date: true, maintenance_actif: false, documents_mandat: true, documents_factures: true, documents_releves: true, demandes_actives: true },
-    transparent:  { revenus_bruts: true, commission_base: true, commission_detail: true, menage: true, prestations: true, taxe_sejour: true, statut_virement: true, date_virement: true, rapprochement: false, taux_occupation: true, prix_moyen: true, comparaison_n1: false, plateforme: true, voyageur_complet: false, note_voyageur: false, menage_date: true, maintenance_actif: false, documents_mandat: true, documents_factures: true, documents_releves: true, demandes_actives: true },
-    investisseur: { revenus_bruts: true, commission_base: true, commission_detail: true, menage: true, prestations: true, taxe_sejour: true, statut_virement: true, date_virement: true, rapprochement: true, taux_occupation: true, prix_moyen: true, comparaison_n1: true, plateforme: true, voyageur_complet: false, note_voyageur: true, menage_date: true, maintenance_actif: true, documents_mandat: true, documents_factures: true, documents_releves: true, demandes_actives: true },
+    essentiel:    { revenus_bruts: false, commission_base: true, commission_detail: false, menage: false, prestations: false, taxe_sejour: false, statut_virement: true, date_virement: true, rapprochement: false, taux_occupation: false, prix_moyen: false, comparaison_n1: false, plateforme: false, voyageur_complet: false, note_voyageur: false, menage_date: false, maintenance_actif: false, documents_mandat: true, documents_factures: true, documents_releves: true, demandes_actives: true, types_demandes: ['blocage_dates', 'question'] },
+    standard:     { revenus_bruts: false, commission_base: true, commission_detail: false, menage: true, prestations: true, taxe_sejour: false, statut_virement: true, date_virement: true, rapprochement: false, taux_occupation: true, prix_moyen: false, comparaison_n1: false, plateforme: true, voyageur_complet: false, note_voyageur: false, menage_date: true, maintenance_actif: false, documents_mandat: true, documents_factures: true, documents_releves: true, demandes_actives: true, types_demandes: ['blocage_dates', 'intervention', 'probleme', 'question'] },
+    transparent:  { revenus_bruts: true, commission_base: true, commission_detail: true, menage: true, prestations: true, taxe_sejour: true, statut_virement: true, date_virement: true, rapprochement: false, taux_occupation: true, prix_moyen: true, comparaison_n1: false, plateforme: true, voyageur_complet: false, note_voyageur: false, menage_date: true, maintenance_actif: false, documents_mandat: true, documents_factures: true, documents_releves: true, demandes_actives: true, types_demandes: ['blocage_dates', 'intervention', 'probleme', 'question'] },
+    investisseur: { revenus_bruts: true, commission_base: true, commission_detail: true, menage: true, prestations: true, taxe_sejour: true, statut_virement: true, date_virement: true, rapprochement: true, taux_occupation: true, prix_moyen: true, comparaison_n1: true, plateforme: true, voyageur_complet: false, note_voyageur: true, menage_date: true, maintenance_actif: true, documents_mandat: true, documents_factures: true, documents_releves: true, demandes_actives: true, types_demandes: ['blocage_dates', 'intervention', 'probleme', 'question'] },
   }
 
   const [visConfig, setVisConfig] = useState(null)
@@ -614,6 +614,39 @@ function TabPortailOwner({ proprio, visConfig, visLoading, visErr, visOk, invite
     )
   }
 
+  const TYPES_DEMANDE_OPTS = [
+    { key: 'blocage_dates', label: 'Blocage dates' },
+    { key: 'intervention',  label: 'Intervention' },
+    { key: 'probleme',      label: 'Problème' },
+    { key: 'question',      label: 'Question' },
+  ]
+
+  function TypesDemandes() {
+    const current = Array.isArray(v.types_demandes)
+      ? v.types_demandes
+      : ['blocage_dates', 'intervention', 'probleme', 'question']
+    return (
+      <div style={{ padding: '7px 0', borderBottom: '1px solid var(--border)' }}>
+        <span style={{ fontSize: 13, color: 'var(--text)', display: 'block', marginBottom: 6 }}>Types de demandes autorisés</span>
+        <div style={{ display: 'flex', flexWrap: 'wrap', gap: 10 }}>
+          {TYPES_DEMANDE_OPTS.map(({ key, label }) => (
+            <label key={key} style={{ display: 'flex', alignItems: 'center', gap: 4, fontSize: 12, cursor: v.demandes_actives ? 'pointer' : 'not-allowed', opacity: v.demandes_actives ? 1 : 0.5 }}>
+              <input type="checkbox"
+                checked={current.includes(key)}
+                disabled={!v.demandes_actives}
+                onChange={e => {
+                  const next = e.target.checked ? [...current, key] : current.filter(t => t !== key)
+                  onChangeVis({ types_demandes: next, profil: 'personnalise' })
+                }}
+                style={{ width: 14, height: 14, accentColor: 'var(--brand)' }} />
+              {label}
+            </label>
+          ))}
+        </div>
+      </div>
+    )
+  }
+
   function Section({ title, children }) {
     return (
       <div style={{ marginBottom: 20 }}>
@@ -726,8 +759,6 @@ function TabPortailOwner({ proprio, visConfig, visLoading, visErr, visOk, invite
             <Toggle field="prix_moyen"          label="Prix moyen / nuit (ADR)" />
             <Toggle field="revpar"              label="RevPAR" />
             <Toggle field="comparaison_n1"      label="Comparaison N-1" />
-            <Toggle field="benchmark_marche"       label="Benchmark marché" />
-            <Toggle field="recommandations_dcb"  label="Recommandations DCB" />
             <Toggle field="projection_revenus"   label="Projection revenus" />
           </Section>
         </div>
@@ -755,6 +786,7 @@ function TabPortailOwner({ proprio, visConfig, visLoading, visErr, visOk, invite
             <Toggle field="demandes_actives"    label="Module demandes actif" />
             <Toggle field="messagerie"          label="Messagerie directe" />
             <Toggle field="notifications_email" label="Notifications email" />
+            <TypesDemandes />
           </Section>
         </div>
 
