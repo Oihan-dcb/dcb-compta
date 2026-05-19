@@ -7,47 +7,48 @@ const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL
 const AGENCE_LABELS = { dcb: 'Destination Côte Basque', lauian: 'Lauian Immo', bordeaux: 'Destination Bordeaux' }
 const agenceLabel = AGENCE_LABELS[AGENCE] || AGENCE.toUpperCase()
 
-const TABS = ['Dashboard', 'Queue', 'Logs', 'Test', 'Manuel', 'Campagnes']
+const TABS = ['Dashboard', 'Queue', 'Logs', 'Test', 'Campagnes']
 
-const STATUS_LABEL = { sent: 'Envoyé', error: 'Erreur', no_phone: 'Pas de tél.', skipped: 'Ignoré' }
-const STATUS_COLOR = { sent: '#5a8a5a', error: '#b94a4a', no_phone: '#8a7a4a', skipped: '#888' }
-const LANG_FLAG   = { FR: '🇫🇷', EN: '🇬🇧', ES: '🇪🇸' }
+const STATUS_LABEL = { sent: 'Envoyé', error: 'Erreur', no_phone: 'Ignoré', skipped: 'Ignoré', preview: 'Aperçu' }
+const STATUS_COLOR = { sent: '#5a8a5a', error: '#b94a4a', no_phone: '#888', skipped: '#888', preview: '#8a7a4a' }
+const LANG_FLAG    = { FR: '🇫🇷', EN: '🇬🇧', ES: '🇪🇸' }
 
 export default function PageSmsReviews() {
-  const [tab, setTab] = useState(() => localStorage.getItem('tab_sms') || 'Dashboard')
-  useEffect(() => localStorage.setItem('tab_sms', tab), [tab])
+  const [tab, setTab] = useState(() => localStorage.getItem('tab_msg') || 'Dashboard')
+  useEffect(() => localStorage.setItem('tab_msg', tab), [tab])
   const [logs, setLogs]         = useState([])
   const [stats, setStats]       = useState(null)
-  const [loading, setLoading]   = useState(false)
   const [expandedLog, setExpandedLog] = useState(null)
 
-  // Test
-  const [testPhone, setTestPhone]       = useState('')
-  const [testLang, setTestLang]         = useState('FR')
-  const [testResult, setTestResult]     = useState(null)
-  const [testComment, setTestComment]   = useState(null) // { comment, property_name }
-  const [loadingComment, setLoadingComment] = useState(false)
+  // ── Test ──────────────────────────────────────────────────
+  const [testHospId, setTestHospId]   = useState('')
+  const [testLoading, setTestLoading] = useState(false)
+  const [testResult, setTestResult]   = useState(null)  // { preview, lang, guest, property }
 
-  const piocherCommentaire = useCallback(async () => {
-    setLoadingComment(true)
+  const handleTest = async () => {
+    if (!testHospId.trim()) return
+    setTestLoading(true)
+    setTestResult(null)
     try {
-      const { data } = await supabase
-        .from('reservation_review')
-        .select('comment, bien!inner(hospitable_name, agence)')
-        .eq('bien.agence', AGENCE)
-        .gte('rating', 5)
-        .not('comment', 'is', null)
-        .limit(100)
-      if (data?.length) {
-        const pick = data[Math.floor(Math.random() * data.length)]
-        setTestComment({ comment: pick.comment, property_name: pick.bien?.hospitable_name || agenceLabel })
-      }
+      const { data: { session } } = await supabase.auth.getSession()
+      const res = await fetch(`${SUPABASE_URL}/functions/v1/review-sms-trigger`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${session?.access_token || import.meta.env.VITE_SUPABASE_ANON_KEY}`,
+        },
+        body: JSON.stringify({ mode: 'test', hospitable_id: testHospId.trim(), agence: AGENCE }),
+      })
+      const data = await res.json()
+      setTestResult(data)
+    } catch (e) {
+      setTestResult({ ok: false, error: e.message })
     } finally {
-      setLoadingComment(false)
+      setTestLoading(false)
     }
-  }, [])
+  }
 
-  // Queue
+  // ── Queue ─────────────────────────────────────────────────
   const [queue, setQueue]             = useState([])
   const [loadingQueue, setLoadingQueue] = useState(false)
   const [flushResult, setFlushResult] = useState(null)
@@ -59,31 +60,31 @@ export default function PageSmsReviews() {
   const chargerQueue = useCallback(async () => {
     setLoadingQueue(true)
     try {
-      const { data } = await supabase
-        .from('sms_queue')
-        .select('*')
-        .order('created_at', { ascending: false })
-        .limit(100)
+      const { data } = await supabase.from('sms_queue').select('*').order('created_at', { ascending: false }).limit(100)
       setQueue(data || [])
     } finally {
       setLoadingQueue(false)
     }
   }, [])
 
+  const callEdge = async (fn, body) => {
+    const { data: { session } } = await supabase.auth.getSession()
+    const res = await fetch(`${SUPABASE_URL}/functions/v1/${fn}`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${session?.access_token || import.meta.env.VITE_SUPABASE_ANON_KEY}`,
+      },
+      body: JSON.stringify(body || {}),
+    })
+    return res.json()
+  }
+
   const genererApercus = async () => {
     setGeneratingPreviews(true)
     setPreviewResult(null)
     try {
-      const { data: { session } } = await supabase.auth.getSession()
-      const res = await fetch(`${SUPABASE_URL}/functions/v1/generate-sms-previews`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${session?.access_token || import.meta.env.VITE_SUPABASE_ANON_KEY}`,
-        },
-        body: JSON.stringify({}),
-      })
-      const data = await res.json()
+      const data = await callEdge('generate-sms-previews', {})
       setPreviewResult(data)
       chargerQueue()
     } finally {
@@ -94,19 +95,9 @@ export default function PageSmsReviews() {
   const flushQueue = async () => {
     setFlushResult(null)
     setFlushing(true)
-    // Polling pendant le traitement pour animer les lignes
     const poll = setInterval(() => chargerQueue(), 800)
     try {
-      const { data: { session } } = await supabase.auth.getSession()
-      const res = await fetch(`${SUPABASE_URL}/functions/v1/process-sms-queue`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${session?.access_token || import.meta.env.VITE_SUPABASE_ANON_KEY}`,
-        },
-        body: JSON.stringify({ force: true }),
-      })
-      const data = await res.json()
+      const data = await callEdge('process-sms-queue', { force: true })
       setFlushResult(data)
     } finally {
       clearInterval(poll)
@@ -116,149 +107,48 @@ export default function PageSmsReviews() {
     }
   }
 
-  // Manuel
-  const [manuelSms, setManuelSms]           = useState('')
-  const [manuelCtx, setManuelCtx]           = useState({ property: '', guestName: '', lang: 'FR', comment: '' })
-  const [manuelPhones, setManuelPhones]     = useState([]) // [{id, phone, name}]
-  const [manuelInput, setManuelInput]       = useState({ phone: '', name: '' })
-  const [manuelSending, setManuelSending]   = useState(false)
-  const [manuelGenerating, setManuelGenerating] = useState(false)
-  const [manuelResults, setManuelResults]   = useState(null)
-  const [manuelGoogleUrl, setManuelGoogleUrl] = useState(null)
+  // ── Logs ──────────────────────────────────────────────────
+  const chargerLogs = useCallback(async () => {
+    const { data } = await supabase.from('sms_logs').select('*').order('sent_at', { ascending: false }).limit(200)
+    setLogs(data || [])
 
-  // Charger google_review_url à l'ouverture de l'onglet
-  const chargerGoogleUrl = useCallback(async () => {
-    const { data } = await supabase.from('agency_config').select('google_review_url').eq('agence', AGENCE).single()
-    if (data?.google_review_url) setManuelGoogleUrl(data.google_review_url)
+    const all  = data || []
+    const sent = all.filter(l => l.status === 'sent').length
+    const error = all.filter(l => l.status === 'error').length
+    const byLang = { FR: 0, EN: 0, ES: 0 }
+    all.filter(l => l.status === 'sent').forEach(l => { if (l.language) byLang[l.language] = (byLang[l.language] || 0) + 1 })
+    setStats({ total: all.length, sent, error, byLang, taux: all.length ? Math.round(sent / all.length * 100) : 0 })
   }, [])
 
-  const genererSmsLLM = async () => {
-    setManuelGenerating(true)
-    try {
-      const { lang, property, guestName, comment } = manuelCtx
-      const firstName = (guestName || '').split(' ')[0] || 'cher client'
-      const langLabel = lang === 'FR' ? 'français' : lang === 'EN' ? 'anglais' : 'espagnol'
-      const propName  = property || agenceLabel
-      const googleUrl = manuelGoogleUrl || ''
-      const zoneRule  = `- Ne mentionne AUCUNE région géographique dans le texte`
-      const inviteGoogle = lang === 'FR' ? 'Soutenez-nous sur Google →' : lang === 'EN' ? 'Support us on Google →' : 'Apóyanos en Google →'
-
-      const prompt = `Tu es l'assistant de ${agenceLabel}. ${comment
-        ? `Un voyageur vient de laisser un avis 5⭐ sur Airbnb pour "${propName}". Son commentaire : "${comment}"`
-        : `Rédige un message de remerciement pour un séjour à "${propName}".`}
-Rédige un SMS en ${langLabel} (160-220 caractères hors lien). Règles STRICTES :
-- Commence par "${firstName},"
-- Chaleureux et personnalisé${comment ? ', mentionne un élément précis du commentaire' : ''}
-- N'inclus AUCUNE URL dans le texte
-${zoneRule}
-- Termine EXACTEMENT par : "${inviteGoogle} — ${agenceLabel}"
-- Sans mention STOP
-Réponds UNIQUEMENT avec le texte du SMS. Le lien sera ajouté automatiquement après.`
-
-      const { data: { session } } = await supabase.auth.getSession()
-      const res = await fetch(`${SUPABASE_URL}/functions/v1/llm-analyse`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${session?.access_token || import.meta.env.VITE_SUPABASE_ANON_KEY}` },
-        body: JSON.stringify({ prompt, model: 'claude-haiku-4-5-20251001' }),
-      })
-      const data = await res.json()
-      if (data.text) setManuelSms(data.text + (googleUrl ? '\n' + googleUrl : ''))
-    } finally {
-      setManuelGenerating(false)
-    }
-  }
-
-  const ajouterDestinataire = () => {
-    const phone = manuelInput.phone.trim()
-    if (!phone) return
-    setManuelPhones(prev => [...prev, { id: Date.now(), phone, name: manuelInput.name.trim() }])
-    setManuelInput({ phone: '', name: '' })
-  }
-
-  const supprimerDestinataire = (id) => setManuelPhones(prev => prev.filter(p => p.id !== id))
-
-  const envoyerManuel = async () => {
-    if (!manuelPhones.length || !manuelSms.trim()) return
-    setManuelSending(true)
-    setManuelResults(null)
-    try {
-      const entries = manuelPhones.map(p => ({
-        hospitable_reservation_id: 'manuel-' + Math.random().toString(36).slice(2, 10),
-        guest_name:    p.name || null,
-        guest_phone:   p.phone,
-        property_name: manuelCtx.property || 'Envoi manuel',
-        preview_body:  manuelSms.trim(),
-        send_at:       new Date().toISOString(),
-        status:        'pending',
-        agence:        AGENCE,
-        agence_label:  agenceLabel,
-      }))
-      const { error: insertErr } = await supabase.from('sms_queue').insert(entries)
-      if (insertErr) { setManuelResults({ error: insertErr.message }); return }
-
-      const { data: { session } } = await supabase.auth.getSession()
-      const res = await fetch(`${SUPABASE_URL}/functions/v1/process-sms-queue`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${session?.access_token || import.meta.env.VITE_SUPABASE_ANON_KEY}` },
-        body: JSON.stringify({ force: true }),
-      })
-      const data = await res.json()
-      setManuelResults(data)
-      if (!data.error) { setManuelPhones([]); setManuelSms('') }
-      chargerQueue()
-      chargerLogs()
-    } finally {
-      setManuelSending(false)
-    }
-  }
-
-  // Campagnes
+  // ── Campagnes ─────────────────────────────────────────────
   const [candidats, setCandidats]     = useState([])
   const [selected, setSelected]       = useState(new Set())
   const [campResult, setCampResult]   = useState(null)
   const [loadingCamp, setLoadingCamp] = useState(false)
-  const [rowStatus, setRowStatus]     = useState({}) // hospitable_id → 'sending'|'sent'|'error'
-
-  const chargerLogs = useCallback(async () => {
-    const { data } = await supabase
-      .from('sms_logs')
-      .select('*')
-      .order('sent_at', { ascending: false })
-      .limit(200)
-    setLogs(data || [])
-
-    // Stats
-    const all = data || []
-    const sent    = all.filter(l => l.status === 'sent').length
-    const error   = all.filter(l => l.status === 'error').length
-    const noPhone = all.filter(l => l.status === 'no_phone').length
-    const byLang  = { FR: 0, EN: 0, ES: 0 }
-    all.filter(l => l.status === 'sent').forEach(l => { if (l.language) byLang[l.language] = (byLang[l.language] || 0) + 1 })
-    setStats({ total: all.length, sent, error, noPhone, byLang, taux: all.length ? Math.round(sent / all.length * 100) : 0 })
-  }, [])
+  const [rowStatus, setRowStatus]     = useState({})
 
   const chargerCandidats = useCallback(async () => {
     setLoadingCamp(true)
     try {
-      // Source : reservation (review_rating + guest_phone depuis CSV Hospitable)
       const { data: resas } = await supabase
         .from('reservation')
-        .select('hospitable_id, guest_name, guest_phone, guest_country, guest_locale, review_rating, departure_date, bien_id, bien!inner(hospitable_name, agence)')
+        .select('hospitable_id, guest_name, guest_country, guest_locale, review_rating, departure_date, bien_id, bien!inner(hospitable_name, agence)')
         .eq('bien.agence', AGENCE)
         .gte('review_rating', 5)
+        .not('hospitable_id', 'is', null)
         .order('departure_date', { ascending: false })
         .limit(500)
 
       if (!resas?.length) { setCandidats([]); return }
 
-      // Dédup par guest_phone — SMS déjà envoyés
-      const phones = [...new Set(resas.map(r => r.guest_phone).filter(Boolean))]
-      const { data: sentLogs } = phones.length
-        ? await supabase.from('sms_logs').select('guest_phone').eq('status', 'sent').in('guest_phone', phones)
+      // Dédup par hospitable_id déjà contacté
+      const hospIds = resas.map(r => r.hospitable_id).filter(Boolean)
+      const { data: sentLogs } = hospIds.length
+        ? await supabase.from('sms_logs').select('hospitable_reservation_id').eq('status', 'sent').in('hospitable_reservation_id', hospIds)
         : { data: [] }
-      const sentPhones = new Set((sentLogs || []).map(l => l.guest_phone))
+      const sentIds = new Set((sentLogs || []).map(l => l.hospitable_reservation_id))
 
-      // Commentaires depuis reservation_review par bien_id + proximité date départ
+      // Commentaires depuis reservation_review
       const bienIds = [...new Set(resas.map(r => r.bien_id).filter(Boolean))]
       const { data: revRows } = await supabase
         .from('reservation_review')
@@ -286,14 +176,13 @@ Réponds UNIQUEMENT avec le texte du SMS. Le lien sera ajouté automatiquement a
         return {
           hospitable_id: r.hospitable_id,
           guest_name:    r.guest_name || '—',
-          guest_phone:   r.guest_phone || null,
           guest_country: r.guest_country || null,
-          guest_locale:  r.guest_locale  || null,
+          guest_locale:  r.guest_locale || null,
           property_name: r.bien?.hospitable_name || '—',
           rating:        r.review_rating,
           comment,
-          submitted_at:  r.departure_date,
-          already_sent:  sentPhones.has(r.guest_phone),
+          departure_date: r.departure_date,
+          already_sent:  sentIds.has(r.hospitable_id),
         }
       })
 
@@ -303,51 +192,6 @@ Réponds UNIQUEMENT avec le texte du SMS. Le lien sera ajouté automatiquement a
       setLoadingCamp(false)
     }
   }, [])
-
-  useEffect(() => {
-    chargerLogs()
-  }, [chargerLogs])
-
-  useEffect(() => {
-    if (tab === 'Campagnes') chargerCandidats()
-    if (tab === 'Test' && !testComment) piocherCommentaire()
-    if (tab === 'Queue') chargerQueue()
-    if (tab === 'Manuel' && !manuelGoogleUrl) chargerGoogleUrl()
-  }, [tab, chargerCandidats, piocherCommentaire, testComment, chargerQueue, chargerGoogleUrl, manuelGoogleUrl])
-
-  const callEdgeFn = async (body) => {
-    const { data: { session } } = await supabase.auth.getSession()
-    const res = await fetch(`${SUPABASE_URL}/functions/v1/review-sms-trigger`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'Authorization': `Bearer ${session?.access_token || import.meta.env.VITE_SUPABASE_ANON_KEY}`,
-      },
-      body: JSON.stringify({ ...body, agence: AGENCE }),
-    })
-    return res.json()
-  }
-
-  const handleTest = async () => {
-    if (!testPhone) return
-    setLoading(true)
-    setTestResult(null)
-    try {
-      const data = await callEdgeFn({
-        mode: 'test',
-        phone: testPhone,
-        language: testLang,
-        comment: testComment?.comment || null,
-        property: testComment?.property_name || agenceLabel,
-      })
-      setTestResult(data)
-      if (data.ok) chargerLogs()
-    } catch (e) {
-      setTestResult({ ok: false, error: e.message })
-    } finally {
-      setLoading(false)
-    }
-  }
 
   const handleCampagne = async () => {
     if (!selected.size) return
@@ -360,7 +204,11 @@ Réponds UNIQUEMENT avec le texte du SMS. Le lien sera ajouté automatiquement a
     for (const r of toSend) {
       setRowStatus(prev => ({ ...prev, [r.hospitable_id]: 'sending' }))
       try {
-        const data = await callEdgeFn({ mode: 'campaign', reservations: [r] })
+        const data = await callEdge('review-sms-trigger', {
+          mode: 'campaign',
+          agence: AGENCE,
+          reservations: [r],
+        })
         const res = data.results?.[0]
         setRowStatus(prev => ({ ...prev, [r.hospitable_id]: res?.ok ? 'sent' : 'error' }))
         results.push({ ...res, hospitable_id: r.hospitable_id })
@@ -376,21 +224,8 @@ Réponds UNIQUEMENT avec le texte du SMS. Le lien sera ajouté automatiquement a
     chargerCandidats()
   }
 
-  const smsCost = (phone) => {
-    if (!phone) return 0.095
-    const p = phone.replace(/\s/g, '')
-    if (/^\+33/.test(p) || /^\+32/.test(p)) return 0.075
-    if (/^\+34/.test(p) || /^\+52/.test(p)) return 0.085
-    if (/^\+44/.test(p) || /^\+1/.test(p))  return 0.085
-    return 0.095
-  }
-
-  const totalCost = candidats
-    .filter(c => selected.has(c.hospitable_id))
-    .reduce((sum, c) => sum + smsCost(c.guest_phone), 0)
-
   const toggleAll = () => {
-    const selectable = candidats.filter(c => c.guest_phone && !c.already_sent)
+    const selectable = candidats.filter(c => !c.already_sent)
     if (selected.size === selectable.length) setSelected(new Set())
     else setSelected(new Set(selectable.map(c => c.hospitable_id)))
   }
@@ -401,26 +236,32 @@ Réponds UNIQUEMENT avec le texte du SMS. Le lien sera ajouté automatiquement a
     setSelected(s)
   }
 
+  useEffect(() => { chargerLogs() }, [chargerLogs])
+
+  useEffect(() => {
+    if (tab === 'Campagnes') chargerCandidats()
+    if (tab === 'Queue') chargerQueue()
+  }, [tab, chargerCandidats, chargerQueue])
+
+  // ── Rendu ─────────────────────────────────────────────────
   return (
     <div style={{ padding: '2rem', maxWidth: 1100, margin: '0 auto' }}>
       <h1 style={{ fontSize: '1.5rem', fontWeight: 700, color: 'var(--text)', marginBottom: '0.25rem' }}>
-        SMS Reviews
+        Messages Reviews
       </h1>
       <p style={{ color: '#888', fontSize: '0.875rem', marginBottom: '1.5rem' }}>
-        Remerciements automatiques après avis 5⭐ Airbnb
+        Remerciements personnalisés via Hospitable après avis 5⭐
       </p>
 
       {/* Tabs */}
       <div style={{ display: 'flex', gap: '0.5rem', marginBottom: '1.5rem', borderBottom: '2px solid var(--border)' }}>
         {TABS.map(t => (
           <button key={t} onClick={() => setTab(t)} style={{
-            padding: '0.5rem 1.25rem',
-            background: 'none', border: 'none', cursor: 'pointer',
+            padding: '0.5rem 1.25rem', background: 'none', border: 'none', cursor: 'pointer',
             fontWeight: tab === t ? 700 : 400,
             color: tab === t ? 'var(--brand)' : 'var(--text)',
             borderBottom: tab === t ? '2px solid var(--brand)' : '2px solid transparent',
-            marginBottom: -2,
-            fontSize: '0.9rem',
+            marginBottom: -2, fontSize: '0.9rem',
           }}>
             {t}
           </button>
@@ -431,39 +272,38 @@ Réponds UNIQUEMENT avec le texte du SMS. Le lien sera ajouté automatiquement a
       {tab === 'Dashboard' && stats && stats.total === 0 && (
         <div style={{ background: 'var(--bg)', border: '1px solid var(--border)', borderRadius: 10, padding: '2rem', textAlign: 'center', color: '#999' }}>
           <div style={{ fontSize: '2.5rem', marginBottom: '0.75rem' }}>📭</div>
-          <div style={{ fontWeight: 600, color: 'var(--text)', marginBottom: '0.5rem' }}>Aucun SMS envoyé pour le moment</div>
-          <div style={{ fontSize: '0.875rem' }}>Utilisez l'onglet <strong>Test</strong> pour envoyer un premier SMS, ou l'onglet <strong>Campagnes</strong> pour contacter vos clients.</div>
+          <div style={{ fontWeight: 600, color: 'var(--text)', marginBottom: '0.5rem' }}>Aucun message envoyé pour le moment</div>
+          <div style={{ fontSize: '0.875rem' }}>Utilisez l'onglet <strong>Test</strong> pour prévisualiser un message, ou <strong>Campagnes</strong> pour contacter vos clients.</div>
         </div>
       )}
       {tab === 'Dashboard' && stats && stats.total > 0 && (
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '1rem', marginBottom: '2rem' }}>
-          {[
-            { label: 'SMS envoyés',   value: stats.sent,    sub: 'total' },
-            { label: 'Taux succès',   value: stats.taux + '%', sub: `${stats.total} traitées` },
-            { label: 'Sans téléphone', value: stats.noPhone, sub: 'no_phone' },
-            { label: 'Erreurs',       value: stats.error,   sub: 'à vérifier' },
-          ].map(({ label, value, sub }) => (
-            <div key={label} style={{ background: 'var(--bg)', border: '1px solid var(--border)', borderRadius: 10, padding: '1.25rem' }}>
-              <div style={{ fontSize: '2rem', fontWeight: 700, color: 'var(--brand)' }}>{value}</div>
-              <div style={{ fontWeight: 600, color: 'var(--text)', fontSize: '0.875rem' }}>{label}</div>
-              <div style={{ color: '#999', fontSize: '0.75rem' }}>{sub}</div>
-            </div>
-          ))}
-        </div>
-      )}
-      {tab === 'Dashboard' && stats && stats.total > 0 && (
-        <div style={{ background: 'var(--bg)', border: '1px solid var(--border)', borderRadius: 10, padding: '1.25rem' }}>
-          <div style={{ fontWeight: 600, marginBottom: '1rem' }}>Envois par langue</div>
-          <div style={{ display: 'flex', gap: '2rem' }}>
-            {Object.entries(stats.byLang).map(([lang, count]) => (
-              <div key={lang} style={{ textAlign: 'center' }}>
-                <div style={{ fontSize: '1.5rem' }}>{LANG_FLAG[lang]}</div>
-                <div style={{ fontWeight: 700, fontSize: '1.25rem' }}>{count}</div>
-                <div style={{ color: '#888', fontSize: '0.75rem' }}>{lang}</div>
+        <>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '1rem', marginBottom: '2rem' }}>
+            {[
+              { label: 'Messages envoyés', value: stats.sent,          sub: 'via Hospitable' },
+              { label: 'Taux succès',       value: stats.taux + '%',   sub: `${stats.total} traitées` },
+              { label: 'Erreurs',           value: stats.error,        sub: 'à vérifier' },
+            ].map(({ label, value, sub }) => (
+              <div key={label} style={{ background: 'var(--bg)', border: '1px solid var(--border)', borderRadius: 10, padding: '1.25rem' }}>
+                <div style={{ fontSize: '2rem', fontWeight: 700, color: 'var(--brand)' }}>{value}</div>
+                <div style={{ fontWeight: 600, color: 'var(--text)', fontSize: '0.875rem' }}>{label}</div>
+                <div style={{ color: '#999', fontSize: '0.75rem' }}>{sub}</div>
               </div>
             ))}
           </div>
-        </div>
+          <div style={{ background: 'var(--bg)', border: '1px solid var(--border)', borderRadius: 10, padding: '1.25rem' }}>
+            <div style={{ fontWeight: 600, marginBottom: '1rem' }}>Envois par langue</div>
+            <div style={{ display: 'flex', gap: '2rem' }}>
+              {Object.entries(stats.byLang).map(([lang, count]) => (
+                <div key={lang} style={{ textAlign: 'center' }}>
+                  <div style={{ fontSize: '1.5rem' }}>{LANG_FLAG[lang]}</div>
+                  <div style={{ fontWeight: 700, fontSize: '1.25rem' }}>{count}</div>
+                  <div style={{ color: '#888', fontSize: '0.75rem' }}>{lang}</div>
+                </div>
+              ))}
+            </div>
+          </div>
+        </>
       )}
 
       {/* ── QUEUE ── */}
@@ -471,7 +311,7 @@ Réponds UNIQUEMENT avec le texte du SMS. Le lien sera ajouté automatiquement a
         <div>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem' }}>
             <div style={{ color: '#888', fontSize: '0.875rem' }}>
-              SMS en attente d'envoi ({queue.filter(q => q.status === 'pending').length} pending,{' '}
+              Messages en attente ({queue.filter(q => q.status === 'pending').length} pending,{' '}
               {queue.filter(q => q.status === 'error').length} erreurs)
             </div>
             <div style={{ display: 'flex', gap: '0.5rem' }}>
@@ -487,8 +327,7 @@ Réponds UNIQUEMENT avec le texte du SMS. Le lien sera ajouté automatiquement a
             </div>
           </div>
           {previewResult && (
-            <div style={{ marginBottom: '0.5rem', padding: '0.5rem 1rem', borderRadius: 8, fontSize: '0.875rem', fontWeight: 600,
-              background: '#5a8a5a22', color: '#5a8a5a', border: '1px solid #5a8a5a55' }}>
+            <div style={{ marginBottom: '0.5rem', padding: '0.5rem 1rem', borderRadius: 8, fontSize: '0.875rem', fontWeight: 600, background: '#5a8a5a22', color: '#5a8a5a', border: '1px solid #5a8a5a55' }}>
               {previewResult.error ? `Erreur : ${previewResult.error}` : `✓ ${previewResult.updated} aperçu${previewResult.updated !== 1 ? 's' : ''} généré${previewResult.updated !== 1 ? 's' : ''}`}
             </div>
           )}
@@ -504,14 +343,14 @@ Réponds UNIQUEMENT avec le texte du SMS. Le lien sera ajouté automatiquement a
             <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.85rem' }}>
               <thead>
                 <tr style={{ background: '#EAE3D4', borderBottom: '2px solid var(--border)' }}>
-                  {['Créé le', 'Envoi prévu', 'Client', 'Téléphone', 'Propriété', 'Note', 'Aperçu SMS', 'Statut'].map(h => (
+                  {['Créé le', 'Envoi prévu', 'Client', 'Propriété', 'Note', 'Aperçu message', 'Statut'].map(h => (
                     <th key={h} style={{ padding: '0.65rem 1rem', textAlign: 'left', fontWeight: 600, color: 'var(--text)' }}>{h}</th>
                   ))}
                 </tr>
               </thead>
               <tbody>
                 {loadingQueue && <tr><td colSpan={7} style={{ padding: '2rem', textAlign: 'center', color: '#999' }}>Chargement…</td></tr>}
-                {!loadingQueue && queue.length === 0 && <tr><td colSpan={8} style={{ padding: '2rem', textAlign: 'center', color: '#999' }}>Queue vide</td></tr>}
+                {!loadingQueue && queue.length === 0 && <tr><td colSpan={7} style={{ padding: '2rem', textAlign: 'center', color: '#999' }}>Queue vide</td></tr>}
                 {queue.map((q, i) => {
                   const isPending  = q.status === 'pending'
                   const isReady    = isPending && new Date(q.send_at) <= new Date()
@@ -529,17 +368,13 @@ Réponds UNIQUEMENT avec le texte du SMS. Le lien sera ajouté automatiquement a
                           {new Date(q.send_at).toLocaleDateString('fr-FR', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' })}
                         </td>
                         <td style={{ padding: '0.6rem 1rem' }}>{q.guest_name || '—'}</td>
-                        <td style={{ padding: '0.6rem 1rem', fontFamily: 'monospace' }}>{q.guest_phone || '—'}</td>
                         <td style={{ padding: '0.6rem 1rem' }}>{q.property_name || '—'}</td>
                         <td style={{ padding: '0.6rem 1rem' }}>{q.rating ? '⭐'.repeat(Math.min(q.rating, 5)) : '—'}</td>
-                        <td style={{ padding: '0.6rem 1rem', maxWidth: 220 }}>
+                        <td style={{ padding: '0.6rem 1rem', maxWidth: 260 }}>
                           {preview ? (
-                            <span
-                              onClick={() => setExpandedQueue(isExpanded ? null : q.id)}
+                            <span onClick={() => setExpandedQueue(isExpanded ? null : q.id)}
                               style={{ cursor: 'pointer', color: q.preview_body ? 'var(--text)' : '#999', fontSize: '0.8rem',
-                                display: 'block', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}
-                              title="Cliquer pour voir le SMS complet"
-                            >
+                                display: 'block', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                               {q.preview_body ? '💬 ' : '📝 '}{preview}
                             </span>
                           ) : <span style={{ color: '#ccc', fontSize: '0.8rem' }}>—</span>}
@@ -550,13 +385,13 @@ Réponds UNIQUEMENT avec le texte du SMS. Le lien sera ajouté automatiquement a
                         </td>
                       </tr>
                       {isExpanded && (
-                        <tr key={q.id + '-expanded'} style={{ borderBottom: '1px solid var(--border)', background: i % 2 === 0 ? 'transparent' : '#faf8f4' }}>
-                          <td colSpan={8} style={{ padding: '0 1rem 0.75rem 1rem' }}>
+                        <tr key={q.id + '-exp'} style={{ borderBottom: '1px solid var(--border)', background: i % 2 === 0 ? 'transparent' : '#faf8f4' }}>
+                          <td colSpan={7} style={{ padding: '0 1rem 0.75rem 1rem' }}>
                             <div style={{ background: '#fff', border: '1px solid var(--border)', borderRadius: 8, padding: '0.75rem 1rem',
                               fontSize: '0.85rem', lineHeight: 1.6, whiteSpace: 'pre-wrap', color: 'var(--text)', maxWidth: 600 }}>
                               {q.preview_body || q.comment}
                             </div>
-                            {!q.preview_body && <div style={{ fontSize: '0.75rem', color: '#aaa', marginTop: 4 }}>Commentaire Airbnb — le SMS final sera généré par IA à l'envoi</div>}
+                            {!q.preview_body && <div style={{ fontSize: '0.75rem', color: '#aaa', marginTop: 4 }}>Commentaire Airbnb — le message final sera généré par IA via Hospitable à l'envoi</div>}
                           </td>
                         </tr>
                       )}
@@ -575,7 +410,7 @@ Réponds UNIQUEMENT avec le texte du SMS. Le lien sera ajouté automatiquement a
           <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.85rem' }}>
             <thead>
               <tr style={{ background: '#EAE3D4', borderBottom: '2px solid var(--border)' }}>
-                {['Date', 'Client', 'Téléphone', 'Message envoyé', 'Langue', 'Statut'].map(h => (
+                {['Date', 'Client', 'Message envoyé', 'Langue', 'Statut'].map(h => (
                   <th key={h} style={{ padding: '0.65rem 1rem', textAlign: 'left', fontWeight: 600, color: 'var(--text)' }}>{h}</th>
                 ))}
               </tr>
@@ -587,11 +422,8 @@ Réponds UNIQUEMENT avec le texte du SMS. Le lien sera ajouté automatiquement a
                     {l.sent_at ? new Date(l.sent_at).toLocaleDateString('fr-FR', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' }) : '—'}
                   </td>
                   <td style={{ padding: '0.6rem 1rem' }}>{l.guest_name || '—'}</td>
-                  <td style={{ padding: '0.6rem 1rem', fontFamily: 'monospace', whiteSpace: 'nowrap' }}>{l.guest_phone || '—'}</td>
-                  <td style={{ padding: '0.6rem 1rem', maxWidth: 340 }}
-                    onClick={() => setExpandedLog(expandedLog === l.id ? null : l.id)}
-                    title={expandedLog === l.id ? 'Cliquer pour réduire' : 'Cliquer pour voir le message complet'}
-                    style={{ padding: '0.6rem 1rem', maxWidth: 340, cursor: 'pointer' }}>
+                  <td style={{ padding: '0.6rem 1rem', maxWidth: 380, cursor: 'pointer' }}
+                    onClick={() => setExpandedLog(expandedLog === l.id ? null : l.id)}>
                     {l.sms_body ? (
                       <span style={{
                         display: 'block',
@@ -617,7 +449,7 @@ Réponds UNIQUEMENT avec le texte du SMS. Le lien sera ajouté automatiquement a
                 </tr>
               ))}
               {logs.length === 0 && (
-                <tr><td colSpan={6} style={{ padding: '2rem', textAlign: 'center', color: '#999' }}>Aucun log pour le moment</td></tr>
+                <tr><td colSpan={5} style={{ padding: '2rem', textAlign: 'center', color: '#999' }}>Aucun log pour le moment</td></tr>
               )}
             </tbody>
           </table>
@@ -626,219 +458,60 @@ Réponds UNIQUEMENT avec le texte du SMS. Le lien sera ajouté automatiquement a
 
       {/* ── TEST ── */}
       {tab === 'Test' && (
-        <div style={{ maxWidth: 520 }}>
+        <div style={{ maxWidth: 580 }}>
           <div style={{ background: 'var(--bg)', border: '1px solid var(--border)', borderRadius: 10, padding: '1.5rem', display: 'flex', flexDirection: 'column', gap: '1rem' }}>
             <div>
               <label style={{ display: 'block', fontWeight: 600, marginBottom: '0.4rem', fontSize: '0.875rem' }}>
-                Numéro de téléphone
+                UUID de réservation Hospitable
               </label>
               <input
-                type="tel"
-                placeholder="+33612345678"
-                value={testPhone}
-                onChange={e => setTestPhone(e.target.value)}
-                style={{ width: '100%', padding: '0.6rem 0.75rem', border: '1px solid var(--border)', borderRadius: 8, fontSize: '0.9rem', background: '#fff', boxSizing: 'border-box' }}
+                type="text"
+                placeholder="ex: 550e8400-e29b-41d4-a716-446655440000"
+                value={testHospId}
+                onChange={e => setTestHospId(e.target.value)}
+                style={{ width: '100%', padding: '0.6rem 0.75rem', border: '1px solid var(--border)', borderRadius: 8, fontSize: '0.875rem', background: '#fff', boxSizing: 'border-box', fontFamily: 'monospace' }}
               />
-            </div>
-            <div>
-              <label style={{ display: 'block', fontWeight: 600, marginBottom: '0.4rem', fontSize: '0.875rem' }}>Langue du SMS</label>
-              <div style={{ display: 'flex', gap: '0.5rem' }}>
-                {['FR', 'EN', 'ES'].map(l => (
-                  <button key={l} onClick={() => setTestLang(l)} style={{
-                    padding: '0.4rem 1rem', borderRadius: 8, cursor: 'pointer',
-                    background: testLang === l ? 'var(--brand)' : 'transparent',
-                    color: testLang === l ? '#fff' : 'var(--text)',
-                    border: `1px solid ${testLang === l ? 'var(--brand)' : 'var(--border)'}`,
-                    fontWeight: testLang === l ? 700 : 400,
-                  }}>
-                    {LANG_FLAG[l]} {l}
-                  </button>
-                ))}
+              <div style={{ fontSize: '0.75rem', color: '#aaa', marginTop: '0.3rem' }}>
+                Génère un aperçu du message (sans envoyer). L'UUID vient de la colonne hospitable_id de la table reservation.
               </div>
-            </div>
-            <div>
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.4rem' }}>
-                <label style={{ fontWeight: 600, fontSize: '0.875rem' }}>Commentaire Airbnb utilisé</label>
-                <button onClick={piocherCommentaire} disabled={loadingComment} style={{
-                  fontSize: '0.78rem', padding: '0.2rem 0.6rem', borderRadius: 6,
-                  border: '1px solid var(--border)', background: 'transparent', cursor: 'pointer', color: 'var(--text)',
-                }}>
-                  {loadingComment ? '…' : '↻ Autre'}
-                </button>
-              </div>
-              {testComment ? (
-                <div style={{ background: '#fff', border: '1px solid var(--border)', borderRadius: 8, padding: '0.6rem 0.75rem', fontSize: '0.82rem', color: '#555', fontStyle: 'italic', lineHeight: 1.5 }}>
-                  <span style={{ fontWeight: 600, fontStyle: 'normal', color: 'var(--text)', fontSize: '0.78rem' }}>{testComment.property_name} — </span>
-                  "{testComment.comment}"
-                </div>
-              ) : (
-                <div style={{ color: '#aaa', fontSize: '0.82rem' }}>Chargement…</div>
-              )}
             </div>
             <button
               onClick={handleTest}
-              disabled={loading || !testPhone}
+              disabled={testLoading || !testHospId.trim()}
               style={{
-                padding: '0.75rem', background: loading || !testPhone ? '#ccc' : 'var(--brand)',
+                padding: '0.75rem', background: testLoading || !testHospId.trim() ? '#ccc' : 'var(--brand)',
                 color: '#fff', border: 'none', borderRadius: 8, fontWeight: 700,
-                cursor: loading || !testPhone ? 'not-allowed' : 'pointer', fontSize: '0.9rem',
+                cursor: testLoading || !testHospId.trim() ? 'not-allowed' : 'pointer', fontSize: '0.9rem',
               }}>
-              {loading ? 'Envoi...' : 'Envoyer SMS de test'}
+              {testLoading ? 'Génération…' : '✨ Générer aperçu'}
             </button>
             {testResult && (
-              <div style={{
-                padding: '0.75rem', borderRadius: 8,
-                background: testResult.ok && !testResult.db_error ? '#5a8a5a22' : '#b94a4a22',
-                color: testResult.ok && !testResult.db_error ? '#5a8a5a' : '#b94a4a',
-                border: `1px solid ${testResult.ok && !testResult.db_error ? '#5a8a5a55' : '#b94a4a55'}`,
-                fontWeight: 600, fontSize: '0.875rem',
-              }}>
-                {testResult.ok && !testResult.db_error
-                  ? '✓ SMS envoyé et loggé avec succès !'
-                  : testResult.ok && testResult.db_error
-                  ? `✓ SMS envoyé (Twilio OK) mais erreur log : ${testResult.db_error}`
-                  : `✗ Erreur : ${testResult.error}`}
-              </div>
-            )}
-          </div>
-          <p style={{ color: '#888', fontSize: '0.8rem', marginTop: '0.75rem' }}>
-            Envoie un SMS de test (loggé avec statut "sent" dans la table sms_logs).
-          </p>
-        </div>
-      )}
-
-      {/* ── MANUEL ── */}
-      {tab === 'Manuel' && (
-        <div style={{ maxWidth: 640 }}>
-          {/* Contexte LLM */}
-          <div style={{ background: 'var(--bg)', border: '1px solid var(--border)', borderRadius: 10, padding: '1.5rem', marginBottom: '1rem' }}>
-            <div style={{ fontWeight: 600, fontSize: '0.875rem', marginBottom: '0.75rem' }}>Contexte pour la génération LLM</div>
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.65rem', marginBottom: '0.65rem' }}>
               <div>
-                <label style={{ display: 'block', fontSize: '0.78rem', color: '#888', marginBottom: '0.25rem' }}>Propriété</label>
-                <input value={manuelCtx.property} onChange={e => setManuelCtx(p => ({ ...p, property: e.target.value }))}
-                  placeholder="ex: 416 Harea" style={{ width: '100%', padding: '0.5rem 0.7rem', border: '1px solid var(--border)', borderRadius: 8, fontSize: '0.875rem', background: '#fff', boxSizing: 'border-box' }} />
-              </div>
-              <div>
-                <label style={{ display: 'block', fontSize: '0.78rem', color: '#888', marginBottom: '0.25rem' }}>Nom du client</label>
-                <input value={manuelCtx.guestName} onChange={e => setManuelCtx(p => ({ ...p, guestName: e.target.value }))}
-                  placeholder="ex: Marie Dupont" style={{ width: '100%', padding: '0.5rem 0.7rem', border: '1px solid var(--border)', borderRadius: 8, fontSize: '0.875rem', background: '#fff', boxSizing: 'border-box' }} />
-              </div>
-            </div>
-            <div style={{ marginBottom: '0.65rem' }}>
-              <label style={{ display: 'block', fontSize: '0.78rem', color: '#888', marginBottom: '0.25rem' }}>Commentaire Airbnb (optionnel)</label>
-              <textarea value={manuelCtx.comment} onChange={e => setManuelCtx(p => ({ ...p, comment: e.target.value }))}
-                placeholder="Coller le commentaire Airbnb ici pour un SMS plus personnalisé…"
-                rows={2} style={{ width: '100%', padding: '0.5rem 0.7rem', border: '1px solid var(--border)', borderRadius: 8, fontSize: '0.82rem', background: '#fff', resize: 'vertical', boxSizing: 'border-box', fontFamily: 'inherit' }} />
-            </div>
-            <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
-              <div style={{ display: 'flex', gap: '0.4rem' }}>
-                {['FR', 'EN', 'ES'].map(l => (
-                  <button key={l} onClick={() => setManuelCtx(p => ({ ...p, lang: l })) } style={{
-                    padding: '0.3rem 0.75rem', borderRadius: 8, cursor: 'pointer', fontSize: '0.8rem',
-                    background: manuelCtx.lang === l ? 'var(--brand)' : 'transparent',
-                    color: manuelCtx.lang === l ? '#fff' : 'var(--text)',
-                    border: `1px solid ${manuelCtx.lang === l ? 'var(--brand)' : 'var(--border)'}`,
-                    fontWeight: manuelCtx.lang === l ? 700 : 400,
-                  }}>{LANG_FLAG[l]} {l}</button>
-                ))}
-              </div>
-              <button onClick={genererSmsLLM} disabled={manuelGenerating} style={{
-                marginLeft: 'auto', padding: '0.45rem 1.1rem', background: manuelGenerating ? '#ccc' : '#2C2416',
-                color: '#fff', border: 'none', borderRadius: 8, cursor: manuelGenerating ? 'not-allowed' : 'pointer',
-                fontSize: '0.85rem', fontWeight: 700,
-              }}>
-                {manuelGenerating ? '⏳ Génération…' : '✨ Générer via LLM'}
-              </button>
-            </div>
-          </div>
-
-          {/* SMS text */}
-          <div style={{ background: 'var(--bg)', border: '1px solid var(--border)', borderRadius: 10, padding: '1.5rem', marginBottom: '1rem' }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.4rem' }}>
-              <label style={{ fontWeight: 600, fontSize: '0.875rem' }}>Texte du SMS <span style={{ fontWeight: 400, color: '#aaa' }}>(éditable)</span></label>
-              <span style={{ fontSize: '0.75rem', color: manuelSms.length > 320 ? '#b94a4a' : manuelSms.length > 160 ? '#8a7a4a' : '#999' }}>
-                {manuelSms.length} car. · {Math.ceil(manuelSms.length / 160) || 1} SMS
-              </span>
-            </div>
-            <textarea
-              value={manuelSms}
-              onChange={e => setManuelSms(e.target.value)}
-              placeholder={manuelGenerating ? 'Génération en cours…' : 'Cliquez "Générer via LLM" ou tapez votre message ici…'}
-              rows={6}
-              style={{ width: '100%', padding: '0.6rem 0.75rem', border: '1px solid var(--border)', borderRadius: 8, fontSize: '0.875rem', background: '#fff', resize: 'vertical', boxSizing: 'border-box', fontFamily: 'inherit', lineHeight: 1.5 }}
-            />
-          </div>
-
-          {/* Destinataires */}
-          <div style={{ background: 'var(--bg)', border: '1px solid var(--border)', borderRadius: 10, padding: '1.5rem', marginBottom: '1rem' }}>
-            <div style={{ fontWeight: 600, fontSize: '0.875rem', marginBottom: '0.75rem' }}>Destinataires</div>
-            <div style={{ display: 'flex', gap: '0.5rem', marginBottom: '0.75rem' }}>
-              <input
-                type="text"
-                placeholder="Nom (optionnel)"
-                value={manuelInput.name}
-                onChange={e => setManuelInput(p => ({ ...p, name: e.target.value }))}
-                style={{ flex: '0 0 140px', padding: '0.5rem 0.75rem', border: '1px solid var(--border)', borderRadius: 8, fontSize: '0.875rem', background: '#fff' }}
-              />
-              <input
-                type="tel"
-                placeholder="+33612345678"
-                value={manuelInput.phone}
-                onChange={e => setManuelInput(p => ({ ...p, phone: e.target.value }))}
-                onKeyDown={e => e.key === 'Enter' && ajouterDestinataire()}
-                style={{ flex: 1, padding: '0.5rem 0.75rem', border: '1px solid var(--border)', borderRadius: 8, fontSize: '0.875rem', background: '#fff', fontFamily: 'monospace' }}
-              />
-              <button onClick={ajouterDestinataire} style={{ padding: '0.5rem 1rem', background: 'var(--brand)', color: '#fff', border: 'none', borderRadius: 8, cursor: 'pointer', fontWeight: 700, fontSize: '0.85rem', whiteSpace: 'nowrap' }}>
-                + Ajouter
-              </button>
-            </div>
-
-            {manuelPhones.length === 0 && (
-              <div style={{ color: '#aaa', fontSize: '0.82rem', textAlign: 'center', padding: '1rem 0' }}>
-                Aucun destinataire — ajoutez des numéros ci-dessus
-              </div>
-            )}
-            {manuelPhones.length > 0 && (
-              <div style={{ display: 'flex', flexDirection: 'column', gap: '0.4rem' }}>
-                {manuelPhones.map(p => (
-                  <div key={p.id} style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', padding: '0.4rem 0.75rem', background: '#fff', border: '1px solid var(--border)', borderRadius: 8 }}>
-                    {p.name && <span style={{ fontWeight: 600, fontSize: '0.85rem', color: 'var(--text)', minWidth: 100 }}>{p.name}</span>}
-                    <span style={{ fontFamily: 'monospace', fontSize: '0.85rem', flex: 1, color: '#555' }}>{p.phone}</span>
-                    <button onClick={() => supprimerDestinataire(p.id)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#b94a4a', fontSize: '1rem', padding: '0 0.25rem', lineHeight: 1 }}>×</button>
+                {testResult.error ? (
+                  <div style={{ padding: '0.75rem', borderRadius: 8, background: '#b94a4a22', color: '#b94a4a', border: '1px solid #b94a4a55', fontWeight: 600, fontSize: '0.875rem' }}>
+                    Erreur : {testResult.error}
                   </div>
-                ))}
+                ) : (
+                  <div>
+                    <div style={{ display: 'flex', gap: '0.75rem', marginBottom: '0.5rem', fontSize: '0.8rem', color: '#888' }}>
+                      {testResult.guest && <span>👤 {testResult.guest}</span>}
+                      {testResult.property && <span>🏠 {testResult.property}</span>}
+                      {testResult.lang && <span>{LANG_FLAG[testResult.lang]} {testResult.lang}</span>}
+                    </div>
+                    <div style={{
+                      background: '#fff', border: '1px solid var(--border)', borderRadius: 8,
+                      padding: '1rem', fontSize: '0.875rem', lineHeight: 1.6, whiteSpace: 'pre-wrap', color: 'var(--text)',
+                    }}>
+                      {testResult.preview}
+                    </div>
+                    <div style={{ fontSize: '0.75rem', color: '#5a8a5a', marginTop: '0.4rem' }}>
+                      ✓ Aperçu généré — aucun message envoyé
+                    </div>
+                  </div>
+                )}
               </div>
             )}
           </div>
-
-          {/* Résultat */}
-          {manuelResults && (
-            <div style={{ marginBottom: '1rem', padding: '0.75rem 1rem', borderRadius: 8, fontSize: '0.875rem', fontWeight: 600,
-              background: manuelResults.error ? '#b94a4a22' : '#5a8a5a22',
-              color: manuelResults.error ? '#b94a4a' : '#5a8a5a',
-              border: `1px solid ${manuelResults.error ? '#b94a4a55' : '#5a8a5a55'}` }}>
-              {manuelResults.error
-                ? `Erreur : ${manuelResults.error}`
-                : `✓ Traité : ${manuelResults.processed} · Envoyés : ${manuelResults.sent} · Erreurs : ${manuelResults.failed}`}
-            </div>
-          )}
-
-          {/* Bouton envoi */}
-          <button
-            onClick={envoyerManuel}
-            disabled={manuelSending || !manuelPhones.length || !manuelSms.trim()}
-            style={{
-              width: '100%', padding: '0.85rem', fontWeight: 700, fontSize: '0.95rem',
-              background: manuelSending || !manuelPhones.length || !manuelSms.trim() ? '#ccc' : 'var(--brand)',
-              color: '#fff', border: 'none', borderRadius: 8,
-              cursor: manuelSending || !manuelPhones.length || !manuelSms.trim() ? 'not-allowed' : 'pointer',
-            }}>
-            {manuelSending ? '⏳ Envoi…' : `▶ Envoyer à ${manuelPhones.length} destinataire${manuelPhones.length > 1 ? 's' : ''}`}
-          </button>
-          <p style={{ color: '#aaa', fontSize: '0.78rem', marginTop: '0.5rem', textAlign: 'center' }}>
-            Le texte affiché est envoyé tel quel — modifiez-le avant d'envoyer si besoin.
-          </p>
         </div>
       )}
 
@@ -849,13 +522,13 @@ Réponds UNIQUEMENT avec le texte du SMS. Le lien sera ajouté automatiquement a
             <div>
               <span style={{ fontWeight: 600 }}>{candidats.filter(c => !c.already_sent).length} avis 5⭐ </span>
               <span style={{ color: '#888', fontSize: '0.875rem' }}>
-                non encore contactés ({candidats.filter(c => c.guest_phone && !c.already_sent).length} avec téléphone)
+                non encore contactés ({candidats.length} au total)
               </span>
             </div>
             <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
               {selected.size > 0 && (
                 <span style={{ color: '#888', fontSize: '0.875rem' }}>
-                  {selected.size} SMS · <span style={{ color: 'var(--brand)', fontWeight: 600 }}>~{totalCost.toFixed(2)} €</span>
+                  {selected.size} message{selected.size > 1 ? 's' : ''} à envoyer
                 </span>
               )}
               <button onClick={chargerCandidats} style={{ padding: '0.4rem 0.75rem', background: 'transparent', border: '1px solid var(--border)', borderRadius: 8, cursor: 'pointer', fontSize: '0.8rem' }}>
@@ -870,7 +543,7 @@ Réponds UNIQUEMENT avec le texte du SMS. Le lien sera ajouté automatiquement a
                   color: '#fff', border: 'none', borderRadius: 8,
                   cursor: loadingCamp || selected.size === 0 ? 'not-allowed' : 'pointer',
                 }}>
-                {loadingCamp ? 'Envoi...' : `Envoyer (${selected.size})`}
+                {loadingCamp ? 'Envoi...' : `Envoyer via Hospitable (${selected.size})`}
               </button>
             </div>
           </div>
@@ -878,7 +551,7 @@ Réponds UNIQUEMENT avec le texte du SMS. Le lien sera ajouté automatiquement a
           {campResult && (
             <div style={{ marginBottom: '1rem', padding: '0.75rem', borderRadius: 8, background: '#5a8a5a22', color: '#5a8a5a', border: '1px solid #5a8a5a55', fontSize: '0.875rem', fontWeight: 600 }}>
               {campResult.results
-                ? `${campResult.results.filter(r => r.ok).length} SMS envoyés, ${campResult.results.filter(r => !r.ok).length} erreurs`
+                ? `${campResult.results.filter(r => r.ok).length} messages envoyés, ${campResult.results.filter(r => !r.ok).length} erreurs`
                 : `Erreur : ${campResult.error}`}
             </div>
           )}
@@ -888,29 +561,30 @@ Réponds UNIQUEMENT avec le texte du SMS. Le lien sera ajouté automatiquement a
               <thead>
                 <tr style={{ background: '#EAE3D4', borderBottom: '2px solid var(--border)' }}>
                   <th style={{ padding: '0.65rem 1rem', textAlign: 'left' }}>
-                    <input type="checkbox" checked={selected.size === candidats.length && candidats.length > 0}
+                    <input type="checkbox"
+                      checked={selected.size === candidats.filter(c => !c.already_sent).length && candidats.length > 0}
                       onChange={toggleAll} style={{ cursor: 'pointer' }} />
                   </th>
-                  {['Client', 'Propriété', 'Téléphone', 'Pays', 'Date avis', 'Statut'].map(h => (
+                  {['Client', 'Propriété', 'Pays', 'Départ', 'Avis', 'Statut'].map(h => (
                     <th key={h} style={{ padding: '0.65rem 1rem', textAlign: 'left', fontWeight: 600, color: 'var(--text)' }}>{h}</th>
                   ))}
                 </tr>
               </thead>
               <tbody>
                 {loadingCamp && (
-                  <tr><td colSpan={6} style={{ padding: '2rem', textAlign: 'center', color: '#999' }}>Chargement...</td></tr>
+                  <tr><td colSpan={7} style={{ padding: '2rem', textAlign: 'center', color: '#999' }}>Chargement...</td></tr>
                 )}
                 {!loadingCamp && candidats.length === 0 && (
-                  <tr><td colSpan={6} style={{ padding: '2rem', textAlign: 'center', color: '#999' }}>Aucun candidat — tous les avis 5⭐ ont déjà été contactés ou le téléphone est manquant.</td></tr>
+                  <tr><td colSpan={7} style={{ padding: '2rem', textAlign: 'center', color: '#999' }}>Aucun candidat — tous les avis 5⭐ ont déjà été contactés ou n'ont pas d'ID Hospitable.</td></tr>
                 )}
-                {[...candidats].sort((a, b) => new Date(b.submitted_at) - new Date(a.submitted_at)).map((c, i) => {
-                  const status     = rowStatus[c.hospitable_id]
-                  const selectable = !!c.guest_phone && !c.already_sent && !status
-                  const isSelected = selected.has(c.hospitable_id)
+                {[...candidats].sort((a, b) => new Date(b.departure_date) - new Date(a.departure_date)).map((c, i) => {
+                  const status      = rowStatus[c.hospitable_id]
+                  const selectable  = !c.already_sent && !status
+                  const isSelected  = selected.has(c.hospitable_id)
                   const statusBadge = status === 'sending' ? { label: '⏳', color: '#8a7a4a' }
-                    : status === 'sent'    ? { label: '✓ envoyé',  color: '#5a8a5a' }
-                    : status === 'error'   ? { label: '✗ erreur',  color: '#b94a4a' }
-                    : c.already_sent       ? { label: '✓ déjà envoyé', color: '#999' }
+                    : status === 'sent'  ? { label: '✓ envoyé',      color: '#5a8a5a' }
+                    : status === 'error' ? { label: '✗ erreur',      color: '#b94a4a' }
+                    : c.already_sent     ? { label: '✓ déjà envoyé', color: '#999' }
                     : null
                   return (
                     <tr key={c.hospitable_id}
@@ -918,7 +592,6 @@ Réponds UNIQUEMENT avec le texte du SMS. Le lien sera ajouté automatiquement a
                       style={{
                         borderBottom: '1px solid var(--border)',
                         cursor: selectable ? 'pointer' : 'default',
-                        opacity: !c.guest_phone ? 0.35 : 1,
                         background: isSelected ? 'rgba(204,153,51,0.08)' : i % 2 === 0 ? 'transparent' : '#faf8f4',
                       }}>
                       <td style={{ padding: '0.6rem 1rem' }}>
@@ -928,12 +601,13 @@ Réponds UNIQUEMENT avec le texte du SMS. Le lien sera ajouté automatiquement a
                       </td>
                       <td style={{ padding: '0.6rem 1rem', fontWeight: 600 }}>{c.guest_name}</td>
                       <td style={{ padding: '0.6rem 1rem' }}>{c.property_name}</td>
-                      <td style={{ padding: '0.6rem 1rem', fontFamily: 'monospace', color: c.guest_phone ? 'inherit' : '#aaa' }}>
-                        {c.guest_phone || 'pas de tél.'}
-                      </td>
                       <td style={{ padding: '0.6rem 1rem' }}>{c.guest_country || '—'}</td>
-                      <td style={{ padding: '0.6rem 1rem', color: '#888' }}>
-                        {c.submitted_at ? new Date(c.submitted_at).toLocaleDateString('fr-FR') : '—'}
+                      <td style={{ padding: '0.6rem 1rem', color: '#888', whiteSpace: 'nowrap' }}>
+                        {c.departure_date ? new Date(c.departure_date).toLocaleDateString('fr-FR') : '—'}
+                      </td>
+                      <td style={{ padding: '0.6rem 1rem' }}>
+                        {'⭐'.repeat(c.rating || 5)}
+                        {c.comment && <span style={{ marginLeft: 6, fontSize: '0.75rem', color: '#8a7a4a' }}>💬</span>}
                       </td>
                       <td style={{ padding: '0.6rem 1rem' }}>
                         {statusBadge && (
@@ -947,6 +621,9 @@ Réponds UNIQUEMENT avec le texte du SMS. Le lien sera ajouté automatiquement a
                 })}
               </tbody>
             </table>
+          </div>
+          <div style={{ fontSize: '0.75rem', color: '#aaa', marginTop: '0.75rem' }}>
+            Le message sera généré en temps réel via Hospitable (contexte de la réservation + avis + langue du voyageur).
           </div>
         </div>
       )}
