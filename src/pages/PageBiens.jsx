@@ -4,13 +4,26 @@ import { syncBiens, getBiens } from '../services/syncBiens'
 import { getProprietaires } from '../services/syncProprietaires'
 import { formatMontant } from '../lib/hospitable'
 
+const ICAL_TOKEN = import.meta.env.VITE_HOSPITABLE_ICAL_TOKEN || ''
+const ICAL_BASE  = 'https://api.hospitable.com/v1/properties/reservations.ics'
+
+function icalKeyFromUrl(url) {
+  try { return new URL(url).searchParams.get('key') || '' } catch { return '' }
+}
+function buildIcalUrl(key) {
+  if (!key || !ICAL_TOKEN) return null
+  return `${ICAL_BASE}?key=${key}&token=${ICAL_TOKEN}&noCache`
+}
+
 function ModalBien({ bien, onClose, saveField, saving }) {
-  const [localIcalUrl, setLocalIcalUrl] = useState(bien.ical_url || '')
+  const [localIcalKey, setLocalIcalKey] = useState(() => icalKeyFromUrl(bien.ical_url || ''))
   const [localPhotoUrl, setLocalPhotoUrl] = useState(bien.photo_url || '')
 
   function handleSaveIcal() {
-    const val = localIcalUrl.trim() || null
-    if (val !== (bien.ical_url || null)) saveField(bien.id, 'ical_url', val)
+    const key = localIcalKey.trim()
+    const newUrl = buildIcalUrl(key)
+    const oldUrl = bien.ical_url || null
+    if (newUrl !== oldUrl) saveField(bien.id, 'ical_url', newUrl)
   }
   function handleSavePhoto() {
     const val = localPhotoUrl.trim() || null
@@ -66,28 +79,29 @@ function ModalBien({ bien, onClose, saveField, saving }) {
             </div>
           </div>
 
-          {/* iCal URL */}
+          {/* iCal key */}
           <div>
-            <label style={{ display: 'block', fontSize: 11, fontWeight: 700, color: '#9C8E7D', textTransform: 'uppercase', letterSpacing: 1, marginBottom: 4 }}>URL iCal (sync planning)</label>
+            <label style={{ display: 'block', fontSize: 11, fontWeight: 700, color: '#9C8E7D', textTransform: 'uppercase', letterSpacing: 1, marginBottom: 4 }}>Clé iCal Hospitable</label>
             <p style={{ fontSize: 11, color: '#b8aa96', margin: '0 0 8px' }}>
-              Feed iCal Airbnb/Booking — utilisé par le cron pour peupler <code>planning_events</code>
+              Entier trouvable sur Hospitable : Properties → bien → Calendar → Export → paramètre <code>key=</code>
             </p>
             <div style={{ display: 'flex', gap: 8 }}>
               <input
-                type="url" placeholder="https://www.airbnb.fr/calendar/ical/…"
-                value={localIcalUrl}
-                onChange={e => setLocalIcalUrl(e.target.value)}
+                type="text" inputMode="numeric" placeholder="ex: 268246"
+                value={localIcalKey}
+                onChange={e => setLocalIcalKey(e.target.value.replace(/\D/g, ''))}
                 onBlur={handleSaveIcal}
                 onKeyDown={e => { if (e.key === 'Enter') e.target.blur() }}
-                style={{ flex: 1, fontSize: 12, padding: '7px 10px', borderRadius: 6, border: `1px solid ${bien.ical_url ? '#D9CEB8' : '#f59e0b'}`, fontFamily: 'monospace', color: '#2C2416', background: bien.ical_url ? '#fff' : '#FFFBEB' }}
+                style={{ width: 140, fontSize: 13, padding: '7px 10px', borderRadius: 6, border: `1px solid ${bien.ical_url ? '#D9CEB8' : '#f59e0b'}`, fontFamily: 'monospace', color: '#2C2416', background: bien.ical_url ? '#fff' : '#FFFBEB' }}
               />
               {bien.ical_url && (
-                <a href={bien.ical_url} target="_blank" rel="noreferrer" title="Tester le feed" style={{ display: 'flex', alignItems: 'center', padding: '0 10px', borderRadius: 6, border: '1px solid #D9CEB8', fontSize: 14, color: '#9C8E7D', textDecoration: 'none', background: '#f9fafb' }}>↗</a>
+                <a href={bien.ical_url} target="_blank" rel="noreferrer" title="Tester le feed iCal" style={{ display: 'flex', alignItems: 'center', padding: '0 10px', borderRadius: 6, border: '1px solid #D9CEB8', fontSize: 14, color: '#9C8E7D', textDecoration: 'none', background: '#f9fafb' }}>↗ Tester</a>
               )}
             </div>
-            {!bien.ical_url && (
-              <div style={{ fontSize: 11, color: '#f59e0b', marginTop: 4 }}>⚠ Requis pour la sync planning automatique</div>
-            )}
+            {!bien.ical_url
+              ? <div style={{ fontSize: 11, color: '#f59e0b', marginTop: 4 }}>⚠ Requis pour la sync planning automatique</div>
+              : <div style={{ fontSize: 10, color: '#b8aa96', marginTop: 4, fontFamily: 'monospace', wordBreak: 'break-all' }}>{bien.ical_url}</div>
+            }
           </div>
 
           {/* Hospitable ID */}
@@ -268,6 +282,7 @@ export default function PageBiens() {
   const biensActifs = biensDCB.filter(b => b.listed)
   const biensAvecProprio = biensDCB.filter(b => b.proprietaire_id)
   const biensAConfigurer = biensDCB.filter(b => b.listed && (!b.proprietaire_id || !b.provision_ae_ref))
+  const biensSansIcal = biens.filter(b => b.listed && !b.ical_url)
 
   return (
     <div>
@@ -328,8 +343,20 @@ export default function PageBiens() {
       )}
       {biensAConfigurer.length > 0 && (
         <div className="alert alert-warning">
-          ⚠ {biensAConfigurer.length} bien(s) sans propriétaire ou paramètres ménage — 
+          ⚠ {biensAConfigurer.length} bien(s) sans propriétaire ou paramètres ménage —
           à configurer avant de lancer la ventilation.
+        </div>
+      )}
+      {biensSansIcal.length > 0 && (
+        <div className="alert alert-warning" style={{ cursor: 'pointer' }}>
+          📅 {biensSansIcal.length} bien(s) sans clé iCal — sync planning désactivée :
+          {' '}{biensSansIcal.map(b => (
+            <span
+              key={b.id}
+              onClick={() => setSelectedBien(b)}
+              style={{ display: 'inline-block', margin: '2px 4px', padding: '1px 7px', borderRadius: 4, background: 'rgba(245,158,11,0.15)', fontWeight: 600, cursor: 'pointer', textDecoration: 'underline', textDecorationStyle: 'dotted' }}
+            >{b.code || b.hospitable_name}</span>
+          ))}
         </div>
       )}
 

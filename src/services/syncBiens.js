@@ -41,6 +41,7 @@ export async function syncBiens() {
       timezone: prop.timezone,
       currency: prop.currency || 'EUR',
       listed: prop.listed !== false,
+      photo_url: prop.picture?.replace('?aki_policy=small', '?aki_policy=large') || null,
       derniere_sync: new Date().toISOString(),
     }))
 
