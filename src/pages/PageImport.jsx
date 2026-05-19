@@ -6,7 +6,7 @@ import { fr } from 'date-fns/locale'
 import { getAllClotures } from '../services/cloture'
 import { AGENCE } from '../lib/agence'
 
-const PLATFORM_COLORS = { airbnb: '#FF5A5F', booking: '#003580', direct: '#2563EB' }
+const PLATFORM_COLORS = { airbnb: '#FF385C', booking: '#0071C2', direct: '#2563EB' }
 
 export default function PageImport() {
   const [step, setStep] = useState('upload') // upload | select | importing | done

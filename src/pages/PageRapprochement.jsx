@@ -22,7 +22,7 @@ const CANAL_LABEL = {
   sortant_ae: 'AE', sortant_honoraires: 'Honoraires', frais_bancaires: 'Frais'
 }
 const CANAL_COLOR = {
-  airbnb: '#FF5A5F', booking: '#003580', stripe: '#635BFF',
+  airbnb: '#FF385C', booking: '#0071C2', stripe: '#635BFF',
   sepa_manuel: '#2E7D32', interne: '#546E7A', sortant_proprio: '#E65100',
   sortant_ae: '#6D4C41', sortant_honoraires: '#37474F', frais_bancaires: '#90A4AE'
 }

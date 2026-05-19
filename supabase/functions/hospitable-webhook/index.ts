@@ -251,6 +251,29 @@ async function handleReservation(supabase: any, event: string, data: any): Promi
 
   console.log('Upserted:', data.code, event)
 
+  // Push notification "Nouvelle réservation" au proprio (reservation.created uniquement)
+  if (event === 'reservation.created' && finalStatus === 'accepted' && bien?.id) {
+    const portailUrl = Deno.env.get('PORTAIL_OWNER_URL') || 'https://dcb-portail-owner.vercel.app'
+    fetch(`${portailUrl}/api/push-resa-notif`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${SUPABASE_SERVICE_KEY}`,
+      },
+      body: JSON.stringify({
+        bien_id: bien.id,
+        reservation: {
+          arrival_date:   arrival,
+          departure_date: data.departure_date?.substring(0, 10),
+          guest_name:     guestName,
+          platform,
+          nights:         data.nights,
+        },
+      }),
+      signal: AbortSignal.timeout(8000),
+    }).catch((e: any) => console.error('push-resa-notif error (non-fatal):', e?.message))
+  }
+
   // Hospitable embarque parfois l'avis dans le payload reservation (pas d'événement review.* séparé)
   if (data.review && typeof data.review === 'object') {
     const reviewPayload = {

@@ -218,14 +218,14 @@ export default function PageBanque() {
             {String.fromCodePoint(0x2191)} Import CSV
             <input ref={fileRef} type='file' accept='.csv' style={{ display: 'none' }} onChange={handleFile} />
           </label>
-          <label style={{ cursor:'pointer', background:'#003580', color:'#fff', border:'none', borderRadius:8, padding:'8px 14px', fontWeight:600, fontSize:14, display:'inline-flex', alignItems:'center', gap:6 }}>
+          <label style={{ cursor:'pointer', background:'#0071C2', color:'#fff', border:'none', borderRadius:8, padding:'8px 14px', fontWeight:600, fontSize:14, display:'inline-flex', alignItems:'center', gap:6 }}>
             {importingBooking ? '⏳' : '📋'} CSV Booking
             <input ref={bookingRef} type='file' accept='.csv' style={{ display:'none' }} onChange={handleBookingFile} />
           </label>
           <button
             onClick={handleSyncPayouts}
             disabled={syncingPayouts || moisBloque}
-            style={{ cursor: (syncingPayouts || moisBloque) ? 'not-allowed' : 'pointer', background: moisBloque ? '#aaa' : '#FF5A5F', color:'#fff', border:'none', borderRadius:8, padding:'8px 14px', fontWeight:600, fontSize:14, display:'inline-flex', alignItems:'center', gap:6 }}>
+            style={{ cursor: (syncingPayouts || moisBloque) ? 'not-allowed' : 'pointer', background: moisBloque ? '#aaa' : '#FF385C', color:'#fff', border:'none', borderRadius:8, padding:'8px 14px', fontWeight:600, fontSize:14, display:'inline-flex', alignItems:'center', gap:6 }}>
             {syncingPayouts ? '⏳ Sync...' : moisBloque ? '🔒 Sync Airbnb' : '🔄 Sync Airbnb'}
           </button>
           <button
