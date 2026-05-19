@@ -14,31 +14,46 @@ import { AGENCE } from '../lib/agence'
 const moisCourant = new Date().toISOString().substring(0, 7)
 const fmt = c => ((c || 0) / 100).toFixed(2).replace('.', ',') + ' €'
 
-const PLATFORM_COLORS = {
-  airbnb:  { bg: '#FFE8E3', color: '#D9452A', label: 'Airbnb' },
-  booking: { bg: '#EAE3D4', color: '#4A3728', label: 'Booking' },
-  stripe:  { bg: '#E8F0E8', color: '#2C6E2C', label: 'Stripe' },
-  direct:  { bg: '#D1FAE5', color: '#059669', label: 'Direct' },
+const PLATFORM_LABELS = {
+  airbnb:  'Airbnb',
+  booking: 'Booking.com',
+  stripe:  'Direct',
+  direct:  'Direct',
+  manual:  'Direct',
 }
 
-function PlatformBadge({ platform }) {
-  const p = (platform || '').toLowerCase()
-  const cfg = PLATFORM_COLORS[p] || { bg: '#F0EBE1', color: '#9C8E7D', label: platform || '—' }
-  return (
-    <span style={{ padding: '2px 7px', borderRadius: 10, fontSize: '0.75em', fontWeight: 600, background: cfg.bg, color: cfg.color }}>
-      {cfg.label}
-    </span>
-  )
-}
-
-function getCanal(platform, ownerStay) {
+function PlatformLogo({ platform, ownerStay, size = 18 }) {
   if (ownerStay) return <span style={{ fontSize: '0.75em', color: '#9C8E7D', fontStyle: 'italic' }}>Propriétaire</span>
   const p = (platform || '').toLowerCase()
-  const cfg = PLATFORM_COLORS[p] || { bg: '#F0EBE1', color: '#9C8E7D', label: platform || '—' }
+  const label = PLATFORM_LABELS[p] || platform || 'Direct'
+
+  if (p === 'airbnb') return (
+    <span style={{ display: 'inline-flex', alignItems: 'center', gap: 5 }}>
+      <img src="/logo-airbnb.svg" width={size} height={size} style={{ display: 'block', objectFit: 'contain', flexShrink: 0 }} alt="Airbnb" />
+      <span style={{ fontSize: '0.78em', fontWeight: 600, color: '#FF385C' }}>{label}</span>
+    </span>
+  )
+
+  if (p === 'booking') return (
+    <span style={{ display: 'inline-flex', alignItems: 'center', gap: 5 }}>
+      <svg width={size} height={size} viewBox="0 0 32 32" style={{ flexShrink: 0 }}>
+        <rect width="32" height="32" rx="5" fill="#0071C2"/>
+        <path fill="white" d="M8 7h6.2c1.6 0 2.8.4 3.6 1.1.8.7 1.2 1.7 1.2 2.9 0 1-.3 1.8-.8 2.4-.3.3-.6.6-1 .8.8.2 1.4.6 1.9 1.2.5.7.8 1.5.8 2.5 0 1.4-.5 2.5-1.4 3.3-.9.8-2.2 1.2-3.8 1.2H8V7zm3 5.7h2.7c.7 0 1.2-.2 1.6-.5.3-.3.5-.8.5-1.3 0-.6-.2-1-.5-1.3-.4-.3-.9-.5-1.6-.5H11v3.6zm0 6h3c.8 0 1.4-.2 1.8-.6.4-.4.6-.9.6-1.6 0-.7-.2-1.2-.6-1.6-.4-.4-1-.6-1.8-.6H11v4.4z"/>
+        <circle cx="24" cy="25" r="3.2" fill="white"/>
+      </svg>
+      <span style={{ fontSize: '0.78em', fontWeight: 600, color: '#0071C2' }}>{label}</span>
+    </span>
+  )
+
+  // Direct / manual / stripe / autres
   return (
-    <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
-      <span style={{ display: 'inline-block', width: 8, height: 8, borderRadius: '50%', background: cfg.color }} />
-      <span style={{ fontSize: '0.78em', color: cfg.color, fontWeight: 600 }}>{cfg.label}</span>
+    <span style={{ display: 'inline-flex', alignItems: 'center', gap: 5 }}>
+      <span style={{
+        width: size, height: size, flexShrink: 0, display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
+        fontFamily: "'Northwell', cursive", fontSize: Math.round(size * 1.8), lineHeight: 1,
+        color: '#CC9933', userSelect: 'none', overflow: 'visible',
+      }}>D</span>
+      <span style={{ fontSize: '0.78em', fontWeight: 600, color: '#CC9933' }}>{label}</span>
     </span>
   )
 }
@@ -1060,7 +1075,7 @@ FORMAT :
                               )}
                             </td>
                             <td style={{ padding: '6px 8px', color: '#4A3728', whiteSpace: 'nowrap' }}>{r.arrival_date ? r.arrival_date.split('-').reverse().join('/') : '—'}</td>
-                            <td style={{ padding: '6px 8px' }}>{getCanal(r.platform, r.owner_stay)}</td>
+                            <td style={{ padding: '6px 8px' }}><PlatformLogo platform={r.platform} ownerStay={r.owner_stay} /></td>
                             <td style={{ padding: '6px 8px', textAlign: 'right', color: '#4A3728' }}>{r.nights || '—'}</td>
                             {(colsConfig.brut         ?? false) && <td style={{ padding: '6px 8px', textAlign: 'right', color: '#4A3728', whiteSpace: 'nowrap' }}>{r.owner_stay ? '—' : fmt(r.gross_revenue || 0)}</td>}
                             {(colsConfig.encaissement ?? false) && <td style={{ padding: '6px 8px', textAlign: 'right', color: '#4A3728', whiteSpace: 'nowrap' }}>{r.owner_stay ? '—' : (r.encaissement || 0) > 0 ? fmt(r.encaissement) : '—'}</td>}

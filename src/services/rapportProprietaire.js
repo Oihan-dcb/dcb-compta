@@ -5,6 +5,14 @@ import heroSrc from '../assets/rapport-hero.jpg?inline'
 import logoSrc from '../assets/rapport-logo.png?inline'
 import { STATUTS_NON_VENTILABLES } from '../lib/constants'
 
+function platLogoHtml(platform, ownerStay) {
+  if (ownerStay) return '<span style="font-size:8px;color:#9C8E7D;font-style:italic">Propriétaire</span>'
+  const p = (platform || '').toLowerCase()
+  if (p === 'airbnb') return `<span style="display:inline-flex;align-items:center;gap:3px"><svg width="12" height="12" viewBox="0 0 31 31" style="flex-shrink:0"><path fill="#FF385C" d="M29.5 27.6c-.2 1.7-1.4 3.2-3.1 3.9-.8.3-1.7.4-2.5.3-.9-.1-1.7-.4-2.6-.9-1.2-.7-2.4-1.8-3.9-3.3 2.2-2.9 3.5-5.5 4-8 .2-.9.3-1.8.2-2.6-.1-.8-.4-1.6-.9-2.3-1.1-1.6-2.9-2.5-4.9-2.5-2 0-3.8 1-4.9 2.5-.5.7-.8 1.5-.9 2.3-.1.9 0 1.8.2 2.6.5 2.2 1.8 4.8 4 8C13 28.8 11.8 29.9 10.7 30.5c-.9.5-1.7.8-2.6.9-.9.1-1.7 0-2.5-.3-1.7-.7-3-2.2-3.2-3.9-.1-.8 0-1.7.4-2.7.1-.3.3-.6.5-1 .2-.5.5-1.1.8-1.6L4 21.7C6.4 16.5 8.9 11.3 11.5 6.3l.1-.2c.3-.5.5-1 .8-1.5.3-.6.6-1.1 1-1.6.7-.8 1.7-1.3 2.8-1.3s2.1.5 2.8 1.3c.4.5.7 1 1 1.6.3.5.6 1 .8 1.5l.1.2c2.5 5 5 10.2 7.5 15.3 0 0 0 .1.1.1.3.5.5 1 .8 1.6.3.6.6 1.2.8 1.9.4 1 .4 1.9.3 2.7zM15.8 25.2c-1.8-2.3-3-4.4-3.4-6.2-.2-.7-.2-1.4-.1-2 .1-.5.3-1 .6-1.4.6-.9 1.6-1.4 2.7-1.4 1.1 0 2.1.5 2.7 1.4.3.4.5.9.6 1.4.1.6.1 1.3-.1 2-.4 1.8-1.6 3.9-3 6.2z"/></svg><span style="font-size:9px;font-weight:600;color:#FF385C">Airbnb</span></span>`
+  if (p === 'booking') return `<span style="display:inline-flex;align-items:center;gap:3px"><svg width="12" height="12" viewBox="0 0 32 32" style="flex-shrink:0"><rect width="32" height="32" rx="5" fill="#0071C2"/><path fill="white" d="M8 7h6.2c1.6 0 2.8.4 3.6 1.1.8.7 1.2 1.7 1.2 2.9 0 1-.3 1.8-.8 2.4-.3.3-.6.6-1 .8.8.2 1.4.6 1.9 1.2.5.7.8 1.5.8 2.5 0 1.4-.5 2.5-1.4 3.3-.9.8-2.2 1.2-3.8 1.2H8V7zm3 5.7h2.7c.7 0 1.2-.2 1.6-.5.3-.3.5-.8.5-1.3 0-.6-.2-1-.5-1.3-.4-.3-.9-.5-1.6-.5H11v3.6zm0 6h3c.8 0 1.4-.2 1.8-.6.4-.4.6-.9.6-1.6 0-.7-.2-1.2-.6-1.6-.4-.4-1-.6-1.8-.6H11v4.4z"/><circle cx="24" cy="25" r="3.2" fill="white"/></svg><span style="font-size:9px;font-weight:600;color:#0071C2">Booking.com</span></span>`
+  return `<span style="display:inline-flex;align-items:center;gap:3px"><span style="width:12px;height:12px;display:inline-flex;align-items:center;justify-content:center;font-size:20px;line-height:1;color:#CC9933;font-family:Georgia,serif;font-style:italic;overflow:visible;flex-shrink:0">D</span><span style="font-size:9px;font-weight:600;color:#CC9933">Direct</span></span>`
+}
+
 const SVG = {
   starFull: (size=13, color='#CC9933') =>
     `<svg width="${size}" height="${size}" viewBox="0 0 24 24" style="display:inline-block;vertical-align:middle;margin-bottom:1px" fill="${color}"><polygon points="12,2 15.09,8.26 22,9.27 17,14.14 18.18,21.02 12,17.77 5.82,21.02 7,14.14 2,9.27 8.91,8.26"/></svg>`,
@@ -127,8 +135,6 @@ export function genererRapportHTML(proprio, mois, data, colonnes = {}) {
   const bienName = bien?.hospitable_name || proprio?.nom || ''
   const prixMoyenNuit = kpis.nuitsOccupees > 0 ? Math.round((kpis.caHeb / kpis.nuitsOccupees) / 100) : 0
 
-  const PLATFORM_LABELS = { airbnb: 'Airbnb', booking: 'Booking', stripe: 'Direct', direct: 'Direct' }
-  const PLATFORM_COLORS = { airbnb: '#FF5A5F', booking: '#003580', stripe: '#059669', direct: '#059669' }
 
   const cols = {
     brut:          colonnes.brut          ?? false,
@@ -190,9 +196,6 @@ export function genererRapportHTML(proprio, mois, data, colonnes = {}) {
         <tbody>
           ${(resas || []).map((r, i) => {
             const isCancelledWithPayout = STATUTS_NON_VENTILABLES.includes(r.final_status) && (r.fin_revenue || 0) > 0
-            const plat = (r.platform || '').toLowerCase()
-            const platLabel = PLATFORM_LABELS[plat] || r.platform || '—'
-            const platColor = PLATFORM_COLORS[plat] || '#9C8E7D'
             const v = r.vent || {}
             const arrFR = r.arrival_date ? r.arrival_date.substring(5).split('-').reverse().join('/') : '—'
             const depFR = r.departure_date ? r.departure_date.substring(5).split('-').reverse().join('/') : '—'
@@ -201,10 +204,7 @@ export function genererRapportHTML(proprio, mois, data, colonnes = {}) {
               <td style="padding:5px 5px;color:#4A3728;white-space:nowrap;">${depFR}</td>
               <td style="padding:5px 5px;color:#2C2416;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${r.guest_name || '—'}${isCancelledWithPayout ? ' <span style="font-size:9px;color:#9C8E7D;font-style:italic;">(annulée)</span>' : ''}${r.isProlongation ? ` <span style="font-size:8px;font-weight:700;color:#7C5F00;background:#FEF3C7;border:1px solid #FCD34D;border-radius:3px;padding:0 3px;">↗ prolongation</span>` : ''}</td>
               <td style="padding:5px 4px;text-align:center;color:#4A3728;">${r.nights || '—'}</td>
-              <td style="padding:5px 4px;text-align:center;">
-                <span style="display:inline-block;width:7px;height:7px;border-radius:50%;background:${platColor};margin-right:3px;vertical-align:middle;"></span>
-                <span style="color:#4A3728;">${platLabel}</span>
-              </td>
+              <td style="padding:5px 4px;text-align:center;">${platLogoHtml(r.platform, r.owner_stay)}</td>
               ${cols.brut         ? `<td style="padding:5px 4px;text-align:right;white-space:nowrap;color:#2C2416;">${r.owner_stay ? '—' : fmt(r.gross_revenue || 0)}</td>` : ''}
               ${cols.encaissement ? `<td style="padding:5px 4px;text-align:right;white-space:nowrap;color:#4A3728;">${r.owner_stay ? '—' : (r.encaissement || 0) > 0 ? fmt(r.encaissement) : '—'}</td>` : ''}
               ${cols.frais_dist   ? `<td style="padding:5px 4px;text-align:right;white-space:nowrap;color:#9c8c7a;">${!r.owner_stay && (r.frais_plateforme || 0) > 0 ? fmt(r.frais_plateforme) : '—'}</td>` : ''}
