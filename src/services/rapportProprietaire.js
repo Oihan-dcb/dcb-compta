@@ -131,14 +131,17 @@ export function genererRapportHTML(proprio, mois, data, colonnes = {}) {
   const PLATFORM_COLORS = { airbnb: '#FF5A5F', booking: '#003580', stripe: '#059669', direct: '#059669' }
 
   const cols = {
-    brut:      colonnes.brut      ?? false,
-    net_plat:  colonnes.net_plat  ?? false,
-    base_comm: colonnes.base_comm ?? true,
-    hon:       colonnes.hon       ?? true,
-    loy:       colonnes.loy       ?? true,
-    vir:       colonnes.vir       ?? true,
-    debours:   colonnes.debours   ?? false,
-    menage:    colonnes.menage    ?? false,
+    brut:          colonnes.brut          ?? false,
+    encaissement:  colonnes.encaissement  ?? false,
+    frais_dist:    colonnes.frais_dist    ?? false,
+    taxe:          colonnes.taxe          ?? false,
+    net_plat:      colonnes.net_plat      ?? false,
+    base_comm:     colonnes.base_comm     ?? true,
+    hon:           colonnes.hon           ?? true,
+    loy:           colonnes.loy           ?? true,
+    vir:           colonnes.vir           ?? true,
+    debours:       colonnes.debours       ?? false,
+    menage:        colonnes.menage        ?? false,
   }
   const optActives = Object.values(cols).filter(Boolean).length
   const optWidth = optActives > 0 ? Math.floor(54 / optActives) : 0
@@ -152,14 +155,17 @@ export function genererRapportHTML(proprio, mois, data, colonnes = {}) {
           <col style="width:18%">
           <col style="width:6%">
           <col style="width:8%">
-          ${cols.brut      ? `<col style="width:${optWidth}%">` : ''}
-          ${cols.net_plat  ? `<col style="width:${optWidth}%">` : ''}
-          ${cols.base_comm ? `<col style="width:${optWidth}%">` : ''}
-          ${cols.hon       ? `<col style="width:${optWidth}%">` : ''}
-          ${cols.loy       ? `<col style="width:${optWidth}%">` : ''}
-          ${cols.vir       ? `<col style="width:${optWidth}%">` : ''}
-          ${cols.debours   ? `<col style="width:${optWidth}%">` : ''}
-          ${cols.menage    ? `<col style="width:${optWidth}%">` : ''}
+          ${cols.brut         ? `<col style="width:${optWidth}%">` : ''}
+          ${cols.encaissement ? `<col style="width:${optWidth}%">` : ''}
+          ${cols.frais_dist   ? `<col style="width:${optWidth}%">` : ''}
+          ${cols.taxe         ? `<col style="width:${optWidth}%">` : ''}
+          ${cols.net_plat     ? `<col style="width:${optWidth}%">` : ''}
+          ${cols.base_comm    ? `<col style="width:${optWidth}%">` : ''}
+          ${cols.hon          ? `<col style="width:${optWidth}%">` : ''}
+          ${cols.loy          ? `<col style="width:${optWidth}%">` : ''}
+          ${cols.vir          ? `<col style="width:${optWidth}%">` : ''}
+          ${cols.debours      ? `<col style="width:${optWidth}%">` : ''}
+          ${cols.menage       ? `<col style="width:${optWidth}%">` : ''}
         </colgroup>
         <thead>
           <tr style="background:#EDEBE5;">
@@ -168,14 +174,17 @@ export function genererRapportHTML(proprio, mois, data, colonnes = {}) {
             <th style="padding:5px 5px;text-align:left;border-bottom:2px solid #CC9933;color:#2C2416;font-weight:600;">Voyageur</th>
             <th style="padding:5px 4px;text-align:center;border-bottom:2px solid #CC9933;color:#2C2416;font-weight:600;">Nuits</th>
             <th style="padding:5px 4px;text-align:center;border-bottom:2px solid #CC9933;color:#2C2416;font-weight:600;">Canal</th>
-            ${cols.brut      ? `<th style="${thStyle}">Brut voyageur</th>` : ''}
-            ${cols.net_plat  ? `<th style="${thStyle}">Net plateforme</th>` : ''}
-            ${cols.base_comm ? `<th style="${thStyle}">Base comm.</th>` : ''}
-            ${cols.hon       ? `<th style="${thStyle}">HON</th>` : ''}
-            ${cols.loy       ? `<th style="${thStyle}">LOY</th>` : ''}
-            ${cols.vir       ? `<th style="${thStyle}">VIR</th>` : ''}
-            ${cols.debours   ? `<th style="${thStyle}">Débours</th>` : ''}
-            ${cols.menage    ? `<th style="${thStyle}">Ménage voyageur</th>` : ''}
+            ${cols.brut         ? `<th style="${thStyle}">Brut voyageur</th>` : ''}
+            ${cols.encaissement ? `<th style="${thStyle}">Encaissement</th>` : ''}
+            ${cols.frais_dist   ? `<th style="${thStyle}">Frais dist.</th>` : ''}
+            ${cols.taxe         ? `<th style="${thStyle}">Taxe séj.</th>` : ''}
+            ${cols.net_plat     ? `<th style="${thStyle}">NET plateforme</th>` : ''}
+            ${cols.base_comm    ? `<th style="${thStyle}">Base comm.</th>` : ''}
+            ${cols.hon          ? `<th style="${thStyle}">HON</th>` : ''}
+            ${cols.loy          ? `<th style="${thStyle}">LOY</th>` : ''}
+            ${cols.vir          ? `<th style="${thStyle}">VIR</th>` : ''}
+            ${cols.debours      ? `<th style="${thStyle}">Débours</th>` : ''}
+            ${cols.menage       ? `<th style="${thStyle}">Ménage voyageur</th>` : ''}
           </tr>
         </thead>
         <tbody>
@@ -196,40 +205,49 @@ export function genererRapportHTML(proprio, mois, data, colonnes = {}) {
                 <span style="display:inline-block;width:7px;height:7px;border-radius:50%;background:${platColor};margin-right:3px;vertical-align:middle;"></span>
                 <span style="color:#4A3728;">${platLabel}</span>
               </td>
-              ${cols.brut      ? `<td style="padding:5px 4px;text-align:right;white-space:nowrap;color:#2C2416;">${r.owner_stay ? '—' : fmt(r.gross_revenue || 0)}</td>` : ''}
-              ${cols.net_plat  ? `<td style="padding:5px 4px;text-align:right;white-space:nowrap;color:#2C2416;">${r.owner_stay ? '—' : fmt(r.fin_revenue || 0)}</td>` : ''}
-              ${cols.base_comm ? `<td style="padding:5px 4px;text-align:right;white-space:nowrap;color:#2C2416;">${r.owner_stay ? '—' : fmt(r.base_comm || 0)}</td>` : ''}
-              ${cols.hon       ? `<td style="padding:5px 4px;text-align:right;white-space:nowrap;color:#9c8c7a;">${v.HON ? fmt(v.HON.montant_ttc) : '—'}</td>` : ''}
-              ${cols.loy       ? `<td style="padding:5px 4px;text-align:right;font-weight:500;white-space:nowrap;color:${r.proprio_encaisse ? '#9c8c7a' : '#CC9933'};">${r.proprio_encaisse ? '<span style="font-size:9px;font-weight:400;font-style:italic;">direct</span>' : (v.LOY ? fmt(v.LOY.montant_ht) : '—')}</td>` : ''}
-              ${cols.vir       ? `<td style="padding:5px 4px;text-align:right;white-space:nowrap;color:${r.proprio_encaisse ? '#9c8c7a' : '#2d7a50'};">${r.proprio_encaisse ? '<span style="font-size:9px;font-style:italic;">perçu direct</span>' : (v.VIR ? fmt(v.VIR.montant_ht) : '—')}</td>` : ''}
-              ${cols.debours   ? `<td style="padding:5px 4px;text-align:right;white-space:nowrap;color:#4A3728;">${r.extra > 0 ? fmt(r.extra) : '—'}</td>` : ''}
-              ${cols.menage    ? `<td style="padding:5px 4px;text-align:right;white-space:nowrap;color:#4A3728;">${(r.menage_voyageur || 0) > 0 ? fmt(r.menage_voyageur) : '—'}</td>` : ''}
+              ${cols.brut         ? `<td style="padding:5px 4px;text-align:right;white-space:nowrap;color:#2C2416;">${r.owner_stay ? '—' : fmt(r.gross_revenue || 0)}</td>` : ''}
+              ${cols.encaissement ? `<td style="padding:5px 4px;text-align:right;white-space:nowrap;color:#4A3728;">${r.owner_stay ? '—' : (r.encaissement || 0) > 0 ? fmt(r.encaissement) : '—'}</td>` : ''}
+              ${cols.frais_dist   ? `<td style="padding:5px 4px;text-align:right;white-space:nowrap;color:#9c8c7a;">${!r.owner_stay && (r.frais_plateforme || 0) > 0 ? fmt(r.frais_plateforme) : '—'}</td>` : ''}
+              ${cols.taxe         ? `<td style="padding:5px 4px;text-align:right;white-space:nowrap;color:#9c8c7a;">${(r.taxe || 0) > 0 ? fmt(r.taxe) : '—'}</td>` : ''}
+              ${cols.net_plat     ? `<td style="padding:5px 4px;text-align:right;white-space:nowrap;color:#2C2416;">${r.owner_stay ? '—' : fmt(r.net_plateforme ?? (r.fin_revenue || 0))}</td>` : ''}
+              ${cols.base_comm    ? `<td style="padding:5px 4px;text-align:right;white-space:nowrap;color:#2C2416;">${r.owner_stay ? '—' : fmt(r.base_comm || 0)}</td>` : ''}
+              ${cols.hon          ? `<td style="padding:5px 4px;text-align:right;white-space:nowrap;color:#9c8c7a;">${v.HON ? fmt(v.HON.montant_ttc) : '—'}</td>` : ''}
+              ${cols.loy          ? `<td style="padding:5px 4px;text-align:right;font-weight:500;white-space:nowrap;color:${r.proprio_encaisse ? '#9c8c7a' : '#CC9933'};">${r.proprio_encaisse ? '<span style="font-size:9px;font-weight:400;font-style:italic;">direct</span>' : (v.LOY ? fmt(v.LOY.montant_ht) : '—')}</td>` : ''}
+              ${cols.vir          ? `<td style="padding:5px 4px;text-align:right;white-space:nowrap;color:${r.proprio_encaisse ? '#9c8c7a' : '#2d7a50'};">${r.proprio_encaisse ? '<span style="font-size:9px;font-style:italic;">perçu direct</span>' : (v.VIR ? fmt(v.VIR.montant_ht) : '—')}</td>` : ''}
+              ${cols.debours      ? `<td style="padding:5px 4px;text-align:right;white-space:nowrap;color:#4A3728;">${r.extra > 0 ? fmt(r.extra) : '—'}</td>` : ''}
+              ${cols.menage       ? `<td style="padding:5px 4px;text-align:right;white-space:nowrap;color:#4A3728;">${(r.menage_voyageur || 0) > 0 ? fmt(r.menage_voyageur) : '—'}</td>` : ''}
             </tr>`}).join('')}
           ${(() => {
             const tot = (resas || []).reduce((acc, r) => {
               const v = r.vent || {}
-              acc.brut      += r.gross_revenue || 0
-              acc.net_plat  += r.owner_stay ? 0 : (r.fin_revenue || 0)
-              acc.base_comm += r.base_comm || 0
-              acc.hon       += v.HON?.montant_ttc || 0
-              acc.loy       += r.proprio_encaisse ? 0 : (v.LOY?.montant_ht || 0)
-              acc.vir       += r.proprio_encaisse ? 0 : (v.VIR?.montant_ht || 0)
-              acc.debours   += r.extra || 0
-              acc.menage    += r.menage_voyageur || 0
+              acc.brut         += r.gross_revenue || 0
+              acc.encaissement += r.encaissement || 0
+              acc.frais_dist   += r.frais_plateforme || 0
+              acc.taxe         += r.taxe || 0
+              acc.net_plat     += r.owner_stay ? 0 : (r.net_plateforme ?? (r.fin_revenue || 0))
+              acc.base_comm    += r.base_comm || 0
+              acc.hon          += v.HON?.montant_ttc || 0
+              acc.loy          += r.proprio_encaisse ? 0 : (v.LOY?.montant_ht || 0)
+              acc.vir          += r.proprio_encaisse ? 0 : (v.VIR?.montant_ht || 0)
+              acc.debours      += r.extra || 0
+              acc.menage       += r.menage_voyageur || 0
               return acc
-            }, { brut: 0, net_plat: 0, base_comm: 0, hon: 0, loy: 0, vir: 0, debours: 0, menage: 0 })
+            }, { brut: 0, encaissement: 0, frais_dist: 0, taxe: 0, net_plat: 0, base_comm: 0, hon: 0, loy: 0, vir: 0, debours: 0, menage: 0 })
             const S = 'padding:10px 8px;font-weight:700;border-top:3px solid #CC9933;background:#E8E2D6;'
             const tdT = (val, color) => `<td style="${S}text-align:right;white-space:nowrap;padding-right:10px;color:${color || '#2C2416'};">${fmt(val)}</td>`
             return `<tr>
               <td colspan="5" style="${S}color:#2C2416;font-size:11px;letter-spacing:0.08em;text-transform:uppercase;padding-left:10px;">Total</td>
-              ${cols.brut      ? tdT(tot.brut)              : ''}
-              ${cols.net_plat  ? tdT(tot.net_plat)          : ''}
-              ${cols.base_comm ? tdT(tot.base_comm)         : ''}
-              ${cols.hon       ? tdT(tot.hon,   '#9c8c7a')  : ''}
-              ${cols.loy       ? tdT(tot.loy,   '#CC9933')  : ''}
-              ${cols.vir       ? tdT(tot.vir,   '#2d7a50')  : ''}
-              ${cols.debours   ? tdT(tot.debours)           : ''}
-              ${cols.menage    ? tdT(tot.menage)            : ''}
+              ${cols.brut         ? tdT(tot.brut)                  : ''}
+              ${cols.encaissement ? tdT(tot.encaissement)          : ''}
+              ${cols.frais_dist   ? tdT(tot.frais_dist, '#9c8c7a') : ''}
+              ${cols.taxe         ? tdT(tot.taxe,       '#9c8c7a') : ''}
+              ${cols.net_plat     ? tdT(tot.net_plat)              : ''}
+              ${cols.base_comm    ? tdT(tot.base_comm)             : ''}
+              ${cols.hon          ? tdT(tot.hon,         '#9c8c7a'): ''}
+              ${cols.loy          ? tdT(tot.loy,         '#CC9933'): ''}
+              ${cols.vir          ? tdT(tot.vir,         '#2d7a50'): ''}
+              ${cols.debours      ? tdT(tot.debours)               : ''}
+              ${cols.menage       ? tdT(tot.menage)                : ''}
             </tr>`
           })()}
         </tbody>

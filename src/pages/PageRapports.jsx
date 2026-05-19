@@ -993,14 +993,17 @@ FORMAT :
                 <div style={{ marginBottom: 10, padding: '8px 12px', background: 'var(--bg)', border: '1px solid var(--border)', borderRadius: 8, fontSize: '0.8em', display: 'flex', alignItems: 'center', flexWrap: 'wrap', gap: 4 }}>
                   <span style={{ fontWeight: 600, marginRight: 6, color: 'var(--text)' }}>Colonnes rapport :</span>
                   {[
-                    { key: 'brut',      label: 'Brut voyageur',  def: false },
-                    { key: 'net_plat',  label: 'Net plateforme', def: false },
-                    { key: 'base_comm', label: 'Base comm.',     def: true  },
-                    { key: 'hon',       label: 'HON',           def: true  },
-                    { key: 'loy',       label: 'LOY',           def: true  },
-                    { key: 'vir',       label: 'VIR',           def: true  },
-                    { key: 'debours',   label: 'Débours',         def: false },
-                    { key: 'menage',    label: 'Ménage voyageur', def: false },
+                    { key: 'brut',          label: 'Brut voyageur',  def: false },
+                    { key: 'encaissement',  label: 'Encaissement',   def: false },
+                    { key: 'frais_dist',    label: 'Frais dist.',    def: false },
+                    { key: 'taxe',          label: 'Taxe séjour',    def: false },
+                    { key: 'net_plat',      label: 'NET plateforme', def: false },
+                    { key: 'base_comm',     label: 'Base comm.',     def: true  },
+                    { key: 'hon',           label: 'HON',            def: true  },
+                    { key: 'loy',           label: 'LOY',            def: true  },
+                    { key: 'menage',        label: 'Ménage voyageur',def: false },
+                    { key: 'vir',           label: 'VIR',            def: true  },
+                    { key: 'debours',       label: 'Débours',        def: false },
                   ].map(({ key, label, def }) => (
                     <label key={key} style={{ marginRight: 8, cursor: 'pointer', display: 'inline-flex', alignItems: 'center', gap: 4 }}>
                       <input type="checkbox"
@@ -1029,14 +1032,17 @@ FORMAT :
                             {thF('Arrivée')}
                             {thF('Plateforme')}
                             {thF('Nuits', true)}
-                            {(colsConfig.brut      ?? false) && thF('Brut voyageur', true)}
-                            {(colsConfig.net_plat   ?? false) && thF('Net plateforme', true)}
-                            {(colsConfig.base_comm  ?? true)  && thF('Base comm.', true)}
-                            {(colsConfig.hon        ?? true)  && thF('HON', true, '#9c8c7a')}
-                            {(colsConfig.loy        ?? true)  && thF('LOY', true, '#CC9933')}
-                            {(colsConfig.vir        ?? true)  && thF('VIR', true, '#2d7a50')}
-                            {(colsConfig.debours    ?? false) && thF('Débours', true)}
-                            {(colsConfig.menage     ?? false) && thF('Ménage voyageur', true)}
+                            {(colsConfig.brut         ?? false) && thF('Brut voyageur', true)}
+                            {(colsConfig.encaissement ?? false) && thF('Encaissement', true, '#4A3728')}
+                            {(colsConfig.frais_dist   ?? false) && thF('Frais dist.', true, '#9c8c7a')}
+                            {(colsConfig.taxe         ?? false) && thF('Taxe séjour', true, '#9c8c7a')}
+                            {(colsConfig.net_plat     ?? false) && thF('NET plateforme', true)}
+                            {(colsConfig.base_comm    ?? true)  && thF('Base comm.', true)}
+                            {(colsConfig.hon          ?? true)  && thF('HON', true, '#9c8c7a')}
+                            {(colsConfig.loy          ?? true)  && thF('LOY', true, '#CC9933')}
+                            {(colsConfig.menage       ?? false) && thF('Ménage voyageur', true)}
+                            {(colsConfig.vir          ?? true)  && thF('VIR', true, '#2d7a50')}
+                            {(colsConfig.debours      ?? false) && thF('Débours', true)}
                           </>
                         })()}
                       </tr>
@@ -1056,43 +1062,52 @@ FORMAT :
                             <td style={{ padding: '6px 8px', color: '#4A3728', whiteSpace: 'nowrap' }}>{r.arrival_date ? r.arrival_date.split('-').reverse().join('/') : '—'}</td>
                             <td style={{ padding: '6px 8px' }}>{getCanal(r.platform, r.owner_stay)}</td>
                             <td style={{ padding: '6px 8px', textAlign: 'right', color: '#4A3728' }}>{r.nights || '—'}</td>
-                            {(colsConfig.brut      ?? false) && <td style={{ padding: '6px 8px', textAlign: 'right', color: '#4A3728', whiteSpace: 'nowrap' }}>{r.owner_stay ? '—' : fmt(r.gross_revenue || 0)}</td>}
-                            {(colsConfig.net_plat   ?? false) && <td style={{ padding: '6px 8px', textAlign: 'right', color: '#4A3728', whiteSpace: 'nowrap' }}>{r.owner_stay ? '—' : fmt((r.fin_revenue || 0) - ((['direct','manual'].includes(r.platform) ? (r.reservation_fee||[]).filter(f=>f.fee_type==='guest_fee'&&f.label?.toLowerCase().includes('management')).reduce((s,f)=>s+(f.amount||0),0) : 0)))}</td>}
-                            {(colsConfig.base_comm  ?? true)  && <td style={{ padding: '6px 8px', textAlign: 'right', color: 'var(--text)', whiteSpace: 'nowrap' }}>{r.owner_stay ? '—' : fmt(r.base_comm || 0)}</td>}
-                            {(colsConfig.hon        ?? true)  && <td style={{ padding: '6px 8px', textAlign: 'right', color: '#9c8c7a', whiteSpace: 'nowrap' }}>{v.HON ? fmt(v.HON.montant_ttc) : '—'}</td>}
-                            {(colsConfig.loy        ?? true)  && <td style={{ padding: '6px 8px', textAlign: 'right', color: '#CC9933', fontWeight: 600, whiteSpace: 'nowrap' }}>{v.LOY ? fmt(v.LOY.montant_ht) : '—'}</td>}
-                            {(colsConfig.vir        ?? true)  && <td style={{ padding: '6px 8px', textAlign: 'right', color: '#2d7a50', whiteSpace: 'nowrap' }}>{v.VIR ? fmt(v.VIR.montant_ht) : '—'}</td>}
-                            {(colsConfig.debours    ?? false) && <td style={{ padding: '6px 8px', textAlign: 'right', color: r.extra > 0 ? '#DC2626' : '#9C8E7D', whiteSpace: 'nowrap' }}>{r.extra > 0 ? fmt(r.extra) : '—'}</td>}
-                            {(colsConfig.menage     ?? false) && <td style={{ padding: '6px 8px', textAlign: 'right', color: '#4A3728', whiteSpace: 'nowrap' }}>{r.menage_voyageur > 0 ? fmt(r.menage_voyageur) : '—'}</td>}
+                            {(colsConfig.brut         ?? false) && <td style={{ padding: '6px 8px', textAlign: 'right', color: '#4A3728', whiteSpace: 'nowrap' }}>{r.owner_stay ? '—' : fmt(r.gross_revenue || 0)}</td>}
+                            {(colsConfig.encaissement ?? false) && <td style={{ padding: '6px 8px', textAlign: 'right', color: '#4A3728', whiteSpace: 'nowrap' }}>{r.owner_stay ? '—' : (r.encaissement || 0) > 0 ? fmt(r.encaissement) : '—'}</td>}
+                            {(colsConfig.frais_dist   ?? false) && <td style={{ padding: '6px 8px', textAlign: 'right', color: '#9c8c7a', whiteSpace: 'nowrap' }}>{!r.owner_stay && (r.frais_plateforme || 0) > 0 ? fmt(r.frais_plateforme) : '—'}</td>}
+                            {(colsConfig.taxe         ?? false) && <td style={{ padding: '6px 8px', textAlign: 'right', color: '#9c8c7a', whiteSpace: 'nowrap' }}>{(r.taxe || 0) > 0 ? fmt(r.taxe) : '—'}</td>}
+                            {(colsConfig.net_plat     ?? false) && <td style={{ padding: '6px 8px', textAlign: 'right', color: '#4A3728', whiteSpace: 'nowrap' }}>{r.owner_stay ? '—' : fmt(r.net_plateforme ?? (r.fin_revenue || 0))}</td>}
+                            {(colsConfig.base_comm    ?? true)  && <td style={{ padding: '6px 8px', textAlign: 'right', color: 'var(--text)', whiteSpace: 'nowrap' }}>{r.owner_stay ? '—' : fmt(r.base_comm || 0)}</td>}
+                            {(colsConfig.hon          ?? true)  && <td style={{ padding: '6px 8px', textAlign: 'right', color: '#9c8c7a', whiteSpace: 'nowrap' }}>{v.HON ? fmt(v.HON.montant_ttc) : '—'}</td>}
+                            {(colsConfig.loy          ?? true)  && <td style={{ padding: '6px 8px', textAlign: 'right', color: '#CC9933', fontWeight: 600, whiteSpace: 'nowrap' }}>{v.LOY ? fmt(v.LOY.montant_ht) : '—'}</td>}
+                            {(colsConfig.menage       ?? false) && <td style={{ padding: '6px 8px', textAlign: 'right', color: '#4A3728', whiteSpace: 'nowrap' }}>{r.menage_voyageur > 0 ? fmt(r.menage_voyageur) : '—'}</td>}
+                            {(colsConfig.vir          ?? true)  && <td style={{ padding: '6px 8px', textAlign: 'right', color: '#2d7a50', whiteSpace: 'nowrap' }}>{v.VIR ? fmt(v.VIR.montant_ht) : '—'}</td>}
+                            {(colsConfig.debours      ?? false) && <td style={{ padding: '6px 8px', textAlign: 'right', color: r.extra > 0 ? '#DC2626' : '#9C8E7D', whiteSpace: 'nowrap' }}>{r.extra > 0 ? fmt(r.extra) : '—'}</td>}
                           </tr>
                         )
                       })}
                       {(() => {
                         const tot = data.resas.reduce((acc, r) => {
                           const v = r.vent
-                          acc.brut      += r.gross_revenue || 0
-                          acc.net_plat  += r.owner_stay ? 0 : ((r.fin_revenue || 0) - (['direct','manual'].includes(r.platform) ? (r.reservation_fee||[]).filter(f=>f.fee_type==='guest_fee'&&f.label?.toLowerCase().includes('management')).reduce((s,f)=>s+(f.amount||0),0) : 0))
-                          acc.base_comm += r.base_comm || 0
-                          acc.hon       += v.HON?.montant_ttc || 0
-                          acc.loy       += v.LOY?.montant_ht  || 0
-                          acc.vir       += v.VIR?.montant_ht  || 0
-                          acc.debours   += r.extra || 0
-                          acc.menage    += r.menage_voyageur || 0
+                          acc.brut         += r.gross_revenue || 0
+                          acc.encaissement += r.encaissement || 0
+                          acc.frais_dist   += r.frais_plateforme || 0
+                          acc.taxe         += r.taxe || 0
+                          acc.net_plat     += r.owner_stay ? 0 : (r.net_plateforme ?? (r.fin_revenue || 0))
+                          acc.base_comm    += r.base_comm || 0
+                          acc.hon          += v.HON?.montant_ttc || 0
+                          acc.loy          += v.LOY?.montant_ht  || 0
+                          acc.menage       += r.menage_voyageur || 0
+                          acc.vir          += v.VIR?.montant_ht  || 0
+                          acc.debours      += r.extra || 0
                           return acc
-                        }, { brut: 0, net_plat: 0, base_comm: 0, hon: 0, loy: 0, vir: 0, debours: 0, menage: 0 })
+                        }, { brut: 0, encaissement: 0, frais_dist: 0, taxe: 0, net_plat: 0, base_comm: 0, hon: 0, loy: 0, menage: 0, vir: 0, debours: 0 })
                         const S = { padding: '8px 8px', fontWeight: 700, whiteSpace: 'nowrap', borderTop: '2px solid var(--brand)', background: '#EAE3D4' }
                         const tdT = (val, color) => <td style={{ ...S, textAlign: 'right', color: color || 'var(--text)' }}>{fmt(val)}</td>
                         return (
                           <tr>
                             <td colSpan={5} style={{ ...S, color: 'var(--text)', letterSpacing: '0.05em', fontSize: '0.9em' }}>TOTAL</td>
-                            {(colsConfig.brut      ?? false) && tdT(tot.brut)}
-                            {(colsConfig.net_plat   ?? false) && tdT(tot.net_plat)}
-                            {(colsConfig.base_comm  ?? true)  && tdT(tot.base_comm)}
-                            {(colsConfig.hon        ?? true)  && tdT(tot.hon,      '#9c8c7a')}
-                            {(colsConfig.loy        ?? true)  && tdT(tot.loy,      '#CC9933')}
-                            {(colsConfig.vir        ?? true)  && tdT(tot.vir,      '#2d7a50')}
-                            {(colsConfig.debours    ?? false) && tdT(tot.debours)}
-                            {(colsConfig.menage     ?? false) && tdT(tot.menage)}
+                            {(colsConfig.brut         ?? false) && tdT(tot.brut)}
+                            {(colsConfig.encaissement ?? false) && tdT(tot.encaissement, '#4A3728')}
+                            {(colsConfig.frais_dist   ?? false) && tdT(tot.frais_dist, '#9c8c7a')}
+                            {(colsConfig.taxe         ?? false) && tdT(tot.taxe, '#9c8c7a')}
+                            {(colsConfig.net_plat     ?? false) && tdT(tot.net_plat)}
+                            {(colsConfig.base_comm    ?? true)  && tdT(tot.base_comm)}
+                            {(colsConfig.hon          ?? true)  && tdT(tot.hon,    '#9c8c7a')}
+                            {(colsConfig.loy          ?? true)  && tdT(tot.loy,    '#CC9933')}
+                            {(colsConfig.menage       ?? false) && tdT(tot.menage)}
+                            {(colsConfig.vir          ?? true)  && tdT(tot.vir,    '#2d7a50')}
+                            {(colsConfig.debours      ?? false) && tdT(tot.debours)}
                           </tr>
                         )
                       })()}

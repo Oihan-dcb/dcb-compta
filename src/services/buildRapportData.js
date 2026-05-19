@@ -121,15 +121,21 @@ export async function buildRapportData(bienId, propId, mois, opts = {}) {
   const isProprioEncaisse = (resaId) =>
     modeEncaissement === 'proprio' && !PLATFORMS_DCB.includes(resaPlatformMap.get(resaId) || '')
 
-  // ── Ventilation ──────────────────────────────────────────────────────────
+  // ── Ventilation + Encaissements ─────────────────────────────────────────
   let loyTotal = 0, honTotalVent = 0, virTotal = 0, virTotalProprioEncaisse = 0
-  let ventByResa = {}
+  let ventByResa = {}, paiementsByResa = {}
   if (resaIds.length) {
-    const { data: ventsData } = await supabase
-      .from('ventilation')
-      .select('reservation_id, code, montant_ht, montant_ttc, calcul_source')
-      .in('reservation_id', resaIds)
-      .in('code', ['HON', 'LOY', 'VIR', 'FMEN', 'AUTO', 'MEN'])
+    const [{ data: ventsData }, { data: paiementsData }] = await Promise.all([
+      supabase
+        .from('ventilation')
+        .select('reservation_id, code, montant_ht, montant_ttc, calcul_source')
+        .in('reservation_id', resaIds)
+        .in('code', ['HON', 'LOY', 'VIR', 'FMEN', 'AUTO', 'MEN']),
+      supabase
+        .from('reservation_paiement')
+        .select('reservation_id, montant')
+        .in('reservation_id', resaIds),
+    ])
     const vents = ventsData || []
     for (const v of vents) {
       // Les lignes VIR résiduelles (rapprochement partiel) sont exclues des rapports
@@ -141,6 +147,9 @@ export async function buildRapportData(bienId, propId, mois, opts = {}) {
     honTotalVent           = vents.filter(v => v.code === 'HON').reduce((s, v) => s + (v.montant_ttc || 0), 0)
     virTotal               = vents.filter(v => v.code === 'VIR' && v.calcul_source !== 'residuel' && !isProprioEncaisse(v.reservation_id)).reduce((s, v) => s + (v.montant_ht || 0), 0)
     virTotalProprioEncaisse = vents.filter(v => v.code === 'VIR' && v.calcul_source !== 'residuel' &&  isProprioEncaisse(v.reservation_id)).reduce((s, v) => s + (v.montant_ht || 0), 0)
+    for (const p of (paiementsData || [])) {
+      paiementsByResa[p.reservation_id] = (paiementsByResa[p.reservation_id] || 0) + (p.montant || 0)
+    }
   }
 
   // ── Prestations hors forfait ─────────────────────────────────────────────
@@ -197,42 +206,75 @@ export async function buildRapportData(bienId, propId, mois, opts = {}) {
     }, 0)
   const totalHaowner = haownerList.reduce((s, p) => s + (p.montant_ttc || 0), 0)
 
+  // ── Helper gross_revenue ─────────────────────────────────────────────────
+  // gross_revenue = total payé par le voyageur (hors remitted taxes reversées directement)
+  // Direct  : total_price CSV (fin_gross_revenue)
+  // Booking : accommodation + guest_fees + pass_through_taxes (= ce que Hospitable affiche)
+  //   → si reservation_fee vide (fees non synchés) : fallback fin_gross_revenue - CITY_TAX withheld
+  // Airbnb  : accommodation + guest_fees (guest_service_fee exclus — payé à Airbnb, pas à DCB)
+  // Manual  : accommodation + guest_fees + taxes (pass-through = taxe de séjour incluse dans fin_revenue)
+  const computeGrossRevenue = (r) => {
+    if (r.owner_stay) return 0
+    if (r.platform === 'direct' && r.fin_gross_revenue) return r.fin_gross_revenue
+    const hasFees = (r.reservation_fee || []).length > 0
+    if (r.platform === 'booking' && !hasFees && r.fin_gross_revenue) {
+      const withheld = ((r.hospitable_raw?.financials?.guest?.taxes) || [])
+        .filter(t => t.label?.toLowerCase().includes('withheld'))
+        .reduce((s, t) => s + (t.amount || 0), 0)
+      return r.fin_gross_revenue - withheld
+    }
+    return (r.fin_accommodation || 0) +
+      (r.reservation_fee || []).filter(f => f.fee_type === 'guest_fee').reduce((s, f) => s + (f.amount || 0), 0) +
+      (r.platform === 'booking'
+        ? (r.reservation_fee || []).filter(f => f.fee_type === 'tax' && !f.label?.toLowerCase().includes('remitted')).reduce((s, f) => s + (f.amount || 0), 0)
+        : 0) +
+      (r.platform === 'manual'
+        ? (r.reservation_fee || []).filter(f => f.fee_type === 'tax').reduce((s, f) => s + (f.amount || 0), 0)
+        : 0)
+  }
+
   // ── Enrichissement par réservation ───────────────────────────────────────
   const resasEnrichies = resasValides.map(r => {
     const v = ventByResa[r.id] || {}
     const virHt = v.VIR?.montant_ht || 0
     const loyHt = v.LOY?.montant_ht || 0
+    const grossRev = computeGrossRevenue(r)
+
+    // taxe_sejour_directe : pour direct/manual, DCB collecte la taxe de séjour auprès du voyageur
+    // et doit la reverser à la mairie — à déduire du NET plateforme
+    const taxeSejDirecte = !r.owner_stay && ['direct', 'manual'].includes(r.platform || '')
+      ? (r.reservation_fee || []).filter(f => f.fee_type === 'tax').reduce((s, f) => s + (f.amount || 0), 0)
+      : 0
+
+    // taxe unifiée pour la colonne Taxe :
+    // direct/manual → taxe collectée (reservation_fee fee_type='tax')
+    // Airbnb/Booking → VIR-LOY (taxe de séjour incluse dans le payout, reversée au proprio)
+    const taxeDisplay = taxeSejDirecte > 0 ? taxeSejDirecte : Math.max(0, virHt - loyHt)
+
+    // frais_plateforme = ce que retient le canal de distribution
+    // Airbnb/Booking : fin_host_service_fee est négatif (commission prélevée par la plateforme)
+    //   → source fiable même si reservation_fee est vide
+    // direct/manual  : frais Hospitable (gross - fin_revenue) + management fee DCB
+    const mgmtFee = ['direct', 'manual'].includes(r.platform || '')
+      ? (r.reservation_fee || [])
+          .filter(f => f.fee_type === 'guest_fee' && f.label?.toLowerCase().includes('management'))
+          .reduce((s, f) => s + (f.amount || 0), 0)
+      : 0
+    const fraisPlat = r.owner_stay ? 0 :
+      ['direct', 'manual'].includes(r.platform || '')
+        ? Math.max(0, grossRev - (r.fin_revenue || 0)) + mgmtFee
+        : Math.max(0, -(r.fin_host_service_fee || 0))
+
+    // net_plateforme = BRUT - Frais Dist - Taxe (formule universelle)
+    // direct : grossRev - mgmt_fee - taxe = accommodation + ménage
+    // Airbnb : grossRev - airbnb_fee - 0 = fin_revenue
+    const netPlat = r.owner_stay ? 0 : grossRev - fraisPlat - taxeSejDirecte
+
     return {
       ...r,
       vent: v,
       extra: extraByResa[r.id] || 0,
-      // gross_revenue = total payé par le voyageur (hors remitted taxes reversées directement)
-      // Direct  : total_price CSV (fin_gross_revenue)
-      // Booking : accommodation + guest_fees + pass_through_taxes (= ce que Hospitable affiche)
-      //   → si reservation_fee vide (fees non synchés) : fallback fin_gross_revenue - CITY_TAX withheld
-      //     (= total voyageur hors taxe reversée aux autorités = accommodation + ménage + TVA)
-      // Airbnb  : accommodation + guest_fees (guest_service_fee exclus — payé à Airbnb, pas à DCB)
-      // Manual  : accommodation + guest_fees + taxes (pass-through = taxe de séjour incluse dans fin_revenue)
-      gross_revenue: (() => {
-        if (r.owner_stay) return 0
-        if (r.platform === 'direct' && r.fin_gross_revenue) return r.fin_gross_revenue
-        const hasFees = (r.reservation_fee || []).length > 0
-        if (r.platform === 'booking' && !hasFees && r.fin_gross_revenue) {
-          // Fallback : fin_gross_revenue - taxes withheld (CITY_TAX reversé aux autorités, hors payout)
-          const withheld = ((r.hospitable_raw?.financials?.guest?.taxes) || [])
-            .filter(t => t.label?.toLowerCase().includes('withheld'))
-            .reduce((s, t) => s + (t.amount || 0), 0)
-          return r.fin_gross_revenue - withheld
-        }
-        return (r.fin_accommodation || 0) +
-          (r.reservation_fee || []).filter(f => f.fee_type === 'guest_fee').reduce((s, f) => s + (f.amount || 0), 0) +
-          (r.platform === 'booking'
-            ? (r.reservation_fee || []).filter(f => f.fee_type === 'tax' && !f.label?.toLowerCase().includes('remitted')).reduce((s, f) => s + (f.amount || 0), 0)
-            : 0) +
-          (r.platform === 'manual'
-            ? (r.reservation_fee || []).filter(f => f.fee_type === 'tax').reduce((s, f) => s + (f.amount || 0), 0)
-            : 0)
-      })(),
+      gross_revenue: grossRev,
       // base_comm = fin_accommodation + fin_host_service_fee - fin_discount
       // = "Commissionable base" Hospitable (net de la commission hôte + remises promotionnelles)
       // fin_host_service_fee est négatif, fin_discount est positif en base (à soustraire)
@@ -242,7 +284,11 @@ export async function buildRapportData(bienId, propId, mois, opts = {}) {
       loy:  loyHt,
       vir:  virHt,
       fmen: v.FMEN?.montant_ttc || 0,
-      taxe: Math.max(0, virHt - loyHt),
+      taxe: taxeDisplay,
+      frais_plateforme: fraisPlat,
+      net_plateforme: netPlat,
+      // encaissement : montants réellement reçus en banque (reservation_paiement)
+      encaissement: paiementsByResa[r.id] || 0,
       // menage_voyageur = ménage collecté auprès du voyageur (normal resas only)
       // Pour owner_stay : le ménage est dans DÉBOURS (FMEN+AUTO), pas dans les colonnes voyageur
       menage_voyageur: r.owner_stay ? 0 : (v.FMEN?.montant_ttc || 0) + (v.AUTO?.montant_ht || 0),

@@ -14,13 +14,16 @@ export function genererStatementHTML(proprio, mois, data) {
   const fraisProprietaire = data.fraisProprietaire || []
   const modeEncaissement = data.kpis?.modeEncaissement || 'dcb'
   const virTotalProprioEncaisse = data.kpis?.virTotalProprioEncaisse || 0
-  const showBrut     = data.colonnes?.brut      ?? true
-  const showNetPlat  = data.colonnes?.net_plat   ?? false
-  const showBaseComm = data.colonnes?.base_comm  ?? true
-  const showHon      = data.colonnes?.hon        ?? true
-  const showLoy      = data.colonnes?.loy        ?? true
-  const showMenage   = data.colonnes?.menage     ?? true
-  const showVir      = data.colonnes?.vir        ?? true
+  const showBrut         = data.colonnes?.brut          ?? true
+  const showEncaissement = data.colonnes?.encaissement   ?? false
+  const showFraisDist    = data.colonnes?.frais_dist     ?? false
+  const showTaxe         = data.colonnes?.taxe           ?? false
+  const showNetPlat      = data.colonnes?.net_plat       ?? false
+  const showBaseComm     = data.colonnes?.base_comm      ?? true
+  const showHon          = data.colonnes?.hon            ?? true
+  const showLoy          = data.colonnes?.loy            ?? true
+  const showMenage       = data.colonnes?.menage         ?? true
+  const showVir          = data.colonnes?.vir            ?? true
 
   const fmt = (centimes) => {
     if (centimes === null || centimes === undefined) return '—'
@@ -58,14 +61,17 @@ export function genererStatementHTML(proprio, mois, data) {
   }
 
   // Calculs Summary — valeurs pré-calculées dans PageRapports.jsx (r.hon, r.vir, etc.)
-  const honTotal      = resas.reduce((s, r) => s + (r.hon  || 0), 0)
-  const menageTotal   = resas.reduce((s, r) => s + (r.menage_voyageur || 0), 0)
-  const grossTotal    = resas.reduce((s, r) => s + ((r.gross_revenue ?? r.fin_revenue) || 0), 0)
-  const caHeb         = resas.filter(r => !r.owner_stay).reduce((s, r) => s + (r.fin_revenue || 0) - getMgmtFee(r), 0)
-  const virTotal      = resas.reduce((s, r) => r.proprio_encaisse ? s : s + (r.vir  || 0), 0)
-  const loyTotal      = resas.reduce((s, r) => s + (r.loy  || 0), 0)
-  const taxeTotal     = resas.reduce((s, r) => s + (r.taxe || 0), 0)
-  const baseCommTotal = resas.reduce((s, r) => s + (r.base_comm || 0), 0)
+  const honTotal          = resas.reduce((s, r) => s + (r.hon  || 0), 0)
+  const menageTotal       = resas.reduce((s, r) => s + (r.menage_voyageur || 0), 0)
+  const grossTotal        = resas.reduce((s, r) => s + ((r.gross_revenue ?? r.fin_revenue) || 0), 0)
+  const caHeb             = resas.filter(r => !r.owner_stay).reduce((s, r) => s + (r.fin_revenue || 0) - getMgmtFee(r), 0)
+  const virTotal          = resas.reduce((s, r) => r.proprio_encaisse ? s : s + (r.vir  || 0), 0)
+  const loyTotal          = resas.reduce((s, r) => s + (r.loy  || 0), 0)
+  const taxeTotal         = resas.reduce((s, r) => s + (r.taxe || 0), 0)
+  const baseCommTotal     = resas.reduce((s, r) => s + (r.base_comm || 0), 0)
+  const encaissementTotal = resas.reduce((s, r) => s + (r.encaissement || 0), 0)
+  const fraisDistTotal    = resas.reduce((s, r) => s + (r.frais_plateforme || 0), 0)
+  const netPlatTotal      = resas.reduce((s, r) => r.owner_stay ? s : s + (r.net_plateforme ?? (r.fin_revenue || 0)), 0)
   const ownerStayMenageTotal = ownerStayMenageList.reduce((s, p) => s + (p.montant || 0), 0)
   const haownerTotal  = haownerList.reduce((s, p) => s + (p.montant_ttc || p.montant || 0), 0)
   const deboursSeuls  = extrasGlobaux.reduce((s, p) => s + (p.montant_ttc || p.montant || 0), 0)
@@ -112,14 +118,16 @@ export function genererStatementHTML(proprio, mois, data) {
       </td>
       <td style="padding:4px 5px;font-size:8.5px;white-space:nowrap">${fmtDate(r.arrival_date)} – ${fmtDate(r.departure_date)}</td>
       <td style="padding:4px 5px;font-size:9px;text-align:right">${r.nights || '—'}</td>
-      ${showBrut     ? `<td style="padding:4px 5px;font-size:9px;text-align:right;white-space:nowrap">${r.owner_stay ? '—' : fmt(r.gross_revenue ?? r.fin_revenue)}</td>` : ''}
-      ${showNetPlat  ? `<td style="padding:4px 5px;font-size:9px;text-align:right;white-space:nowrap;color:#4A3728">${r.owner_stay ? '—' : fmt((r.fin_revenue || 0) - getMgmtFee(r))}</td>` : ''}
-      ${showBaseComm ? `<td style="padding:4px 5px;font-size:9px;text-align:right;white-space:nowrap;color:#4A3728">${r.owner_stay ? '—' : (r.base_comm || 0) > 0 ? fmt(r.base_comm) : '—'}</td>` : ''}
-      ${showHon      ? `<td style="padding:4px 5px;font-size:9px;text-align:right;white-space:nowrap;color:#9c8c7a">${honR > 0 ? fmt(honR) : '—'}</td>` : ''}
-      ${showLoy      ? `<td style="padding:4px 5px;font-size:9px;text-align:right;white-space:nowrap;color:${r.proprio_encaisse ? '#9c8c7a' : '#CC9933'};font-weight:500">${r.proprio_encaisse ? '<span style="font-style:italic;font-weight:400">perçu direct</span>' : (loyR > 0 ? fmt(loyR) : '—')}</td>` : ''}
-      ${showMenage   ? `<td style="padding:4px 5px;font-size:9px;text-align:right;white-space:nowrap;color:#4A3728">${menR > 0 ? fmt(menR) : '—'}</td>` : ''}
-      <td style="padding:4px 5px;font-size:9px;text-align:right;white-space:nowrap;color:#9c8c7a">${taxeR > 0 ? fmt(taxeR) : '—'}</td>
-      ${showVir      ? `<td style="padding:4px 5px;font-size:9px;text-align:right;white-space:nowrap;color:${r.proprio_encaisse ? '#9c8c7a' : '#2d7a50'};font-weight:500">${r.proprio_encaisse ? '<span style="font-style:italic;font-weight:400">perçu direct</span>' : (virR > 0 ? fmt(virR) : '—')}</td>` : ''}
+      ${showBrut         ? `<td style="padding:4px 5px;font-size:9px;text-align:right;white-space:nowrap">${r.owner_stay ? '—' : fmt(r.gross_revenue ?? r.fin_revenue)}</td>` : ''}
+      ${showEncaissement ? `<td style="padding:4px 5px;font-size:9px;text-align:right;white-space:nowrap;color:#4A3728">${r.owner_stay ? '—' : (r.encaissement || 0) > 0 ? fmt(r.encaissement) : '—'}</td>` : ''}
+      ${showFraisDist    ? `<td style="padding:4px 5px;font-size:9px;text-align:right;white-space:nowrap;color:#9c8c7a">${!r.owner_stay && (r.frais_plateforme || 0) > 0 ? fmt(r.frais_plateforme) : '—'}</td>` : ''}
+      ${showTaxe         ? `<td style="padding:4px 5px;font-size:9px;text-align:right;white-space:nowrap;color:#9c8c7a">${taxeR > 0 ? fmt(taxeR) : '—'}</td>` : ''}
+      ${showNetPlat      ? `<td style="padding:4px 5px;font-size:9px;text-align:right;white-space:nowrap;color:#4A3728">${r.owner_stay ? '—' : fmt(r.net_plateforme ?? (r.fin_revenue || 0))}</td>` : ''}
+      ${showBaseComm     ? `<td style="padding:4px 5px;font-size:9px;text-align:right;white-space:nowrap;color:#4A3728">${r.owner_stay ? '—' : (r.base_comm || 0) > 0 ? fmt(r.base_comm) : '—'}</td>` : ''}
+      ${showHon          ? `<td style="padding:4px 5px;font-size:9px;text-align:right;white-space:nowrap;color:#9c8c7a">${honR > 0 ? fmt(honR) : '—'}</td>` : ''}
+      ${showLoy          ? `<td style="padding:4px 5px;font-size:9px;text-align:right;white-space:nowrap;color:${r.proprio_encaisse ? '#9c8c7a' : '#CC9933'};font-weight:500">${r.proprio_encaisse ? '<span style="font-style:italic;font-weight:400">perçu direct</span>' : (loyR > 0 ? fmt(loyR) : '—')}</td>` : ''}
+      ${showMenage       ? `<td style="padding:4px 5px;font-size:9px;text-align:right;white-space:nowrap;color:#4A3728">${menR > 0 ? fmt(menR) : '—'}</td>` : ''}
+      ${showVir          ? `<td style="padding:4px 5px;font-size:9px;text-align:right;white-space:nowrap;color:${r.proprio_encaisse ? '#9c8c7a' : '#2d7a50'};font-weight:500">${r.proprio_encaisse ? '<span style="font-style:italic;font-weight:400">perçu direct</span>' : (virR > 0 ? fmt(virR) : '—')}</td>` : ''}
     </tr>`
   }).join('')
 
@@ -283,12 +291,16 @@ export function genererStatementHTML(proprio, mois, data) {
       <col style="width:7%">
       <col style="width:9%">
       <col style="width:4%">
-      ${showNetPlat ? '<col style="width:8%"><col style="width:8%">' : '<col style="width:9%">'}
-      <col style="width:9%">
-      <col style="width:8%">
-      ${showLoy ? '<col style="width:9%">' : ''}
-      <col style="width:9%">
-      <col style="width:6%">
+      ${showBrut         ? '<col style="width:8%">' : ''}
+      ${showEncaissement ? '<col style="width:8%">' : ''}
+      ${showFraisDist    ? '<col style="width:8%">' : ''}
+      ${showTaxe         ? '<col style="width:7%">' : ''}
+      ${showNetPlat      ? '<col style="width:8%">' : ''}
+      ${showBaseComm     ? '<col style="width:8%">' : ''}
+      ${showHon          ? '<col style="width:7%">' : ''}
+      ${showLoy          ? '<col style="width:8%">' : ''}
+      ${showMenage       ? '<col style="width:8%">' : ''}
+      ${showVir          ? '<col style="width:8%">' : ''}
     </colgroup>
     <thead>
       <tr style="background:#EDEBE5;border-bottom:2px solid #CC9933">
@@ -297,28 +309,32 @@ export function genererStatementHTML(proprio, mois, data) {
         <th style="padding:5px 5px;text-align:left;font-weight:400;font-size:8px;color:#9c8c7a">Canal</th>
         <th style="padding:5px 5px;text-align:left;font-weight:400;font-size:8px;color:#9c8c7a">Dates</th>
         <th style="padding:5px 5px;text-align:right;font-weight:400;font-size:8px;color:#9c8c7a">Nuits</th>
-        ${showBrut     ? '<th style="padding:5px 5px;text-align:right;font-weight:400;font-size:8px;color:#9c8c7a">Brut voyageur</th>' : ''}
-        ${showNetPlat  ? '<th style="padding:5px 5px;text-align:right;font-weight:400;font-size:8px;color:#9c8c7a">Net plateforme</th>' : ''}
-        ${showBaseComm ? '<th style="padding:5px 5px;text-align:right;font-weight:400;font-size:8px;color:#9c8c7a">Base comm.</th>' : ''}
-        ${showHon      ? '<th style="padding:5px 5px;text-align:right;font-weight:400;font-size:8px;color:#9c8c7a">HON TTC</th>' : ''}
-        ${showLoy      ? '<th style="padding:5px 5px;text-align:right;font-weight:400;font-size:8px;color:#CC9933">LOY</th>' : ''}
-        ${showMenage   ? '<th style="padding:5px 5px;text-align:right;font-weight:400;font-size:8px;color:#9c8c7a">Ménage total</th>' : ''}
-        <th style="padding:5px 5px;text-align:right;font-weight:400;font-size:8px;color:#9c8c7a">Taxe séj.</th>
-        ${showVir      ? '<th style="padding:5px 5px;text-align:right;font-weight:400;font-size:8px;color:#2d7a50">VIR</th>' : ''}
+        ${showBrut         ? '<th style="padding:5px 5px;text-align:right;font-weight:400;font-size:8px;color:#9c8c7a">Brut voyageur</th>' : ''}
+        ${showEncaissement ? '<th style="padding:5px 5px;text-align:right;font-weight:400;font-size:8px;color:#4A3728">Encaissement</th>' : ''}
+        ${showFraisDist    ? '<th style="padding:5px 5px;text-align:right;font-weight:400;font-size:8px;color:#9c8c7a">Frais dist.</th>' : ''}
+        ${showTaxe         ? '<th style="padding:5px 5px;text-align:right;font-weight:400;font-size:8px;color:#9c8c7a">Taxe séj.</th>' : ''}
+        ${showNetPlat      ? '<th style="padding:5px 5px;text-align:right;font-weight:400;font-size:8px;color:#4A3728">NET plateforme</th>' : ''}
+        ${showBaseComm     ? '<th style="padding:5px 5px;text-align:right;font-weight:400;font-size:8px;color:#9c8c7a">Base comm.</th>' : ''}
+        ${showHon          ? '<th style="padding:5px 5px;text-align:right;font-weight:400;font-size:8px;color:#9c8c7a">HON TTC</th>' : ''}
+        ${showLoy          ? '<th style="padding:5px 5px;text-align:right;font-weight:400;font-size:8px;color:#CC9933">LOY</th>' : ''}
+        ${showMenage       ? '<th style="padding:5px 5px;text-align:right;font-weight:400;font-size:8px;color:#9c8c7a">Ménage total</th>' : ''}
+        ${showVir          ? '<th style="padding:5px 5px;text-align:right;font-weight:400;font-size:8px;color:#2d7a50">VIR</th>' : ''}
       </tr>
     </thead>
     <tbody>${lignesResas}</tbody>
     <tfoot>
       <tr style="background:#EDEBE5;border-top:2px solid #CC9933;font-weight:700">
         <td colspan="5" style="padding:5px 5px;font-size:9.5px">Total</td>
-        ${showBrut     ? `<td style="padding:5px 5px;text-align:right;font-size:9.5px">${fmt(grossTotal)}</td>` : ''}
-        ${showNetPlat  ? `<td style="padding:5px 5px;text-align:right;font-size:9.5px;color:#4A3728">${fmt(caHeb)}</td>` : ''}
-        ${showBaseComm ? `<td style="padding:5px 5px;text-align:right;font-size:9.5px;color:#4A3728">${baseCommTotal > 0 ? fmt(baseCommTotal) : '—'}</td>` : ''}
-        ${showHon      ? `<td style="padding:5px 5px;text-align:right;font-size:9.5px;color:#9c8c7a">${fmt(honTotal)}</td>` : ''}
-        ${showLoy      ? `<td style="padding:5px 5px;text-align:right;font-size:9.5px;color:#CC9933">${loyTotal > 0 ? fmt(loyTotal) : '—'}</td>` : ''}
-        ${showMenage   ? `<td style="padding:5px 5px;text-align:right;font-size:9.5px;color:#4A3728">${menageTotal > 0 ? fmt(menageTotal) : '—'}</td>` : ''}
-        <td style="padding:5px 5px;text-align:right;font-size:9.5px;color:#9c8c7a">${taxeTotal > 0 ? fmt(taxeTotal) : '—'}</td>
-        ${showVir      ? `<td style="padding:5px 5px;text-align:right;font-size:9.5px;color:#2d7a50">${fmt(virTotal)}</td>` : ''}
+        ${showBrut         ? `<td style="padding:5px 5px;text-align:right;font-size:9.5px">${fmt(grossTotal)}</td>` : ''}
+        ${showEncaissement ? `<td style="padding:5px 5px;text-align:right;font-size:9.5px;color:#4A3728">${encaissementTotal > 0 ? fmt(encaissementTotal) : '—'}</td>` : ''}
+        ${showFraisDist    ? `<td style="padding:5px 5px;text-align:right;font-size:9.5px;color:#9c8c7a">${fraisDistTotal > 0 ? fmt(fraisDistTotal) : '—'}</td>` : ''}
+        ${showTaxe         ? `<td style="padding:5px 5px;text-align:right;font-size:9.5px;color:#9c8c7a">${taxeTotal > 0 ? fmt(taxeTotal) : '—'}</td>` : ''}
+        ${showNetPlat      ? `<td style="padding:5px 5px;text-align:right;font-size:9.5px;color:#4A3728">${fmt(netPlatTotal)}</td>` : ''}
+        ${showBaseComm     ? `<td style="padding:5px 5px;text-align:right;font-size:9.5px;color:#4A3728">${baseCommTotal > 0 ? fmt(baseCommTotal) : '—'}</td>` : ''}
+        ${showHon          ? `<td style="padding:5px 5px;text-align:right;font-size:9.5px;color:#9c8c7a">${fmt(honTotal)}</td>` : ''}
+        ${showLoy          ? `<td style="padding:5px 5px;text-align:right;font-size:9.5px;color:#CC9933">${loyTotal > 0 ? fmt(loyTotal) : '—'}</td>` : ''}
+        ${showMenage       ? `<td style="padding:5px 5px;text-align:right;font-size:9.5px;color:#4A3728">${menageTotal > 0 ? fmt(menageTotal) : '—'}</td>` : ''}
+        ${showVir          ? `<td style="padding:5px 5px;text-align:right;font-size:9.5px;color:#2d7a50">${fmt(virTotal)}</td>` : ''}
       </tr>
     </tfoot>
   </table>
