@@ -357,7 +357,15 @@ export async function buildRapportData(bienId, propId, mois, opts = {}) {
       [isGlobal ? 'in' : 'eq']('bien_id', isGlobal ? maiteIds : bienId)
       .not('rating', 'is', null),
   ])
-  const reviews = revData || []
+  // Dédup : webhook review.created + review.updated peut insérer deux lignes pour le même avis
+  // Clé de dédup = (reviewer_name, rating, 100 premiers chars du comment)
+  const reviewsSeen = new Set()
+  const reviews = (revData || []).filter(r => {
+    const key = `${r.reviewer_name}|${r.rating}|${(r.comment || '').substring(0, 100)}`
+    if (reviewsSeen.has(key)) return false
+    reviewsSeen.add(key)
+    return true
+  })
   const noteMoisMoy = reviews.length > 0
     ? (reviews.reduce((s, r) => s + (r.rating || 0), 0) / reviews.length).toFixed(1) : null
   const noteGlobaleMoy = allReviewsData?.length > 0
