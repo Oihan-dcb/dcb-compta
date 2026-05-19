@@ -230,7 +230,8 @@ export async function buildRapportData(bienId, propId, mois, opts = {}) {
         : 0) +
       (r.platform === 'manual'
         ? (r.reservation_fee || []).filter(f => f.fee_type === 'tax').reduce((s, f) => s + (f.amount || 0), 0)
-        : 0)
+        : 0) -
+      (r.platform === 'airbnb' ? (r.fin_discount || 0) : 0)
   }
 
   // ── Enrichissement par réservation ───────────────────────────────────────
