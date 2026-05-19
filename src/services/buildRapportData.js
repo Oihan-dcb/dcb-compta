@@ -265,10 +265,13 @@ export async function buildRapportData(bienId, propId, mois, opts = {}) {
         ? Math.max(0, grossRev - (r.fin_revenue || 0)) + mgmtFee
         : Math.max(0, -(r.fin_host_service_fee || 0))
 
-    // net_plateforme = BRUT - Frais Dist - Taxe (formule universelle)
-    // direct : grossRev - mgmt_fee - taxe = accommodation + ménage
-    // Airbnb : grossRev - airbnb_fee - 0 = fin_revenue
-    const netPlat = r.owner_stay ? 0 : grossRev - fraisPlat - taxeSejDirecte
+    // net_plateforme = ce que reçoit DCB après frais plateforme et taxe de séjour
+    // Airbnb/Booking : fin_revenue est la source fiable (reversement Hospitable)
+    // direct/manual  : grossRev - fraisPlat - taxeSejDirecte (reconstruction car fin_revenue inclut la taxe)
+    const netPlat = r.owner_stay ? 0
+      : ['direct', 'manual'].includes(r.platform || '')
+        ? grossRev - fraisPlat - taxeSejDirecte
+        : (r.fin_revenue || 0)
 
     return {
       ...r,
