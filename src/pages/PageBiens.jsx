@@ -4,6 +4,105 @@ import { syncBiens, getBiens } from '../services/syncBiens'
 import { getProprietaires } from '../services/syncProprietaires'
 import { formatMontant } from '../lib/hospitable'
 
+function ModalBien({ bien, onClose, saveField, saving }) {
+  const [localIcalUrl, setLocalIcalUrl] = useState(bien.ical_url || '')
+  const [localPhotoUrl, setLocalPhotoUrl] = useState(bien.photo_url || '')
+
+  function handleSaveIcal() {
+    const val = localIcalUrl.trim() || null
+    if (val !== (bien.ical_url || null)) saveField(bien.id, 'ical_url', val)
+  }
+  function handleSavePhoto() {
+    const val = localPhotoUrl.trim() || null
+    if (val !== (bien.photo_url || null)) saveField(bien.id, 'photo_url', val)
+  }
+
+  return (
+    <div onClick={onClose} style={{
+      position: 'fixed', inset: 0, background: 'rgba(44,36,22,0.45)',
+      zIndex: 1000, display: 'flex', alignItems: 'center', justifyContent: 'center'
+    }}>
+      <div onClick={e => e.stopPropagation()} style={{
+        background: '#fff', borderRadius: 12, width: 520, maxWidth: '95vw',
+        boxShadow: '0 8px 40px rgba(44,36,22,0.18)', overflow: 'hidden'
+      }}>
+        {/* Header */}
+        <div style={{ background: 'var(--bg, #F7F3EC)', borderBottom: '2px solid var(--brand, #CC9933)', padding: '16px 20px', display: 'flex', alignItems: 'center', gap: 12 }}>
+          {bien.photo_url ? (
+            <img src={bien.photo_url} alt="" style={{ width: 56, height: 56, borderRadius: 8, objectFit: 'cover', border: '1.5px solid var(--border, #D9CEB8)' }} />
+          ) : (
+            <div style={{ width: 56, height: 56, borderRadius: 8, background: '#EAE3D4', border: '1.5px solid #D9CEB8', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 22, color: '#b8aa96' }}>🏠</div>
+          )}
+          <div style={{ flex: 1, minWidth: 0 }}>
+            <div style={{ fontWeight: 700, fontSize: 15, color: '#2C2416' }}>{bien.hospitable_name}</div>
+            <div style={{ fontSize: 11, color: '#9C8E7D', fontFamily: 'monospace', marginTop: 2 }}>
+              {bien.code && <span style={{ marginRight: 10 }}>{bien.code}</span>}
+              {bien.ville && <span>{bien.ville}</span>}
+            </div>
+          </div>
+          <button onClick={onClose} style={{ background: 'none', border: 'none', fontSize: 20, color: '#9C8E7D', cursor: 'pointer', padding: '0 4px', lineHeight: 1 }}>×</button>
+        </div>
+
+        {/* Body */}
+        <div style={{ padding: '20px 24px', display: 'flex', flexDirection: 'column', gap: 20 }}>
+
+          {/* Photo URL */}
+          <div>
+            <label style={{ display: 'block', fontSize: 11, fontWeight: 700, color: '#9C8E7D', textTransform: 'uppercase', letterSpacing: 1, marginBottom: 6 }}>Photo principale</label>
+            {localPhotoUrl && (
+              <img src={localPhotoUrl} alt="" onError={e => { e.target.style.display = 'none' }}
+                style={{ width: '100%', height: 160, objectFit: 'cover', borderRadius: 6, border: '1px solid #E8E2D6', marginBottom: 8 }} />
+            )}
+            <div style={{ display: 'flex', gap: 8 }}>
+              <input
+                type="url" placeholder="https://…"
+                value={localPhotoUrl}
+                onChange={e => setLocalPhotoUrl(e.target.value)}
+                onBlur={handleSavePhoto}
+                onKeyDown={e => { if (e.key === 'Enter') e.target.blur() }}
+                style={{ flex: 1, fontSize: 12, padding: '7px 10px', borderRadius: 6, border: '1px solid #D9CEB8', fontFamily: 'monospace', color: '#2C2416' }}
+              />
+              {saving[bien.id] && <span style={{ fontSize: 11, color: '#9C8E7D', alignSelf: 'center' }}>…</span>}
+            </div>
+          </div>
+
+          {/* iCal URL */}
+          <div>
+            <label style={{ display: 'block', fontSize: 11, fontWeight: 700, color: '#9C8E7D', textTransform: 'uppercase', letterSpacing: 1, marginBottom: 4 }}>URL iCal (sync planning)</label>
+            <p style={{ fontSize: 11, color: '#b8aa96', margin: '0 0 8px' }}>
+              Feed iCal Airbnb/Booking — utilisé par le cron pour peupler <code>planning_events</code>
+            </p>
+            <div style={{ display: 'flex', gap: 8 }}>
+              <input
+                type="url" placeholder="https://www.airbnb.fr/calendar/ical/…"
+                value={localIcalUrl}
+                onChange={e => setLocalIcalUrl(e.target.value)}
+                onBlur={handleSaveIcal}
+                onKeyDown={e => { if (e.key === 'Enter') e.target.blur() }}
+                style={{ flex: 1, fontSize: 12, padding: '7px 10px', borderRadius: 6, border: `1px solid ${bien.ical_url ? '#D9CEB8' : '#f59e0b'}`, fontFamily: 'monospace', color: '#2C2416', background: bien.ical_url ? '#fff' : '#FFFBEB' }}
+              />
+              {bien.ical_url && (
+                <a href={bien.ical_url} target="_blank" rel="noreferrer" title="Tester le feed" style={{ display: 'flex', alignItems: 'center', padding: '0 10px', borderRadius: 6, border: '1px solid #D9CEB8', fontSize: 14, color: '#9C8E7D', textDecoration: 'none', background: '#f9fafb' }}>↗</a>
+              )}
+            </div>
+            {!bien.ical_url && (
+              <div style={{ fontSize: 11, color: '#f59e0b', marginTop: 4 }}>⚠ Requis pour la sync planning automatique</div>
+            )}
+          </div>
+
+          {/* Hospitable ID */}
+          <div style={{ borderTop: '1px solid #EAE3D4', paddingTop: 14 }}>
+            <div style={{ fontSize: 11, color: '#b8aa96' }}>
+              <span style={{ fontWeight: 600, color: '#9C8E7D' }}>Hospitable ID </span>
+              <span style={{ fontFamily: 'monospace' }}>{bien.hospitable_id}</span>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  )
+}
+
 export default function PageBiens() {
   const [biens, setBiens] = useState([])
   const [filtreAgence, setFiltreAgence] = useState(AGENCE)
@@ -11,6 +110,7 @@ export default function PageBiens() {
   const [syncing, setSyncing] = useState(false)
   const [syncResult, setSyncResult] = useState(null)
   const [error, setError] = useState(null)
+  const [selectedBienId, setSelectedBienId] = useState(null)
 
   useEffect(() => {
     chargerBiens()
@@ -115,7 +215,7 @@ export default function PageBiens() {
       const { supabase } = await import('../lib/supabase')
       // taux_commission_override est un ratio (ex: 0.20 pour 20%), pas en centimes
       // Champs texte : sauvegarder tel quel
-      const TEXT_FIELDS = ['airbnb_account', 'ical_code', 'classification_date', 'classification_fin', 'code']
+      const TEXT_FIELDS = ['airbnb_account', 'ical_code', 'ical_url', 'photo_url', 'classification_date', 'classification_fin', 'code']
       const finalVal = value === '' || value === null ? null
         : TEXT_FIELDS.includes(field) ? value
         : field === 'taux_commission_override' ? value
@@ -163,6 +263,8 @@ export default function PageBiens() {
       setBiens(prev => prev.map(b => b.id === bienId ? { ...b, agence: next } : b))
     } catch (err) { setError('Erreur : ' + err.message) }
   }
+
+  const selectedBien = selectedBienId ? biens.find(b => b.id === selectedBienId) : null
 
   const biensDCB = biens.filter(b => (b.agence || AGENCE) === AGENCE)
   const biensActifs = biensDCB.filter(b => b.listed)
@@ -339,7 +441,11 @@ export default function PageBiens() {
               {biens.filter(b => filtreAgence === "tous" || (b.agence || "dcb") === filtreAgence).map(bien => (
                 <tr key={bien.id}>
                   <td>
-                    <div style={{ fontWeight: 500 }}>{bien.hospitable_name}</div>
+                    <div
+                      style={{ fontWeight: 500, cursor: 'pointer', color: 'var(--brand, #CC9933)', textDecoration: 'underline', textDecorationStyle: 'dotted', textUnderlineOffset: 3 }}
+                      onClick={() => setSelectedBienId(bien.id)}
+                      title="Ouvrir la fiche bien"
+                    >{bien.hospitable_name}</div>
                     <div style={{ fontSize: 11, color: 'var(--text-muted)', fontFamily: 'monospace' }}>
                       {bien.hospitable_id?.substring(0, 8)}…
                     </div>
@@ -585,6 +691,15 @@ export default function PageBiens() {
           </table>
         </div>
       </>
+      )}
+
+      {selectedBien && (
+        <ModalBien
+          bien={selectedBien}
+          onClose={() => setSelectedBienId(null)}
+          saveField={saveField}
+          saving={saving}
+        />
       )}
     </div>
   )
