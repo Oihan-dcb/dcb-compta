@@ -1176,11 +1176,18 @@ Deno.serve(async (req) => {
   try {
     // 1. Sync biens ââââââââââââââââââââââââââââââââââââââââââââââââââââââââââ
     const properties = await fetchProperties()
+    const listedHospIds = new Set(properties.map((p: any) => p.id))
     for (const prop of properties) {
       await supabase.from('bien').update({
         hospitable_name: prop.name,
-        listed: prop.listed ?? true,
+        listed: true,
       }).eq('hospitable_id', prop.id)
+    }
+    // Biens absents de l'API Hospitable = depublies -> listed false
+    const { data: allBiens } = await supabase.from('bien').select('id, hospitable_id').not('hospitable_id', 'is', null)
+    const depublies = (allBiens || []).filter((b: any) => !listedHospIds.has(b.hospitable_id)).map((b: any) => b.id)
+    if (depublies.length > 0) {
+      await supabase.from('bien').update({ listed: false }).in('id', depublies)
     }
     log.biens = `${properties.length} biens vÃ©rifiÃ©s`
 
