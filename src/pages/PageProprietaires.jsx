@@ -755,7 +755,6 @@ function TabPortailOwner({ proprio, visConfig, visLoading, visErr, visOk, invite
             <Toggle field="demandes_actives"    label="Module demandes actif" />
             <Toggle field="messagerie"          label="Messagerie directe" />
             <Toggle field="notifications_email" label="Notifications email" />
-            <Toggle field="notifications_sms"   label="Notifications SMS" />
           </Section>
         </div>
 

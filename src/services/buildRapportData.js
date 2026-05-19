@@ -25,6 +25,11 @@ export async function buildRapportData(bienId, propId, mois, opts = {}) {
   const nuitsDispos = new Date(y, m, 0).getDate()
   const moisN1 = `${y - 1}-${String(m).padStart(2, '0')}`
   const moisSuivant = m === 12 ? `${y + 1}-01` : `${y}-${String(m + 1).padStart(2, '0')}`
+  const prev3Mois = Array.from({ length: 3 }, (_, i) => {
+    let mm = m - (i + 1); let yy = y
+    while (mm <= 0) { mm += 12; yy-- }
+    return `${yy}-${String(mm).padStart(2, '0')}`
+  })
 
   // ── Requêtes parallèles ──────────────────────────────────────────────────
   const [
@@ -33,6 +38,7 @@ export async function buildRapportData(bienId, propId, mois, opts = {}) {
     { data: fraisData },
     { data: facture },
     bienConfig,
+    { data: virHisto },
   ] = await Promise.all([
     // 1. Réservations avec reservation_fee pour gross_revenue exact
     (() => {
@@ -79,6 +85,15 @@ export async function buildRapportData(bienId, propId, mois, opts = {}) {
         tauxCommission:   r.data?.taux_commission_override || r.data?.proprietaire?.taux_commission || 25,
         modeEncaissement: r.data?.mode_encaissement || 'dcb',
       })),
+    // 6. Ventilation historique VIRProprio (3 mois précédents) pour projection
+    (() => {
+      let q = supabase
+        .from('ventilation')
+        .select('mois_comptable, montant_ht')
+        .in('mois_comptable', prev3Mois)
+        .eq('code', 'VIR')
+      return isGlobal ? q.in('bien_id', maiteIds) : q.eq('bien_id', bienId)
+    })(),
   ])
 
   if (resasErr) throw new Error(resasErr.message)
@@ -400,6 +415,19 @@ export async function buildRapportData(bienId, propId, mois, opts = {}) {
   const fmenTotal = resasEnrichies.reduce((s, r) => s + (r.fmen || 0), 0)
   const autoTotal = resasEnrichies.reduce((s, r) => s + (ventByResa[r.id]?.AUTO?.montant_ht || 0), 0)
 
+  // RevPAR = virementNet / nuitsDispos
+  const revpar = nuitsDispos > 0 && virementNet > 0 ? Math.round(virementNet / nuitsDispos) : null
+
+  // Projection N+1 = moyenne des VIRProprio des 3 mois précédents
+  const virByMonth = {}
+  for (const v of (virHisto || [])) {
+    virByMonth[v.mois_comptable] = (virByMonth[v.mois_comptable] || 0) + (v.montant_ht || 0)
+  }
+  const virHistoValues = prev3Mois.map(mp => virByMonth[mp] || 0).filter(v => v > 0)
+  const projection_revenus = virHistoValues.length > 0
+    ? Math.round(virHistoValues.reduce((s, v) => s + v, 0) / virHistoValues.length)
+    : null
+
   const resaN1Valid = resasN1 || []
   const caHebN1 = resaN1Valid.reduce((s, r) => s + (r.fin_revenue || 0), 0)
   const nuitesN1 = resaN1Valid.map(r => r.nights || 0).filter(v => v > 0)
@@ -424,6 +452,7 @@ export async function buildRapportData(bienId, propId, mois, opts = {}) {
       nbResas, caHeb, baseCommTotal, nuitsOccupees, nuitsDispos,
       tauxOcc, dureeMoy, loyTotal, honTotal, fmenTotal, autoTotal, virementNet,
       modeEncaissement, virTotalProprioEncaisse,
+      revpar, projection_revenus,
       // Debug interne
       _virTotal: virTotal, _totalDebours: totalDebours, _totalHaowner: totalHaowner,
       _fraisDeductionLoy: fraisDeductionLoy, _ownerStayMenageTotal: ownerStayMenageTotal,
