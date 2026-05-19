@@ -306,8 +306,12 @@ export async function buildRapportData(bienId, propId, mois, opts = {}) {
       taxe: taxeDisplay,
       frais_plateforme: fraisPlat,
       net_plateforme: netPlat,
-      // encaissement : montants réellement reçus en banque (reservation_paiement)
-      encaissement: paiementsByResa[r.id] || 0,
+      // encaissement : pour direct/manual/stripe, les frais Stripe sont remboursés depuis
+      // le compte courant vers le séquestre → encaissement = brut voyageur
+      // Pour Airbnb/Booking : payout réel reçu en banque
+      encaissement: ['direct', 'manual', 'stripe'].includes(r.platform || '')
+        ? grossRev
+        : (paiementsByResa[r.id] || 0),
       // menage_voyageur = ménage collecté auprès du voyageur (normal resas only)
       // Pour owner_stay : le ménage est dans DÉBOURS (FMEN+AUTO), pas dans les colonnes voyageur
       menage_voyageur: r.owner_stay ? 0 : (v.FMEN?.montant_ttc || 0) + (v.AUTO?.montant_ht || 0),
