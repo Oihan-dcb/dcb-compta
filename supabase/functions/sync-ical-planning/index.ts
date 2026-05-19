@@ -3,7 +3,7 @@
  *
  * Remplace l'approche iCal manuelle.
  * Appelle GET /v2/properties/{hospitable_id}/calendar pour chaque bien,
- * groupe les jours indisponibles en spans, et upsert dans planning_events.
+ * groupe les jours indisponibles en spans, et upsert dans property_calendar.
  *
  * Avantages vs iCal :
  *  - Aucune URL à configurer manuellement
@@ -99,7 +99,7 @@ async function syncBienCalendar(
 
   // 4. Supprimer les anciennes entrées dans la fenêtre (remplacer proprement)
   const { count: deleted } = await sb
-    .from('planning_events')
+    .from('property_calendar')
     .delete({ count: 'exact' })
     .eq('bien_id', bien.id)
     .gte('date_debut', startDate)
@@ -110,7 +110,7 @@ async function syncBienCalendar(
 
   const rows = spans.map(span => ({
     bien_id:       bien.id,
-    uid_ical:      `${bien.id}:${span.date_debut}`,
+    uid_cal:      `${bien.id}:${span.date_debut}`,
     source:        span.source,
     date_debut:    span.date_debut,
     date_fin:      span.date_fin,
@@ -119,7 +119,7 @@ async function syncBienCalendar(
     derniere_sync: new Date().toISOString(),
   }))
 
-  const { error } = await sb.from('planning_events').insert(rows)
+  const { error } = await sb.from('property_calendar').insert(rows)
   if (error) throw new Error(`Insert error: ${error.message}`)
 
   return { upserted: spans.length, deleted: deleted ?? 0 }
