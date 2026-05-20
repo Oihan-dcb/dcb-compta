@@ -263,9 +263,15 @@ export default function PageReservations() {
       </div>
 
       {syncResult && (
-        <div className="alert alert-success">
-          ✓ Sync {mois} — {syncResult.created} créées, {syncResult.updated} mises à jour
-          {syncResult.errors > 0 && ` — ⚠ ${syncResult.errors} erreurs`}
+        <div className={`alert ${syncResult.errors > 0 ? 'alert-warning' : 'alert-success'}`}>
+          <div>✓ Sync {mois} — {syncResult.created} créées, {syncResult.updated} mises à jour{syncResult.errors > 0 && ` — ⚠ ${syncResult.errors} erreur${syncResult.errors > 1 ? 's' : ''}`}</div>
+          {syncResult.errorDetails?.length > 0 && (
+            <ul style={{ margin: '6px 0 0', paddingLeft: 18, fontSize: '0.82em', opacity: 0.85 }}>
+              {syncResult.errorDetails.map((e, i) => (
+                <li key={i}><strong>{e.code}</strong> — {e.message}</li>
+              ))}
+            </ul>
+          )}
         </div>
       )}
       {ventilResult && (

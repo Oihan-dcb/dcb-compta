@@ -15,7 +15,7 @@ import { format, parseISO } from 'date-fns'
  * @returns {Promise<{created, updated, errors, total}>}
  */
 export async function syncReservations(mois) {
-  const log = { created: 0, updated: 0, errors: 0, total: 0 }
+  const log = { created: 0, updated: 0, errors: 0, total: 0, errorDetails: [] }
 
   // Dates du mois
   const [year, month] = mois.split('-').map(Number)
@@ -120,6 +120,7 @@ export async function syncReservations(mois) {
       } catch (err) {
         console.error(`Erreur résa ${resa.code}:`, err)
         log.errors++
+        log.errorDetails.push({ code: resa.code || resa.id, message: err?.message || String(err) })
       }
     }
 
