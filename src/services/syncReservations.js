@@ -183,7 +183,8 @@ function parseReservation(resa, bien, mois) {
     guest_name: [resa.guest?.first_name, resa.guest?.last_name].filter(Boolean).join(' ') || resa.guest_name || null,
     guest_count: resa.guest_count || resa.guests?.total || null,
     stay_type: resa.stay_type || 'guest',
-    owner_stay: resa.owner_stay || false,
+    // Hospitable v2 renvoie un objet {schedule_cleaning:...} pour les séjours proprio (truthy = owner stay)
+    owner_stay: typeof resa.owner_stay === 'boolean' ? resa.owner_stay : (resa.owner_stay != null && resa.owner_stay !== false),
     reservation_status: resa.reservation_status,
     final_status: resa.reservation_status?.current?.category || resa.status || 'accepted',
     // Financials en centimes
