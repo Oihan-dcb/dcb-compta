@@ -47,6 +47,7 @@ import PageProprietaires from './pages/PageProprietaires'
 import PageTaxeSejour from './pages/PageTaxeSejour'
 import PageCloture from './pages/PageCloture'
 import PageDemandesOwner from './pages/PageDemandesOwner'
+import PageReglesVentilation from './pages/PageReglesVentilation'
 import BugReportButton from './components/BugReportButton'
 import './App.css'
 
@@ -150,7 +151,7 @@ function ConfigDropdown() {
   const [open, setOpen] = useState(false)
   const ref = useRef(null)
   const location = useLocation()
-  const configPaths = ['/import', '/journal', '/config', '/bugs', '/exports', '/agence', '/taxe-sejour', '/proprietaires', '/demandes-owner', '/cloture', '/sms-reviews']
+  const configPaths = ['/import', '/journal', '/config', '/bugs', '/exports', '/agence', '/taxe-sejour', '/proprietaires', '/demandes-owner', '/cloture', '/sms-reviews', '/regles-ventilation']
   const isActive = configPaths.some(p => location.pathname === p)
 
   useEffect(() => {
@@ -180,6 +181,7 @@ function ConfigDropdown() {
             { to: '/journal', label: 'Journal' },
             { to: '/bugs', label: '🐛 Bugs' },
             { to: '/config', label: 'Paramètres' },
+            { to: '/regles-ventilation', label: '📐 Règles ventilation' },
             { to: '/cloture', label: '🔒 Clôture' },
           ].map(({ to, label }) => (
             <NavLink key={to} to={to} onClick={() => setOpen(false)}
@@ -327,6 +329,7 @@ export default function App() {
             <Route path="/demandes-owner" element={<PageDemandesOwner />} />
             <Route path="/taxe-sejour" element={<PageTaxeSejour />} />
             <Route path="/cloture" element={<PageCloture />} />
+            <Route path="/regles-ventilation" element={<PageReglesVentilation />} />
           </Routes>
         </main>
       </div>
