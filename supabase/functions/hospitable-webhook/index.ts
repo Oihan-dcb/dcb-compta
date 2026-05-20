@@ -40,8 +40,8 @@ Deno.serve(async (req) => {
   let payload: any
   try { payload = await req.json() } catch { return new Response('Invalid JSON', { status: 400 }) }
 
-  // Hospitable envoie {event,data} OU directement {id,code,guest,...} (Historical Data)
-  let event = payload?.event || payload?.type || null
+  // Hospitable envoie {action,data} (v2) OU {event,data} (legacy) OU directement {id,code,guest,...} (Historical Data)
+  let event = payload?.event || payload?.action || payload?.type || null
   let data   = payload?.data || (payload?.id ? payload : null)
   if (!data && payload?.code) { data = payload; event = event || 'reservation.updated' }
   if (!event && data?.id) event = 'reservation.updated'
@@ -124,11 +124,11 @@ async function handleReservation(supabase: any, event: string, data: any): Promi
     return 'cancelled + ventilation deleted'
   }
 
-  if (!['reservation.created', 'reservation.modified', 'reservation.updated'].includes(event)) {
+  if (!['reservation.created', 'reservation.modified', 'reservation.updated', 'reservation.changed'].includes(event)) {
     return 'event skipped'
   }
 
-  const propertyId = data.property_id
+  const propertyId = data.property_id || data.properties?.[0]?.id
   if (!propertyId) return 'no property_id'
 
   const { data: bien } = await supabase
