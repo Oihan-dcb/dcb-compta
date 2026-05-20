@@ -49,11 +49,30 @@ Deno.serve(async (req) => {
       getHospGuestMessages(hospToken, hospId),
     ])
 
+    // Airbnb ferme le fil de discussion ~48h après le checkout — inutile d'essayer au-delà
+    const checkoutRaw = hosp?.check_out || hosp?.departure_date || null
+    const platform    = hosp?.platform || null
+    if (platform === 'airbnb' && checkoutRaw) {
+      const checkoutMs  = new Date(checkoutRaw).getTime()
+      const hoursAgo    = (Date.now() - checkoutMs) / 3_600_000
+      if (hoursAgo > 48) {
+        const reason = `airbnb_thread_closed (checkout il y a ${Math.round(hoursAgo)}h)`
+        await supabase.from('sms_queue').update({ status: 'skipped', error_message: reason }).eq('id', item.id)
+        await supabase.from('sms_logs').insert({
+          hospitable_reservation_id: hospId,
+          guest_name: item.guest_name, guest_phone: null,
+          language: 'FR', rating: item.rating || 5,
+          sms_body: item.preview_body || '', status: 'skipped', error_message: reason,
+        })
+        failed++
+        continue
+      }
+    }
+
     const firstName   = hosp?.guest?.first_name || (item.guest_name || 'cher client').split(' ')[0]
     const locale      = hosp?.guest?.locale || null
     const reviewText  = hosp?.review?.guest_comment || item.comment || null
     const propName    = hosp?.listing?.name || item.property_name || 'notre villa'
-    const platform    = hosp?.platform || null
     const lang        = detectLang(locale, item.guest_country, null)
     const agenceLabel = item.agence_label || 'Destination Côte Basque'
 

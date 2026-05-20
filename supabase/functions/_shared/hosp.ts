@@ -49,10 +49,12 @@ export async function sendHospMessage(token: string, uuid: string, body: string)
       },
       body: JSON.stringify({ body }),
     })
-    const data = await res.json()
+    const data = await res.json().catch(() => ({}))
     if (res.ok) return { ok: true, id: data.data?.id || null }
+    const errDetail = data.message || data.error || (data.errors ? JSON.stringify(data.errors) : null) || JSON.stringify(data)
+    const errMsg = errDetail && errDetail !== '{}' ? errDetail : `HTTP ${res.status}`
     console.error('sendHospMessage error:', res.status, JSON.stringify(data))
-    return { ok: false, error: data.message || data.error || `HTTP ${res.status}` }
+    return { ok: false, error: errMsg }
   } catch (err: any) {
     return { ok: false, error: err?.message || String(err) }
   }
