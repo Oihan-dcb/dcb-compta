@@ -859,13 +859,27 @@ FORMAT :
     )
   }
 
+  // virementNet calculé depuis les lignes du tableau pour cohérence avec Statement et PDF propriétaire
+  const _kpiVirTotal     = !data ? 0 : (data.resas || []).reduce((s, r) => r.proprio_encaisse ? s : s + (r.vir || 0), 0)
+  const _kpiFreducLoy    = !data ? 0 : (data.frais || []).filter(f => f.mode_traitement === 'deduire_loyer').reduce((s, f) => {
+    if (f.statut === 'facture' && f.statut_deduction !== 'en_attente') return s + (f.montant_deduit_loy || 0)
+    if (f.statut === 'facture' && f.statut_deduction === 'en_attente')  return s + (f.montant_ttc || 0)
+    if (f.statut === 'a_facturer')                                       return s + (f.montant_ttc || 0)
+    return s
+  }, 0)
+  const _kpiRemb         = !data ? 0 : (data.frais || []).filter(f => f.mode_traitement === 'remboursement' && f.statut !== 'brouillon').reduce((s, f) => s + (f.montant_ttc || 0), 0)
+  const _kpiDebours      = !data ? 0 : (data.extrasGlobaux || []).reduce((s, p) => s + (p.montant_ttc || p.montant || 0), 0) + (data.resas || []).reduce((s, r) => s + (r.extra || 0), 0)
+  const _kpiHaowner      = !data ? 0 : (data.haownerList || []).reduce((s, p) => s + (p.montant_ttc || p.montant || 0), 0)
+  const _kpiOwnerStay    = !data ? 0 : (data.ownerStayList || []).reduce((s, p) => s + (p.montant || 0), 0)
+  const virementNetCalc  = Math.max(0, _kpiVirTotal - _kpiFreducLoy + _kpiRemb - _kpiDebours - _kpiHaowner - _kpiOwnerStay)
+
   const kpiCards = !data ? [] : [
     { val: data.kpis.nbResas,             lbl: 'Réservations',      rawN: data.kpis.nbResas,       rawN1: data.kpisN1.nbResas || 0, dispN1: data.kpisN1.nbResas > 0 ? data.kpisN1.nbResas : null },
     { val: fmt(data.kpis.caHeb),          lbl: 'CA Hébergement',    rawN: data.kpis.caHeb,         rawN1: data.kpisN1.caHeb || 0,   dispN1: data.kpisN1.caHeb > 0 ? fmt(data.kpisN1.caHeb) : null },
     { val: fmt(data.kpis.honTotal),        lbl: 'Total HON',          rawN: null, rawN1: null, dispN1: null },
     { val: fmt(data.kpis.fmenTotal),      lbl: 'Total FMEN',         rawN: null, rawN1: null, dispN1: null },
     { val: fmt(data.kpis.autoTotal),      lbl: "Main d'œuvre",       rawN: null, rawN1: null, dispN1: null },
-    { val: fmt(data.kpis.virementNet),    lbl: 'Virement proprio',   rawN: null, rawN1: null, dispN1: null },
+    { val: fmt(virementNetCalc),           lbl: 'Virement proprio',   rawN: null, rawN1: null, dispN1: null },
     { val: `${data.kpis.nuitsOccupees}/${data.kpis.nuitsDispos}`, lbl: 'Nuits occ./dispo.', rawN: data.kpis.nuitsOccupees, rawN1: data.kpisN1.nuitsOccupees || 0, dispN1: data.kpisN1.nuitsOccupees > 0 ? data.kpisN1.nuitsOccupees : null },
     { val: `${data.kpis.tauxOcc} %`,      lbl: "Taux d'occupation", rawN: data.kpis.tauxOcc,       rawN1: data.kpisN1.tauxOcc || 0, dispN1: data.kpisN1.tauxOcc > 0 ? `${data.kpisN1.tauxOcc} %` : null },
     { val: `${data.kpis.dureeMoy} nuits`, lbl: 'Durée moyenne',     rawN: null,                    rawN1: null,                     dispN1: null },

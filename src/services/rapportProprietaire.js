@@ -135,6 +135,20 @@ export function genererRapportHTML(proprio, mois, data, colonnes = {}) {
   const bienName = bien?.hospitable_name || proprio?.nom || ''
   const prixMoyenNuit = kpis.nuitsOccupees > 0 ? Math.round((kpis.caHeb / kpis.nuitsOccupees) / 100) : 0
 
+  // virementNet calculé depuis les lignes du tableau pour cohérence (tout changement de règle se répercute automatiquement)
+  const _virTotalRows      = (resas || []).reduce((s, r) => r.proprio_encaisse ? s : s + (r.vir || 0), 0)
+  const _fraisDeductLoy    = (fraisProprietaire || []).filter(f => f.mode_traitement === 'deduire_loyer').reduce((s, f) => {
+    if (f.statut === 'facture' && f.statut_deduction !== 'en_attente') return s + (f.montant_deduit_loy || 0)
+    if (f.statut === 'facture' && f.statut_deduction === 'en_attente')  return s + (f.montant_ttc || 0)
+    if (f.statut === 'a_facturer')                                       return s + (f.montant_ttc || 0)
+    return s
+  }, 0)
+  const _remboursements    = (fraisProprietaire || []).filter(f => f.mode_traitement === 'remboursement' && f.statut !== 'brouillon').reduce((s, f) => s + (f.montant_ttc || 0), 0)
+  const _deboursSeuls      = (extrasGlobaux || []).reduce((s, p) => s + (p.montant_ttc || p.montant || 0), 0) + (resas || []).reduce((s, r) => s + (r.extra || 0), 0)
+  const _haownerTotal      = (haownerList || []).reduce((s, p) => s + (p.montant_ttc || p.montant || 0), 0)
+  const _ownerStayMenage   = (ownerStayMenageList || []).reduce((s, p) => s + (p.montant || 0), 0)
+  const virementNetCalc    = Math.max(0, _virTotalRows - _fraisDeductLoy + _remboursements - _deboursSeuls - _haownerTotal - _ownerStayMenage)
+
 
   const cols = {
     brut:          colonnes.brut          ?? false,
@@ -226,9 +240,9 @@ export function genererRapportHTML(proprio, mois, data, colonnes = {}) {
               acc.taxe         += r.taxe || 0
               acc.net_plat     += r.owner_stay ? 0 : (r.net_plateforme ?? (r.fin_revenue || 0))
               acc.base_comm    += r.base_comm || 0
-              acc.hon          += v.HON?.montant_ttc || 0
-              acc.loy          += r.proprio_encaisse ? 0 : (v.LOY?.montant_ht || 0)
-              acc.vir          += r.proprio_encaisse ? 0 : (v.VIR?.montant_ht || 0)
+              acc.hon          += r.hon || 0
+              acc.loy          += r.proprio_encaisse ? 0 : (r.loy || 0)
+              acc.vir          += r.proprio_encaisse ? 0 : (r.vir || 0)
               acc.debours      += r.extra || 0
               acc.menage       += r.menage_voyageur || 0
               return acc
@@ -379,7 +393,7 @@ export function genererRapportHTML(proprio, mois, data, colonnes = {}) {
       </div>
       <div style="text-align:center;">
         <div style="font-size:8px;letter-spacing:0.04em;text-transform:uppercase;color:rgba(212,196,176,0.8);margin-bottom:3px;">${modeEncaissement === 'proprio' && virTotalProprioEncaisse > 0 ? 'Reversement DCB' : 'Virement propriétaire'}</div>
-        <div style="font-size:18px;font-weight:400;color:#fff;">${fmt(kpis.virementNet ?? kpis.loyTotal)}</div>
+        <div style="font-size:18px;font-weight:400;color:#fff;">${fmt(virementNetCalc || kpis.loyTotal)}</div>
         ${modeEncaissement === 'proprio' && virTotalProprioEncaisse > 0 ? `<div style="font-size:9px;color:rgba(212,196,176,0.7);margin-top:2px;">+ ${fmt(virTotalProprioEncaisse)} perçu direct</div>` : ''}
       </div>
       </div>
