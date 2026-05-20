@@ -60,10 +60,18 @@ export default async function handler(req, res) {
   }
 
   // 4. Relayer vers Hospitable API
+  // Params qui doivent être envoyés en notation tableau (properties[]=x) car Hospitable (Laravel) l'exige
+  const ARRAY_KEYS = new Set(['properties'])
   const url = new URL('https://public.api.hospitable.com' + path)
   Object.entries(params).forEach(([k, v]) => {
-    if (Array.isArray(v)) v.forEach(vi => url.searchParams.append(k, vi))
-    else url.searchParams.set(k, v)
+    if (Array.isArray(v)) {
+      v.forEach(vi => url.searchParams.append(ARRAY_KEYS.has(k) ? k + '[]' : k, vi))
+    } else if (ARRAY_KEYS.has(k)) {
+      // Valeur unique mais doit être un tableau — bracket notation obligatoire
+      url.searchParams.append(k + '[]', v)
+    } else {
+      url.searchParams.set(k, v)
+    }
   })
 
   const hospRes = await fetch(url.toString(), {
