@@ -80,6 +80,28 @@ Deno.serve(async (req) => {
       const platform   = hosp?.platform || null
       const lang       = detectLang(locale, r.guest_country, null)
 
+      // Les plateformes ferment le fil ~48h après le checkout
+      const checkoutRaw = hosp?.check_out || hosp?.departure_date || null
+      if (checkoutRaw) {
+        const hoursAgo = (Date.now() - new Date(checkoutRaw).getTime()) / 3_600_000
+        if (hoursAgo > 48) {
+          const reason = `thread_closed_${platform || 'unknown'} (checkout il y a ${Math.round(hoursAgo)}h)`
+          await supabase.from('sms_logs').insert({
+            hospitable_reservation_id: hospId,
+            hospitable_message_id: null,
+            guest_name: r.guest_name || firstName,
+            guest_phone: null,
+            language: lang,
+            rating: r.rating || 5,
+            sms_body: '',
+            status: 'skipped',
+            error_message: reason,
+          })
+          results.push({ hospitable_id: hospId, ok: false, skipped: true, error: reason })
+          continue
+        }
+      }
+
       const msgBody = await generateMessage({
         firstName, property: propName, lang, googleUrl,
         review: reviewText, guestMessages, agenceLabel, platform,

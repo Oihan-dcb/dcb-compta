@@ -49,14 +49,14 @@ Deno.serve(async (req) => {
       getHospGuestMessages(hospToken, hospId),
     ])
 
-    // Airbnb ferme le fil de discussion ~48h après le checkout — inutile d'essayer au-delà
+    // Les plateformes (Airbnb, Booking…) ferment le fil ~48h après le checkout
     const checkoutRaw = hosp?.check_out || hosp?.departure_date || null
     const platform    = hosp?.platform || null
-    if (platform === 'airbnb' && checkoutRaw) {
+    if (checkoutRaw) {
       const checkoutMs  = new Date(checkoutRaw).getTime()
       const hoursAgo    = (Date.now() - checkoutMs) / 3_600_000
       if (hoursAgo > 48) {
-        const reason = `airbnb_thread_closed (checkout il y a ${Math.round(hoursAgo)}h)`
+        const reason = `thread_closed_${platform || 'unknown'} (checkout il y a ${Math.round(hoursAgo)}h)`
         await supabase.from('sms_queue').update({ status: 'skipped', error_message: reason }).eq('id', item.id)
         await supabase.from('sms_logs').insert({
           hospitable_reservation_id: hospId,
