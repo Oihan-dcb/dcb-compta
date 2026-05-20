@@ -400,6 +400,131 @@ VIRProprio = LOY + taxesTotal`}</FormulaBlock>
         </table>
       </Section>
 
+      {/* ── 11. Déclencheurs automatiques ──────────────────────────────── */}
+      <Section title="11. Déclencheurs automatiques">
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 20, marginBottom: 20 }}>
+
+          {/* Webhook */}
+          <div style={{ ...S.card, border: '1px solid #BBF7D0' }}>
+            <div style={{ ...S.chead, background: '#F0FDF4', color: '#166534', borderBottom: '1px solid #BBF7D0' }}>
+              ⚡ Webhook Hospitable — temps réel
+            </div>
+            <div style={S.cbody}>
+              <div style={{ marginBottom: 10, fontSize: 12 }}>
+                Hospitable appelle <Mono>hospitable-webhook</Mono> à chaque événement réservation.
+              </div>
+              <table style={S.table}>
+                <thead><tr><th style={S.th}>Événement</th><th style={S.th}>Action</th></tr></thead>
+                <tbody>
+                  {[
+                    ['reservation.created', 'Upsert résa + fees → ventilation-auto (mois)'],
+                    ['reservation.changed', 'Upsert résa + fees (financials, statut)'],
+                    ['reservation.cancelled', 'final_status=cancelled + suppression ventilation'],
+                  ].map(([ev, ac]) => (
+                    <tr key={ev}>
+                      <td style={{ ...S.td, fontFamily: 'monospace', fontSize: 11 }}>{ev}</td>
+                      <td style={S.td}>{ac}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+              <div style={{ marginTop: 10, padding: '8px 10px', background: '#FEF9EC', borderRadius: 6, fontSize: 11.5, color: '#78350F' }}>
+                Ventilation auto déclenchée uniquement sur <Mono>reservation.created</Mono> + <Mono>accepted</Mono> + <Mono>fin_revenue &gt; 0</Mono>.
+              </div>
+            </div>
+          </div>
+
+          {/* Cron */}
+          <div style={{ ...S.card, border: '1px solid #BFDBFE' }}>
+            <div style={{ ...S.chead, background: '#EFF6FF', color: '#1D4ED8', borderBottom: '1px solid #BFDBFE' }}>
+              🕐 Cron nightly — ventilation-auto (3h UTC)
+            </div>
+            <div style={S.cbody}>
+              <div style={{ marginBottom: 10, fontSize: 12 }}>
+                Appelé par <Mono>pg_cron</Mono> chaque nuit. Rattrape tout ce que le webhook n'a pas traité.
+              </div>
+              <FormulaBlock>{`Corps : { mois?, agence?, dry_run? }
+
+Sans mois : auto-détection de tous les mois
+  ayant fin_revenue > 0, hors mois clôturés.
+
+Par mois :
+  1. Supprimer ventilations orphelines
+     (cancelled + fin_revenue=0)
+  2. Charger toutes les resas du mois
+  3. Calculer ventilation pour chaque resa
+     (sauf ventilation_calculee=true manuellement)
+  4. Sauvegarder lignes ventilation`}</FormulaBlock>
+            </div>
+          </div>
+        </div>
+
+        {/* Tableau des 3 versions */}
+        <div style={{ ...S.card, marginBottom: 16 }}>
+          <div style={{ ...S.chead, background: '#FFF7ED', color: '#9A3412', borderBottom: '1px solid #FED7AA' }}>
+            ⚠ Trois versions de la logique — règle de synchronisation obligatoire
+          </div>
+          <div style={S.cbody}>
+            <table style={S.table}>
+              <thead>
+                <tr>
+                  <th style={S.th}>Version</th>
+                  <th style={S.th}>Fichier</th>
+                  <th style={S.th}>Déclencheur</th>
+                  <th style={S.th}>Statut</th>
+                </tr>
+              </thead>
+              <tbody>
+                {[
+                  ['V1 — Référence', 'src/services/ventilation.js', 'Bouton UI ⚡ (PageRapports, ModalResa)', '✅ Source de vérité'],
+                  ['V2 — Cron serveur', 'supabase/functions/ventilation-auto/index.ts', 'pg_cron 3h UTC + webhook reservation.created', '✅ Alignée V1 (07/04/2026)'],
+                  ['V3 — Webhook legacy', 'supabase/functions/global-sync/index.ts', 'Bouton "Global Update" (désactivé)', '❌ Abandonné — CF-C8'],
+                ].map(([v, f, d, s]) => (
+                  <tr key={v}>
+                    <td style={{ ...S.td, fontWeight: 600 }}>{v}</td>
+                    <td style={{ ...S.td, fontFamily: 'monospace', fontSize: 11 }}>{f}</td>
+                    <td style={S.td}>{d}</td>
+                    <td style={{ ...S.td, color: s.startsWith('✅') ? '#166534' : s.startsWith('⚠') ? '#9A3412' : '#B91C1C' }}>{s}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+            <div style={{ marginTop: 10, padding: '8px 12px', background: '#FEF9EC', borderRadius: 6, fontSize: 12, color: '#78350F' }}>
+              <strong>Règle critique :</strong> toute modification dans <Mono>ventilation.js</Mono> V1 doit être répercutée manuellement dans <Mono>ventilation-auto/index.ts</Mono> V2.
+              Les fonctions à synchroniser : <Mono>_calculerLignes</Mono>, <Mono>calculerVentilationResa</Mono>, <Mono>calculerVentilationMois</Mono>, helpers <Mono>ligneTVA</Mono> / <Mono>ligneHorsTVA</Mono>.
+            </div>
+          </div>
+        </div>
+
+        {/* Garde-fous */}
+        <div style={{ ...S.card }}>
+          <div style={{ ...S.chead, background: '#F7F3EC', color: '#2C2416', borderBottom: '1px solid #D9CEB8' }}>
+            Garde-fous automatiques
+          </div>
+          <div style={S.cbody}>
+            <table style={S.table}>
+              <thead><tr><th style={S.th}>Condition</th><th style={S.th}>Comportement</th></tr></thead>
+              <tbody>
+                {[
+                  ['cloture_comptable.cloture_ventil = true', 'Webhook → mis en file webhook_pending. Cron → mois ignoré.'],
+                  ['facture_evoliz.statut = envoye_evoliz', 'Réservations du proprio verrouillées — ventilation non recalculée.'],
+                  ['ventilation_calculee = true (manuel)', 'Réservation ignorée par le cron — ne pas écraser une ventilation manuelle.'],
+                  ['fin_revenue = 0', 'Court-circuit — aucune ligne produite.'],
+                  ['bien.agence ≠ cible', 'Réservation ignorée — bien hors scope agence.'],
+                  ['montant_reel AE', 'Préservé lors du recalcul — jamais écrasé par la provision.'],
+                  ['mouvement_id rapprochement', 'Préservé lors du recalcul — lien bancaire jamais perdu.'],
+                ].map(([c, b]) => (
+                  <tr key={c}>
+                    <td style={{ ...S.td, fontFamily: 'monospace', fontSize: 11 }}>{c}</td>
+                    <td style={S.td}>{b}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </Section>
+
       <div style={{ padding: '12px 16px', background: '#F7F3EC', border: '1px solid #D9CEB8', borderRadius: 8, fontSize: 12, color: '#8C7B65' }}>
         Source de vérité : <Mono>src/services/ventilation.js</Mono> V1 — toute modification doit être répercutée dans <Mono>supabase/functions/ventilation-auto/index.ts</Mono>.
         Documentation complète : <Mono>docs/domain-rules.md</Mono>.
