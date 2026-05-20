@@ -249,6 +249,18 @@ async function handleReservation(supabase: any, event: string, data: any): Promi
     }
   }
 
+  // Ventilation automatique sur nouvelle réservation acceptée
+  if (event === 'reservation.created' && finalStatus === 'accepted' && moisComptable && (fin.revenue?.amount || 0) > 0) {
+    const agence = (bien as any).agence || 'dcb'
+    fetch(`${SUPABASE_URL}/functions/v1/ventilation-auto`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${SUPABASE_SERVICE_KEY}` },
+      body: JSON.stringify({ mois: moisComptable, agence }),
+      signal: AbortSignal.timeout(30000),
+    }).catch((e: any) => console.error('ventilation-auto trigger error (non-fatal):', e?.message))
+    console.log('Ventilation auto déclenchée:', data.code, moisComptable)
+  }
+
   console.log('Upserted:', data.code, event)
 
   // Push notification "Nouvelle réservation" au proprio (reservation.created uniquement)
