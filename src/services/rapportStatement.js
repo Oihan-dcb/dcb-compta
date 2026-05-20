@@ -81,8 +81,9 @@ export function genererStatementHTML(proprio, mois, data) {
   }, 0)
   const deboursTotal  = deboursSeuls + haownerTotal + ownerStayMenageTotal
   const totalManager  = honTotal + menageTotal + deboursTotal + fraisDeductionLoyTotal
-  // virementNet vient de buildRapportData (source de vérité unique) — inclut déjà les remboursements
-  const virementNet   = data.kpis?.virementNet ?? 0
+  // virementNet calculé depuis les totaux du tableau pour garantir la cohérence :
+  // tout changement dans les règles de calcul des lignes se répercute automatiquement dans le bloc
+  const virementNet   = Math.max(0, virTotal - fraisDeductionLoyTotal + remboursementsTotal - deboursSeuls - haownerTotal - ownerStayMenageTotal)
   const netProprio    = virementNet
   const totalDuOwner  = virementNet
 

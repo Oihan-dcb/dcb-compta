@@ -31,3 +31,4 @@ dist-ssr
 mempalace.yaml
 entities.json
 .env*.local
+.env.pulled
