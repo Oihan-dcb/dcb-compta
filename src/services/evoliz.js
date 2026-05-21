@@ -138,12 +138,14 @@ export async function creerFactureEvoliz(facture) {
   // Evoliz attend les prix en euros HT, on convertit depuis centimes
   // Débours : DEB_AE autorisé (compte 467, TVA 0%) — Honoraires : DEB_AE filtré
   const isDebours = facture.type_facture === 'debours'
+  // Codes mémo internes : jamais envoyés à Evoliz (taux_tva=null, informatif seulement)
+  const CODES_MEMO = ['AUTO', 'VIRP']
   const lignes = (facture.facture_evoliz_ligne || [])
     .sort((a, b) => a.ordre - b.ordre)
-    .filter(l => l.montant_ht > 0 && l.code !== 'AUTO' && (isDebours || l.code !== 'DEB_AE'))
+    .filter(l => l.montant_ht !== 0 && !CODES_MEMO.includes(l.code) && (isDebours || l.code !== 'DEB_AE'))
     .map(l => {
       const htCentimes = Math.round(l.montant_ht)
-      if (!Number.isFinite(htCentimes) || htCentimes <= 0) return null
+      if (!Number.isFinite(htCentimes) || htCentimes === 0) return null
       return {
         designation: l.libelle || `Ligne ${l.code || 'facturation'}`,
         reference: l.code,
