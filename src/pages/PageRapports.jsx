@@ -107,30 +107,92 @@ export default function PageRapports() {
   const [saisirMenageId, setSaisirMenageId] = useState(null)
   const [saisirMontant, setSaisirMontant] = useState('')
   const [savingMenage, setSavingMenage] = useState(false)
-  const [statutPortail, setStatutPortail] = useState('idle') // idle | sending | sent | no_push | error
+  const [statutPortail, setStatutPortail] = useState('idle') // idle | sending | sent | stored_no_push | no_push | error
+  const [portailErrDetail, setPortailErrDetail] = useState('')
+  const [sendingMailPortail, setSendingMailPortail] = useState(false)
   const reqRef = useRef(0)
 
   const PORTAIL_OWNER_API = import.meta.env.VITE_PORTAIL_OWNER_URL || 'https://portail-owner.destinationcotebasque.com'
 
   async function envoyerAuPortail() {
-    if (!selectedPropId || !mois) return
+    if (!selectedPropId || !selectedBienId || !mois || !data) return
     setStatutPortail('sending')
     try {
       const { data: { session } } = await supabase.auth.getSession()
-      const res = await fetch(`${PORTAIL_OWNER_API}/api/notify-proprio`, {
+      const headers = { 'Content-Type': 'application/json', Authorization: `Bearer ${session.access_token}` }
+
+      // 1. Générer le statement PDF
+      const rapportData = buildRendererPayload()
+      const statementHtml = genererStatementHTML(data.proprio, mois, rapportData)
+      const pdfRes = await authPostRaw('/api/generate-pdf', { html: statementHtml, orientation: 'landscape' })
+      if (!pdfRes.ok) {
+        const errText = await pdfRes.text().catch(() => '')
+        setStatutPortail('error')
+        setPortailErrDetail(`PDF : HTTP ${pdfRes.status}${errText ? ' — ' + errText.slice(0, 120) : ''}`)
+        return
+      }
+      const ab = await pdfRes.arrayBuffer()
+      const u8 = new Uint8Array(ab)
+      let pdf_base64 = ''
+      for (let i = 0; i < u8.length; i += 3072) pdf_base64 += btoa(String.fromCharCode(...u8.slice(i, i + 3072)))
+
+      // 2. Stocker le document dans le portail
+      const rapportRes = await fetch(`${PORTAIL_OWNER_API}/api/rapport-portail`, {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          Authorization: `Bearer ${session.access_token}`,
-        },
-        body: JSON.stringify({ proprio_id: selectedPropId, bien_id: selectedBienId, mois, type: 'releve' }),
+        headers,
+        body: JSON.stringify({ proprio_id: selectedPropId, bien_id: selectedBienId, mois, pdf_base64 }),
       })
-      const json = await res.json()
-      setStatutPortail(res.ok ? (json.sent ? 'sent' : 'no_push') : 'error')
-    } catch {
+      if (!rapportRes.ok) {
+        const j = await rapportRes.json().catch(() => ({}))
+        setStatutPortail('error')
+        setPortailErrDetail(j.error || `rapport-portail HTTP ${rapportRes.status}`)
+        return
+      }
+
+      // 3. Envoyer la notification push
+      const bienName = data.bien?.hospitable_name || ''
+      const notifRes = await fetch(`${PORTAIL_OWNER_API}/api/notify-proprio`, {
+        method: 'POST',
+        headers,
+        body: JSON.stringify({ proprio_id: selectedPropId, bien_id: selectedBienId, mois, type: 'releve', extra: { bienName } }),
+      })
+      const json = await notifRes.json().catch(() => ({}))
+      if (notifRes.ok) {
+        setStatutPortail(json.sent ? 'sent' : 'stored_no_push')
+        setPortailErrDetail('')
+      } else {
+        setStatutPortail('stored_no_push')
+        setPortailErrDetail(json.error || `notify HTTP ${notifRes.status}`)
+      }
+    } catch (e) {
       setStatutPortail('error')
+      setPortailErrDetail(e.message || 'Erreur réseau')
     }
     setTimeout(() => setStatutPortail('idle'), 4000)
+  }
+
+  async function envoyerMailPortail() {
+    if (!selectedPropId || !mois || !data) return
+    setSendingMailPortail(true)
+    try {
+      const { data: { session } } = await supabase.auth.getSession()
+      const headers = { 'Content-Type': 'application/json', Authorization: `Bearer ${session.access_token}` }
+      const bienName = data.bien?.hospitable_name || ''
+      const res = await fetch(`${PORTAIL_OWNER_API}/api/notify-proprio`, {
+        method: 'POST',
+        headers,
+        body: JSON.stringify({ proprio_id: selectedPropId, mois, type: 'releve', force_canal: 'email', extra: { bienName } }),
+      })
+      const json = await res.json().catch(() => ({}))
+      if (res.ok && json.sent) {
+        alert(`✓ Mail envoyé à ${json.email || 'le propriétaire'}`)
+      } else {
+        alert('⚠️ ' + (json.error || `Erreur ${res.status}`))
+      }
+    } catch (e) {
+      alert('⚠️ ' + (e.message || 'Erreur réseau'))
+    }
+    setSendingMailPortail(false)
   }
 
   useEffect(() => {
@@ -1434,13 +1496,32 @@ FORMAT :
                 disabled={statutPortail === 'sending' || !selectedPropId}
                 title="Notifie le propriétaire que son relevé est disponible dans son espace portail"
               >
-                {statutPortail === 'sending' ? '…'
-                  : statutPortail === 'sent'    ? '📲 Notifié ✓'
-                  : statutPortail === 'no_push' ? '📲 (pas de push)'
-                  : statutPortail === 'error'   ? '📲 Erreur'
+                {statutPortail === 'sending'       ? '…'
+                  : statutPortail === 'sent'        ? '📲 Stocké + notifié ✓'
+                  : statutPortail === 'stored_no_push' ? '📲 Stocké ✓ (push non livré)'
+                  : statutPortail === 'error'       ? '📲 Erreur'
                   : '📲 Portail'}
               </button>
             </div>
+            {statutPortail === 'stored_no_push' && (
+              <button
+                style={{
+                  fontSize: '0.85em', padding: '8px 14px', border: '1.5px solid #6B5E4E',
+                  borderRadius: 8, background: 'white', color: '#6B5E4E',
+                  cursor: 'pointer', fontWeight: 600, opacity: sendingMailPortail ? 0.6 : 1,
+                }}
+                onClick={envoyerMailPortail}
+                disabled={sendingMailPortail}
+                title="Envoyer un email de notification au propriétaire"
+              >
+                {sendingMailPortail ? '…' : '✉️ Envoyer un mail'}
+              </button>
+            )}
+            {(statutPortail === 'error' || statutPortail === 'stored_no_push') && portailErrDetail && (
+              <div style={{ marginTop: 6, padding: '6px 10px', background: '#fff0f0', border: '1px solid #f5c6c6', borderRadius: 6, fontSize: '0.78em', color: '#c0392b' }}>
+                ⚠️ Portail : {portailErrDetail}
+              </div>
+            )}
             {statut === 'error' && erreurDetail && (
               <div style={{ marginTop: 8, padding: '8px 12px', background: '#fff0f0', border: '1px solid #f5c6c6', borderRadius: 6, fontSize: '0.78em', color: '#c0392b' }}>
                 ⚠️ {erreurDetail}
