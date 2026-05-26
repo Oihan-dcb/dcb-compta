@@ -33,7 +33,7 @@ export async function genererFacturesMois(mois) {
     .from('proprietaire')
     .select(`
       id, nom, prenom, id_evoliz, iban,
-      bien!inner (
+      bien!proprietaire_id (
         id, hospitable_name, code, listed, agence,
         provision_ae_ref, forfait_dcb_ref, has_ae, mode_encaissement, groupe_facturation
       )
@@ -88,7 +88,7 @@ export async function genererFacturesMois(mois) {
   if (AGENCE === 'dcb') {
     const { data: proprietairesLauian } = await supabase
       .from('proprietaire')
-      .select(`id, nom, prenom, id_evoliz, iban, bien!inner(id, hospitable_name, code, listed, agence, provision_ae_ref, forfait_dcb_ref, has_ae, mode_encaissement, groupe_facturation)`)
+      .select(`id, nom, prenom, id_evoliz, iban, bien!proprietaire_id(id, hospitable_name, code, listed, agence, provision_ae_ref, forfait_dcb_ref, has_ae, mode_encaissement, groupe_facturation)`)
       .eq('bien.listed', true)
       .eq('bien.agence', 'lauian')
       .eq('actif', true)

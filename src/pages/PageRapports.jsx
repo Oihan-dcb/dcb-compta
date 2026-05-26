@@ -198,7 +198,7 @@ export default function PageRapports() {
   useEffect(() => {
     supabase
       .from('proprietaire')
-      .select('id, nom, email, bien!inner(id, code, hospitable_name, ville, listed, agence, groupe_facturation, rapport_config)')
+      .select('id, nom, email, bien!proprietaire_id(id, code, hospitable_name, ville, listed, agence, groupe_facturation, rapport_config)')
       .eq('bien.agence', AGENCE)
       .eq('actif', true)
       .order('nom')
