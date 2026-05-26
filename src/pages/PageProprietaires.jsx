@@ -73,6 +73,7 @@ function ModalFiche({ proprio, onClose, onSaved }) {
 
   // ── Portail Owner — visibilité ─────────────────────────────────────────
   const PROFILS = {
+    communication: { label: 'Communication', desc: 'Messagerie + demandes uniquement — sans données financières' },
     essentiel:    { label: 'Essentiel',    desc: 'Net + planning + documents uniquement' },
     standard:     { label: 'Standard',     desc: 'Standard + réservations + ménages + statut virement' },
     transparent:  { label: 'Transparent',  desc: 'Standard + revenus bruts + détail commission + performance' },
@@ -81,6 +82,7 @@ function ModalFiche({ proprio, onClose, onSaved }) {
   }
 
   const PROFIL_PRESETS = {
+    communication: { revenus_bruts: false, commission_base: false, commission_detail: false, menage: false, prestations: false, taxe_sejour: false, statut_virement: false, date_virement: false, rapprochement: false, taux_occupation: false, prix_moyen: false, comparaison_n1: false, plateforme: false, voyageur_complet: false, note_voyageur: false, menage_date: false, frais_divers: false, montant_vir_reel: false, maintenance_actif: false, maintenance_statut: false, maintenance_devis: false, maintenance_validation: false, maintenance_tech_issues: false, maintenance_entretiens: false, maintenance_factures: false, documents_mandat: true, documents_factures: false, documents_releves: false, demandes_actives: true, types_demandes: ['question', 'probleme'] },
     essentiel:    { revenus_bruts: false, commission_base: true, commission_detail: false, menage: false, prestations: false, taxe_sejour: false, statut_virement: true, date_virement: true, rapprochement: false, taux_occupation: false, prix_moyen: false, comparaison_n1: false, plateforme: false, voyageur_complet: false, note_voyageur: false, menage_date: false, frais_divers: false, montant_vir_reel: false, maintenance_actif: false, maintenance_statut: false, maintenance_devis: false, maintenance_validation: false, maintenance_tech_issues: false, maintenance_entretiens: false, maintenance_factures: false, documents_mandat: true, documents_factures: true, documents_releves: true, demandes_actives: true, types_demandes: ['blocage_dates', 'question'] },
     standard:     { revenus_bruts: false, commission_base: true, commission_detail: false, menage: true, prestations: true, taxe_sejour: false, statut_virement: true, date_virement: true, rapprochement: false, taux_occupation: true, prix_moyen: false, comparaison_n1: false, plateforme: true, voyageur_complet: false, note_voyageur: false, menage_date: true, frais_divers: false, montant_vir_reel: false, maintenance_actif: false, maintenance_statut: false, maintenance_devis: false, maintenance_validation: false, maintenance_tech_issues: false, maintenance_entretiens: false, maintenance_factures: false, documents_mandat: true, documents_factures: true, documents_releves: true, demandes_actives: true, types_demandes: ['blocage_dates', 'intervention', 'probleme', 'question'] },
     transparent:  { revenus_bruts: true, commission_base: true, commission_detail: true, menage: true, prestations: true, taxe_sejour: true, statut_virement: true, date_virement: true, rapprochement: false, taux_occupation: true, prix_moyen: true, comparaison_n1: false, plateforme: true, voyageur_complet: false, note_voyageur: false, menage_date: true, frais_divers: true, montant_vir_reel: false, maintenance_actif: true, maintenance_statut: true, maintenance_devis: true, maintenance_validation: false, maintenance_tech_issues: true, maintenance_entretiens: true, maintenance_factures: false, documents_mandat: true, documents_factures: true, documents_releves: true, demandes_actives: true, types_demandes: ['blocage_dates', 'intervention', 'probleme', 'question'] },
@@ -99,16 +101,21 @@ function ModalFiche({ proprio, onClose, onSaved }) {
   async function loadVisConfig() {
     if (visConfig !== null) return
     setVisLoading(true)
-    const { data } = await supabase.from('owner_visibility_config').select('*').eq('proprietaire_id', proprio.id).single()
-    setVisConfig(data || { profil: 'standard', ...PROFIL_PRESETS.standard })
+    const { data } = await supabase.from('owner_profile_config').select('profil, visibilite').eq('proprietaire_id', proprio.id).maybeSingle()
+    const profil = data?.profil || 'standard'
+    const vis = (data?.visibilite && typeof data.visibilite === 'object' && Object.keys(data.visibilite).length > 0)
+      ? data.visibilite
+      : (PROFIL_PRESETS[profil] || {})
+    setVisConfig({ profil, ...vis })
     setVisLoading(false)
   }
 
   async function saveVisConfig() {
     setVisSaving(true); setVisErr(null)
     try {
-      const payload = { ...visConfig, proprietaire_id: proprio.id, agence: AGENCE }
-      const { error } = await supabase.from('owner_visibility_config').upsert(payload, { onConflict: 'proprietaire_id' })
+      const { profil, ...visibilite } = visConfig
+      const payload = { proprietaire_id: proprio.id, agence: AGENCE, profil, visibilite }
+      const { error } = await supabase.from('owner_profile_config').upsert(payload, { onConflict: 'proprietaire_id' })
       if (error) throw new Error(error.message)
       setVisOk(true); setTimeout(() => setVisOk(false), 2000)
     } catch (e) { setVisErr(e.message) }
@@ -1009,6 +1016,21 @@ const MOIS_FR = ['janvier','février','mars','avril','mai','juin','juillet','ao�
 const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL
 const SUPABASE_ANON_KEY = import.meta.env.VITE_SUPABASE_ANON_KEY
 
+function fmtLastSeen(iso) {
+  if (!iso) return '—'
+  const d = new Date(iso)
+  const now = new Date()
+  const diffMin = Math.floor((now - d) / 60000)
+  if (diffMin < 2)   return 'à l\'instant'
+  if (diffMin < 60)  return `il y a ${diffMin} min`
+  const diffH = Math.floor(diffMin / 60)
+  if (diffH < 24)    return `il y a ${diffH}h`
+  const diffD = Math.floor(diffH / 24)
+  if (diffD < 7)     return `il y a ${diffD}j`
+  if (diffD < 30)    return `il y a ${Math.floor(diffD / 7)} sem`
+  return d.toLocaleDateString('fr-FR', { day: 'numeric', month: 'short' })
+}
+
 function fmtEur(centimes) {
   return ((centimes || 0) / 100).toLocaleString('fr-FR', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) + ' €'
 }
@@ -1746,7 +1768,7 @@ export default function PageProprietaires() {
                 const mandatActif = (p.mandat_gestion || []).find(m => m.statut === 'actif')
                 const taux = mandatActif?.taux_commission ?? p.taux_commission
                 const portailActif = !!p.auth_user_id
-                const portailProfil = p.owner_visibility_config?.[0]?.profil
+                const portailProfil = p.owner_profile_config?.[0]?.profil
                 const demandesEnCours = (p.owner_requests || []).filter(r => ['recu','en_cours'].includes(r.statut)).length
 
                 return (
@@ -1810,6 +1832,13 @@ export default function PageProprietaires() {
                           <span className="badge badge-success" style={{ fontSize: 11 }}>✓ Actif</span>
                           {portailProfil && (
                             <span style={{ fontSize: 10, color: 'var(--text-muted)', textTransform: 'capitalize' }}>{portailProfil}</span>
+                          )}
+                          {p.last_seen ? (
+                            <span style={{ fontSize: 10, color: 'var(--text-muted)' }} title={new Date(p.last_seen).toLocaleString('fr-FR')}>
+                              vu {fmtLastSeen(p.last_seen)}
+                            </span>
+                          ) : (
+                            <span style={{ fontSize: 10, color: 'var(--text-muted)' }}>jamais connecté</span>
                           )}
                           {demandesEnCours > 0 && (
                             <span className="badge badge-warning" style={{ fontSize: 10 }}>
