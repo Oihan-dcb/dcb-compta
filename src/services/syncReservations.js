@@ -319,7 +319,7 @@ export async function getReservationsMois(mois) {
         id, hospitable_name, code, proprietaire_id, agence,
         provision_ae_ref, forfait_dcb_ref, has_ae,
         taux_commission_override,
-        proprietaire (id, nom, prenom, taux_commission)
+        proprietaire!proprietaire_id (id, nom, prenom, taux_commission)
       ),
       reservation_fee (*),
       ventilation (code, taux_calcule, montant_ht, montant_tva, montant_ttc, libelle),

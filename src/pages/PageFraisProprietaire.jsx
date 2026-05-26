@@ -69,7 +69,7 @@ export default function PageFraisProprietaire() {
   async function chargerBiens() {
     const { data } = await supabase
       .from('bien')
-      .select('id, code, hospitable_name, proprietaire_id, proprietaire (id, nom, prenom)')
+      .select('id, code, hospitable_name, proprietaire_id, proprietaire!proprietaire_id (id, nom, prenom)')
       .eq('agence', AGENCE)
       .eq('listed', true)
       .order('code')
