@@ -134,34 +134,121 @@ Deno.serve(async (req) => {
         headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${anonKey}` },
         body: JSON.stringify({
           to: [emailLower],
-          subject: 'Votre accès au portail propriétaire — Destination Côte Basque',
-          html: `
-<div style="font-family:Arial,sans-serif;max-width:520px;margin:0 auto;color:#2C2416">
-  <div style="background:#EAE3D4;border-bottom:3px solid #CC9933;padding:20px 24px">
-    <div style="font-size:18px;font-weight:700;color:#CC9933">Destination Côte Basque</div>
-    <div style="font-size:10px;letter-spacing:3px;text-transform:uppercase;color:#6B5E4E;margin-top:2px">Conciergerie · Location · Gestion</div>
-  </div>
-  <div style="padding:28px 24px">
-    <p style="font-size:15px;font-weight:600;margin:0 0 16px">Bonjour ${nomProprio},</p>
-    <p style="font-size:14px;line-height:1.7;margin:0 0 20px">
-      L'équipe Destination Côte Basque vous invite à accéder à votre espace propriétaire en ligne.
-      Vous pourrez y consulter vos réservations, vos relevés mensuels et communiquer avec notre équipe.
-    </p>
-    <p style="font-size:14px;line-height:1.7;margin:0 0 20px">
-      Cliquez sur le bouton ci-dessous pour accéder à votre espace (lien valide 24h) :
-    </p>
-    <a href="${magicLink}" style="display:inline-block;background:#CC9933;color:#fff;text-decoration:none;padding:12px 24px;border-radius:8px;font-weight:600;font-size:14px">
-      Accéder à mon espace →
-    </a>
-    <p style="font-size:12px;color:#8C7B65;margin:24px 0 0;line-height:1.6">
-      Si le bouton ne fonctionne pas, copiez ce lien dans votre navigateur :<br>
-      <a href="${magicLink}" style="color:#CC9933;word-break:break-all">${magicLink}</a>
-    </p>
-    <p style="font-size:12px;color:#8C7B65;margin:16px 0 0;line-height:1.6">
-      Destination Côte Basque — Conciergerie et gestion locative à Biarritz
-    </p>
-  </div>
-</div>`,
+          subject: 'Votre espace propriétaire est prêt — Destination Côte Basque',
+          html: `<!DOCTYPE html>
+<html lang="fr">
+<head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"></head>
+<body style="margin:0;padding:0;background:#F7F3EC;font-family:Arial,Helvetica,sans-serif">
+<table width="100%" cellpadding="0" cellspacing="0" style="background:#F7F3EC;padding:32px 16px">
+<tr><td align="center">
+<table width="100%" style="max-width:560px;background:#ffffff;border-radius:16px;overflow:hidden;box-shadow:0 4px 24px rgba(44,36,22,.10)">
+
+  <!-- En-tête -->
+  <tr>
+    <td style="background:#CC9933;padding:32px 32px 28px;text-align:center">
+      <div style="font-size:11px;letter-spacing:4px;text-transform:uppercase;color:rgba(255,255,255,.75);margin-bottom:10px">Conciergerie &amp; Gestion locative</div>
+      <div style="font-size:28px;font-weight:700;color:#ffffff;letter-spacing:.5px">Destination Côte Basque</div>
+      <div style="width:40px;height:2px;background:rgba(255,255,255,.4);margin:16px auto 0"></div>
+    </td>
+  </tr>
+
+  <!-- Corps -->
+  <tr>
+    <td style="padding:36px 32px 28px">
+      <p style="font-size:16px;font-weight:600;color:#2C2416;margin:0 0 8px">Bonjour ${nomProprio},</p>
+      <p style="font-size:14px;line-height:1.75;color:#5A4E3C;margin:0 0 28px">
+        Votre espace propriétaire est maintenant disponible. Retrouvez en un coup d'œil tout ce qui concerne votre bien : réservations, relevés, planning et messagerie directe avec notre équipe.
+      </p>
+
+      <!-- Ce que vous pouvez faire -->
+      <table width="100%" cellpadding="0" cellspacing="0" style="background:#F7F3EC;border-radius:12px;padding:20px 20px 8px;margin-bottom:28px">
+        <tr><td colspan="2" style="font-size:11px;font-weight:700;letter-spacing:2px;text-transform:uppercase;color:#8C7B65;padding-bottom:14px">Votre espace en un coup d'œil</td></tr>
+        <tr>
+          <td width="32" valign="top" style="padding-bottom:12px;font-size:18px">📅</td>
+          <td style="padding-bottom:12px;font-size:13px;color:#2C2416;line-height:1.5"><strong>Réservations &amp; planning</strong><br><span style="color:#6B5E4E">Consultez votre calendrier et les séjours à venir</span></td>
+        </tr>
+        <tr>
+          <td width="32" valign="top" style="padding-bottom:12px;font-size:18px">📊</td>
+          <td style="padding-bottom:12px;font-size:13px;color:#2C2416;line-height:1.5"><strong>Relevés mensuels</strong><br><span style="color:#6B5E4E">Suivez vos revenus et virements mois par mois</span></td>
+        </tr>
+        <tr>
+          <td width="32" valign="top" style="padding-bottom:12px;font-size:18px">💬</td>
+          <td style="padding-bottom:12px;font-size:13px;color:#2C2416;line-height:1.5"><strong>Messagerie directe</strong><br><span style="color:#6B5E4E">Échangez avec l'équipe, faites vos demandes de blocage</span></td>
+        </tr>
+        <tr>
+          <td width="32" valign="top" style="padding-bottom:12px;font-size:18px">📄</td>
+          <td style="padding-bottom:12px;font-size:13px;color:#2C2416;line-height:1.5"><strong>Documents</strong><br><span style="color:#6B5E4E">Mandats, factures et relevés accessibles à tout moment</span></td>
+        </tr>
+      </table>
+
+      <!-- Bouton accès -->
+      <table width="100%" cellpadding="0" cellspacing="0" style="margin-bottom:32px">
+        <tr><td align="center">
+          <a href="${magicLink}" style="display:inline-block;background:#CC9933;color:#ffffff;text-decoration:none;padding:15px 36px;border-radius:10px;font-weight:700;font-size:15px;letter-spacing:.3px">
+            Accéder à mon espace →
+          </a>
+          <p style="font-size:11px;color:#9A8A7A;margin:10px 0 0">Lien valide 24h · connexion sécurisée</p>
+        </td></tr>
+      </table>
+
+      <!-- Installer comme appli -->
+      <table width="100%" cellpadding="0" cellspacing="0" style="border:1.5px solid #E8DCC8;border-radius:12px;padding:20px;margin-bottom:16px">
+        <tr>
+          <td>
+            <div style="font-size:13px;font-weight:700;color:#2C2416;margin-bottom:12px">📲 Installez l'application sur votre téléphone</div>
+            <p style="font-size:12px;color:#6B5E4E;line-height:1.6;margin:0 0 10px">Pour un accès rapide depuis votre écran d'accueil :</p>
+            <table width="100%" cellpadding="0" cellspacing="8">
+              <tr>
+                <td style="background:#F7F3EC;border-radius:8px;padding:10px 12px;font-size:12px;color:#2C2416;line-height:1.5" width="48%">
+                  <strong>iPhone (Safari)</strong><br>
+                  Appuyez sur <strong>⎋ Partager</strong> en bas → <em>"Sur l'écran d'accueil"</em>
+                </td>
+                <td width="4%"></td>
+                <td style="background:#F7F3EC;border-radius:8px;padding:10px 12px;font-size:12px;color:#2C2416;line-height:1.5" width="48%">
+                  <strong>Android (Chrome)</strong><br>
+                  Menu <strong>⋮</strong> en haut à droite → <em>"Ajouter à l'écran d'accueil"</em>
+                </td>
+              </tr>
+            </table>
+          </td>
+        </tr>
+      </table>
+
+      <!-- Notifications -->
+      <table width="100%" cellpadding="0" cellspacing="0" style="border:1.5px solid #E8DCC8;border-radius:12px;padding:20px;margin-bottom:28px">
+        <tr>
+          <td>
+            <div style="font-size:13px;font-weight:700;color:#2C2416;margin-bottom:8px">🔔 Activez les notifications</div>
+            <p style="font-size:12px;color:#6B5E4E;line-height:1.6;margin:0">
+              Lors de votre première connexion, <strong>acceptez les notifications</strong> pour être alerté dès qu'un message ou une mise à jour vous attend — sans avoir à ouvrir l'application.
+            </p>
+          </td>
+        </tr>
+      </table>
+
+      <!-- Lien de secours -->
+      <p style="font-size:11px;color:#9A8A7A;line-height:1.6;margin:0">
+        Si le bouton ne fonctionne pas, copiez ce lien dans Safari ou Chrome :<br>
+        <a href="${magicLink}" style="color:#CC9933;word-break:break-all;font-size:10px">${magicLink}</a>
+      </p>
+    </td>
+  </tr>
+
+  <!-- Pied de page -->
+  <tr>
+    <td style="background:#EAE3D4;border-top:1px solid #D9CEB8;padding:18px 32px;text-align:center">
+      <p style="font-size:11px;color:#8C7B65;margin:0;line-height:1.6">
+        <strong style="color:#5A4E3C">Destination Côte Basque</strong> · Conciergerie &amp; gestion locative à Biarritz<br>
+        <a href="mailto:contact@destinationcotebasque.com" style="color:#CC9933;text-decoration:none">contact@destinationcotebasque.com</a>
+      </p>
+    </td>
+  </tr>
+
+</table>
+</td></tr>
+</table>
+</body>
+</html>`,
         }),
       })
       emailSent = emailRes.ok
