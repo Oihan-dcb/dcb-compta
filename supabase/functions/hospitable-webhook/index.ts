@@ -133,7 +133,7 @@ async function handleReservation(supabase: any, event: string, data: any): Promi
 
   const { data: bien } = await supabase
     .from('bien')
-    .select('id, proprietaire_id, provision_ae_ref, has_ae, taux_commission_override, proprietaire(id, taux_commission)')
+    .select('id, proprietaire_id, provision_ae_ref, has_ae, taux_commission_override, proprietaire!proprietaire_id(id, taux_commission)')
     .eq('hospitable_id', propertyId)
     .single()
 

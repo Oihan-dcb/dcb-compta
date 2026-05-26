@@ -520,7 +520,7 @@ async function calculerVentilationMois(mois, agence = 'dcb') {
         id, proprietaire_id,
         provision_ae_ref, forfait_dcb_ref, has_ae,
         taux_commission_override, gestion_loyer, agence,
-        proprietaire (id, taux_commission)
+        proprietaire!proprietaire_id (id, taux_commission)
       ),
       reservation_fee (*)
     `)
@@ -1194,7 +1194,7 @@ Deno.serve(async (req) => {
     // RÃ©cupÃ©rer les biens actifs DCB
     const { data: biens } = await supabase
       .from('bien')
-      .select('id, hospitable_id, hospitable_name, proprietaire_id, provision_ae_ref, forfait_dcb_ref, has_ae, taux_commission_override, gestion_loyer, agence, proprietaire(id, taux_commission)')
+      .select('id, hospitable_id, hospitable_name, proprietaire_id, provision_ae_ref, forfait_dcb_ref, has_ae, taux_commission_override, gestion_loyer, agence, proprietaire!proprietaire_id(id, taux_commission)')
       .not('hospitable_id', 'is', null)
       .eq('agence', agence)
 
@@ -1253,7 +1253,7 @@ Deno.serve(async (req) => {
     for (const mois of allMois) {
       const { data: resas } = await supabase
         .from('reservation')
-        .select(`*, bien(id, proprietaire_id, provision_ae_ref, forfait_dcb_ref, has_ae, taux_commission_override, gestion_loyer, agence, proprietaire(id, taux_commission)), reservation_fee(*)`)
+        .select(`*, bien(id, proprietaire_id, provision_ae_ref, forfait_dcb_ref, has_ae, taux_commission_override, gestion_loyer, agence, proprietaire!proprietaire_id(id, taux_commission)), reservation_fee(*)`)
         .eq('mois_comptable', mois)
         .eq('ventilation_calculee', false)
         .neq('final_status', 'cancelled')
