@@ -126,7 +126,7 @@ export async function getBiens() {
     .from('bien')
     .select(`
       *,
-      proprietaire (
+      proprietaire!proprietaire_id (
         id, nom, prenom, email, iban, id_evoliz, taux_commission
       )
     `)

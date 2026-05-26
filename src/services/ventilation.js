@@ -71,7 +71,7 @@ export async function calculerVentilationMois(mois) {
         id, proprietaire_id,
         provision_ae_ref, forfait_dcb_ref, has_ae,
         taux_commission_override, gestion_loyer, agence,
-        proprietaire (id, taux_commission)
+        proprietaire!proprietaire_id (id, taux_commission)
       ),
       reservation_fee (*)
     `)
