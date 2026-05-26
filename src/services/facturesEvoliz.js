@@ -1107,7 +1107,7 @@ export async function getFacturesMois(mois) {
     .select(`
       *,
       bien (id, code, agence),
-      proprietaire (id, nom, prenom, email, iban, id_evoliz, bien(id, code, groupe_facturation)),
+      proprietaire (id, nom, prenom, email, iban, id_evoliz, bien!proprietaire_id(id, code, groupe_facturation)),
       facture_evoliz_ligne (*)
     `)
     .eq('mois', mois)
