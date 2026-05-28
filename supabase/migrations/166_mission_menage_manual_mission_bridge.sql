@@ -6,7 +6,7 @@
 -- ON DELETE SET NULL : si la mission PowerHouse est supprimée, le lien disparaît.
 
 ALTER TABLE mission_menage
-  ADD COLUMN IF NOT EXISTS manual_mission_id uuid REFERENCES manual_missions(id) ON DELETE SET NULL;
+  ADD COLUMN IF NOT EXISTS manual_mission_id text REFERENCES manual_missions(id) ON DELETE SET NULL;
 
 CREATE INDEX IF NOT EXISTS idx_mission_menage_manual_mission_id
   ON mission_menage(manual_mission_id)
