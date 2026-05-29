@@ -1858,7 +1858,7 @@ export default function PageProprietaires() {
                       )}
                     </td>
                     <td>
-                      <div style={{ display: 'flex', gap: 4 }}>
+                      <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap' }}>
                         <button className="btn btn-secondary btn-sm" onClick={e => { e.stopPropagation(); setSelected(p) }}>
                           Voir
                         </button>
@@ -1866,6 +1866,16 @@ export default function PageProprietaires() {
                           onClick={e => { e.stopPropagation(); setPrevisionnel(p) }}>
                           📊
                         </button>
+                        <a
+                          href="https://dcb-planning.vercel.app/#proprios"
+                          target="_blank" rel="noopener noreferrer"
+                          className="btn btn-secondary btn-sm"
+                          title="Voir dans PowerHouse (demandes portail)"
+                          onClick={e => e.stopPropagation()}
+                          style={{ textDecoration: 'none' }}
+                        >
+                          🏡
+                        </a>
                       </div>
                     </td>
                   </tr>
