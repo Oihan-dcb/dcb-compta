@@ -246,7 +246,7 @@ export default function PagePrestationsAE() {
                     </span>
                   </div>
                   <div style={{ display: 'flex', gap: 16, fontSize: 13, color: '#666', flexWrap: 'wrap' }}>
-                    {p.duree_minutes && <span>⏱ {p.duree_minutes} min</span>}
+                    {p.duree_minutes && <span>⏱ {p.duree_minutes >= 60 ? `${Math.floor(p.duree_minutes/60)}h${p.duree_minutes%60 ? (p.duree_minutes%60)+'min' : ''}` : `${p.duree_minutes} min`}</span>}
                     {p.description && <span style={{ fontStyle: 'italic' }}>"{p.description}"</span>}
                     <span style={{ color: '#888', fontSize: 12 }}>
                       Imputation : {IMPUTATION_LABEL[p.type_imputation] || p.type_imputation}
