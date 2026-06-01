@@ -60,54 +60,107 @@ function LoadingScreen() {
   )
 }
 
-// ── Écran de login ────────────────────────────────────────────────────────────
+// ── Écran de login OTP email ──────────────────────────────────────────────────
 function LoginScreen() {
-  const [email, setEmail] = useState('')
-  const [password, setPassword] = useState('')
-  const [loading, setLoading] = useState(false)
-  const [error, setError] = useState(null)
+  const [email, setEmail]       = useState('')
+  const [code, setCode]         = useState('')
+  const [step, setStep]         = useState('email') // 'email' | 'code'
+  const [loading, setLoading]   = useState(false)
+  const [error, setError]       = useState(null)
+  const [resendCooldown, setResendCooldown] = useState(0)
 
-  async function handleSubmit(e) {
+  const inp = { width: '100%', padding: '10px 12px', border: '1px solid #D9CEB8', borderRadius: 8, fontSize: 14, background: '#fff', outline: 'none', boxSizing: 'border-box' }
+
+  async function handleSendOtp(e) {
     e.preventDefault()
     setLoading(true)
     setError(null)
-    const { error: err } = await supabase.auth.signInWithPassword({ email: email.trim(), password })
-    if (err) setError(err.message)
+    const { error: err } = await supabase.auth.signInWithOtp({
+      email: email.trim(),
+      options: { shouldCreateUser: false },
+    })
+    if (err) {
+      setError(err.message)
+    } else {
+      setStep('code')
+      setResendCooldown(60)
+      const t = setInterval(() => setResendCooldown(c => { if (c <= 1) { clearInterval(t); return 0 } return c - 1 }), 1000)
+    }
     setLoading(false)
   }
 
-  const inp = { width: '100%', padding: '10px 12px', border: '1px solid #D9CEB8', borderRadius: 8, fontSize: 14, background: '#fff', outline: 'none', boxSizing: 'border-box' }
+  async function handleVerifyOtp(e) {
+    e.preventDefault()
+    setLoading(true)
+    setError(null)
+    const { error: err } = await supabase.auth.verifyOtp({
+      email: email.trim(),
+      token: code.trim(),
+      type: 'email',
+    })
+    if (err) setError('Code invalide ou expiré')
+    setLoading(false)
+  }
 
   return (
     <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '100vh', background: '#F7F3EC' }}>
       <div style={{ background: '#fff', borderRadius: 16, boxShadow: '0 4px 24px rgba(0,0,0,.10)', padding: '40px 36px', width: 340, maxWidth: '90vw' }}>
         <div style={{ fontWeight: 800, fontSize: 18, color: '#2C2416', marginBottom: 4 }}>{agenceLabel.icon} Compta</div>
         <div style={{ fontSize: 13, color: '#8C7B65', marginBottom: 28 }}>Accès réservé aux équipes DCB</div>
-        <form onSubmit={handleSubmit} style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
-          <input
-            type="email"
-            placeholder="Email"
-            value={email}
-            onChange={e => setEmail(e.target.value)}
-            required
-            style={inp}
-          />
-          <input
-            type="password"
-            placeholder="Mot de passe"
-            value={password}
-            onChange={e => setPassword(e.target.value)}
-            required
-            style={inp}
-          />
-          {error && <div style={{ fontSize: 12, color: '#ef4444', background: '#fef2f2', padding: '8px 10px', borderRadius: 6 }}>{error}</div>}
-          <button
-            type="submit"
-            disabled={loading}
-            style={{ marginTop: 4, padding: '11px', background: '#CC9933', color: '#fff', border: 'none', borderRadius: 8, fontWeight: 700, fontSize: 14, cursor: loading ? 'not-allowed' : 'pointer', opacity: loading ? 0.7 : 1 }}>
-            {loading ? 'Connexion…' : 'Se connecter'}
-          </button>
-        </form>
+
+        {step === 'email' && (
+          <form onSubmit={handleSendOtp} style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+            <input
+              type="email"
+              placeholder="Votre email"
+              value={email}
+              onChange={e => setEmail(e.target.value)}
+              required
+              autoFocus
+              style={inp}
+            />
+            {error && <div style={{ fontSize: 12, color: '#ef4444', background: '#fef2f2', padding: '8px 10px', borderRadius: 6 }}>{error}</div>}
+            <button type="submit" disabled={loading}
+              style={{ marginTop: 4, padding: '11px', background: '#CC9933', color: '#fff', border: 'none', borderRadius: 8, fontWeight: 700, fontSize: 14, cursor: loading ? 'not-allowed' : 'pointer', opacity: loading ? 0.7 : 1 }}>
+              {loading ? 'Envoi…' : 'Recevoir le code'}
+            </button>
+          </form>
+        )}
+
+        {step === 'code' && (
+          <form onSubmit={handleVerifyOtp} style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+            <div style={{ fontSize: 13, color: '#5C4A2A', background: '#FFF8E7', border: '1px solid #E4C97A', borderRadius: 8, padding: '10px 12px' }}>
+              Code envoyé à <strong>{email}</strong>
+            </div>
+            <input
+              type="text"
+              inputMode="numeric"
+              placeholder="Code à 6 chiffres"
+              value={code}
+              onChange={e => setCode(e.target.value.replace(/\D/g, '').slice(0, 6))}
+              required
+              autoFocus
+              style={{ ...inp, fontSize: 22, letterSpacing: 6, textAlign: 'center', fontWeight: 700 }}
+            />
+            {error && <div style={{ fontSize: 12, color: '#ef4444', background: '#fef2f2', padding: '8px 10px', borderRadius: 6 }}>{error}</div>}
+            <button type="submit" disabled={loading || code.length < 6}
+              style={{ padding: '11px', background: '#CC9933', color: '#fff', border: 'none', borderRadius: 8, fontWeight: 700, fontSize: 14, cursor: (loading || code.length < 6) ? 'not-allowed' : 'pointer', opacity: (loading || code.length < 6) ? 0.7 : 1 }}>
+              {loading ? 'Vérification…' : 'Connexion'}
+            </button>
+            <button type="button"
+              onClick={() => { setStep('email'); setCode(''); setError(null) }}
+              style={{ padding: '8px', background: 'none', border: 'none', color: '#8C7B65', fontSize: 13, cursor: 'pointer', textDecoration: 'underline' }}>
+              ← Changer d'email
+            </button>
+            {resendCooldown > 0
+              ? <div style={{ fontSize: 12, color: '#A09282', textAlign: 'center' }}>Renvoyer dans {resendCooldown}s</div>
+              : <button type="button" onClick={handleSendOtp}
+                  style={{ padding: '6px', background: 'none', border: 'none', color: '#CC9933', fontSize: 13, cursor: 'pointer', textDecoration: 'underline' }}>
+                  Renvoyer le code
+                </button>
+            }
+          </form>
+        )}
       </div>
     </div>
   )
