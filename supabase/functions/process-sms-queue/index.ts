@@ -35,7 +35,12 @@ Deno.serve(async (req) => {
   let sent = 0, failed = 0
 
   for (const item of pending) {
-    await supabase.from('sms_queue').update({ status: 'sent' }).eq('id', item.id).eq('status', 'pending')
+    // Optimistic lock : si un autre process a déjà claimé cet item, skip
+    const { data: claimedRows } = await supabase.from('sms_queue')
+      .update({ status: 'processing' })
+      .eq('id', item.id).eq('status', 'pending')
+      .select('id')
+    if (!claimedRows?.length) continue  // déjà pris par un autre run concurrent
 
     const hospId = item.hospitable_reservation_id
     if (!hospId) {
@@ -44,30 +49,24 @@ Deno.serve(async (req) => {
       continue
     }
 
+    // Guard anti-doublon : si déjà envoyé pour cette réservation, on ne renvoie pas
+    const { count: alreadySent } = await supabase
+      .from('sms_logs')
+      .select('id', { count: 'exact', head: true })
+      .eq('hospitable_reservation_id', hospId)
+      .eq('status', 'sent')
+    if (alreadySent) {
+      await supabase.from('sms_queue').update({ status: 'sent', error_message: 'already_sent' }).eq('id', item.id)
+      sent++
+      continue
+    }
+
     const [hosp, guestMessages] = await Promise.all([
       getHospReservation(hospToken, hospId),
       getHospGuestMessages(hospToken, hospId),
     ])
 
-    // Les plateformes (Airbnb, Booking…) ferment le fil ~48h après le checkout
-    const checkoutRaw = hosp?.check_out || hosp?.departure_date || null
-    const platform    = hosp?.platform || null
-    if (checkoutRaw) {
-      const checkoutMs  = new Date(checkoutRaw).getTime()
-      const hoursAgo    = (Date.now() - checkoutMs) / 3_600_000
-      if (hoursAgo > 48) {
-        const reason = `thread_closed_${platform || 'unknown'} (checkout il y a ${Math.round(hoursAgo)}h)`
-        await supabase.from('sms_queue').update({ status: 'skipped', error_message: reason }).eq('id', item.id)
-        await supabase.from('sms_logs').insert({
-          hospitable_reservation_id: hospId,
-          guest_name: item.guest_name, guest_phone: null,
-          language: 'FR', rating: item.rating || 5,
-          sms_body: item.preview_body || '', status: 'skipped', error_message: reason,
-        })
-        failed++
-        continue
-      }
-    }
+    const platform = hosp?.platform || null
 
     const firstName   = hosp?.guest?.first_name || (item.guest_name || 'cher client').split(' ')[0]
     const locale      = hosp?.guest?.locale || null
@@ -76,9 +75,10 @@ Deno.serve(async (req) => {
     const lang        = detectLang(locale, item.guest_country, null)
     const agenceLabel = item.agence_label || 'Destination Côte Basque'
 
+    const checkoutDate = hosp?.check_out || hosp?.departure_date || null
     const msgBody = item.preview_body || await generateMessage({
       firstName, property: propName, lang, googleUrl,
-      review: reviewText, guestMessages, agenceLabel, platform,
+      review: reviewText, guestMessages, agenceLabel, platform, checkoutDate,
     })
 
     const result = await sendHospMessage(hospToken, hospId, msgBody)

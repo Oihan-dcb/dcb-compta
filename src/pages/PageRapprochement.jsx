@@ -65,6 +65,9 @@ export default function PageRapprochement() {
   const [filterResaPlat, setFilterResaPlat] = useState('')
   const [syncing, setSyncing] = useState(false)
   const [syncLog, setSyncLog] = useState(null)
+  const [paiementsContratParMouv, setPaiementsContratParMouv] = useState({})
+  const [rapprocheContratsLog, setRapprocheContratsLog] = useState(null)
+  const [rapprocheContratsRunning, setRapprocheContratsRunning] = useState(false)
 
   const { bloque: moisBloque } = useMoisCloture(mois, 'rappro')
 
@@ -89,6 +92,22 @@ export default function PageRapprochement() {
       setMouvements(m)
       setResasEnAttente(v)
       setStats(s)
+      // Fetch paiements contrat liés aux mouvements du mois
+      const mouvIds = (m || []).map(mv => mv.id)
+      if (mouvIds.length > 0) {
+        const { data: paiementsContrat } = await supabase
+          .from('paiement_contrat')
+          .select('id, reservation_id, type, statut, montant_cts, mouvement_bancaire_id')
+          .in('mouvement_bancaire_id', mouvIds)
+        const pcMap = {}
+        for (const pc of paiementsContrat || []) {
+          if (!pcMap[pc.mouvement_bancaire_id]) pcMap[pc.mouvement_bancaire_id] = []
+          pcMap[pc.mouvement_bancaire_id].push(pc)
+        }
+        setPaiementsContratParMouv(pcMap)
+      } else {
+        setPaiementsContratParMouv({})
+      }
       const cutoff = new Date(Date.now() - 7*86400000).toISOString().slice(0,10)
       const [{ count: virCount }, resasNrRes] = await Promise.all([
         supabase.from('mouvement_bancaire').select('*', { count: 'exact', head: true }).eq('mois_releve', mois).eq('statut_matching', 'en_attente').gt('credit', 0).lt('date_operation', cutoff),
@@ -277,6 +296,33 @@ export default function PageRapprochement() {
     }
   }
 
+  async function lancerRapprocheContrats() {
+    if (moisBloque) { setError('🔒 Mois clôturé — rapprochement contrats impossible.'); return }
+    matchingInProgressRef.current = true
+    setRapprocheContratsRunning(true)
+    setRapprocheContratsLog(null)
+    setError(null)
+    try {
+      const { data: { session } } = await supabase.auth.getSession()
+      const token = session?.access_token
+      if (!token) throw new Error('Non authentifié')
+      const res = await fetch('/api/rapprocher-contrats', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + token },
+        body: JSON.stringify({ agence: AGENCE }),
+      })
+      const json = await res.json()
+      if (!res.ok) throw new Error(json.error || 'Erreur API')
+      setRapprocheContratsLog(json)
+    } catch (err) {
+      setError('Erreur rapprochement contrats : ' + err.message)
+    } finally {
+      matchingInProgressRef.current = false
+      setRapprocheContratsRunning(false)
+      await charger()
+    }
+  }
+
   async function annuler(id) {
     if (moisBloque) { setError('🔒 Mois clôturé (Rapprochement) — annulation impossible.'); return }
     try {
@@ -323,6 +369,10 @@ export default function PageRapprochement() {
             style={{ background: (matching || moisBloque) ? '#aaa' : '#CC9933', color: '#fff', border: 'none', borderRadius: 8, padding: '8px 18px', fontWeight: 600, cursor: (matching || syncing || moisBloque) ? 'not-allowed' : 'pointer', fontSize: 14 }}>
             {matching ? '⏳ Matching...' : moisBloque ? '🔒 Matching auto' : '⚡ Matching auto'}
           </button>
+          <button onClick={lancerRapprocheContrats} disabled={rapprocheContratsRunning || matching || syncing || moisBloque}
+            style={{ background: (rapprocheContratsRunning || moisBloque) ? '#aaa' : '#635BFF', color: '#fff', border: 'none', borderRadius: 8, padding: '8px 18px', fontWeight: 600, cursor: (rapprocheContratsRunning || matching || syncing || moisBloque) ? 'not-allowed' : 'pointer', fontSize: 14 }}>
+            {rapprocheContratsRunning ? '⏳ Contrats...' : moisBloque ? '🔒 Rapprocher contrats' : '💳 Rapprocher contrats'}
+          </button>
           <button onClick={charger} disabled={loading}
             style={{ background: '#f0f4ff', color: '#CC9933', border: '1.5px solid #CC9933', borderRadius: 8, padding: '8px 14px', fontWeight: 600, cursor: loading ? 'not-allowed' : 'pointer', fontSize: 14 }}>
             {loading ? '⏳' : '↻'} Actualiser
@@ -360,6 +410,22 @@ export default function PageRapprochement() {
             <ul style={{ margin: '8px 0 0', paddingLeft: 20 }}>
               {matchLog.details.map((d, i) => (
                 <li key={i}>{d.type} — {d.montant?.toFixed(2)} €{d.resa ? ` (${d.resa})` : d.nb ? ` (${d.nb} rés.)` : ''}</li>
+              ))}
+            </ul>
+          )}
+        </div>
+      )}
+
+      {rapprocheContratsLog && (
+        <div style={{ background: '#ECFDF5', border: '1px solid #6EE7B7', borderRadius: 8, padding: '12px 16px', marginBottom: 16, fontSize: 14 }}>
+          <strong>Rapprochement contrats :</strong>{' '}
+          <span style={{ color: '#2E7D32' }}>{rapprocheContratsLog.matched} lié(s)</span>
+          {rapprocheContratsLog.skipped > 0 && <span style={{ color: '#E65100', marginLeft: 12 }}>{rapprocheContratsLog.skipped} sans correspondance</span>}
+          {rapprocheContratsLog.matched === 0 && rapprocheContratsLog.skipped === 0 && <span style={{ color: '#666', marginLeft: 8 }}>— aucun paiement contrat à rapprocher</span>}
+          {rapprocheContratsLog.details?.length > 0 && (
+            <ul style={{ margin: '8px 0 0', paddingLeft: 20 }}>
+              {rapprocheContratsLog.details.map((d, i) => (
+                <li key={i}>💳 {d.reservation_id} — {d.type} — {d.montant?.toFixed(2)} €</li>
               ))}
             </ul>
           )}
@@ -508,9 +574,15 @@ export default function PageRapprochement() {
             </div>
                          ) : m.detail ? (
                            <div style={{ fontSize: 11, marginTop: 2, display: 'flex', gap: 4, flexWrap: 'wrap', alignItems: 'center' }}>
-                             {(() => { const parts = m.detail.split('|').map(s => s.trim()).filter(Boolean); const fraisPart = parts.find(p => p.startsWith('frais:')); const mainParts = parts.filter(p => !p.startsWith('frais:')); return <>{mainParts.length > 0 && <span style={{ color: m.statut_matching === 'rapproche' ? '#2E7D32' : '#888' }}>{mainParts.join(' · ')}</span>}{fraisPart && <span style={{ background: '#FEF2F2', color: '#B91C1C', border: '1px solid #FCA5A5', borderRadius: 4, padding: '1px 5px', fontWeight: 700, whiteSpace: 'nowrap', marginLeft: 4 }}>⚡ {fraisPart}</span>}</> })()} 
+                             {(() => { const parts = m.detail.split('|').map(s => s.trim()).filter(Boolean); const fraisPart = parts.find(p => p.startsWith('frais:')); const mainParts = parts.filter(p => !p.startsWith('frais:')); return <>{mainParts.length > 0 && <span style={{ color: m.statut_matching === 'rapproche' ? '#2E7D32' : '#888' }}>{mainParts.join(' · ')}</span>}{fraisPart && <span style={{ background: '#FEF2F2', color: '#B91C1C', border: '1px solid #FCA5A5', borderRadius: 4, padding: '1px 5px', fontWeight: 700, whiteSpace: 'nowrap', marginLeft: 4 }}>⚡ {fraisPart}</span>}</> })()}
                            </div>
                          ) : null}
+                         {paiementsContratParMouv[m.id]?.map((pc, i) => (
+                           <div key={i} style={{ fontSize: 11, marginTop: 2, color: '#635BFF', fontWeight: 600, display: 'flex', gap: 4, alignItems: 'center' }}>
+                             💳 Contrat {pc.reservation_id} — {pc.type}
+                             {pc.montant_cts && <span style={{ color: '#555', fontWeight: 400 }}>· {(pc.montant_cts / 100).toFixed(2)} €</span>}
+                           </div>
+                         ))}
                       </td>
                       <td style={{ padding: '9px 12px' }}>
                         <span style={{ background: CANAL_COLOR[m.canal] + '22', color: CANAL_COLOR[m.canal] || '#555', borderRadius: 12, padding: '2px 8px', fontSize: 11, fontWeight: 700 }}>

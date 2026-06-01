@@ -22,12 +22,14 @@ function BadgePaiementContrat({ paiements }) {
     if (!existing || STATUS_PRIO[p.statut] < STATUS_PRIO[existing.statut]) byType[p.type] = p
   }
   const entries = Object.values(byType)
+  // Vérifier si au moins un est encaissé en banque
+  const encaisseEnBanque = entries.some(p => p.mouvement_bancaire_id)
   return (
-    <span style={{ display: 'inline-flex', gap: 3, flexWrap: 'wrap' }}>
+    <span style={{ display: 'inline-flex', gap: 3, flexWrap: 'wrap', alignItems: 'center' }}>
       {entries.map((p, i) => {
         const cfg = PAIEMENT_CFG[p.statut] || { label: p.statut, bg: '#f5f5f5', color: '#666' }
         const montant = p.montant_cts ? ` ${(p.montant_cts / 100).toFixed(0)}€` : ''
-        const title = `${p.type} — ${cfg.label}${montant}`
+        const title = `${p.type} — ${cfg.label}${montant}${p.mouvement_bancaire_id ? ' · encaissé en banque ✓' : ''}`
         return (
           <span key={i} title={title}
             style={{ background: cfg.bg, color: cfg.color, borderRadius: 4, padding: '1px 5px', fontSize: '0.72em', fontWeight: 700, whiteSpace: 'nowrap' }}>
@@ -35,6 +37,12 @@ function BadgePaiementContrat({ paiements }) {
           </span>
         )
       })}
+      {encaisseEnBanque && (
+        <span title="Encaissé en banque"
+          style={{ background: '#f0fdf4', color: '#15803d', border: '1px solid #bbf7d0', borderRadius: 4, padding: '1px 4px', fontSize: '0.68em', fontWeight: 700 }}>
+          🏦 ✓
+        </span>
+      )}
     </span>
   )
 }

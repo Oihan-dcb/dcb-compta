@@ -92,7 +92,7 @@ export default function PageReservations() {
       if (codes.length > 0) {
         const { data: paiements } = await supabase
           .from('paiement_contrat')
-          .select('reservation_id, type, statut, montant_cts, date_paiement')
+          .select('reservation_id, type, statut, montant_cts, date_paiement, mouvement_bancaire_id')
           .in('reservation_id', codes)
         const map = {}
         for (const p of paiements || []) {

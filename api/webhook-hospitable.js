@@ -17,7 +17,7 @@ const SUPABASE_KEY   = process.env.SUPABASE_SERVICE_ROLE_KEY;
 const SELF_URL       = 'https://dcb-compta.vercel.app';
 
 function verifyToken(t) {
-  if (!WEBHOOK_SECRET) { console.warn('[webhook-hospitable] WEBHOOK_SECRET absent'); return true; }
+  if (!WEBHOOK_SECRET) { console.error('[webhook-hospitable] WEBHOOK_SECRET absent — requête rejetée'); return false; }
   if (!t) return false;
   try { return crypto.timingSafeEqual(Buffer.from(t), Buffer.from(WEBHOOK_SECRET)); }
   catch { return false; }

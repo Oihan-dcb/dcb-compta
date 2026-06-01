@@ -92,8 +92,19 @@ export async function generateMessage(opts: {
   guestMessages: string[]
   agenceLabel: string
   platform: string | null
+  checkoutDate?: string | null
 }): Promise<string> {
-  const { firstName, property, lang, googleUrl, review, guestMessages, agenceLabel, platform } = opts
+  const { firstName, property, lang, googleUrl, review, guestMessages, agenceLabel, platform, checkoutDate } = opts
+  const googleUrlDisplay = googleUrl.replace(/^https?:\/\//, '')
+
+  // Calculer si le séjour est ancien (> 30 jours)
+  const checkoutMs = checkoutDate ? new Date(checkoutDate).getTime() : null
+  const daysAgo = checkoutMs ? Math.floor((Date.now() - checkoutMs) / 86_400_000) : null
+  const isOldStay = daysAgo !== null && daysAgo > 30
+  const stayMonthLabel = checkoutMs ? new Date(checkoutMs).toLocaleDateString(
+    lang === 'FR' ? 'fr-FR' : lang === 'ES' ? 'es-ES' : 'en-GB',
+    { month: 'long', year: 'numeric' }
+  ) : null
   const anthropicKey = Deno.env.get('ANTHROPIC_API_KEY')
   const langLabel    = lang === 'FR' ? 'français' : lang === 'EN' ? 'anglais' : 'espagnol'
   const platformLabel = platform
@@ -110,19 +121,24 @@ export async function generateMessage(opts: {
         ? `\n\nHistorique de ses messages pendant le séjour (extraits) :\n${guestMessages.map(m => `- "${m}"`).join('\n')}`
         : ''
 
+      const oldStayContext = isOldStay && stayMonthLabel
+        ? `\n- Le séjour date de ${stayMonthLabel} (il y a ${daysAgo} jours) : explique naturellement en 1 phrase que tu viens de tomber sur son avis, sans t'excuser excessivement`
+        : ''
+
       const prompt = `Tu es l'hôte de "${property}" pour ${agenceLabel}, agence de location de villas au Pays Basque.
 
 ${reviewPart}${histoPart}
 
-Rédige un message de remerciement naturel et chaleureux en ${langLabel}, comme si l'hôte écrivait directement à son voyageur via la messagerie de la plateforme. Ce n'est PAS un SMS : sois conversationnel (4-6 phrases), authentique, sans fioritures marketing.
+Rédige un message de remerciement naturel et chaleureux en ${langLabel}, comme si l'hôte écrivait directement à son voyageur via la messagerie de la plateforme.
 
-Règles :
+Règles STRICTES :
 - Commence par "Bonjour ${firstName}," (ou équivalent dans la langue)
-- ${review ? `Mentionne un élément précis et sincère de son commentaire${histoPart ? ', ou un échange de la conversation si pertinent' : ''}` : 'Remercie sincèrement pour le séjour'}
-- Ton naturel d'hôte, pas commercial
-- Glisse une invitation douce à laisser aussi un avis Google, avec ce lien sur une ligne séparée : ${googleUrl}
-- Signe "L'équipe ${agenceLabel}"
-- Pas de majuscules excessives, pas d'émoticônes multiples
+- ${review ? `Mentionne un élément précis de son commentaire${histoPart ? ' ou de la conversation' : ''}` : 'Remercie sincèrement pour le séjour'}
+- Ton humain et direct, comme un vrai message d'hôte, pas une IA, pas du marketing
+- Pas de tirets entre les idées, utilise des virgules ou des phrases séparées${oldStayContext}
+- Invite à laisser un avis sur la fiche Google "${agenceLabel}" — sans lien, juste le nom de la fiche
+- Signe uniquement "Oïhan" (pas "L'équipe", pas de formule longue)
+- 4-5 phrases maximum, pas de blabla inutile
 
 Réponds uniquement avec le texte du message.`
 
@@ -152,9 +168,15 @@ Réponds uniquement avec le texte du message.`
 
   // Fallback sans LLM
   const t: Record<string, string> = {
-    FR: `Bonjour ${firstName},\n\nMerci beaucoup pour votre avis 5⭐ sur "${property}" ! Votre retour nous touche vraiment et nous sommes ravis que le séjour vous ait plu.\n\nSi vous avez un moment, un avis Google nous aiderait beaucoup :\n${googleUrl}\n\nÀ très bientôt,\nL'équipe ${agenceLabel}`,
-    EN: `Hello ${firstName},\n\nThank you so much for your 5-star review of "${property}"! We're really glad you enjoyed your stay and your kind words mean a lot to us.\n\nIf you have a moment, a Google review would help us greatly:\n${googleUrl}\n\nWarm regards,\nThe ${agenceLabel} team`,
-    ES: `Hola ${firstName},\n\n¡Muchas gracias por tu reseña 5⭐ de "${property}"! Nos alegra mucho que hayas disfrutado tu estancia.\n\nSi tienes un momento, una reseña en Google nos ayudaría mucho:\n${googleUrl}\n\nHasta pronto,\nEl equipo de ${agenceLabel}`,
+    FR: isOldStay && stayMonthLabel
+      ? `Bonjour ${firstName},\n\nJe viens de tomber sur votre avis de ${stayMonthLabel} pour ${property}, et je voulais vous remercier, ça nous fait vraiment plaisir de lire ça. Si vous avez un moment, un avis sur notre fiche Google "${agenceLabel}" nous aiderait beaucoup.\n\nÀ bientôt,\nOïhan`
+      : `Bonjour ${firstName},\n\nMerci beaucoup pour ce retour, ça nous touche vraiment ! C'est super de savoir que le séjour à ${property} vous a plu, on met beaucoup de soin à chaque accueil.\n\nSi vous avez un moment, n'hésitez pas à laisser un avis sur notre fiche Google "${agenceLabel}", ça nous aide énormément.\n\nÀ bientôt,\nOïhan`,
+    EN: isOldStay && stayMonthLabel
+      ? `Hello ${firstName},\n\nI just came across your review from ${stayMonthLabel} for ${property} and wanted to say a big thank you, it really means a lot! If you have a moment, a review on our Google listing "${agenceLabel}" would help us enormously.\n\nBest,\nOïhan`
+      : `Hello ${firstName},\n\nThank you so much for your kind review, it really means a lot! We're so glad you enjoyed your stay at ${property}.\n\nIf you have a moment, feel free to leave a review on our Google listing "${agenceLabel}", it helps us more than you'd think.\n\nSee you soon,\nOïhan`,
+    ES: isOldStay && stayMonthLabel
+      ? `Hola ${firstName},\n\nAcabo de ver tu reseña de ${stayMonthLabel} sobre ${property} y quería agradecértelo, nos alegra muchísimo. Si tienes un momento, una reseña en nuestro perfil de Google "${agenceLabel}" nos ayudaría mucho.\n\nHasta pronto,\nOïhan`
+      : `Hola ${firstName},\n\n¡Muchas gracias por tu reseña, nos alegra muchísimo! Es genial saber que disfrutaste tu estancia en ${property}.\n\nSi tienes un momento, nos ayudaría mucho que dejaras una reseña en nuestro perfil de Google "${agenceLabel}".\n\nHasta pronto,\nOïhan`,
   }
   return t[lang] ?? t['FR']
 }

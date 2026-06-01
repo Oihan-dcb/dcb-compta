@@ -189,44 +189,29 @@ Deno.serve(async (req) => {
         ])
 
         if ((qCount || 0) === 0 && (lCount || 0) === 0) {
-          if (guestPhone) {
-            const sendAt = new Date(Date.now() + 28 * 60 * 1000).toISOString()
-            const comment = review.public?.review || null
-            const propertyZone = bien.zone || null
-            const previewBody = googleUrl
-              ? await generatePreviewBody(guestName, bien.hospitable_name, guestCountry, guestPhone, comment, googleUrl, agenceCfg.label, propertyZone).catch(() => null)
-              : null
-            const { error: qErr } = await sb.from('sms_queue').insert({
-              hospitable_reservation_id: resaHospId,
-              guest_name:    guestName,
-              guest_phone:   guestPhone,
-              guest_country: guestCountry,
-              property_name: bien.hospitable_name,
-              comment,
-              rating:        row.rating,
-              send_at:       sendAt,
-              preview_body:  previewBody,
-              agence:        bienAgence,
-              agence_label:  agenceCfg.label,
-              property_zone: propertyZone,
-            })
-            if (qErr) { console.error('sms_queue insert:', qErr.message) }
-            else { smsQueued++; console.log('SMS queued (sync-reviews):', resaHospId, guestPhone) }
-          } else {
-            // Log no_phone pour ne pas retenter à chaque sync
-            // Note: PostgrestBuilder n'a pas .catch() en Deno — on utilise try/catch
-            try {
-              await sb.from('sms_logs').insert({
-                hospitable_reservation_id: resaHospId,
-                guest_name:    guestName,
-                guest_phone:   null,
-                language:      'FR',
-                rating:        row.rating,
-                status:        'no_phone',
-                error_message: 'No guest phone in reservation table (sync-reviews)',
-              })
-            } catch (_) {}
-          }
+          // Envoi via thread Hospitable — téléphone non requis
+          const sendAt = new Date(Date.now() + 28 * 60 * 1000).toISOString()
+          const comment = review.public?.review || null
+          const propertyZone = bien.zone || null
+          const previewBody = googleUrl
+            ? await generatePreviewBody(guestName, bien.hospitable_name, guestCountry, guestPhone, comment, googleUrl, agenceCfg.label, propertyZone).catch(() => null)
+            : null
+          const { error: qErr } = await sb.from('sms_queue').insert({
+            hospitable_reservation_id: resaHospId,
+            guest_name:    guestName,
+            guest_phone:   guestPhone ?? null,
+            guest_country: guestCountry,
+            property_name: bien.hospitable_name,
+            comment,
+            rating:        row.rating,
+            send_at:       sendAt,
+            preview_body:  previewBody,
+            agence:        bienAgence,
+            agence_label:  agenceCfg.label,
+            property_zone: propertyZone,
+          })
+          if (qErr) { console.error('sms_queue insert:', qErr.message) }
+          else { smsQueued++; console.log('SMS queued via Hospitable:', resaHospId) }
         }
       }
 
@@ -281,21 +266,21 @@ async function generatePreviewBody(
         body: JSON.stringify({
           model: 'claude-haiku-4-5-20251001',
           max_tokens: 150,
-          messages: [{ role: 'user', content: `Tu es l'assistant de ${agenceLabel}. Un voyageur vient de laisser un avis 5⭐ sur Airbnb pour "${propertyName}". Son commentaire : "${comment}"\nRédige un SMS de remerciement en ${langLabel} (160-220 caractères). Règles STRICTES :\n- N'inclus AUCUNE URL, AUCUN lien, AUCUN placeholder dans le texte\n${zoneRule}\n- La signature est "— ${agenceLabel}"\n- Termine par cette phrase exacte selon la langue : FR: "Soutenez-nous sur Google →" / EN: "Support us on Google →" / ES: "Apóyanos en Google →"\n- Sans mention STOP\nRéponds uniquement avec le texte du SMS, le lien Google sera ajouté automatiquement après.` }],
+          messages: [{ role: 'user', content: `Tu es l'assistant de ${agenceLabel}. Un voyageur vient de laisser un avis 5⭐ sur Airbnb pour "${propertyName}". Son commentaire : "${comment}"\nRédige un message de remerciement en ${langLabel} (160-220 caractères). Règles STRICTES :\n- N'inclus AUCUNE URL, AUCUN lien, AUCUN placeholder dans le texte\n${zoneRule}\n- La signature est "— ${agenceLabel}"\n- Invite à laisser un avis sur la fiche Google "${agenceLabel}" en citant uniquement le nom (pas d'URL)\n- Sans mention STOP\nRéponds uniquement avec le texte du message.` }],
         }),
       })
       if (res.ok) {
         const d = await res.json()
         const text = d.content?.[0]?.text?.trim()
-        if (text) return `${firstName}, ${text}\n${googleUrl}`
+        if (text) return `${firstName}, ${text}`
       }
     } catch (_) {}
   }
 
   const t: Record<string, string> = {
-    FR: `${firstName}, merci pour votre avis 5⭐ Airbnb sur ${propertyName} ! Votre retour nous touche beaucoup. Soutenez-nous sur Google → — ${agenceLabel}\n${googleUrl}`,
-    EN: `${firstName}, thank you for your 5-star Airbnb review of ${propertyName}! Your feedback means so much to us. Support us on Google → — ${agenceLabel}\n${googleUrl}`,
-    ES: `${firstName}, ¡gracias por tu reseña 5⭐ de Airbnb sobre ${propertyName}! Tu opinión nos llena de alegría. Apóyanos en Google → — ${agenceLabel}\n${googleUrl}`,
+    FR: `${firstName}, merci pour votre avis 5⭐ sur ${propertyName} ! Votre retour nous touche beaucoup. Si vous avez un moment, laissez-nous un avis sur la fiche Google "${agenceLabel}", ça nous aide vraiment.\n— ${agenceLabel}`,
+    EN: `${firstName}, thank you for your 5-star review of ${propertyName}! Your feedback means so much to us. If you have a moment, a review on our Google listing "${agenceLabel}" would help us enormously.\n— ${agenceLabel}`,
+    ES: `${firstName}, ¡gracias por tu reseña 5⭐ de ${propertyName}! Tu opinión nos llena de alegría. Si tienes un momento, una reseña en nuestro perfil de Google "${agenceLabel}" nos ayudaría mucho.\n— ${agenceLabel}`,
   }
   return t[lang] ?? t['FR']
 }

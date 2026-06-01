@@ -249,7 +249,10 @@ export default async function handler(req, res) {
 
   // Auth : token dans query string ou Authorization header
   const token = req.query?.token || (req.headers.authorization || '').replace(/^Bearer\s+/i, '').trim();
-  if (WEBHOOK_SECRET && token !== WEBHOOK_SECRET) {
+  if (!WEBHOOK_SECRET) {
+    return res.status(500).json({ error: 'HOSPITABLE_WEBHOOK_SECRET non configuré' });
+  }
+  if (token !== WEBHOOK_SECRET) {
     return res.status(401).json({ error: 'Non autorisé' });
   }
 
