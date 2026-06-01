@@ -249,9 +249,17 @@ export default function ModalResa({ resa, onClose, onSaved }) {
   const [modeVentil, setModeVentil] = useState('normal')
   const [ventilating, setVentilating] = useState(false)
   const [virements, setVirements] = useState([])
+  const [paiementsContrat, setPaiementsContrat] = useState([])
   const [editingRevenu, setEditingRevenu] = useState(false)
   const [revenuVal, setRevenuVal] = useState('')
   const [savingRevenu, setSavingRevenu] = useState(false)
+
+  useEffect(() => {
+    if (!resa?.code) return
+    supabase.from('paiement_contrat').select('*').eq('reservation_id', resa.code).order('date_paiement', { ascending: true })
+      .then(({ data }) => setPaiementsContrat(data || []))
+  }, [resa?.code])
+
   useEffect(() => {
     if (!resa?.id) return
     async function fetchVirements() {
@@ -506,6 +514,47 @@ export default function ModalResa({ resa, onClose, onSaved }) {
           </div>
         )}
         <EncaissementsRecap virements={virements} finRevenue={resa.fin_revenue} />
+
+        {/* Paiements contrat DCB (Stripe) */}
+        {paiementsContrat.length > 0 && (
+          <div style={{ marginTop: 14, borderTop: '1px solid #eee', paddingTop: 14 }}>
+            <div style={{ fontWeight: 700, fontSize: '0.78em', color: '#CC9933', textTransform: 'uppercase', letterSpacing: '0.08em', marginBottom: 8 }}>
+              💳 Paiements contrat reçus
+            </div>
+            <table style={{ width: '100%', fontSize: '0.88em', borderCollapse: 'collapse' }}>
+              <tbody>
+                {paiementsContrat.map(p => (
+                  <tr key={p.id} style={{ borderTop: '1px solid #f0f0f0' }}>
+                    <td style={{ padding: '4px 0', color: '#666', whiteSpace: 'nowrap' }}>
+                      {p.date_paiement ? new Date(p.date_paiement).toLocaleDateString('fr-FR') : '—'}
+                    </td>
+                    <td style={{ padding: '4px 8px', color: '#555', fontSize: '0.9em' }}>
+                      <span style={{ background: p.type === 'acompte' ? '#FEF3C7' : '#DCFCE7', color: p.type === 'acompte' ? '#92400E' : '#166534', borderRadius: 4, padding: '1px 6px', fontWeight: 600, fontSize: '0.85em' }}>
+                        {p.type}
+                      </span>
+                      {p.stripe_payment_intent_id && (
+                        <span style={{ marginLeft: 6, color: '#9CA3AF', fontSize: '0.8em', fontFamily: 'monospace' }}>
+                          {p.stripe_payment_intent_id.slice(0, 20)}…
+                        </span>
+                      )}
+                    </td>
+                    <td style={{ padding: '4px 0', textAlign: 'right', fontWeight: 600, color: '#166534', whiteSpace: 'nowrap' }}>
+                      +{((p.montant_cts || 0) / 100).toFixed(2)} €
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+              <tfoot>
+                <tr style={{ borderTop: '2px solid #D9CEB8' }}>
+                  <td colSpan={2} style={{ padding: '5px 0', fontWeight: 700, fontSize: '0.9em', color: '#CC9933' }}>Total contrat encaissé</td>
+                  <td style={{ padding: '5px 0', textAlign: 'right', fontWeight: 700, color: '#CC9933' }}>
+                    {(paiementsContrat.reduce((s, p) => s + (p.montant_cts || 0), 0) / 100).toFixed(2)} €
+                  </td>
+                </tr>
+              </tfoot>
+            </table>
+          </div>
+        )}
       </div>
     </div>
   )
