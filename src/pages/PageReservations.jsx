@@ -27,6 +27,7 @@ export default function PageReservations() {
   const [onglet, setOnglet] = useState(() => localStorage.getItem('tab_reservations') || 'reservations')
   useEffect(() => localStorage.setItem('tab_reservations', onglet), [onglet])
   const [selectedResa, setSelectedResa] = useState(null)
+  const [paiementsContrat, setPaiementsContrat] = useState({})
   const [modalManuelles, setModalManuelles] = useState(false)
   const [modeManuelles, setModeManuelles] = useState('normal')
   const [ventilantManuelles, setVentilantManuelles] = useState(false)
@@ -85,6 +86,23 @@ export default function PageReservations() {
         }
       }
       setReservations(resas); setRecap(recapData)
+
+      // ── Bulk fetch paiement_contrat pour les resas du mois ────────────────
+      const codes = resas.map(r => r.code).filter(Boolean)
+      if (codes.length > 0) {
+        const { data: paiements } = await supabase
+          .from('paiement_contrat')
+          .select('reservation_id, type, statut, montant_cts, date_paiement')
+          .in('reservation_id', codes)
+        const map = {}
+        for (const p of paiements || []) {
+          if (!map[p.reservation_id]) map[p.reservation_id] = []
+          map[p.reservation_id].push(p)
+        }
+        setPaiementsContrat(map)
+      } else {
+        setPaiementsContrat({})
+      }
       // Ouvrir le modal si ?code= dans l'URL (venant du Rapprochement)
       const codeParam = searchParams.get('code')
       if (codeParam) {
@@ -313,7 +331,7 @@ export default function PageReservations() {
 
       {/* TableReservations reste monté pour préserver les filtres — loading passé en prop */}
       {onglet === 'reservations' ? (
-        <TableReservations reservations={reservations} onSelect={setSelectedResa} onRefresh={charger} loading={loading} />
+        <TableReservations reservations={reservations} onSelect={setSelectedResa} onRefresh={charger} loading={loading} paiementsContrat={paiementsContrat} />
       ) : loading ? (
         <div className="loading-state"><span className="spinner" /> Chargement…</div>
       ) : (

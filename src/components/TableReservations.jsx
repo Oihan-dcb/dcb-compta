@@ -4,6 +4,41 @@ import { fr } from 'date-fns/locale'
 import { formatMontant } from '../lib/hospitable'
 import { toggleOwnerStay } from '../hooks/useOwnerStay'
 
+// ── Badge paiement contrat ────────────────────────────────────────────────────
+const PAIEMENT_CFG = {
+  succeeded: { label: 'payé',    bg: '#dcfce7', color: '#15803d' },
+  scheduled: { label: 'prévu',   bg: '#fef9c3', color: '#a16207' },
+  pending:   { label: 'en cours',bg: '#e0f2fe', color: '#0369a1' },
+  failed:    { label: 'échec',   bg: '#fee2e2', color: '#dc2626' },
+}
+
+function BadgePaiementContrat({ paiements }) {
+  if (!paiements || paiements.length === 0) return null
+  // Dédoublonner par type : garder le plus récent (ou le pire statut)
+  const STATUS_PRIO = { failed: 0, pending: 1, scheduled: 2, succeeded: 3 }
+  const byType = {}
+  for (const p of paiements) {
+    const existing = byType[p.type]
+    if (!existing || STATUS_PRIO[p.statut] < STATUS_PRIO[existing.statut]) byType[p.type] = p
+  }
+  const entries = Object.values(byType)
+  return (
+    <span style={{ display: 'inline-flex', gap: 3, flexWrap: 'wrap' }}>
+      {entries.map((p, i) => {
+        const cfg = PAIEMENT_CFG[p.statut] || { label: p.statut, bg: '#f5f5f5', color: '#666' }
+        const montant = p.montant_cts ? ` ${(p.montant_cts / 100).toFixed(0)}€` : ''
+        const title = `${p.type} — ${cfg.label}${montant}`
+        return (
+          <span key={i} title={title}
+            style={{ background: cfg.bg, color: cfg.color, borderRadius: 4, padding: '1px 5px', fontSize: '0.72em', fontWeight: 700, whiteSpace: 'nowrap' }}>
+            💳 {cfg.label}
+          </span>
+        )
+      })}
+    </span>
+  )
+}
+
 function BadgeStatut({ r, onToggle }) {
   // Séjour proprio
   if (r.owner_stay) return (
@@ -52,7 +87,7 @@ function BadgeStatut({ r, onToggle }) {
 
 const SEL = { padding: '4px 8px', border: '1px solid var(--border)', borderRadius: 6, fontSize: '0.82em', background: '#fff', color: 'var(--text)', cursor: 'pointer' }
 
-export default function TableReservations({ reservations, onSelect, onRefresh, loading }) {
+export default function TableReservations({ reservations, onSelect, onRefresh, loading, paiementsContrat = {} }) {
   const toggling = useRef(false)
   const [filterBien, setFilterBien]     = useState('')
   const [filterPlat, setFilterPlat]     = useState('')
@@ -200,7 +235,12 @@ export default function TableReservations({ reservations, onSelect, onRefresh, l
                   ? <span title="Taux proprio">{r.bien.proprietaire.taux_commission}%</span>
                   : r.ventilation_calculee ? <span title="Taux défaut">25%</span> : '—'}
               </td>
-              <td><BadgeStatut r={r} onToggle={handleToggle} /></td>
+              <td>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 3 }}>
+                  <BadgeStatut r={r} onToggle={handleToggle} />
+                  <BadgePaiementContrat paiements={paiementsContrat[r.code]} />
+                </div>
+              </td>
             </tr>
           ))}
         </tbody>
