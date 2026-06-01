@@ -12,6 +12,8 @@
 import crypto from 'crypto';
 
 const WEBHOOK_SECRET = process.env.HOSPITABLE_WEBHOOK_SECRET;
+const SUPABASE_URL   = process.env.SUPABASE_URL || 'https://omuncchvypbtxkpalwcr.supabase.co';
+const SUPABASE_KEY   = process.env.SUPABASE_SERVICE_ROLE_KEY;
 const SELF_URL       = 'https://dcb-compta.vercel.app';
 
 function verifyToken(t) {
@@ -56,7 +58,23 @@ export default async function handler(req, res) {
   );
 
   const errors = results.filter(r => r.status === 'rejected').map(r => r.reason?.message);
-  if (errors.length) console.error('[webhook-hospitable] erreurs:', errors);
+  if (errors.length) console.error('[webhook-hospitable] erreurs sync:', errors);
+
+  // Ventilation en fire-and-forget pour les deux agences (après le sync, résa déjà en base)
+  for (const agence of ['dcb', 'lauian']) {
+    fetch(`${SUPABASE_URL}/functions/v1/ventilation-auto`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${SUPABASE_KEY}`,
+      },
+      body: JSON.stringify({ agence, mois }),
+    }).then(r => r.json()).then(d => {
+      console.log(`[webhook-hospitable] ventilation ${mois} ${agence} → ${d.total} résa(s)`);
+    }).catch(e => {
+      console.error(`[webhook-hospitable] erreur ventilation ${agence}:`, e.message);
+    });
+  }
 
   return res.status(200).json({ ok: true, mois, synced: true });
 }
