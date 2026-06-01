@@ -6,6 +6,9 @@
     },
     "api/sync-reservations.js": {
       "maxDuration": 120
+    },
+    "api/webhook-hospitable.js": {
+      "maxDuration": 120
     }
   },
   "crons": [

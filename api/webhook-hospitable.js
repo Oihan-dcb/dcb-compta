@@ -1,8 +1,8 @@
 // api/webhook-hospitable.js — DCB Compta
 // POST /api/webhook-hospitable?token=<WEBHOOK_SECRET>
 //
-// Reçoit reservation.created depuis Hospitable
-// → déclenche sync du mois de la réservation
+// Reçoit reservation.created / reservation.updated depuis Hospitable
+// → répond 200 immédiatement → déclenche sync du mois en arrière-plan
 //
 // Config Hospitable UI : Apps → Webhooks → + Add new
 //   URL : https://dcb-compta.vercel.app/api/webhook-hospitable?token=<WEBHOOK_SECRET>
@@ -22,6 +22,21 @@ function verifyToken(t) {
   catch { return false; }
 }
 
+async function runSyncs(mois) {
+  for (const agence of ['dcb', 'lauian']) {
+    try {
+      const r = await fetch(
+        `${SELF_URL}/api/sync-reservations?mois=${mois}&agence=${agence}&token=${WEBHOOK_SECRET}`,
+        { method: 'POST' }
+      );
+      const d = await r.json();
+      console.log(`[webhook-hospitable] sync ${mois} ${agence} → créées:${d.created} màj:${d.updated} erreurs:${d.errors}`);
+    } catch (err) {
+      console.error(`[webhook-hospitable] erreur sync ${agence}:`, err.message);
+    }
+  }
+}
+
 export default async function handler(req, res) {
   if (req.method !== 'POST') return res.status(405).end();
 
@@ -36,28 +51,18 @@ export default async function handler(req, res) {
     return res.status(200).json({ ok: true, skipped: true, reason: 'event_ignored' });
   }
 
-  const resa = data || {};
-  // Extraire le mois de la date d'arrivée
-  const arrivalDate = resa.arrival_date || resa.start_date;
+  const arrivalDate = data?.arrival_date || data?.start_date;
   if (!arrivalDate) {
     return res.status(200).json({ ok: true, skipped: true, reason: 'no_arrival_date' });
   }
   const mois = arrivalDate.substring(0, 7); // YYYY-MM
 
-  // Répondre immédiatement
+  // Démarrer le sync AVANT de répondre (crée la Promise)
+  const syncWork = runSyncs(mois);
+
+  // Répondre immédiatement à Hospitable (< 30s requis)
   res.status(200).json({ ok: true, processing: true, mois });
 
-  // Déclencher le sync pour chaque agence
-  const agences = ['dcb', 'lauian'];
-  for (const agence of agences) {
-    try {
-      const r = await fetch(`${SELF_URL}/api/sync-reservations?mois=${mois}&agence=${agence}&token=${WEBHOOK_SECRET}`, {
-        method: 'POST',
-      });
-      const d = await r.json();
-      console.log(`[webhook-hospitable] sync ${mois} ${agence} → créées:${d.created} màj:${d.updated} erreurs:${d.errors}`);
-    } catch (err) {
-      console.error(`[webhook-hospitable] erreur sync ${agence}:`, err.message);
-    }
-  }
+  // Await APRÈS res.json() → maintient la fonction Vercel en vie le temps du sync
+  await syncWork;
 }
