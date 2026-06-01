@@ -3,8 +3,21 @@
     "api/generate-pdf.js": {
       "memory": 1024,
       "maxDuration": 30
+    },
+    "api/sync-reservations.js": {
+      "maxDuration": 120
     }
   },
+  "crons": [
+    {
+      "path": "/api/sync-reservations?agence=dcb",
+      "schedule": "0 3 * * *"
+    },
+    {
+      "path": "/api/sync-reservations?agence=lauian",
+      "schedule": "15 3 * * *"
+    }
+  ],
   "rewrites": [
     {
       "source": "/api/(.*)",
