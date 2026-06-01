@@ -34,7 +34,7 @@ async function sb(path, options = {}) {
 async function hospFetch(path, params = {}) {
   const url = new URL(`${HOSP_BASE}${path}`);
   Object.entries(params).forEach(([k, v]) => {
-    if (Array.isArray(v)) v.forEach(x => url.searchParams.append(k, x));
+    if (Array.isArray(v)) v.forEach(x => url.searchParams.append(`${k}[]`, x));
     else if (v !== undefined && v !== null) url.searchParams.set(k, v);
   });
   const res = await fetch(url.toString(), {
