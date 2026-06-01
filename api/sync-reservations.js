@@ -244,7 +244,7 @@ async function syncMois(mois, agence) {
 
 // ── Handler ───────────────────────────────────────────────────────────────────
 
-module.exports = async (req, res) => {
+export default async function handler(req, res) {
   if (req.method !== 'GET' && req.method !== 'POST') return res.status(405).end();
 
   // Auth : token dans query string ou Authorization header
@@ -269,4 +269,4 @@ module.exports = async (req, res) => {
     console.error('[sync-reservations] erreur:', err.message);
     return res.status(500).json({ error: err.message });
   }
-};
+}
