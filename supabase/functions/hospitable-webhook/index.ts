@@ -2,7 +2,7 @@ import { createClient } from 'npm:@supabase/supabase-js@2'
 import { logError } from '../_shared/logError.ts'
 
 const SUPABASE_URL = Deno.env.get('SUPABASE_URL')!
-const SUPABASE_SERVICE_KEY = Deno.env.get('SERVICE_ROLE_KEY')!
+const SUPABASE_SERVICE_KEY = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!
 const ANTHROPIC_KEY = Deno.env.get('ANTHROPIC_API_KEY') ?? ''
 
 const GUEST_MSG_SYSTEM_PROMPT = `Tu es un assistant pour une agence de conciergerie (Destination Côte Basque).
@@ -133,7 +133,7 @@ async function handleReservation(supabase: any, event: string, data: any): Promi
 
   const { data: bien } = await supabase
     .from('bien')
-    .select('id, proprietaire_id, provision_ae_ref, has_ae, taux_commission_override, proprietaire!proprietaire_id(id, taux_commission)')
+    .select('id, code, hospitable_name, adresse, ville, agence, capacite, photo_url, heure_arrivee_defaut, heure_depart_defaut, proprietaire_id, provision_ae_ref, has_ae, taux_commission_override, proprietaire!proprietaire_id(id, taux_commission)')
     .eq('hospitable_id', propertyId)
     .single()
 
@@ -262,6 +262,76 @@ async function handleReservation(supabase: any, event: string, data: any): Promi
   }
 
   console.log('Upserted:', data.code, event)
+
+  // Génération contrat (draft) sur nouvelle réservation acceptée
+  if (event === 'reservation.created' && finalStatus === 'accepted' && upserted?.id) {
+    try {
+      const guestLocale: string = data.guest?.locale || data.guest?.language || ''
+      const langue = guestLocale.startsWith('en') ? 'en' : guestLocale.startsWith('es') ? 'es' : 'fr'
+
+      const { data: template } = await supabase
+        .from('contract_templates')
+        .select('id, version')
+        .eq('agence', agenceBien)
+        .eq('langue', langue)
+        .order('version', { ascending: false })
+        .limit(1)
+        .single()
+
+      if (template) {
+        const hospCode = data.code as string  // code Hospitable (ex: "6407282079")
+        const { data: existing } = await supabase
+          .from('rental_contracts')
+          .select('id')
+          .eq('reservation_id', hospCode)
+          .maybeSingle()
+
+        if (!existing) {
+          const { data: inserted, error: contractErr } = await supabase
+            .from('rental_contracts')
+            .insert({
+              agence:           agenceBien,
+              reservation_id:   hospCode,
+              bien_id:          bien.id,
+              proprietaire_id:  bien.proprietaire_id,
+              template_id:      template.id,
+              template_version: template.version,
+              langue,
+              statut:           'draft',
+              distribution_channel: platform,
+            })
+            .select('id')
+            .single()
+
+          if (contractErr) {
+            console.error('Contrat insert error:', contractErr.message)
+          } else {
+            console.log('Contrat généré (draft):', hospCode, langue, template.version)
+            // Appel fire-and-forget à generate-contract pour rendre le HTML + PDF
+            const powerHouseUrl = Deno.env.get('POWERHOUSE_URL') || 'https://dcb-planning.vercel.app'
+            fetch(`${powerHouseUrl}/api/generate-contract`, {
+              method: 'POST',
+              headers: {
+                'Content-Type': 'application/json',
+                'Authorization': `Bearer ${SUPABASE_SERVICE_KEY}`,
+              },
+              body: JSON.stringify({
+                reservation_id: hospCode,
+                contract_id:    inserted.id,
+                agence:         agenceBien,
+                langue,
+              }),
+              signal: AbortSignal.timeout(60000),
+            }).catch((e: any) => console.error('generate-contract render error (non-fatal):', e?.message))
+          }
+        }
+      } else {
+        console.warn('Aucun template contrat pour agence:', agenceBien, 'langue:', langue)
+      }
+    } catch (e: any) {
+      console.error('Contrat génération error (non-fatal):', e?.message)
+    }
+  }
 
   // Push notification "Nouvelle réservation" au proprio (reservation.created uniquement)
   if (event === 'reservation.created' && finalStatus === 'accepted' && bien?.id) {
