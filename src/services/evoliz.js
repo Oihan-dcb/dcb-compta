@@ -140,6 +140,15 @@ export async function creerFactureEvoliz(facture) {
   const isDebours = facture.type_facture === 'debours'
   // Codes mémo internes : jamais envoyés à Evoliz (taux_tva=null, informatif seulement)
   const CODES_MEMO = ['AUTO', 'VIRP']
+  // Mapping codes DCB → accountingAccountId Evoliz (comptes créés le 2026-06-02)
+  const ACCOUNT_MAP = {
+    HON:     8677891, // 7061 — Gestion location saisonnière
+    FMEN:    8677892, // 7062 — Forfait ménage
+    COM:     8677893, // 7063 — Commission
+    DIV:     8677895, // 7065 — Frais divers avancés
+    HAOWNER: 8677896, // 7066 — Achats refacturés propriétaires (surfacturation)
+    DEB_AE:  8629957, // 467  — Débours AE (compte séquestre)
+  }
   const lignes = (facture.facture_evoliz_ligne || [])
     .sort((a, b) => a.ordre - b.ordre)
     .filter(l => l.montant_ht !== 0 && !CODES_MEMO.includes(l.code) && (isDebours || l.code !== 'DEB_AE'))
@@ -152,8 +161,7 @@ export async function creerFactureEvoliz(facture) {
         quantity: 1,
         unitPrice: htCentimes / 100,
         vatRate: l.taux_tva ?? 20,
-        // Débours AE : compte comptable 467 Débours réél
-        ...(l.code === 'DEB_AE' ? { accountingAccountId: 8629957 } : {}),
+        ...(ACCOUNT_MAP[l.code] ? { accountingAccountId: ACCOUNT_MAP[l.code] } : {}),
       }
     })
     .filter(Boolean)
@@ -337,6 +345,7 @@ export async function pousserFactureCOMVersEvoliz(factureId, totals, mois) {
         quantity: 1,
         unitPrice: totals.ht / 100,
         vatRate: 20,
+        accountingAccountId: 8677893, // 7063 — Commission
       }],
     })
 

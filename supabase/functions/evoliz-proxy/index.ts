@@ -307,6 +307,15 @@ serve(async (req) => {
         break
       }
 
+      case 'createAccount': {
+        // Créer un compte comptable Evoliz : { code, label }
+        result = await evolizReq('POST', '/accounts', company, {
+          code: payload.code,
+          label: payload.label,
+        })
+        break
+      }
+
       default:
         throw new Error(`Action inconnue: ${action}`)
     }
