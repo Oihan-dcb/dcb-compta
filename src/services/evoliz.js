@@ -12,8 +12,25 @@
  */
 
 import { supabase } from '../lib/supabase'
+import { AGENCE } from '../lib/agence'
 
 const COMPANY_ID = import.meta.env.VITE_EVOLIZ_COMPANY_ID // ex: "12345"
+
+// Cache des IDs de comptes bancaires Evoliz (lus depuis agency_config au 1er appel)
+let _agencyBankIds = null
+async function getAgencyBankIds() {
+  if (_agencyBankIds) return _agencyBankIds
+  const { data } = await supabase
+    .from('agency_config')
+    .select('evoliz_bank_id_agence, evoliz_bank_id_seq_lc')
+    .eq('agence', AGENCE)
+    .single()
+  _agencyBankIds = {
+    agence:  data?.evoliz_bank_id_agence  || null,
+    seq_lc:  data?.evoliz_bank_id_seq_lc  || null,
+  }
+  return _agencyBankIds
+}
 
 // ============================================================
 // APPEL GÃÂNÃÂRIQUE
@@ -195,6 +212,7 @@ export async function creerFactureEvoliz(facture) {
   // Si Evoliz échoue ici : reset à 'valide' — relance possible sans doublon.
   let invoiceId, invoiceNumber
   try {
+    const bankIds = await getAgencyBankIds()
     const createdInvoice = await evolizCall('createInvoice', {
       clientId: parseInt(clientId),
       documentdate: dateEmission,
@@ -203,9 +221,9 @@ export async function creerFactureEvoliz(facture) {
       object: objectFacture,
       comment,
       items: lignes,
-      // Débours : RIB séquestre (bankaccountid 133140)
-      // Honoraires : TODO ajouter bankAccountId compte courant DCB (à récupérer dans Evoliz > Paramètres > Banques)
-      ...(isDebours ? { bankAccountId: 133140 } : {}),
+      // IDs de comptes bancaires lus depuis agency_config (Agence > Comptes bancaires)
+      ...(isDebours && bankIds.seq_lc  ? { bankAccountId: bankIds.seq_lc  } : {}),
+      ...(!isDebours && bankIds.agence ? { bankAccountId: bankIds.agence } : {}),
     })
     invoiceId = createdInvoice?.invoiceid
     if (!invoiceId) throw new Error('invoiceid non retourné après création')

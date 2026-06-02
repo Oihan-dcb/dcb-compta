@@ -17,6 +17,7 @@ const COMPTES = [
     fields: [
       { label: 'IBAN', key: 'seq_lc_iban', placeholder: 'FR76 …', mono: true },
       { label: 'BIC (optionnel)', key: 'seq_lc_bic', placeholder: 'CEPAFRPP', mono: true },
+      { label: 'ID Evoliz (bankaccountid)', key: 'evoliz_bank_id_seq_lc', placeholder: 'ex: 133140', hint: 'Utilisé sur les factures débours — DCB = 133140' },
     ],
   },
   {
@@ -48,6 +49,7 @@ const COMPTES = [
       { label: 'Nom du titulaire', key: 'agence_titulaire', placeholder: 'DESTINATION COTE BASQUE', full: true },
       { label: 'IBAN', key: 'agence_iban', placeholder: 'FR76 …', mono: true },
       { label: 'BIC (optionnel)', key: 'agence_bic', placeholder: 'CEPAFRPP', mono: true },
+      { label: 'ID Evoliz (bankaccountid)', key: 'evoliz_bank_id_agence', placeholder: 'ex: 133141', hint: 'Evoliz > Paramètres > Banques — obligatoire facturation électronique août 2026' },
     ],
   },
 ]
@@ -118,9 +120,11 @@ export default function PageAgence() {
         seq_lld_loyers_bic:    config.seq_lld_loyers_bic    || null,
         seq_lld_cautions_iban: config.seq_lld_cautions_iban || null,
         seq_lld_cautions_bic:  config.seq_lld_cautions_bic  || null,
-        agence_iban:           config.agence_iban           || null,
-        agence_bic:            config.agence_bic            || null,
-        agence_titulaire:      config.agence_titulaire      || null,
+        agence_iban:              config.agence_iban              || null,
+        agence_bic:               config.agence_bic               || null,
+        agence_titulaire:         config.agence_titulaire         || null,
+        evoliz_bank_id_agence:    config.evoliz_bank_id_agence    ? parseInt(config.evoliz_bank_id_agence) : null,
+        evoliz_bank_id_seq_lc:    config.evoliz_bank_id_seq_lc    ? parseInt(config.evoliz_bank_id_seq_lc) : null,
         updated_at: new Date().toISOString(),
       })
       .eq('agence', AGENCE)
@@ -345,6 +349,7 @@ export default function PageAgence() {
                           letterSpacing: f.mono ? '0.03em' : undefined,
                         }}
                       />
+                      {f.hint && <div style={{ fontSize: 11, color: '#8C7B65', marginTop: 3 }}>{f.hint}</div>}
                     </div>
                   ))}
                 </div>
