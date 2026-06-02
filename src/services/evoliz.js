@@ -22,12 +22,13 @@ async function getAgencyBankIds() {
   if (_agencyBankIds) return _agencyBankIds
   const { data } = await supabase
     .from('agency_config')
-    .select('evoliz_bank_id_agence, evoliz_bank_id_seq_lc')
+    .select('evoliz_bank_id_agence, evoliz_bank_id_seq_lc, evoliz_bank_id_seq_lld')
     .eq('agence', AGENCE)
     .single()
   _agencyBankIds = {
-    agence:  data?.evoliz_bank_id_agence  || null,
-    seq_lc:  data?.evoliz_bank_id_seq_lc  || null,
+    agence:   data?.evoliz_bank_id_agence  || null,
+    seq_lc:   data?.evoliz_bank_id_seq_lc  || null,
+    seq_lld:  data?.evoliz_bank_id_seq_lld || null,
   }
   return _agencyBankIds
 }

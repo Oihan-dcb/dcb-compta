@@ -28,6 +28,7 @@ const COMPTES = [
     fields: [
       { label: 'IBAN', key: 'seq_lld_loyers_iban', placeholder: 'FR76 …', mono: true },
       { label: 'BIC (optionnel)', key: 'seq_lld_loyers_bic', placeholder: 'CEPAFRPP', mono: true },
+      { label: 'ID Evoliz (bankaccountid)', key: 'evoliz_bank_id_seq_lld', placeholder: 'ex: 133142', hint: 'Utilisé sur les factures débours LLD — DCB = 133142' },
     ],
   },
   {
@@ -123,8 +124,9 @@ export default function PageAgence() {
         agence_iban:              config.agence_iban              || null,
         agence_bic:               config.agence_bic               || null,
         agence_titulaire:         config.agence_titulaire         || null,
-        evoliz_bank_id_agence:    config.evoliz_bank_id_agence    ? parseInt(config.evoliz_bank_id_agence) : null,
-        evoliz_bank_id_seq_lc:    config.evoliz_bank_id_seq_lc    ? parseInt(config.evoliz_bank_id_seq_lc) : null,
+        evoliz_bank_id_agence:    config.evoliz_bank_id_agence    ? parseInt(config.evoliz_bank_id_agence)    : null,
+        evoliz_bank_id_seq_lc:    config.evoliz_bank_id_seq_lc    ? parseInt(config.evoliz_bank_id_seq_lc)    : null,
+        evoliz_bank_id_seq_lld:   config.evoliz_bank_id_seq_lld   ? parseInt(config.evoliz_bank_id_seq_lld)   : null,
         updated_at: new Date().toISOString(),
       })
       .eq('agence', AGENCE)
