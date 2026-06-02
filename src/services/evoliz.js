@@ -147,6 +147,8 @@ export async function creerFactureEvoliz(facture) {
     COM:     8677893, // 7063 — Commission
     DIV:     8677895, // 7065 — Frais divers avancés
     HAOWNER: 8677896, // 7066 — Achats refacturés propriétaires (surfacturation)
+    HON_ETU: 8677897, // 7067 — Honoraires locations étudiantes
+    HON_MOB: 8677898, // 7068 — Honoraires contrats mobilité
     DEB_AE:  8629957, // 467  — Débours AE (compte séquestre)
   }
   const lignes = (facture.facture_evoliz_ligne || [])
@@ -162,6 +164,8 @@ export async function creerFactureEvoliz(facture) {
         unitPrice: htCentimes / 100,
         vatRate: l.taux_tva ?? 20,
         ...(ACCOUNT_MAP[l.code] ? { accountingAccountId: ACCOUNT_MAP[l.code] } : {}),
+        // Article d'exonération TVA pour débours (art. 267-II-2° CGI) — obligatoire août 2026
+        ...(l.code === 'DEB_AE' ? { vatExemption: 'AE267-2' } : {}),
       }
     })
     .filter(Boolean)
@@ -195,10 +199,12 @@ export async function creerFactureEvoliz(facture) {
       clientId: parseInt(clientId),
       documentdate: dateEmission,
       paytermid: 1,
+      businessProcess: 's7', // "services" — obligatoire août 2026
       object: objectFacture,
       comment,
       items: lignes,
       // Débours : RIB séquestre (bankaccountid 133140)
+      // Honoraires : TODO ajouter bankAccountId compte courant DCB (à récupérer dans Evoliz > Paramètres > Banques)
       ...(isDebours ? { bankAccountId: 133140 } : {}),
     })
     invoiceId = createdInvoice?.invoiceid
@@ -338,6 +344,7 @@ export async function pousserFactureCOMVersEvoliz(factureId, totals, mois) {
       clientId: parseInt(clientId),
       documentdate: new Date().toISOString().substring(0, 10),
       paytermid: 1,
+      businessProcess: 's7', // "services" — obligatoire août 2026
       comment: `Commissions sur réservations web directes — ${mois}`,
       items: [{
         designation: 'Commission gestion réservations directes',

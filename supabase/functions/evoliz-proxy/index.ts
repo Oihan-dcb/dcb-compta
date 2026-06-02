@@ -123,6 +123,7 @@ serve(async (req) => {
 
       case 'createClient': {
         // Champs requis : name, type, address (postcode, town, iso2)
+        // delivery_address : obligatoire août 2026 (facturation électronique)
         result = await evolizReq('POST', '/clients', company, {
           name: payload.name,
           type: payload.type || 'Particulier', // Particulier | Professionnel | Administration publique
@@ -132,6 +133,15 @@ serve(async (req) => {
             town: payload.town || '',
             iso2: payload.country || 'FR',
           },
+          // delivery_address = même que facturation si non précisé (particuliers DCB)
+          delivery_address: {
+            addr: payload.deliveryAddress || payload.address || '',
+            postcode: payload.deliveryPostcode || payload.postcode || '',
+            town: payload.deliveryTown || payload.town || '',
+            iso2: payload.country || 'FR',
+          },
+          siren: payload.siren || undefined,   // B2B/admin publique uniquement
+          siret: payload.siret || undefined,   // B2B/admin publique uniquement
           phone: payload.phone || undefined,
           // email via contact client (séparé dans l'API Evoliz)
         })
@@ -205,9 +215,14 @@ serve(async (req) => {
           object: payload.object || undefined,
           bankaccountid: payload.bankAccountId || undefined,
           comment: payload.comment || '',
+          // business_process : nature des opérations — obligatoire août 2026 (facturation électronique)
+          // "s7" = services (valeur observée sur les factures existantes DCB)
+          business_process: payload.businessProcess || 's7',
+          // previousDocumentId : référence à la facture originale pour les avoirs — obligatoire août 2026
+          ...(payload.previousDocumentId ? { previous_document_id: payload.previousDocumentId } : {}),
           term: {
-            paytermid: payload.paytermid || 1, // 1 = comptant
-            paytypeid: payload.paytypeid || undefined,
+            paytermid: payload.paytermid || 1, // 1 = A réception
+            paytypeid: payload.paytypeid ?? 2, // 2 = Virement (défaut société DCB, obligatoire août 2026)
             recovery_indemnity: true, // indemnité forfaitaire recouvrement obligatoire factures B2B (art. L441-10 code commerce)
           },
           items: (payload.items || []).map((l: any) => ({
@@ -218,6 +233,8 @@ serve(async (req) => {
             unit_price: l.unitPrice,     // En euros (pas en centimes)
             vat_rate: l.vatRate ?? 20,
             accountingaccountid: l.accountingAccountId || undefined,
+            // vatExemption : article d'exonération TVA — obligatoire août 2026 si taux=0
+            ...(l.vatExemption ? { vat_exemption: l.vatExemption } : {}),
           })),
         })
         break
@@ -294,7 +311,7 @@ serve(async (req) => {
       }
 
       case 'getBankAccounts': {
-        result = await evolizReq('GET', '/bankaccounts', company)
+        result = await evolizReq('GET', '/bank-accounts', company)
         break
       }
 
