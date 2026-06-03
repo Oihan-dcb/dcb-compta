@@ -44,7 +44,7 @@ export async function buildRapportData(bienId, propId, mois, opts = {}) {
     (() => {
       let q = supabase
         .from('reservation')
-        .select('id, bien_id, code, fin_revenue, fin_accommodation, fin_host_service_fee, fin_gross_revenue, fin_discount, nights, arrival_date, departure_date, final_status, platform, owner_stay, guest_name, hospitable_raw, bien:bien_id(hospitable_name, code), reservation_fee(fee_type, label, amount)')
+        .select('id, bien_id, code, fin_revenue, fin_accommodation, fin_host_service_fee, fin_gross_revenue, fin_discount, nights, arrival_date, departure_date, final_status, platform, owner_stay, guest_name, hospitable_raw, bien:bien_id(hospitable_name, code, forfait_menage_proprio), reservation_fee(fee_type, label, amount)')
         .eq('mois_comptable', mois)
         .order('arrival_date')
       return isGlobal ? q.in('bien_id', maiteIds) : q.eq('bien_id', bienId)
@@ -143,7 +143,7 @@ export async function buildRapportData(bienId, propId, mois, opts = {}) {
     const [{ data: ventsData }, { data: paiementsData }] = await Promise.all([
       supabase
         .from('ventilation')
-        .select('reservation_id, code, montant_ht, montant_ttc, calcul_source')
+        .select('reservation_id, code, montant_ht, montant_ttc, montant_reel, calcul_source')
         .in('reservation_id', resaIds)
         .in('code', ['HON', 'LOY', 'VIR', 'FMEN', 'AUTO', 'MEN']),
       supabase
@@ -322,15 +322,27 @@ export async function buildRapportData(bienId, propId, mois, opts = {}) {
   // ownerStayList : une ligne par résa proprio (pour affichage dans charges)
   const ownerStayList = resasEnrichies
     .filter(r => r.owner_stay)
-    .map(r => ({
-      id: r.id,
-      bien_id: r.bien_id,
-      arrival_date: r.arrival_date,
-      guest_name: r.guest_name,
-      libelle: 'Ménage séjour propriétaire',
-      montant: (r.fin_revenue || 0) > 0 ? (r.fmen || 0) + (ventByResa[r.id]?.AUTO?.montant_ht || 0) : 0,
-      a_saisir: !ventByResa[r.id]?.FMEN && (r.fin_revenue || 0) > 0,
-    }))
+    .map(r => {
+      const vent = ventByResa[r.id] || {}
+      // FMEN TTC + AUTO réel (ou HT) = montant total ménage owner
+      // FMEN.montant_ttc car TVA incluse → 6000 + AUTO 2500 = 8500 cts = 85 €
+      const fmen = vent.FMEN?.montant_ttc || 0
+      const auto = vent.AUTO?.montant_reel ?? vent.AUTO?.montant_ht ?? 0
+      const montantVentile = fmen + auto
+      // Fallback si pas encore ventilé : fin_accommodation > fin_revenue > forfait_menage_proprio
+      // Tous en centimes — fmt() divise par 100
+      const fallback = r.fin_accommodation || r.fin_revenue || r.bien?.forfait_menage_proprio || 0
+      return {
+        id: r.id,
+        bien_id: r.bien_id,
+        arrival_date: r.arrival_date,
+        guest_name: r.guest_name,
+        libelle: 'Ménage séjour propriétaire',
+        montant: montantVentile > 0 ? montantVentile : fallback,
+        // a_saisir : bouton manuel si aucune donnée (ni ventilation, ni DB fallback)
+        a_saisir: montantVentile === 0 && fallback === 0,
+      }
+    })
   const ownerStayMenageTotal = ownerStayList.reduce((s, r) => s + r.montant, 0)
 
   // ── fraisDeductionLoy — règle unique ─────────────────────────────────────

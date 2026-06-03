@@ -21,8 +21,9 @@ function isPathAllowed(path) {
   const clean = path.split('?')[0]
   for (const allowed of PATH_ALLOWLIST) {
     if (clean === allowed) return true
-    // Autoriser sous-ressource UUID pour payouts uniquement
+    // Autoriser sous-ressource UUID : payouts/{uuid} et reservations/{uuid}
     if (allowed === '/v2/payouts' && /^\/v2\/payouts\/[0-9a-f-]{8,}$/.test(clean)) return true
+    if (allowed === '/v2/reservations' && /^\/v2\/reservations\/[0-9a-f-]{8,}$/.test(clean)) return true
   }
   return false
 }

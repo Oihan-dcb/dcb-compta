@@ -5,7 +5,7 @@
 
 import { supabase } from '../lib/supabase'
 import { AGENCE } from '../lib/agence'
-import { fetchReservations } from '../lib/hospitable'
+import { fetchReservations, fetchReservationById } from '../lib/hospitable'
 import { format, parseISO } from 'date-fns'
 
 /**
@@ -27,7 +27,7 @@ export async function syncReservations(mois) {
     // 1. Récupérer tous les biens actifs avec leurs IDs Hospitable
     const { data: biens, error: biensError } = await supabase
       .from('bien')
-      .select('id, hospitable_id, hospitable_name, proprietaire_id, provision_ae_ref, forfait_dcb_ref, has_ae, agence')
+      .select('id, hospitable_id, hospitable_name, proprietaire_id, provision_ae_ref, forfait_dcb_ref, has_ae, agence, forfait_menage_proprio')
       .eq('listed', true)
     .eq('agence', AGENCE)
 
@@ -53,6 +53,25 @@ export async function syncReservations(mois) {
     }
 
     log.total = allReservations.length
+
+    // 2b. Enrichir les owner stays : l'API bulk ne renvoie pas financials.guest
+    //     → appel individuel pour récupérer le cleaning fee dans financials.guest.fees
+    const ownerStayResas = allReservations.filter(r =>
+      r.owner_stay != null && r.owner_stay !== false
+    )
+    if (ownerStayResas.length > 0) {
+      const enriched = await Promise.all(
+        ownerStayResas.map(r => fetchReservationById(r.id, { include: 'financials' }).catch(() => null))
+      )
+      const enrichedMap = new Map(enriched.filter(Boolean).map(r => [r.id, r]))
+      allReservations = allReservations.map(r => {
+        const e = enrichedMap.get(r.id)
+        if (e?.financials?.guest) {
+          return { ...r, financials: { ...r.financials, guest: e.financials.guest } }
+        }
+        return r
+      })
+    }
 
     // 3. Récupérer les réservations existantes dans Supabase pour ce mois
     const { data: existing } = await supabase
@@ -169,6 +188,16 @@ function parseReservation(resa, bien, mois) {
   const arrivalDate = resa.arrival_date ? parseISO(resa.arrival_date) : null
   const moisComptable = arrivalDate ? format(arrivalDate, 'yyyy-MM') : mois
 
+  // Owner stay : le cleaning fee est dans financials.guest.fees (API bulk ne le retourne pas)
+  // Fallback : bien.forfait_menage_proprio (valeur de référence saisie dans la fiche bien)
+  const isOwnerStay = resa.stay_type === 'owner_stay' ||
+    (typeof resa.owner_stay === 'boolean' ? resa.owner_stay : (resa.owner_stay != null && resa.owner_stay !== false))
+  const ownerCleaningFee = isOwnerStay
+    ? ((resa.financials?.guest?.fees || []).find(f => f.label?.toLowerCase().includes('cleaning'))?.amount
+        ?? bien.forfait_menage_proprio
+        ?? null)
+    : null
+
   return {
     hospitable_id: resa.id,
     bien_id: bien.id,
@@ -183,16 +212,18 @@ function parseReservation(resa, bien, mois) {
     guest_name: [resa.guest?.first_name, resa.guest?.last_name].filter(Boolean).join(' ') || resa.guest_name || null,
     guest_count: resa.guest_count || resa.guests?.total || null,
     stay_type: resa.stay_type || 'guest',
-    // Hospitable v2 renvoie un objet {schedule_cleaning:...} pour les séjours proprio (truthy = owner stay)
-    owner_stay: typeof resa.owner_stay === 'boolean' ? resa.owner_stay : (resa.owner_stay != null && resa.owner_stay !== false),
+    owner_stay: isOwnerStay,
     reservation_status: resa.reservation_status,
     final_status: resa.reservation_status?.current?.category || resa.status || 'accepted',
     // Financials en centimes
-    fin_accommodation: fin.accommodation?.amount ?? null,
-    // Airbnb renvoie le revenu théorique même pour les resas expirées/refusées — on force 0
-    fin_revenue: ['not_accepted', 'not accepted', 'declined', 'expired'].includes(
-      resa.reservation_status?.current?.category || resa.status
-    ) ? 0 : (fin.revenue?.amount ?? null),
+    // Owner stay : fin_revenue = cleaning fee (pour calculerVentilationResa → MEN = fin_revenue)
+    //              fin_accommodation = idem (pour affichage rapport)
+    fin_accommodation: isOwnerStay ? ownerCleaningFee : (fin.accommodation?.amount ?? null),
+    fin_revenue: isOwnerStay
+      ? ownerCleaningFee
+      : (['not_accepted', 'not accepted', 'declined', 'expired'].includes(
+          resa.reservation_status?.current?.category || resa.status
+        ) ? 0 : (fin.revenue?.amount ?? null)),
     fin_host_service_fee: hostServiceFee?.amount ?? null,
     fin_taxes_total: taxesTotal || null,
     fin_currency: fin.currency || 'EUR',

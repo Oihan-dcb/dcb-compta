@@ -81,6 +81,16 @@ export async function fetchReservations(propertyIds, opts = {}) {
 }
 
 /**
+ * Récupère une réservation individuelle (avec financials.guest pour les owner stays)
+ */
+export async function fetchReservationById(id, opts = {}) {
+  const params = {}
+  if (opts.include) params.include = opts.include
+  const data = await apiFetch(`/v2/reservations/${id}`, params)
+  return data.data
+}
+
+/**
  * Récupère les transactions financières
  */
 export async function fetchTransactions(opts = {}) {
