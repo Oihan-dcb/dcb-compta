@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react'
 import { supabase } from '../lib/supabase'
-import { formatMontant } from '../lib/hospitable'
+import { formatMontant, fetchReservationById } from '../lib/hospitable'
 import { toggleOwnerStay } from '../hooks/useOwnerStay'
 import { calculerVentilationResa } from '../services/ventilation'
 import { format } from 'date-fns'
@@ -495,8 +495,35 @@ export default function ModalResa({ resa, onClose, onSaved }) {
                     if (modeVentil === 'manuel') { setEditing(true); return }
                     setVentilating(true)
                     try {
-                      if (modeVentil === 'proprio') await supabase.from('reservation').update({ owner_stay: true }).eq('id', resa.id)
-                      await calculerVentilationResa({ ...resa, owner_stay: modeVentil === 'proprio' ? true : resa.owner_stay })
+                      let resaToVentil = { ...resa, owner_stay: modeVentil === 'proprio' ? true : resa.owner_stay }
+                      if (modeVentil === 'proprio') {
+                        await supabase.from('reservation').update({ owner_stay: true }).eq('id', resa.id)
+                        // Si fin_revenue manquant, chercher le cleaning fee dans cet ordre :
+                        // 1. hospitable_raw déjà en DB (zéro appel API)
+                        // 2. API Hospitable individuelle (fonctionne en prod)
+                        // 3. bien.forfait_menage_proprio (valeur de référence)
+                        if (!resaToVentil.fin_revenue) {
+                          const rawFee = (resa.hospitable_raw?.financials?.guest?.fees || [])
+                            .find(f => f.label?.toLowerCase().includes('cleaning'))?.amount
+                          let cleaningFee = rawFee
+                          if (!cleaningFee) {
+                            try {
+                              const resaHosp = await fetchReservationById(resa.hospitable_id, { include: 'financials' })
+                              cleaningFee = (resaHosp?.financials?.guest?.fees || [])
+                                .find(f => f.label?.toLowerCase().includes('cleaning'))?.amount
+                            } catch (_) {}
+                          }
+                          if (!cleaningFee) {
+                            const { data: bienData } = await supabase.from('bien').select('forfait_menage_proprio').eq('id', resa.bien_id).single()
+                            cleaningFee = bienData?.forfait_menage_proprio || null
+                          }
+                          if (cleaningFee) {
+                            await supabase.from('reservation').update({ fin_revenue: cleaningFee }).eq('id', resa.id)
+                            resaToVentil = { ...resaToVentil, fin_revenue: cleaningFee }
+                          }
+                        }
+                      }
+                      await calculerVentilationResa(resaToVentil)
                       if (onSaved) onSaved()
                     } catch (e) {
                       alert('Erreur : ' + e.message)
