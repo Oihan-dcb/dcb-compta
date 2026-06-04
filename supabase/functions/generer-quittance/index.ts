@@ -302,9 +302,16 @@ serve(async (req) => {
       )
     }
 
-    const { data: { publicUrl } } = supabase.storage
+    const { data: signedData, error: errSign } = await supabase.storage
       .from('etudiant-documents')
-      .getPublicUrl(filename)
+      .createSignedUrl(filename, 3600) // valide 1h
+    if (errSign || !signedData?.signedUrl) {
+      return new Response(
+        JSON.stringify({ error: `Signed URL échoué: ${errSign?.message}` }),
+        { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      )
+    }
+    const publicUrl = signedData.signedUrl
 
     // ── 6. Envoyer email quittance ───────────────────────────────────────
     if (envoyer_email && etudiant.email) {
