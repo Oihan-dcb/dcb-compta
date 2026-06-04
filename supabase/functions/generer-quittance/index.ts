@@ -196,9 +196,10 @@ serve(async (req) => {
       )
     }
 
-    const SUPABASE_URL = Deno.env.get('SUPABASE_URL')!
-    const SERVICE_KEY  = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!
-    const APP_URL      = Deno.env.get('APP_URL') || 'https://dcb-compta.vercel.app'
+    const SUPABASE_URL      = Deno.env.get('SUPABASE_URL')!
+    const SERVICE_KEY       = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!
+    const APP_URL           = Deno.env.get('APP_URL') || 'https://dcb-compta.vercel.app'
+    const INTERNAL_SECRET   = Deno.env.get('INTERNAL_API_SECRET') || ''
 
     const supabase = createClient(SUPABASE_URL, SERVICE_KEY)
 
@@ -268,7 +269,10 @@ serve(async (req) => {
     // ── 4. Appel Vercel generate-pdf ─────────────────────────────────────
     const pdfRes = await fetch(`${APP_URL}/api/generate-pdf`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${INTERNAL_SECRET}`,
+      },
       body: JSON.stringify({ html, orientation: 'portrait' }),
     })
 
