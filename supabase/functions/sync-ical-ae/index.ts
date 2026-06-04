@@ -40,6 +40,14 @@ Deno.serve(async (req) => {
       return d && d.getFullYear() === annee && (d.getMonth() + 1) === moisNum
     })
 
+    // Pré-charger les ical_uid existants pour ce mois (pour ne pas écraser statut validé)
+    const { data: existingMissions } = await sb.from('mission_menage')
+      .select('id, ical_uid')
+      .eq('ae_id', ae.id)
+      .eq('mois', mois)
+      .not('ical_uid', 'is', null)
+    const existingUids = new Set((existingMissions || []).map(m => m.ical_uid))
+
     // 6. Matcher avec les biens et upsert
     let created = 0, updated = 0, skipped = 0
     for (const evt of eventsDuMois) {
@@ -72,24 +80,32 @@ Deno.serve(async (req) => {
         continue
       }
 
-      const row = {
+      const baseFields = {
         ae_id: ae.id,
         bien_id: bien?.id || null,
         date_mission: dateStr,
         titre_ical: titre,
         ical_uid: evt.uid || null,
         mois,
-        statut: 'planifie',
         type_mission: 'checkout',
         imputation: 'ventilation_dcb',
         duree_prevue: computeDureeHeures(evt.dtstart, evt.dtend),
       }
 
-      const { error: upsertErr } = await sb.from('mission_menage')
-        .upsert(row, { onConflict: 'ical_uid', ignoreDuplicates: false })
-
-      if (upsertErr) { skipped++; continue }
-      created++
+      if (existingUids.has(evt.uid)) {
+        // Mission existante : mettre à jour les champs techniques SANS toucher au statut
+        const { error: updateErr } = await sb.from('mission_menage')
+          .update(baseFields)
+          .eq('ical_uid', evt.uid)
+        if (updateErr) { skipped++; continue }
+        updated++
+      } else {
+        // Nouvelle mission : insérer avec statut planifie
+        const { error: insertErr } = await sb.from('mission_menage')
+          .insert({ ...baseFields, statut: 'planifie' })
+        if (insertErr) { skipped++; continue }
+        created++
+      }
 
       // Lier reservation_id + ventilation_auto_id pour les Cleaning/Check-out
       // (Check-in et Maintenance n'ont pas de ventilation AUTO associée)
