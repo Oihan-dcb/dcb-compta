@@ -124,7 +124,14 @@ export default function PageRapports() {
       // 1. Générer le statement PDF
       const rapportData = buildRendererPayload()
       const statementHtml = genererStatementHTML(data.proprio, mois, rapportData)
-      const pdfRes = await authPostRaw('/api/generate-pdf', { html: statementHtml, orientation: 'landscape' })
+      let pdfRes
+      try {
+        pdfRes = await authPostRaw('/api/generate-pdf', { html: statementHtml, orientation: 'landscape' })
+      } catch (e) {
+        setStatutPortail('error')
+        setPortailErrDetail(`Étape 1 (PDF) : ${e.message || 'Erreur réseau'}`)
+        return
+      }
       if (!pdfRes.ok) {
         const errText = await pdfRes.text().catch(() => '')
         setStatutPortail('error')
@@ -137,11 +144,18 @@ export default function PageRapports() {
       for (let i = 0; i < u8.length; i += 3072) pdf_base64 += btoa(String.fromCharCode(...u8.slice(i, i + 3072)))
 
       // 2. Stocker le document dans le portail
-      const rapportRes = await fetch(`${PORTAIL_OWNER_API}/api/rapport-portail`, {
-        method: 'POST',
-        headers,
-        body: JSON.stringify({ proprio_id: selectedPropId, bien_id: selectedBienId, mois, pdf_base64 }),
-      })
+      let rapportRes
+      try {
+        rapportRes = await fetch(`${PORTAIL_OWNER_API}/api/rapport-portail`, {
+          method: 'POST',
+          headers,
+          body: JSON.stringify({ proprio_id: selectedPropId, bien_id: selectedBienId, mois, pdf_base64 }),
+        })
+      } catch (e) {
+        setStatutPortail('error')
+        setPortailErrDetail(`Étape 2 (portail ${PORTAIL_OWNER_API}) : ${e.message || 'Erreur réseau'}`)
+        return
+      }
       if (!rapportRes.ok) {
         const j = await rapportRes.json().catch(() => ({}))
         setStatutPortail('error')

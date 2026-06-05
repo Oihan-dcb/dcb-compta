@@ -11,7 +11,15 @@ const ALLOWED_EMAILS    = (process.env.ALLOWED_ADMIN_EMAILS || '')
   .split(',').map(e => e.trim().toLowerCase()).filter(Boolean)
 
 export default async function handler(req, res) {
-  res.setHeader('Access-Control-Allow-Origin', 'https://dcb-compta.vercel.app')
+  const origin = req.headers.origin || ''
+  const allowedOrigin = (
+    origin === 'https://dcb-compta.vercel.app' ||
+    origin.endsWith('-oihans-projects-470f9638.vercel.app') ||
+    origin.endsWith('.destinationcotebasque.com') ||
+    origin === 'http://localhost:5173' ||
+    origin === 'http://localhost:4173'
+  ) ? origin : 'https://dcb-compta.vercel.app'
+  res.setHeader('Access-Control-Allow-Origin', allowedOrigin)
   res.setHeader('Access-Control-Allow-Methods', 'POST, OPTIONS')
   res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization')
   if (req.method === 'OPTIONS') return res.status(200).end()
