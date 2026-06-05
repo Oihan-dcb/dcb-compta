@@ -86,6 +86,16 @@ function parseReservation(resa, bien, mois) {
   const notAccepted = ['not_accepted', 'not accepted', 'declined', 'expired'].includes(
     resa.reservation_status?.current?.category || resa.status
   );
+
+  // Owner stay : fin_revenue = forfait ménage (cleaning fee invité ou fallback fiche bien)
+  const isOwnerStay = resa.stay_type === 'owner_stay' ||
+    (typeof resa.owner_stay === 'boolean' ? resa.owner_stay : (resa.owner_stay != null && resa.owner_stay !== false));
+  const ownerCleaningFee = isOwnerStay
+    ? ((resa.financials?.guest?.fees || []).find(f => f.label?.toLowerCase().includes('cleaning'))?.amount
+        ?? bien.forfait_menage_proprio
+        ?? null)
+    : null;
+
   return {
     hospitable_id:       resa.id,
     bien_id:             bien.id,
@@ -100,11 +110,11 @@ function parseReservation(resa, bien, mois) {
     guest_name:          [resa.guest?.first_name, resa.guest?.last_name].filter(Boolean).join(' ') || resa.guest_name || null,
     guest_count:         resa.guest_count || resa.guests?.total || null,
     stay_type:           resa.stay_type || 'guest',
-    owner_stay:          typeof resa.owner_stay === 'boolean' ? resa.owner_stay : (resa.owner_stay != null && resa.owner_stay !== false),
+    owner_stay:          isOwnerStay,
     reservation_status:  resa.reservation_status,
     final_status:        resa.reservation_status?.current?.category || resa.status || 'accepted',
-    fin_accommodation:   fin.accommodation?.amount ?? null,
-    fin_revenue:         notAccepted ? 0 : (fin.revenue?.amount ?? null),
+    fin_accommodation:   isOwnerStay ? ownerCleaningFee : (fin.accommodation?.amount ?? null),
+    fin_revenue:         isOwnerStay ? ownerCleaningFee : (notAccepted ? 0 : (fin.revenue?.amount ?? null)),
     fin_host_service_fee: hostServiceFee?.amount ?? null,
     fin_taxes_total:     taxesTotal || null,
     fin_currency:        fin.currency || 'EUR',
@@ -157,7 +167,7 @@ async function syncMois(mois, agence) {
   const endDate   = `${mois}-${String(lastDay).padStart(2, '0')}`;
 
   // 1. Biens actifs
-  const biens = await sb(`bien?listed=eq.true&agence=eq.${agence}&select=id,hospitable_id,hospitable_name,proprietaire_id,provision_ae_ref,forfait_dcb_ref,has_ae,agence,gestion_loyer`);
+  const biens = await sb(`bien?listed=eq.true&agence=eq.${agence}&select=id,hospitable_id,hospitable_name,proprietaire_id,provision_ae_ref,forfait_dcb_ref,has_ae,agence,gestion_loyer,forfait_menage_proprio`);
   if (!biens?.length) throw new Error('Aucun bien actif trouvé');
   const bienByHospId = new Map(biens.map(b => [b.hospitable_id, b]));
 
@@ -180,6 +190,27 @@ async function syncMois(mois, agence) {
   }
 
   log.total = allResas.length;
+
+  // 2b. Enrichir les owner stays avec financials.guest (cleaning fee)
+  // Le bulk include=financials,guest ne retourne pas financials.guest pour les owner stays
+  const ownerStayResas = allResas.filter(r =>
+    r.stay_type === 'owner_stay' || (r.owner_stay != null && r.owner_stay !== false)
+  );
+  if (ownerStayResas.length > 0) {
+    const enriched = await Promise.all(
+      ownerStayResas.map(r =>
+        hospFetch(`/v2/reservations/${r.id}`, { include: 'financials' }).catch(() => null)
+      )
+    );
+    const enrichedMap = new Map(
+      enriched.filter(Boolean).map(e => [e.data?.id || e.id, e.data || e])
+    );
+    allResas = allResas.map(r => {
+      const e = enrichedMap.get(r.id);
+      if (e?.financials?.guest) return { ...r, financials: { ...r.financials, guest: e.financials.guest } };
+      return r;
+    });
+  }
 
   // 3. Existants en base
   const existing = await sb(`reservation?mois_comptable=eq.${mois}&select=id,hospitable_id`);
