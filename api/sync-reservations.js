@@ -8,7 +8,9 @@
 const HOSPITABLE_TOKEN = process.env.HOSPITABLE_TOKEN;
 const SUPABASE_URL     = process.env.SUPABASE_URL || 'https://omuncchvypbtxkpalwcr.supabase.co';
 const SUPABASE_KEY     = process.env.SUPABASE_SERVICE_ROLE_KEY;
+const SUPABASE_ANON_KEY = process.env.SUPABASE_ANON_KEY;
 const WEBHOOK_SECRET   = process.env.HOSPITABLE_WEBHOOK_SECRET;
+const ALLOWED_EMAILS   = (process.env.ALLOWED_ADMIN_EMAILS || '').split(',').map(e => e.trim().toLowerCase()).filter(Boolean);
 const HOSP_BASE        = 'https://public.api.hospitable.com';
 
 // ── Supabase ─────────────────────────────────────────────────────────────────
@@ -274,13 +276,23 @@ async function syncMois(mois, agence) {
 export default async function handler(req, res) {
   if (req.method !== 'GET' && req.method !== 'POST') return res.status(405).end();
 
-  // Auth : token dans query string ou Authorization header
+  // Auth : webhook secret (cron) OU JWT Supabase (UI)
   const token = req.query?.token || (req.headers.authorization || '').replace(/^Bearer\s+/i, '').trim();
   if (!WEBHOOK_SECRET) {
     return res.status(500).json({ error: 'HOSPITABLE_WEBHOOK_SECRET non configuré' });
   }
+
   if (token !== WEBHOOK_SECRET) {
-    return res.status(401).json({ error: 'Non autorisé' });
+    // Fallback : vérifier JWT Supabase (appel depuis l'UI)
+    if (!SUPABASE_ANON_KEY) return res.status(401).json({ error: 'Non autorisé' });
+    const authRes = await fetch(`${SUPABASE_URL}/auth/v1/user`, {
+      headers: { apikey: SUPABASE_ANON_KEY, Authorization: `Bearer ${token}` },
+    }).catch(() => null);
+    if (!authRes?.ok) return res.status(401).json({ error: 'Non autorisé' });
+    if (ALLOWED_EMAILS.length) {
+      const { email } = await authRes.json();
+      if (!ALLOWED_EMAILS.includes((email || '').toLowerCase())) return res.status(403).json({ error: 'Accès refusé' });
+    }
   }
 
   const agence = req.query?.agence || req.body?.agence || 'dcb';
