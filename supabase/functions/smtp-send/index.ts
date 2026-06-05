@@ -29,8 +29,9 @@ serve(async (req) => {
     }
 
     const toArray = Array.isArray(to)
-      ? to
-      : to.split(',').map((e: string) => e.trim()).filter((e: string) => e.includes('@'))
+      ? to.flatMap((e: string) => (typeof e === 'string' && e.includes(';') ? e.split(';') : [e]))
+          .map((e: string) => (e || '').trim()).filter((e: string) => e.includes('@'))
+      : to.split(/[,;]/).map((e: string) => e.trim()).filter((e: string) => e.includes('@'))
 
     // CC : oihan@ toujours en copie, fusionné avec cc éventuel du payload
     const CC_FIXED = 'oihan@destinationcotebasque.com'

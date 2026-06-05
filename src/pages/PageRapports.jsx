@@ -810,7 +810,7 @@ FORMAT :
 
   async function envoyer() {
     if (!data) return
-    const emails = email.split(',').map(e => e.trim()).filter(e => e.includes('@'))
+    const emails = email.split(/[,;]/).map(e => e.trim()).filter(e => e.includes('@'))
     if (emails.length === 0) { alert('Email invalide'); return }
     setStatut('sending')
     try {
