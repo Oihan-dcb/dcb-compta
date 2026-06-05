@@ -873,7 +873,9 @@ async function _lierViaPayout(mouvementId, resaIds, mvt = null, statut = 'rappro
       const { data: resa } = await supabase.from('reservation').select('fin_revenue').eq('id', rid).single()
       const finRev = resa?.fin_revenue || 0
       const montant = finRev > 0 ? Math.min(finRev, mvt.credit) : mvt.credit
-      await supabase.from('reservation_paiement').upsert({
+      // Upsert avec contrainte explicite ; si la contrainte UNIQUE n'existe pas encore en base,
+      // l'upsert échoue silencieusement (42P10) → fallback select+insert pour garantir la création
+      const { error: upsertErr } = await supabase.from('reservation_paiement').upsert({
         reservation_id: rid,
         mouvement_id: mouvementId,
         montant,
@@ -883,6 +885,17 @@ async function _lierViaPayout(mouvementId, resaIds, mvt = null, statut = 'rappro
         onConflict: 'reservation_id,mouvement_id',
         ignoreDuplicates: true
       })
+      if (upsertErr) {
+        // Fallback : pas de contrainte UNIQUE ou autre erreur → select-then-insert
+        const { data: existing } = await supabase.from('reservation_paiement')
+          .select('id').eq('reservation_id', rid).eq('mouvement_id', mouvementId).maybeSingle()
+        if (!existing) {
+          await supabase.from('reservation_paiement').insert({
+            reservation_id: rid, mouvement_id: mouvementId, montant,
+            date_paiement: mvt.date_operation, type_paiement: 'total',
+          })
+        }
+      }
     }
   }
   // Statut mis à jour APRÈS création des liens FK
