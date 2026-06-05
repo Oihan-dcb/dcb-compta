@@ -909,7 +909,7 @@ async function _lierViaPayout(mouvementId, resaIds, mvt = null, statut = 'rappro
     ])
     const totalRecu = (allPaiements || []).reduce((s, p) => s + (p.montant || 0), 0)
     const finRev = resa?.fin_revenue || 0
-    const estComplet = finRev === 0 || totalRecu >= finRev * 0.99
+    const estComplet = finRev === 0 || totalRecu >= finRev * 0.96
     await supabase.from('reservation').update({ rapprochee: estComplet }).eq('id', rid)
   }
   // Sync RGLM + SOLDE pour les resas manual/direct

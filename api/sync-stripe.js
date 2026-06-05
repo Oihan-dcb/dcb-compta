@@ -180,7 +180,7 @@ export default async function handler(req, res) {
               .select('montant').eq('reservation_id', resa.id)
             const totalRecu = (allPaiements || []).reduce((s, p) => s + (p.montant || 0), 0)
             const finRev    = resa.fin_revenue || 0
-            const estComplet = finRev === 0 || totalRecu >= finRev * 0.99
+            const estComplet = finRev === 0 || totalRecu >= finRev * 0.96
             await supabase.from('reservation').update({ rapprochee: estComplet }).eq('id', resa.id)
           }
         }
