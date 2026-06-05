@@ -57,6 +57,18 @@ async function hospFetchAll(path, params = {}, pageSize = 50) {
   return all;
 }
 
+// ── Sanitisation ─────────────────────────────────────────────────────────────
+
+// Supprime les null bytes (\x00) qui font fermer la connexion Supabase
+function sanitize(obj) {
+  if (typeof obj === 'string') return obj.replace(/\x00/g, '');
+  if (Array.isArray(obj)) return obj.map(sanitize);
+  if (obj && typeof obj === 'object') {
+    return Object.fromEntries(Object.entries(obj).map(([k, v]) => [k, sanitize(v)]));
+  }
+  return obj;
+}
+
 // ── Parsing ──────────────────────────────────────────────────────────────────
 
 function parseReservation(resa, bien, mois) {
@@ -178,40 +190,55 @@ async function syncMois(mois, agence) {
       if (!bien) continue;
 
       const parsed = parseReservation(resa, bien, mois);
-      const upsertBody = parsed.guest_name ? parsed : { ...parsed, guest_name: undefined };
+      const upsertBody = sanitize(parsed.guest_name ? parsed : { ...parsed, guest_name: undefined });
 
-      const upserted = await sb('reservation?on_conflict=hospitable_id', {
-        method: 'POST',
-        prefer: 'return=representation,resolution=merge-duplicates',
-        body: JSON.stringify(upsertBody),
-      });
-      const resaId = Array.isArray(upserted) ? upserted[0]?.id : upserted?.id;
-      if (!resaId) throw new Error('Upsert sans ID retourné');
+      let resaId;
+      try {
+        const upserted = await sb('reservation?on_conflict=hospitable_id', {
+          method: 'POST',
+          prefer: 'return=representation,resolution=merge-duplicates',
+          body: JSON.stringify(upsertBody),
+        });
+        resaId = Array.isArray(upserted) ? upserted[0]?.id : upserted?.id;
+        if (!resaId) throw new Error('Upsert sans ID retourné');
+      } catch (e) {
+        throw new Error(`[upsert] ${e.message}`);
+      }
 
-      if (resa.financials?.host) await syncFees(resaId, resa.financials.host);
+      if (resa.financials?.host) {
+        try {
+          await syncFees(resaId, resa.financials.host);
+        } catch (e) {
+          console.error(`[sync-reservations] fees ${resa.code}:`, e.message);
+        }
+      }
 
       // Payout synthétique Airbnb
       if (resa.platform === 'airbnb' && parsed.fin_revenue && parsed.arrival_date && bien.gestion_loyer !== false) {
-        const payoutId = resa.id + '_airbnb_payout';
-        const payouts = await sb('payout_hospitable?on_conflict=hospitable_id', {
-          method: 'POST',
-          prefer: 'return=representation,resolution=merge-duplicates',
-          body: JSON.stringify({
-            hospitable_id:    payoutId,
-            platform:         'airbnb',
-            amount:           parsed.fin_revenue,
-            date_payout:      parsed.arrival_date,
-            mois_comptable:   parsed.mois_comptable,
-            statut_matching:  'en_attente',
-          }),
-        });
-        const ph = Array.isArray(payouts) ? payouts[0] : payouts;
-        if (ph?.id) {
-          await sb('payout_reservation?on_conflict=payout_id', {
+        try {
+          const payoutId = resa.id + '_airbnb_payout';
+          const payouts = await sb('payout_hospitable?on_conflict=hospitable_id', {
             method: 'POST',
-            prefer: 'return=minimal,resolution=ignore-duplicates',
-            body: JSON.stringify({ payout_id: ph.id, reservation_id: resaId }),
-          }).catch(() => {});
+            prefer: 'return=representation,resolution=merge-duplicates',
+            body: JSON.stringify({
+              hospitable_id:    payoutId,
+              platform:         'airbnb',
+              amount:           parsed.fin_revenue,
+              date_payout:      parsed.arrival_date,
+              mois_comptable:   parsed.mois_comptable,
+              statut_matching:  'en_attente',
+            }),
+          });
+          const ph = Array.isArray(payouts) ? payouts[0] : payouts;
+          if (ph?.id) {
+            await sb('payout_reservation?on_conflict=payout_id', {
+              method: 'POST',
+              prefer: 'return=minimal,resolution=ignore-duplicates',
+              body: JSON.stringify({ payout_id: ph.id, reservation_id: resaId }),
+            }).catch(() => {});
+          }
+        } catch (e) {
+          throw new Error(`[payout_airbnb] ${e.message}`);
         }
       }
 
