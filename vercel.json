@@ -4,6 +4,10 @@
       "memory": 1024,
       "maxDuration": 30
     },
+    "api/rapport-to-portail.js": {
+      "memory": 1024,
+      "maxDuration": 60
+    },
     "api/sync-reservations.js": {
       "maxDuration": 120
     },

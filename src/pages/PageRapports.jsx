@@ -118,66 +118,26 @@ export default function PageRapports() {
     if (!selectedPropId || !selectedBienId || !mois || !data) return
     setStatutPortail('sending')
     try {
-      const { data: { session } } = await supabase.auth.getSession()
-      const headers = { 'Content-Type': 'application/json', Authorization: `Bearer ${session.access_token}` }
-
-      // 1. Générer le statement PDF
       const rapportData = buildRendererPayload()
       const statementHtml = genererStatementHTML(data.proprio, mois, rapportData)
-      let pdfRes
-      try {
-        pdfRes = await authPostRaw('/api/generate-pdf', { html: statementHtml, orientation: 'landscape' })
-      } catch (e) {
-        setStatutPortail('error')
-        setPortailErrDetail(`Étape 1 (PDF) : ${e.message || 'Erreur réseau'}`)
-        return
-      }
-      if (!pdfRes.ok) {
-        const errText = await pdfRes.text().catch(() => '')
-        setStatutPortail('error')
-        setPortailErrDetail(`PDF : HTTP ${pdfRes.status}${errText ? ' — ' + errText.slice(0, 120) : ''}`)
-        return
-      }
-      const ab = await pdfRes.arrayBuffer()
-      const u8 = new Uint8Array(ab)
-      let pdf_base64 = ''
-      for (let i = 0; i < u8.length; i += 3072) pdf_base64 += btoa(String.fromCharCode(...u8.slice(i, i + 3072)))
-
-      // 2. Stocker le document dans le portail
-      let rapportRes
-      try {
-        rapportRes = await fetch(`${PORTAIL_OWNER_API}/api/rapport-portail`, {
-          method: 'POST',
-          headers,
-          body: JSON.stringify({ proprio_id: selectedPropId, bien_id: selectedBienId, mois, pdf_base64 }),
-        })
-      } catch (e) {
-        setStatutPortail('error')
-        setPortailErrDetail(`Étape 2 (portail ${PORTAIL_OWNER_API}) : ${e.message || 'Erreur réseau'}`)
-        return
-      }
-      if (!rapportRes.ok) {
-        const j = await rapportRes.json().catch(() => ({}))
-        setStatutPortail('error')
-        setPortailErrDetail(j.error || `rapport-portail HTTP ${rapportRes.status}`)
-        return
-      }
-
-      // 3. Envoyer la notification push
       const bienName = data.bien?.hospitable_name || ''
-      const notifRes = await fetch(`${PORTAIL_OWNER_API}/api/notify-proprio`, {
-        method: 'POST',
-        headers,
-        body: JSON.stringify({ proprio_id: selectedPropId, bien_id: selectedBienId, mois, type: 'releve', extra: { bienName } }),
+
+      // Tout côté serveur : génération PDF + upload storage + owner_documents + notify
+      const portailRes = await authPost('/api/rapport-to-portail', {
+        html: statementHtml,
+        orientation: 'landscape',
+        proprio_id: selectedPropId,
+        bien_id: selectedBienId,
+        mois,
+        bien_name: bienName,
       })
-      const json = await notifRes.json().catch(() => ({}))
-      if (notifRes.ok) {
-        setStatutPortail(json.sent ? 'sent' : 'stored_no_push')
-        setPortailErrDetail('')
-      } else {
-        setStatutPortail('stored_no_push')
-        setPortailErrDetail(json.error || `notify HTTP ${notifRes.status}`)
+      if (!portailRes.ok) {
+        setStatutPortail('error')
+        setPortailErrDetail(portailRes.data?.error || `HTTP ${portailRes.status}`)
+        return
       }
+      setStatutPortail(portailRes.data?.sent ? 'sent' : 'stored_no_push')
+      setPortailErrDetail(portailRes.data?.notifErr || '')
     } catch (e) {
       setStatutPortail('error')
       setPortailErrDetail(e.message || 'Erreur réseau')
