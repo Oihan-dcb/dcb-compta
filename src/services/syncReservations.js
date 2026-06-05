@@ -87,7 +87,7 @@ export async function syncReservations(mois) {
         const bien = bienMap.get(resa.property_id || findBienByResa(resa, biens))
         if (!bien) continue
 
-        const parsed = parseReservation(resa, bien, mois)
+        const parsed = sanitize(parseReservation(resa, bien, mois))
 
         // Upsert réservation
         const { data: upserted, error } = await supabase
@@ -166,6 +166,16 @@ export async function syncReservations(mois) {
     }) } catch (_) {}
     throw err
   }
+}
+
+// Supprime les null bytes (\x00) qui font échouer les requêtes Supabase (TypeError: Load failed)
+function sanitize(obj) {
+  if (typeof obj === 'string') return obj.replace(/\x00/g, '')
+  if (Array.isArray(obj)) return obj.map(sanitize)
+  if (obj && typeof obj === 'object') {
+    return Object.fromEntries(Object.entries(obj).map(([k, v]) => [k, sanitize(v)]))
+  }
+  return obj
 }
 
 /**
