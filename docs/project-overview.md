@@ -852,3 +852,25 @@ supabase.from('reservation_paiement')
 - `PageRapports.jsx` — `bienIdsActifs` enrichi avec un 3e fetch `prestation_hors_forfait` (union des bien_ids resas + prestations)
 - `facturesEvoliz.js` — `genererFactureDebours` : peek `deboursPropTotal` avant le guard `continue` ; condition modifiée en `autoBien === 0 && osAutoHT === 0 && deboursPropTotal === 0`
 - `buildRapportData.js` — `virementNet` : quand `resaIds.length === 0` et `extrasGlobaux.length > 0`, suppression du `Math.max(0, …)` → créance négative autorisée (DCB a avancé, proprio doit)
+
+## Session 5 juin 2026 — Fix LOY Booking : suppression double déduction CITY_TAX
+
+### Bug root cause
+
+`CITY_TAX (Withheld Tax)` = taxe que Booking collecte auprès du voyageur et reverse directement aux autorités fiscales, sans jamais passer par DCB. `host.revenue.amount` (= `fin_revenue` en base) est déjà **net de cette taxe** — Booking ne l'inclut pas dans le payout DCB. Le code déduisait `withheldTotal` une 2e fois → LOY sous-estimé d'un montant égal à la withheld tax (≈ quelques euros par réservation).
+
+**Raison du "revert" précédent** : le fix avait été appliqué à un seul fichier. Le cron `ventilation-auto` (3h UTC) recalculait toutes les nuits avec l'ancienne formule → les valeurs corrigées manuellement en journée étaient écrasées chaque nuit.
+
+### Fix appliqué aux deux fichiers simultanément
+
+- `src/services/ventilation.js` (frontend) — `withheldTotal` supprimé, commentaire explicatif ajouté
+- `supabase/functions/ventilation-auto/index.ts` (cron nightly) — même suppression
+
+**Formule corrigée (Booking)** :
+```js
+loyAmount = (revenue - remittedTotal) - honTTC - fmenTTC - aeAmount - taxesTotal
+// remittedTotal = taxes "host tax" que Booking transmet à DCB (TVA séjour Booking)
+// withheldTotal SUPPRIMÉ — déjà exclu de host.revenue.amount
+```
+
+Voir invariant I-123.

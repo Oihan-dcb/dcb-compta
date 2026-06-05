@@ -394,13 +394,8 @@ export function _calculerLignes(resa) {
 
   if (resa.platform === 'booking') {
     const remittedTotal = taxes.filter(t => isRemitted(t)).reduce((s,t) => s + (t.amount||0), 0)
-    // CITY_TAX (Withheld Tax) : collectée par Booking auprès du voyageur, reversée directement
-    // aux autorités fiscales — jamais transmise à DCB. À déduire du revenue pour éviter
-    // de sur-reverser au propriétaire.
-    const withheldTotal = ((resa.hospitable_raw?.financials?.guest?.taxes) || [])
-      .filter(t => t.label?.toLowerCase().includes('withheld'))
-      .reduce((s, t) => s + (t.amount || 0), 0)
-    loyAmount = (revenue - remittedTotal - withheldTotal) - honTTC - fmenTTC - aeAmount - taxesTotal
+    // CITY_TAX (Withheld Tax) est déjà exclu de host.revenue.amount — ne pas déduire une 2e fois
+    loyAmount = (revenue - remittedTotal) - honTTC - fmenTTC - aeAmount - taxesTotal
   }
 
   // --- Lignes de ventilation ---

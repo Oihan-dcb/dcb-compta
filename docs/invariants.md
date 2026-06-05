@@ -254,7 +254,13 @@ Aucun invariant actif violé à l'issue de la session du 12 avril 2026.
 | I-54 | Prestation validée doit produire une écriture EXTRA dans la ventilation |
 | I-73 | Modification après clôture doit être explicite et documentée |
 
-**Total actuel** : 0 invariants violés actifs (⚠ I-60 partiellement couvert), 20 corrigés, 34 nouveaux, sur 75 documentés.
+**Total actuel** : 0 invariants violés actifs (⚠ I-60 partiellement couvert), 21 corrigés, 35 nouveaux, sur 76 documentés.
+
+### Invariants ajoutés (5 juin 2026 — Fix LOY Booking double déduction CITY_TAX)
+
+| ID | Description | Statut |
+|---|---|---|
+| I-123 | **Booking.com LOY : `CITY_TAX (Withheld Tax)` ne doit pas être déduit du `revenue`.** `host.revenue.amount` (= `fin_revenue`) est déjà net de la taxe retenue directement par Booking aux autorités fiscales. Déduire `withheldTotal` une 2e fois sous-estimait le LOY d'un montant égal à la withheld tax (≈ 2–5% du séjour). **Fichiers corrigés simultanément** : `src/services/ventilation.js` (frontend) ET `supabase/functions/ventilation-auto/index.ts` (cron nightly 3h UTC). La cause du "revert" précédent était la correction d'un seul des deux fichiers — le cron réécrivait les lignes avec la mauvaise formule chaque nuit. | ✅ Corrigé (session 05/06/2026) — `withheldTotal` supprimé des deux fichiers, remplacé par commentaire explicatif. |
 
 | I-122 | **L'import Powens crée des doublons de mouvement_bancaire.** Powens (`Powens_seq_lc`) importe les mêmes transactions que le relevé CSV (`CaisseEpargne`) mais sans libellé (libellé vide). Résultat : pour chaque transaction réelle, deux entrées en base — une avec label (`CaisseEpargne`, rapprochée), une vide (`Powens_seq_lc`, en attente). **Constaté le 10/05/2026** : 63 doublons Powens identifiés (avril–mai 2026), supprimés manuellement. **Fix à implémenter dans l'import Powens** : avant insertion, vérifier qu'aucun MB de même `date_operation` et même `credit` n'existe déjà — si oui, ignorer l'entrée Powens. Contrainte de déduplication à ajouter : `UNIQUE (date_operation, credit, debit, canal)` ou dédoublonnage applicatif. | ❌ **Bug actif** — import Powens en cours de développement. Dédoublonnage absent. |
 
