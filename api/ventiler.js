@@ -280,7 +280,7 @@ async function _writeResa(resa, agence, supa) {
       mois_comptable: resa.mois_comptable,
       message: `Prolongation détectée : AUTO/FMEN supprimés, mission ménage à migrer vers résa originale`,
       meta: { code: resa.code, bien: resa.bien?.code, originalResaId: resa.originalResaId || null },
-    }).catch(() => {})
+    }).then(null, () => {})
   }
   if (fallbackAirbnb) {
     supa.from('journal_ops').insert({
@@ -292,7 +292,7 @@ async function _writeResa(resa, agence, supa) {
         motif: fallbackAirbnb.motif, forfait_dcb_ref: fallbackAirbnb.forfait_dcb_ref,
         provision_ae_ref: fallbackAirbnb.provision_ae_ref, fmenBase: fallbackAirbnb.fmenBase,
       },
-    }).catch(() => {})
+    }).then(null, () => {})
   }
 
   // Sauvegarder montant_reel + mouvement_id avant suppression
@@ -457,7 +457,7 @@ async function processMois(mois, agence, supa) {
     statut: errors > 0 ? 'warning' : 'ok', source: 'app',
     message: `Ventilation ${mois} : ${total} résa(s) calculée(s)${skipped > 0 ? ', ' + skipped + ' verrouillée(s)' : ''}${errors > 0 ? ', ' + errors + ' erreur(s)' : ''}${prolongations.length > 0 ? ', ' + prolongations.length + ' prolongation(s)' : ''}`,
     meta: { total, skipped, errors, errorDetails, prolongations },
-  }).catch(() => {})
+  }).then(null, () => {})
 
   return { total, skipped, errors, errorDetails, prolongations }
 }
