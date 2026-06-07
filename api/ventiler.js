@@ -139,12 +139,17 @@ function _calculerLignes(resa, agence) {
 
   const totalFeesAirbnb    = cleaningFeeAirbnb + communityFeeRaw
   const airbnbFallbackActif = resa.platform === 'airbnb' && totalFeesAirbnb === 0 && (bien.forfait_dcb_ref || 0) > 0
+  // En fallback, forfait_dcb_ref = MEN total (ménage + AE provision inclus).
+  // provision_ae_ref est géré séparément comme AUTO → ne pas l'ajouter ici.
+  // dueToOwner = 0 en fallback : le forfait est fixe, pas proportionnel au host service fee.
   const fmenBase = airbnbFallbackActif
-    ? (bien.forfait_dcb_ref || 0) + (bien.provision_ae_ref || 0)
+    ? (bien.forfait_dcb_ref || 0)
     : totalFeesAirbnb
-  const dueToOwner = ((resa.platform === 'airbnb' || resa.platform === 'booking') && totalFeesForOwnerRate > 0)
-    ? Math.round(Math.abs(hostServiceFee) * fmenBase / totalFeesForOwnerRate * (1 - tauxCom))
-    : 0
+  const dueToOwner = (airbnbFallbackActif || totalFeesForOwnerRate === 0)
+    ? 0
+    : ((resa.platform === 'airbnb' || resa.platform === 'booking')
+        ? Math.round(Math.abs(hostServiceFee) * fmenBase / totalFeesForOwnerRate * (1 - tauxCom))
+        : 0)
   const fmenTTC = Math.max(0, fmenBase - dueToOwner - aeAmount)
   const fmenHT  = fmenTTC > 0 ? Math.round(fmenTTC / (1 + TVA_RATE)) : 0
 
