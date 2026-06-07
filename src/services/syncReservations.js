@@ -19,8 +19,12 @@ export async function syncReservations(mois) {
     body: JSON.stringify({ mois, agence: AGENCE }),
   })
 
-  const log = await res.json()
-  if (!res.ok) throw new Error(log?.error || `Erreur serveur ${res.status}`)
+  let log
+  try { log = await res.json() } catch { throw new Error(`Réponse invalide du serveur (${res.status})`) }
+  if (!res.ok) {
+    const msg = log?.error
+    throw new Error(typeof msg === 'string' ? msg : (JSON.stringify(msg) || `Erreur serveur ${res.status}`))
+  }
   return log
 }
 
