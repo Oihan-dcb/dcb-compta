@@ -96,14 +96,20 @@ commissionableBase = accommodation + hostServiceFee + discounts + extraGuestFee
                    = nuitées + commission_plateforme(négatif) + remises + EXTRA_GUEST_FEE
                    [extraGuestFee = Σ guest_fees dont label === 'extra_guest_fee' (case-insensitive)]
                    [validé BGH HMS2SR33WH : 103900 − 26022 + 20000 = 97878¢ = €978,78 ✓]
-fmenBase           = cleaningFeeAirbnb + communityFeeRaw
-                   [base brute ménage = fees ménage bruts voyageur, avant retrait de la part
-                    plateforme (dueToOwner) et avant déduction de l'AUTO]
-cleaningFeeNet     = bien.forfait_dcb_ref || cleaningFeeAirbnb
-                   [⚠ variable définie dans V1 mais JAMAIS utilisée après sa définition —
-                    elle n'entre pas dans le calcul de fmenBase ni de fmenTTC]
-dueToOwner         = Math.ceil(fmenBase × 0.1621)
+fmenBase           = cleaningFeeAirbnb + communityFeeRaw   [cas normal : fees réels]
+                   OU bien.forfait_dcb_ref                  [fallback — voir ci-dessous]
+dueToOwner         = Math.round(|hostServiceFee| × fmenBase / totalFeesForOwnerRate × (1 − tauxCom))
+                   [= 0 quand airbnbFallbackActif — forfait fixe, pas proportionnel]
 fmenTTC            = Math.max(0, fmenBase − dueToOwner − AUTO)
+
+**Fallback Airbnb** (airbnbFallbackActif = guest_fees vides ET forfait_dcb_ref > 0) :
+Airbnb n'a pas ventilé le ménage séparément (bug de tarification ou promo sans cleaning fee).
+fmenBase = bien.forfait_dcb_ref  [= MEN total, provision_ae_ref inclus dedans — ne pas l'additionner]
+dueToOwner = 0                   [forfait fixe]
+fmenTTC = forfait_dcb_ref − AUTO [= forfait − provision_ae_ref]
+AUTO = provision_ae_ref
+Total ménage décompté = forfait_dcb_ref = FMEN + AUTO  ✓
+LOY = fin_revenue − HON − fmenTTC − AUTO  [fin_revenue sans cleaning car non ventilé]
 honTTC             = Math.round(commissionableBase × tauxCom)
 honHT              = Math.round(honTTC / 1.20)
 platformRemb       = Math.ceil((cleaningFeeAirbnb + communityFeeRaw) × 0.1621)
@@ -266,18 +272,26 @@ L'ancienne formule `platformRemb = feesDirectBruts − Math.round(feesDirectBrut
 
 ---
 
-## 9. Règle forfait_dcb_ref *(historique / optionnelle — non utilisée dans le modèle réel)*
+## 9. Règle forfait_dcb_ref — fallback Airbnb
 
-La logique `forfait_dcb_ref` est **présente dans le code V1** mais `cleaningFeeNet` — la variable qu'elle alimente — n'est **jamais utilisée après sa définition**. C'est une variable morte dans l'implémentation actuelle.
+> ✅ Fix session 07/06/2026 : `forfait_dcb_ref` est désormais **actif** dans le fallback Airbnb.
+
+`bien.forfait_dcb_ref` = coût ménage total forfaitaire (nettoyage + provision AE inclus).
+Utilisé quand Airbnb ne ventile pas de cleaning fee (`airbnbFallbackActif = true`).
+
+**Règle** : `forfait_dcb_ref` représente le MEN complet. `provision_ae_ref` est déjà inclus dedans — ne **jamais** l'additionner à `fmenBase` (double-comptage).
 
 ```
-cleaningFeeNet = bien.forfait_dcb_ref || menageBrut  (Airbnb/Booking)
-cleaningFeeNet = bien.forfait_dcb_ref || Math.max(0, feesDirectNets − managementFeeRaw)  (Direct)
+fmenBase  = forfait_dcb_ref            [pas + provision_ae_ref]
+fmenTTC   = forfait_dcb_ref − AUTO     [= part ménage hors AE]
+AUTO      = provision_ae_ref
+Total MEN = forfait_dcb_ref = FMEN + AUTO
 ```
 
-`fmenBase` est calculé indépendamment (`cleaningFeeAirbnb + communityFeeRaw`) et n'utilise pas `cleaningFeeNet`.
-
-> Cette règle doit être considérée comme **historique / optionnelle**. Elle ne doit pas être utilisée comme règle métier active sans décision explicite. La vraie base ménage métier dans le calcul courant est `fmenBase`, pas `cleaningFeeNet`.
+Exemple Bixintxo (forfait 86€ dont 25€ AE) :
+```
+FMEN = 86 − 25 = 61€, AUTO = 25€, Total = 86€ ✓
+```
 
 ---
 
