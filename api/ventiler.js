@@ -138,10 +138,7 @@ function _calculerLignes(resa, agence) {
   const totalFeesForOwnerRate = accommodation + guestFeesAll.reduce((s, f) => s + (f.amount || 0), 0)
 
   const totalFeesAirbnb    = cleaningFeeAirbnb + communityFeeRaw
-  // Fallback uniquement si pas de données raw (fees absents du système).
-  // Si hospitable_raw.financials.host.guest_fees existe (même vide), Airbnb a confirmé 0 ménage → pas de fallback.
-  const hasRawGuestFeeData = resa.hospitable_raw?.financials?.host?.guest_fees !== undefined
-  const airbnbFallbackActif = resa.platform === 'airbnb' && totalFeesAirbnb === 0 && (bien.forfait_dcb_ref || 0) > 0 && !hasRawGuestFeeData
+  const airbnbFallbackActif = resa.platform === 'airbnb' && totalFeesAirbnb === 0 && (bien.forfait_dcb_ref || 0) > 0
   const fmenBase = airbnbFallbackActif
     ? (bien.forfait_dcb_ref || 0) + (bien.provision_ae_ref || 0)
     : totalFeesAirbnb
