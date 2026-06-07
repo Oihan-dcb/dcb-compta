@@ -244,7 +244,7 @@ function EncaissementsRecap({ virements, finRevenue }) {
 export default function ModalResa({ resa, onClose, onSaved }) {
   if (!resa) return null
   const ventil = resa.ventilation || []
-  const isManual = resa.platform === 'manual'
+  const isManual = resa.platform === 'manual' || (resa.final_status === 'cancelled' && (resa.platform === 'direct' || resa.platform === 'manual'))
   const [editing, setEditing] = useState(false)
   const [modeVentil, setModeVentil] = useState('normal')
   const [ventilating, setVentilating] = useState(false)
@@ -381,7 +381,9 @@ export default function ModalResa({ resa, onClose, onSaved }) {
             ['Nuits', <strong>{resa.nights}</strong>],
             ['Voyageur', <strong>{resa.guest_name || '—'}</strong>],
             ['Statut réservation', resa.final_status === 'cancelled'
-              ? <span style={{ color: '#dc2626', fontWeight: 700 }}>⚠ Annulée</span>
+              ? <span style={{ color: '#dc2626', fontWeight: 700 }}>
+                  ⚠ Annulée{resa.fin_revenue > 0 ? <span style={{ fontWeight: 400, fontSize: '0.85em', marginLeft: 6 }}>— frais perçus</span> : null}
+                </span>
               : <span style={{ color: '#16a34a', fontWeight: 700 }}>✓ Confirmée</span>],
             ['Revenue net', isManual ? (
               editingRevenu

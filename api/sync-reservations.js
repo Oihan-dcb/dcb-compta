@@ -79,10 +79,7 @@ function parseReservation(resa, bien, mois) {
     f.label?.toLowerCase().includes('host service') || f.label?.toLowerCase().includes('service fee')
   );
   const taxesTotal = (fin.taxes || []).reduce((s, t) => s + (t.amount || 0), 0);
-  const arrivalDate = resa.arrival_date ? new Date(resa.arrival_date) : null;
-  const moisComptable = arrivalDate
-    ? `${arrivalDate.getFullYear()}-${String(arrivalDate.getMonth() + 1).padStart(2, '0')}`
-    : mois;
+  const moisComptable = resa.arrival_date ? resa.arrival_date.substring(0, 7) : mois;
   const notAccepted = ['not_accepted', 'not accepted', 'declined', 'expired'].includes(
     resa.reservation_status?.current?.category || resa.status
   );
