@@ -83,6 +83,15 @@ function parseReservation(resa, bien, mois) {
   const notAccepted = ['not_accepted', 'not accepted', 'declined', 'expired'].includes(
     resa.reservation_status?.current?.category || resa.status
   );
+  const isCancelled = (resa.reservation_status?.current?.category || resa.status) === 'cancelled';
+
+  // Annulation directe remboursement total : Hospitable renvoie revenue = sum(host_fees)
+  // (la "commission Hospitable" remboursée virtuellement) → DCB n'a rien perçu → fin_revenue = 0
+  const platform = resa.platform === 'booking.com' ? 'booking' : resa.platform;
+  const hostFeesTotal = (fin.host_fees || []).reduce((s, f) => s + Math.abs(f.amount || 0), 0);
+  const isFullRefundDirect = platform === 'direct' && isCancelled
+    && fin.revenue?.amount != null && fin.revenue.amount > 0
+    && fin.revenue.amount === hostFeesTotal;
 
   // Owner stay : fin_revenue = forfait ménage (cleaning fee invité ou fallback fiche bien)
   const isOwnerStay = resa.stay_type === 'owner_stay' ||
@@ -97,7 +106,7 @@ function parseReservation(resa, bien, mois) {
     hospitable_id:       resa.id,
     bien_id:             bien.id,
     code:                resa.code,
-    platform:            resa.platform === 'booking.com' ? 'booking' : resa.platform,
+    platform:            platform,
     platform_id:         resa.platform_id,
     arrival_date:        resa.arrival_date?.substring(0, 10),
     departure_date:      resa.departure_date?.substring(0, 10),
@@ -111,7 +120,7 @@ function parseReservation(resa, bien, mois) {
     reservation_status:  resa.reservation_status,
     final_status:        resa.reservation_status?.current?.category || resa.status || 'accepted',
     fin_accommodation:   isOwnerStay ? ownerCleaningFee : (fin.accommodation?.amount ?? null),
-    fin_revenue:         isOwnerStay ? ownerCleaningFee : (notAccepted ? 0 : (fin.revenue?.amount ?? null)),
+    fin_revenue:         isOwnerStay ? ownerCleaningFee : (notAccepted || isFullRefundDirect ? 0 : (fin.revenue?.amount ?? null)),
     fin_host_service_fee: hostServiceFee?.amount ?? null,
     fin_taxes_total:     taxesTotal || null,
     fin_currency:        fin.currency || 'EUR',
