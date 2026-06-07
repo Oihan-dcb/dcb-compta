@@ -129,9 +129,9 @@ describe('HOST-9HAQHD — Direct Ibañeta (taux 24%, données validées statemen
     expect(fmen.montant_ht).toBe(7948)
   })
 
-  it('COM ttc = 3012 (management fee → code COM Direct)', () => {
+  it('COM ttc = 3263 (management fee + resort fee → code COM Direct)', () => {
     const { lignes } = _calculerLignes(resa)
-    expect(ligne(lignes, 'COM').montant_ttc).toBe(3012)
+    expect(ligne(lignes, 'COM').montant_ttc).toBe(3263)
   })
 
   it('pas de TAXE (aucune taxe dans les fees)', () => {
@@ -423,21 +423,23 @@ describe('6027435808 — Booking Abadie (taxes pass-through)', () => {
   }
   // commissionableBase = 25000 - 4200 = 20800
   // HON = round(20800 × 0.25) = 5200
-  // fmenBase = community=8000, dueToOwner=round(8000×0.1517)=1214
-  // aeAmount=0 → fmenTTC=max(0,8000-1214-0)=6786
+  // fmenBase = community=8000
+  // totalFeesForOwnerRate = 25000 + 8000 = 33000
+  // dueToOwner = round(4200 × 8000/33000 × 0.75) = round(763.64) = 764
+  // aeAmount=0 → fmenTTC=max(0,8000-764-0)=7236
   // taxesTotal = 150 (non-remitted seulement)
   // remittedTotal = 300
-  // LOY = (29250 - 300) - 5200 - 6786 - 0 - 150 = 16814
-  // VIR = 16814 + 150 = 16964
+  // LOY = (29250 - 300) - 5200 - 7236 - 0 - 150 = 16364
+  // VIR = 16364 + 150 = 16514
 
   it('commissionableBase = 20800 (via HON = round(20800×0.25) = 5200)', () => {
     const { lignes } = _calculerLignes(resa)
     expect(ligne(lignes, 'HON').montant_ttc).toBe(5200)
   })
 
-  it('FMEN ttc = 6786 (fmenBase 8000 − retenue Booking 13.95%)', () => {
+  it('FMEN ttc = 7236 (fmenBase 8000 − retenue Booking pro-rata hostServiceFee)', () => {
     const { lignes } = _calculerLignes(resa)
-    expect(ligne(lignes, 'FMEN').montant_ttc).toBe(6786)
+    expect(ligne(lignes, 'FMEN').montant_ttc).toBe(7236)
   })
 
   it('TAXE = 150 (non-remitted uniquement)', () => {
@@ -445,14 +447,14 @@ describe('6027435808 — Booking Abadie (taxes pass-through)', () => {
     expect(ligne(lignes, 'TAXE').montant_ttc).toBe(150)
   })
 
-  it('LOY = 16814 (recalculé depuis fin_revenue net — remitted déduit)', () => {
+  it('LOY = 16364 (recalculé depuis fin_revenue net — remitted déduit)', () => {
     const { lignes } = _calculerLignes(resa)
-    expect(ligne(lignes, 'LOY').montant_ttc).toBe(16814)
+    expect(ligne(lignes, 'LOY').montant_ttc).toBe(16364)
   })
 
-  it('VIR = 16964 (LOY + TAXE non-remitted)', () => {
+  it('VIR = 16514 (LOY + TAXE non-remitted)', () => {
     const { lignes } = _calculerLignes(resa)
-    expect(ligne(lignes, 'VIR').montant_ttc).toBe(16964)
+    expect(ligne(lignes, 'VIR').montant_ttc).toBe(16514)
   })
 
   it('MEN = 8000 (community fee Booking)', () => {
@@ -490,21 +492,22 @@ describe('HMQ8XA4P2D — Airbnb Stanley avec AUTO (taux 25%)', () => {
   // commissionableBase = 18000 - 3000 = 15000
   // HON = round(15000 × 0.25) = 3750
   // fmenBase = cleaning(7000) + community(2500) = 9500
-  // dueToOwner = round(9500 × 0.1395) = round(1325.25) = 1325
+  // totalFeesForOwnerRate = 18000 + 9500 = 27500
+  // dueToOwner = round(3000 × 9500/27500 × 0.75) = round(777.27) = 777
   // aeAmount = 2000
-  // fmenTTC = max(0, 9500 - 1325 - 2000) = 6175
+  // fmenTTC = max(0, 9500 - 777 - 2000) = 6723
   // taxesTotal = 0 (Airbnb remit les taxes)
-  // LOY = revenue - HON - FMEN - AUTO = 24500 - 3750 - 6175 - 2000 = 12575
-  // VIR = 12575
+  // LOY = revenue - HON - FMEN - AUTO = 24500 - 3750 - 6723 - 2000 = 12027
+  // VIR = 12027
 
   it('commissionableBase = 15000 (via HON = round(15000×0.25) = 3750)', () => {
     const { lignes } = _calculerLignes(resa)
     expect(ligne(lignes, 'HON').montant_ttc).toBe(3750)
   })
 
-  it('FMEN ttc = 6175 (taux Airbnb 13.95% sur fmenBase 9500, moins AUTO 2000)', () => {
+  it('FMEN ttc = 6723 (fmenBase 9500 − retenue Airbnb pro-rata hostServiceFee − AUTO 2000)', () => {
     const { lignes } = _calculerLignes(resa)
-    expect(ligne(lignes, 'FMEN').montant_ttc).toBe(6175)
+    expect(ligne(lignes, 'FMEN').montant_ttc).toBe(6723)
   })
 
   it('AUTO = 2000', () => {
@@ -517,14 +520,14 @@ describe('HMQ8XA4P2D — Airbnb Stanley avec AUTO (taux 25%)', () => {
     expect(ligne(lignes, 'MEN').montant_ttc).toBe(9500)
   })
 
-  it('LOY = 12575', () => {
+  it('LOY = 12027', () => {
     const { lignes } = _calculerLignes(resa)
-    expect(ligne(lignes, 'LOY').montant_ttc).toBe(12575)
+    expect(ligne(lignes, 'LOY').montant_ttc).toBe(12027)
   })
 
-  it('VIR = 12575', () => {
+  it('VIR = 12027', () => {
     const { lignes } = _calculerLignes(resa)
-    expect(ligne(lignes, 'VIR').montant_ttc).toBe(12575)
+    expect(ligne(lignes, 'VIR').montant_ttc).toBe(12027)
   })
 
   it('pas de TAXE (Airbnb remit les taxes)', () => {
@@ -564,21 +567,28 @@ describe('Batch / FK — calculerVentilationResa', () => {
     expect(() => _calculerLignes(resa)).not.toThrow()
   })
 
-  it('résa gestion_loyer=false → lignes vides', () => {
+  it('résa gestion_loyer=false Airbnb → HON présent, LOY/VIR absents (hors-séquestre)', () => {
+    // Airbnb paie le proprio directement → DCB ne tient pas les fonds → pas de LOY/VIR
+    // Mais DCB facture quand même ses honoraires → HON présent
     const resa = {
       id: 'test-no-gestion',
       code: 'TEST-NG',
-      platform: 'direct',
+      platform: 'airbnb',
       fin_revenue: 10000,
       fin_accommodation: 10000,
       final_status: 'accepted',
       owner_stay: false,
       mois_comptable: '2026-04',
-      reservation_fee: [],
+      reservation_fee: [
+        { label: 'Host Service Fee', amount: -1000, fee_type: 'host_fee' },
+      ],
       bien: makeBien({ gestion_loyer: false }),
     }
     const { lignes } = _calculerLignes(resa)
-    expect(lignes).toHaveLength(0)
+    // HON = round((10000 - 1000) × 0.25) = 2250
+    expect(ligne(lignes, 'HON')).toBeDefined()
+    expect(ligne(lignes, 'LOY')).toBeUndefined()
+    expect(ligne(lignes, 'VIR')).toBeUndefined()
   })
 
   it('résa bien.agence=lauian → lignes vides', () => {
@@ -670,9 +680,12 @@ describe('Invariants formule — non-régression', () => {
     expect(ligne(lignes, 'MEN').montant_ttc).toBe(4000)
   })
 
-  it('Airbnb : dueToOwner basé sur AIRBNB_LOY_RATE = 13.95% (pas 16.21%)', () => {
-    // Vérifie que le taux de retenue Airbnb sur le ménage est bien 13.95%
-    const fmenBase = 10000
+  it('Airbnb : dueToOwner calculé en pro-rata du hostServiceFee (pas taux fixe)', () => {
+    // Vérifie la formule actuelle : dueToOwner = round(|hostServiceFee| × fmenBase / totalFeesForOwnerRate × (1 - tauxCom))
+    // Données : accommodation=18000, cleaning=10000, hostServiceFee=-8000, taux=25%
+    // totalFeesForOwnerRate = 18000 + 10000 = 28000
+    // dueToOwner = round(8000 × 10000/28000 × 0.75) = round(2142.86) = 2143
+    // fmenTTC = max(0, 10000 - 2143) = 7857
     const resa = {
       id: 'test-airbnb-rate',
       code: 'TEST-AR',
@@ -689,10 +702,7 @@ describe('Invariants formule — non-régression', () => {
       bien: makeBien(),
     }
     const { lignes } = _calculerLignes(resa)
-    // dueToOwner = round(10000 × 0.1395) = 1395 (si 13.95%)
-    // vs round(10000 × 0.1621) = 1621 (si 16.21% — ancienne valeur)
-    // fmenTTC = max(0, 10000 - dueToOwner) = 8605 (13.95%) ou 8379 (16.21%)
-    expect(ligne(lignes, 'FMEN').montant_ttc).toBe(8605)  // 10000 - 1395
+    expect(ligne(lignes, 'FMEN').montant_ttc).toBe(7857)
   })
 
   it('Direct : ownerFees > 0 quand hostServiceFee ≠ 0 (pas de platformRemb /1.0077)', () => {

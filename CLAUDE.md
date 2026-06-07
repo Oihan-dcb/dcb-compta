@@ -16,17 +16,24 @@ Les fichiers dans `docs/` sont la source de verite du projet. Lis-les avec `/ini
 | `docs/invariants.md` | Invariants systeme avec statut ✅/⚠/❌ |
 | `docs/source-of-truth.md` | Sources de donnees, priorites, comportements |
 
-## Regle critique — Ventilation duale (frontend + cron serveur)
+## Regle critique — Ventilation : architecture 3 fichiers
 
-La logique de ventilation existe en DEUX endroits simultanement :
-- `src/services/ventilation.js` — version frontend (utilisee par les boutons UI)
-- `supabase/functions/ventilation-auto/index.ts` — version serveur (cron nightly 3h UTC)
+La logique de ventilation est repartie ainsi :
 
-**Toute modification de la logique metier dans `ventilation.js` DOIT etre repercutee
+- `api/ventiler.js` — Vercel API route (Node.js, service_role). Appelee par l'UI via POST.
+  Contient la logique complete : `_calculerLignes`, `_writeResa`, `processMois`.
+- `supabase/functions/ventilation-auto/index.ts` — Edge Function Deno (cron nightly 3h UTC).
+  Port independant avec les memes formules.
+- `src/services/ventilation.js` — Proxy client vers `/api/ventiler` + fonctions de lecture.
+  `_calculerLignes` reste presente pour les tests unitaires (fonction pure).
+
+**Toute modification de la logique metier dans `api/ventiler.js` DOIT etre repercutee
 dans `ventilation-auto/index.ts`** (memes formules, memes cas speciaux, meme ordre).
+Et vice-versa.
 
-Fonctions a synchroniser : `_calculerLignes`, `calculerVentilationResa`, `calculerVentilationMois`,
-helpers `ligneTVA` / `ligneHorsTVA`, constantes `STATUTS_NON_VENTILABLES` / `TVA_RATE`.
+Fonctions a synchroniser : `_calculerLignes`, `_writeResa`/`calculerVentilationResa`,
+`processMois`/`calculerVentilationMois`, helpers `ligneTVA` / `ligneHorsTVA`,
+constantes `STATUTS_NON_VENTILABLES` / `TVA_RATE`.
 
 ## Regle obligatoire — Mise a jour docs/
 Apres chaque fix ou feature significatif, mets a jour le(s) fichier(s) docs/ concerne(s) :

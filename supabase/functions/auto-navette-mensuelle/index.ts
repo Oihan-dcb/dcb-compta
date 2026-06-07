@@ -204,7 +204,7 @@ Deno.serve(async (req) => {
   // Staff avec auto_send_navette activé
   const { data: staffList, error: staffErr } = await sb
     .from('auto_entrepreneur')
-    .select('id, nom, prenom, matricule, agence')
+    .select('id, nom, prenom, agence')
     .in('type', ['staff', 'assistante'])
     .eq('auto_send_navette', true)
     .eq('actif', true)

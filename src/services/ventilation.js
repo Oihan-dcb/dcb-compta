@@ -18,7 +18,7 @@
 
 import { supabase } from '../lib/supabase'
 import { AGENCE } from '../lib/agence'
-import { logOp } from './journal'
+import { authPost } from '../lib/authFetch'
 import { STATUTS_NON_VENTILABLES } from '../lib/constants'
 
 const TVA_RATE = 0.20
@@ -26,121 +26,14 @@ const TVA_RATE = 0.20
 
 /**
  * Calcule et sauvegarde la ventilation pour toutes les réservations
- * d'un mois donné qui ne sont pas encore ventilées
+ * d'un mois donné — délégué à /api/ventiler (service_role, pas de blocage RLS).
  *
  * @param {string} mois - YYYY-MM
  */
 export async function calculerVentilationMois(mois) {
-  // Verrou facture : statuts finaux réels observés en base (liste explicite)
-  // brouillon / calcul_en_cours → reventilable
-  // envoye_evoliz → verrouillé définitivement
-  const STATUTS_VERROU_FACTURE = ['envoye_evoliz']
-
-  const { data: facturesVerrouillees } = await supabase
-    .from('facture_evoliz')
-    .select('proprietaire_id')
-    .eq('mois', mois)
-    .eq('type_facture', 'honoraires')
-    .in('statut', STATUTS_VERROU_FACTURE)
-  const proprietairesVerrouilles = new Set(
-    (facturesVerrouillees || []).map(f => f.proprietaire_id).filter(Boolean)
-  )
-
-  // Supprimer les lignes ventilation orphelines : resas annulées sans frais qui avaient
-  // été ventilées avant l'annulation (le filtre ci-dessous les exclut, donc le cleanup
-  // dans calculerVentilationResa ne tournerait jamais pour elles)
-  const { data: resasCancelleesIds } = await supabase
-    .from('reservation')
-    .select('id')
-    .eq('mois_comptable', mois)
-    .in('final_status', ['cancelled', 'not_accepted', 'not accepted', 'declined', 'expired'])
-    .or('fin_revenue.is.null,fin_revenue.eq.0')
-  if (resasCancelleesIds?.length) {
-    await supabase
-      .from('ventilation')
-      .delete()
-      .in('reservation_id', resasCancelleesIds.map(r => r.id))
-  }
-
-  // Récupérer toutes les réservations du mois (ventilation_calculee n'est plus un verrou absolu)
-  const { data: reservations, error } = await supabase
-    .from('reservation')
-    .select(`
-      *,
-      bien (
-        id, proprietaire_id,
-        provision_ae_ref, forfait_dcb_ref, has_ae,
-        taux_commission_override, gestion_loyer, agence,
-        proprietaire!proprietaire_id (id, taux_commission)
-      ),
-      reservation_fee (*)
-    `)
-    .eq('mois_comptable', mois)
-    .or('fin_revenue.gt.0,final_status.not.in.("cancelled","not_accepted","not accepted","declined","expired")')
-
-  if (error) throw error
-
-  // ── Détection prolongations (critère A) ──────────────────────────────────
-  // Même bien + même voyageur + dates consécutives + aucun frais ménage
-  // Le critère B (guest_name contient "prolongation") est géré dans _calculerLignes
-  const resasByBienGuest = {}
-  for (const r of reservations || []) {
-    const key = `${r.bien_id}|${(r.guest_name || '').toLowerCase().trim()}`
-    if (!resasByBienGuest[key]) resasByBienGuest[key] = []
-    resasByBienGuest[key].push(r)
-  }
-  for (const group of Object.values(resasByBienGuest)) {
-    if (group.length < 2) continue
-    for (const r of group) {
-      const fees = r.reservation_fee || []
-      const cleaningFee = fees.find(f => f.label?.toLowerCase() === 'cleaning fee')?.amount || 0
-      const communityFee = fees.find(f => f.label?.toLowerCase() === 'community fee')?.amount || 0
-      // Pour les réservations manuelles, le community fee est la commission DCB, pas un frais ménage
-      const blocksProlongation = cleaningFee > 0 || (r.platform !== 'manual' && communityFee > 0)
-      if (blocksProlongation) continue
-      const preceding = group.find(other => other.id !== r.id && (other.departure_date || '').substring(0, 10) === (r.arrival_date || '').substring(0, 10))
-      if (preceding) {
-        r.isProlongation = true
-        r.originalResaId = preceding.id
-      }
-    }
-  }
-
-  let total = 0
-  let errors = 0
-  let skipped = 0
-  const errorDetails = []
-
-  for (const resa of (reservations || []).filter(r => r.bien != null && (r.bien.agence || AGENCE) === AGENCE)) {
-    // Verrou facture : ne jamais écraser une réservation liée à une facture finalisée
-    if (proprietairesVerrouilles.has(resa.bien?.proprietaire_id)) {
-      skipped++
-      continue
-    }
-    try {
-      await calculerVentilationResa(resa)
-      total++
-    } catch (err) {
-      errorDetails.push({ code: resa.code, msg: err.message })
-      errors++
-    }
-  }
-
-  const prolongations = (reservations || [])
-    .filter(r => r.isProlongation)
-    .map(r => ({
-      code: r.code,
-      originalResaId: r.originalResaId || null,
-      originalResaCode: (reservations || []).find(o => o.id === r.originalResaId)?.code || null,
-    }))
-
-  logOp({
-    categorie: 'ventilation', action: 'compute', mois_comptable: mois,
-    statut: errors > 0 ? 'warning' : 'ok', source: 'app',
-    message: `Ventilation ${mois} : ${total} résa(s) calculée(s)${skipped > 0 ? ', ' + skipped + ' verrouillée(s)' : ''}${errors > 0 ? ', ' + errors + ' erreur(s)' : ''}${prolongations.length > 0 ? `, ${prolongations.length} prolongation(s)` : ''}`,
-    meta: { total, skipped, errors, errorDetails, prolongations },
-  }).catch(() => {})
-  return { total, skipped, errors, errorDetails, prolongations }
+  const { ok, data } = await authPost('/api/ventiler', { mois, agence: AGENCE })
+  if (!ok) throw new Error(data?.error || 'Erreur serveur ventilation')
+  return data
 }
 
 /**
@@ -475,193 +368,12 @@ export function _calculerLignes(resa) {
 }
 
 /**
- * Calcule la ventilation d'une réservation individuelle et l'écrit en base.
+ * Recalcule la ventilation d'une réservation individuelle —
+ * délégué à /api/ventiler (service_role, pas de blocage RLS).
  */
 export async function calculerVentilationResa(resa) {
-  const bien = resa.bien
-  if (!bien) throw new Error(`Bien manquant pour résa ${resa.code}`)
-  if ((bien.agence || AGENCE) !== AGENCE) return []
-
-  // Séjour propriétaire : MEN = fin_revenue, AUTO = provision AE, FMEN = MEN - AUTO
-  if (resa.owner_stay) {
-    const men       = resa.fin_revenue || 0
-    const autoHT    = bien.provision_ae_ref || 0
-    const fmenTTC   = Math.max(0, men - autoHT)
-    const fmenHT    = Math.round(fmenTTC / (1 + TVA_RATE))
-    const fmenTVA   = fmenTTC - fmenHT
-
-    // Sauvegarder montant_reel AUTO existant (AE réel saisi manuellement)
-    const { data: existingAutoReel } = await supabase
-      .from('ventilation').select('montant_reel').eq('reservation_id', resa.id).eq('code', 'AUTO').maybeSingle()
-    const autoReel = existingAutoReel?.montant_reel ?? null
-
-    await supabase.from('ventilation').delete().eq('reservation_id', resa.id)
-
-    const lignes = []
-    if (fmenTTC > 0) lignes.push(ligneTVA('FMEN', 'Forfait ménage séjour propriétaire', fmenHT, bien, resa, null, fmenTTC))
-    if (autoHT > 0 && men > 0) lignes.push(ligneHorsTVA('AUTO', 'Débours auto-entrepreneur', autoHT, bien, resa))
-
-    if (lignes.length > 0) {
-      const { error } = await supabase.from('ventilation').insert(lignes)
-      if (error) throw error
-    }
-
-    // Restaurer le montant_reel AUTO si saisi manuellement
-    if (autoReel !== null && autoHT > 0) {
-      await supabase.from('ventilation').update({ montant_reel: autoReel }).eq('reservation_id', resa.id).eq('code', 'AUTO')
-    }
-
-    await supabase.from('reservation').update({ ventilation_calculee: true }).eq('id', resa.id)
-
-    // Lier mission_menage si AE
-    const { data: ligneAuto } = await supabase.from('ventilation').select('id').eq('reservation_id', resa.id).eq('code', 'AUTO').single()
-    if (ligneAuto?.id) {
-      try { await supabase.rpc('lier_ventilation_auto_mission', { p_reservation_id: resa.id, p_ventilation_id: ligneAuto.id }) } catch {}
-    }
-
-    return lignes
-  }
-
-  // Réservation annulée sans payout → supprimer lignes existantes et marquer ventilée
-  const isCancelled = STATUTS_NON_VENTILABLES.includes(resa.final_status)
-  if (isCancelled && parseFloat(resa.fin_revenue || 0) === 0) {
-    await supabase.from('ventilation').delete().eq('reservation_id', resa.id)
-    await supabase.from('reservation').update({ ventilation_calculee: true }).eq('id', resa.id)
-    return []
-  }
-
-  // Revenue = montant net reçu en banque (en centimes)
-  const revenue = resa.fin_revenue || 0
-  if (revenue === 0) {
-    await supabase.from('reservation').update({ ventilation_calculee: true }).eq('id', resa.id)
-    return
-  }
-
-  // Calcul pur — délégué à _calculerLignes
-  const { lignes, fallbackAirbnb, isProlongation } = _calculerLignes(resa)
-
-  // Log prolongation détectée
-  if (isProlongation) {
-    logOp({
-      categorie: 'ventilation', action: 'prolongation_detected', source: 'app', statut: 'ok',
-      mois_comptable: resa.mois_comptable,
-      message: `Prolongation détectée : AUTO/FMEN supprimés, mission ménage à migrer vers résa originale`,
-      meta: { code: resa.code, bien: resa.bien?.code, originalResaId: resa.originalResaId || null },
-    }).catch(() => {})
-  }
-
-  // Traçabilité : log explicite si fallback Airbnb activé
-  if (fallbackAirbnb) {
-    logOp({
-      categorie: 'ventilation',
-      action: 'fallback_airbnb',
-      source: 'app',
-      statut: 'ok',
-      mois_comptable: resa.mois_comptable,
-      message: `Fallback Airbnb activé : aucun frais ménage dans reservation_fee, fmenBase reconstruit depuis le bien`,
-      meta: {
-        code: resa.code,
-        bien: resa.bien?.code || resa.bien_id,
-        motif: fallbackAirbnb.motif,
-        forfait_dcb_ref: fallbackAirbnb.forfait_dcb_ref,
-        provision_ae_ref: fallbackAirbnb.provision_ae_ref,
-        fmenBase: fallbackAirbnb.fmenBase,
-      },
-    }).catch(() => {})
-  }
-
-  // Sauvegarder montant_reel et mouvement_id avant suppression (pour restauration après recalcul)
-  const { data: existingLines } = await supabase
-    .from('ventilation')
-    .select('id, code, montant_reel, mouvement_id')
-    .eq('reservation_id', resa.id)
-  const existingReels = {}
-  const existingMouvements = {}
-  for (const l of existingLines || []) {
-    if (l.montant_reel != null) existingReels[l.code] = l.montant_reel
-    if (l.mouvement_id != null) existingMouvements[l.code] = l.mouvement_id
-  }
-
-  // Si prolongation : capturer mission_menage liée à l'AUTO avant suppression
-  let missionToMigrate = null
-  let autoMontantReel = null
-  if (isProlongation) {
-    const existingAuto = (existingLines || []).find(l => l.code === 'AUTO')
-    if (existingAuto) {
-      autoMontantReel = existingAuto.montant_reel
-      const { data: mission } = await supabase
-        .from('mission_menage').select('id').eq('ventilation_auto_id', existingAuto.id).maybeSingle()
-      missionToMigrate = mission?.id || null
-    }
-  }
-
-  // Supprimer les ventilations existantes pour cette résa
-  // (FK ON DELETE SET NULL gère automatiquement mission_menage.ventilation_auto_id)
-  const { error: delErr } = await supabase.from('ventilation').delete().eq('reservation_id', resa.id)
-  if (delErr) throw new Error(`DELETE ventilation: ${delErr.message}`)
-
-  // Insérer les nouvelles lignes
-  if (lignes.length > 0) {
-    const { error } = await supabase.from('ventilation').insert(lignes)
-    if (error) throw error
-  }
-
-  // Restaurer montant_reel et mouvement_id (liens banque sur VIR préservés après recalcul)
-  const codesToRestore = new Set([...Object.keys(existingReels), ...Object.keys(existingMouvements)])
-  // Ne pas restaurer AUTO sur les prolongations : pas de ligne AUTO créée, migration séparée ci-dessous
-  if (isProlongation) codesToRestore.delete('AUTO')
-  for (const code of codesToRestore) {
-    const patch = {}
-    if (existingReels[code] != null) patch.montant_reel = existingReels[code]
-    if (existingMouvements[code] != null) patch.mouvement_id = existingMouvements[code]
-    await supabase.from('ventilation').update(patch).eq('reservation_id', resa.id).eq('code', code)
-  }
-
-  // Marquer la résa comme ventilée
-  await supabase
-    .from('reservation')
-    .update({ ventilation_calculee: true })
-    .eq('id', resa.id)
-
-  // Migration mission_menage vers la résa originale (prolongations uniquement)
-  if (isProlongation && missionToMigrate) {
-    let originalResaId = resa.originalResaId || null
-    if (!originalResaId) {
-      // Fallback DB : résa du même bien dont departure_date = notre arrival_date (cross-mois)
-      const { data: originalResa } = await supabase
-        .from('reservation').select('id')
-        .eq('bien_id', resa.bien_id)
-        .eq('departure_date', (resa.arrival_date || '').substring(0, 10))
-        .neq('id', resa.id)
-        .maybeSingle()
-      originalResaId = originalResa?.id || null
-    }
-    if (originalResaId) {
-      const { data: originalAuto } = await supabase
-        .from('ventilation').select('id')
-        .eq('reservation_id', originalResaId).eq('code', 'AUTO').maybeSingle()
-      if (originalAuto?.id) {
-        await supabase.from('mission_menage')
-          .update({ ventilation_auto_id: originalAuto.id }).eq('id', missionToMigrate)
-        if (autoMontantReel != null) {
-          await supabase.from('ventilation')
-            .update({ montant_reel: autoMontantReel }).eq('id', originalAuto.id)
-        }
-      }
-    }
-  }
-
-  // CF-PAE3 : relier mission_menage.ventilation_auto_id à la ligne AUTO
-  const { data: ligneAuto } = await supabase
-    .from('ventilation')
-    .select('id')
-    .eq('reservation_id', resa.id)
-    .eq('code', 'AUTO')
-    .single()
-  if (ligneAuto?.id) {
-    // RPC SECURITY DEFINER — contourne RLS ae_update_own_missions
-    try { await supabase.rpc('lier_ventilation_auto_mission', { p_reservation_id: resa.id, p_ventilation_id: ligneAuto.id }) } catch {}
-  }
+  const { ok, data } = await authPost('/api/ventiler', { reservation_id: resa.id, agence: AGENCE })
+  if (!ok) throw new Error(data?.error || 'Erreur serveur ventilation')
 }
 
 // --- Helpers ---
