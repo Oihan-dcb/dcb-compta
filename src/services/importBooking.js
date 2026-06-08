@@ -39,6 +39,8 @@ function parseFloat2(s) {
   return parseFloat(String(s).replace(',', '.').replace(' ', '')) || 0
 }
 
+const MONTHS = { jan:'01',feb:'02',mar:'03',apr:'04',may:'05',jun:'06',jul:'07',aug:'08',sep:'09',oct:'10',nov:'11',dec:'12' }
+
 function parseDate(s) {
   if (!s || s === '-') return null
   const t = s.trim()
@@ -47,6 +49,12 @@ function parseDate(s) {
   if (m2) return m2[3] + '-' + m2[2] + '-' + m2[1]
   const m3 = t.match(/^(\d{2})\/(\d{2})\/(\d{2})$/)
   if (m3) return '20' + m3[3] + '-' + m3[2] + '-' + m3[1]
+  // Format Booking nouveau : "1 Jun 2026" ou "27 May 2026"
+  const m4 = t.match(/^(\d{1,2})\s+([A-Za-z]{3})\s+(\d{4})$/)
+  if (m4) {
+    const mo = MONTHS[m4[2].toLowerCase()]
+    if (mo) return m4[3] + '-' + mo + '-' + m4[1].padStart(2, '0')
+  }
   return null
 }
 
