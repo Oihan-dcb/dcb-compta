@@ -175,11 +175,12 @@ export async function creerFactureEvoliz(facture) {
     .map(l => {
       const htCentimes = Math.round(l.montant_ht)
       if (!Number.isFinite(htCentimes) || htCentimes === 0) return null
+      // Evoliz exige unitPrice >= 0 — lignes négatives (PREST, FRAIS, DEBP) : quantity=-1, prix absolu
       return {
         designation: l.libelle || `Ligne ${l.code || 'facturation'}`,
         reference: l.code,
-        quantity: 1,
-        unitPrice: htCentimes / 100,
+        quantity: htCentimes < 0 ? -1 : 1,
+        unitPrice: Math.abs(htCentimes) / 100,
         vatRate: l.taux_tva ?? 20,
         ...(ACCOUNT_MAP[l.code] ? { accountingAccountId: ACCOUNT_MAP[l.code] } : {}),
         // Article d'exonération TVA pour débours (art. 267-II-2° CGI) — obligatoire août 2026
@@ -218,7 +219,7 @@ export async function creerFactureEvoliz(facture) {
       clientId: parseInt(clientId),
       documentdate: dateEmission,
       paytermid: 1,
-      businessProcess: 's7', // "services" — obligatoire août 2026
+      // businessProcess : ne pas envoyer avant août 2026 (valeur rejetée par Evoliz)
       object: objectFacture,
       comment,
       items: lignes,

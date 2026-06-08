@@ -215,9 +215,8 @@ serve(async (req) => {
           object: payload.object || undefined,
           bankaccountid: payload.bankAccountId || undefined,
           comment: payload.comment || '',
-          // business_process : nature des opérations — obligatoire août 2026 (facturation électronique)
-          // "s7" = services (valeur observée sur les factures existantes DCB)
-          business_process: payload.businessProcess || 's7',
+          // business_process : obligatoire août 2026 — ne pas envoyer avant (valeur invalide rejetée)
+          ...(payload.businessProcess ? { business_process: payload.businessProcess } : {}),
           // previousDocumentId : référence à la facture originale pour les avoirs — obligatoire août 2026
           ...(payload.previousDocumentId ? { previous_document_id: payload.previousDocumentId } : {}),
           term: {
