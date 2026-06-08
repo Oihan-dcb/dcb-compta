@@ -346,6 +346,15 @@ serve(async (req) => {
         break
       }
 
+      case 'createClassification': {
+        result = await evolizReq('POST', '/sale-classifications', company, {
+          code:      payload.code,
+          label:     payload.label,
+          ...(payload.accountId ? { accountid: payload.accountId } : {}),
+        })
+        break
+      }
+
       case 'createArticle': {
         result = await evolizReq('POST', '/articles', company, {
           reference: payload.reference,

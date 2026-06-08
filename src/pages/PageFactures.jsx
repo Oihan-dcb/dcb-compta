@@ -9,7 +9,7 @@ import {
   envoyerEmailDeboursProprio,
   envoyerEmailChargesProprio,
 } from '../services/facturesEvoliz'
-import { pousserFacturesMoisVersEvoliz, pingEvoliz, pousserFactureCOMVersEvoliz, syncNumerosEvoliz, refreshFacturesBrouillonsEvoliz, creerArticlesManquantsEvoliz } from '../services/evoliz'
+import { pousserFacturesMoisVersEvoliz, pingEvoliz, pousserFactureCOMVersEvoliz, syncNumerosEvoliz, refreshFacturesBrouillonsEvoliz, creerArticlesManquantsEvoliz, setupEvolizComplet } from '../services/evoliz'
 import { formatMontant } from '../lib/hospitable'
 
 const moisCourant = new Date().toISOString().substring(0, 7)
@@ -613,14 +613,15 @@ const [pushing, setPushing] = useState(false)
             className="btn btn-secondary"
             onClick={async () => {
               try {
-                const r = await creerArticlesManquantsEvoliz()
-                const errDetail = r.errors.map(e => `${e.reference}: ${e.error}`).join(' | ')
-                setSuccess(`Articles Evoliz : ${r.created.length} créé(s) (${r.created.join(', ') || '—'}), ${r.skipped.length} déjà existant(s)${r.errors.length ? ` — Erreurs: ${errDetail}` : ''}`)
+                const r = await setupEvolizComplet()
+                const classifErr = r.classifs.errors.map(e => `${e.code}: ${e.error}`).join(' | ')
+                const artErr = (r.articles?.errors || []).map(e => `${e.reference}: ${e.error}`).join(' | ')
+                setSuccess(`Setup Evoliz — Classifications: ${r.classifs.created.length} créée(s), ${r.classifs.skipped.length} existante(s)${classifErr ? ` ⚠ ${classifErr}` : ''} | Articles: ${r.articles?.created.length ?? 0} créé(s), ${r.articles?.skipped.length ?? 0} existant(s)${artErr ? ` ⚠ ${artErr}` : ''}`)
               } catch (err) { setError(err.message) }
             }}
-            title="Crée les articles manquants dans le catalogue Evoliz (COM, DIV, HAOWNER, HON_ETU, HON_MOB)"
+            title="Crée classifications + articles dans le catalogue Evoliz de l'agence courante"
           >
-            + Articles Evoliz
+            ⚙ Setup Evoliz
           </button>
           <button
             className="btn btn-secondary"

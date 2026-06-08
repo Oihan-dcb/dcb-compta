@@ -608,3 +608,45 @@ export async function creerArticlesManquantsEvoliz() {
   _articleIdCache = null
   return results
 }
+
+// ============================================================
+// SETUP COMPLET EVOLIZ (classifications + articles)
+// ============================================================
+
+const CLASSIFICATIONS_A_CREER = [
+  { code: '01', label: 'Gestion location saisonnière (HON)',      accountId: 8677891 },
+  { code: '04', label: 'Forfait ménage (FMEN)',                   accountId: 8677892 },
+  { code: '05', label: 'Commission (COM)',                        accountId: 8677893 },
+  { code: '06', label: 'Frais divers avancés (DIV)',              accountId: 8677895 },
+  { code: '07', label: 'Achats refacturés propriétaires (HAOWNER)', accountId: 8677896 },
+  { code: '08', label: 'Honoraires locations étudiantes (HON_ETU)', accountId: 8677897 },
+  { code: '09', label: 'Honoraires contrats mobilité (HON_MOB)', accountId: 8677898 },
+]
+
+export async function setupEvolizComplet() {
+  const results = { classifs: { created: [], skipped: [], errors: [] }, articles: null }
+
+  // 1. Créer les classifications manquantes
+  const existingClassifs = await getClassificationIdMap()
+  for (const c of CLASSIFICATIONS_A_CREER) {
+    if (existingClassifs[c.code]) { results.classifs.skipped.push(c.code); continue }
+    try {
+      await evolizCall('createClassification', { code: c.code, label: c.label, accountId: c.accountId })
+      results.classifs.created.push(c.code)
+    } catch (err) {
+      if (err.message?.includes('already been taken') || err.message?.includes('already taken')) {
+        results.classifs.skipped.push(c.code)
+      } else {
+        results.classifs.errors.push({ code: c.code, error: err.message })
+      }
+    }
+  }
+
+  // Invalider le cache pour charger les nouveaux IDs
+  _classifIdCache = null
+
+  // 2. Créer les articles manquants
+  results.articles = await creerArticlesManquantsEvoliz()
+
+  return results
+}
