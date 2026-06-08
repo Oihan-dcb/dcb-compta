@@ -1178,7 +1178,7 @@ export async function getFacturesMois(mois) {
     .from('facture_evoliz')
     .select(`
       *,
-      bien (id, code, agence),
+      bien (id, code, agence, gestion_loyer),
       proprietaire (id, nom, prenom, email, iban, id_evoliz, bien!proprietaire_id(id, code, groupe_facturation)),
       facture_evoliz_ligne (*)
     `)
@@ -1189,6 +1189,103 @@ export async function getFacturesMois(mois) {
 
   if (error) throw error
   return data || []
+}
+
+/**
+ * Envoie un email au proprio pour un débours AE sur bien sans gestion loyer.
+ * Explique qu'il doit virer le montant DEB_AE depuis son compte séquestre.
+ * Oïhan est automatiquement en CC (géré par smtp-send).
+ */
+export async function envoyerEmailDeboursProprio(facture) {
+  const proprio = facture.proprietaire
+  const bien = facture.bien
+  const mois = facture.mois
+
+  if (!proprio?.email) throw new Error(`Pas d'email pour ${proprio?.nom}`)
+
+  const MOIS_FR = ['janvier','février','mars','avril','mai','juin','juillet','août','septembre','octobre','novembre','décembre']
+  const [year, monthIdx] = mois.split('-')
+  const moisLabel = MOIS_FR[parseInt(monthIdx) - 1] + ' ' + year
+
+  // Montant DEB_AE depuis les lignes
+  const lignes = facture.facture_evoliz_ligne || []
+  const montantDebAE = lignes
+    .filter(l => l.code === 'DEB_AE')
+    .reduce((sum, l) => sum + (l.montant_ttc || l.montant_ht || 0), 0)
+
+  const montantEur = (Math.abs(montantDebAE) / 100).toFixed(2).replace('.', ',')
+  const bienNom = bien?.code || proprio?.nom || 'votre bien'
+
+  const html = `<!DOCTYPE html><html><head><meta charset="utf-8"></head>
+<body style="margin:0;padding:0;background:#f5f0e8;font-family:Arial,sans-serif">
+  <table width="100%" cellpadding="0" cellspacing="0" style="background:#f5f0e8;padding:40px 20px">
+    <tr><td align="center">
+      <table width="600" cellpadding="0" cellspacing="0" style="background:#fff;border-radius:8px;overflow:hidden;max-width:600px;width:100%">
+        <tr><td style="background:#CC9933;padding:28px 40px;text-align:center">
+          <p style="margin:0;color:#fff;font-size:20px;font-weight:bold">Destination Côte Basque</p>
+          <p style="margin:6px 0 0;color:rgba(255,255,255,0.85);font-size:13px">Remboursement débours auto-entrepreneur</p>
+        </td></tr>
+        <tr><td style="padding:36px 40px">
+          <p style="margin:0 0 14px;font-size:15px;color:#333">Bonjour ${proprio.prenom || proprio.nom},</p>
+          <p style="margin:0 0 20px;font-size:14px;color:#555;line-height:1.6">
+            Dans le cadre de la gestion de votre bien <strong>${bienNom}</strong>, 
+            Destination Côte Basque a réglé pour votre compte les honoraires de l'auto-entrepreneur 
+            pour le mois de <strong>${moisLabel}</strong>.
+          </p>
+          <table cellpadding="0" cellspacing="0" style="width:100%;margin:0 0 24px;border:2px solid #CC9933;border-radius:8px;overflow:hidden">
+            <tr style="background:#FBF5E6">
+              <td style="padding:16px 24px;font-size:14px;color:#555">Montant débours AE — ${moisLabel}</td>
+              <td style="padding:16px 24px;font-size:22px;font-weight:bold;color:#CC9933;text-align:right">${montantEur} €</td>
+            </tr>
+          </table>
+          <p style="margin:0 0 12px;font-size:14px;color:#333;font-weight:600">Merci de procéder au remboursement par virement depuis votre compte séquestre :</p>
+          <table cellpadding="0" cellspacing="0" style="width:100%;background:#f9f6f0;border-radius:6px;margin:0 0 24px">
+            <tr><td style="padding:16px 24px">
+              <div style="font-size:12px;color:#888;margin-bottom:4px;text-transform:uppercase;letter-spacing:1px">IBAN séquestre</div>
+              <div style="font-size:15px;font-family:monospace;color:#2C2416;font-weight:600;letter-spacing:2px">FR76 1333 5000 4008 0030 4976 555</div>
+              <div style="font-size:12px;color:#888;margin-top:8px;margin-bottom:4px;text-transform:uppercase;letter-spacing:1px">BIC</div>
+              <div style="font-size:13px;font-family:monospace;color:#2C2416">CEPAFRPP333</div>
+              <div style="font-size:12px;color:#888;margin-top:8px;margin-bottom:4px;text-transform:uppercase;letter-spacing:1px">Référence virement</div>
+              <div style="font-size:13px;font-family:monospace;color:#2C2416">DEBOURS-AE-${bienNom.replace(/[^A-Z0-9]/gi,'-').toUpperCase()}-${mois}</div>
+            </td></tr>
+          </table>
+          <p style="margin:0;font-size:13px;color:#888;line-height:1.5">
+            Ce règlement concerne uniquement les débours auto-entrepreneur avancés par DCB. 
+            Il est distinct du reversement de loyer habituel.
+          </p>
+        </td></tr>
+        <tr><td style="background:#f9f6f0;padding:16px 40px;text-align:center">
+          <p style="margin:0;font-size:11px;color:#aaa">Destination Côte Basque SARL · RCS BAYONNE 904781671 · 6 allée des Chênes, 64200 Biarritz</p>
+        </td></tr>
+      </table>
+    </td></tr>
+  </table>
+</body></html>`
+
+  const res = await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/smtp-send`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'Authorization': `Bearer ${import.meta.env.VITE_SUPABASE_ANON_KEY}`,
+    },
+    body: JSON.stringify({
+      to: [proprio.email],
+      subject: `Remboursement débours auto-entrepreneur — ${moisLabel} — ${bienNom}`,
+      html,
+    }),
+  })
+  if (!res.ok) {
+    const err = await res.text()
+    throw new Error(`smtp-send: ${err}`)
+  }
+
+  // Marquer comme envoyé proprio
+  const { error } = await supabase
+    .from('facture_evoliz')
+    .update({ statut: 'envoye_proprio' })
+    .eq('id', facture.id)
+  if (error) throw error
+  return true
 }
 
 /**

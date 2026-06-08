@@ -6,6 +6,7 @@ import {
   getFacturesMois, genererFacturesMois, validerFacture,
   getStatsFactures,
   getFactureCOM, genererFactureCOM, validerFactureCOM,
+  envoyerEmailDeboursProprio,
 } from '../services/facturesEvoliz'
 import { pousserFacturesMoisVersEvoliz, pingEvoliz, pousserFactureCOMVersEvoliz, syncNumerosEvoliz } from '../services/evoliz'
 import { formatMontant } from '../lib/hospitable'
@@ -18,6 +19,7 @@ const STATUTS = {
   valide: { label: 'Validée', color: '#059669', bg: '#D1FAE5' },
   envoi_en_cours: { label: 'Envoi en cours…', color: '#D97706', bg: '#FEF3C7' },
   envoye_evoliz: { label: 'Envoyée Evoliz', color: '#EA580C', bg: '#FFF7ED' },
+  envoye_proprio: { label: 'Envoyée proprio', color: '#0891B2', bg: '#E0F2FE' },
   payee: { label: 'Payée', color: '#059669', bg: '#D1FAE5' },
   solde_negatif: { label: 'Solde négatif', color: '#DC2626', bg: '#FEE2E2' },
 }
@@ -44,6 +46,7 @@ const [pushing, setPushing] = useState(false)
   const [comFacture, setComFacture] = useState(null)
   const [generatingCOM, setGeneratingCOM] = useState(false)
   const [pushingCOM, setPushingCOM] = useState(false)
+  const [sendingDebours, setSendingDebours] = useState(null) // factureId en cours d'envoi
   
   // Contrôle virements propriétaires
   const [virementsSortants, setVirementsSortants] = useState([])
@@ -454,6 +457,19 @@ const [pushing, setPushing] = useState(false)
     }
   }
 
+  async function envoyerDebours(facture) {
+    try {
+      setSendingDebours(facture.id)
+      await envoyerEmailDeboursProprio(facture)
+      setSuccess(`Email débours envoyé à ${facture.proprietaire?.email}`)
+      await charger()
+    } catch (err) {
+      setError(err.message)
+    } finally {
+      setSendingDebours(null)
+    }
+  }
+
   async function validerTout() {
     const brouillons = factures.filter(f => f.statut === 'brouillon' && f.total_ttc > 0)
     if (brouillons.length === 0) return
@@ -794,13 +810,31 @@ const [pushing, setPushing] = useState(false)
                       {statutInfo.label}
                     </span>
 
-                    {/* Action valider */}
-                    {f.statut === 'brouillon' && (
+                    {/* Action valider — couleur différente pour débours sans gestion loyer */}
+                    {f.statut === 'brouillon' && (() => {
+                      const isDeboursSansGestion = f.type_facture === 'debours' && f.bien?.gestion_loyer === false
+                      return (
+                        <button
+                          className="btn btn-sm"
+                          style={isDeboursSansGestion
+                            ? { background: '#0891B2', color: '#fff', border: 'none' }
+                            : undefined}
+                          onClick={e => { e.stopPropagation(); valider(f.id) }}
+                        >
+                          ✓ Valider
+                        </button>
+                      )
+                    })()}
+
+                    {/* Envoyer au proprio — uniquement débours sans gestion loyer, statut valide */}
+                    {f.type_facture === 'debours' && f.bien?.gestion_loyer === false && f.statut === 'valide' && (
                       <button
-                        className="btn btn-primary btn-sm"
-                        onClick={e => { e.stopPropagation(); valider(f.id) }}
+                        className="btn btn-sm"
+                        style={{ background: '#0891B2', color: '#fff', border: 'none' }}
+                        disabled={sendingDebours === f.id}
+                        onClick={e => { e.stopPropagation(); envoyerDebours(f) }}
                       >
-                        ✓ Valider
+                        {sendingDebours === f.id ? <><span className="spinner" /> Envoi…</> : '📧 Envoyer au proprio'}
                       </button>
                     )}
 
