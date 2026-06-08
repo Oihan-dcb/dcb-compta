@@ -36,7 +36,7 @@ async function getClassificationIdMap() {
     const items = result?.data || []
     _classifIdCache = {}
     for (const c of items) {
-      if (c.code != null) _classifIdCache[String(c.code).padStart(2, '0')] = c.saleclassificationid ?? c.id
+      if (c.code != null) _classifIdCache[String(c.code).padStart(2, '0')] = c.classificationid
     }
   } catch {
     _classifIdCache = {}
@@ -53,7 +53,7 @@ async function getArticleIdMap() {
     const items = result?.data || []
     _articleIdCache = {}
     for (const item of items) {
-      if (item.reference) _articleIdCache[item.reference.trim()] = item.itemid
+      if (item.reference) _articleIdCache[item.reference.trim()] = item.articleid
     }
   } catch {
     _articleIdCache = {}
@@ -254,7 +254,7 @@ export async function creerFactureEvoliz(facture) {
         vatRate: l.taux_tva ?? 20,
         ...(ACCOUNT_MAP[l.code] ? { accountingAccountId: ACCOUNT_MAP[l.code] } : {}),
         // Lier l'article catalogue pour hériter la Classification vente Evoliz
-        ...(articleIdMap[l.code] ? { itemId: articleIdMap[l.code] } : {}),
+        ...(articleIdMap[l.code] ? { articleId: articleIdMap[l.code] } : {}),
         // Classification vente directe (au cas où itemid ne suffit pas)
         ...(CLASSIFICATION_CODE_MAP[l.code] && classifIdMap[CLASSIFICATION_CODE_MAP[l.code]]
           ? { classificationId: classifIdMap[CLASSIFICATION_CODE_MAP[l.code]] }

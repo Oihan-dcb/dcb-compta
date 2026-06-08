@@ -232,10 +232,10 @@ serve(async (req) => {
             unit_price: l.unitPrice,     // En euros (pas en centimes)
             vat_rate: l.vatRate ?? 20,
             accountingaccountid: l.accountingAccountId || undefined,
-            // itemid : lie la ligne à l'article catalogue → hérite la Classification vente
-            ...(l.itemId ? { itemid: l.itemId } : {}),
-            // classificationid direct (fallback si itemid ne transmet pas la classification)
-            ...(l.classificationId ? { classificationid: l.classificationId } : {}),
+            // articleid : lie la ligne à l'article catalogue → hérite la Classification vente
+            ...(l.articleId ? { articleid: l.articleId } : {}),
+            // sale_classificationid direct sur la ligne facture
+            ...(l.classificationId ? { sale_classificationid: l.classificationId } : {}),
             // vatExemption : article d'exonération TVA — obligatoire août 2026 si taux=0
             ...(l.vatExemption ? { vat_exemption: l.vatExemption } : {}),
           })),
@@ -353,7 +353,7 @@ serve(async (req) => {
           unit_price: payload.unitPrice ?? 0,
           vat_rate: payload.vatRate ?? 20,
           ...(payload.accountingAccountId ? { accountingaccountid: payload.accountingAccountId } : {}),
-          ...(payload.classificationId ? { classificationid: payload.classificationId } : {}),
+          ...(payload.classificationId ? { sale_classificationid: payload.classificationId } : {}),
           nature: payload.nature || 'service',
         })
         break
