@@ -844,7 +844,7 @@ const [pushing, setPushing] = useState(false)
                         <button
                           className="btn btn-sm"
                           style={isDeboursSansGestion
-                            ? { background: '#8A9E82', color: '#fff', border: 'none' }
+                            ? { background: '#9EB39A', color: '#fff', border: 'none' }
                             : undefined}
                           onClick={e => { e.stopPropagation(); valider(f.id) }}
                         >
@@ -857,7 +857,7 @@ const [pushing, setPushing] = useState(false)
                     {f.type_facture === 'debours' && f.bien?.gestion_loyer === false && f.statut === 'valide' && (
                       <button
                         className="btn btn-sm"
-                        style={{ background: '#8A9E82', color: '#fff', border: 'none' }}
+                        style={{ background: '#9EB39A', color: '#fff', border: 'none' }}
                         disabled={sendingDebours === f.id}
                         onClick={e => { e.stopPropagation(); envoyerDebours(f) }}
                       >
@@ -865,22 +865,12 @@ const [pushing, setPushing] = useState(false)
                       </button>
                     )}
 
-                    {/* Confirmer le virement — débours sans gestion loyer, après envoi proprio */}
-                    {f.type_facture === 'debours' && f.bien?.gestion_loyer === false && f.statut === 'envoye_proprio' && (
-                      <button
-                        className="btn btn-sm"
-                        style={{ background: '#8A9E82', color: '#fff', border: 'none' }}
-                        onClick={e => { e.stopPropagation(); confirmerVirement(f.id) }}
-                      >
-                        ✓ Confirmer le virement
-                      </button>
-                    )}
 
                     {/* Info charges proprio — honoraires, gestion_loyer=false, envoi parallèle à Evoliz */}
                     {f.type_facture === 'honoraires' && f.bien?.gestion_loyer === false && ['brouillon','valide','envoye_evoliz'].includes(f.statut) && (
                       <button
                         className="btn btn-sm"
-                        style={{ background: '#8A9E82', color: '#fff', border: 'none' }}
+                        style={{ background: '#9EB39A', color: '#fff', border: 'none' }}
                         disabled={sendingCharges === f.id}
                         onClick={e => { e.stopPropagation(); envoyerCharges(f) }}
                         title="Envoie un récapitulatif des charges au propriétaire (sans parler de virement)"

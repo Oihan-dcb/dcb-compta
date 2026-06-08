@@ -1249,6 +1249,21 @@ export async function envoyerEmailDeboursProprio(facture) {
   const ref = `DEBOURS-AE-${bienNom.replace(/[^A-Z0-9]/gi, '-').toUpperCase()}-${mois}`
   const prenom = proprio.prenom || proprio.nom
 
+  // Générer URL de confirmation signée (HMAC-SHA256, valable 30 jours)
+  const confirmUrl = await (async () => {
+    try {
+      const secret = import.meta.env.VITE_DEBOURS_CONFIRM_SECRET
+      if (!secret) return null
+      const expiry = Date.now() + 30 * 24 * 60 * 60 * 1000
+      const encoder = new TextEncoder()
+      const key = await crypto.subtle.importKey('raw', encoder.encode(secret), { name: 'HMAC', hash: 'SHA-256' }, false, ['sign'])
+      const sig = await crypto.subtle.sign('HMAC', key, encoder.encode(`${facture.id}:${expiry}`))
+      const hmac = Array.from(new Uint8Array(sig)).map(b => b.toString(16).padStart(2, '0')).join('')
+      const token = btoa(`${facture.id}:${expiry}:${hmac}`).replace(/\+/g, '-').replace(/\//g, '_').replace(/=/g, '')
+      return `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/confirm-virement-debours?token=${token}`
+    } catch { return null }
+  })()
+
   const html = `<!DOCTYPE html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"></head>
 <body style="margin:0;padding:0;background:#f5f0e8;font-family:Arial,sans-serif">
   <table width="100%" cellpadding="0" cellspacing="0" style="background:#f5f0e8;padding:40px 20px">
@@ -1307,9 +1322,19 @@ export async function envoyerEmailDeboursProprio(facture) {
             </td></tr>
           </table>
 
-          <p style="margin:0;font-size:12px;color:#9C8E7D;line-height:1.6;border-top:1px solid #EDEBE5;padding-top:20px">
+          <p style="margin:0 0 24px;font-size:12px;color:#9C8E7D;line-height:1.6;border-top:1px solid #EDEBE5;padding-top:20px">
             Ce remboursement est distinct de votre reversement de loyer habituel. Il correspond aux débours avancés par Destination Côte Basque pour le compte de l'auto-entrepreneur intervenant sur votre bien.
           </p>
+
+          \${confirmUrl ? `
+          <!-- Bouton confirmation virement -->
+          <table cellpadding="0" cellspacing="0" style="margin:0 auto">
+            <tr><td style="background:#9EB39A;border-radius:6px;padding:14px 32px">
+              <a href="\${confirmUrl}" style="color:#fff;text-decoration:none;font-size:15px;font-weight:bold">✓ Confirmer mon virement →</a>
+            </td></tr>
+          </table>
+          <p style="text-align:center;margin:12px 0 0;font-size:11px;color:#9C8E7D">Cliquez une fois votre virement effectué</p>
+          ` : ''}
         </td></tr>
 
         <!-- Pied de page -->
