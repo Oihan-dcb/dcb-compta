@@ -343,6 +343,51 @@ export async function creerFactureEvoliz(facture) {
  * Envoie toutes les factures validÃÂ©es d'un mois vers Evoliz
  * @param {string} mois - YYYY-MM
  */
+
+/**
+ * Supprime les brouillons Evoliz d un mois et les repousse (pour rafraichir classifications etc.)
+ * Ne touche pas aux factures deja validees/payees dans Evoliz.
+ * @param {string} mois - YYYY-MM
+ */
+export async function refreshFacturesBrouillonsEvoliz(mois) {
+  const { data: factures, error } = await supabase
+    .from('facture_evoliz')
+    .select('id, id_evoliz')
+    .eq('mois', mois)
+    .eq('statut', 'envoye_evoliz')
+    .eq('agence', AGENCE)
+    .not('id_evoliz', 'is', null)
+    .neq('id_evoliz', 'N/A')
+
+  if (error) throw error
+
+  const results = { deleted: 0, skipped: 0, errors: [] }
+
+  for (const f of (factures || [])) {
+    try {
+      // Supprimer le brouillon Evoliz (echoue si deja valide/paye -> on skipe)
+      await evolizCall('deleteInvoice', { invoiceId: f.id_evoliz })
+      // Remettre en 'valide' dans notre DB pour permettre le repush
+      await supabase.from('facture_evoliz')
+        .update({ statut: 'valide', id_evoliz: null, numero_facture: null })
+        .eq('id', f.id)
+      results.deleted++
+    } catch {
+      // Deja valide/paye dans Evoliz ou autre erreur -> ne pas toucher
+      results.skipped++
+    }
+  }
+
+  // Repousser toutes les factures remises en 'valide'
+  if (results.deleted > 0) {
+    const pushResult = await pousserFacturesMoisVersEvoliz(mois)
+    results.pushed = pushResult.pushed
+    results.pushErrors = pushResult.errors
+  }
+
+  return results
+}
+
 export async function pousserFacturesMoisVersEvoliz(mois) {
   const { data: factures, error } = await supabase
     .from('facture_evoliz')

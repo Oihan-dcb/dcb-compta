@@ -9,7 +9,7 @@ import {
   envoyerEmailDeboursProprio,
   envoyerEmailChargesProprio,
 } from '../services/facturesEvoliz'
-import { pousserFacturesMoisVersEvoliz, pingEvoliz, pousserFactureCOMVersEvoliz, syncNumerosEvoliz } from '../services/evoliz'
+import { pousserFacturesMoisVersEvoliz, pingEvoliz, pousserFactureCOMVersEvoliz, syncNumerosEvoliz, refreshFacturesBrouillonsEvoliz } from '../services/evoliz'
 import { formatMontant } from '../lib/hospitable'
 
 const moisCourant = new Date().toISOString().substring(0, 7)
@@ -39,6 +39,7 @@ export default function PageFactures() {
 const [pushing, setPushing] = useState(false)
   const [showConfirmEvoliz, setShowConfirmEvoliz] = useState(false)
   const [pushResult, setPushResult] = useState(null)
+  const [refreshing, setRefreshing] = useState(false)
   const [expanded, setExpanded] = useState(null)
   const [error, setError] = useState(null)
   const [success, setSuccess] = useState(null)
@@ -531,6 +532,21 @@ const [pushing, setPushing] = useState(false)
     }
   }
 
+  async function executerRefreshEvoliz() {
+    setRefreshing(true)
+    setPushResult(null)
+    setError(null)
+    try {
+      const result = await refreshFacturesBrouillonsEvoliz(mois)
+      setPushResult({ pushed: result.pushed ?? 0, errors: result.pushErrors ?? [], refreshed: result.deleted })
+      await charger()
+    } catch (err) {
+      setError(err.message)
+    } finally {
+      setRefreshing(false)
+    }
+  }
+
   const totalTTC = factures.reduce((s, f) => s + (f.total_ttc || 0), 0)
   const totalReversement = factures.reduce((s, f) => s + (f.montant_reversement || 0), 0)
 
@@ -580,10 +596,18 @@ const [pushing, setPushing] = useState(false)
           <button
             className="btn btn-secondary"
             onClick={() => setShowConfirmEvoliz(true)}
-            disabled={pushing || stats?.valides === 0}
+            disabled={pushing || refreshing || stats?.valides === 0}
             title={stats?.valides === 0 ? 'Aucune facture validée à envoyer' : `Envoyer ${stats?.valides} facture(s) validée(s) vers Evoliz`}
           >
             {pushing ? <><span className="spinner" /> Evoliz…</> : '— Pousser vers Evoliz'}
+          </button>
+          <button
+            className="btn btn-secondary"
+            onClick={executerRefreshEvoliz}
+            disabled={refreshing || pushing}
+            title="Supprime les brouillons Evoliz du mois et les repousse (pour mettre à jour classifications, etc.)"
+          >
+            {refreshing ? <><span className="spinner" /> Refresh…</> : '↻ Refresh brouillons Evoliz'}
           </button>
           <button className="btn btn-primary" onClick={generer} disabled={generating}>
             {generating ? <><span className="spinner" /> Génération…</> : '⚡ Générer factures'}
