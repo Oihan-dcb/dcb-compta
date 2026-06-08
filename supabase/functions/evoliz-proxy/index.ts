@@ -337,7 +337,7 @@ serve(async (req) => {
       }
 
       case 'createArticle': {
-        result = await evolizReq('POST', '/items', company, {
+        result = await evolizReq('POST', '/articles', company, {
           reference: payload.reference,
           designation: payload.designation,
           unit_price: payload.unitPrice ?? 0,
@@ -356,7 +356,7 @@ serve(async (req) => {
         if (payload?.per_page) params.set('per_page', String(payload.per_page))
         if (payload?.page) params.set('page', String(payload.page))
         const qs = params.toString() ? `?${params.toString()}` : ''
-        result = await evolizReq('GET', `/items${qs}`, company)
+        result = await evolizReq('GET', `/articles${qs}`, company)
         break
       }
 
