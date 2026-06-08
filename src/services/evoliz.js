@@ -565,19 +565,19 @@ export async function syncNumerosEvoliz(mois) {
 // ============================================================
 
 const ARTICLES_A_CREER = [
-  { reference: 'COM',     designation: 'Commission',                         classifCode: '05', accountId: 8677893 },
-  { reference: 'DIV',     designation: 'Frais divers avancés',               classifCode: '06', accountId: 8677895 },
-  { reference: 'HAOWNER', designation: 'Achats refacturés propriétaires',    classifCode: '07', accountId: 8677896 },
-  { reference: 'HON_ETU', designation: 'Honoraires locations étudiantes',    classifCode: '08', accountId: 8677897 },
-  { reference: 'HON_MOB', designation: 'Honoraires contrats mobilité',       classifCode: '09', accountId: 8677898 },
-  { reference: 'FRAIS',   designation: 'Frais divers propriétaire',           classifCode: '02', accountId: null },
+  { reference: 'COM',     designation: 'Commission',                         classifCode: '05', accountCode: '7063' },
+  { reference: 'DIV',     designation: 'Frais divers avancés',               classifCode: '06', accountCode: '7065' },
+  { reference: 'HAOWNER', designation: 'Achats refacturés propriétaires',    classifCode: '07', accountCode: '7066' },
+  { reference: 'HON_ETU', designation: 'Honoraires locations étudiantes',    classifCode: '08', accountCode: '7067' },
+  { reference: 'HON_MOB', designation: 'Honoraires contrats mobilité',       classifCode: '09', accountCode: '7068' },
+  { reference: 'FRAIS',   designation: 'Frais divers propriétaire',           classifCode: '02', accountCode: null },
 ]
 
 /**
  * Crée les articles manquants dans le catalogue Evoliz.
  * À appeler une seule fois depuis la console ou un bouton de setup.
  */
-export async function creerArticlesManquantsEvoliz() {
+export async function creerArticlesManquantsEvoliz(accountIdOverrides = {}) {
   const [articleIdMap, classifIdMap] = await Promise.all([getArticleIdMap(), getClassificationIdMap()])
   const results = { created: [], skipped: [], errors: [] }
 
@@ -587,13 +587,15 @@ export async function creerArticlesManquantsEvoliz() {
       continue
     }
     const classifId = classifIdMap[art.classifCode]
+    // Résoudre accountId : override dynamique (setup complet) ou valeur statique
+    const accountId = accountIdOverrides[art.accountCode] ?? art.accountId ?? null
     try {
       await evolizCall('createArticle', {
         reference:           art.reference,
         designation:         art.designation,
         unitPrice:           0,
         vatRate:             20,
-        ...(art.accountId ? { accountingAccountId: art.accountId } : {}),
+        ...(accountId ? { accountingAccountId: accountId } : {}),
         ...(classifId ? { classificationId: classifId } : {}),
         nature:              'service',
       })
@@ -617,24 +619,49 @@ export async function creerArticlesManquantsEvoliz() {
 // ============================================================
 
 const CLASSIFICATIONS_A_CREER = [
-  { code: '01', label: 'Gestion location saisonnière (HON)',      accountId: 8677891 },
-  { code: '04', label: 'Forfait ménage (FMEN)',                   accountId: 8677892 },
-  { code: '05', label: 'Commission (COM)',                        accountId: 8677893 },
-  { code: '06', label: 'Frais divers avancés (DIV)',              accountId: 8677895 },
-  { code: '07', label: 'Achats refacturés propriétaires (HAOWNER)', accountId: 8677896 },
-  { code: '08', label: 'Honoraires locations étudiantes (HON_ETU)', accountId: 8677897 },
-  { code: '09', label: 'Honoraires contrats mobilité (HON_MOB)', accountId: 8677898 },
+  { code: '01', label: 'Gestion location saisonnière (HON)',        accountCode: '7061', accountLabel: 'Gestion location saisonnière' },
+  { code: '04', label: 'Forfait ménage (FMEN)',                     accountCode: '7062', accountLabel: 'Forfait ménage' },
+  { code: '05', label: 'Commission (COM)',                          accountCode: '7063', accountLabel: 'Commission' },
+  { code: '06', label: 'Frais divers avancés (DIV)',                accountCode: '7065', accountLabel: 'Frais divers avancés' },
+  { code: '07', label: 'Achats refacturés propriétaires (HAOWNER)', accountCode: '7066', accountLabel: 'Achats refacturés propriétaires' },
+  { code: '08', label: 'Honoraires locations étudiantes (HON_ETU)', accountCode: '7067', accountLabel: 'Honoraires locations étudiantes' },
+  { code: '09', label: 'Honoraires contrats mobilité (HON_MOB)',    accountCode: '7068', accountLabel: 'Honoraires contrats mobilité' },
 ]
 
 export async function setupEvolizComplet() {
-  const results = { classifs: { created: [], skipped: [], errors: [] }, articles: null }
+  const results = { comptes: { created: [], skipped: [], errors: [] }, classifs: { created: [], skipped: [], errors: [] }, articles: null }
 
-  // 1. Créer les classifications manquantes
+  // 1. Créer les comptes comptables si nécessaire et récupérer leurs IDs locaux
+  const accountIdByCode = {}
+  for (const c of CLASSIFICATIONS_A_CREER) {
+    if (!c.accountCode) continue
+    try {
+      const created = await evolizCall('createAccount', { code: c.accountCode, label: c.accountLabel })
+      accountIdByCode[c.accountCode] = created?.accountid
+      results.comptes.created.push(c.accountCode)
+    } catch (err) {
+      if (err.message?.includes('already been taken') || err.message?.includes('already taken') || err.message?.includes('already exists')) {
+        // Compte existant — chercher son ID via getAccounts
+        try {
+          const existing = await evolizCall('getAccounts', { search: c.accountCode })
+          const found = (existing?.data || []).find(a => a.code === c.accountCode)
+          if (found) accountIdByCode[c.accountCode] = found.accountid
+        } catch { /* ignore */ }
+        results.comptes.skipped.push(c.accountCode)
+      } else {
+        results.comptes.errors.push({ code: c.accountCode, error: err.message })
+      }
+    }
+  }
+
+  // 2. Créer les classifications manquantes avec les IDs locaux
+  _classifIdCache = null
   const existingClassifs = await getClassificationIdMap()
   for (const c of CLASSIFICATIONS_A_CREER) {
     if (existingClassifs[c.code]) { results.classifs.skipped.push(c.code); continue }
+    const accountId = c.accountCode ? accountIdByCode[c.accountCode] : null
     try {
-      await evolizCall('createClassification', { code: c.code, label: c.label, accountId: c.accountId })
+      await evolizCall('createClassification', { code: c.code, label: c.label, ...(accountId ? { accountId } : {}) })
       results.classifs.created.push(c.code)
     } catch (err) {
       if (err.message?.includes('already been taken') || err.message?.includes('already taken')) {
@@ -645,11 +672,12 @@ export async function setupEvolizComplet() {
     }
   }
 
-  // Invalider le cache pour charger les nouveaux IDs
+  // Invalider les caches
   _classifIdCache = null
+  _articleIdCache = null
 
-  // 2. Créer les articles manquants
-  results.articles = await creerArticlesManquantsEvoliz()
+  // 3. Créer les articles manquants (avec IDs comptes locaux)
+  results.articles = await creerArticlesManquantsEvoliz(accountIdByCode)
 
   return results
 }
