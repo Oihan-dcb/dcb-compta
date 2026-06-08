@@ -24,7 +24,7 @@ export async function buildComptaMensuelle(mois, bienIds = null) {
   // ── Phase 1 : chargement parallèle ──────────────────────────────────────
   let biensQuery = supabase
     .from('bien')
-    .select('id, code, hospitable_name, listed, proprietaire_id, groupe_facturation, gestion_loyer, proprietaire:proprietaire_id(id, nom, prenom)')
+    .select('id, code, hospitable_name, listed, proprietaire_id, groupe_facturation, gestion_loyer, skip_facturation, proprietaire:proprietaire_id(id, nom, prenom)')
     .eq('agence', AGENCE)
   if (bienIds) biensQuery = biensQuery.in('id', bienIds)
 

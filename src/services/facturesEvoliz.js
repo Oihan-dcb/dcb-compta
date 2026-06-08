@@ -35,7 +35,7 @@ export async function genererFacturesMois(mois) {
       id, nom, prenom, id_evoliz, iban,
       bien!proprietaire_id (
         id, hospitable_name, code, listed, agence,
-        provision_ae_ref, forfait_dcb_ref, has_ae, mode_encaissement, groupe_facturation
+        provision_ae_ref, forfait_dcb_ref, has_ae, mode_encaissement, groupe_facturation, skip_facturation
       )
     `)
     .eq('bien.listed', true)
@@ -88,7 +88,7 @@ export async function genererFacturesMois(mois) {
   if (AGENCE === 'dcb') {
     const { data: proprietairesLauian } = await supabase
       .from('proprietaire')
-      .select(`id, nom, prenom, id_evoliz, iban, bien!proprietaire_id(id, hospitable_name, code, listed, agence, provision_ae_ref, forfait_dcb_ref, has_ae, mode_encaissement, groupe_facturation)`)
+      .select(`id, nom, prenom, id_evoliz, iban, bien!proprietaire_id(id, hospitable_name, code, listed, agence, provision_ae_ref, forfait_dcb_ref, has_ae, mode_encaissement, groupe_facturation, skip_facturation)`)
       .eq('bien.listed', true)
       .eq('bien.agence', 'lauian')
       .eq('actif', true)
@@ -456,6 +456,35 @@ async function genererFactureGroupe(proprio, biens, mois, ctx) {
   const montantReversement = Math.max(0, vir.ht - totalPrestations - haownerTTC - fraisDirectTTCReversement - fraisDeduitTotal - deboursPropAbsorbTotal - ownerStayAbsorbTotal - autoAbsorbableTotal) + remboursementsTotal
 
   // Cas solde nÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂ©gatif : uniquement des expenses, pas de rÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂ©servations
+
+  // ── skip_facturation : biens internes (ex: biens persos du gérant) ──────────
+  // DCB finance tout, 0 charges à facturer. Si resas directes → facture 0€ avec reversement uniquement.
+  const allSkipFacturation = biens.every(b => b.skip_facturation)
+  if (allSkipFacturation) {
+    const existingSkip = ctx.facturesExistantes.get(`${proprio.id}__${bienId ?? 'null'}__honoraires`) ?? null
+    if (existingSkip && ['envoye_evoliz', 'payee'].includes(existingSkip.statut)) return { created: false, skipped: true }
+    if (montantReversement === 0) {
+      if (existingSkip && existingSkip.statut === 'brouillon') {
+        await supabase.from('facture_evoliz_ligne').delete().eq('facture_id', existingSkip.id)
+        await supabase.from('facture_evoliz').delete().eq('id', existingSkip.id)
+      }
+      return { skipped: true }
+    }
+    const skipData = { mois, agence: AGENCE, proprietaire_id: proprio.id, bien_id: bienId,
+      type_facture: 'honoraires', total_ht: 0, total_tva: 0, total_ttc: 0,
+      montant_reversement: montantReversement, statut: 'brouillon', solde_negatif: false }
+    let skipFactureId
+    if (existingSkip) {
+      await supabase.from('facture_evoliz').update(skipData).eq('id', existingSkip.id)
+      skipFactureId = existingSkip.id
+    } else {
+      const { data: nf, error } = await supabase.from('facture_evoliz').insert(skipData).select('id').single()
+      if (error) throw error
+      skipFactureId = nf.id
+    }
+    await supabase.from('facture_evoliz_ligne').delete().eq('facture_id', skipFactureId)
+    return { created: !existingSkip, factureId: skipFactureId, totalHT: 0, totalTTC: 0, resteAPayer: 0 }
+  }
   const soldeNegatif = totalHT === 0 && div.ht > 0
 
   // VÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂ©rifier si facture existante
@@ -789,6 +818,9 @@ async function genererFactureDebours(proprio, biens, mois, ctx) {
 
   const bienIds = biens.map(function(b) { return b.id })
   const bienId = biens.length === 1 ? biens[0].id : null
+
+  // skip_facturation : pas de DEB_AE pour les biens internes (charge DCB absorbée)
+  if (biens.every(b => b.skip_facturation)) return null
 
   // Données lues depuis le contexte préchargé (pas de requêtes Supabase ici)
   const ventilAuto = ctx.ventilationGlobale.filter(
