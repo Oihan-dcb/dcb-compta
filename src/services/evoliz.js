@@ -287,6 +287,7 @@ export async function pousserFacturesMoisVersEvoliz(mois) {
     `)
     .eq('mois', mois)
     .eq('statut', 'valide')
+    .eq('agence', AGENCE)
 
   if (error) throw error
 
