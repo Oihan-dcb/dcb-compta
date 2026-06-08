@@ -596,7 +596,11 @@ export async function creerArticlesManquantsEvoliz() {
       })
       results.created.push(art.reference)
     } catch (err) {
-      results.errors.push({ reference: art.reference, error: err.message })
+      if (err.message?.includes('already been taken') || err.message?.includes('already taken')) {
+        results.skipped.push(art.reference)
+      } else {
+        results.errors.push({ reference: art.reference, error: err.message })
+      }
     }
   }
 
