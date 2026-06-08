@@ -188,8 +188,17 @@ export async function creerFactureEvoliz(facture) {
     .eq('id', facture.id)
     .eq('statut', 'valide')
 
-  const proprio = facture.proprietaire
-  if (!proprio) throw new Error('PropriÃÂ©taire manquant dans la facture')
+  // Le join peut échouer si le proprio est d'une autre agence (RLS) → fallback direct
+  let proprio = facture.proprietaire
+  if (!proprio && facture.proprietaire_id) {
+    const { data: p } = await supabase
+      .from('proprietaire')
+      .select('id, nom, prenom, id_evoliz, adresse, ville, code_postal, telephone, agence')
+      .eq('id', facture.proprietaire_id)
+      .maybeSingle()
+    proprio = p
+  }
+  if (!proprio) throw new Error(`Propriétaire manquant — facture ${facture.id} (proprietaire_id=${facture.proprietaire_id})`)
 
   // 1. S'assurer que le client existe dans Evoliz
   // Si le proprio est d'une autre agence (ex: proprio Lauian avec facture DCB pour FMEN),
