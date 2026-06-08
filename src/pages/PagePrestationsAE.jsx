@@ -101,9 +101,10 @@ export default function PagePrestationsAE() {
     if (moisBloque) { setError('🔒 Mois clôturé (Facturation) — validation impossible.'); return }
     setSaving(true)
     try {
-      await supabase.from('prestation_hors_forfait')
+      const { error } = await supabase.from('prestation_hors_forfait')
         .update({ statut: 'valide', valide_par: 'DCB', valide_at: new Date().toISOString() })
         .eq('id', id)
+      if (error) throw error
       setSuccess('Prestation validée ✓')
       await charger()
       setTimeout(() => setSuccess(null), 2000)
@@ -119,9 +120,10 @@ export default function PagePrestationsAE() {
         setConfirmModal(null)
         setSaving(true)
         try {
-          await supabase.from('prestation_hors_forfait')
+          const { error } = await supabase.from('prestation_hors_forfait')
             .update({ statut: 'annule', valide_par: 'DCB', valide_at: new Date().toISOString() })
             .eq('id', id)
+          if (error) throw error
           setSuccess('Prestation annulée')
           await charger()
           setTimeout(() => setSuccess(null), 2000)
