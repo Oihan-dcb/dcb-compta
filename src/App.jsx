@@ -135,15 +135,15 @@ function LoginScreen() {
             <input
               type="text"
               inputMode="numeric"
-              placeholder="Code à 6 chiffres"
+              placeholder="Code à 8 chiffres"
               value={code}
-              onChange={e => setCode(e.target.value.replace(/\D/g, '').slice(0, 6))}
+              onChange={e => setCode(e.target.value.replace(/\D/g, '').slice(0, 8))}
               required
               autoFocus
               style={{ ...inp, fontSize: 22, letterSpacing: 6, textAlign: 'center', fontWeight: 700 }}
             />
             {error && <div style={{ fontSize: 12, color: '#ef4444', background: '#fef2f2', padding: '8px 10px', borderRadius: 6 }}>{error}</div>}
-            <button type="submit" disabled={loading || code.length < 6}
+            <button type="submit" disabled={loading || code.length < 8}
               style={{ padding: '11px', background: '#CC9933', color: '#fff', border: 'none', borderRadius: 8, fontWeight: 700, fontSize: 14, cursor: (loading || code.length < 6) ? 'not-allowed' : 'pointer', opacity: (loading || code.length < 6) ? 0.7 : 1 }}>
               {loading ? 'Vérification…' : 'Connexion'}
             </button>
