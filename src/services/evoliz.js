@@ -25,6 +25,8 @@ const CLASSIFICATION_CODE_MAP = {
   HAOWNER: '07', // Achats refacturés propriétaires
   HON_ETU: '08', // Honoraires locations étudiantes
   HON_MOB: '09', // Honoraires contrats mobilité
+  FRAIS:   '02', // Produits des activités annexes
+  DEBP:    '02', // Produits des activités annexes (débours proprio)
 }
 
 // Cache des IDs numériques classifications (code "01" → id numérique Evoliz)
@@ -568,6 +570,7 @@ const ARTICLES_A_CREER = [
   { reference: 'HAOWNER', designation: 'Achats refacturés propriétaires',    classifCode: '07', accountId: 8677896 },
   { reference: 'HON_ETU', designation: 'Honoraires locations étudiantes',    classifCode: '08', accountId: 8677897 },
   { reference: 'HON_MOB', designation: 'Honoraires contrats mobilité',       classifCode: '09', accountId: 8677898 },
+  { reference: 'FRAIS',   designation: 'Frais divers propriétaire',           classifCode: '02', accountId: null },
 ]
 
 /**
@@ -590,7 +593,7 @@ export async function creerArticlesManquantsEvoliz() {
         designation:         art.designation,
         unitPrice:           0,
         vatRate:             20,
-        accountingAccountId: art.accountId,
+        ...(art.accountId ? { accountingAccountId: art.accountId } : {}),
         ...(classifId ? { classificationId: classifId } : {}),
         nature:              'service',
       })
