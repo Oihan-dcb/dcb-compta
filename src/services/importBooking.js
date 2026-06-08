@@ -51,6 +51,77 @@ function parseDate(s) {
 }
 
 /**
+ * Détecte si le CSV est le nouveau format "par payout" (Finance > Payouts > détail).
+ * Critère : présence d'une colonne "Payout ID" dans les en-têtes.
+ * Ce format contient guest_name, tourism_tax, service_fee et payout_id.
+ */
+function isNewPayoutFormat(headers) {
+  return headers.some(h => h.toLowerCase().replace(/\s/g, '') === 'payoutid')
+}
+
+/**
+ * Parse le nouveau format CSV Booking.com (Finance > Payouts > détail par payout).
+ * En-têtes : Type, Booking number, Check-in, Checkout, Guest name, Reservation status,
+ *            Currency, Payment status, Tourism tax, Amount, Commission,
+ *            Payments Service Fee, Net, Payout date, Payout ID
+ * Toutes les lignes sont de type "Reservation" (pas de ligne "Payout" résumé).
+ * Retourne rowsByPayoutDate avec payout_id, guest_name, tourism_tax_cents, service_fee_cents.
+ */
+function parseBookingPayoutDetailCSV(lines, sep, headers) {
+  const colIdx = (name) => headers.findIndex(h => h.toLowerCase().includes(name.toLowerCase()))
+
+  const iType        = colIdx('Type')
+  const iBookingNum  = colIdx('Booking number')
+  const iCheckin     = colIdx('Check-in')
+  const iCheckout    = colIdx('Checkout')
+  const iGuestName   = colIdx('Guest name')
+  const iStatus      = colIdx('Reservation status')
+  const iTourismTax  = colIdx('Tourism tax')
+  const iAmount      = colIdx('Amount')       // montant brut
+  const iComm        = colIdx('Commission')
+  const iServiceFee  = colIdx('Payments Service Fee')
+  const iNet         = colIdx('Net')          // montant net = amount_cents
+  const iPayoutDate  = colIdx('Payout date')
+  const iPayoutId    = colIdx('Payout ID')
+
+  if (iPayoutDate < 0) throw new Error('Colonne "Payout date" introuvable')
+  if (iNet < 0)        throw new Error('Colonne "Net" introuvable')
+  if (iBookingNum < 0) throw new Error('Colonne "Booking number" introuvable')
+
+  const rowsByPayoutDate = {}
+  for (let i = 1; i < lines.length; i++) {
+    const cols = parseCSVLine(lines[i], sep)
+    const rowType = iType >= 0 ? (cols[iType] || '').toLowerCase() : 'reservation'
+    if (!rowType.includes('reservation')) continue
+
+    const pdate    = parseDate(cols[iPayoutDate] || '')
+    if (!pdate) continue
+    const ref      = cols[iBookingNum] ? cols[iBookingNum].trim() || null : null
+    const payoutId = iPayoutId >= 0 && cols[iPayoutId] ? cols[iPayoutId].trim() || null : null
+    const status   = iStatus >= 0 && cols[iStatus] && cols[iStatus] !== '-' ? cols[iStatus] : null
+
+    if (!rowsByPayoutDate[pdate]) rowsByPayoutDate[pdate] = []
+    rowsByPayoutDate[pdate].push({
+      payout_date:        pdate,
+      payout_id:          payoutId,
+      booking_ref:        ref,
+      checkin:            parseDate(cols[iCheckin]    || ''),
+      checkout:           parseDate(cols[iCheckout]   || ''),
+      property_name:      null,   // absent de ce format
+      property_id:        null,
+      guest_name:         iGuestName >= 0 ? (cols[iGuestName] || null) : null,
+      amount_cents:       Math.round(parseFloat2(cols[iNet]        || '0') * 100),
+      gross_cents:        Math.round(parseFloat2(cols[iAmount]     || '0') * 100),
+      commission_cents:   Math.round(Math.abs(parseFloat2(cols[iComm]       || '0')) * 100),
+      tourism_tax_cents:  Math.round(Math.abs(parseFloat2(iTourismTax >= 0 ? cols[iTourismTax] || '0' : '0')) * 100),
+      service_fee_cents:  Math.round(Math.abs(parseFloat2(iServiceFee >= 0 ? cols[iServiceFee] || '0' : '0')) * 100),
+      reservation_status: status,
+    })
+  }
+  return rowsByPayoutDate
+}
+
+/**
  * Parse le CSV Booking.com et retourne les lignes groupees par payout_date
  */
 export function parseBookingCSV(text) {
@@ -60,6 +131,11 @@ export function parseBookingCSV(text) {
   // Booking.com exporte parfois en TSV (onglets) malgré l'extension .csv
   const sep = lines[0].includes('\t') ? '\t' : lines[0].includes(';') ? ';' : ','
   const headers = parseCSVLine(lines[0], sep)
+
+  // Nouveau format "par payout" — déléguer au parser dédié
+  if (isNewPayoutFormat(headers)) {
+    return parseBookingPayoutDetailCSV(lines, sep, headers)
+  }
 
   const colIdx = (name) => headers.findIndex(h => h.toLowerCase().includes(name.toLowerCase()))
   const col = (fr, en) => { const i = colIdx(fr); return i >= 0 ? i : colIdx(en) }
@@ -121,14 +197,18 @@ export function parseBookingCSV(text) {
     if (!rowsByPayoutDate[pdate]) rowsByPayoutDate[pdate] = []
     rowsByPayoutDate[pdate].push({
       payout_date:        pdate,
+      payout_id:          null,
       booking_ref:        ref,
       checkin:            parseDate(cols[iCheckin]  || ''),
       checkout:           parseDate(cols[iCheckout] || ''),
       property_name:      cols[iProp]   || null,
       property_id:        cols[iPropId] || null,
+      guest_name:         null,
       amount_cents:       Math.round(parseFloat2(cols[iAmount] || '0') * 100),
       gross_cents:        Math.round(parseFloat2(cols[iGross]  || '0') * 100),
       commission_cents:   Math.round(parseFloat2(cols[iComm]   || '0') * 100),
+      tourism_tax_cents:  0,
+      service_fee_cents:  0,
       reservation_status: status,
     })
   }
@@ -164,7 +244,7 @@ export async function importBookingCSV(csvText) {
 
     const { data: mouvs } = await supabase
       .from('mouvement_bancaire')
-      .select('id, credit, date_operation, statut_matching')
+      .select('id, credit, date_operation, statut_matching, libelle, detail')
       .eq('canal', 'booking')
       .gte('date_operation', dateMin)
       .lte('date_operation', dateMaxStr)
@@ -180,15 +260,28 @@ export async function importBookingCSV(csvText) {
       const rows = rowsByPayoutDate[pdate]
       const pdateMs = new Date(pdate).getTime()
 
-      const mouv = mouvs?.find(m => {
-        if (usedMouvIds.has(m.id)) return false
-        const diff = (new Date(m.date_operation).getTime() - pdateMs) / 86400000
-        return diff >= 0 && diff <= 5
-      })
+      // Nouveau format : match exact via Payout ID extrait du libellé bancaire (NO.{payout_id})
+      const firstPayoutId = rows.find(r => r.payout_id)?.payout_id
+      let mouv = null
+      if (firstPayoutId) {
+        mouv = mouvs?.find(m => {
+          if (usedMouvIds.has(m.id)) return false
+          const lib = ((m.libelle || '') + ' ' + (m.detail || '')).toUpperCase()
+          return lib.includes('NO.' + firstPayoutId.toUpperCase())
+        })
+      }
+      // Fallback : match par date (anciens fichiers ou payout_id absent)
+      if (!mouv) {
+        mouv = mouvs?.find(m => {
+          if (usedMouvIds.has(m.id)) return false
+          const diff = (new Date(m.date_operation).getTime() - pdateMs) / 86400000
+          return diff >= 0 && diff <= 5
+        })
+      }
 
       if (!mouv) {
         // Stocker les lignes sans mouvement bancaire (payout futur ou relevé non importé)
-        const orphans = rows.filter(r => r.booking_ref).map(r => ({ ...r, mouvement_id: null, guest_name: null }))
+        const orphans = rows.filter(r => r.booking_ref).map(r => ({ ...r, mouvement_id: null }))
         if (orphans.length) {
           await supabase
             .from('booking_payout_line')
@@ -214,7 +307,7 @@ export async function importBookingCSV(csvText) {
           .is('mouvement_id', null)
       }
 
-      const toInsert = rows.map(r => ({ ...r, mouvement_id: mouv.id, guest_name: null }))
+      const toInsert = rows.map(r => ({ ...r, mouvement_id: mouv.id }))
 
       const { error } = await supabase
         .from('booking_payout_line')
@@ -234,8 +327,11 @@ export async function importBookingCSV(csvText) {
 
       const nbResas = rows.filter(r => r.booking_ref).length
       const totalComm = rows.reduce((s, r) => s + Math.abs(r.commission_cents), 0)
+      const totalTax  = rows.reduce((s, r) => s + (r.tourism_tax_cents || 0), 0)
       const props = [...new Set(rows.filter(r => r.property_name).map(r => r.property_name))]
-      const detail = 'Booking | ' + nbResas + ' resa(s) | commission: ' + (totalComm / 100).toFixed(2) + String.fromCharCode(8364) + (props.length ? ' | ' + props.slice(0, 2).join(', ') : '')
+      const pidSuffix = firstPayoutId ? ' | ref: ' + firstPayoutId : ''
+      const taxSuffix = totalTax > 0 ? ' | taxe séjour: ' + (totalTax / 100).toFixed(2) + String.fromCharCode(8364) : ''
+      const detail = 'Booking | ' + nbResas + ' resa(s) | commission: ' + (totalComm / 100).toFixed(2) + String.fromCharCode(8364) + taxSuffix + (props.length ? ' | ' + props.slice(0, 2).join(', ') : '') + pidSuffix
 
       await supabase
         .from('mouvement_bancaire')
