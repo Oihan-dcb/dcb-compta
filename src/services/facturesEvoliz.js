@@ -1269,22 +1269,16 @@ export async function envoyerEmailDeboursProprio(facture) {
   <table width="100%" cellpadding="0" cellspacing="0" style="background:#f5f0e8;padding:40px 20px">
     <tr><td align="center">
       <table width="600" cellpadding="0" cellspacing="0" style="background:#fff;border-radius:10px;overflow:hidden;max-width:600px;width:100%;box-shadow:0 2px 12px rgba(44,36,22,0.08)">
-
-        <!-- En-tête or -->
         <tr><td style="background:#CC9933;padding:30px 40px;text-align:center">
           <p style="margin:0;color:#fff;font-size:11px;letter-spacing:2px;text-transform:uppercase;opacity:0.85">Destination Côte Basque</p>
           <p style="margin:8px 0 0;color:#fff;font-size:20px;font-weight:bold;letter-spacing:0.3px">Remboursement débours AE</p>
           <p style="margin:6px 0 0;color:rgba(255,255,255,0.75);font-size:13px">${bienNom} · ${moisLabel}</p>
         </td></tr>
-
-        <!-- Corps -->
         <tr><td style="padding:36px 40px">
           <p style="margin:0 0 20px;font-size:15px;color:#2C2416">Bonjour ${prenom},</p>
           <p style="margin:0 0 28px;font-size:14px;color:#666;line-height:1.7">
             Dans le cadre de la gestion de votre bien <strong style="color:#2C2416">${bienNom}</strong>, Destination Côte Basque a avancé pour votre compte les honoraires de l'auto-entrepreneur pour le mois de <strong style="color:#2C2416">${moisLabel}</strong>.
           </p>
-
-          <!-- Montant mis en avant -->
           <table cellpadding="0" cellspacing="0" width="100%" style="margin:0 0 28px">
             <tr>
               <td style="background:#FBF5E6;border:1.5px solid #CC9933;border-radius:8px;padding:20px 28px;text-align:center">
@@ -1294,8 +1288,6 @@ export async function envoyerEmailDeboursProprio(facture) {
               </td>
             </tr>
           </table>
-
-          <!-- Instructions virement -->
           <p style="margin:0 0 14px;font-size:14px;font-weight:600;color:#2C2416">Merci d'effectuer un virement depuis votre compte séquestre :</p>
           <table cellpadding="0" cellspacing="0" width="100%" style="margin:0 0 28px;background:#f9f6f0;border-radius:8px;overflow:hidden">
             <tr><td style="padding:20px 24px">
@@ -1327,7 +1319,6 @@ export async function envoyerEmailDeboursProprio(facture) {
           </p>
 
           \${confirmUrl ? `
-          <!-- Bouton confirmation virement -->
           <table cellpadding="0" cellspacing="0" style="margin:0 auto">
             <tr><td style="background:#9EB39A;border-radius:6px;padding:14px 32px">
               <a href="\${confirmUrl}" style="color:#fff;text-decoration:none;font-size:15px;font-weight:bold">✓ Confirmer mon virement →</a>
@@ -1336,8 +1327,6 @@ export async function envoyerEmailDeboursProprio(facture) {
           <p style="text-align:center;margin:12px 0 0;font-size:11px;color:#9C8E7D">Cliquez une fois votre virement effectué</p>
           ` : ''}
         </td></tr>
-
-        <!-- Pied de page -->
         <tr><td style="background:#f9f6f0;border-top:2px solid #CC9933;padding:18px 40px;text-align:center">
           <p style="margin:0;font-size:11px;color:#9C8E7D">Destination Côte Basque SARL · RCS Bayonne 904 781 671 · 6 allée des Chênes, 64200 Biarritz</p>
         </td></tr>
@@ -1418,22 +1407,16 @@ export async function envoyerEmailChargesProprio(facture) {
   <table width="100%" cellpadding="0" cellspacing="0" style="background:#f5f0e8;padding:40px 20px">
     <tr><td align="center">
       <table width="600" cellpadding="0" cellspacing="0" style="background:#fff;border-radius:10px;overflow:hidden;max-width:600px;width:100%;box-shadow:0 2px 12px rgba(44,36,22,0.08)">
-
-        <!-- En-tête or -->
         <tr><td style="background:#CC9933;padding:30px 40px;text-align:center">
           <p style="margin:0;color:#fff;font-size:11px;letter-spacing:2px;text-transform:uppercase;opacity:0.85">Destination Côte Basque</p>
           <p style="margin:8px 0 0;color:#fff;font-size:20px;font-weight:bold;letter-spacing:0.3px">Récapitulatif de charges</p>
           <p style="margin:6px 0 0;color:rgba(255,255,255,0.75);font-size:13px">${bienNom} · ${moisLabel}</p>
         </td></tr>
-
-        <!-- Corps -->
         <tr><td style="padding:36px 40px">
           <p style="margin:0 0 20px;font-size:15px;color:#2C2416">Bonjour ${prenom},</p>
           <p style="margin:0 0 28px;font-size:14px;color:#666;line-height:1.7">
             Voici le récapitulatif des charges de gestion pour votre bien <strong style="color:#2C2416">${bienNom}</strong> au titre du mois de <strong style="color:#2C2416">${moisLabel}</strong>.
           </p>
-
-          <!-- Tableau des lignes -->
           <table cellpadding="0" cellspacing="0" width="100%" style="margin:0 0 20px;border:1px solid #EDEBE5;border-radius:8px;overflow:hidden">
             <thead>
               <tr style="background:#f9f6f0">
@@ -1454,8 +1437,6 @@ export async function envoyerEmailChargesProprio(facture) {
             Pour toute question concernant ce récapitulatif ou pour convenir des modalités de règlement, n'hésitez pas à contacter Oïhan directement.
           </p>
         </td></tr>
-
-        <!-- Pied de page -->
         <tr><td style="background:#f9f6f0;border-top:2px solid #CC9933;padding:18px 40px;text-align:center">
           <p style="margin:0;font-size:11px;color:#9C8E7D">Destination Côte Basque SARL · RCS Bayonne 904 781 671 · 6 allée des Chênes, 64200 Biarritz</p>
         </td></tr>
