@@ -487,7 +487,10 @@ export async function pousserFactureCOMVersEvoliz(factureId, totals, mois) {
     if (!clients.length) throw new Error('Client CLI-RESA-WEB-DCB introuvable dans Evoliz — vérifier le nom exact.')
     const clientId = clients[0].clientid
 
-    // 2. Créer la facture
+    // 2. Créer la facture (avec articleId et classificationId pour la classification Evoliz)
+    const [articleIdMap, classifIdMap] = await Promise.all([getArticleIdMap(), getClassificationIdMap()])
+    const comArticleId = articleIdMap['COM']
+    const comClassifId = classifIdMap[CLASSIFICATION_CODE_MAP['COM']]
     const createdInvoice = await evolizCall('createInvoice', {
       clientId: parseInt(clientId),
       documentdate: new Date().toISOString().substring(0, 10),
@@ -501,6 +504,8 @@ export async function pousserFactureCOMVersEvoliz(factureId, totals, mois) {
         unitPrice: totals.ht / 100,
         vatRate: 20,
         accountingAccountId: 8677893, // 7063 — Commission
+        ...(comArticleId ? { articleId: comArticleId } : {}),
+        ...(comClassifId ? { classificationId: comClassifId } : {}),
       }],
     })
 
