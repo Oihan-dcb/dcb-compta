@@ -232,6 +232,8 @@ serve(async (req) => {
             unit_price: l.unitPrice,     // En euros (pas en centimes)
             vat_rate: l.vatRate ?? 20,
             accountingaccountid: l.accountingAccountId || undefined,
+            // itemid : lie la ligne à l'article catalogue → hérite la Classification vente
+            ...(l.itemId ? { itemid: l.itemId } : {}),
             // vatExemption : article d'exonération TVA — obligatoire août 2026 si taux=0
             ...(l.vatExemption ? { vat_exemption: l.vatExemption } : {}),
           })),
@@ -320,6 +322,17 @@ serve(async (req) => {
         if (payload?.search) params.set('search', payload.search)
         const qs = params.toString() ? `?${params.toString()}` : ''
         result = await evolizReq('GET', `/accounts${qs}`, company)
+        break
+      }
+
+      case 'listArticles': {
+        // Articles du catalogue Evoliz (pour récupérer les itemid par référence)
+        const params = new URLSearchParams()
+        if (payload?.search) params.set('search', payload.search)
+        if (payload?.per_page) params.set('per_page', String(payload.per_page))
+        if (payload?.page) params.set('page', String(payload.page))
+        const qs = params.toString() ? `?${params.toString()}` : ''
+        result = await evolizReq('GET', `/items${qs}`, company)
         break
       }
 

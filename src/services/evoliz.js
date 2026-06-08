@@ -16,6 +16,23 @@ import { AGENCE } from '../lib/agence'
 
 const COMPANY_ID = import.meta.env.VITE_EVOLIZ_COMPANY_ID // ex: "12345"
 
+// Cache des IDs articles catalogue Evoliz (référence → itemid)
+let _articleIdCache = null
+async function getArticleIdMap() {
+  if (_articleIdCache) return _articleIdCache
+  try {
+    const result = await evolizCall('listArticles', { per_page: 100 })
+    const items = result?.data || []
+    _articleIdCache = {}
+    for (const item of items) {
+      if (item.reference) _articleIdCache[item.reference.trim()] = item.itemid
+    }
+  } catch {
+    _articleIdCache = {}
+  }
+  return _articleIdCache
+}
+
 // Cache des IDs de comptes bancaires Evoliz (lus depuis agency_config au 1er appel)
 let _agencyBankIds = null
 async function getAgencyBankIds() {
@@ -182,6 +199,9 @@ export async function creerFactureEvoliz(facture) {
     HON_MOB: 8677898, // 7068 — Honoraires contrats mobilité
     DEB_AE:  8629957, // 467  — Débours AE (compte séquestre)
   }
+  // Charger le map article catalogue (référence → itemid) pour hériter la Classification Evoliz
+  const articleIdMap = await getArticleIdMap()
+
   const lignes = (facture.facture_evoliz_ligne || [])
     .sort((a, b) => a.ordre - b.ordre)
     .filter(l => l.montant_ht !== 0 && !CODES_MEMO.includes(l.code) && (isDebours || l.code !== 'DEB_AE'))
@@ -196,6 +216,8 @@ export async function creerFactureEvoliz(facture) {
         unitPrice: Math.abs(htCentimes) / 100,
         vatRate: l.taux_tva ?? 20,
         ...(ACCOUNT_MAP[l.code] ? { accountingAccountId: ACCOUNT_MAP[l.code] } : {}),
+        // Lier l'article catalogue pour hériter la Classification vente Evoliz
+        ...(articleIdMap[l.code] ? { itemId: articleIdMap[l.code] } : {}),
         // Article d'exonération TVA pour débours (art. 267-II-2° CGI) — obligatoire août 2026
         ...(l.code === 'DEB_AE' ? { vatExemption: 'AE267-2' } : {}),
       }
