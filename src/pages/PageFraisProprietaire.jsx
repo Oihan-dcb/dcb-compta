@@ -69,8 +69,8 @@ export default function PageFraisProprietaire() {
   async function chargerBiens() {
     const { data } = await supabase
       .from('bien')
-      .select('id, code, hospitable_name, proprietaire_id, proprietaire!proprietaire_id (id, nom, prenom)')
-      .eq('agence', AGENCE)
+      .select('id, code, hospitable_name, agence, proprietaire_id, proprietaire!proprietaire_id (id, nom, prenom)')
+      .in('agence', ['dcb', 'lauian'])
       .eq('listed', true)
       .order('code')
     setBiens(data || [])
@@ -85,7 +85,7 @@ export default function PageFraisProprietaire() {
 
       const { data, error: err } = await supabase
         .from('frais_proprietaire')
-        .select('*, bien (id, code, hospitable_name), proprietaire (id, nom, prenom)')
+        .select('*, bien (id, code, hospitable_name, agence), proprietaire (id, nom, prenom)')
         .gte('date', `${mois}-01`)
         .lt('date', `${moisSuivant}-01`)
         .order('date')
@@ -278,7 +278,14 @@ export default function PageFraisProprietaire() {
                   : '—'
                 return (
                   <tr key={f.id}>
-                    <td>{f.bien?.code || '—'}</td>
+                    <td>
+                      {f.bien?.code || '—'}
+                      {f.bien?.agence && f.bien.agence !== AGENCE && (
+                        <span style={{ marginLeft: 5, fontSize: 11, fontWeight: 600, color: '#6B7A2E', background: '#F0F2E6', borderRadius: 4, padding: '1px 5px' }}>
+                          {f.bien.agence.toUpperCase()}
+                        </span>
+                      )}
+                    </td>
                     <td style={{ color: 'var(--text-muted)', fontSize: 13 }}>{proprio}</td>
                     <td style={{ whiteSpace: 'nowrap' }}>{f.date}</td>
                     <td>{f.libelle}</td>
@@ -360,7 +367,7 @@ export default function PageFraisProprietaire() {
                     onChange={e => setFormEdit(f => ({ ...f, bien_id: e.target.value }))}>
                     <option value="">— Sélectionner un bien —</option>
                     {biens.map(b => (
-                      <option key={b.id} value={b.id}>{b.code} — {b.hospitable_name}</option>
+                      <option key={b.id} value={b.id}>{b.agence !== AGENCE ? `[${b.agence.toUpperCase()}] ` : ''}{b.code} — {b.hospitable_name}</option>
                     ))}
                   </select>
                 </div>
@@ -448,7 +455,7 @@ export default function PageFraisProprietaire() {
                     onChange={e => setForm(f => ({ ...f, bien_id: e.target.value }))}>
                     <option value="">— Sélectionner un bien —</option>
                     {biens.map(b => (
-                      <option key={b.id} value={b.id}>{b.code} — {b.hospitable_name}</option>
+                      <option key={b.id} value={b.id}>{b.agence !== AGENCE ? `[${b.agence.toUpperCase()}] ` : ''}{b.code} — {b.hospitable_name}</option>
                     ))}
                   </select>
                 </div>
