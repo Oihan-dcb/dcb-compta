@@ -294,7 +294,7 @@ export async function pousserFacturesMoisVersEvoliz(mois) {
     .from('facture_evoliz')
     .select(`
       *,
-      proprietaire (id, nom, prenom, email, adresse, ville, code_postal, telephone, iban, id_evoliz),
+      proprietaire (id, nom, prenom, email, adresse, ville, code_postal, telephone, iban, id_evoliz, agence),
       bien (hospitable_name),
       facture_evoliz_ligne (*)
     `)
