@@ -16,6 +16,34 @@ import { AGENCE } from '../lib/agence'
 
 const COMPANY_ID = import.meta.env.VITE_EVOLIZ_COMPANY_ID // ex: "12345"
 
+// Mapping code DCB → code classification Evoliz (colonne "Code" dans l'UI)
+const CLASSIFICATION_CODE_MAP = {
+  HON:     '01', // Gestion location saisonnière
+  FMEN:    '04', // Forfait ménage
+  COM:     '05', // Commission
+  DIV:     '06', // Frais divers avancés
+  HAOWNER: '07', // Achats refacturés propriétaires
+  HON_ETU: '08', // Honoraires locations étudiantes
+  HON_MOB: '09', // Honoraires contrats mobilité
+}
+
+// Cache des IDs numériques classifications (code "01" → id numérique Evoliz)
+let _classifIdCache = null
+async function getClassificationIdMap() {
+  if (_classifIdCache) return _classifIdCache
+  try {
+    const result = await evolizCall('listClassifications', { per_page: 50 })
+    const items = result?.data || []
+    _classifIdCache = {}
+    for (const c of items) {
+      if (c.code != null) _classifIdCache[String(c.code).padStart(2, '0')] = c.saleclassificationid ?? c.id
+    }
+  } catch {
+    _classifIdCache = {}
+  }
+  return _classifIdCache
+}
+
 // Cache des IDs articles catalogue Evoliz (référence → itemid)
 let _articleIdCache = null
 async function getArticleIdMap() {
@@ -199,8 +227,8 @@ export async function creerFactureEvoliz(facture) {
     HON_MOB: 8677898, // 7068 — Honoraires contrats mobilité
     DEB_AE:  8629957, // 467  — Débours AE (compte séquestre)
   }
-  // Charger le map article catalogue (référence → itemid) pour hériter la Classification Evoliz
-  const articleIdMap = await getArticleIdMap()
+  // Charger les maps catalogue et classifications en parallèle
+  const [articleIdMap, classifIdMap] = await Promise.all([getArticleIdMap(), getClassificationIdMap()])
 
   const lignes = (facture.facture_evoliz_ligne || [])
     .sort((a, b) => a.ordre - b.ordre)
@@ -218,6 +246,10 @@ export async function creerFactureEvoliz(facture) {
         ...(ACCOUNT_MAP[l.code] ? { accountingAccountId: ACCOUNT_MAP[l.code] } : {}),
         // Lier l'article catalogue pour hériter la Classification vente Evoliz
         ...(articleIdMap[l.code] ? { itemId: articleIdMap[l.code] } : {}),
+        // Classification vente directe (au cas où itemid ne suffit pas)
+        ...(CLASSIFICATION_CODE_MAP[l.code] && classifIdMap[CLASSIFICATION_CODE_MAP[l.code]]
+          ? { classificationId: classifIdMap[CLASSIFICATION_CODE_MAP[l.code]] }
+          : {}),
         // Article d'exonération TVA pour débours (art. 267-II-2° CGI) — obligatoire août 2026
         ...(l.code === 'DEB_AE' ? { vatExemption: 'AE267-2' } : {}),
       }

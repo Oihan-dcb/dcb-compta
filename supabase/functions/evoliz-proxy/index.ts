@@ -234,6 +234,8 @@ serve(async (req) => {
             accountingaccountid: l.accountingAccountId || undefined,
             // itemid : lie la ligne à l'article catalogue → hérite la Classification vente
             ...(l.itemId ? { itemid: l.itemId } : {}),
+            // classificationid direct (fallback si itemid ne transmet pas la classification)
+            ...(l.classificationId ? { classificationid: l.classificationId } : {}),
             // vatExemption : article d'exonération TVA — obligatoire août 2026 si taux=0
             ...(l.vatExemption ? { vat_exemption: l.vatExemption } : {}),
           })),
@@ -322,6 +324,15 @@ serve(async (req) => {
         if (payload?.search) params.set('search', payload.search)
         const qs = params.toString() ? `?${params.toString()}` : ''
         result = await evolizReq('GET', `/accounts${qs}`, company)
+        break
+      }
+
+      case 'listClassifications': {
+        // Classifications de vente Evoliz (Paramètres > Gestion et comptabilité)
+        const params = new URLSearchParams()
+        if (payload?.per_page) params.set('per_page', String(payload.per_page))
+        const qs = params.toString() ? `?${params.toString()}` : ''
+        result = await evolizReq('GET', `/sale-classifications${qs}`, company)
         break
       }
 
