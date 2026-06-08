@@ -877,7 +877,7 @@ const [pushing, setPushing] = useState(false)
                     )}
 
                     {/* Info charges proprio — honoraires, gestion_loyer=false, envoi parallèle à Evoliz */}
-                    {f.type_facture === 'honoraires' && f.bien?.gestion_loyer === false && ['valide','envoye_evoliz'].includes(f.statut) && (
+                    {f.type_facture === 'honoraires' && f.bien?.gestion_loyer === false && ['brouillon','valide','envoye_evoliz'].includes(f.statut) && (
                       <button
                         className="btn btn-sm"
                         style={{ background: '#8A9E82', color: '#fff', border: 'none' }}
