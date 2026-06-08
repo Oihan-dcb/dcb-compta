@@ -19,7 +19,8 @@ const STATUTS = {
   valide: { label: 'Validée', color: '#059669', bg: '#D1FAE5' },
   envoi_en_cours: { label: 'Envoi en cours…', color: '#D97706', bg: '#FEF3C7' },
   envoye_evoliz: { label: 'Envoyée Evoliz', color: '#EA580C', bg: '#FFF7ED' },
-  envoye_proprio: { label: 'Envoyée proprio', color: '#0891B2', bg: '#E0F2FE' },
+  envoye_proprio: { label: 'Envoyée proprio', color: '#5A7A55', bg: '#EBF4E9' },
+  remboursement_recu: { label: 'Remboursé ✓', color: '#059669', bg: '#D1FAE5' },
   payee: { label: 'Payée', color: '#059669', bg: '#D1FAE5' },
   solde_negatif: { label: 'Solde négatif', color: '#DC2626', bg: '#FEE2E2' },
 }
@@ -470,6 +471,18 @@ const [pushing, setPushing] = useState(false)
     }
   }
 
+  async function confirmerVirement(factureId) {
+    try {
+      const { error } = await (await import('../lib/supabase')).default
+        .from('facture_evoliz').update({ statut: 'remboursement_recu' }).eq('id', factureId)
+      if (error) throw error
+      setSuccess('Virement confirmé — facture clôturée.')
+      await charger()
+    } catch (err) {
+      setError(err.message)
+    }
+  }
+
   async function validerTout() {
     const brouillons = factures.filter(f => f.statut === 'brouillon' && f.total_ttc > 0)
     if (brouillons.length === 0) return
@@ -817,7 +830,7 @@ const [pushing, setPushing] = useState(false)
                         <button
                           className="btn btn-sm"
                           style={isDeboursSansGestion
-                            ? { background: '#0891B2', color: '#fff', border: 'none' }
+                            ? { background: '#8A9E82', color: '#fff', border: 'none' }
                             : undefined}
                           onClick={e => { e.stopPropagation(); valider(f.id) }}
                         >
@@ -830,11 +843,22 @@ const [pushing, setPushing] = useState(false)
                     {f.type_facture === 'debours' && f.bien?.gestion_loyer === false && f.statut === 'valide' && (
                       <button
                         className="btn btn-sm"
-                        style={{ background: '#0891B2', color: '#fff', border: 'none' }}
+                        style={{ background: '#8A9E82', color: '#fff', border: 'none' }}
                         disabled={sendingDebours === f.id}
                         onClick={e => { e.stopPropagation(); envoyerDebours(f) }}
                       >
                         {sendingDebours === f.id ? <><span className="spinner" /> Envoi…</> : '📧 Envoyer au proprio'}
+                      </button>
+                    )}
+
+                    {/* Confirmer le virement — débours sans gestion loyer, après envoi proprio */}
+                    {f.type_facture === 'debours' && f.bien?.gestion_loyer === false && f.statut === 'envoye_proprio' && (
+                      <button
+                        className="btn btn-sm"
+                        style={{ background: '#8A9E82', color: '#fff', border: 'none' }}
+                        onClick={e => { e.stopPropagation(); confirmerVirement(f.id) }}
+                      >
+                        ✓ Confirmer le virement
                       </button>
                     )}
 

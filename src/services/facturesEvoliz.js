@@ -1225,7 +1225,7 @@ export async function getFacturesMois(mois) {
 
 /**
  * Envoie un email au proprio pour un débours AE sur bien sans gestion loyer.
- * Explique qu'il doit virer le montant DEB_AE depuis son compte séquestre.
+ * Template calqué sur les emails contrats PowerHouse.
  * Oïhan est automatiquement en CC (géré par smtp-send).
  */
 export async function envoyerEmailDeboursProprio(facture) {
@@ -1239,56 +1239,84 @@ export async function envoyerEmailDeboursProprio(facture) {
   const [year, monthIdx] = mois.split('-')
   const moisLabel = MOIS_FR[parseInt(monthIdx) - 1] + ' ' + year
 
-  // Montant DEB_AE depuis les lignes
   const lignes = facture.facture_evoliz_ligne || []
   const montantDebAE = lignes
     .filter(l => l.code === 'DEB_AE')
     .reduce((sum, l) => sum + (l.montant_ttc || l.montant_ht || 0), 0)
 
-  const montantEur = (Math.abs(montantDebAE) / 100).toFixed(2).replace('.', ',')
+  const montantEur = (Math.abs(montantDebAE) / 100).toLocaleString('fr-FR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
   const bienNom = bien?.code || proprio?.nom || 'votre bien'
+  const ref = `DEBOURS-AE-${bienNom.replace(/[^A-Z0-9]/gi, '-').toUpperCase()}-${mois}`
+  const prenom = proprio.prenom || proprio.nom
 
-  const html = `<!DOCTYPE html><html><head><meta charset="utf-8"></head>
+  const html = `<!DOCTYPE html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"></head>
 <body style="margin:0;padding:0;background:#f5f0e8;font-family:Arial,sans-serif">
   <table width="100%" cellpadding="0" cellspacing="0" style="background:#f5f0e8;padding:40px 20px">
     <tr><td align="center">
-      <table width="600" cellpadding="0" cellspacing="0" style="background:#fff;border-radius:8px;overflow:hidden;max-width:600px;width:100%">
-        <tr><td style="background:#CC9933;padding:28px 40px;text-align:center">
-          <p style="margin:0;color:#fff;font-size:20px;font-weight:bold">Destination Côte Basque</p>
-          <p style="margin:6px 0 0;color:rgba(255,255,255,0.85);font-size:13px">Remboursement débours auto-entrepreneur</p>
+      <table width="600" cellpadding="0" cellspacing="0" style="background:#fff;border-radius:10px;overflow:hidden;max-width:600px;width:100%;box-shadow:0 2px 12px rgba(44,36,22,0.08)">
+
+        <!-- En-tête or -->
+        <tr><td style="background:#CC9933;padding:30px 40px;text-align:center">
+          <p style="margin:0;color:#fff;font-size:11px;letter-spacing:2px;text-transform:uppercase;opacity:0.85">Destination Côte Basque</p>
+          <p style="margin:8px 0 0;color:#fff;font-size:20px;font-weight:bold;letter-spacing:0.3px">Remboursement débours AE</p>
+          <p style="margin:6px 0 0;color:rgba(255,255,255,0.75);font-size:13px">${bienNom} · ${moisLabel}</p>
         </td></tr>
+
+        <!-- Corps -->
         <tr><td style="padding:36px 40px">
-          <p style="margin:0 0 14px;font-size:15px;color:#333">Bonjour ${proprio.prenom || proprio.nom},</p>
-          <p style="margin:0 0 20px;font-size:14px;color:#555;line-height:1.6">
-            Dans le cadre de la gestion de votre bien <strong>${bienNom}</strong>, 
-            Destination Côte Basque a réglé pour votre compte les honoraires de l'auto-entrepreneur 
-            pour le mois de <strong>${moisLabel}</strong>.
+          <p style="margin:0 0 20px;font-size:15px;color:#2C2416">Bonjour ${prenom},</p>
+          <p style="margin:0 0 28px;font-size:14px;color:#666;line-height:1.7">
+            Dans le cadre de la gestion de votre bien <strong style="color:#2C2416">${bienNom}</strong>, Destination Côte Basque a avancé pour votre compte les honoraires de l'auto-entrepreneur pour le mois de <strong style="color:#2C2416">${moisLabel}</strong>.
           </p>
-          <table cellpadding="0" cellspacing="0" style="width:100%;margin:0 0 24px;border:2px solid #CC9933;border-radius:8px;overflow:hidden">
-            <tr style="background:#FBF5E6">
-              <td style="padding:16px 24px;font-size:14px;color:#555">Montant débours AE — ${moisLabel}</td>
-              <td style="padding:16px 24px;font-size:22px;font-weight:bold;color:#CC9933;text-align:right">${montantEur} €</td>
+
+          <!-- Montant mis en avant -->
+          <table cellpadding="0" cellspacing="0" width="100%" style="margin:0 0 28px">
+            <tr>
+              <td style="background:#FBF5E6;border:1.5px solid #CC9933;border-radius:8px;padding:20px 28px;text-align:center">
+                <div style="font-size:11px;color:#9C8E7D;letter-spacing:1.5px;text-transform:uppercase;margin-bottom:8px">Montant à rembourser</div>
+                <div style="font-size:32px;font-weight:bold;color:#CC9933;letter-spacing:0.5px">${montantEur} €</div>
+                <div style="font-size:12px;color:#9C8E7D;margin-top:6px">Débours auto-entrepreneur — ${moisLabel}</div>
+              </td>
             </tr>
           </table>
-          <p style="margin:0 0 12px;font-size:14px;color:#333;font-weight:600">Merci de procéder au remboursement par virement depuis votre compte séquestre :</p>
-          <table cellpadding="0" cellspacing="0" style="width:100%;background:#f9f6f0;border-radius:6px;margin:0 0 24px">
-            <tr><td style="padding:16px 24px">
-              <div style="font-size:12px;color:#888;margin-bottom:4px;text-transform:uppercase;letter-spacing:1px">IBAN séquestre</div>
-              <div style="font-size:15px;font-family:monospace;color:#2C2416;font-weight:600;letter-spacing:2px">FR76 1333 5000 4008 0030 4976 555</div>
-              <div style="font-size:12px;color:#888;margin-top:8px;margin-bottom:4px;text-transform:uppercase;letter-spacing:1px">BIC</div>
-              <div style="font-size:13px;font-family:monospace;color:#2C2416">CEPAFRPP333</div>
-              <div style="font-size:12px;color:#888;margin-top:8px;margin-bottom:4px;text-transform:uppercase;letter-spacing:1px">Référence virement</div>
-              <div style="font-size:13px;font-family:monospace;color:#2C2416">DEBOURS-AE-${bienNom.replace(/[^A-Z0-9]/gi,'-').toUpperCase()}-${mois}</div>
+
+          <!-- Instructions virement -->
+          <p style="margin:0 0 14px;font-size:14px;font-weight:600;color:#2C2416">Merci d'effectuer un virement depuis votre compte séquestre :</p>
+          <table cellpadding="0" cellspacing="0" width="100%" style="margin:0 0 28px;background:#f9f6f0;border-radius:8px;overflow:hidden">
+            <tr><td style="padding:20px 24px">
+              <table cellpadding="0" cellspacing="0" width="100%">
+                <tr>
+                  <td style="padding-bottom:12px">
+                    <div style="font-size:10px;color:#9C8E7D;letter-spacing:1px;text-transform:uppercase;margin-bottom:3px">IBAN destinataire (séquestre)</div>
+                    <div style="font-size:15px;font-family:'Courier New',monospace;color:#2C2416;font-weight:600;letter-spacing:2px">FR76 1333 5000 4008 0030 4976 555</div>
+                  </td>
+                </tr>
+                <tr>
+                  <td style="border-top:1px solid #EDEBE5;padding-top:12px;padding-bottom:12px">
+                    <div style="font-size:10px;color:#9C8E7D;letter-spacing:1px;text-transform:uppercase;margin-bottom:3px">BIC</div>
+                    <div style="font-size:14px;font-family:'Courier New',monospace;color:#2C2416">CEPAFRPP333</div>
+                  </td>
+                </tr>
+                <tr>
+                  <td style="border-top:1px solid #EDEBE5;padding-top:12px">
+                    <div style="font-size:10px;color:#9C8E7D;letter-spacing:1px;text-transform:uppercase;margin-bottom:3px">Référence à indiquer</div>
+                    <div style="font-size:13px;font-family:'Courier New',monospace;color:#CC9933;font-weight:600">${ref}</div>
+                  </td>
+                </tr>
+              </table>
             </td></tr>
           </table>
-          <p style="margin:0;font-size:13px;color:#888;line-height:1.5">
-            Ce règlement concerne uniquement les débours auto-entrepreneur avancés par DCB. 
-            Il est distinct du reversement de loyer habituel.
+
+          <p style="margin:0;font-size:12px;color:#9C8E7D;line-height:1.6;border-top:1px solid #EDEBE5;padding-top:20px">
+            Ce remboursement est distinct de votre reversement de loyer habituel. Il correspond aux débours avancés par Destination Côte Basque pour le compte de l'auto-entrepreneur intervenant sur votre bien.
           </p>
         </td></tr>
-        <tr><td style="background:#f9f6f0;padding:16px 40px;text-align:center">
-          <p style="margin:0;font-size:11px;color:#aaa">Destination Côte Basque SARL · RCS BAYONNE 904781671 · 6 allée des Chênes, 64200 Biarritz</p>
+
+        <!-- Pied de page -->
+        <tr><td style="background:#f9f6f0;border-top:2px solid #CC9933;padding:18px 40px;text-align:center">
+          <p style="margin:0;font-size:11px;color:#9C8E7D">Destination Côte Basque SARL · RCS Bayonne 904 781 671 · 6 allée des Chênes, 64200 Biarritz</p>
         </td></tr>
+
       </table>
     </td></tr>
   </table>
@@ -1311,7 +1339,6 @@ export async function envoyerEmailDeboursProprio(facture) {
     throw new Error(`smtp-send: ${err}`)
   }
 
-  // Marquer comme envoyé proprio
   const { error } = await supabase
     .from('facture_evoliz')
     .update({ statut: 'envoye_proprio' })
@@ -1319,6 +1346,7 @@ export async function envoyerEmailDeboursProprio(facture) {
   if (error) throw error
   return true
 }
+
 
 /**
  * Valide une facture (passage brouillon ÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂ¢ÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂ validÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂ©)
