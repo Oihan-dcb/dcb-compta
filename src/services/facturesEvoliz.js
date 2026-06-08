@@ -622,24 +622,6 @@ async function genererFactureGroupe(proprio, biens, mois, ctx) {
     })
   }
 
-  // CF-P1 : une ligne PREST par prestation deduite (TVA 20% si staff, 0% si AE)
-  for (const p of (prestationsDeduction || [])) {
-    if (!(p.montant > 0)) continue
-    const isStaff = p.ae?.type === 'staff'
-    const ht  = p.montant
-    const tva = isStaff ? Math.round(ht * 0.20) : 0
-    const ttc = ht + tva
-    lignes.push({
-      facture_id:  factureId,
-      code:        'PREST',
-      libelle:     `Prestation deduite : ${p.description || p.prestation_type?.nom || 'Prestation hors forfait'}`,
-      montant_ht:  -ht,
-      taux_tva:    isStaff ? 20 : 0,
-      montant_tva: -tva,
-      montant_ttc: -ttc,
-      ordre:       ordre++,
-    })
-  }
 
   // CF-P1 HAOWNER : ligne facturable proprietaire (TVA 20%, incluse dans push Evoliz)
   if (haownerHT > 0) {
