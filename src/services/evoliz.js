@@ -170,7 +170,7 @@ export async function creerFactureEvoliz(facture) {
   // Débours : DEB_AE autorisé (compte 467, TVA 0%) — Honoraires : DEB_AE filtré
   const isDebours = facture.type_facture === 'debours'
   // Codes mémo internes : jamais envoyés à Evoliz (taux_tva=null, informatif seulement)
-  const CODES_MEMO = ['AUTO', 'VIRP']
+  const CODES_MEMO = ['AUTO', 'VIRP', 'PREST']
   // Mapping codes DCB → accountingAccountId Evoliz (comptes créés le 2026-06-02)
   const ACCOUNT_MAP = {
     HON:     8677891, // 7061 — Gestion location saisonnière
