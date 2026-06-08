@@ -622,6 +622,19 @@ const [pushing, setPushing] = useState(false)
           >
             + Articles Evoliz
           </button>
+          <button
+            className="btn btn-secondary"
+            onClick={async () => {
+              try {
+                const { supabase } = await import('../lib/supabase')
+                const COMPANY_ID = import.meta.env.VITE_EVOLIZ_COMPANY_ID
+                const r = await supabase.functions.invoke('evoliz-proxy', { body: { action: 'debugEvolizFields', payload: {}, companyId: COMPANY_ID } })
+                setError(JSON.stringify(r.data?.data, null, 2))
+              } catch (err) { setError(err.message) }
+            }}
+          >
+            🔍 Debug champs Evoliz
+          </button>
           <button className="btn btn-primary" onClick={generer} disabled={generating}>
             {generating ? <><span className="spinner" /> Génération…</> : '⚡ Générer factures'}
           </button>

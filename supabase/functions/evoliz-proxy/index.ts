@@ -327,6 +327,16 @@ serve(async (req) => {
         break
       }
 
+      case 'debugEvolizFields': {
+        // Retourne le 1er article et la 1ère classification pour inspecter les noms de champs
+        const [arts, classifs] = await Promise.all([
+          evolizReq('GET', '/articles?per_page=1', company),
+          evolizReq('GET', '/sale-classifications?per_page=1', company),
+        ])
+        result = { status: 200, data: { article: arts.data?.data?.[0] ?? arts.data, classification: classifs.data?.data?.[0] ?? classifs.data } }
+        break
+      }
+
       case 'listClassifications': {
         // Classifications de vente Evoliz (Paramètres > Gestion et comptabilité)
         const params = new URLSearchParams()
