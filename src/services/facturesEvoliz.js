@@ -261,7 +261,18 @@ async function genererFactureGroupe(proprio, biens, mois, ctx) {
     f.mode_encaissement === 'dcb' &&
     ['a_facturer', 'facture'].includes(f.statut)
   )
+  // En mode Lauian : les frais DCB sont facturés par DCB via lauian_fmen — exclus des lignes de cette facture.
+  // Mais facturer_et_deduire réduit quand même le reversement Lauian (déduction LOY).
+  // facturer_direct DCB ne réduit pas le reversement (facture DCB séparée, sans déduction LOY).
+  const fraisDirectPourFacture = AGENCE === 'lauian' ? [] : fraisDirect
   const fraisDirectTTC = (fraisDirect || []).reduce((s, f) => s + (f.montant_ttc || 0), 0)
+  const fraisDirectTTCFacture = (fraisDirectPourFacture).reduce((s, f) => s + (f.montant_ttc || 0), 0)
+  const fraisDirectHTFacture  = Math.round(fraisDirectTTCFacture / 1.20)
+  const fraisDirectTVAFacture = fraisDirectTTCFacture - fraisDirectHTFacture
+  // Pour le reversement Lauian : uniquement facturer_et_deduire (déduction LOY)
+  const fraisDirectTTCReversement = AGENCE === 'lauian'
+    ? fraisDirect.filter(f => f.mode_traitement === 'facturer_et_deduire').reduce((s, f) => s + (f.montant_ttc || 0), 0)
+    : fraisDirectTTC
   const fraisDirectHT  = Math.round(fraisDirectTTC / 1.20)
   const fraisDirectTVA = fraisDirectTTC - fraisDirectHT
 
@@ -434,14 +445,15 @@ async function genererFactureGroupe(proprio, biens, mois, ctx) {
 
   // Totaux facture — en mode Lauian, FMEN est facturé par DCB (pas par Lauian)
   const inclureFMEN = AGENCE !== 'lauian'
-  const totalHT  = com.ht  + (inclureFMEN ? menConsolide.ht  : 0) + div.ht  + haownerHT  + (inclureFMEN ? osFmenSurplusHT  : 0) + fraisDirectHT
-  const totalTVA = com.tva + (inclureFMEN ? menConsolide.tva : 0) + div.tva + haownerTVA + (inclureFMEN ? osFmenSurplusTVA : 0) + fraisDirectTVA
+  const totalHT  = com.ht  + (inclureFMEN ? menConsolide.ht  : 0) + div.ht  + haownerHT  + (inclureFMEN ? osFmenSurplusHT  : 0) + fraisDirectHTFacture
+  const totalTVA = com.tva + (inclureFMEN ? menConsolide.tva : 0) + div.tva + haownerTVA + (inclureFMEN ? osFmenSurplusTVA : 0) + fraisDirectTVAFacture
   const totalTTC = totalHT + totalTVA
 
   // ownerStayAbsorbTotal = part couverte par LOY → réduit le reversement
   // autoAbsorbableTotal  = AUTO couvert par LOY → réduit le reversement (surplus facturé en DEB_AE séparé)
   // owner stay surplus = facturé séparément → ne réduit pas le reversement
-  const montantReversement = Math.max(0, vir.ht - totalPrestations - haownerTTC - fraisDirectTTC - fraisDeduitTotal - deboursPropAbsorbTotal - ownerStayAbsorbTotal - autoAbsorbableTotal) + remboursementsTotal
+  // fraisDirectTTCReversement : en contexte Lauian, uniquement facturer_et_deduire (déduction LOY)
+  const montantReversement = Math.max(0, vir.ht - totalPrestations - haownerTTC - fraisDirectTTCReversement - fraisDeduitTotal - deboursPropAbsorbTotal - ownerStayAbsorbTotal - autoAbsorbableTotal) + remboursementsTotal
 
   // Cas solde nÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂ©gatif : uniquement des expenses, pas de rÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂ©servations
   const soldeNegatif = totalHT === 0 && div.ht > 0
@@ -656,7 +668,8 @@ async function genererFactureGroupe(proprio, biens, mois, ctx) {
   }
 
   // Frais refacturés directement : lignes positives TVA 20% (charge directe proprio)
-  for (const frais of (fraisDirect || [])) {
+  // En mode Lauian, fraisDirectPourFacture = [] → boucle vide (DCB facture via lauian_fmen)
+  for (const frais of (fraisDirectPourFacture || [])) {
     const ht  = Math.round(frais.montant_ttc / 1.20)
     const tva = frais.montant_ttc - ht
     lignes.push({
@@ -750,7 +763,8 @@ async function genererFactureGroupe(proprio, biens, mois, ctx) {
 
   // Marquer les frais facturer_direct comme facturés (pas de déduction LOY)
   // facturer_et_deduire : facturés ET déduits du LOY
-  for (const frais of (fraisDirect || [])) {
+  // En mode Lauian : fraisDirectPourFacture = [] → aucun marquage (DCB le fait via lauian_fmen)
+  for (const frais of (fraisDirectPourFacture || [])) {
     const etDeduire = frais.mode_traitement === 'facturer_et_deduire'
     await supabase.from('frais_proprietaire')
       .update({
@@ -945,7 +959,8 @@ async function genererFactureDebours(proprio, biens, mois, ctx) {
     }
 
     // Frais proprietaire a facturer directement -- lignes separees, hors montantAFacturer
-    const fraisDirectsBien = fraisDirectsByBien.get(bien.id) || []
+    // En mode Lauian : ces frais DCB sont facturés par DCB via lauian_fmen — exclus du débours Lauian
+    const fraisDirectsBien = AGENCE === 'lauian' ? [] : (fraisDirectsByBien.get(bien.id) || [])
     for (const frais of fraisDirectsBien) {
       lignes.push({
         code:        'FRAIS',
@@ -1018,11 +1033,14 @@ async function genererFactureDebours(proprio, biens, mois, ctx) {
       lignes.map(l => ({ ...l, facture_id: factureId }))
     )
     // Passer les frais directs en statut 'facture' -- uniquement dans le chemin non-skipped
-    const fraisDirectsIds = (fraisDirectsAll || []).map(f => f.id)
-    if (fraisDirectsIds.length > 0) {
-      await supabase.from('frais_proprietaire')
-        .update({ statut: 'facture' })
-        .in('id', fraisDirectsIds)
+    // En mode Lauian : ces frais DCB sont gérés par DCB (lauian_fmen) — ne pas les marquer ici
+    if (AGENCE !== 'lauian') {
+      const fraisDirectsIds = (fraisDirectsAll || []).map(f => f.id)
+      if (fraisDirectsIds.length > 0) {
+        await supabase.from('frais_proprietaire')
+          .update({ statut: 'facture' })
+          .in('id', fraisDirectsIds)
+      }
     }
   }
 
