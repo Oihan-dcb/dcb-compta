@@ -336,6 +336,19 @@ serve(async (req) => {
         break
       }
 
+      case 'createArticle': {
+        result = await evolizReq('POST', '/items', company, {
+          reference: payload.reference,
+          designation: payload.designation,
+          unit_price: payload.unitPrice ?? 0,
+          vat_rate: payload.vatRate ?? 20,
+          ...(payload.accountingAccountId ? { accountingaccountid: payload.accountingAccountId } : {}),
+          ...(payload.classificationId ? { classificationid: payload.classificationId } : {}),
+          nature: payload.nature || 'service',
+        })
+        break
+      }
+
       case 'listArticles': {
         // Articles du catalogue Evoliz (pour récupérer les itemid par référence)
         const params = new URLSearchParams()

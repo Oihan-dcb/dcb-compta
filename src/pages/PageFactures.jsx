@@ -9,7 +9,7 @@ import {
   envoyerEmailDeboursProprio,
   envoyerEmailChargesProprio,
 } from '../services/facturesEvoliz'
-import { pousserFacturesMoisVersEvoliz, pingEvoliz, pousserFactureCOMVersEvoliz, syncNumerosEvoliz, refreshFacturesBrouillonsEvoliz } from '../services/evoliz'
+import { pousserFacturesMoisVersEvoliz, pingEvoliz, pousserFactureCOMVersEvoliz, syncNumerosEvoliz, refreshFacturesBrouillonsEvoliz, creerArticlesManquantsEvoliz } from '../services/evoliz'
 import { formatMontant } from '../lib/hospitable'
 
 const moisCourant = new Date().toISOString().substring(0, 7)
@@ -608,6 +608,18 @@ const [pushing, setPushing] = useState(false)
             title="Supprime les brouillons Evoliz du mois et les repousse (pour mettre à jour classifications, etc.)"
           >
             {refreshing ? <><span className="spinner" /> Refresh…</> : '↻ Refresh brouillons Evoliz'}
+          </button>
+          <button
+            className="btn btn-secondary"
+            onClick={async () => {
+              try {
+                const r = await creerArticlesManquantsEvoliz()
+                setSuccess(`Articles Evoliz : ${r.created.length} créé(s) (${r.created.join(', ') || '—'}), ${r.skipped.length} déjà existant(s)${r.errors.length ? `, ${r.errors.length} erreur(s)` : ''}`)
+              } catch (err) { setError(err.message) }
+            }}
+            title="Crée les articles manquants dans le catalogue Evoliz (COM, DIV, HAOWNER, HON_ETU, HON_MOB)"
+          >
+            + Articles Evoliz
           </button>
           <button className="btn btn-primary" onClick={generer} disabled={generating}>
             {generating ? <><span className="spinner" /> Génération…</> : '⚡ Générer factures'}

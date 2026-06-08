@@ -548,3 +548,50 @@ export async function syncNumerosEvoliz(mois) {
   }
   return { updated, skipped }
 }
+
+// ============================================================
+// SETUP CATALOGUE ARTICLES
+// ============================================================
+
+const ARTICLES_A_CREER = [
+  { reference: 'COM',     designation: 'Commission',                         classifCode: '05', accountId: 8677893 },
+  { reference: 'DIV',     designation: 'Frais divers avancés',               classifCode: '06', accountId: 8677895 },
+  { reference: 'HAOWNER', designation: 'Achats refacturés propriétaires',    classifCode: '07', accountId: 8677896 },
+  { reference: 'HON_ETU', designation: 'Honoraires locations étudiantes',    classifCode: '08', accountId: 8677897 },
+  { reference: 'HON_MOB', designation: 'Honoraires contrats mobilité',       classifCode: '09', accountId: 8677898 },
+]
+
+/**
+ * Crée les articles manquants dans le catalogue Evoliz.
+ * À appeler une seule fois depuis la console ou un bouton de setup.
+ */
+export async function creerArticlesManquantsEvoliz() {
+  const [articleIdMap, classifIdMap] = await Promise.all([getArticleIdMap(), getClassificationIdMap()])
+  const results = { created: [], skipped: [], errors: [] }
+
+  for (const art of ARTICLES_A_CREER) {
+    if (articleIdMap[art.reference]) {
+      results.skipped.push(art.reference)
+      continue
+    }
+    const classifId = classifIdMap[art.classifCode]
+    try {
+      await evolizCall('createArticle', {
+        reference:           art.reference,
+        designation:         art.designation,
+        unitPrice:           0,
+        vatRate:             20,
+        accountingAccountId: art.accountId,
+        ...(classifId ? { classificationId: classifId } : {}),
+        nature:              'service',
+      })
+      results.created.push(art.reference)
+    } catch (err) {
+      results.errors.push({ reference: art.reference, error: err.message })
+    }
+  }
+
+  // Invalider le cache pour le prochain push
+  _articleIdCache = null
+  return results
+}
