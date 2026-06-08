@@ -4,17 +4,33 @@ import { fr } from 'date-fns/locale'
 import { AGENCE } from '../lib/agence'
 
 export async function exportFacturesEvoliz(mois, bienIds = null) {
+  const selectStr = `*, proprietaire:proprietaire_id(nom, prenom),
+      lignes:facture_evoliz_ligne(code, montant_ht, montant_ttc, libelle),
+      bien:bien_id(hospitable_name)`
+
+  // Requête principale (avec filtre bienIds si actif)
   let query = supabase
     .from('facture_evoliz')
-    .select(`*, proprietaire:proprietaire_id(nom, prenom),
-      lignes:facture_evoliz_ligne(code, montant_ht, montant_ttc, libelle),
-      bien:bien_id(hospitable_name)`)
+    .select(selectStr)
     .eq('mois', mois)
     .eq('agence', AGENCE)
+    .neq('type_facture', 'lauian_fmen')
     .order('created_at', { ascending: true })
   if (bienIds) query = query.in('bien_id', bienIds)
-  const { data: factures, error: fetchError } = await query
+  const { data: facturesDCB, error: fetchError } = await query
   if (fetchError) throw new Error(`Export factures Evoliz : ${fetchError.message}`)
+
+  // Factures FMEN Lauian : jamais filtrées par bienIds (bien_id = bien Lauian, hors sélection DCB)
+  const { data: facturesLauian, error: lauianError } = await supabase
+    .from('facture_evoliz')
+    .select(selectStr)
+    .eq('mois', mois)
+    .eq('agence', AGENCE)
+    .eq('type_facture', 'lauian_fmen')
+    .order('created_at', { ascending: true })
+  if (lauianError) throw new Error(`Export factures Lauian FMEN : ${lauianError.message}`)
+
+  const factures = [...(facturesDCB || []), ...(facturesLauian || [])]
 
   const now = new Date()
   const dateExport = format(now, 'dd/MM/yyyy à HH:mm', { locale: fr })
@@ -37,7 +53,7 @@ export async function exportFacturesEvoliz(mois, bienIds = null) {
     'Lignes détaillées'
   ]
 
-  const typeLabels = { 'honoraires': 'Honoraires', 'debours': 'Débours', 'com': 'Commission' }
+  const typeLabels = { 'honoraires': 'Honoraires', 'debours': 'Débours', 'com': 'Commission', 'lauian_fmen': 'FMEN Lauian' }
   const statutLabels = {
     'brouillon': 'Brouillon', 'calcul_en_cours': 'Calcul en cours',
     'valide': 'Validée', 'envoi_en_cours': 'Envoi en cours',
