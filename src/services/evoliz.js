@@ -147,7 +147,20 @@ export async function creerFactureEvoliz(facture) {
   if (!proprio) throw new Error('PropriÃÂ©taire manquant dans la facture')
 
   // 1. S'assurer que le client existe dans Evoliz
-  const clientId = await getOuCreerClientEvoliz(proprio)
+  // Si le proprio est d'une autre agence (ex: proprio Lauian avec facture DCB pour FMEN),
+  // chercher l'entrée proprio de la bonne agence pour obtenir le bon id_evoliz Evoliz.
+  let proprioForEvoliz = proprio
+  if (proprio.agence && facture.agence && proprio.agence !== facture.agence) {
+    const { data: sameProprio } = await supabase
+      .from('proprietaire')
+      .select('id, nom, prenom, id_evoliz, adresse, ville, code_postal, telephone, agence')
+      .eq('nom', proprio.nom)
+      .eq('prenom', proprio.prenom)
+      .eq('agence', facture.agence)
+      .maybeSingle()
+    if (sameProprio) proprioForEvoliz = sameProprio
+  }
+  const clientId = await getOuCreerClientEvoliz(proprioForEvoliz)
 
   // 2. Date d'ÃÂ©mission
   const dateEmission = facture.date_emission || new Date().toISOString().substring(0, 10)
