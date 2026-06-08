@@ -1318,14 +1318,7 @@ export async function envoyerEmailDeboursProprio(facture) {
             Ce remboursement est distinct de votre reversement de loyer habituel. Il correspond aux débours avancés par Destination Côte Basque pour le compte de l'auto-entrepreneur intervenant sur votre bien.
           </p>
 
-          \${confirmUrl ? `
-          <table cellpadding="0" cellspacing="0" style="margin:0 auto">
-            <tr><td style="background:#9EB39A;border-radius:6px;padding:14px 32px">
-              <a href="\${confirmUrl}" style="color:#fff;text-decoration:none;font-size:15px;font-weight:bold">✓ Confirmer mon virement →</a>
-            </td></tr>
-          </table>
-          <p style="text-align:center;margin:12px 0 0;font-size:11px;color:#9C8E7D">Cliquez une fois votre virement effectué</p>
-          ` : ''}
+          \${confirmUrl ? '<table cellpadding="0" cellspacing="0" style="margin:0 auto"><tr><td style="background:#9EB39A;border-radius:6px;padding:14px 32px"><a href="' + confirmUrl + '" style="color:#fff;text-decoration:none;font-size:15px;font-weight:bold">✓ Confirmer mon virement →</a></td></tr></table><p style="text-align:center;margin:12px 0 0;font-size:11px;color:#9C8E7D">Cliquez une fois votre virement effectué</p>' : ''}
         </td></tr>
         <tr><td style="background:#f9f6f0;border-top:2px solid #CC9933;padding:18px 40px;text-align:center">
           <p style="margin:0;font-size:11px;color:#9C8E7D">Destination Côte Basque SARL · RCS Bayonne 904 781 671 · 6 allée des Chênes, 64200 Biarritz</p>
