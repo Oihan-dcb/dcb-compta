@@ -364,7 +364,7 @@ export async function pousserFactureCOMVersEvoliz(factureId, totals, mois) {
       clientId: parseInt(clientId),
       documentdate: new Date().toISOString().substring(0, 10),
       paytermid: 1,
-      businessProcess: 's7', // "services" — obligatoire août 2026
+      // businessProcess : ne pas envoyer avant août 2026 (valeur rejetée par Evoliz)
       comment: `Commissions sur réservations web directes — ${mois}`,
       items: [{
         designation: 'Commission gestion réservations directes',
