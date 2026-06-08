@@ -59,7 +59,9 @@ export default function PageComptabilite() {
   }, [bienActif, mois])
   const isActif = (r) => {
     if (r._isGroup && r._childrenBienIds) return r._childrenBienIds.every(id => bienActif[id] !== false)
-    return bienActif[r.bien_id] !== false
+    // skip_facturation : inactif par défaut sauf override explicite dans localStorage
+    if (bienActif[r.bien_id] !== undefined) return bienActif[r.bien_id] !== false
+    return !r.skip_facturation
   }
   const toggleActif = (r) => {
     if (r._isGroup && r._childrenBienIds) {

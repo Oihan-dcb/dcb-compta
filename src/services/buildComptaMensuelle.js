@@ -436,11 +436,12 @@ export async function buildComptaMensuelle(mois, bienIds = null) {
       rowAlerts.push({ level: 'warning', code: 'BIEN_INACTIF_AVEC_MOUVEMENTS', message: 'Bien non listé avec mouvements', bien_id: b.id })
 
     rows.push({
-      bien_id:          b.id,
-      bien_code:        b.code         || null,
-      bien_nom:         b.hospitable_name || null,
-      proprietaire_id:  propId         || null,
-      proprietaire_nom: propNom        || null,
+      bien_id:           b.id,
+      bien_code:         b.code         || null,
+      bien_nom:          b.hospitable_name || null,
+      proprietaire_id:   propId         || null,
+      proprietaire_nom:  propNom        || null,
+      skip_facturation:  b.skip_facturation || false,
 
       nb_resas,
       nb_rapprochees,
