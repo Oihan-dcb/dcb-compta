@@ -7,6 +7,7 @@ import {
   getStatsFactures,
   getFactureCOM, genererFactureCOM, validerFactureCOM,
   envoyerEmailDeboursProprio,
+  envoyerEmailChargesProprio,
 } from '../services/facturesEvoliz'
 import { pousserFacturesMoisVersEvoliz, pingEvoliz, pousserFactureCOMVersEvoliz, syncNumerosEvoliz } from '../services/evoliz'
 import { formatMontant } from '../lib/hospitable'
@@ -48,6 +49,7 @@ const [pushing, setPushing] = useState(false)
   const [generatingCOM, setGeneratingCOM] = useState(false)
   const [pushingCOM, setPushingCOM] = useState(false)
   const [sendingDebours, setSendingDebours] = useState(null) // factureId en cours d'envoi
+  const [sendingCharges, setSendingCharges] = useState(null) // factureId en cours d'envoi info charges
   
   // Contrôle virements propriétaires
   const [virementsSortants, setVirementsSortants] = useState([])
@@ -471,6 +473,18 @@ const [pushing, setPushing] = useState(false)
     }
   }
 
+  async function envoyerCharges(facture) {
+    try {
+      setSendingCharges(facture.id)
+      await envoyerEmailChargesProprio(facture)
+      setSuccess(`Récapitulatif charges envoyé à ${facture.proprietaire?.email}`)
+    } catch (err) {
+      setError(err.message)
+    } finally {
+      setSendingCharges(null)
+    }
+  }
+
   async function confirmerVirement(factureId) {
     try {
       const { error } = await (await import('../lib/supabase')).default
@@ -859,6 +873,19 @@ const [pushing, setPushing] = useState(false)
                         onClick={e => { e.stopPropagation(); confirmerVirement(f.id) }}
                       >
                         ✓ Confirmer le virement
+                      </button>
+                    )}
+
+                    {/* Info charges proprio — honoraires, gestion_loyer=false, envoi parallèle à Evoliz */}
+                    {f.type_facture === 'honoraires' && f.bien?.gestion_loyer === false && ['valide','envoye_evoliz'].includes(f.statut) && (
+                      <button
+                        className="btn btn-sm"
+                        style={{ background: '#8A9E82', color: '#fff', border: 'none' }}
+                        disabled={sendingCharges === f.id}
+                        onClick={e => { e.stopPropagation(); envoyerCharges(f) }}
+                        title="Envoie un récapitulatif des charges au propriétaire (sans parler de virement)"
+                      >
+                        {sendingCharges === f.id ? <><span className="spinner" /> Envoi…</> : '📧 Info charges'}
                       </button>
                     )}
 

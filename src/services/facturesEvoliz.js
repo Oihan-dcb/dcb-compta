@@ -1351,6 +1351,115 @@ export async function envoyerEmailDeboursProprio(facture) {
 /**
  * Valide une facture (passage brouillon ÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂ¢ÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂ validÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂ©)
  */
+/**
+ * Envoie un email informatif au proprio pour une facture honoraires sur bien sans gestion loyer.
+ * Récapitule les charges du mois — pas de virement demandé, juste une info.
+ * Oïhan est automatiquement en CC (géré par smtp-send).
+ */
+export async function envoyerEmailChargesProprio(facture) {
+  const proprio = facture.proprietaire
+  const bien = facture.bien
+  const mois = facture.mois
+
+  if (!proprio?.email) throw new Error(`Pas d'email pour ${proprio?.nom}`)
+
+  const MOIS_FR = ['janvier','février','mars','avril','mai','juin','juillet','août','septembre','octobre','novembre','décembre']
+  const [year, monthIdx] = mois.split('-')
+  const moisLabel = MOIS_FR[parseInt(monthIdx) - 1] + ' ' + year
+  const bienNom = bien?.code || proprio?.nom || 'votre bien'
+  const prenom = proprio.prenom || proprio.nom
+
+  // Lignes significatives (hors mémos)
+  const CODES_MEMO = ['AUTO', 'VIRP']
+  const lignes = (facture.facture_evoliz_ligne || [])
+    .filter(l => !CODES_MEMO.includes(l.code) && l.montant_ht !== 0)
+    .sort((a, b) => (a.ordre || 0) - (b.ordre || 0))
+
+  const totalTTC = facture.total_ttc || 0
+  const totalEur = (Math.abs(totalTTC) / 100).toLocaleString('fr-FR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
+
+  const lignesRows = lignes.map(l => {
+    const ht = (l.montant_ht / 100).toLocaleString('fr-FR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
+    const ttc = (l.montant_ttc / 100).toLocaleString('fr-FR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
+    const isNegatif = l.montant_ht < 0
+    return `<tr style="border-bottom:1px solid #EDEBE5">
+      <td style="padding:10px 16px;font-size:13px;color:#2C2416">${l.libelle || l.code}</td>
+      <td style="padding:10px 16px;font-size:13px;text-align:right;font-family:'Courier New',monospace;color:${isNegatif ? '#059669' : '#2C2416'}">${isNegatif ? '−' : '+'} ${ht} €</td>
+    </tr>`
+  }).join('')
+
+  const html = `<!DOCTYPE html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"></head>
+<body style="margin:0;padding:0;background:#f5f0e8;font-family:Arial,sans-serif">
+  <table width="100%" cellpadding="0" cellspacing="0" style="background:#f5f0e8;padding:40px 20px">
+    <tr><td align="center">
+      <table width="600" cellpadding="0" cellspacing="0" style="background:#fff;border-radius:10px;overflow:hidden;max-width:600px;width:100%;box-shadow:0 2px 12px rgba(44,36,22,0.08)">
+
+        <!-- En-tête or -->
+        <tr><td style="background:#CC9933;padding:30px 40px;text-align:center">
+          <p style="margin:0;color:#fff;font-size:11px;letter-spacing:2px;text-transform:uppercase;opacity:0.85">Destination Côte Basque</p>
+          <p style="margin:8px 0 0;color:#fff;font-size:20px;font-weight:bold;letter-spacing:0.3px">Récapitulatif de charges</p>
+          <p style="margin:6px 0 0;color:rgba(255,255,255,0.75);font-size:13px">${bienNom} · ${moisLabel}</p>
+        </td></tr>
+
+        <!-- Corps -->
+        <tr><td style="padding:36px 40px">
+          <p style="margin:0 0 20px;font-size:15px;color:#2C2416">Bonjour ${prenom},</p>
+          <p style="margin:0 0 28px;font-size:14px;color:#666;line-height:1.7">
+            Voici le récapitulatif des charges de gestion pour votre bien <strong style="color:#2C2416">${bienNom}</strong> au titre du mois de <strong style="color:#2C2416">${moisLabel}</strong>.
+          </p>
+
+          <!-- Tableau des lignes -->
+          <table cellpadding="0" cellspacing="0" width="100%" style="margin:0 0 20px;border:1px solid #EDEBE5;border-radius:8px;overflow:hidden">
+            <thead>
+              <tr style="background:#f9f6f0">
+                <th style="padding:10px 16px;font-size:10px;color:#9C8E7D;text-align:left;letter-spacing:1px;text-transform:uppercase;font-weight:600">Désignation</th>
+                <th style="padding:10px 16px;font-size:10px;color:#9C8E7D;text-align:right;letter-spacing:1px;text-transform:uppercase;font-weight:600">Montant HT</th>
+              </tr>
+            </thead>
+            <tbody>${lignesRows}</tbody>
+            <tfoot>
+              <tr style="background:#FBF5E6;border-top:2px solid #CC9933">
+                <td style="padding:14px 16px;font-size:14px;font-weight:700;color:#2C2416">Total TTC</td>
+                <td style="padding:14px 16px;font-size:18px;font-weight:bold;color:#CC9933;text-align:right;font-family:'Courier New',monospace">${totalEur} €</td>
+              </tr>
+            </tfoot>
+          </table>
+
+          <p style="margin:0;font-size:13px;color:#666;line-height:1.7">
+            Pour toute question concernant ce récapitulatif ou pour convenir des modalités de règlement, n'hésitez pas à contacter Oïhan directement.
+          </p>
+        </td></tr>
+
+        <!-- Pied de page -->
+        <tr><td style="background:#f9f6f0;border-top:2px solid #CC9933;padding:18px 40px;text-align:center">
+          <p style="margin:0;font-size:11px;color:#9C8E7D">Destination Côte Basque SARL · RCS Bayonne 904 781 671 · 6 allée des Chênes, 64200 Biarritz</p>
+        </td></tr>
+
+      </table>
+    </td></tr>
+  </table>
+</body></html>`
+
+  const res = await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/smtp-send`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'Authorization': `Bearer ${import.meta.env.VITE_SUPABASE_ANON_KEY}`,
+    },
+    body: JSON.stringify({
+      to: [proprio.email],
+      subject: `Récapitulatif de charges — ${moisLabel} — ${bienNom}`,
+      html,
+    }),
+  })
+  if (!res.ok) {
+    const err = await res.text()
+    throw new Error(`smtp-send: ${err}`)
+  }
+  return true
+}
+
+
 export async function validerFacture(factureId) {
   const { error } = await supabase
     .from('facture_evoliz')
