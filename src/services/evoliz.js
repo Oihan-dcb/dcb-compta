@@ -200,7 +200,10 @@ export async function creerFactureEvoliz(facture) {
       .maybeSingle()
     proprio = p
   }
-  if (!proprio) throw new Error(`Propriétaire manquant — facture ${facture.id} (proprietaire_id=${facture.proprietaire_id})`)
+  if (!proprio) {
+    await supabase.from('facture_evoliz').update({ statut: 'valide' }).eq('id', facture.id)
+    throw new Error(`Propriétaire manquant — facture ${facture.id} (proprietaire_id=${facture.proprietaire_id})`)
+  }
 
   // 1. S'assurer que le client existe dans Evoliz
   // Si le proprio est d'une autre agence (ex: proprio Lauian avec facture DCB pour FMEN),
@@ -367,6 +370,7 @@ export async function refreshFacturesBrouillonsEvoliz(mois) {
     .eq('mois', mois)
     .eq('statut', 'envoye_evoliz')
     .eq('agence', AGENCE)
+    .neq('type_facture', 'com')
     .not('id_evoliz', 'is', null)
     .neq('id_evoliz', 'N/A')
 
