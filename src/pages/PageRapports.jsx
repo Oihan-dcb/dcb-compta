@@ -897,7 +897,7 @@ FORMAT :
 
   // virementNet calculé depuis les lignes du tableau pour cohérence avec Statement et PDF propriétaire
   const _kpiVirTotal     = !data ? 0 : (data.resas || []).reduce((s, r) => r.proprio_encaisse ? s : s + (r.vir || 0), 0)
-  const _kpiFreducLoy    = !data ? 0 : (data.frais || []).filter(f => f.mode_traitement === 'deduire_loyer').reduce((s, f) => {
+  const _kpiFreducLoy    = !data ? 0 : (data.frais || []).filter(f => f.mode_traitement === 'deduire_loyer' || f.mode_traitement === 'facturer_et_deduire').reduce((s, f) => {
     if (f.statut === 'facture' && f.statut_deduction !== 'en_attente') return s + (f.montant_deduit_loy || 0)
     if (f.statut === 'facture' && f.statut_deduction === 'en_attente')  return s + (f.montant_ttc || 0)
     if (f.statut === 'a_facturer')                                       return s + (f.montant_ttc || 0)

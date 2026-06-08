@@ -9,9 +9,10 @@ import { useMoisPersisted } from '../hooks/useMoisPersisted'
 const moisCourant = new Date().toISOString().slice(0, 7)
 
 const MODES_TRAITEMENT = {
-  deduire_loyer:   'Déduire du loyer',
-  facturer_direct: 'Refacturer au proprio',
-  remboursement:   'Remboursement (+ LOY)',
+  deduire_loyer:        'Déduire du loyer',
+  facturer_direct:      'Refacturer au proprio',
+  remboursement:        'Remboursement (+ LOY)',
+  facturer_et_deduire:  'Facturer + Déduire du loyer (LAUIAN)',
 }
 
 const MODES_ENCAISSEMENT = {

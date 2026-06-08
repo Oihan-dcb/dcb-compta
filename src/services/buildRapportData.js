@@ -347,7 +347,7 @@ export async function buildRapportData(bienId, propId, mois, opts = {}) {
 
   // ── fraisDeductionLoy — règle unique ─────────────────────────────────────
   const fraisDeductionLoy = (fraisData || []).reduce((s, f) => {
-    if (f.mode_traitement === 'deduire_loyer') {
+    if (f.mode_traitement === 'deduire_loyer' || f.mode_traitement === 'facturer_et_deduire') {
       if (f.statut === 'facture' && f.statut_deduction !== 'en_attente') return s + (f.montant_deduit_loy || 0)
       if (f.statut === 'facture' && f.statut_deduction === 'en_attente')  return s + (f.montant_ttc || 0)
       if (f.statut === 'a_facturer')                                       return s + (f.montant_ttc || 0)

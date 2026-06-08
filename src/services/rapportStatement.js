@@ -72,7 +72,7 @@ export function genererStatementHTML(proprio, mois, data) {
   // Frais déduits du loyer — déclarés avant deboursTotal/totalManager (évite TDZ)
   const remboursementsList = fraisProprietaire.filter(f => f.mode_traitement === 'remboursement' && f.statut !== 'brouillon')
   const remboursementsTotal = remboursementsList.reduce((s, f) => s + (f.montant_ttc || 0), 0)
-  const fraisDeductionLoyList = fraisProprietaire.filter(f => f.mode_traitement === 'deduire_loyer')
+  const fraisDeductionLoyList = fraisProprietaire.filter(f => f.mode_traitement === 'deduire_loyer' || f.mode_traitement === 'facturer_et_deduire')
   const fraisDeductionLoyTotal = fraisDeductionLoyList.reduce((s, f) => {
     if (f.statut === 'facture' && f.statut_deduction !== 'en_attente') return s + (f.montant_deduit_loy || 0)
     if (f.statut === 'facture' && f.statut_deduction === 'en_attente')  return s + (f.montant_ttc || 0)

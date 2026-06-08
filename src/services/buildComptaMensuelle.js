@@ -78,7 +78,7 @@ export async function buildComptaMensuelle(mois, bienIds = null) {
       .eq('mois_facturation', mois)
       .eq('mode_encaissement', 'dcb')
       .in('statut', ['a_facturer', 'facture'])
-      .eq('mode_traitement', 'deduire_loyer'),
+      .in('mode_traitement', ['deduire_loyer', 'facturer_et_deduire']),
     // frais facturés directement au proprio (déduits du reversement)
     supabase
       .from('frais_proprietaire')

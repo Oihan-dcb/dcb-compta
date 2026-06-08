@@ -182,7 +182,7 @@ async function prechargerDonneesFacturation(mois, bienIds, proprietaireIds, agen
     supabase.from('frais_proprietaire')
       .select('id, bien_id, montant_ttc, libelle, mode_traitement, mode_encaissement, statut')
       .in('bien_id', bienIds).eq('mois_facturation', mois)
-      .in('mode_traitement', ['deduire_loyer', 'remboursement', 'facturer_direct']),
+      .in('mode_traitement', ['deduire_loyer', 'remboursement', 'facturer_direct', 'facturer_et_deduire']),
 
     supabase.from('expense')
       .select('bien_id, amount, description, type_expense')
@@ -257,7 +257,7 @@ async function genererFactureGroupe(proprio, biens, mois, ctx) {
 
   const fraisDirect = ctx.fraisGlobaux.filter(f =>
     bienIds.includes(f.bien_id) &&
-    f.mode_traitement === 'facturer_direct' &&
+    ['facturer_direct', 'facturer_et_deduire'].includes(f.mode_traitement) &&
     f.mode_encaissement === 'dcb' &&
     ['a_facturer', 'facture'].includes(f.statut)
   )
@@ -749,13 +749,15 @@ async function genererFactureGroupe(proprio, biens, mois, ctx) {
   }
 
   // Marquer les frais facturer_direct comme facturés (pas de déduction LOY)
+  // facturer_et_deduire : facturés ET déduits du LOY
   for (const frais of (fraisDirect || [])) {
+    const etDeduire = frais.mode_traitement === 'facturer_et_deduire'
     await supabase.from('frais_proprietaire')
       .update({
         statut:             'facture',
-        montant_deduit_loy: 0,
-        montant_reliquat:   frais.montant_ttc,
-        statut_deduction:   'non_deduit',
+        montant_deduit_loy: etDeduire ? frais.montant_ttc : 0,
+        montant_reliquat:   etDeduire ? 0 : frais.montant_ttc,
+        statut_deduction:   etDeduire ? 'totalement_deduit' : 'non_deduit',
       })
       .eq('id', frais.id)
   }
@@ -802,7 +804,7 @@ async function genererFactureDebours(proprio, biens, mois, ctx) {
     .select('bien_id, id, montant_ttc, libelle')
     .in('bien_id', bienIds)
     .eq('mois_facturation', mois)
-    .eq('mode_traitement', 'facturer_direct')
+    .in('mode_traitement', ['facturer_direct', 'facturer_et_deduire'])
     .eq('mode_encaissement', 'dcb')
     .eq('statut', 'a_facturer')
 
@@ -1042,10 +1044,10 @@ async function genererFactureLauianFMEN(proprio, biens, mois, ctx) {
   const fmenTVA = fmenVentil.reduce(function(s, v) { return s + (v.montant_tva || 0) }, 0)
   const fmenTTC = fmenVentil.reduce(function(s, v) { return s + (v.montant_ttc || 0) }, 0)
 
-  // Frais directs DCB→proprio Lauïan (facturer_direct saisis depuis dcb-compta)
+  // Frais directs DCB→proprio Lauïan (facturer_direct ou facturer_et_deduire saisis depuis dcb-compta)
   const fraisDirect = ctx.fraisGlobaux.filter(function(f) {
     return bienIds.includes(f.bien_id) &&
-      f.mode_traitement === 'facturer_direct' &&
+      ['facturer_direct', 'facturer_et_deduire'].includes(f.mode_traitement) &&
       f.mode_encaissement === 'dcb' &&
       ['a_facturer', 'facture'].includes(f.statut)
   })
