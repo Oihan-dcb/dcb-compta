@@ -1038,12 +1038,22 @@ async function genererFactureLauianFMEN(proprio, biens, mois, ctx) {
   const fmenVentil = ctx.ventilationGlobale.filter(function(v) {
     return bienIds.includes(v.bien_id) && v.code === 'FMEN'
   })
-  if (fmenVentil.length === 0) return null
-
   const fmenHT  = fmenVentil.reduce(function(s, v) { return s + (v.montant_ht  || 0) }, 0)
   const fmenTVA = fmenVentil.reduce(function(s, v) { return s + (v.montant_tva || 0) }, 0)
   const fmenTTC = fmenVentil.reduce(function(s, v) { return s + (v.montant_ttc || 0) }, 0)
-  if (fmenHT === 0) return null
+
+  // Frais directs DCB→proprio Lauïan (facturer_direct saisis depuis dcb-compta)
+  const fraisDirect = ctx.fraisGlobaux.filter(function(f) {
+    return bienIds.includes(f.bien_id) &&
+      f.mode_traitement === 'facturer_direct' &&
+      f.mode_encaissement === 'dcb' &&
+      ['a_facturer', 'facture'].includes(f.statut)
+  })
+  const fraisDirectTTC = fraisDirect.reduce(function(s, f) { return s + (f.montant_ttc || 0) }, 0)
+  const fraisDirectHT  = Math.round(fraisDirectTTC / 1.20)
+  const fraisDirectTVA = fraisDirectTTC - fraisDirectHT
+
+  if (fmenHT === 0 && fraisDirect.length === 0) return null
 
   const existing = ctx.facturesExistantes.get(
     `${proprio.id}__${bienId ?? 'null'}__lauian_fmen`
@@ -1055,15 +1065,19 @@ async function genererFactureLauianFMEN(proprio, biens, mois, ctx) {
 
   const libelleGroupe = biens.length === 1 ? biens[0].hospitable_name : biens.map(function(b) { return b.code }).join(', ')
 
+  const totalHT  = fmenHT  + fraisDirectHT
+  const totalTVA = fmenTVA + fraisDirectTVA
+  const totalTTC = fmenTTC + fraisDirectTTC
+
   const factureData = {
     proprietaire_id:     proprio.id,
     mois,
     agence:              AGENCE,
     bien_id:             bienId,
     type_facture:        'lauian_fmen',
-    total_ht:            fmenHT,
-    total_tva:           fmenTVA,
-    total_ttc:           fmenTTC,
+    total_ht:            totalHT,
+    total_tva:           totalTVA,
+    total_ttc:           totalTTC,
     montant_reversement: null,
     statut:              'brouillon',
     solde_negatif:       false,
@@ -1086,19 +1100,57 @@ async function genererFactureLauianFMEN(proprio, biens, mois, ctx) {
   }
 
   await supabase.from('facture_evoliz_ligne').delete().eq('facture_id', factureId)
-  await supabase.from('facture_evoliz_ligne').insert({
-    facture_id:  factureId,
-    code:        'FMEN',
-    libelle:     'Forfait ménage, linge et frais de service — prestation DCB',
-    description: `${libelleGroupe} — ménage géré par DCB — ${mois}`,
-    montant_ht:  fmenHT,
-    taux_tva:    20,
-    montant_tva: fmenTVA,
-    montant_ttc: fmenTTC,
-    ordre:       1,
-  })
 
-  return { created, factureId, totalHT: fmenHT, totalTTC: fmenTTC }
+  const lignes = []
+  let ordre = 1
+
+  if (fmenHT > 0) {
+    lignes.push({
+      facture_id:  factureId,
+      code:        'FMEN',
+      libelle:     'Forfait ménage, linge et frais de service — prestation DCB',
+      description: `${libelleGroupe} — ménage géré par DCB — ${mois}`,
+      montant_ht:  fmenHT,
+      taux_tva:    20,
+      montant_tva: fmenTVA,
+      montant_ttc: fmenTTC,
+      ordre:       ordre++,
+    })
+  }
+
+  for (const frais of fraisDirect) {
+    const ht  = Math.round(frais.montant_ttc / 1.20)
+    const tva = frais.montant_ttc - ht
+    lignes.push({
+      facture_id:  factureId,
+      code:        'FRAIS',
+      libelle:     frais.libelle,
+      description: `${libelleGroupe} — ${mois}`,
+      montant_ht:  ht,
+      taux_tva:    20,
+      montant_tva: tva,
+      montant_ttc: frais.montant_ttc,
+      ordre:       ordre++,
+    })
+  }
+
+  if (lignes.length > 0) {
+    await supabase.from('facture_evoliz_ligne').insert(lignes)
+  }
+
+  // Marquer les frais directs comme facturés
+  for (const frais of fraisDirect) {
+    if (frais.statut === 'a_facturer') {
+      await supabase.from('frais_proprietaire').update({
+        statut:             'facture',
+        montant_deduit_loy: 0,
+        montant_reliquat:   frais.montant_ttc,
+        statut_deduction:   'non_deduit',
+      }).eq('id', frais.id)
+    }
+  }
+
+  return { created, factureId, totalHT, totalTTC }
 }
 
 export async function getFacturesMois(mois) {
