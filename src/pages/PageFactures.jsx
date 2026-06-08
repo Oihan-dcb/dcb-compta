@@ -614,7 +614,8 @@ const [pushing, setPushing] = useState(false)
             onClick={async () => {
               try {
                 const r = await creerArticlesManquantsEvoliz()
-                setSuccess(`Articles Evoliz : ${r.created.length} créé(s) (${r.created.join(', ') || '—'}), ${r.skipped.length} déjà existant(s)${r.errors.length ? `, ${r.errors.length} erreur(s)` : ''}`)
+                const errDetail = r.errors.map(e => `${e.reference}: ${e.error}`).join(' | ')
+                setSuccess(`Articles Evoliz : ${r.created.length} créé(s) (${r.created.join(', ') || '—'}), ${r.skipped.length} déjà existant(s)${r.errors.length ? ` — Erreurs: ${errDetail}` : ''}`)
               } catch (err) { setError(err.message) }
             }}
             title="Crée les articles manquants dans le catalogue Evoliz (COM, DIV, HAOWNER, HON_ETU, HON_MOB)"
