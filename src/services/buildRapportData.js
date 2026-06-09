@@ -269,8 +269,14 @@ export async function buildRapportData(bienId, propId, mois, opts = {}) {
 
     // taxe unifiée pour la colonne Taxe :
     // direct/manual → taxe collectée (reservation_fee fee_type='tax')
-    // Airbnb/Booking → VIR-LOY (taxe de séjour incluse dans le payout, reversée au proprio)
-    const taxeDisplay = taxeSejDirecte > 0 ? taxeSejDirecte : Math.max(0, virHt - loyHt)
+    // Airbnb        → guest.taxes (collectées+reversées par Airbnb, absentes du NET plateforme)
+    // Booking       → VIR-LOY (taxe incluse dans le payout, reversée au proprio)
+    const taxeAirbnb = r.platform === 'airbnb' && !r.owner_stay
+      ? ((r.hospitable_raw?.financials?.guest?.taxes) || []).reduce((s, t) => s + (t.amount || 0), 0)
+      : 0
+    const taxeDisplay = taxeSejDirecte > 0 ? taxeSejDirecte
+      : taxeAirbnb > 0 ? taxeAirbnb
+      : Math.max(0, virHt - loyHt)
 
     // frais_plateforme = ce que retient le canal de distribution
     // Airbnb/Booking : fin_host_service_fee est négatif (commission prélevée par la plateforme)
