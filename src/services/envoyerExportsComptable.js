@@ -136,7 +136,7 @@ export async function envoyerExportsComptable(mois, destinataire, cc, exports, m
       html: htmlBody,
       attachments: attachments.map(a => ({
         filename: a.filename,
-        content: a.content,
+        content_base64: a.content,
         ...(a.content_type ? { content_type: a.content_type } : {}),
       }))
     }
