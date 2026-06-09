@@ -6,7 +6,7 @@
  * Aucun recalcul divergent ailleurs.
  *
  * Règles métier centralisées :
- *  - gross_revenue  = fin_accommodation + guest_fees (raw Hospitable)
+ *  - gross_revenue  = financials.guest.total_price (Airbnb) | fin_gross_revenue (direct) | fin_accommodation + guest_fees ± taxes (autres)
  *  - base_comm      = fin_accommodation (Hospitable "Commissionable base")
  *  - fraisDeductionLoy : si statut='facture' && statut_deduction!='en_attente' → montant_deduit_loy
  *                        si statut='facture' && statut_deduction='en_attente'   → fallback montant_ttc
@@ -231,6 +231,11 @@ export async function buildRapportData(bienId, propId, mois, opts = {}) {
   const computeGrossRevenue = (r) => {
     if (r.owner_stay) return 0
     if (r.platform === 'direct' && r.fin_gross_revenue) return r.fin_gross_revenue
+    // Airbnb : guest.total_price = montant exact payé par le voyageur (accommodation nette après remise + community fee + taxes)
+    if (r.platform === 'airbnb') {
+      const guestTotal = r.hospitable_raw?.financials?.guest?.total_price?.amount
+      if (guestTotal) return guestTotal
+    }
     const hasFees = (r.reservation_fee || []).length > 0
     if (r.platform === 'booking' && !hasFees && r.fin_gross_revenue) {
       const withheld = ((r.hospitable_raw?.financials?.guest?.taxes) || [])
