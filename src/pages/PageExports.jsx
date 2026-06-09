@@ -160,7 +160,7 @@ export default function PageExports() {
 
   const [showEmailForm, setShowEmailForm] = useState(false)
   const [emailDest, setEmailDest] = useState('lgarnier@cec-garnier.fr')
-  const [emailCC, setEmailCC] = useState('m.arza@cec-garnier.fr')
+  const [emailCC, setEmailCC] = useState(AGENCE === 'lauian' ? 'm.arza@cec-garnier.fr,laura@destinationcotebasque.com' : 'm.arza@cec-garnier.fr')
   const [emailMessage, setEmailMessage] = useState('')
   const [emailExports, setEmailExports] = useState({
     rapprochement: false, auto: false, factures: false, compta: false, achats: false, bilan_lld: false
@@ -365,7 +365,7 @@ export default function PageExports() {
       await envoyerExportsComptable(mois, emailDest, emailCC, exportsSelectionnes, emailMessage, selectedBienIds, bienActifEmail)
       setSuccess('Email envoyé avec succès')
       setShowEmailForm(false)
-      setEmailDest('lgarnier@cec-garnier.fr'); setEmailCC('m.arza@cec-garnier.fr'); setEmailMessage('')
+      setEmailDest('lgarnier@cec-garnier.fr'); setEmailCC(AGENCE === 'lauian' ? 'm.arza@cec-garnier.fr,laura@destinationcotebasque.com' : 'm.arza@cec-garnier.fr'); setEmailMessage('')
     } catch (err) {
       setError('Erreur envoi : ' + err.message)
     } finally {
