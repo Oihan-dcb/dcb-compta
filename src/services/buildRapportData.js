@@ -305,10 +305,13 @@ export async function buildRapportData(bienId, propId, mois, opts = {}) {
       vent: v,
       extra: extraByResa[r.id] || 0,
       gross_revenue: grossRev,
-      // base_comm = fin_accommodation + fin_host_service_fee - fin_discount
-      // = "Commissionable base" Hospitable (net de la commission hôte + remises promotionnelles)
-      // fin_host_service_fee est négatif, fin_discount est positif en base (à soustraire)
-      base_comm: (r.fin_accommodation || 0) + (r.fin_host_service_fee || 0) - (r.fin_discount || 0),
+      // base_comm = base de calcul DCB pour HON/LOY
+      // Airbnb : NET plateforme − ménage brut (Community Fee côté hôte = frais ménage passé au proprio)
+      //          formule : fin_revenue − guest_fees  →  cohérent avec HON = base_comm × 25%
+      // Autres : fin_accommodation + fin_host_service_fee − fin_discount (Commissionable base Hospitable)
+      base_comm: r.platform === 'airbnb'
+        ? Math.max(0, (r.fin_revenue || 0) - (r.reservation_fee || []).filter(f => f.fee_type === 'guest_fee').reduce((s, f) => s + (f.amount || 0), 0))
+        : (r.fin_accommodation || 0) + (r.fin_host_service_fee || 0) - (r.fin_discount || 0),
       proprio_encaisse: isProprioEncaisse(r.id),
       hon:  v.HON?.montant_ttc || 0,
       loy:  loyHt,
