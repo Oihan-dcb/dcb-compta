@@ -874,3 +874,10 @@ loyAmount = (revenue - remittedTotal) - honTTC - fmenTTC - aeAmount - taxesTotal
 ```
 
 Voir invariant I-123.
+
+## Fixes session 10 juin 2026 — Email débours proprio (montant 0 € + bouton)
+
+`src/services/facturesEvoliz.js` → `envoyerEmailDeboursProprio` :
+
+- **Montant à 0,00 €** : le total de l'email ne sommait que les lignes `code === 'DEB_AE'`. Or une facture de type `debours` peut aussi contenir des lignes `DEBP` (débours proprio, ex. ménage de fond) et `FRAIS`. Sur les biens en `mode_encaissement='proprio'` (ex. **VIKY**, ménage de fond 75 € → ligne `DEBP`), le montant tombait à 0. Corrigé en sommant **toutes** les lignes de la facture débours (elles sont toutes positives et toutes à rembourser).
+- **Bloc bouton "Confirmer mon virement" affiché en texte brut** : `\${confirmUrl ? … : ''}` — le `$` était échappé (`\$`) dans le template literal → rendu littéral. Backslash retiré, l'interpolation fonctionne (edge function `confirm-virement-debours` présente ; bouton visible si `VITE_DEBOURS_CONFIRM_SECRET` configuré).
