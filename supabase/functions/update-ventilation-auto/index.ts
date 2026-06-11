@@ -67,13 +67,33 @@ Deno.serve(async (req) => {
 async function traiterMission(supabase: ReturnType<typeof createClient>, missionId: string, dryRun: boolean) {
   const { data: mission, error } = await supabase
     .from('mission_menage')
-    .select('id, ventilation_auto_id, bien_id, montant, mois')
+    .select('id, ventilation_auto_id, bien_id, montant, mois, reservation_id')
     .eq('id', missionId)
     .maybeSingle()
 
   if (error) return { action: 'error', mission_id: missionId, reason: error.message }
   if (!mission) return { action: 'error', mission_id: missionId, reason: 'Mission introuvable' }
-  if (!mission.ventilation_auto_id) return { action: 'skipped', mission_id: missionId, reason: 'ventilation_auto_id null — mission non liée' }
+
+  // Auto-réparation (I-51) : mission pas encore liée mais sa réservation a déjà une ligne AUTO
+  // (fenêtre entre la saisie AE et le cron nocturne) → on lie via la RPC puis on recalcule
+  // immédiatement, au lieu de skipper et d'attendre la nuit.
+  if (!mission.ventilation_auto_id) {
+    if (mission.reservation_id) {
+      const { data: ligneAuto } = await supabase
+        .from('ventilation')
+        .select('id')
+        .eq('reservation_id', mission.reservation_id)
+        .eq('code', 'AUTO')
+        .maybeSingle()
+      if (ligneAuto?.id) {
+        if (!dryRun) {
+          await supabase.rpc('lier_ventilation_auto_mission', { p_reservation_id: mission.reservation_id, p_ventilation_id: ligneAuto.id })
+        }
+        return await traiterVentilAutoId(supabase, ligneAuto.id, dryRun)
+      }
+    }
+    return { action: 'skipped', mission_id: missionId, reason: 'ventilation_auto_id null et aucune ligne AUTO pour la réservation (résa non ventilée ou mission sans résa)' }
+  }
 
   return await traiterVentilAutoId(supabase, mission.ventilation_auto_id, dryRun)
 }
