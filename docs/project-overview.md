@@ -881,3 +881,15 @@ Voir invariant I-123.
 
 - **Montant à 0,00 €** : le total de l'email ne sommait que les lignes `code === 'DEB_AE'`. Or une facture de type `debours` peut aussi contenir des lignes `DEBP` (débours proprio, ex. ménage de fond) et `FRAIS`. Sur les biens en `mode_encaissement='proprio'` (ex. **VIKY**, ménage de fond 75 € → ligne `DEBP`), le montant tombait à 0. Corrigé en sommant **toutes** les lignes de la facture débours (elles sont toutes positives et toutes à rembourser).
 - **Bloc bouton "Confirmer mon virement" affiché en texte brut** : `\${confirmUrl ? … : ''}` — le `$` était échappé (`\$`) dans le template literal → rendu littéral. Backslash retiré, l'interpolation fonctionne (edge function `confirm-virement-debours` présente ; bouton visible si `VITE_DEBOURS_CONFIRM_SECRET` configuré).
+
+## Feature session 11 juin 2026 — Clôture par bien à l'envoi Evoliz
+
+Verrou de saisie **par bien/mois** déclenché par l'envoi de la facture à Evoliz.
+
+- **Migration 193** : tables `cloture_bien` (bien_id, mois, active, facture_id, closed_by) + `cloture_bien_log` (audit réouvertures) + fonction `bien_mois_clos(bien_id, mois)` + policies **RESTRICTIVE** (insert/update/delete) sur `prestation_hors_forfait` et `mission_menage`. La RLS bloque `authenticated`/`anon` (AE + admin) mais **laisse passer `service_role`** (crons, ventilation, sync iCal).
+- **Migration 194** : backfill `cloture_bien` depuis les factures `envoye_evoliz`/`payee` (par bien ; groupe Maïté → tous les biens du proprio) + **retrait du trigger 151** `prestation_invoice_lock` (per-proprio → sur-verrouillait les proprios multi-biens : les Peres, Chevalier, Cresseveur ; et bloquait aussi les crons).
+- **`evoliz.js`** : `creerFactureEvoliz` pose la clôture des biens au passage `envoye_evoliz` (`cloturerBiensFacture`, COM exclu).
+- **Edge function `reopen-cloture`** (verify_jwt) : réouverture **réservée à Oïhan** (check email JWT) → désactive `cloture_bien.active` + log dans `cloture_bien_log`. UI : bouton « 🔓 Rouvrir saisie » dans PageFactures (motif obligatoire).
+- **dcb-portail-ae** : gardes `isBienClos` sur toutes les saisies (prestations + heures) + badge « 🔒 Clôturé (facturé) ».
+
+Granularité = **par bien** (1 facture = 1 bien, sauf Maïté = facture groupe → toutes les chambres). Les biens Lauian se verrouillent à l'envoi de leur facture `lauian_fmen`, les proprio-mode via `debours`.
