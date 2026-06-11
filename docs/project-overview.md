@@ -893,3 +893,9 @@ Verrou de saisie **par bien/mois** déclenché par l'envoi de la facture à Evol
 - **dcb-portail-ae** : gardes `isBienClos` sur toutes les saisies (prestations + heures) + badge « 🔒 Clôturé (facturé) ».
 
 Granularité = **par bien** (1 facture = 1 bien, sauf Maïté = facture groupe → toutes les chambres). Les biens Lauian se verrouillent à l'envoi de leur facture `lauian_fmen`, les proprio-mode via `debours`.
+
+## Fixes session 11 juin 2026 — CF-BQ, CF-F2, matching
+
+- **CF-BQ1/BQ2** (suppression mouvement bancaire) : le garde de nettoyage (`PageBanque.supprimerMouvement` + `supprimerMois`) ne déclenchait `annulerRapprochement` que si `statut_matching === 'rapproche'`. Or un mouvement peut être lié (ventilation/payout_hospitable/reservation_paiement) sous d'autres statuts (matche_auto, en_attente, non_identifie…). Nouveau helper `estMouvementReference(id)` → nettoyage dès qu'il est référencé. Données : 0 orphelin en base ; 9 mouvements 2025 liés-non-rapproché supprimés (cleanup), 1 (LAGREOU 2026-02, mauvais match vers résa 2018) délié, Stripe 7403€ juin gardé.
+- **Matching fallback** (`matching.js` `confirmerMatch`) : appariait un payout à n'importe quelle résa du mois par montant ±5c → faux liens (ex. payout 2026 → résa 2018). Corrigé : n'apparie que si résa ≤120j du payout ET candidat unique. (Le cron `global-sync` n'a pas ce fallback.)
+- **CF-F2** (doublons Evoliz) : 0 doublon / 0 orphelin en base, gardes existants OK. Ajout d'un bouton **« 🔎 Audit Evoliz »** (`auditOrphelinsEvoliz`, lecture seule) qui compare les factures Evoliz à la base et liste les orphelins éventuels (créés côté Evoliz par un échec d'UPDATE passé, invisibles en base).
