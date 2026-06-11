@@ -345,14 +345,23 @@ async function confirmerMatch(mvt, matchedPayouts, statut, note) {
     if (liens?.length) {
       reservationIds.push(...liens.map(l => l.reservation_id))
     } else {
-      const { data: ph } = await supabase.from('payout_hospitable').select('amount,mois_comptable').eq('id', payoutId).single()
+      const { data: ph } = await supabase.from('payout_hospitable').select('amount,mois_comptable,date_payout').eq('id', payoutId).single()
       if (ph?.amount) {
-        const { data: cands } = await supabase.from('reservation').select('id,fin_revenue').eq('mois_comptable', ph.mois_comptable || mvt.mois_releve).gt('fin_revenue', 0)
-        const found = (cands || []).find(r => Math.abs(r.fin_revenue - ph.amount) <= 5)
-        if (found) {
-          reservationIds.push(found.id)
-          try { await supabase.from('payout_reservation').upsert({ payout_id: payoutId, reservation_id: found.id }, { onConflict: 'payout_id,reservation_id', ignoreDuplicates: true }) } catch (_) {}
+        const { data: cands } = await supabase.from('reservation')
+          .select('id,fin_revenue,arrival_date')
+          .eq('mois_comptable', ph.mois_comptable || mvt.mois_releve)
+          .gt('fin_revenue', 0)
+        // Fallback prudent : on n'apparie un payout à une résa par montant QUE si la résa est
+        // proche dans le temps du payout (≤120j) ET qu'il n'y a qu'UN SEUL candidat.
+        // Évite les faux liens par coïncidence de montant (ex. payout 2026 → résa 2018).
+        const refDate = ph.date_payout || mvt.date_operation
+        const proche = d => d && refDate && Math.abs((new Date(d) - new Date(refDate)) / 86400000) <= 120
+        const matches = (cands || []).filter(r => Math.abs(r.fin_revenue - ph.amount) <= 5 && proche(r.arrival_date))
+        if (matches.length === 1) {
+          reservationIds.push(matches[0].id)
+          try { await supabase.from('payout_reservation').upsert({ payout_id: payoutId, reservation_id: matches[0].id }, { onConflict: 'payout_id,reservation_id', ignoreDuplicates: true }) } catch (_) {}
         }
+        // 0 ou >1 candidat proche → on ne devine pas (rapprochement manuel)
       }
     }
   }
