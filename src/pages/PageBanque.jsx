@@ -4,7 +4,7 @@ import { getMouvementsMois, getMoisDispos } from '../services/banque'
 import { useMoisPersisted } from '../hooks/useMoisPersisted'
 import { supabase } from '../lib/supabase'
 import { importBookingCSV } from '../services/importBooking'
-import { annulerRapprochement } from '../services/rapprochement'
+import { annulerRapprochement, estMouvementReference } from '../services/rapprochement'
 import { parserFichierBancaire, importerMouvementsBancaires } from '../services/importBanque'
 import { syncPayoutsFromHospitable } from '../services/syncPayouts'
 
@@ -107,9 +107,10 @@ export default function PageBanque() {
         setConfirmModal(null)
         setSupprimantId(id)
         try {
-          // CF-BQ1 : nettoyer les tables liées si le mouvement est rapproché
-        const { data: mvt } = await supabase.from('mouvement_bancaire').select('statut_matching').eq('id', id).single()
-        if (mvt?.statut_matching === 'rapproche') {
+          // CF-BQ1 : nettoyer les tables liées dès que le mouvement est RÉFÉRENCÉ
+          // (pas seulement statut 'rapproche' — un lien peut exister sous matche_auto,
+          // en_attente, non_identifie… cf. 11 cas trouvés). Sinon orphelins garantis.
+        if (await estMouvementReference(id)) {
           await annulerRapprochement(id)
         }
         const { error } = await supabase.from('mouvement_bancaire').delete().eq('id', id)
@@ -126,14 +127,25 @@ export default function PageBanque() {
     if (moisBloque) { setError('🔒 Mois clôturé (Rapprochement) — suppression impossible.'); return }
     setSupprimant(true)
     try {
-      // CF-BQ2 : nettoyer les tables liées pour les mouvements rapprochés avant suppression
+      // CF-BQ2 : nettoyer les tables liées pour TOUT mouvement référencé avant suppression
+      // (pas seulement 'rapproche'). Précalcul de l'ensemble référencé du mois (3 requêtes).
       const { data: mvtsMois } = await supabase
         .from('mouvement_bancaire')
         .select('id, statut_matching')
         .eq('source', suppression.source)
         .eq('mois_releve', suppression.mois)
+      const mvtIds = (mvtsMois || []).map(m => m.id)
+      const referencedSet = new Set()
+      if (mvtIds.length) {
+        const [v, p, rp] = await Promise.all([
+          supabase.from('ventilation').select('mouvement_id').in('mouvement_id', mvtIds),
+          supabase.from('payout_hospitable').select('mouvement_id').in('mouvement_id', mvtIds),
+          supabase.from('reservation_paiement').select('mouvement_id').in('mouvement_id', mvtIds),
+        ])
+        for (const row of [...(v.data || []), ...(p.data || []), ...(rp.data || [])]) referencedSet.add(row.mouvement_id)
+      }
       for (const m of (mvtsMois || [])) {
-        if (m.statut_matching === 'rapproche') {
+        if (m.statut_matching === 'rapproche' || referencedSet.has(m.id)) {
           await annulerRapprochement(m.id)
         }
       }

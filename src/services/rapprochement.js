@@ -737,6 +737,19 @@ export async function marquerNonIdentifie(mouvementId) {
   if (error) throw error
 }
 
+// CF-BQ1/BQ2 : un mouvement est "référencé" s'il a des liens dans ventilation,
+// payout_hospitable ou reservation_paiement — quel que soit son statut_matching
+// ('rapproche', 'matche_auto', 'matche_manuel', 'non_identifie', 'en_attente'…).
+// Sert à décider du nettoyage avant suppression (sinon orphelins).
+export async function estMouvementReference(mouvementId) {
+  const [v, p, rp] = await Promise.all([
+    supabase.from('ventilation').select('id').eq('mouvement_id', mouvementId).limit(1),
+    supabase.from('payout_hospitable').select('id').eq('mouvement_id', mouvementId).limit(1),
+    supabase.from('reservation_paiement').select('id').eq('mouvement_id', mouvementId).limit(1),
+  ])
+  return !!(v.data?.length || p.data?.length || rp.data?.length)
+}
+
 export async function annulerRapprochement(mouvementId) {
   const { data: mvtLog } = await supabase.from('mouvement_bancaire').select('credit, date_operation, libelle').eq('id', mouvementId).single()
 
