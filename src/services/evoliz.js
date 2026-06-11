@@ -173,6 +173,42 @@ export async function creerClientEvoliz(proprietaire) {
  *
  * @param {Object} facture - Objet facture_evoliz avec lignes et propriÃÂ©taire
  */
+// Clôture des biens d'une facture poussée à Evoliz (envoye_evoliz = bien figé,
+// plus de saisie prestations/heures côté AE/admin — RLS, voir migration 193).
+// Par bien (facture mono-bien) ou tout le groupe (Maïté : bien_id null → biens du proprio).
+// COM exclu (facture globale, pas rattachée à un bien). Best-effort : n'interrompt jamais le push.
+async function cloturerBiensFacture(facture) {
+  try {
+    if (!facture || facture.type_facture === 'com' || !facture.mois) return
+    let bienIds = []
+    if (facture.bien_id) {
+      bienIds = [facture.bien_id]
+    } else if (facture.proprietaire_id) {
+      // Facture de groupe (Maïté) → tous les biens du propriétaire
+      const { data } = await supabase.from('bien').select('id').eq('proprietaire_id', facture.proprietaire_id)
+      bienIds = (data || []).map(b => b.id)
+    }
+    if (!bienIds.length) return
+    // Idempotent : ne pas recréer une clôture active déjà présente
+    const { data: existing } = await supabase.from('cloture_bien')
+      .select('bien_id').in('bien_id', bienIds).eq('mois', facture.mois).eq('active', true)
+    const have = new Set((existing || []).map(e => e.bien_id))
+    const toInsert = bienIds.filter(id => !have.has(id)).map(id => ({
+      agence: facture.agence || AGENCE,
+      bien_id: id,
+      mois: facture.mois,
+      facture_id: facture.id,
+      closed_by: 'evoliz_push',
+    }))
+    if (toInsert.length) {
+      const { error } = await supabase.from('cloture_bien').insert(toInsert)
+      if (error) console.error('[cloturerBiensFacture] insert', error.message)
+    }
+  } catch (e) {
+    console.error('[cloturerBiensFacture]', e?.message || e)
+  }
+}
+
 export async function creerFactureEvoliz(facture) {
   // CF-F2 niveau 1 - guard idempotence : ne pas recreer si deja envoye vers Evoliz
   if (facture.id_evoliz) {
@@ -275,6 +311,7 @@ export async function creerFactureEvoliz(facture) {
     await supabase.from('facture_evoliz')
       .update({ statut: 'envoye_evoliz', id_evoliz: 'N/A', numero_facture: 'N/A' })
       .eq('id', facture.id)
+    await cloturerBiensFacture(facture)
     return { skipped: true, reason: 'no_billable_lines' }
   }
 
@@ -350,6 +387,7 @@ export async function creerFactureEvoliz(facture) {
     )
   }
 
+  await cloturerBiensFacture(facture)
   return { invoiceId, invoiceNumber }
 }
 
