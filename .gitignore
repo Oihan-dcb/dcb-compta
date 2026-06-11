@@ -33,3 +33,4 @@ entities.json
 .env*.local
 .env.pulled
 .env.pulled.tmp
+.env*.pulled

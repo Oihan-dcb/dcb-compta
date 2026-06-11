@@ -11,6 +11,11 @@
  *  2. Vérifie l'expiration
  *  3. Met à jour facture_evoliz.statut = 'remboursement_recu'
  *  4. Retourne une page HTML de confirmation
+ *
+ * ⚠ DÉPLOIEMENT : cette fonction DOIT être déployée avec verify_jwt=false
+ *   (lien public cliqué depuis un email, sans JWT ; auth custom par token HMAC).
+ *   Sinon la passerelle Supabase renvoie 401 avant d'exécuter le handler.
+ *   → `supabase functions deploy confirm-virement-debours --no-verify-jwt`
  */
 
 import { serve } from 'https://deno.land/std@0.168.0/http/server.ts'
