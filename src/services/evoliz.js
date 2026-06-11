@@ -488,47 +488,6 @@ export async function getFacturesClientEvoliz(clientId, opts = {}) {
 }
 
 /**
- * CF-F2 — Audit réconciliation Evoliz ↔ base (LECTURE SEULE, aucune écriture).
- * Liste toutes les factures Evoliz (paginé) et les compare aux id_evoliz en base :
- *  - orphelinsEvoliz : factures présentes dans Evoliz mais sans contrepartie en base
- *    (créées par un échec d'UPDATE passé → doublon potentiel au prochain push).
- *  - dbSansEvoliz : factures en base dont l'id_evoliz n'existe plus dans Evoliz (supprimé).
- */
-export async function auditOrphelinsEvoliz() {
-  const { data: factures } = await supabase.from('facture_evoliz')
-    .select('id_evoliz, mois, type_facture, numero_facture')
-    .eq('agence', AGENCE)
-    .not('id_evoliz', 'is', null).neq('id_evoliz', 'N/A')
-  const dbIds = new Set((factures || []).map(f => String(f.id_evoliz)))
-
-  const evolizInvoices = []
-  let page = 1, lastPage = 1
-  do {
-    const res = await evolizCall('listInvoices', { per_page: 100, page })
-    const items = Array.isArray(res?.data) ? res.data : (Array.isArray(res) ? res : [])
-    evolizInvoices.push(...items)
-    lastPage = res?.meta?.last_page || page
-    page++
-  } while (page <= lastPage && page <= 50)
-
-  const evolizIds = new Set(evolizInvoices.map(i => String(i.invoiceid)))
-  const orphelinsEvoliz = evolizInvoices
-    .filter(inv => !dbIds.has(String(inv.invoiceid)))
-    .map(inv => ({
-      invoiceid: inv.invoiceid,
-      numero: inv.document_number || inv.reference || null,
-      date: inv.documentdate || inv.date || null,
-      montant: inv.total?.total_incl_tax ?? inv.amount ?? null,
-      client: inv.client?.name || null,
-    }))
-  const dbSansEvoliz = (factures || [])
-    .filter(f => !evolizIds.has(String(f.id_evoliz)))
-    .map(f => ({ id_evoliz: f.id_evoliz, numero: f.numero_facture, mois: f.mois, type: f.type_facture }))
-
-  return { totalEvoliz: evolizInvoices.length, totalDbAvecId: dbIds.size, orphelinsEvoliz, dbSansEvoliz }
-}
-
-/**
  * Télécharge le PDF d'une facture Evoliz et retourne son contenu en base64
  * @param {string|number} invoiceId - ID de la facture dans Evoliz
  * @returns {string|null} Contenu PDF en base64, ou null si non disponible

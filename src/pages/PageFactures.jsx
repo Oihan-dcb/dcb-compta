@@ -10,7 +10,7 @@ import {
   envoyerEmailChargesProprio,
   reouvrirClotureFacture,
 } from '../services/facturesEvoliz'
-import { pousserFacturesMoisVersEvoliz, pingEvoliz, pousserFactureCOMVersEvoliz, syncNumerosEvoliz, refreshFacturesBrouillonsEvoliz, creerArticlesManquantsEvoliz, setupEvolizComplet, auditOrphelinsEvoliz } from '../services/evoliz'
+import { pousserFacturesMoisVersEvoliz, pingEvoliz, pousserFactureCOMVersEvoliz, syncNumerosEvoliz, refreshFacturesBrouillonsEvoliz, creerArticlesManquantsEvoliz, setupEvolizComplet } from '../services/evoliz'
 import { formatMontant } from '../lib/hospitable'
 
 const moisCourant = new Date().toISOString().substring(0, 7)
@@ -53,8 +53,6 @@ const [pushing, setPushing] = useState(false)
   const [sendingDebours, setSendingDebours] = useState(null) // factureId en cours d'envoi
   const [sendingCharges, setSendingCharges] = useState(null) // factureId en cours d'envoi info charges
   const [reopening, setReopening] = useState(null) // factureId en cours de réouverture clôture
-  const [auditing, setAuditing] = useState(false)
-  const [auditResult, setAuditResult] = useState(null) // { totalEvoliz, totalDbAvecId, orphelinsEvoliz[], dbSansEvoliz[] }
   
   // Contrôle virements propriétaires
   const [virementsSortants, setVirementsSortants] = useState([])
@@ -645,22 +643,6 @@ const [pushing, setPushing] = useState(false)
           </button>
           <button
             className="btn btn-secondary"
-            disabled={auditing}
-            onClick={async () => {
-              setAuditing(true); setError(null); setAuditResult(null)
-              try {
-                const r = await auditOrphelinsEvoliz()
-                setAuditResult(r)
-                setSuccess(`Audit Evoliz : ${r.totalEvoliz} factures Evoliz, ${r.totalDbAvecId} en base — ${r.orphelinsEvoliz.length} orphelin(s) Evoliz, ${r.dbSansEvoliz.length} base→Evoliz introuvable.`)
-              } catch (err) { setError('Audit Evoliz : ' + err.message) }
-              finally { setAuditing(false) }
-            }}
-            title="CF-F2 — compare les factures Evoliz à la base, liste les orphelins (lecture seule)"
-          >
-            {auditing ? <><span className="spinner" /> Audit…</> : '🔎 Audit Evoliz'}
-          </button>
-          <button
-            className="btn btn-secondary"
             onClick={async () => {
               try {
                 const { supabase } = await import('../lib/supabase')
@@ -677,39 +659,6 @@ const [pushing, setPushing] = useState(false)
           </button>
         </div>
       </div>
-
-      {/* Audit Evoliz (CF-F2) */}
-      {auditResult && (
-        <div style={{ background: '#fff', border: '1px solid var(--border)', borderRadius: 10, padding: '14px 18px', margin: '12px 0' }}>
-          <div style={{ fontWeight: 700, marginBottom: 8 }}>
-            🔎 Audit Evoliz — {auditResult.totalEvoliz} factures Evoliz · {auditResult.totalDbAvecId} en base
-            <button className="btn btn-sm" style={{ marginLeft: 12, background: '#fff', border: '1px solid var(--border)' }} onClick={() => setAuditResult(null)}>✕</button>
-          </div>
-          {auditResult.orphelinsEvoliz.length === 0 && auditResult.dbSansEvoliz.length === 0 && (
-            <div style={{ color: '#15803D', fontWeight: 600 }}>✅ Aucun orphelin — base et Evoliz cohérents.</div>
-          )}
-          {auditResult.orphelinsEvoliz.length > 0 && (
-            <div style={{ marginTop: 6 }}>
-              <div style={{ color: '#B91C1C', fontWeight: 600 }}>⚠ {auditResult.orphelinsEvoliz.length} facture(s) dans Evoliz sans contrepartie en base (doublon potentiel) :</div>
-              <ul style={{ margin: '4px 0 0', fontSize: 13 }}>
-                {auditResult.orphelinsEvoliz.map(o => (
-                  <li key={o.invoiceid}>#{o.invoiceid} · {o.numero || '—'} · {o.date || '—'} · {o.client || '—'} · {o.montant != null ? o.montant + ' €' : '—'}</li>
-                ))}
-              </ul>
-            </div>
-          )}
-          {auditResult.dbSansEvoliz.length > 0 && (
-            <div style={{ marginTop: 8 }}>
-              <div style={{ color: '#92400E', fontWeight: 600 }}>⚠ {auditResult.dbSansEvoliz.length} facture(s) en base pointant vers un id Evoliz introuvable (supprimé dans Evoliz) :</div>
-              <ul style={{ margin: '4px 0 0', fontSize: 13 }}>
-                {auditResult.dbSansEvoliz.map(f => (
-                  <li key={f.id_evoliz}>id {f.id_evoliz} · {f.numero || '—'} · {f.mois} · {f.type}</li>
-                ))}
-              </ul>
-            </div>
-          )}
-        </div>
-      )}
 
       {/* Stats */}
       {stats && (
