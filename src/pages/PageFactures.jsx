@@ -8,6 +8,7 @@ import {
   getFactureCOM, genererFactureCOM, validerFactureCOM,
   envoyerEmailDeboursProprio,
   envoyerEmailChargesProprio,
+  reouvrirClotureFacture,
 } from '../services/facturesEvoliz'
 import { pousserFacturesMoisVersEvoliz, pingEvoliz, pousserFactureCOMVersEvoliz, syncNumerosEvoliz, refreshFacturesBrouillonsEvoliz, creerArticlesManquantsEvoliz, setupEvolizComplet } from '../services/evoliz'
 import { formatMontant } from '../lib/hospitable'
@@ -51,6 +52,7 @@ const [pushing, setPushing] = useState(false)
   const [pushingCOM, setPushingCOM] = useState(false)
   const [sendingDebours, setSendingDebours] = useState(null) // factureId en cours d'envoi
   const [sendingCharges, setSendingCharges] = useState(null) // factureId en cours d'envoi info charges
+  const [reopening, setReopening] = useState(null) // factureId en cours de réouverture clôture
   
   // Contrôle virements propriétaires
   const [virementsSortants, setVirementsSortants] = useState([])
@@ -471,6 +473,21 @@ const [pushing, setPushing] = useState(false)
       setError(err.message)
     } finally {
       setSendingDebours(null)
+    }
+  }
+
+  async function reopenFacture(facture) {
+    const motif = window.prompt('Motif de réouverture (obligatoire) — déverrouille la saisie AE/heures pour ce bien/mois :')
+    if (motif === null) return
+    try {
+      setReopening(facture.id)
+      const n = await reouvrirClotureFacture(facture, motif)
+      setSuccess(n > 0 ? `Saisie rouverte (${n} bien(s)).` : 'Aucune clôture active à rouvrir.')
+      await charger()
+    } catch (err) {
+      setError(err.message)
+    } finally {
+      setReopening(null)
     }
   }
 
@@ -914,6 +931,19 @@ const [pushing, setPushing] = useState(false)
                         onClick={e => { e.stopPropagation(); envoyerDebours(f) }}
                       >
                         {sendingDebours === f.id ? <><span className="spinner" /> Envoi…</> : '📧 Envoyer au proprio'}
+                      </button>
+                    )}
+
+                    {/* Rouvrir la saisie (clôture per-bien) — facture envoyée, réservé à Oïhan (enforcé edge fn) */}
+                    {['envoye_evoliz','payee'].includes(f.statut) && f.type_facture !== 'com' && (
+                      <button
+                        className="btn btn-sm"
+                        style={{ background: '#fff', color: '#B91C1C', border: '1px solid #FCA5A5' }}
+                        disabled={reopening === f.id}
+                        onClick={e => { e.stopPropagation(); reopenFacture(f) }}
+                        title="Rouvrir la saisie prestations/heures pour ce bien et ce mois (réservé à Oïhan)"
+                      >
+                        {reopening === f.id ? <><span className="spinner" /> …</> : '🔓 Rouvrir saisie'}
                       </button>
                     )}
 

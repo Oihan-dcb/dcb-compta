@@ -1206,6 +1206,37 @@ export async function getFacturesMois(mois) {
 }
 
 /**
+ * Réouverture de la clôture des biens d'une facture (réservé à Oïhan — enforcé
+ * côté edge function reopen-cloture). Déverrouille la saisie prestations/heures.
+ * @returns {number} nombre de clôtures réouvertes
+ */
+export async function reouvrirClotureFacture(facture, motif) {
+  if (!motif || !motif.trim()) throw new Error('Un motif est obligatoire pour rouvrir')
+  const { data: { session } } = await supabase.auth.getSession()
+  if (!session) throw new Error('Session requise')
+  let bienIds = []
+  if (facture.bien_id) bienIds = [facture.bien_id]
+  else if (facture.proprietaire_id) {
+    const { data } = await supabase.from('bien').select('id').eq('proprietaire_id', facture.proprietaire_id)
+    bienIds = (data || []).map(b => b.id)
+  }
+  if (!bienIds.length) throw new Error('Aucun bien à rouvrir pour cette facture')
+  const url = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/reopen-cloture`
+  let reopened = 0
+  for (const bien_id of bienIds) {
+    const r = await fetch(url, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${session.access_token}` },
+      body: JSON.stringify({ bien_id, mois: facture.mois, motif: motif.trim() }),
+    })
+    if (r.ok) { const j = await r.json(); reopened += j.reopened || 0 }
+    else if (r.status === 403) throw new Error('Réouverture réservée à Oïhan')
+    // 404 (pas de clôture active sur ce bien) → ignoré
+  }
+  return reopened
+}
+
+/**
  * Envoie un email au proprio pour un débours AE sur bien sans gestion loyer.
  * Template calqué sur les emails contrats PowerHouse.
  * Oïhan est automatiquement en CC (géré par smtp-send).
