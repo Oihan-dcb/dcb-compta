@@ -6,6 +6,9 @@ import {
   creerMandat,
   updateMandat,
   supprimerMandat,
+  getMandatsSignature,
+  genererMandatSignature,
+  envoyerMandatSignature,
 } from '../services/mandats'
 import { syncProprietairesEvoliz } from '../services/syncProprietaires'
 import { buildRapportData } from '../services/buildRapportData'
@@ -206,6 +209,37 @@ function ModalFiche({ proprio, onClose, onSaved }) {
   }
 
   const biens = (proprio.bien || []).filter(b => b.agence === AGENCE)
+
+  // Mandats signables par bien (table mandat_signature, statut signe/envoye/brouillon)
+  const [mandatsSig, setMandatsSig] = useState([])
+  const [mandatBusy, setMandatBusy] = useState(null) // bien_id en cours
+  const [mandatMsg, setMandatMsg] = useState(null)
+  async function rechargerMandatsSig() {
+    try { setMandatsSig(await getMandatsSignature(proprio.id)) } catch (e) { /* silencieux */ }
+  }
+  useEffect(() => { rechargerMandatsSig() }, [proprio.id])
+  const mandatPourBien = (bienId) => mandatsSig.find(m => m.bien_id === bienId && m.statut !== 'remplace' && m.statut !== 'annule')
+
+  async function genererBien(bienId) {
+    setMandatBusy(bienId); setMandatMsg(null)
+    try {
+      const d = await genererMandatSignature(bienId)
+      setMandatMsg({ type: 'ok', text: `Mandat ${d.numero} généré.` })
+      if (d.pdf_draft_url) window.open(d.pdf_draft_url, '_blank')
+      await rechargerMandatsSig()
+    } catch (e) { setMandatMsg({ type: 'err', text: e.message }) }
+    finally { setMandatBusy(null) }
+  }
+  async function envoyerBien(mandatId, bienId) {
+    if (!confirm('Envoyer le lien de signature au propriétaire (e-mail + SMS) ?')) return
+    setMandatBusy(bienId); setMandatMsg(null)
+    try {
+      const d = await envoyerMandatSignature(mandatId)
+      setMandatMsg({ type: 'ok', text: `Lien envoyé (${(d.sent || []).join(', ') || 'aucun canal'}).` })
+      await rechargerMandatsSig()
+    } catch (e) { setMandatMsg({ type: 'err', text: e.message }) }
+    finally { setMandatBusy(null) }
+  }
 
   async function sauvegarder() {
     setSaving(true); setErr(null); setOk(false)
@@ -537,28 +571,62 @@ function ModalFiche({ proprio, onClose, onSaved }) {
                   </p>
                 </div>
               ) : (
-                <table>
-                  <thead>
-                    <tr>
-                      <th>Code</th>
-                      <th>Nom Hospitable</th>
-                      <th>Statut</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {biens.map(b => (
-                      <tr key={b.id}>
-                        <td><span className="badge badge-info">{b.code}</span></td>
-                        <td style={{ fontSize: 13 }}>{b.hospitable_name || '—'}</td>
-                        <td>
-                          {b.listed
-                            ? <span className="badge badge-success">Actif</span>
-                            : <span className="badge badge-neutral">Inactif</span>}
-                        </td>
+                <>
+                  {mandatMsg && <div className={`alert ${mandatMsg.type === 'ok' ? 'alert-success' : 'alert-error'}`} style={{ marginBottom: 12 }}>{mandatMsg.type === 'ok' ? '✓' : '✗'} {mandatMsg.text}</div>}
+                  <table>
+                    <thead>
+                      <tr>
+                        <th>Code</th>
+                        <th>Nom Hospitable</th>
+                        <th>Statut</th>
+                        <th>Mandat de gestion</th>
                       </tr>
-                    ))}
-                  </tbody>
-                </table>
+                    </thead>
+                    <tbody>
+                      {biens.map(b => {
+                        const m = mandatPourBien(b.id)
+                        const busy = mandatBusy === b.id
+                        return (
+                          <tr key={b.id}>
+                            <td><span className="badge badge-info">{b.code}</span></td>
+                            <td style={{ fontSize: 13 }}>{b.hospitable_name || '—'}</td>
+                            <td>
+                              {b.listed
+                                ? <span className="badge badge-success">Actif</span>
+                                : <span className="badge badge-neutral">Inactif</span>}
+                            </td>
+                            <td>
+                              {busy && <span style={{ fontSize: 12, color: 'var(--text-muted)' }}>…</span>}
+                              {!busy && m?.statut === 'signe' && (
+                                <span style={{ display: 'inline-flex', gap: 8, alignItems: 'center' }}>
+                                  <span className="badge badge-success">Signé ✓</span>
+                                  {m.pdf_signed_url && <a className="btn btn-sm" href={m.pdf_signed_url} target="_blank" rel="noopener" style={{ background: '#FFF8EC', border: '1px solid #E4A853', color: '#CC9933' }}>⬇ PDF</a>}
+                                </span>
+                              )}
+                              {!busy && m?.statut === 'envoye' && (
+                                <span style={{ display: 'inline-flex', gap: 8, alignItems: 'center' }}>
+                                  <span className="badge" style={{ background: '#FEF3C7', color: '#D97706' }}>Envoyé · en attente</span>
+                                  <button className="btn btn-sm" onClick={() => envoyerBien(m.id, b.id)}>Renvoyer</button>
+                                </span>
+                              )}
+                              {!busy && m?.statut === 'brouillon' && (
+                                <span style={{ display: 'inline-flex', gap: 6, alignItems: 'center', flexWrap: 'wrap' }}>
+                                  <span className="badge badge-neutral">Brouillon {m.numero}</span>
+                                  {m.pdf_draft_url && <a className="btn btn-sm" href={m.pdf_draft_url} target="_blank" rel="noopener">Aperçu</a>}
+                                  <button className="btn btn-sm" onClick={() => genererBien(b.id)}>Régénérer</button>
+                                  <button className="btn btn-sm btn-primary" onClick={() => envoyerBien(m.id, b.id)}>Envoyer</button>
+                                </span>
+                              )}
+                              {!busy && !m && (
+                                <button className="btn btn-sm btn-primary" onClick={() => genererBien(b.id)}>Générer le mandat</button>
+                              )}
+                            </td>
+                          </tr>
+                        )
+                      })}
+                    </tbody>
+                  </table>
+                </>
               )}
             </div>
           )}

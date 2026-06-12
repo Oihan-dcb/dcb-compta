@@ -1,5 +1,32 @@
 import { supabase } from '../lib/supabase'
 import { AGENCE } from '../lib/agence'
+import { authPost } from '../lib/authFetch'
+
+// API PowerHouse (génération PDF + envoi mandat signable)
+const PLANNING_API = import.meta.env.VITE_PLANNING_API || 'https://dcb-planning.vercel.app'
+
+// ── Mandats signables PAR BIEN (table mandat_signature) ──────────────────────
+export async function getMandatsSignature(proprietaireId) {
+  const { data, error } = await supabase
+    .from('mandat_signature')
+    .select('id, bien_id, numero, statut, pdf_draft_url, pdf_signed_url, sent_at, signed_at, sign_token, updated_at')
+    .eq('proprietaire_id', proprietaireId)
+    .order('updated_at', { ascending: false })
+  if (error) throw error
+  return data || []
+}
+
+export async function genererMandatSignature(bien_id, config = {}) {
+  const { ok, data } = await authPost(`${PLANNING_API}/api/generate-mandat`, { bien_id, config, regenerate: true })
+  if (!ok) throw new Error(data?.error || 'Erreur lors de la génération du mandat')
+  return data
+}
+
+export async function envoyerMandatSignature(mandat_id) {
+  const { ok, data } = await authPost(`${PLANNING_API}/api/mandat-send`, { mandat_id })
+  if (!ok) throw new Error(data?.error || "Erreur lors de l'envoi du mandat")
+  return data
+}
 
 export async function getProprietairesComplets() {
   const { data, error } = await supabase
