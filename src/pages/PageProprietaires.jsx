@@ -193,6 +193,18 @@ function ModalFiche({ proprio, onClose, onSaved }) {
   const [savingMandat, setSavingMandat] = useState(false)
   const [mandatErr, setMandatErr]   = useState(null)
 
+  // Questionnaire d'onboarding (rempli par le proprio à sa 1ère connexion au portail)
+  const [onboarding, setOnboarding] = useState(undefined) // undefined=chargement, null=aucun, objet=présent
+  useEffect(() => {
+    supabase.from('proprietaire_onboarding').select('*').eq('proprietaire_id', proprio.id).maybeSingle()
+      .then(({ data }) => setOnboarding(data || null))
+  }, [proprio.id])
+  async function telechargerDocOnboarding(path) {
+    const { data, error } = await supabase.storage.from('owner-onboarding').createSignedUrl(path, 3600)
+    if (error) { setErr(error.message); return }
+    window.open(data.signedUrl, '_blank')
+  }
+
   const biens = (proprio.bien || []).filter(b => b.agence === AGENCE)
 
   async function sauvegarder() {
@@ -260,6 +272,7 @@ function ModalFiche({ proprio, onClose, onSaved }) {
     { id: 'bancaire', label: 'Bancaire' },
     { id: 'mandats',  label: `Mandats (${mandats.length})` },
     { id: 'biens',    label: `Biens (${biens.length})` },
+    { id: 'onboarding', label: onboarding?.complete_le ? '📋 Questionnaire ✓' : '📋 Questionnaire' },
     { id: 'portail',  label: '🏠 Portail Owner' },
   ]
 
@@ -546,6 +559,45 @@ function ModalFiche({ proprio, onClose, onSaved }) {
                     ))}
                   </tbody>
                 </table>
+              )}
+            </div>
+          )}
+
+          {/* ── Questionnaire d'onboarding ── */}
+          {tab === 'onboarding' && (
+            <div style={{ padding: '8px 4px' }}>
+              {onboarding === undefined && <p style={{ color: 'var(--text-muted)' }}>Chargement…</p>}
+              {onboarding === null && (
+                <div className="empty-state">
+                  <div className="empty-state-title">Questionnaire non rempli</div>
+                  <p style={{ fontSize: 13, color: 'var(--text-muted)' }}>Le propriétaire le complétera à sa première connexion au portail.</p>
+                </div>
+              )}
+              {onboarding && (
+                <>
+                  <div style={{ fontSize: 12, color: 'var(--text-muted)', marginBottom: 12 }}>
+                    {onboarding.complete_le ? `Complété le ${new Date(onboarding.complete_le).toLocaleDateString('fr-FR')}` : 'En cours (non finalisé)'}
+                  </div>
+                  {/* Documents */}
+                  <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginBottom: 16 }}>
+                    {[['doc_titre_path', 'Titre de propriété'], ['doc_assurance_path', 'Assurance'], ['doc_identite_path', "Pièce d'identité"]].map(([f, lbl]) => (
+                      onboarding[f]
+                        ? <button key={f} className="btn btn-sm" onClick={() => telechargerDocOnboarding(onboarding[f])} style={{ background: '#FFF8EC', border: '1px solid #E4A853', color: '#CC9933' }}>⬇ {lbl}</button>
+                        : <span key={f} style={{ fontSize: 12, color: 'var(--text-muted)', padding: '4px 8px' }}>— {lbl} (non fourni)</span>
+                    ))}
+                  </div>
+                  {/* Réponses */}
+                  <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
+                    <tbody>
+                      {Object.entries(onboarding.reponses || {}).filter(([, v]) => v != null && String(v).trim() !== '' && !(Array.isArray(v) && v.length === 0)).map(([k, v]) => (
+                        <tr key={k} style={{ borderBottom: '1px solid var(--border)' }}>
+                          <td style={{ padding: '6px 10px', fontWeight: 600, color: 'var(--text-muted)', width: 220, verticalAlign: 'top', textTransform: 'capitalize' }}>{k.replace(/_/g, ' ')}</td>
+                          <td style={{ padding: '6px 10px', color: 'var(--text)' }}>{Array.isArray(v) ? v.join(', ') : String(v)}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </>
               )}
             </div>
           )}
