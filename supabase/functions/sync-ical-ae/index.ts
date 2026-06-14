@@ -113,6 +113,7 @@ Deno.serve(async (req) => {
     const toInsert: any[] = []
     const toUpdate: any[] = []
     const cancelUids: string[] = []
+    const reactivateUids: string[] = [] // missions cancelled dont l'event est réapparu (actif) dans le flux
 
     for (const e of evs) {
       if (e.cancelled) { if (e.uid) cancelUids.push(e.uid); continue }
@@ -134,6 +135,8 @@ Deno.serve(async (req) => {
         base.reservation_id = prev.reservation_id ?? resa_id
         base.ventilation_auto_id = prev.reservation_id ? prev.ventilation_auto_id : ventil_id
         toUpdate.push(base) // statut NON inclus → préservé à l'upsert
+        // Event présent+actif mais mission annulée → la réactiver (résa réapparue)
+        if (prev.statut === 'cancelled' && e.uid) reactivateUids.push(e.uid)
       } else {
         base.reservation_id = resa_id
         base.ventilation_auto_id = ventil_id
@@ -156,6 +159,11 @@ Deno.serve(async (req) => {
     if (cancelUids.length) {
       await sb.from('mission_menage').update({ statut: 'cancelled' }).in('ical_uid', cancelUids)
     }
+    let reactivated = 0
+    if (reactivateUids.length) {
+      const { error } = await sb.from('mission_menage').update({ statut: 'planifie' }).in('ical_uid', reactivateUids).eq('statut', 'cancelled')
+      if (!error) reactivated = reactivateUids.length
+    }
 
     // 7. Réconciliation : missions en DB (périmètre) absentes du feed → cancelled
     const feedUids = new Set(evs.map(e => e.uid).filter(Boolean))
@@ -164,7 +172,7 @@ Deno.serve(async (req) => {
       await sb.from('mission_menage').update({ statut: 'cancelled' }).in('id', orphelins)
     }
 
-    return new Response(JSON.stringify({ created, updated, skipped: 0, total: evs.length, cancelled: cancelUids.length + orphelins.length }), {
+    return new Response(JSON.stringify({ created, updated, reactivated, skipped: 0, total: evs.length, cancelled: cancelUids.length + orphelins.length }), {
       headers: { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' }
     })
 
