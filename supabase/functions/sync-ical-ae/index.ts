@@ -14,123 +14,157 @@ Deno.serve(async (req) => {
 
     const sb = createClient(SUPABASE_URL, SERVICE_KEY)
 
-    // 1. Lire la fiche AE
+    // 1. Fiche AE
     const { data: ae, error: aeErr } = await sb.from('auto_entrepreneur').select('id, nom, prenom, ical_url').eq('id', ae_id).single()
     if (aeErr || !ae) return new Response(JSON.stringify({ error: 'AE introuvable' }), { status: 404 })
     if (!ae.ical_url) return new Response(JSON.stringify({ error: 'URL iCal non configurée pour cet AE', created: 0 }), { status: 200 })
 
-    // 2. Lire tous les biens avec ical_code
+    // 2. Biens (match par ical_code, préfixe du code dans le titre)
     const { data: biens } = await sb.from('bien').select('id, ical_code, hospitable_name').not('ical_code', 'is', null)
-    const bienMap = (biens || []).reduce((m, b) => { m[b.ical_code] = b; return m }, {})
+    const bienList = biens || []
 
-    // 3. Fetch iCal (webcal → https)
+    // 3. Fetch iCal
     const icalUrl = ae.ical_url.replace(/^webcal:/, 'https:')
     const icalResp = await fetch(icalUrl)
     if (!icalResp.ok) return new Response(JSON.stringify({ error: 'Erreur fetch iCal: ' + icalResp.status }), { status: 500 })
     const icalText = await icalResp.text()
-
-    // 4. Parser les VEVENT
     const events = parseIcal(icalText)
 
-    // 5. Filtrer par mois et type Cleaning/Check-in
+    // 4. Périmètre : à partir du 1er jour du mois passé → ce mois + TOUT le futur.
+    //    (couvre les missions à venir des mois suivants, plus seulement le mois courant)
     const [annee, moisNum] = mois.split('-').map(Number)
-    const eventsDuMois = events.filter(e => {
-      if (!e.dtstart) return false
+    const dateDebutStr = `${annee}-${String(moisNum).padStart(2, '0')}-01`
+    const moisDe = (d: Date) => `${d.getUTCFullYear()}-${String(d.getUTCMonth() + 1).padStart(2, '0')}`
+
+    const findBien = (codeInTitle: string) => bienList.find(b => codeInTitle.startsWith(b.ical_code)) || null
+
+    // Normaliser les events du périmètre
+    type Ev = { uid: string | null; titre: string; dateStr: string; mois: string; bien: any; duree: number | null; cancelled: boolean; isCleaningCheckout: boolean }
+    const evs: Ev[] = []
+    for (const e of events) {
+      const titre = e.summary || ''
+      const m = titre.match(/\(([^)]+)\)/)
+      if (!m) continue // pas de (code) → ignoré (comportement inchangé)
       const d = parseIcalDate(e.dtstart)
-      return d && d.getFullYear() === annee && (d.getMonth() + 1) === moisNum
-    })
+      if (!d) continue
+      const dateStr = d.toISOString().substring(0, 10)
+      if (dateStr < dateDebutStr) continue // passé → on ne touche pas l'historique
+      const titreLC = titre.toLowerCase()
+      evs.push({
+        uid: e.uid || null,
+        titre,
+        dateStr,
+        mois: moisDe(d),
+        bien: findBien(m[1]),
+        duree: computeDureeHeures(e.dtstart, e.dtend),
+        cancelled: e.status?.toUpperCase() === 'CANCELLED',
+        isCleaningCheckout: titreLC.startsWith('cleaning') || titreLC.startsWith('check-out') || titreLC.startsWith('checkout'),
+      })
+    }
 
-    // Pré-charger les ical_uid existants pour ce mois (pour ne pas écraser statut validé)
-    const { data: existingMissions } = await sb.from('mission_menage')
-      .select('id, ical_uid')
+    // 5. Préchargements (évite les requêtes par event) ───────────────────────
+    // 5a. Missions existantes de l'AE sur le périmètre
+    const { data: existing } = await sb.from('mission_menage')
+      .select('id, ical_uid, statut, reservation_id, ventilation_auto_id, date_mission')
       .eq('ae_id', ae.id)
-      .eq('mois', mois)
+      .gte('date_mission', dateDebutStr)
       .not('ical_uid', 'is', null)
-    const existingUids = new Set((existingMissions || []).map(m => m.ical_uid))
+    const existingByUid = new Map((existing || []).map(m => [m.ical_uid, m]))
 
-    // 6. Matcher avec les biens et upsert
-    let created = 0, updated = 0, skipped = 0
-    for (const evt of eventsDuMois) {
-      const titre = evt.summary || ''
-      // Extraire le ical_code depuis le titre: "Cleaning (CODE1234)" → "CODE1234" → match avec CODE
-      const match = titre.match(/\(([^)]+)\)/)
-      if (!match) { skipped++; continue }
-      const codeInTitle = match[1] // ex: "ChambreIbañetaMa0145"
-
-      // Chercher le bien dont ical_code est un préfixe du code extrait
-      let bien = null
-      for (const [code, b] of Object.entries(bienMap)) {
-        if (codeInTitle.startsWith(code)) { bien = b; break }
+    // 5b. Réservations candidates (pour lier mission ↔ résa ↔ ventilation AUTO)
+    const linkEvts = evs.filter(e => !e.cancelled && e.bien && e.uid && e.isCleaningCheckout)
+    const bienIds = [...new Set(linkEvts.map(e => e.bien.id))]
+    const depDates = new Set<string>()
+    for (const e of linkEvts) {
+      depDates.add(e.dateStr)
+      const d1 = new Date(e.dateStr + 'T12:00:00Z'); d1.setUTCDate(d1.getUTCDate() + 1)
+      depDates.add(d1.toISOString().substring(0, 10))
+    }
+    const resaMap = new Map<string, string>() // `${bien_id}|${departure_date}` → resa_id
+    const resaIds: string[] = []
+    if (bienIds.length && depDates.size) {
+      const { data: resas } = await sb.from('reservation')
+        .select('id, bien_id, departure_date')
+        .eq('final_status', 'accepted')
+        .in('bien_id', bienIds)
+        .in('departure_date', [...depDates])
+      for (const r of resas || []) {
+        const key = `${r.bien_id}|${r.departure_date}`
+        if (!resaMap.has(key)) { resaMap.set(key, r.id); resaIds.push(r.id) }
       }
-
-      const dateMission = parseIcalDate(evt.dtstart)
-      if (!dateMission) { skipped++; continue }
-      const dateStr = dateMission.toISOString().substring(0, 10)
-
-      const isCancelled = evt.status?.toUpperCase() === 'CANCELLED'
-
-      // Événement annulé : marquer cancelled si la mission existe déjà
-      if (isCancelled) {
-        if (evt.uid) {
-          await sb.from('mission_menage')
-            .update({ statut: 'cancelled' })
-            .eq('ical_uid', evt.uid)
-        }
-        skipped++
-        continue
+    }
+    // 5c. Ventilations AUTO des résas trouvées
+    const ventilMap = new Map<string, string>() // resa_id → ventilation_id
+    if (resaIds.length) {
+      const { data: ventils } = await sb.from('ventilation').select('id, reservation_id').eq('code', 'AUTO').in('reservation_id', resaIds)
+      for (const v of ventils || []) if (!ventilMap.has(v.reservation_id)) ventilMap.set(v.reservation_id, v.id)
+    }
+    const matchResa = (e: Ev): { resa_id: string | null; ventil_id: string | null } => {
+      if (!e.bien || !e.isCleaningCheckout) return { resa_id: null, ventil_id: null }
+      for (const offset of [0, 1]) {
+        const d = new Date(e.dateStr + 'T12:00:00Z'); d.setUTCDate(d.getUTCDate() + offset)
+        const rid = resaMap.get(`${e.bien.id}|${d.toISOString().substring(0, 10)}`)
+        if (rid) return { resa_id: rid, ventil_id: ventilMap.get(rid) ?? null }
       }
+      return { resa_id: null, ventil_id: null }
+    }
 
-      const baseFields = {
+    // 6. Construire les lots insert / update / cancel ─────────────────────────
+    const toInsert: any[] = []
+    const toUpdate: any[] = []
+    const cancelUids: string[] = []
+
+    for (const e of evs) {
+      if (e.cancelled) { if (e.uid) cancelUids.push(e.uid); continue }
+      const { resa_id, ventil_id } = matchResa(e)
+      const base: any = {
         ae_id: ae.id,
-        bien_id: bien?.id || null,
-        date_mission: dateStr,
-        titre_ical: titre,
-        ical_uid: evt.uid || null,
-        mois,
+        bien_id: e.bien?.id || null,
+        date_mission: e.dateStr,
+        titre_ical: e.titre,
+        ical_uid: e.uid,
+        mois: e.mois,
         type_mission: 'checkout',
         imputation: 'ventilation_dcb',
-        duree_prevue: computeDureeHeures(evt.dtstart, evt.dtend),
+        duree_prevue: e.duree,
       }
-
-      if (existingUids.has(evt.uid)) {
-        // Mission existante : mettre à jour les champs techniques SANS toucher au statut
-        const { error: updateErr } = await sb.from('mission_menage')
-          .update(baseFields)
-          .eq('ical_uid', evt.uid)
-        if (updateErr) { skipped++; continue }
-        updated++
+      const prev = e.uid ? existingByUid.get(e.uid) : null
+      if (prev) {
+        // Préserver un lien résa déjà établi (ex. manuel) ; sinon poser le match
+        base.reservation_id = prev.reservation_id ?? resa_id
+        base.ventilation_auto_id = prev.reservation_id ? prev.ventilation_auto_id : ventil_id
+        toUpdate.push(base) // statut NON inclus → préservé à l'upsert
       } else {
-        // Nouvelle mission : insérer avec statut planifie
-        const { error: insertErr } = await sb.from('mission_menage')
-          .insert({ ...baseFields, statut: 'planifie' })
-        if (insertErr) { skipped++; continue }
-        created++
-      }
-
-      // Lier reservation_id + ventilation_auto_id pour les Cleaning/Check-out
-      // (Check-in et Maintenance n'ont pas de ventilation AUTO associée)
-      const titreLC = titre.toLowerCase()
-      const isCleaningOrCheckout = titreLC.startsWith('cleaning') || titreLC.startsWith('check-out') || titreLC.startsWith('checkout')
-      if (bien && evt.uid && isCleaningOrCheckout) {
-        await lierMissionResa(sb, { ical_uid: evt.uid, bien_id: bien.id, date_mission: dateStr, mois })
+        base.reservation_id = resa_id
+        base.ventilation_auto_id = ventil_id
+        base.statut = 'planifie'
+        toInsert.push(base)
       }
     }
 
-    // Réconciliation : missions en DB non présentes dans le feed → cancelled
-    const feedUids = new Set(eventsDuMois.map(e => e.uid).filter(Boolean))
-    const { data: dbMissions } = await sb.from('mission_menage')
-      .select('id, ical_uid')
-      .eq('ae_id', ae.id)
-      .eq('mois', mois)
-      .neq('statut', 'cancelled')
-      .not('ical_uid', 'is', null)
-    for (const m of dbMissions || []) {
-      if (!feedUids.has(m.ical_uid)) {
-        await sb.from('mission_menage').update({ statut: 'cancelled' }).eq('id', m.id)
-      }
+    let created = 0, updated = 0
+    if (toInsert.length) {
+      // ignoreDuplicates : insère les nouvelles, ignore un éventuel doublon (sans toucher son statut)
+      const { error } = await sb.from('mission_menage').upsert(toInsert, { onConflict: 'ical_uid', ignoreDuplicates: true })
+      if (!error) created = toInsert.length
+    }
+    if (toUpdate.length) {
+      // onConflict ical_uid → UPDATE des colonnes fournies uniquement (statut préservé)
+      const { error } = await sb.from('mission_menage').upsert(toUpdate, { onConflict: 'ical_uid' })
+      if (!error) updated = toUpdate.length
+    }
+    if (cancelUids.length) {
+      await sb.from('mission_menage').update({ statut: 'cancelled' }).in('ical_uid', cancelUids)
     }
 
-    return new Response(JSON.stringify({ created, updated, skipped, total: eventsDuMois.length }), {
+    // 7. Réconciliation : missions en DB (périmètre) absentes du feed → cancelled
+    const feedUids = new Set(evs.map(e => e.uid).filter(Boolean))
+    const orphelins = (existing || []).filter(m => m.statut !== 'cancelled' && !feedUids.has(m.ical_uid)).map(m => m.id)
+    if (orphelins.length) {
+      await sb.from('mission_menage').update({ statut: 'cancelled' }).in('id', orphelins)
+    }
+
+    return new Response(JSON.stringify({ created, updated, skipped: 0, total: evs.length, cancelled: cancelUids.length + orphelins.length }), {
       headers: { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' }
     })
 
@@ -138,43 +172,6 @@ Deno.serve(async (req) => {
     return new Response(JSON.stringify({ error: err.message }), { status: 500 })
   }
 })
-
-// ─── Liaison mission ↔ réservation ↔ ventilation AUTO ─────────────────────
-// Cherche la résa accepted dont departure_date = date_mission ou date_mission+1
-// (ménage la veille du départ), puis remonte le ventilation_auto_id.
-async function lierMissionResa(
-  sb: ReturnType<typeof createClient>,
-  { ical_uid, bien_id, date_mission, mois }: { ical_uid: string; bien_id: string; date_mission: string; mois: string }
-) {
-  // Priorité : date exacte → lendemain (ménage veille)
-  for (const offset of [0, 1]) {
-    const d = new Date(date_mission + 'T12:00:00Z')
-    d.setDate(d.getDate() + offset)
-    const depDate = d.toISOString().substring(0, 10)
-
-    const { data: resa } = await sb.from('reservation')
-      .select('id')
-      .eq('bien_id', bien_id)
-      .eq('final_status', 'accepted')
-      .eq('departure_date', depDate)
-      .maybeSingle()
-
-    if (!resa) continue
-
-    const { data: ventil } = await sb.from('ventilation')
-      .select('id')
-      .eq('reservation_id', resa.id)
-      .eq('code', 'AUTO')
-      .maybeSingle()
-
-    await sb.from('mission_menage')
-      .update({ reservation_id: resa.id, ventilation_auto_id: ventil?.id ?? null })
-      .eq('ical_uid', ical_uid)
-      .is('reservation_id', null)  // ne pas écraser un lien déjà établi
-
-    break
-  }
-}
 
 function parseIcal(text) {
   const events = []
@@ -223,9 +220,9 @@ function parseIcalDate(s) {
   if (!s) return null
   const clean = s.replace(/T.*/, '')
   if (clean.length !== 8) return null
-  return new Date(
+  return new Date(Date.UTC(
     parseInt(clean.substring(0, 4)),
     parseInt(clean.substring(4, 6)) - 1,
     parseInt(clean.substring(6, 8))
-  )
+  ))
 }
