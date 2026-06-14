@@ -551,14 +551,23 @@ export default function PageAutoEntrepreneurs() {
       try {
         const { data: d } = await Promise.race([
           authPost('/api/ae-action', { action: 'sync', ae_id: ae.id, mois: moisCible }),
-          new Promise((_, reject) => setTimeout(() => reject(new Error('Timeout (30s)')), 30000)),
+          new Promise((_, reject) => setTimeout(() => reject(new Error('Timeout (45s)')), 45000)),
         ])
         return { nom: ae.prenom + ' ' + ae.nom, ...d }
       } catch (err) {
         return { nom: ae.prenom + ' ' + ae.nom, error: err.message }
       }
     }
-    const results = await Promise.all(liste.map(ae => syncOne(ae)))
+    // Exécution par lots de 3 : lancer les ~14 AE en parallèle saturait Hospitable + la DB
+    // → les gros calendriers dépassaient 30s et timeoutaient. Les lots limitent la contention.
+    const results = []
+    const BATCH = 3
+    for (let i = 0; i < liste.length; i += BATCH) {
+      const lot = liste.slice(i, i + BATCH)
+      const r = await Promise.all(lot.map(ae => syncOne(ae)))
+      results.push(...r)
+      setSyncResults([...results]) // affichage progressif
+    }
     setSyncResults(results)
     setSyncing(false)
   }
