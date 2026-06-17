@@ -28,6 +28,26 @@ export async function envoyerMandatSignature(mandat_id) {
   return data
 }
 
+// Associer un mandat déjà signé (papier / ancien) à un bien : upload du PDF + ligne signée.
+export async function importerMandatSigne({ bien_id, proprietaire_id, file, date_signature }) {
+  if (!file) throw new Error('Aucun fichier')
+  const ext = (file.name.split('.').pop() || 'pdf').toLowerCase()
+  const path = `${proprietaire_id}/${bien_id}/import-${Date.now()}.${ext}`
+  const up = await supabase.storage.from('mandats').upload(path, file, { upsert: true, contentType: file.type || 'application/pdf' })
+  if (up.error) throw up.error
+  const { data: signed } = await supabase.storage.from('mandats').createSignedUrl(path, 365 * 24 * 3600)
+  const { error } = await supabase.from('mandat_signature').insert({
+    agence: AGENCE,
+    bien_id,
+    proprietaire_id,
+    statut: 'signe',
+    signed_at: date_signature ? new Date(date_signature).toISOString() : new Date().toISOString(),
+    pdf_signed_url: signed?.signedUrl || null,
+    config: { _origine: 'import_manuel' },
+  })
+  if (error) throw error
+}
+
 export async function getProprietairesComplets() {
   const { data, error } = await supabase
     .from('proprietaire')

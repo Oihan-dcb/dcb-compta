@@ -9,6 +9,7 @@ import {
   getMandatsSignature,
   genererMandatSignature,
   envoyerMandatSignature,
+  importerMandatSigne,
 } from '../services/mandats'
 import { syncProprietairesEvoliz } from '../services/syncProprietaires'
 import { buildRapportData } from '../services/buildRapportData'
@@ -218,7 +219,10 @@ function ModalFiche({ proprio, onClose, onSaved }) {
     try { setMandatsSig(await getMandatsSignature(proprio.id)) } catch (e) { /* silencieux */ }
   }
   useEffect(() => { rechargerMandatsSig() }, [proprio.id])
-  const mandatPourBien = (bienId) => mandatsSig.find(m => m.bien_id === bienId && m.statut !== 'remplace' && m.statut !== 'annule')
+  const mandatPourBien = (bienId) => {
+    const actifs = mandatsSig.filter(m => m.bien_id === bienId && m.statut !== 'remplace' && m.statut !== 'annule')
+    return actifs.find(m => m.statut === 'signe') || actifs[0]
+  }
 
   async function genererBien(bienId) {
     setMandatBusy(bienId); setMandatMsg(null)
@@ -236,6 +240,17 @@ function ModalFiche({ proprio, onClose, onSaved }) {
     try {
       const d = await envoyerMandatSignature(mandatId)
       setMandatMsg({ type: 'ok', text: `Lien envoyé (${(d.sent || []).join(', ') || 'aucun canal'}).` })
+      await rechargerMandatsSig()
+    } catch (e) { setMandatMsg({ type: 'err', text: e.message }) }
+    finally { setMandatBusy(null) }
+  }
+  async function importerBien(bienId, file) {
+    if (!file) return
+    if (file.type && file.type !== 'application/pdf') { setMandatMsg({ type: 'err', text: 'PDF uniquement' }); return }
+    setMandatBusy(bienId); setMandatMsg(null)
+    try {
+      await importerMandatSigne({ bien_id: bienId, proprietaire_id: proprio.id, file })
+      setMandatMsg({ type: 'ok', text: 'Mandat signé associé au bien.' })
       await rechargerMandatsSig()
     } catch (e) { setMandatMsg({ type: 'err', text: e.message }) }
     finally { setMandatBusy(null) }
@@ -618,7 +633,14 @@ function ModalFiche({ proprio, onClose, onSaved }) {
                                 </span>
                               )}
                               {!busy && !m && (
-                                <button className="btn btn-sm btn-primary" onClick={() => genererBien(b.id)}>Générer le mandat</button>
+                                <span style={{ display: 'inline-flex', gap: 6, alignItems: 'center', flexWrap: 'wrap' }}>
+                                  <button className="btn btn-sm btn-primary" onClick={() => genererBien(b.id)}>Générer le mandat</button>
+                                  <label className="btn btn-sm" style={{ cursor: 'pointer', margin: 0 }} title="Associer un mandat déjà signé (PDF papier / ancien)">
+                                    📎 Importer signé
+                                    <input type="file" accept="application/pdf" style={{ display: 'none' }}
+                                      onChange={e => { const f = e.target.files[0]; e.target.value = ''; importerBien(b.id, f) }} />
+                                  </label>
+                                </span>
                               )}
                             </td>
                           </tr>
