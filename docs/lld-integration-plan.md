@@ -1,17 +1,19 @@
 # Plan d'intégration des LLD dans la machinerie comptable (rapports · facturation · virements)
 
-> **Statut : préparation (pas d'implémentation).** Objectif futur : faire passer les locations longue durée (LLD, table `etudiant`) par le **même pipeline que les locations saisonnières** — rapport propriétaire, facturation Evoliz, virements proprio. Ce document fige le principe, l'architecture cible, le modèle de données à préparer, les décisions métier à trancher, et un plan par phases.
+> **Statut : préparation (pas d'implémentation).** Objectif : doter les LLD (table `etudiant`) d'une **facturation d'honoraires Evoliz + relevé proprio**, comme le saisonnier — mais via un **chemin dédié, totalement séparé du saisonnier**. Ce document fige le principe, l'architecture cible, le modèle de données, les décisions métier, et un plan par phases.
 
-## 1. Principe directeur
+## 1. Principe directeur (RÉVISÉ 2026-06-17 — chemin dédié, PAS via `ventilation`)
 
-**Un loyer LLD mensuel = une mini-réservation mensuelle**, mais **distincte du saisonnier** : elle réutilise la *mécanique* `ventilation` (mêmes colonnes/codes génériques), **pas le même circuit d'argent**. Deux différences structurantes décidées :
+> ⚠️ **Décision révisée** : on **NE réinjecte PAS** les LLD dans la table `ventilation` du saisonnier. Le co-mêlage (lignes `source='lld'`, `reservation_id` NULL dans la table chaude qui alimente rapports + factures + SEPA saisonniers) est trop risqué : un seul filtre `source` oublié = du loyer LLD dans un rapport/une facture/un fichier SEPA saisonnier. Et c'est incohérent avec « séquestre dédié, ne pas fusionner les flux ». → **On partage le FORMAT de sortie (facture Evoliz, affichage Facturation), pas la table de calcul.**
 
-- **Identification explicite** : la mini-réservation / les lignes `ventilation` LLD doivent porter un **discriminant clair** (ex. `source='lld'` + `etudiant_id`/`loyer_suivi_id`, `reservation_id` NULL) pour ne jamais être confondues avec une vraie résa saisonnière, et pour router le reste.
-- **Séquestre dédié** : les loyers LLD vont sur un **compte séquestre LLD distinct** (`agency_config.seq_lld_loyers_iban`), **pas** le séquestre saisonnier (`seq_lc_iban`). Donc le virement proprio et la clôture séquestre LLD restent **séparés** — on ne fusionne pas les deux flux d'argent, on partage seulement le format de ventilation / rapport / facture.
+**Source de vérité LLD = `loyer_suivi`** (qui a déjà `montant_attendu`, `montant_recu` proratisés, et le taux via `etudiant.taux_commission`). On génère la facture d'honoraires et le relevé proprio **directement depuis `loyer_suivi`**, sans jamais toucher `ventilation`.
 
-Au lieu du pipeline parallèle actuel (`loyer_suivi`/`virement_proprio_suivi` alimentés directement depuis `etudiant`), chaque loyer mensuel encaissé produit des **lignes `ventilation`** taguées LLD. Le rapport et la facturation Evoliz lisent déjà `ventilation` → quasi gratuit ; le **virement** reste sur le circuit séquestre LLD existant (`genererSCTVirementsProprios`) mais alimenté désormais par la ventilation taguée.
+Trois principes verrouillés :
+- **Facturation séparée** : générateur LLD dédié lisant `loyer_suivi`. Zéro écriture dans `ventilation`, pas de `reservation_id` nullable, aucun filtre `source` à ajouter dans le code saisonnier.
+- **Séquestre dédié** : loyers LLD sur `agency_config.seq_lld_loyers_iban` (≠ saisonnier `seq_lc_iban`). Virement proprio + virement honoraires déjà branchés sur `virement_proprio_suivi` / `genererSCTHonorairesDCB` (Phase 1). Inchangé.
+- **Affichage partagé** : les factures LLD vivent dans la table `facture_evoliz` avec un discriminant `type_facture='lld'` → visibles dans la page Facturation (badge « LLD », filtre dédié), mais générées par le chemin LLD et **exclues des agrégats saisonniers** (filtre `type_facture`).
 
-Indice que c'est l'intention d'origine : les comptes comptables **`HON_ETU` (7067)** et **`HON_MOB` (7068)** existent déjà dans `src/services/evoliz.js` (`ACCOUNT_MAP`) mais ne sont produits par aucun code path. → On créera plutôt un code générique **`HON_LLD`** (les LLD ne sont pas que des étudiants ; compte Evoliz à confirmer avec Laura — réutiliser 7067 ou nouveau compte).
+On ne facture **qu'une seule chose** : les **honoraires de gestion DCB** (commission). Pas le loyer, pas les charges (reversés au proprio). Code comptable **`HON_LLD`** (compte Evoliz à confirmer Garnier — 7067 existant ou dédié).
 
 ## 2. État actuel — les deux pipelines
 
@@ -39,32 +41,38 @@ Indice que c'est l'intention d'origine : les comptes comptables **`HON_ETU` (706
 6. **Pas de prorata** entrée/sortie en cours de mois (cf. §7).
 7. `loyer_suivi`/`virement_proprio_suivi` indexés par `etudiant_id`+`mois` (string), pas `bien_id`/`proprietaire_id`/`mois_comptable` au niveau ligne.
 
-## 4. Architecture cible
+## 4. Architecture cible (chemin dédié — facture honoraires depuis `loyer_suivi`)
 
 ```
-loyer_suivi (mensuel, statut=recu)
-   └─► [nouveau] _calculerLignesLLD(loyer_suivi, etudiant, bien)   ← analogue de _calculerLignes
-          base_CC = loyer_nu + supplement_loyer + charges_eau + charges_copro + charges_internet
-                    (× prorata jours_occupés/jours_du_mois si entrée/sortie en cours de mois)
-          └─► écrit dans `ventilation` (taguées source='lld') :
-                 LOY     = base_CC − HON_LLD_ht ... non : VIR = base_CC − HON_LLD_ttc (cf. ci-dessous)
-                 HON_LLD = round(base_CC × taux_commission)   [10%/8%/5% BITXI]   TTC, dont TVA 20%
-                 VIR     = base_CC − HON_LLD                   hors TVA → VIRProprio (reversé au proprio)
-              (Laura : « locataire paie 800 € → on reverse 720 € » = base_CC − 10% ; honoraires retenus sur le loyer CC)
-              avec reservation_id = NULL, source='lld', etudiant_id = e.id, loyer_suivi_id = l.id,
-                   bien_id, proprietaire_id, mois_comptable = mois
-   └─► rapport / facture Evoliz : lisent déjà `ventilation`.
-        virement : circuit séquestre LLD dédié (seq_lld_loyers_iban), pas le séquestre saisonnier.
+loyer_suivi (statut=recu)  ──► generateurFactureLLD(mois, bien)   [nouveau, lit loyer_suivi, N'ÉCRIT PAS dans ventilation]
+   pour chaque loyer reçu du bien dans le mois :
+       base   = montant_recu (réel, déjà proratisé)         ← Laura : commission sur le loyer CC reçu
+       honTTC = round(base × etudiant.taux_commission)      [10%/8%/5% BITXI]  ← commission TTC
+       honHT  = round(honTTC / 1.20)                        ← TVA 20%
+       honTVA = honTTC − honHT
+   ──► 1 facture_evoliz par BIEN par MOIS (type_facture='lld', client = propriétaire du bien)
+         1 ligne par loyer LLD (code HON_LLD) :  HT=honHT, TVA=honTVA, TTC=honTTC
+         (2 lignes si turnover : deux locataires se succèdent sur le même bien dans le mois)
+   ──► push Evoliz (ACCOUNT_MAP : HON_LLD → compte à confirmer Garnier)
+   ──► affichage page Facturation : badge « LLD », filtre type_facture='lld'
+
+relevé proprio (mensuel, léger) : depuis loyer_suivi (loyer reçu, honoraires, net reversé) — document proprio.
+virement : virement_proprio_suivi (net) + genererSCTHonorairesDCB (commission) — DÉJÀ en place (Phase 1).
+ventilation saisonnière : NON TOUCHÉE.
 ```
 
-**Honoraires = % du loyer CC** (10 % étudiant / 8 % bail à l'année / 5 % BITXI), TVA 20 % incluse — le champ `etudiant.honoraires_dcb` (montant figé) est remplacé par `etudiant.taux_commission`. **Supplément + compléments + charges forfaitaires** : tous dans la **base CC** (commission ET LOY reversé). **Frais de mise en location** (13 €/m² × 2) = poste **one-shot séparé**, hors ventilation mensuelle.
+**Exemple Solène** (CC reçu 790 €, taux 10 %) : honTTC = **79 €** → ligne facture **65,83 HT + 13,17 TVA = 79 TTC** ; net reversé proprio = 790 − 79 = **711 €**.
 
-Point d'intégration recommandé : **à l'encaissement** du loyer (passage `loyer_suivi.statut → 'recu'`, ou via `lldBanque.majLoyersDepuisVirements`), générer les lignes `ventilation`. Alternative : à `initialiserLoyersMois` (attendu) puis ajuster au réel — moins propre (le saisonnier ventile sur le réel encaissé).
+**On ne facture que les honoraires.** Le loyer + charges sont reversés (pas facturés). **Frais de mise en location** (13 €/m² × 2) = facture **one-shot** au début du bail (locataire + proprio), hors flux mensuel — à modéliser à part.
+
+Point de génération : sur les loyers `statut='recu'` du mois (commission sur le réel encaissé). Idéal après `majLoyersDepuisVirements` / passage à `recu`.
 
 ## 5. Modèle de données à préparer (groundwork)
-- **`ventilation`** : autoriser `reservation_id` NULL ; ajouter `source` (`'lc'|'lld'`, discriminant), `etudiant_id` (FK) et `loyer_suivi_id` (FK) pour la traçabilité + le routage séquestre LLD. Garder `bien_id`/`proprietaire_id`/`mois_comptable`/`code`/montants identiques au saisonnier.
-- **`loyer_suivi`** : ajouter `mois_comptable` (YYYY-MM, déjà ~équivalent à `mois`), et éventuellement `bien_id`/`proprietaire_id` dénormalisés (sinon joindre via `etudiant`).
-- **`etudiant`** : ⚠️ ajouter **`taux_commission`** (numeric, ex. 0.10/0.08/0.05) en remplacement de `honoraires_dcb` (montant figé). Migration : déduire le taux existant = `honoraires_dcb / montant_total_CC` par locataire, ou saisir manuellement (10 % défaut étudiant, 8 % bail année, 5 % BITXI). Garder `honoraires_dcb` en transition si besoin, mais la source devient le taux. Éventuellement `frais_mise_en_location` (one-shot, 13 €/m² × 2) si on veut le tracer.
+- **`ventilation`** : ❌ **AUCUN changement** (on n'y touche pas — décision révisée). Pas de `reservation_id` nullable, pas de `source`.
+- **`facture_evoliz`** : ajouter un discriminant **`type_facture`** (`'lc'`/`'lld'`) — visibilité page Facturation + exclusion des agrégats saisonniers. Le reste des colonnes facture est générique (réutilisable).
+- **`loyer_suivi`** : `montant_attendu`/`montant_recu` déjà proratisés (Phase 1). Lien facture : ajouter `facture_evoliz_id` (FK, nullable) pour tracer quelle facture couvre quel loyer (et éviter de re-facturer).
+- **`etudiant.taux_commission`** : ✅ déjà fait (Phase 0, migration 201). `honoraires_dcb` gardé comme cache legacy.
+- **`agency_config`** : `seq_lld_loyers_iban` / `seq_lld_loyers_bic` / `agence_iban` — déjà utilisés (Phase 1, exportSCT).
 - **Codes** : réutiliser `LOY`/`VIR` (LOY/VIR = base CC − honoraires) ; créer **`HON_LLD`** pour les honoraires (= % CC, TVA 20 %, compte Evoliz à confirmer Garnier). Charges intégrées au CC (pas de code charges séparé).
 - **`facture_evoliz`** : prévoir un `type_facture` LLD ; le reste du flux est générique.
 - **`agency_config`** : `seq_lld_loyers_iban` (séquestre LLD) — déjà utilisé par `genererSCTVirementsProprios`.
@@ -90,6 +98,12 @@ Point d'intégration recommandé : **à l'encaissement** du loyer (passage `loye
 - **Compléments de loyer** : inclus dans `LOY`, pas de poste distinct.
 - **Apporteur sans gestion** : aucun cas à gérer (sauf historique LAUIAN CIRAUQUI ×2 + Guétary).
 
+### Tranchées (Oïhan, 2026-06-17) — design facturation
+- **Facturation LLD séparée** : chemin dédié lisant `loyer_suivi`, **PAS** via la table `ventilation` (cf. §1 révisé).
+- **Commission = TTC** : le taux (10/8/5 %) donne le montant **tout compris**. Facture = HT (= TTC/1,20) + TVA 20 %. (Confirmé Laura : « 800 → reverse 720 » ⇒ DCB garde 80 € TTC.)
+- **Granularité facture** : **1 facture par bien et par mois**, **1 ligne par loyer LLD** (2 lignes si turnover — deux locataires sur le même bien dans le mois). Client = propriétaire du bien.
+- **Affichage** : factures LLD dans `facture_evoliz` avec `type_facture='lld'` → visibles en page Facturation (badge/filtre), exclues des agrégats saisonniers.
+
 ### Reste ouvert (cabinet Garnier)
 - **Compte comptable Evoliz** pour `HON_LLD` (réutiliser 7067 « honoraires étudiantes » ou créer un compte dédié). Q7 déléguée au comptable.
 
@@ -97,15 +111,17 @@ Point d'intégration recommandé : **à l'encaissement** du loyer (passage `loye
 Voir `docs/lld-questions-laura.md`.
 
 ## 7. Prorata entrée/sortie (prérequis transverse — cf. audit séparé)
-Le loyer du **mois d'entrée et du mois de sortie** doit être proratisé : `montant = round(plein × jours_occupés / jours_du_mois)`. Aujourd'hui absent partout (date_sortie ne sert qu'à inclure/exclure le mois entier). À intégrer dans la **source unique** `montantTotalEtudiant(e, mois)` / `montantVirementProprio(e, mois)` (`locationsLongues.js`), idéalement en **persistant** le montant proratisé dans `loyer_suivi.montant_attendu` pour que relance / quittance / bilan / (futures) ventilations le **lisent** au lieu de recalculer le plein (4 recalculs dupliqués aujourd'hui : `locationsLongues.js:67`, `relance-loyer:174`, `generer-quittance:66`, `bilan-lld:50`).
+Le loyer du **mois d'entrée et du mois de sortie** doit être proratisé : `montant = round(plein × jours_occupés / jours_du_mois)`. Aujourd'hui absent partout (date_sortie ne sert qu'à inclure/exclure le mois entier). À intégrer dans la **source unique** `montantTotalEtudiant(e, mois)` / `montantVirementProprio(e, mois)` (`locationsLongues.js`), idéalement en **persistant** le montant proratisé dans `loyer_suivi.montant_attendu` pour que relance / quittance / bilan / (future) facture LLD le **lisent** au lieu de recalculer le plein (4 recalculs dupliqués aujourd'hui : `locationsLongues.js:67`, `relance-loyer:174`, `generer-quittance:66`, `bilan-lld:50`).
 
-## 8. Plan par phases
-- **Phase 0 — Terrain (maintenant, sans changer le comportement)** : ce document ; décisions §6 tranchées ✅ ; migration schéma `ventilation.reservation_id` nullable + `etudiant_id`/`loyer_suivi_id` ; `loyer_suivi.mois_comptable` ; **`etudiant.taux_commission`** (10 %/8 %/5 % BITXI, remplace `honoraires_dcb`).
-- **Phase 1 — Prorata + honoraires % (source unique)** : `montantTotalEtudiant(e, mois)` proratisé (CC × jours/jours_mois) + honoraires = `taux_commission × base_CC` ; persistance `loyer_suivi.montant_attendu` ; faire lire cette valeur par relance/quittance/bilan + le portail owner. *(Corrige le bug de prorata + bascule honoraires fixe → %.)*
-- **Phase 2 — Ventilation LLD** : `_calculerLignesLLD()` à l'encaissement → lignes `ventilation` (LOY/**HON_LLD**/VIR, TVA 20 % sur HON_LLD).
-- **Phase 3 — Rapport + Evoliz** : **relevé proprio** mensuel léger (décidé par Laura) + facture Evoliz LLD (code `HON_LLD`, compte à confirmer Garnier). `buildRapportData` étendu ou ventilation seule.
-- **Phase 4 — Virement + rapprochement** : alimenter le virement séquestre LLD (`genererSCTVirementsProprios`, `seq_lld_loyers_iban`) depuis la `ventilation` taguée `source='lld'` ; converger le rapprochement.
-- **Phase 5 — Cutover** : retirer le pipeline parallèle `virement_proprio_suivi` une fois la ventilation faisant foi.
+## 8. Plan par phases (RÉVISÉ 2026-06-17)
+- **Phase 0 — Terrain** : ✅ FAIT. `etudiant.taux_commission` (migration 201, 10/8/5 %).
+- **Phase 1 — Prorata + honoraires %** : ✅ FAIT (commit b08accd). `prorataMois`, `montantTotalEtudiant(e,mois)`, `honorairesEtudiant`, persistance `loyer_suivi.montant_attendu` + `virement_proprio_suivi.montant` ; lus par relance/quittance/bilan ; virement honoraires (exportSCT) = taux × reçu ; UI saisie taux %.
+- **Phase 2 — Facture honoraires LLD (chemin dédié)** : générateur `genererFactureLLD(mois, bien)` lisant `loyer_suivi` (statut recu) → **1 facture `facture_evoliz` (type_facture='lld') par bien/mois**, 1 ligne par loyer (code `HON_LLD`, commission **TTC** décomposée HT + TVA 20 %), client = proprio du bien. Push Evoliz. **N'écrit PAS dans `ventilation`.** Pré-requis schéma : `facture_evoliz.type_facture` + `loyer_suivi.facture_evoliz_id`.
+- **Phase 3 — Affichage + relevé** : page Facturation affiche les factures LLD (badge/filtre `type_facture='lld'`, exclues des agrégats saisonniers) ; **relevé proprio** mensuel léger depuis `loyer_suivi` (loyer reçu / honoraires / net reversé).
+- **Phase 4 — Frais de mise en location** (optionnel) : facture one-shot 13 €/m² × 2 (locataire + proprio) au début du bail. Nécessite `etudiant.surface_m2`. Indépendant du flux mensuel.
+- **Note** : le virement (proprio + honoraires) est déjà opérationnel via `virement_proprio_suivi` / `genererSCTHonorairesDCB` (Phase 1) — **pas de cutover ventilation à prévoir** puisqu'on ne passe pas par `ventilation`.
+
+⏳ **Bloquant Phase 2** : compte comptable Evoliz `HON_LLD` (Garnier).
 
 ## Fichiers clés
 `api/ventiler.js`, `supabase/functions/ventilation-auto/index.ts`, `src/services/buildRapportData.js`, `src/services/facturesEvoliz.js`, `src/services/evoliz.js` (ACCOUNT_MAP), `src/services/exportSCT.js`, `src/services/locationsLongues.js`, `src/services/lldBanque.js`, `supabase/functions/{relance-loyer,generer-quittance,bilan-lld}/index.ts`.
