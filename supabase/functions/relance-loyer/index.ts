@@ -130,7 +130,7 @@ serve(async (req) => {
     let loyersQuery = supabase
       .from('loyer_suivi')
       .select(`
-        id, mois, statut, nb_relances, date_derniere_relance,
+        id, mois, statut, nb_relances, date_derniere_relance, montant_attendu,
         etudiant (
           id, agence, nom, prenom, email, telephone,
           loyer_nu, supplement_loyer, charges_eau, charges_copro, charges_internet,
@@ -171,8 +171,11 @@ serve(async (req) => {
         }
       }
 
-      const montantTotal = (e.loyer_nu || 0) + (e.supplement_loyer || 0) +
-                           (e.charges_eau || 0) + (e.charges_copro || 0) + (e.charges_internet || 0)
+      // Montant proratisé persisté (source unique). Fallback : CC plein recalculé.
+      const montantTotal = loyer.montant_attendu ?? (
+        (e.loyer_nu || 0) + (e.supplement_loyer || 0) +
+        (e.charges_eau || 0) + (e.charges_copro || 0) + (e.charges_internet || 0)
+      )
       const prenom = e.prenom || e.nom
 
       const nbRelances = loyer.nb_relances

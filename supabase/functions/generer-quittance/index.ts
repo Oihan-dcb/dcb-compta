@@ -46,6 +46,25 @@ function dernierJourMois(mois: string): string {
   return new Date(y, m, 0).getDate().toString()
 }
 
+// Prorata entrée/sortie en cours de mois (Laura 2026-06-11) : jours occupés inclus.
+function prorataQuittance(e: any, mois: string) {
+  const [y, m] = mois.split('-').map(Number)
+  const joursMois = new Date(y, m, 0).getDate()
+  let jDebut = 1, jFin = joursMois
+  const ymd = (s: string) => String(s).slice(0, 10).split('-').map(Number)
+  if (e?.date_entree) {
+    const [ay, am, ad] = ymd(e.date_entree)
+    if (ay === y && am === m) jDebut = Math.max(jDebut, ad)
+  }
+  const sortie = e?.date_sortie_reelle || e?.date_sortie_prevue
+  if (sortie) {
+    const [sy, sm, sd] = ymd(sortie)
+    if (sy === y && sm === m) jFin = Math.min(jFin, sd)
+  }
+  const joursOccupes = Math.max(0, jFin - jDebut + 1)
+  return { facteur: joursMois ? joursOccupes / joursMois : 1, joursOccupes, joursMois, jDebut, jFin, partiel: joursOccupes < joursMois }
+}
+
 // ── HTML quittance (légal FR) ─────────────────────────────────────────────
 
 function genererHtmlQuittance(data: {
@@ -63,11 +82,17 @@ function genererHtmlQuittance(data: {
           agence_adresse1, agence_adresse2, agence_siret,
           charges_nature = 'forfaitaires',
           proprietaire_nom } = data
-  const total = (e.loyer_nu || 0) + (e.supplement_loyer || 0) +
+  const plein = (e.loyer_nu || 0) + (e.supplement_loyer || 0) +
                 (e.charges_eau || 0) + (e.charges_copro || 0) + (e.charges_internet || 0)
+  // Montant proratisé (source unique = loyer_suivi.montant_attendu ; fallback calcul prorata)
+  const pr = prorataQuittance(e, mois)
+  const total = l.montant_attendu ?? Math.round(plein * pr.facteur)
+  const facteurReel = plein > 0 ? total / plein : 1
+  const loyerLigne = Math.round((e.loyer_nu || 0) * facteurReel)
+  const chargesLigne = total - loyerLigne
   const dateReception = l.date_reception ? formatDate(l.date_reception) : formatDate(new Date().toISOString().slice(0, 10))
-  const premierJour = `1er ${nomMois(mois)}`
-  const dernierJour = `${dernierJourMois(mois)} ${nomMois(mois)}`
+  const premierJour = pr.partiel ? `${pr.jDebut === 1 ? '1er' : pr.jDebut} ${nomMois(mois)}` : `1er ${nomMois(mois)}`
+  const dernierJour = pr.partiel ? `${pr.jFin} ${nomMois(mois)}` : `${dernierJourMois(mois)} ${nomMois(mois)}`
   const locataire = `${e.prenom ? e.prenom + ' ' : ''}${e.nom}`
 
   const lignesCharges = []
@@ -151,8 +176,17 @@ function genererHtmlQuittance(data: {
     </tr>
     ${lignesCharges.join('\n    ')}
     <tr><td colspan="2"><hr class="separator"></td></tr>
+    ${pr.partiel ? `<tr>
+      <td style="padding:6px 0">Sous-total mensuel plein</td>
+      <td style="text-align:right;padding:6px 0">${formatEuros(plein)}</td>
+    </tr>
+    <tr>
+      <td style="padding:3px 0;color:#555">Prorata ${pr.joursOccupes}/${pr.joursMois} jours occupés</td>
+      <td style="text-align:right;padding:3px 0;color:#555">− ${formatEuros(plein - total)}</td>
+    </tr>
+    <tr><td colspan="2"><hr class="separator"></td></tr>` : ''}
     <tr class="total-row">
-      <td>Total mensuel (dont charges ${charges_nature})</td>
+      <td>Total ${pr.partiel ? 'dû (proratisé)' : 'mensuel'} (dont charges ${charges_nature})</td>
       <td style="text-align:right;color:#CC9933">${formatEuros(total)}</td>
     </tr>
   </tbody>
@@ -165,7 +199,7 @@ function genererHtmlQuittance(data: {
 <div class="mention">
   Je soussigné(e), représentant(e) de ${agence_label}, mandataire de ${proprietaire_nom || 'le bailleur'},<br>
   déclare avoir reçu de <strong>${locataire}</strong> la somme de <strong>${formatEuros(l.montant_recu || total)}</strong><br>
-  au titre du loyer (${formatEuros(e.loyer_nu)}) et des charges ${charges_nature} (${formatEuros(total - (e.loyer_nu || 0))})<br>
+  au titre du loyer (${formatEuros(loyerLigne)}) et des charges ${charges_nature} (${formatEuros(chargesLigne)})<br>
   pour la période indiquée ci-dessus, conformément à l'article 21 de la loi n° 89-462 du 6 juillet 1989.<br><br>
   <strong>Cette quittance annule tous les reçus qui auraient pu être établis précédemment en règlement du loyer du même mois.</strong>
 </div>
@@ -212,6 +246,7 @@ serve(async (req) => {
           id, agence, nom, prenom, email, adresse_complete,
           loyer_nu, supplement_loyer, charges_eau, charges_copro, charges_internet,
           honoraires_dcb, proprietaire_id,
+          date_entree, date_sortie_prevue, date_sortie_reelle,
           proprietaire ( nom, prenom )
         )
       `)

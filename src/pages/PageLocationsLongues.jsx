@@ -13,6 +13,7 @@ import {
   supprimerEtudiant,
   montantTotalEtudiant,
   montantVirementProprio,
+  honorairesEtudiant,
   listerLoyersMois,
   initialiserLoyersMois,
   marquerLoyerRecu,
@@ -82,6 +83,10 @@ const TYPES_DOC = [
   { type: 'eds_sortie',       label: 'État des lieux — sortie' },
 ]
 
+// Taux de commission par défaut selon le type de bail (en %).
+// 10% étudiant/mobilité, 8% bail habitation (à l'année). Bitxi 5% = override manuel.
+const TAUX_DEFAUT_TYPE = { etudiant: 10, mobilite: 10, habitation: 8 }
+
 const FORM_ETUDIANT_EMPTY = {
   nom: '', prenom: '', email: '', telephone: '',
   bien_id: '', proprietaire_id: '', adresse_complete: '',
@@ -89,7 +94,7 @@ const FORM_ETUDIANT_EMPTY = {
   date_sortie_prevue: '',
   loyer_nu: '', supplement_loyer: '0', charges_eau: '0',
   charges_copro: '0', charges_internet: '0',
-  honoraires_dcb: '', caution: '', jour_paiement_attendu: '5',
+  taux_commission: '10', caution: '', jour_paiement_attendu: '5',
   statut: 'actif',
   type_bail: 'etudiant',
 }
@@ -630,7 +635,9 @@ export default function PageLocationsLongues() {
         charges_eau:           (etudiant.charges_eau / 100).toFixed(2),
         charges_copro:         (etudiant.charges_copro / 100).toFixed(2),
         charges_internet:      (etudiant.charges_internet / 100).toFixed(2),
-        honoraires_dcb:        (etudiant.honoraires_dcb / 100).toFixed(2),
+        taux_commission:       etudiant.taux_commission != null
+                                 ? String(+(etudiant.taux_commission * 100).toFixed(2))
+                                 : String(TAUX_DEFAUT_TYPE[etudiant.type_bail] ?? 10),
         caution:               (etudiant.caution / 100).toFixed(2),
         jour_paiement_attendu: String(etudiant.jour_paiement_attendu),
         statut:                etudiant.statut,
@@ -647,8 +654,8 @@ export default function PageLocationsLongues() {
 
   async function soumettreEtudiant(e) {
     e.preventDefault()
-    if (!formEtudiant.nom || !formEtudiant.date_entree || !formEtudiant.loyer_nu || !formEtudiant.honoraires_dcb) {
-      setError('Nom, date d\'entrée, loyer nu et honoraires DCB requis')
+    if (!formEtudiant.nom || !formEtudiant.date_entree || !formEtudiant.loyer_nu || formEtudiant.taux_commission === '') {
+      setError('Nom, date d\'entrée, loyer nu et taux de commission requis')
       return
     }
     setSaving(true)
@@ -670,12 +677,15 @@ export default function PageLocationsLongues() {
         charges_eau:           Math.round(parseFloat(formEtudiant.charges_eau || '0') * 100),
         charges_copro:         Math.round(parseFloat(formEtudiant.charges_copro || '0') * 100),
         charges_internet:      Math.round(parseFloat(formEtudiant.charges_internet || '0') * 100),
-        honoraires_dcb:        Math.round(parseFloat(formEtudiant.honoraires_dcb) * 100),
         caution:               Math.round(parseFloat(formEtudiant.caution || '0') * 100),
         jour_paiement_attendu: parseInt(formEtudiant.jour_paiement_attendu, 10),
         statut:                formEtudiant.statut,
         type_bail:             formEtudiant.type_bail || 'etudiant',
+        taux_commission:       parseFloat(formEtudiant.taux_commission) / 100,
       }
+      // Cache honoraires_dcb (montant figé plein) pour compat affichage legacy
+      const ccPlein = payload.loyer_nu + payload.supplement_loyer + payload.charges_eau + payload.charges_copro + payload.charges_internet
+      payload.honoraires_dcb = Math.round(ccPlein * (payload.taux_commission || 0))
       if (editingEtudiant) {
         await modifierEtudiant(editingEtudiant.id, payload)
         setSuccess('Locataire modifié')
@@ -799,7 +809,8 @@ export default function PageLocationsLongues() {
                   <tbody>
                     {loyers.map(l => {
                       const e = l.etudiant
-                      const total = e ? montantTotalEtudiant(e) : 0
+                      // Montant proratisé persisté (source unique) ; fallback calcul prorata du mois
+                      const total = l.montant_attendu ?? (e ? montantTotalEtudiant(e, l.mois) : 0)
                       const st = STATUT_LOYER[l.statut] || {}
                       const ecart = l.montant_recu && l.montant_recu !== total
                       return (
@@ -835,7 +846,7 @@ export default function PageLocationsLongues() {
                               <button className="btn btn-secondary" style={{ fontSize: 12, padding: '3px 8px', color: '#059669' }}
                                 onClick={() => {
                                   setLoyerModal(l)
-                                  setMontantRecu(e ? (montantTotalEtudiant(e) / 100).toFixed(2) : '')
+                                  setMontantRecu(total ? (total / 100).toFixed(2) : '')
                                   setDateReception(new Date().toISOString().slice(0, 10))
                                 }}>
                                 ✓ Reçu
@@ -1004,7 +1015,7 @@ export default function PageLocationsLongues() {
                         </td>
                         <td style={{ textAlign: 'right', fontWeight: 600 }}>{formatMontant(total)}</td>
                         <td style={{ textAlign: 'right', color: '#059669' }}>{formatMontant(verso)}</td>
-                        <td style={{ textAlign: 'right', color: 'var(--brand)' }}>{formatMontant(e.honoraires_dcb)}</td>
+                        <td style={{ textAlign: 'right', color: 'var(--brand)' }}>{formatMontant(honorairesEtudiant(e))}</td>
                         <td style={{ textAlign: 'right', color: 'var(--text-muted)' }}>{formatMontant(e.caution)}</td>
                         <td>
                           <span style={{ display: 'inline-block', padding: '2px 8px', borderRadius: 10, fontSize: 12, fontWeight: 600, color: st.color, background: st.bg }}>
@@ -1469,26 +1480,31 @@ export default function PageLocationsLongues() {
                         onChange={e => setFormEtudiant(f => ({ ...f, charges_internet: e.target.value }))} />
                     </div>
                     <div>
-                      <label className="form-label">Honoraires DCB *</label>
-                      <input className="form-input" type="number" min="0" step="0.01" required
-                        value={formEtudiant.honoraires_dcb}
-                        onChange={e => setFormEtudiant(f => ({ ...f, honoraires_dcb: e.target.value }))} />
+                      <label className="form-label">Taux commission DCB (%) *</label>
+                      <input className="form-input" type="number" min="0" max="100" step="0.5" required
+                        value={formEtudiant.taux_commission}
+                        onChange={e => setFormEtudiant(f => ({ ...f, taux_commission: e.target.value }))} />
+                      <div style={{ fontSize: 11, color: 'var(--text-muted)', marginTop: 2 }}>
+                        % du loyer CC. Défaut : 10 % étudiant/mobilité, 8 % habitation, 5 % Bitxi.
+                      </div>
                     </div>
                   </div>
 
                   {/* Récap calculé */}
-                  {formEtudiant.loyer_nu && formEtudiant.honoraires_dcb && (() => {
+                  {formEtudiant.loyer_nu && formEtudiant.taux_commission !== '' && (() => {
                     const total = (parseFloat(formEtudiant.loyer_nu) || 0) +
                                   (parseFloat(formEtudiant.supplement_loyer) || 0) +
                                   (parseFloat(formEtudiant.charges_eau) || 0) +
                                   (parseFloat(formEtudiant.charges_copro) || 0) +
                                   (parseFloat(formEtudiant.charges_internet) || 0)
-                    const verso = total - (parseFloat(formEtudiant.honoraires_dcb) || 0)
+                    const taux = (parseFloat(formEtudiant.taux_commission) || 0) / 100
+                    const hon = Math.round(total * taux * 100) / 100
+                    const verso = total - hon
                     return (
                       <div style={{ marginTop: 10, padding: '8px 12px', background: 'var(--bg)', borderRadius: 8, fontSize: 13, display: 'flex', gap: 20 }}>
                         <span>Total locataire : <strong>{total.toFixed(2)} €</strong></span>
                         <span style={{ color: '#059669' }}>Verso proprio : <strong>{verso.toFixed(2)} €</strong></span>
-                        <span style={{ color: 'var(--brand)' }}>DCB : <strong>{parseFloat(formEtudiant.honoraires_dcb).toFixed(2)} €</strong></span>
+                        <span style={{ color: 'var(--brand)' }}>DCB : <strong>{hon.toFixed(2)} €</strong> ({(parseFloat(formEtudiant.taux_commission) || 0)} %)</span>
                       </div>
                     )
                   })()}
@@ -1505,7 +1521,15 @@ export default function PageLocationsLongues() {
                     <label className="form-label">Type de bail</label>
                     <select className="form-select"
                       value={formEtudiant.type_bail}
-                      onChange={e => setFormEtudiant(f => ({ ...f, type_bail: e.target.value }))}>
+                      onChange={e => {
+                        const t = e.target.value
+                        setFormEtudiant(f => ({
+                          ...f,
+                          type_bail: t,
+                          // ajuste le taux au défaut du type (sauf override Bitxi 5% laissé manuel)
+                          taux_commission: String(TAUX_DEFAUT_TYPE[t] ?? f.taux_commission),
+                        }))
+                      }}>
                       <option value="etudiant">Bail étudiant</option>
                       <option value="mobilite">Bail mobilité</option>
                       <option value="habitation">Bail habitation</option>

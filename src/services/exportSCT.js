@@ -234,13 +234,21 @@ export async function genererSCTHonorairesDCB(mois, agence = AGENCE) {
 
   const { data: loyers, error: errLoy } = await supabase
     .from('loyer_suivi')
-    .select('etudiant(honoraires_dcb, archived)')
+    .select('montant_recu, montant_attendu, etudiant(taux_commission, honoraires_dcb, archived)')
     .eq('agence', agence)
     .eq('mois', mois)
     .eq('statut', 'recu')
   if (errLoy) throw errLoy
 
-  const totalHon = (loyers || []).filter(l => !l.etudiant?.archived).reduce((s, l) => s + (l.etudiant?.honoraires_dcb || 0), 0)
+  // Honoraires = taux × montant réellement reçu (proratisé). Fallback : honoraires_dcb figé.
+  const totalHon = (loyers || [])
+    .filter(l => !l.etudiant?.archived)
+    .reduce((s, l) => {
+      const base = l.montant_recu ?? l.montant_attendu ?? 0
+      const taux = l.etudiant?.taux_commission != null ? Number(l.etudiant.taux_commission) : null
+      const hon = taux != null ? Math.round(base * taux) : (l.etudiant?.honoraires_dcb || 0)
+      return s + hon
+    }, 0)
   if (!totalHon) throw new Error(`Aucun honoraire DCB à virer pour ${mois} (aucun loyer reçu avec honoraires)`)
 
   const debtorNom = config.agence_titulaire || 'DESTINATION COTE BASQUE'

@@ -62,15 +62,60 @@ export async function modifierEtudiant(id, payload) {
   if (error) throw error
 }
 
+// ── Prorata entrée / sortie (Laura 2026-06-11) ──────────────────────────────
+// Loyer du mois = plein CC × jours occupés ÷ jours du mois. S'applique au CC
+// complet (loyer + supplément + charges). Mois plein → facteur 1.
+// Entrée et sortie incluses dans les jours occupés.
+export function prorataMois(e, mois) {
+  if (!mois) return { facteur: 1, joursOccupes: 0, joursMois: 0, jDebut: 0, jFin: 0, partiel: false }
+  const [y, m] = String(mois).split('-').map(Number)
+  const joursMois = new Date(y, m, 0).getDate()
+  let jDebut = 1, jFin = joursMois
+  const ymd = (s) => String(s).slice(0, 10).split('-').map(Number)
+  const horsMois = { facteur: 0, joursOccupes: 0, joursMois, jDebut: 0, jFin: 0, partiel: true }
+  if (e?.date_entree) {
+    const [ay, am, ad] = ymd(e.date_entree)
+    if (ay > y || (ay === y && am > m)) return horsMois          // entre après ce mois
+    if (ay === y && am === m) jDebut = Math.max(jDebut, ad)
+  }
+  const sortie = e?.date_sortie_reelle || e?.date_sortie_prevue
+  if (sortie) {
+    const [sy, sm, sd] = ymd(sortie)
+    if (sy < y || (sy === y && sm < m)) return horsMois          // parti avant ce mois
+    if (sy === y && sm === m) jFin = Math.min(jFin, sd)
+  }
+  const joursOccupes = Math.max(0, jFin - jDebut + 1)
+  return { facteur: joursMois ? joursOccupes / joursMois : 0, joursOccupes, joursMois, jDebut, jFin, partiel: joursOccupes < joursMois }
+}
+
 // ── Montants dérivés ───────────────────────────────────────────────────────
 
-export function montantTotalEtudiant(e) {
+// CC plein du mois (sans prorata)
+export function montantPleinEtudiant(e) {
   return (e.loyer_nu || 0) + (e.supplement_loyer || 0) +
          (e.charges_eau || 0) + (e.charges_copro || 0) + (e.charges_internet || 0)
 }
 
-export function montantVirementProprio(e) {
-  return montantTotalEtudiant(e) - (e.honoraires_dcb || 0)
+// CC du mois — proratisé si entrée/sortie en cours de mois ; plein si `mois` omis
+export function montantTotalEtudiant(e, mois = null) {
+  const plein = montantPleinEtudiant(e)
+  if (!mois) return plein
+  return Math.round(plein * prorataMois(e, mois).facteur)
+}
+
+// Taux de commission DCB (0.10 étudiant/mobilité, 0.08 habitation, 0.05 Bitxi)
+export function tauxCommission(e) {
+  return e?.taux_commission != null ? Number(e.taux_commission) : 0.10
+}
+
+// Honoraires DCB = taux × CC (du mois si fourni, sinon plein)
+export function honorairesEtudiant(e, mois = null) {
+  return Math.round(montantTotalEtudiant(e, mois) * tauxCommission(e))
+}
+
+// Virement proprio = CC − honoraires (du mois si fourni)
+export function montantVirementProprio(e, mois = null) {
+  return montantTotalEtudiant(e, mois) - honorairesEtudiant(e, mois)
 }
 
 // ── Loyers du mois ────────────────────────────────────────────────────────
@@ -78,7 +123,7 @@ export function montantVirementProprio(e) {
 export async function listerLoyersMois(mois, agence = AGENCE) {
   const { data, error } = await supabase
     .from('loyer_suivi')
-    .select('*, etudiant (id, nom, prenom, email, telephone, loyer_nu, supplement_loyer, charges_eau, charges_copro, charges_internet, honoraires_dcb, bien_id, proprietaire_id, jour_paiement_attendu, archived, bien (code))')
+    .select('*, etudiant (id, nom, prenom, email, telephone, loyer_nu, supplement_loyer, charges_eau, charges_copro, charges_internet, honoraires_dcb, taux_commission, date_entree, date_sortie_prevue, date_sortie_reelle, bien_id, proprietaire_id, jour_paiement_attendu, archived, bien (code))')
     .eq('agence', agence)
     .eq('mois', mois)
     .order('created_at')
@@ -98,13 +143,13 @@ export async function initialiserLoyersMois(mois, agence = AGENCE) {
   )
   if (!etudiants.length) return []
 
-  // Upsert loyer_suivi pour chaque locataire éligible
+  // Upsert loyer_suivi pour chaque locataire éligible (montant proratisé entrée/sortie)
   const rows = etudiants.map(e => ({
     agence,
     etudiant_id: e.id,
     mois,
     statut: 'attendu',
-    montant_attendu: montantTotalEtudiant(e),
+    montant_attendu: montantTotalEtudiant(e, mois),
   }))
 
   const { error } = await supabase
@@ -112,18 +157,29 @@ export async function initialiserLoyersMois(mois, agence = AGENCE) {
     .upsert(rows, { onConflict: 'etudiant_id,mois', ignoreDuplicates: true })
   if (error) throw error
 
-  // Upsert virement_proprio_suivi
+  // Upsert virement_proprio_suivi (CC proratisé − honoraires = taux × CC)
   const virements = etudiants.map(e => ({
     agence,
     etudiant_id: e.id,
     mois,
     statut:  'a_virer',
-    montant: montantVirementProprio(e),
+    montant: montantVirementProprio(e, mois),
   }))
   const { error: errVir } = await supabase
     .from('virement_proprio_suivi')
     .upsert(virements, { onConflict: 'etudiant_id,mois', ignoreDuplicates: true })
   if (errVir) throw errVir
+
+  // Rafraîchir le montant proratisé des lignes encore "attendu"/"a_virer"
+  // (cas entrée/sortie en cours de mois) — sans toucher aux loyers déjà reçus/virés.
+  for (const e of etudiants) {
+    await supabase.from('loyer_suivi')
+      .update({ montant_attendu: montantTotalEtudiant(e, mois) })
+      .eq('etudiant_id', e.id).eq('mois', mois).eq('statut', 'attendu')
+    await supabase.from('virement_proprio_suivi')
+      .update({ montant: montantVirementProprio(e, mois) })
+      .eq('etudiant_id', e.id).eq('mois', mois).eq('statut', 'a_virer')
+  }
 
   return listerLoyersMois(mois, agence)
 }
@@ -149,7 +205,7 @@ export async function marquerLoyerStatut(id, statut) {
 export async function listerVirementsMois(mois, agence = AGENCE) {
   const { data, error } = await supabase
     .from('virement_proprio_suivi')
-    .select('*, etudiant (id, nom, prenom, loyer_nu, supplement_loyer, charges_eau, charges_copro, charges_internet, honoraires_dcb, proprietaire (nom, prenom))')
+    .select('*, etudiant (id, nom, prenom, loyer_nu, supplement_loyer, charges_eau, charges_copro, charges_internet, honoraires_dcb, taux_commission, date_entree, date_sortie_prevue, date_sortie_reelle, proprietaire (nom, prenom))')
     .eq('agence', agence)
     .eq('mois', mois)
     .order('created_at')

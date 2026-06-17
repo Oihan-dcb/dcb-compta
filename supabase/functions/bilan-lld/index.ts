@@ -47,7 +47,8 @@ function genHTML(mois: string, loyers: any[], virements: any[], agenceLabel: str
 
   const rowsLoyers = loyers.map(l => {
     const e = l.etudiant
-    const total = e ? (e.loyer_nu||0)+(e.supplement_loyer||0)+(e.charges_eau||0)+(e.charges_copro||0)+(e.charges_internet||0) : 0
+    // Montant proratisé persisté (source unique). Fallback : CC plein recalculé.
+    const total = l.montant_attendu ?? (e ? (e.loyer_nu||0)+(e.supplement_loyer||0)+(e.charges_eau||0)+(e.charges_copro||0)+(e.charges_internet||0) : 0)
     return `
       <tr>
         <td>${e ? `${e.nom}${e.prenom ? ' '+e.prenom : ''}` : '—'}</td>
