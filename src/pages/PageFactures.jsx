@@ -634,7 +634,8 @@ const [pushing, setPushing] = useState(false)
                 const classifErr = r.classifs.errors.map(e => `${e.code}: ${e.error}`).join(' | ')
                 const artErr = (r.articles?.errors || []).map(e => `${e.reference}: ${e.error}`).join(' | ')
                 const compteErr = (r.comptes?.errors || []).map(e => `${e.code}: ${e.error}`).join(' | ')
-                setSuccess(`Setup Evoliz — Comptes: ${r.comptes?.created.length ?? 0} créé(s), ${r.comptes?.skipped.length ?? 0} existant(s)${compteErr ? ` ⚠ ${compteErr}` : ''} | Classifications: ${r.classifs.created.length} créée(s), ${r.classifs.skipped.length} existante(s)${classifErr ? ` ⚠ ${classifErr}` : ''} | Articles: ${r.articles?.created.length ?? 0} créé(s), ${r.articles?.skipped.length ?? 0} existant(s)${artErr ? ` ⚠ ${artErr}` : ''}`)
+                const lldId = r.accountIds?.['7069']
+                setSuccess(`Setup Evoliz — Comptes: ${r.comptes?.created.length ?? 0} créé(s), ${r.comptes?.skipped.length ?? 0} existant(s)${compteErr ? ` ⚠ ${compteErr}` : ''} | Classifications: ${r.classifs.created.length} créée(s), ${r.classifs.skipped.length} existante(s)${classifErr ? ` ⚠ ${classifErr}` : ''} | Articles: ${r.articles?.created.length ?? 0} créé(s), ${r.articles?.skipped.length ?? 0} existant(s)${artErr ? ` ⚠ ${artErr}` : ''}${lldId ? ` | HON_LLD (7069) accountId = ${lldId} → à coller dans ACCOUNT_MAP` : ''}`)
               } catch (err) { setError(err.message) }
             }}
             title="Crée classifications + articles dans le catalogue Evoliz de l'agence courante"

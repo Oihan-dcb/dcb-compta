@@ -275,6 +275,7 @@ export async function creerFactureEvoliz(facture) {
     HAOWNER: 8677896, // 7066 — Achats refacturés propriétaires (surfacturation)
     HON_ETU: 8677897, // 7067 — Honoraires locations étudiantes
     HON_MOB: 8677898, // 7068 — Honoraires contrats mobilité
+    // HON_LLD: null, // 7069 — Honoraires gestion longue durée → renseigner l'ID après clic "⚙ Setup Evoliz" (cf. toast accountIds)
     DEB_AE:  8629957, // 467  — Débours AE (compte séquestre)
   }
   // Charger les maps catalogue et classifications en parallèle
@@ -617,6 +618,7 @@ const ARTICLES_A_CREER = [
   { reference: 'HAOWNER', designation: 'Achats refacturés propriétaires',    classifCode: '07', accountCode: '7066' },
   { reference: 'HON_ETU', designation: 'Honoraires locations étudiantes',    classifCode: '08', accountCode: '7067' },
   { reference: 'HON_MOB', designation: 'Honoraires contrats mobilité',       classifCode: '09', accountCode: '7068' },
+  { reference: 'HON_LLD', designation: 'Honoraires gestion longue durée',    classifCode: '10', accountCode: '7069' },
   { reference: 'FRAIS',   designation: 'Frais divers propriétaire',           classifCode: '02', accountCode: null },
 ]
 
@@ -673,6 +675,7 @@ const CLASSIFICATIONS_A_CREER = [
   { code: '07', label: 'Achats refacturés propriétaires (HAOWNER)', accountCode: '7066', accountLabel: 'Achats refacturés propriétaires' },
   { code: '08', label: 'Honoraires locations étudiantes (HON_ETU)', accountCode: '7067', accountLabel: 'Honoraires locations étudiantes' },
   { code: '09', label: 'Honoraires contrats mobilité (HON_MOB)',    accountCode: '7068', accountLabel: 'Honoraires contrats mobilité' },
+  { code: '10', label: 'Honoraires gestion longue durée (HON_LLD)', accountCode: '7069', accountLabel: 'Honoraires gestion longue durée' },
 ]
 
 export async function setupEvolizComplet() {
@@ -725,6 +728,9 @@ export async function setupEvolizComplet() {
 
   // 3. Créer les articles manquants (avec IDs comptes locaux)
   results.articles = await creerArticlesManquantsEvoliz(accountIdByCode)
+
+  // Exposer les IDs comptables résolus (pour renseigner ACCOUNT_MAP, ex. HON_LLD → 7069)
+  results.accountIds = accountIdByCode
 
   return results
 }
