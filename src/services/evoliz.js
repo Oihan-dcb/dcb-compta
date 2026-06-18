@@ -275,9 +275,16 @@ export async function creerFactureEvoliz(facture) {
     HAOWNER: 8677896, // 7066 — Achats refacturés propriétaires (surfacturation)
     HON_ETU: 8677897, // 7067 — Honoraires locations étudiantes
     HON_MOB: 8677898, // 7068 — Honoraires contrats mobilité
-    // HON_LLD: null, // 7069 — Honoraires gestion longue durée → renseigner l'ID après clic "⚙ Setup Evoliz" (cf. toast accountIds)
     DEB_AE:  8629957, // 467  — Débours AE (compte séquestre)
   }
+  // HON_LLD (7069) — sociétés Evoliz distinctes par agence → accountId distinct.
+  // Si l'agence n'est pas renseignée ici, le push omet accountingAccountId et
+  // s'appuie sur le compte porté par l'article HON_LLD (créé par Setup dans CETTE société).
+  const HON_LLD_BY_AGENCE = {
+    dcb: 8715495, // société 114158
+    // lauian: <à renseigner après "⚙ Setup Evoliz" sur le déploiement Lauian (société 115576)>
+  }
+  if (HON_LLD_BY_AGENCE[AGENCE]) ACCOUNT_MAP.HON_LLD = HON_LLD_BY_AGENCE[AGENCE]
   // Charger les maps catalogue et classifications en parallèle
   const [articleIdMap, classifIdMap] = await Promise.all([getArticleIdMap(), getClassificationIdMap()])
 
