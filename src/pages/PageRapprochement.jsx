@@ -38,6 +38,46 @@ function fmtDate(d) {
   return format(new Date(d), 'd MMM', { locale: fr })
 }
 
+function sansAccent(s) {
+  return (s || '').normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase()
+}
+
+// Score de pertinence d'une réservation pour un mouvement bancaire (suggestion de rapprochement manuel).
+// Aide humaine — n'effectue AUCUN match automatique. Renvoie { score, raisons }.
+function scoreResaMouvement(resa, mvt) {
+  if (!resa || !mvt) return { score: 0, raisons: [] }
+  const hay = sansAccent(`${mvt.libelle || ''} ${mvt.detail || ''}`)
+  const raisons = []
+  let score = 0
+
+  // Nom du voyageur présent dans le libellé OU le détail
+  const nomTokens = sansAccent(resa.guest_name || '').split(/\s+/).filter(t => t.length > 2)
+  const nomHits = nomTokens.filter(t => hay.includes(t))
+  if (nomHits.length) { score += 40 + 20 * (nomHits.length - 1); raisons.push(nomHits.length > 1 ? 'nom complet' : 'nom') }
+
+  // Nom du bien présent dans le détail (ex. "Maison Maite", "villa belezia", "erdigunea")
+  const bienTokens = sansAccent(resa.bien?.hospitable_name || resa.bien?.code || '').split(/\s+/).filter(t => t.length > 3)
+  if (bienTokens.length && bienTokens.some(t => hay.includes(t))) { score += 25; raisons.push('bien') }
+
+  // Montant : exact, acompte ~50 %, ou paiement partiel plausible
+  const credit = mvt.credit || 0
+  const rev = resa.fin_revenue || 0
+  if (rev > 0 && credit > 0) {
+    if (Math.abs(rev - credit) <= 5) { score += 45; raisons.push('montant exact') }
+    else if (Math.abs(credit - rev / 2) <= Math.max(200, rev * 0.02)) { score += 30; raisons.push('acompte 50 %') }
+    else if (credit < rev) { score += 8 }
+  }
+
+  // Proximité de date (signal faible — les acomptes arrivent souvent des mois avant le séjour)
+  if (resa.arrival_date && mvt.date_operation) {
+    const dj = Math.abs((new Date(resa.arrival_date) - new Date(mvt.date_operation)) / 86400000)
+    if (dj <= 7) score += 6
+    else if (dj <= 45) score += 3
+  }
+
+  return { score, raisons }
+}
+
 export default function PageRapprochement() {
   const navigate = useNavigate()
   const [mois, setMois] = useMoisPersisted()
@@ -737,15 +777,25 @@ export default function PageRapprochement() {
                   .filter(r => !filterResaBien || r.bien?.id === filterResaBien)
                   .filter(r => !filterResaPlat || r.platform === filterResaPlat)
                   .filter(r => !resaSearch || r.guest_name?.toLowerCase().includes(resaSearch.toLowerCase()) || r.bien?.hospitable_name?.toLowerCase().includes(resaSearch.toLowerCase()) || r.code?.toLowerCase().includes(resaSearch.toLowerCase()) || r.platform?.toLowerCase().includes(resaSearch.toLowerCase()))
-                  .map(r => {
+                  .map(r => ({ r, ...scoreResaMouvement(r, mouvSel) }))
+                  .sort((a, b) => b.score - a.score)
+                  .map(({ r, score, raisons }) => {
                 const checked = resasSel.includes(r.id)
+                const suggere = score >= 40
                 return (
-                  <label key={r.id} style={{ display: 'flex', alignItems: 'flex-start', gap: 8, padding: '8px 10px', borderRadius: 8, border: `1.5px solid ${checked ? '#E4A853' : '#e5e7eb'}`, background: checked ? '#FFF8EC' : '#fff', cursor: 'pointer', fontSize: 12 }}>
+                  <label key={r.id} style={{ display: 'flex', alignItems: 'flex-start', gap: 8, padding: '8px 10px', borderRadius: 8, border: `1.5px solid ${checked ? '#E4A853' : suggere ? '#86C28E' : '#e5e7eb'}`, background: checked ? '#FFF8EC' : suggere ? '#F2FAF3' : '#fff', cursor: 'pointer', fontSize: 12 }}>
                     <input type="checkbox" checked={checked} onChange={e => {
                       setResasSel(prev => e.target.checked ? [...prev, r.id] : prev.filter(x => x !== r.id))
                     }} style={{ marginTop: 2, accentColor: '#CC9933' }} />
                     <div style={{ flex: 1 }}>
-                      <div style={{ fontWeight: 600 }}>{r.guest_name || '—'}</div>
+                      <div style={{ fontWeight: 600, display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
+                        {r.guest_name || '—'}
+                        {suggere && (
+                          <span style={{ fontSize: 10, background: '#2E7D32', color: '#fff', borderRadius: 4, padding: '1px 6px', fontWeight: 700, whiteSpace: 'nowrap' }}>
+                            ✨ {raisons.join(' · ')}
+                          </span>
+                        )}
+                      </div>
                       <div style={{ color: '#666', marginTop: 1 }}>
                         {r.bien?.code} · {fmtDate(r.arrival_date)} → {fmtDate(r.departure_date)}
                       </div>

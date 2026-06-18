@@ -268,18 +268,20 @@ async function matcherAirbnb(mvt, payouts, reservations = []) {
  */
 async function matcherSepa(mvt, reservations) {
   const montant = mvt.credit
-  const detail = (mvt.detail || '').toLowerCase()
+  // Le nom du payeur figure souvent dans le libellé (ex. "VIR INST ANDREI SILIANOV"),
+  // pas seulement dans le détail. On cherche dans les deux, accents normalisés.
+  const sansAccent = (s) => (s || '').normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase()
+  const texte = sansAccent(`${mvt.libelle || ''} ${mvt.detail || ''}`)
 
   // Chercher une réservation avec revenue = montant ±5c (variations possibles)
   const match = reservations.find(r => {
     const ecartMontant = Math.abs((r.fin_revenue || 0) - montant) <= 5
     if (!ecartMontant) return false
 
-    // Si on a un nom dans le détail, vérifier qu'il correspond
-    if (detail && r.guest_name) {
-      const nomNorm = r.guest_name.toLowerCase().split(' ')
-      const nomDansDetail = nomNorm.some(n => n.length > 2 && detail.includes(n))
-      return nomDansDetail
+    // Si on a un nom dans le libellé/détail, vérifier qu'il correspond
+    if (texte && r.guest_name) {
+      const nomNorm = sansAccent(r.guest_name).split(/\s+/)
+      return nomNorm.some(n => n.length > 2 && texte.includes(n))
     }
 
     return ecartMontant

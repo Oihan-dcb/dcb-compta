@@ -87,6 +87,9 @@ function parseReservation(resa: any, bien: any, fallbackMois: string) {
     checkout_time: resa.check_out,
     guest_name: [resa.guest?.first_name, resa.guest?.last_name].filter(Boolean).join(' ') || null,
     guest_count: resa.guest_count || resa.guests?.total || null,
+    // Téléphone : Hospitable expose le tél dans guest.phone_numbers[] (pas guest.phone).
+    // On le resynchronise à chaque upsert → propagation auto des changements de numéro.
+    guest_phone: (Array.isArray(resa.guest?.phone_numbers) ? resa.guest.phone_numbers[0] : null) || null,
     stay_type: resa.stay_type || 'guest',
     // Hospitable v2 renvoie un objet {schedule_cleaning:...} pour les séjours proprio
     owner_stay: typeof resa.owner_stay === 'boolean' ? resa.owner_stay : (resa.owner_stay != null && resa.owner_stay !== false),
@@ -210,10 +213,14 @@ serve(async (req) => {
           continue
         }
 
+        // Ne pas écraser guest_name / guest_phone existants par null si Hospitable ne les renvoie pas
+        const payload = { ...parsed }
+        if (!payload.guest_name)  payload.guest_name  = undefined
+        if (!payload.guest_phone) payload.guest_phone = undefined
         const { data: upserted, error } = await sb
           .from('reservation')
           .upsert(
-            parsed.guest_name ? parsed : { ...parsed, guest_name: undefined },
+            payload,
             { onConflict: 'hospitable_id' }
           )
           .select('id')
