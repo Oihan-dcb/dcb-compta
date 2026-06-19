@@ -305,13 +305,15 @@ export async function buildRapportData(bienId, propId, mois, opts = {}) {
       vent: v,
       extra: extraByResa[r.id] || 0,
       gross_revenue: grossRev,
-      // base_comm = base de calcul DCB pour HON/LOY
-      // Airbnb : NET plateforme − ménage brut (Community Fee côté hôte = frais ménage passé au proprio)
-      //          formule : fin_revenue − guest_fees  →  cohérent avec HON = base_comm × 25%
-      // Autres : fin_accommodation + fin_host_service_fee − fin_discount (Commissionable base Hospitable)
-      base_comm: r.platform === 'airbnb'
-        ? Math.max(0, (r.fin_revenue || 0) - (r.reservation_fee || []).filter(f => f.fee_type === 'guest_fee').reduce((s, f) => s + (f.amount || 0), 0))
-        : (r.fin_accommodation || 0) + (r.fin_host_service_fee || 0) - (r.fin_discount || 0),
+      // base_comm = base RÉELLE de la commission DCB, identique à `commissionableBase`
+      // de api/ventiler.js : accommodation + host_service_fee + discounts + extra_guest_fee.
+      // MÊME formule toutes plateformes → cohérent avec HON = base_comm × taux et le versement.
+      // (Avant : Airbnb utilisait `fin_revenue − guest_fees`, qui gonflait la base quand le
+      //  revenue Airbnb incluait des montants non commissionnables — ex. achat refacturé HAOWNER.)
+      base_comm: (r.fin_accommodation || 0)
+        + (r.fin_host_service_fee || 0)
+        - (r.fin_discount || 0)
+        + (r.reservation_fee || []).filter(f => f.fee_type === 'guest_fee' && (f.label || '').toLowerCase() === 'extra_guest_fee').reduce((s, f) => s + (f.amount || 0), 0),
       proprio_encaisse: isProprioEncaisse(r.id),
       hon:  v.HON?.montant_ttc || 0,
       loy:  loyHt,
