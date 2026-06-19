@@ -213,39 +213,17 @@ export function _calculerLignes(resa) {
 
   let commissionableBase, loyAmount, cleaningFeeNet, platformRateOnCleaning
 
-  // ── TOUTES PLATEFORMES ───────────────────────────────────────────────
-  // Prouvé sur données réelles :
-  //   Direct  : accommodation(30400) + host_fees(-453)          = 29947 ✓
-  //   Booking : accommodation(15245) + host_fees(-376 + -4211)  = 10658 ✓
-  //   Airbnb  : accommodation + host_service_fee + discounts + extraGuestFee
-  //   BGH HMS2SR33WH : 103900 + (-26022) + 0 + 20000 = 97878 = €978,78 ✓
-  commissionableBase = accommodation + hostServiceFee + discountsTotal + extraGuestFee
-
-  // HON = base × taux (TVA 20%)
-  // Direct : Math.floor pour correspondre exactement au statement Hospitable
-  const honTTC = isDirect ? Math.floor(commissionableBase * tauxCom) : Math.round(commissionableBase * tauxCom)
-  const honHT  = Math.round(honTTC / (1 + TVA_RATE))
-
   // Assiette commune de répartition pro-rata : accommodation + Σ guest_fees
   // Utilisée pour Airbnb (dueToOwner) et Direct (ownerFees)
   const totalFeesForOwnerRate = accommodation + guestFeesAll.reduce((s, f) => s + (f.amount || 0), 0)
 
-  // FMEN = fees_ménage_brut - part plateforme - AUTO (TVA 20%)
-  //
+  // FMEN / ménage — calculé AVANT la base car en fallback le ménage est fondu dans accommodation.
   // Airbnb  : pro-rata du host_service_fee sur la part ménage, net de commission DCB
   //           dueToOwner = round(|hostServiceFee| × fmenBase / (accommodation + Σ guestFees) × (1 − tauxCom))
   //           Vérifié HMRN2R9JTY : round(3751 × 12400 / 24200 × 0.75) = 1442 cts = 14.42 € ✓
-  //           → remplace le taux fixe 13,95% qui ne correspondait pas au statement réel
-  //
-  // Booking : taux fixe ~15,17% mesuré statement Chambre Txomin fév 2026
-  //           (Booking a une grille tarifaire différente d'Airbnb — pas de pro-rata confirmé)
-  //
-  // Direct / Manual : dueToOwner = 0 (Hospitable ne retient rien sur le ménage)
-  //
-  // Fallback Airbnb sans frais ménage :
-  //   SI platform='airbnb' ET cleaning fee=0 ET community fee=0 ET forfait_dcb_ref>0
-  //   ALORS fmenBase = forfait_dcb_ref + provision_ae_ref (reconstruit depuis le bien)
-  //   Cas couverts : EKIA/Marlène, Gaxuxa/Myriam (aucun frais ménage dans reservation_fee)
+  // Booking : même pro-rata. Direct / Manual : dueToOwner = 0.
+  // Fallback Airbnb sans frais ménage (cleaning=0 ET community=0 ET forfait_dcb_ref>0) :
+  //   Airbnb n'a pas transmis la ligne ménage → fmenBase = forfait_dcb_ref + provision_ae_ref.
   const totalFeesAirbnb = cleaningFeeAirbnb + communityFeeRaw
   const airbnbFallbackActif = resa.platform === 'airbnb' && totalFeesAirbnb === 0 && (bien.forfait_dcb_ref || 0) > 0
   const fmenBase = airbnbFallbackActif
@@ -256,6 +234,20 @@ export function _calculerLignes(resa) {
     : 0
   const fmenTTC = Math.max(0, fmenBase - dueToOwner - aeAmount)
   const fmenHT  = fmenTTC > 0 ? Math.round(fmenTTC / (1 + TVA_RATE)) : 0
+
+  // En fallback, le ménage voyageur NET de la commission Airbnb (= fmenBase − dueToOwner) est
+  // fondu dans `accommodation` → on le retranche de la base de commission, sinon HON serait
+  // calculé sur le ménage. (Cas normal : le ménage est déjà hors accommodation.)
+  const menageFonduAccommodation = airbnbFallbackActif ? (fmenBase - dueToOwner) : 0
+
+  // ── Base de commission — TOUTES PLATEFORMES ──────────────────────────
+  //   Airbnb : accommodation + host_service_fee + discounts + extraGuestFee (− ménage fondu si fallback)
+  //   Direct : accommodation + host_fees | Booking : accommodation + host_fees
+  commissionableBase = accommodation + hostServiceFee + discountsTotal + extraGuestFee - menageFonduAccommodation
+
+  // HON = base × taux (TVA 20%). Direct : Math.floor pour coller au statement Hospitable.
+  const honTTC = isDirect ? Math.floor(commissionableBase * tauxCom) : Math.round(commissionableBase * tauxCom)
+  const honHT  = Math.round(honTTC / (1 + TVA_RATE))
 
   // ── MEN : ménage brut collecté voyageur (toutes guest fees sauf management) — Hors TVA
   const menLabelsToExclude = ['management fee', 'host service fee', 'resort fee']

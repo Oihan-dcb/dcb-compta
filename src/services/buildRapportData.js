@@ -310,15 +310,25 @@ export async function buildRapportData(bienId, propId, mois, opts = {}) {
       vent: v,
       extra: extraByResa[r.id] || 0,
       gross_revenue: grossRev,
-      // base_comm = base RÉELLE de la commission DCB, identique à `commissionableBase`
-      // de api/ventiler.js : accommodation + host_service_fee + discounts + extra_guest_fee.
-      // MÊME formule toutes plateformes → cohérent avec HON = base_comm × taux et le versement.
-      // (Avant : Airbnb utilisait `fin_revenue − guest_fees`, qui gonflait la base quand le
-      //  revenue Airbnb incluait des montants non commissionnables — ex. achat refacturé HAOWNER.)
-      base_comm: (r.fin_accommodation || 0)
-        + (r.fin_host_service_fee || 0)
-        - (r.fin_discount || 0)
-        + (r.reservation_fee || []).filter(f => f.fee_type === 'guest_fee' && (f.label || '').toLowerCase() === 'extra_guest_fee').reduce((s, f) => s + (f.amount || 0), 0),
+      // base_comm = base RÉELLE de la commission DCB.
+      // Cas normal : accommodation + host_service_fee + discounts + extra_guest_fee
+      //   (identique à commissionableBase de api/ventiler.js).
+      // Cas fallback Airbnb (ménage non transmis → fondu dans accommodation) : la base réelle est
+      //   portée par la ventilation HON → on la DÉRIVE de HON (= HON_ttc / taux) pour que l'affichage
+      //   colle toujours à la commission réellement appliquée, quel que soit l'état de la ventilation.
+      base_comm: (() => {
+        const guestFees = (r.reservation_fee || []).filter(f => f.fee_type === 'guest_fee')
+        const cleaning = guestFees
+          .filter(f => ['cleaning fee', 'community fee'].includes((f.label || '').toLowerCase()))
+          .reduce((s, f) => s + (f.amount || 0), 0)
+        const tauxRatio = (tauxCommission || 25) / 100
+        // Airbnb sans frais ménage transmis = cas fallback → dériver de HON
+        if (r.platform === 'airbnb' && cleaning === 0 && tauxRatio > 0 && (v.HON?.montant_ttc || 0) > 0) {
+          return Math.round(v.HON.montant_ttc / tauxRatio)
+        }
+        return (r.fin_accommodation || 0) + (r.fin_host_service_fee || 0) - (r.fin_discount || 0)
+          + guestFees.filter(f => (f.label || '').toLowerCase() === 'extra_guest_fee').reduce((s, f) => s + (f.amount || 0), 0)
+      })(),
       proprio_encaisse: isProprioEncaisse(r.id),
       hon:  v.HON?.montant_ttc || 0,
       loy:  loyHt,

@@ -129,29 +129,33 @@ function _calculerLignes(resa, agence) {
     ? 0
     : taxes.filter(t => !isRemitted(t)).reduce((s, t) => s + (t.amount || 0), 0)
 
-  const commissionableBase = accommodation + hostServiceFee + discountsTotal + extraGuestFee
-  const honTTC = isDirect
-    ? Math.floor(commissionableBase * tauxCom)
-    : Math.round(commissionableBase * tauxCom)
-  const honHT = Math.round(honTTC / (1 + TVA_RATE))
-
   const totalFeesForOwnerRate = accommodation + guestFeesAll.reduce((s, f) => s + (f.amount || 0), 0)
 
   const totalFeesAirbnb    = cleaningFeeAirbnb + communityFeeRaw
   const airbnbFallbackActif = resa.platform === 'airbnb' && totalFeesAirbnb === 0 && (bien.forfait_dcb_ref || 0) > 0
-  // En fallback, forfait_dcb_ref = MEN total (ménage + AE provision inclus).
-  // provision_ae_ref est géré séparément comme AUTO → ne pas l'ajouter ici.
-  // dueToOwner = 0 en fallback : le forfait est fixe, pas proportionnel au host service fee.
+  // Fallback Airbnb : Airbnb n'a pas transmis la ligne ménage → le ménage voyageur est FONDU
+  // dans `accommodation`. Prix ménage facturé au voyageur = forfait_dcb_ref + provision_ae_ref
+  // (vérifié : 97,00 = 72,00 + 25,00 sur le 416).
   const fmenBase = airbnbFallbackActif
-    ? (bien.forfait_dcb_ref || 0)
+    ? (bien.forfait_dcb_ref || 0) + (bien.provision_ae_ref || 0)
     : totalFeesAirbnb
-  const dueToOwner = (airbnbFallbackActif || totalFeesForOwnerRate === 0)
-    ? 0
-    : ((resa.platform === 'airbnb' || resa.platform === 'booking')
-        ? Math.round(Math.abs(hostServiceFee) * fmenBase / totalFeesForOwnerRate * (1 - tauxCom))
-        : 0)
+  // Part du host service fee Airbnb imputée au ménage (Airbnb commissionne aussi le ménage).
+  const dueToOwner = ((resa.platform === 'airbnb' || resa.platform === 'booking') && totalFeesForOwnerRate > 0)
+    ? Math.round(Math.abs(hostServiceFee) * fmenBase / totalFeesForOwnerRate * (1 - tauxCom))
+    : 0
   const fmenTTC = Math.max(0, fmenBase - dueToOwner - aeAmount)
   const fmenHT  = fmenTTC > 0 ? Math.round(fmenTTC / (1 + TVA_RATE)) : 0
+
+  // En fallback, le ménage voyageur NET de la commission Airbnb (= fmenBase − dueToOwner) est
+  // fondu dans `accommodation` → on le retranche de la base de commission, sinon HON serait
+  // calculé sur le ménage. (Cas normal : le ménage est déjà hors accommodation.)
+  const menageFonduAccommodation = airbnbFallbackActif ? (fmenBase - dueToOwner) : 0
+
+  const commissionableBase = accommodation + hostServiceFee + discountsTotal + extraGuestFee - menageFonduAccommodation
+  const honTTC = isDirect
+    ? Math.floor(commissionableBase * tauxCom)
+    : Math.round(commissionableBase * tauxCom)
+  const honHT = Math.round(honTTC / (1 + TVA_RATE))
 
   const menLabelsToExclude = ['management fee', 'host service fee', 'resort fee']
   const menFees   = guestFeesAll.filter(f => !menLabelsToExclude.includes(f.label?.toLowerCase()))
