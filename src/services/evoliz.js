@@ -288,6 +288,10 @@ export async function creerFactureEvoliz(facture) {
   // Charger les maps catalogue et classifications en parallèle
   const [articleIdMap, classifIdMap] = await Promise.all([getArticleIdMap(), getClassificationIdMap()])
 
+  // Nom du bien à accoler aux libellés de lignes (factures mono-bien). Vide pour les factures
+  // de groupe (Maïté, bien_id null) ou COM → pas de bien unique.
+  const bienNom = facture.bien?.hospitable_name || ''
+
   const lignes = (facture.facture_evoliz_ligne || [])
     .sort((a, b) => a.ordre - b.ordre)
     .filter(l => l.montant_ht !== 0 && !CODES_MEMO.includes(l.code) && (isDebours || l.code !== 'DEB_AE'))
@@ -296,7 +300,7 @@ export async function creerFactureEvoliz(facture) {
       if (!Number.isFinite(htCentimes) || htCentimes === 0) return null
       // Evoliz exige unitPrice >= 0 — lignes négatives (PREST, FRAIS, DEBP) : quantity=-1, prix absolu
       return {
-        designation: l.libelle || `Ligne ${l.code || 'facturation'}`,
+        designation: (l.libelle || `Ligne ${l.code || 'facturation'}`) + (bienNom ? ` — ${bienNom}` : ''),
         reference: l.code,
         quantity: htCentimes < 0 ? -1 : 1,
         unitPrice: Math.abs(htCentimes) / 100,
