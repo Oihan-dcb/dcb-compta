@@ -145,7 +145,7 @@ export async function buildRapportData(bienId, propId, mois, opts = {}) {
         .from('ventilation')
         .select('reservation_id, code, montant_ht, montant_ttc, montant_reel, calcul_source')
         .in('reservation_id', resaIds)
-        .in('code', ['HON', 'LOY', 'VIR', 'FMEN', 'AUTO', 'MEN']),
+        .in('code', ['HON', 'LOY', 'VIR', 'FMEN', 'AUTO', 'MEN', 'HAOWNER']),
       supabase
         .from('reservation_paiement')
         .select('reservation_id, montant')
@@ -292,13 +292,18 @@ export async function buildRapportData(bienId, propId, mois, opts = {}) {
         ? Math.max(0, grossRev - (r.fin_revenue || 0)) + mgmtFee
         : Math.max(0, -(r.fin_host_service_fee || 0))
 
+    // HAOWNER embarqué dans le payout Airbnb (ex. Resolution : achat avancé par DCB
+    // — remplacement de verrou — remboursé directement à DCB). Ce n'est PAS du locatif :
+    // on le retire du net plateforme pour que le rapport proprio ne montre que le locatif.
+    const haownerResa = v.HAOWNER?.montant_ttc || 0
+
     // net_plateforme = ce que reçoit DCB après frais plateforme et taxe de séjour
-    // Airbnb/Booking : fin_revenue est la source fiable (reversement Hospitable)
+    // Airbnb/Booking : fin_revenue est la source fiable (reversement Hospitable), net du HAOWNER refacturé
     // direct/manual  : grossRev - fraisPlat - taxeSejDirecte (reconstruction car fin_revenue inclut la taxe)
     const netPlat = r.owner_stay ? 0
       : ['direct', 'manual'].includes(r.platform || '')
         ? grossRev - fraisPlat - taxeSejDirecte
-        : (r.fin_revenue || 0)
+        : Math.max(0, (r.fin_revenue || 0) - haownerResa)
 
     return {
       ...r,
