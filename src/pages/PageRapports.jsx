@@ -734,6 +734,7 @@ FORMAT :
       extrasGlobaux: data?.extrasGlobaux || [],
       extrasParResa: data?.extrasParResa || [],
       haownerList: data?.haownerList || [],
+      assuranceList: data?.assuranceList || [],
       ownerStayMenageList: data?.ownerStayList || [],
       fraisProprietaire: data?.frais || [],
       colonnes: colsConfig,
@@ -1184,11 +1185,12 @@ FORMAT :
             )}
 
             {/* BLOC 3b/3c/4b — Charges DCB */}
-            {!vueSynthese && ((data.extrasGlobaux || []).length > 0 || (data.haownerList || []).length > 0 || data.frais.length > 0 || (data.ownerStayList || []).length > 0) && (() => {
-              const total = (data.extrasGlobaux || []).length + (data.haownerList || []).length + data.frais.length + (data.ownerStayList || []).length
+            {!vueSynthese && ((data.extrasGlobaux || []).length > 0 || (data.haownerList || []).length > 0 || (data.assuranceList || []).length > 0 || data.frais.length > 0 || (data.ownerStayList || []).length > 0) && (() => {
+              const total = (data.extrasGlobaux || []).length + (data.haownerList || []).length + (data.assuranceList || []).length + data.frais.length + (data.ownerStayList || []).length
               const allRows = [
                 ...(data.extrasGlobaux || []).map(p => ({ ...p, _type: 'debours' })),
                 ...(data.haownerList || []).map(p => ({ ...p, _type: 'achat' })),
+                ...(data.assuranceList || []).map(p => ({ ...p, _type: 'assurance' })),
                 ...(data.ownerStayList || []).map(p => ({ ...p, _type: 'menage_proprio' })),
                 ...data.frais.map(f => ({ ...f, _type: 'frais' })),
               ]
@@ -1211,6 +1213,7 @@ FORMAT :
                       {allRows.map((row, i) => {
                         const isDebours     = row._type === 'debours'
                         const isAchat       = row._type === 'achat'
+                        const isAssurance   = row._type === 'assurance'
                         const isFrais       = row._type === 'frais'
                         const isMenageProprio = row._type === 'menage_proprio'
                         const date = isMenageProprio
@@ -1220,13 +1223,17 @@ FORMAT :
                           : (row.date ? row.date.split('-').reverse().join('/') : '—')
                         const label   = isMenageProprio
                           ? `${row.libelle || 'Ménage séjour propriétaire'}${row.guest_name ? ` — ${row.guest_name}` : ''}`
+                          : isAssurance
+                          ? `${row.libelle || 'Aircover — remboursement assurance'}${row.guest_name ? ` — ${row.guest_name}` : ''}`
                           : row.libelle || row.description || '—'
                         const isRemboursement = isFrais && row.mode_traitement === 'remboursement'
-                        const typeLabel = isDebours ? 'Débours' : isAchat ? 'Achat' : isMenageProprio ? 'Ménage' : isRemboursement ? 'Remboursement' : 'Frais'
-                        const typeColor = isDebours ? '#9C8E7D' : isAchat ? 'var(--brand)' : isMenageProprio ? '#4A3728' : isRemboursement ? '#059669' : '#c2410c'
+                        const typeLabel = isDebours ? 'Débours' : isAchat ? 'Achat' : isAssurance ? 'Assurance' : isMenageProprio ? 'Ménage' : isRemboursement ? 'Remboursement' : 'Frais'
+                        const typeColor = isDebours ? '#9C8E7D' : isAchat ? 'var(--brand)' : isAssurance ? '#2d7a50' : isMenageProprio ? '#4A3728' : isRemboursement ? '#059669' : '#c2410c'
                         // Montant cell — pour les frais facturés, décomposer déduit vs reliquat
                         const fraisFacture = isFrais && row.statut === 'facture' && row.statut_deduction && row.statut_deduction !== 'en_attente'
-                        const montantCell = isAchat
+                        const montantCell = isAssurance
+                          ? <span style={{ color: '#2d7a50' }}>{fmt(row.montant_ttc)}</span>
+                          : isAchat
                           ? <span style={{ color: 'var(--brand)', fontWeight: 600 }}>{fmt(row.montant_ttc)}</span>
                           : isMenageProprio
                           ? row.a_saisir

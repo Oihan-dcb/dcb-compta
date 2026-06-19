@@ -482,6 +482,19 @@ export async function buildRapportData(bienId, propId, mois, opts = {}) {
   const nuitsOccN1 = nuitesN1.reduce((s, v) => s + v, 0)
   const tauxOccN1 = nuitsDispos > 0 ? Math.round((nuitsOccN1 / nuitsDispos) * 100) : 0
 
+  // Lignes "Aircover — remboursement assurance" : ventilation HAOWNER par résa (ex. verrou avancé
+  // par DCB puis remboursé via une Resolution/Aircover Airbnb). Affiché pour transparence,
+  // NEUTRE pour le reversement et les charges (n'entre dans aucun total).
+  const assuranceList = resasEnrichies
+    .filter(r => (r.vent?.HAOWNER?.montant_ttc || 0) > 0)
+    .map(r => ({
+      id: `aircover-${r.code || r.id}`,
+      date: r.arrival_date,
+      guest_name: r.guest_name,
+      libelle: 'Aircover — remboursement assurance',
+      montant_ttc: r.vent.HAOWNER.montant_ttc,
+    }))
+
   return {
     resas: resasEnrichies,
     frais: fraisData || [],
@@ -490,6 +503,7 @@ export async function buildRapportData(bienId, propId, mois, opts = {}) {
     extrasGlobaux,
     extrasParResa,
     haownerList,
+    assuranceList,
     ownerStayList,
     ventByResa,
     reviews,

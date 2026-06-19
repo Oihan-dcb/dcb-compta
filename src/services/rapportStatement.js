@@ -19,6 +19,7 @@ export function genererStatementHTML(proprio, mois, data) {
   const extrasGlobaux = data.extrasGlobaux || []
   const extrasParResa = data.extrasParResa || []
   const haownerList = data.haownerList || []
+  const assuranceList = data.assuranceList || []
   const ownerStayMenageList = data.ownerStayMenageList || []
   const fraisProprietaire = data.fraisProprietaire || []
   const modeEncaissement = data.kpis?.modeEncaissement || 'dcb'
@@ -125,7 +126,7 @@ export function genererStatementHTML(proprio, mois, data) {
     </tr>`
   }).join('')
 
-  const hasTransactions = extrasGlobaux.length > 0 || extrasParResa.length > 0 || haownerList.length > 0 || ownerStayMenageList.length > 0 || fraisProprietaire.length > 0
+  const hasTransactions = extrasGlobaux.length > 0 || extrasParResa.length > 0 || haownerList.length > 0 || assuranceList.length > 0 || ownerStayMenageList.length > 0 || fraisProprietaire.length > 0
   const transactions = hasTransactions ? `
   <div style="margin-top:18px">
     <div style="font-size:8.5px;letter-spacing:0.08em;text-transform:uppercase;color:#9c8c7a;margin-bottom:8px;padding-bottom:5px;border-bottom:1px solid #ece8e2">Transactions</div>
@@ -159,6 +160,13 @@ export function genererStatementHTML(proprio, mois, data) {
           <td style="padding:3px 8px">${p.libelle || p.description || '—'}</td>
           <td style="padding:3px 8px;color:#CC9933">Achat proprio</td>
           <td style="padding:3px 8px;text-align:right;color:#CC9933">${fmt(p.montant_ttc)} TTC</td>
+        </tr>`).join('')}
+        ${assuranceList.map(p => `
+        <tr style="border-bottom:1px solid #ece8e2">
+          <td style="padding:3px 8px;color:#9c8c7a">${p.date ? p.date.substring(5).split('-').reverse().join('/') : '—'}</td>
+          <td style="padding:3px 8px">${p.libelle || 'Aircover — remboursement assurance'}${p.guest_name ? ` — ${p.guest_name}` : ''}</td>
+          <td style="padding:3px 8px;color:#2d7a50">Assurance</td>
+          <td style="padding:3px 8px;text-align:right;color:#2d7a50">${fmt(p.montant_ttc)}</td>
         </tr>`).join('')}
         ${ownerStayMenageList.map(p => `
         <tr style="border-bottom:1px solid #ece8e2">
