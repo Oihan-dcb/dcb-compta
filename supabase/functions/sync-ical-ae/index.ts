@@ -19,9 +19,14 @@ Deno.serve(async (req) => {
     if (aeErr || !ae) return new Response(JSON.stringify({ error: 'AE introuvable' }), { status: 404 })
     if (!ae.ical_url) return new Response(JSON.stringify({ error: 'URL iCal non configurée pour cet AE', created: 0 }), { status: 200 })
 
-    // 2. Biens (match par ical_code, préfixe du code dans le titre)
-    const { data: biens } = await sb.from('bien').select('id, ical_code, hospitable_name').not('ical_code', 'is', null)
-    const bienList = biens || []
+    // 2. Biens — match par ical_code (préfixe du code dans le titre), avec fallback par nom
+    //    normalisé (sans accents/espaces/punct, tronqué 16) → reproduit le code source iCal.
+    //    Le fallback évite les missions orphelines quand un bien n'a pas (ou mal) son ical_code.
+    const normCode = (s: string) => (s || '')
+      .normalize('NFD').replace(/[\u0300-\u036f]/g, '')
+      .replace(/[^A-Za-z0-9]/g, '').slice(0, 16)
+    const { data: biens } = await sb.from('bien').select('id, ical_code, hospitable_name')
+    const bienList = (biens || []).map((b: any) => ({ ...b, _normCode: normCode(b.hospitable_name) }))
 
     // 3. Fetch iCal
     const icalUrl = ae.ical_url.replace(/^webcal:/, 'https:')
@@ -36,7 +41,10 @@ Deno.serve(async (req) => {
     const dateDebutStr = `${annee}-${String(moisNum).padStart(2, '0')}-01`
     const moisDe = (d: Date) => `${d.getUTCFullYear()}-${String(d.getUTCMonth() + 1).padStart(2, '0')}`
 
-    const findBien = (codeInTitle: string) => bienList.find(b => codeInTitle.startsWith(b.ical_code)) || null
+    const findBien = (codeInTitle: string) =>
+      bienList.find(b => b.ical_code && codeInTitle.startsWith(b.ical_code)) ||   // 1) match ical_code
+      bienList.find(b => b._normCode && codeInTitle.startsWith(b._normCode)) ||   // 2) fallback nom normalisé
+      null
 
     // Normaliser les events du périmètre
     type Ev = { uid: string | null; titre: string; dateStr: string; mois: string; bien: any; duree: number | null; cancelled: boolean; isCleaningCheckout: boolean }
