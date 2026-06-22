@@ -29,10 +29,33 @@ function parseMontant(str) {
 }
 
 function detectCanal(lib, det, debit) {
-  const l = ((lib || '') + ' ' + (det || '')).toLowerCase()
+  // Texte normalisé (minuscules + sans accents) pour matcher "reversée", "propriétaire", etc.
+  const l = ((lib || '') + ' ' + (det || '')).normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase()
+
+  // Plateformes
   if (l.includes('airbnb')) return 'airbnb'
-  if (l.includes('stripe')) return 'stripe'
+  if (l.includes('stripe technology') || l.includes('stripe payments')) return 'stripe'
   if (l.includes('booking')) return 'booking'
+
+  // --- Mouvements hors périmètre résa (crédit OU débit) ---
+  // ⚠️ NE PAS utiliser "Destination cote basque" comme signal interne : ce nom apparaît
+  // comme "Creditor Name SEPA : Destination cote basque" sur TOUT virement entrant
+  // (DCB est toujours le bénéficiaire) → ce sont des paiements voyageurs réels.
+  // On ne classe en interne que sur des marqueurs sans ambiguïté.
+  // Transferts entre comptes DCB
+  if (l.includes('compte principal') ||
+      l.includes('changement de banque') ||
+      l.includes('transfert compte') || l.includes('transfert de compte')) return 'interne'
+  // Retour / rejet / régularisation de virement
+  if (l.includes('retour virement') || l.includes('rejet virement') ||
+      l.includes('virement non execute') || l.includes('regul virement')) return 'interne'
+  // Reversement de débours / main d'œuvre par le propriétaire vers le séquestre
+  if (l.includes('reverse par le proprietaire') || l.includes('reversee par le proprietaire') ||
+      (l.includes('sequestre') && l.includes('main d'))) return 'interne'
+  // Frais bancaires (tenue de compte, cotisation, frais Stripe)
+  if (l.includes('frais de tenue') || l.includes('frais tenue') || l.includes('cotisation') ||
+      l.includes('frais stripe')) return 'frais_bancaires'
+
   if (debit > 0) {
     const u = (lib || '').toUpperCase()
     if (['PROPRIO','LOYER','LOCATION'].some(x => u.includes(x))) return 'sortant_proprio'

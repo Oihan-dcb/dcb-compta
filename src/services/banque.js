@@ -88,14 +88,20 @@ function detecterCanal(libelle, detail) {
   if (lib.includes('BOOKING.COM')) return 'booking'
   if (lib.includes('STRIPE TECHNOLOGY')) return 'stripe'
   if (lib.includes('FRAIS STRIPE')) return 'interne'
-  if (lib.includes('DESTINATION') && lib.includes('BASQUE')) return 'interne'
+  // ⚠️ "Destination cote basque" = nom du créancier sur TOUT virement entrant (DCB bénéficiaire).
+  // Ne pas l'utiliser comme signal interne, sinon on masque de vrais paiements voyageurs.
+  if (lib.includes('COMPTE PRINCIPAL') || lib.includes('CHANGEMENT DE BANQUE') ||
+      lib.includes('TRANSFERT COMPTE') || lib.includes('TRANSFERT DE COMPTE') ||
+      lib.includes('REGUL VIREMENT')) return 'interne'
+  if (det.includes('CHANGEMENT DE BANQUE') || det.includes('TRANSFERT COMPTE')) return 'interne'
+  if (det.includes('REVERS') && det.includes('PROPRI')) return 'interne'
 
   // Virements sortants
   if (lib.includes('HONORAIRES')) return 'sortant_honoraires'
   if (lib.includes('LOYERS') || lib.includes('LOCATIONS') || lib.includes('LOYER')) return 'sortant_proprio'
   if (lib.includes('MENAGES') || lib.includes('MENAGE')) return 'sortant_ae'
   if (lib.includes('COMM DISTRIBUTION')) return 'sortant_honoraires'
-  if (lib.includes('FRAIS DE TENUE')) return 'frais_bancaires'
+  if (lib.includes('FRAIS DE TENUE') || lib.includes('FRAIS TENUE') || lib.includes('COTISATION')) return 'frais_bancaires'
   if (lib.includes('RETOUR VIREMENT')) return 'interne'
 
   return 'sepa_manuel'
