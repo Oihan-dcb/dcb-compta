@@ -71,13 +71,27 @@ Deno.serve(async (req) => {
     }
 
     // 5. Préchargements (évite les requêtes par event) ───────────────────────
-    // 5a. Missions existantes de l'AE sur le périmètre
+    // 5a. Missions de CET AE sur le périmètre — sert UNIQUEMENT à la réconciliation
+    //     (cancel des missions de cet AE dont l'event a disparu de SON flux).
     const { data: existing } = await sb.from('mission_menage')
-      .select('id, ical_uid, statut, reservation_id, ventilation_auto_id, date_mission')
+      .select('id, ical_uid, statut, date_mission')
       .eq('ae_id', ae.id)
       .gte('date_mission', dateDebutStr)
       .not('ical_uid', 'is', null)
-    const existingByUid = new Map((existing || []).map(m => [m.ical_uid, m]))
+
+    // 5a-bis. Missions correspondant aux UID du flux, TOUS AE confondus. Indispensable pour gérer
+    //     les RÉASSIGNATIONS Hospitable : un même ical_uid passe d'un AE à un autre (Hospitable
+    //     conserve l'uid). Sans ce lookup global, l'INSERT entrerait en conflit UNIQUE(ical_uid)
+    //     et serait ignoré → la mission resterait annulée chez l'ancien AE et n'apparaîtrait jamais
+    //     chez le nouveau. Avec, on UPDATE la mission (déplacement ae_id + réactivation).
+    const feedUidsArr = [...new Set(evs.map(e => e.uid).filter(Boolean))] as string[]
+    let existingByUid = new Map<string, any>()
+    if (feedUidsArr.length) {
+      const { data: byUid } = await sb.from('mission_menage')
+        .select('id, ical_uid, statut, reservation_id, ventilation_auto_id, ae_id')
+        .in('ical_uid', feedUidsArr)
+      existingByUid = new Map((byUid || []).map(m => [m.ical_uid, m]))
+    }
 
     // 5b. Réservations candidates (pour lier mission ↔ résa ↔ ventilation AUTO)
     const linkEvts = evs.filter(e => !e.cancelled && e.bien && e.uid && e.isCleaningCheckout)
