@@ -65,7 +65,8 @@ export async function modifierEtudiant(id, payload) {
 // ── Prorata entrée / sortie (Laura 2026-06-11) ──────────────────────────────
 // Loyer du mois = plein CC × jours occupés ÷ jours du mois. S'applique au CC
 // complet (loyer + supplément + charges). Mois plein → facteur 1.
-// Entrée et sortie incluses dans les jours occupés.
+// Convention (Oïhan 2026-06-22) : jour d'ENTRÉE inclus (facturé), jour de SORTIE
+// NON compté (= jour de remise des clés, non facturé). Ex. sortie 19/06 → 1→18 = 18 jours.
 export function prorataMois(e, mois) {
   if (!mois) return { facteur: 1, joursOccupes: 0, joursMois: 0, jDebut: 0, jFin: 0, partiel: false }
   const [y, m] = String(mois).split('-').map(Number)
@@ -82,7 +83,7 @@ export function prorataMois(e, mois) {
   if (sortie) {
     const [sy, sm, sd] = ymd(sortie)
     if (sy < y || (sy === y && sm < m)) return horsMois          // parti avant ce mois
-    if (sy === y && sm === m) jFin = Math.min(jFin, sd)
+    if (sy === y && sm === m) jFin = Math.min(jFin, sd - 1)       // jour de sortie non facturé
   }
   const joursOccupes = Math.max(0, jFin - jDebut + 1)
   return { facteur: joursMois ? joursOccupes / joursMois : 0, joursOccupes, joursMois, jDebut, jFin, partiel: joursOccupes < joursMois }
