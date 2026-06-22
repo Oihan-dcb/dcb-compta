@@ -996,9 +996,14 @@ async function _promouvoirBookingLignes(libres, log) {
 
   for (const mvt of bookings) {
     try {
-      // (a) Lignes déjà liées à ce mouvement
+      // (a) Lignes déjà liées à ce mouvement.
+      // ⚠️ On ne considère QUE les lignes réservation (booking_ref non-null). Les lignes
+      // "résumé payout" (booking_ref NULL) sont des doublons polluants — la contrainte
+      // UNIQUE(booking_ref, payout_date) ne dédoublonne pas les NULL en Postgres — et
+      // l'enrichissement les ignore déjà. Les inclure fausserait la somme de contrôle.
       let { data: lignes } = await supabase
-        .from('booking_payout_line').select(COLS).eq('mouvement_id', mvt.id)
+        .from('booking_payout_line').select(COLS)
+        .eq('mouvement_id', mvt.id).not('booking_ref', 'is', null)
       lignes = lignes || []
 
       // (b) Sinon, relier des lignes orphelines
@@ -1009,7 +1014,7 @@ async function _promouvoirBookingLignes(libres, log) {
         if (payoutId) {
           const { data } = await supabase
             .from('booking_payout_line').select(COLS)
-            .is('mouvement_id', null).eq('payout_id', payoutId)
+            .is('mouvement_id', null).not('booking_ref', 'is', null).eq('payout_id', payoutId)
           orphelines = data || []
         }
         if (!orphelines.length) {
@@ -1017,7 +1022,7 @@ async function _promouvoirBookingLignes(libres, log) {
           const d = new Date(mvt.date_operation); d.setDate(d.getDate() - 5)
           const { data } = await supabase
             .from('booking_payout_line').select(COLS)
-            .is('mouvement_id', null)
+            .is('mouvement_id', null).not('booking_ref', 'is', null)
             .gte('payout_date', d.toISOString().slice(0, 10))
             .lte('payout_date', mvt.date_operation)
           const groups = {}

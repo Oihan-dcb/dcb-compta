@@ -315,14 +315,18 @@ export async function importBookingCSV(csvText) {
           .is('mouvement_id', null)
       }
 
-      const toInsert = rows.map(r => ({ ...r, mouvement_id: mouv.id }))
+      // N'insérer QUE les lignes réservation (booking_ref non-null). Les lignes "résumé
+      // payout" (booking_ref NULL) se dupliquent à chaque ré-import — la contrainte
+      // UNIQUE(booking_ref, payout_date) ne dédoublonne pas les NULL en Postgres — et
+      // l'enrichissement les ignore. On ne les stocke donc pas.
+      const toInsert = rows.filter(r => r.booking_ref).map(r => ({ ...r, mouvement_id: mouv.id }))
 
-      const { error } = await supabase
+      const { error } = toInsert.length ? await supabase
         .from('booking_payout_line')
         .upsert(toInsert, {
           onConflict: 'booking_ref,payout_date',
           ignoreDuplicates: false,
-        })
+        }) : { error: null }
 
       if (error) {
         log.errors++
