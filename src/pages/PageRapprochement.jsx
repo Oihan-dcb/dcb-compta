@@ -617,6 +617,12 @@ export default function PageRapprochement() {
                              {(() => { const parts = m.detail.split('|').map(s => s.trim()).filter(Boolean); const fraisPart = parts.find(p => p.startsWith('frais:')); const mainParts = parts.filter(p => !p.startsWith('frais:')); return <>{mainParts.length > 0 && <span style={{ color: m.statut_matching === 'rapproche' ? '#2E7D32' : '#888' }}>{mainParts.join(' · ')}</span>}{fraisPart && <span style={{ background: '#FEF2F2', color: '#B91C1C', border: '1px solid #FCA5A5', borderRadius: 4, padding: '1px 5px', fontWeight: 700, whiteSpace: 'nowrap', marginLeft: 4 }}>⚡ {fraisPart}</span>}</> })()}
                            </div>
                          ) : null}
+                         {m.canal === 'booking' && m.statut_matching === 'en_attente' && !m._resa && (
+                           <div style={{ fontSize: 11, marginTop: 3, color: '#D97706', fontWeight: 600, display: 'flex', alignItems: 'center', gap: 4 }}>
+                             ⏳ En attente du CSV payout Booking
+                             <span style={{ fontWeight: 400, color: '#8C7B65' }}>— à importer depuis l'extranet (onglet Banque)</span>
+                           </div>
+                         )}
                          {paiementsContratParMouv[m.id]?.map((pc, i) => (
                            <div key={i} style={{ fontSize: 11, marginTop: 2, color: '#635BFF', fontWeight: 600, display: 'flex', gap: 4, alignItems: 'center' }}>
                              💳 Contrat {pc.reservation_id} — {pc.type}

@@ -4,7 +4,7 @@ import { getMouvementsMois, getMoisDispos } from '../services/banque'
 import { useMoisPersisted } from '../hooks/useMoisPersisted'
 import { supabase } from '../lib/supabase'
 import { importBookingCSV } from '../services/importBooking'
-import { annulerRapprochement, estMouvementReference } from '../services/rapprochement'
+import { annulerRapprochement, estMouvementReference, lancerMatchingAuto } from '../services/rapprochement'
 import { parserFichierBancaire, importerMouvementsBancaires } from '../services/importBanque'
 import { syncPayoutsFromHospitable } from '../services/syncPayouts'
 
@@ -186,12 +186,29 @@ export default function PageBanque() {
     if (!preview) return
     if (moisBloque) { setError('🔒 Mois clôturé (Rapprochement) — import impossible.'); return }
     setImporting(true)
+    const rows = preview.rows
     try {
-      const result = await importerMouvementsBancaires(preview.rows)
+      const result = await importerMouvementsBancaires(rows)
       setImportResult(result)
       setPreview(null)
       setFormatDetecte(null)
       await charger()
+      // Lancer le matching automatique sur les mois importés (best-effort) — évite d'avoir
+      // à aller cliquer "Lancer auto" dans Rapprochement après chaque import de relevé.
+      try {
+        const moisImportes = [...new Set((rows || []).map(r => r.mois_releve).filter(Boolean))]
+        let autoMatched = 0
+        for (const mi of moisImportes) {
+          const r = await lancerMatchingAuto(mi)
+          autoMatched += (r?.matched || 0)
+        }
+        if (autoMatched > 0) {
+          setImportResult(prev => ({ ...(prev || result), autoMatched }))
+          await charger()
+        }
+      } catch (mErr) {
+        console.warn('Auto-matching post-import:', mErr?.message || mErr)
+      }
     } catch(e) {
       setError(e.message)
     } finally {
@@ -254,6 +271,7 @@ export default function PageBanque() {
       {importResult && (
         <div className='alert alert-success'>
           Import termine -- {importResult.inseres} mouvements importes
+          {importResult.autoMatched > 0 && ' · ' + importResult.autoMatched + ' rapproché' + (importResult.autoMatched > 1 ? 's' : '') + ' automatiquement'}
         </div>
       )}
 
