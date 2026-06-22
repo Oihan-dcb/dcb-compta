@@ -123,6 +123,7 @@ Deno.serve(async (req) => {
 
     const magicLink = linkData.properties.action_link
     const nomProprio = [proprio.prenom, proprio.nom].filter(Boolean).join(' ') || emailLower
+    const prenomProprio = proprio.prenom || nomProprio
 
     // ── Envoyer le lien par email via smtp-send ───────────────────────────────
     const supabaseUrl  = Deno.env.get('SUPABASE_URL') ?? ''
@@ -155,76 +156,51 @@ Deno.serve(async (req) => {
   <!-- Corps -->
   <tr>
     <td style="padding:36px 32px 28px">
-      <p style="font-size:16px;font-weight:600;color:#2C2416;margin:0 0 8px">Bonjour ${nomProprio},</p>
-      <p style="font-size:14px;line-height:1.75;color:#5A4E3C;margin:0 0 28px">
-        Votre espace propriétaire est maintenant disponible. Retrouvez en un coup d'œil tout ce qui concerne votre bien : réservations, relevés, planning et messagerie directe avec notre équipe.
+      <p style="font-size:16px;font-weight:600;color:#2C2416;margin:0 0 8px">Bonjour ${prenomProprio},</p>
+      <p style="font-size:14px;line-height:1.75;color:#5A4E3C;margin:0 0 26px">
+        <strong>Voici l'accès à votre espace propriétaire en ligne.</strong> Tout ce qui concerne votre bien réuni au même endroit, et une ligne directe avec notre équipe.
       </p>
 
-      <!-- Ce que vous pouvez faire -->
-      <table width="100%" cellpadding="0" cellspacing="0" style="background:#F7F3EC;border-radius:12px;padding:20px 20px 8px;margin-bottom:28px">
-        <tr><td colspan="2" style="font-size:11px;font-weight:700;letter-spacing:2px;text-transform:uppercase;color:#8C7B65;padding-bottom:14px">Votre espace en un coup d'œil</td></tr>
-        <tr>
-          <td width="32" valign="top" style="padding-bottom:12px;font-size:18px">📅</td>
-          <td style="padding-bottom:12px;font-size:13px;color:#2C2416;line-height:1.5"><strong>Réservations &amp; planning</strong><br><span style="color:#6B5E4E">Consultez votre calendrier et les séjours à venir</span></td>
-        </tr>
-        <tr>
-          <td width="32" valign="top" style="padding-bottom:12px;font-size:18px">📊</td>
-          <td style="padding-bottom:12px;font-size:13px;color:#2C2416;line-height:1.5"><strong>Relevés mensuels</strong><br><span style="color:#6B5E4E">Suivez vos revenus et virements mois par mois</span></td>
-        </tr>
-        <tr>
-          <td width="32" valign="top" style="padding-bottom:12px;font-size:18px">💬</td>
-          <td style="padding-bottom:12px;font-size:13px;color:#2C2416;line-height:1.5"><strong>Messagerie directe</strong><br><span style="color:#6B5E4E">Échangez avec l'équipe, faites vos demandes de blocage</span></td>
-        </tr>
-        <tr>
-          <td width="32" valign="top" style="padding-bottom:12px;font-size:18px">📄</td>
-          <td style="padding-bottom:12px;font-size:13px;color:#2C2416;line-height:1.5"><strong>Documents</strong><br><span style="color:#6B5E4E">Mandats, factures et relevés accessibles à tout moment</span></td>
-        </tr>
+      <!-- Ce que vous y trouverez -->
+      <table width="100%" cellpadding="0" cellspacing="0" style="background:#F7F3EC;border-radius:12px;padding:20px 20px 8px;margin-bottom:26px">
+        <tr><td colspan="2" style="font-size:11px;font-weight:700;letter-spacing:2px;text-transform:uppercase;color:#8C7B65;padding-bottom:14px">Ce que vous y trouverez</td></tr>
+        <tr><td width="32" valign="top" style="padding-bottom:12px;font-size:18px">📅</td>
+          <td style="padding-bottom:12px;font-size:13px;color:#2C2416;line-height:1.5"><strong>Planning &amp; réservations</strong><br><span style="color:#6B5E4E">Votre calendrier, les séjours à venir et passés, en temps réel</span></td></tr>
+        <tr><td width="32" valign="top" style="padding-bottom:12px;font-size:18px">💬</td>
+          <td style="padding-bottom:12px;font-size:13px;color:#2C2416;line-height:1.5"><strong>Messagerie directe</strong><br><span style="color:#6B5E4E">Échangez avec l'équipe, demandez un blocage de dates, posez vos questions</span></td></tr>
+        <tr><td width="32" valign="top" style="padding-bottom:12px;font-size:18px">📄</td>
+          <td style="padding-bottom:12px;font-size:13px;color:#2C2416;line-height:1.5"><strong>Vos documents</strong><br><span style="color:#6B5E4E">Mandat de gestion, rapports et relevés que nous vous transmettons, à tout moment</span></td></tr>
+        <tr><td width="32" valign="top" style="padding-bottom:12px;font-size:18px">📝</td>
+          <td style="padding-bottom:12px;font-size:13px;color:#2C2416;line-height:1.5"><strong>Votre questionnaire propriétaire</strong><br><span style="color:#6B5E4E">Complétez vos informations quand cela vous arrange</span></td></tr>
       </table>
+
+      <!-- Suivi financier à venir -->
+      <p style="font-size:12.5px;line-height:1.7;color:#6B5E4E;background:#FBF6EC;border-left:3px solid #E4A853;border-radius:6px;padding:12px 14px;margin:0 0 26px">
+        Le <strong>suivi financier détaillé</strong> (revenus, virements mois par mois) sera activé prochainement sur votre espace — nous vous préviendrons.
+      </p>
 
       <!-- Bouton accès -->
-      <table width="100%" cellpadding="0" cellspacing="0" style="margin-bottom:32px">
-        <tr><td align="center">
-          <a href="${magicLink}" style="display:inline-block;background:#CC9933;color:#ffffff;text-decoration:none;padding:15px 36px;border-radius:10px;font-weight:700;font-size:15px;letter-spacing:.3px">
-            Accéder à mon espace →
-          </a>
-          <p style="font-size:11px;color:#9A8A7A;margin:10px 0 0">Lien valide 24h · connexion sécurisée</p>
-        </td></tr>
-      </table>
+      <table width="100%" cellpadding="0" cellspacing="0" style="margin-bottom:12px"><tr><td align="center">
+        <a href="${magicLink}" style="display:inline-block;background:#CC9933;color:#ffffff;text-decoration:none;padding:15px 36px;border-radius:10px;font-weight:700;font-size:15px;letter-spacing:.3px">Accéder à mon espace →</a>
+      </td></tr></table>
+      <p style="font-size:12px;color:#6B5E4E;line-height:1.6;text-align:center;margin:0 0 28px">
+        Connexion sécurisée, sans mot de passe. Le lien reste valable 24h ; passé ce délai, vous pourrez en <strong>redemander un nouveau en un clic</strong> depuis la page de connexion.
+      </p>
 
       <!-- Installer comme appli -->
-      <table width="100%" cellpadding="0" cellspacing="0" style="border:1.5px solid #E8DCC8;border-radius:12px;padding:20px;margin-bottom:16px">
-        <tr>
-          <td>
-            <div style="font-size:13px;font-weight:700;color:#2C2416;margin-bottom:12px">📲 Installez l'application sur votre téléphone</div>
-            <p style="font-size:12px;color:#6B5E4E;line-height:1.6;margin:0 0 10px">Pour un accès rapide depuis votre écran d'accueil :</p>
-            <table width="100%" cellpadding="0" cellspacing="8">
-              <tr>
-                <td style="background:#F7F3EC;border-radius:8px;padding:10px 12px;font-size:12px;color:#2C2416;line-height:1.5" width="48%">
-                  <strong>iPhone (Safari)</strong><br>
-                  Appuyez sur <strong>⎋ Partager</strong> en bas → <em>"Sur l'écran d'accueil"</em>
-                </td>
-                <td width="4%"></td>
-                <td style="background:#F7F3EC;border-radius:8px;padding:10px 12px;font-size:12px;color:#2C2416;line-height:1.5" width="48%">
-                  <strong>Android (Chrome)</strong><br>
-                  Menu <strong>⋮</strong> en haut à droite → <em>"Ajouter à l'écran d'accueil"</em>
-                </td>
-              </tr>
-            </table>
-          </td>
-        </tr>
-      </table>
+      <table width="100%" cellpadding="0" cellspacing="0" style="border:1.5px solid #E8DCC8;border-radius:12px;padding:18px;margin-bottom:14px"><tr><td>
+        <div style="font-size:13px;font-weight:700;color:#2C2416;margin-bottom:8px">📲 Installez-le comme une application</div>
+        <p style="font-size:12px;color:#6B5E4E;line-height:1.6;margin:0"><strong>iPhone (Safari)</strong> : Partager ⎋ → « Sur l'écran d'accueil ». &nbsp; <strong>Android (Chrome)</strong> : menu ⋮ → « Ajouter à l'écran d'accueil ».</p>
+      </td></tr></table>
 
       <!-- Notifications -->
-      <table width="100%" cellpadding="0" cellspacing="0" style="border:1.5px solid #E8DCC8;border-radius:12px;padding:20px;margin-bottom:28px">
-        <tr>
-          <td>
-            <div style="font-size:13px;font-weight:700;color:#2C2416;margin-bottom:8px">🔔 Activez les notifications</div>
-            <p style="font-size:12px;color:#6B5E4E;line-height:1.6;margin:0">
-              Lors de votre première connexion, <strong>acceptez les notifications</strong> pour être alerté dès qu'un message ou une mise à jour vous attend — sans avoir à ouvrir l'application.
-            </p>
-          </td>
-        </tr>
-      </table>
+      <table width="100%" cellpadding="0" cellspacing="0" style="border:1.5px solid #E8DCC8;border-radius:12px;padding:18px;margin-bottom:26px"><tr><td>
+        <div style="font-size:13px;font-weight:700;color:#2C2416;margin-bottom:8px">🔔 Activez les notifications</div>
+        <p style="font-size:12px;color:#6B5E4E;line-height:1.6;margin:0">À la première connexion, acceptez les notifications pour être prévenu dès qu'un message ou une nouveauté vous attend.</p>
+      </td></tr></table>
+
+      <!-- Signature -->
+      <p style="font-size:14px;color:#2C2416;line-height:1.7;margin:0 0 4px">À très vite,<br><strong>Oihan</strong><br><span style="font-size:12px;color:#8C7B65">Destination Côte Basque · Biarritz</span></p>
 
       <!-- Lien de secours -->
       <p style="font-size:11px;color:#9A8A7A;line-height:1.6;margin:0">
