@@ -482,10 +482,10 @@ Frais engagés pour le compte d'un propriétaire : réparations, fournitures, in
 | `mode_encaissement` | text | `dcb` ou `proprio` | Seul `dcb` a un effet comptable actuellement |
 | `statut` | text | `brouillon`, `a_facturer`, `facture` | Transition : brouillon → a_facturer → facture |
 | `mois_facturation` | text | Format YYYY-MM | Mois de rattachement comptable |
-| `source` | text | `manuel` | Saisi manuellement via UI |
+| `source` | text | `manuel`, `auto`, `portail` | `manuel`=saisi dcb-compta · `portail`=saisi via Portail AE (bureau) · `auto`=généré |
 | `created_at` | timestamptz | | |
 
-**Transitions de statut** : `brouillon → a_facturer` (action manuelle UI). `a_facturer → facture` uniquement via `genererFactureProprietaire` / `genererFactureDebours` après création ou mise à jour effective d'une facture Evoliz. La fonction `changerStatut` refuse le passage en `facture` si le statut courant n'est pas `a_facturer`.
+**Transitions de statut** : `brouillon → a_facturer` (action manuelle UI). Les frais saisis via le **Portail AE** (`source='portail'`) arrivent directement en `a_facturer` (auto-validés — saisie réservée au bureau Oïhan/Laura/Clémence). NB : la colonne `mode_encaissement` est NOT NULL (défaut `dcb`) — ne jamais insérer `null`, même pour un `remboursement`. `a_facturer → facture` uniquement via `genererFactureProprietaire` / `genererFactureDebours` après création ou mise à jour effective d'une facture Evoliz. La fonction `changerStatut` refuse le passage en `facture` si le statut courant n'est pas `a_facturer`.
 
 **Filtres actifs** : seuls les frais `statut='a_facturer'` ET `mode_encaissement='dcb'` participent au calcul de facturation. Les frais `mode_encaissement='proprio'` ne sont pas encore intégrés.
 
