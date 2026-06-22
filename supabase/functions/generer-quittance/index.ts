@@ -46,8 +46,8 @@ function dernierJourMois(mois: string): string {
   return new Date(y, m, 0).getDate().toString()
 }
 
-// Prorata entrée/sortie : jour d'entrée inclus (facturé), jour de SORTIE non compté
-// (= remise des clés, non facturé — Oïhan 2026-06-22). Ex. sortie 19/06 → 1→18 = 18 jours.
+// Prorata entrée/sortie : jour d'entrée ET jour de sortie inclus (facturés) — méthode Laura.
+// Ex. sortie 19/06 → 1→19 = 19 jours.
 function prorataQuittance(e: any, mois: string) {
   const [y, m] = mois.split('-').map(Number)
   const joursMois = new Date(y, m, 0).getDate()
@@ -60,7 +60,7 @@ function prorataQuittance(e: any, mois: string) {
   const sortie = e?.date_sortie_reelle || e?.date_sortie_prevue
   if (sortie) {
     const [sy, sm, sd] = ymd(sortie)
-    if (sy === y && sm === m) jFin = Math.min(jFin, sd - 1)   // jour de sortie non facturé
+    if (sy === y && sm === m) jFin = Math.min(jFin, sd)       // jour de sortie inclus (facturé)
   }
   const joursOccupes = Math.max(0, jFin - jDebut + 1)
   return { facteur: joursMois ? joursOccupes / joursMois : 1, joursOccupes, joursMois, jDebut, jFin, partiel: joursOccupes < joursMois }
