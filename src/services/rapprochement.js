@@ -537,6 +537,15 @@ export async function lancerMatchingAuto(mois) {
     const mouvements = await getMouvementsMois(mois)
     const libres = mouvements.filter(m => m.statut_matching === 'en_attente' && (m.credit || 0) > 0)
 
+    // ── Promotion Booking depuis booking_payout_line ─────────────────
+    // Le rapprochement Booking vit dans booking_payout_line (CSV extranet Booking),
+    // PAS dans payout_hospitable (vide pour Booking). Un mouvement Booking reste à tort
+    // 'en_attente' quand : (a) il est déjà lié mais la promotion a été perdue (désync
+    // après un annuler/reset), ou (b) le CSV Booking a été importé avant le relevé
+    // (lignes orphelines mouvement_id=NULL). On promeut ici en 'rapproche' AVANT la passe
+    // d'enrichissement, qui ne traite que les mouvements déjà rapprochés.
+    await _promouvoirBookingLignes(libres, log)
+
     // Charger TOUS les payouts sans mouvement (pas de filtre par date)
     // Les payouts Hospitable peuvent dater de n importe quand
     // On pagine par 1000 pour tout récupérer
@@ -961,6 +970,104 @@ function _subsetSum(virs, cible, tol = 2) {
     if (res) return res
   }
   return null
+}
+
+/**
+ * Promeut en 'rapproche' les mouvements Booking 'en_attente' dont la réconciliation
+ * existe déjà dans booking_payout_line (source de vérité Booking, alimentée par le CSV
+ * extranet — payout_hospitable est vide pour Booking).
+ *
+ * Deux cas traités :
+ *  (a) Désync : des lignes pointent déjà vers ce mouvement (mouvement_id set) mais le
+ *      statut a été perdu (annuler/reset). → promotion directe.
+ *  (b) Orphelines : le CSV Booking a été importé avant le relevé bancaire (mouvement_id
+ *      NULL). On relie par NO.{payout_id} (libellé/détail) ou, à défaut, par date de
+ *      payout (J-5..J) avec somme des nets ≈ crédit, puis on promeut.
+ *
+ * Mute aussi l'objet en mémoire (statut_matching/detail) pour que la passe d'enrichissement
+ * de lancerMatchingAuto (qui ne traite que les mouvements déjà rapprochés) crée ensuite
+ * reservation_paiement + reservation.rapprochee.
+ */
+async function _promouvoirBookingLignes(libres, log) {
+  const bookings = libres.filter(m => m.canal === 'booking' && m.statut_matching === 'en_attente' && (m.credit || 0) > 0)
+  if (!bookings.length) return
+
+  const COLS = 'id, booking_ref, commission_cents, tourism_tax_cents, property_name, payout_id, amount_cents, payout_date'
+
+  for (const mvt of bookings) {
+    try {
+      // (a) Lignes déjà liées à ce mouvement
+      let { data: lignes } = await supabase
+        .from('booking_payout_line').select(COLS).eq('mouvement_id', mvt.id)
+      lignes = lignes || []
+
+      // (b) Sinon, relier des lignes orphelines
+      if (!lignes.length) {
+        let orphelines = []
+        const refMatch = `${mvt.libelle || ''} ${mvt.detail || ''}`.match(/NO\.([A-Za-z0-9]+)/i)
+        const payoutId = refMatch ? refMatch[1] : null
+        if (payoutId) {
+          const { data } = await supabase
+            .from('booking_payout_line').select(COLS)
+            .is('mouvement_id', null).eq('payout_id', payoutId)
+          orphelines = data || []
+        }
+        if (!orphelines.length) {
+          // Fallback par date de payout (J-5..J) : groupe dont la somme nette ≈ crédit
+          const d = new Date(mvt.date_operation); d.setDate(d.getDate() - 5)
+          const { data } = await supabase
+            .from('booking_payout_line').select(COLS)
+            .is('mouvement_id', null)
+            .gte('payout_date', d.toISOString().slice(0, 10))
+            .lte('payout_date', mvt.date_operation)
+          const groups = {}
+          for (const l of (data || [])) (groups[l.payout_date] ||= []).push(l)
+          for (const pd of Object.keys(groups)) {
+            const somme = groups[pd].reduce((s, l) => s + (l.amount_cents || 0), 0)
+            if (Math.abs(somme - mvt.credit) <= 5) { orphelines = groups[pd]; break }
+          }
+        }
+        if (orphelines.length) {
+          await supabase.from('booking_payout_line')
+            .update({ mouvement_id: mvt.id }).in('id', orphelines.map(l => l.id))
+          lignes = orphelines
+        }
+      }
+
+      if (!lignes.length) continue // rien à promouvoir pour ce mouvement
+
+      // Garde-fou : la somme des nets Booking doit ≈ le crédit bancaire.
+      // Sinon le lien est erroné (trop/pas assez de lignes rattachées) → ne pas promouvoir
+      // (laisse 'en_attente' pour revue manuelle plutôt que de marquer des montants faux).
+      const sommeNets = lignes.reduce((s, l) => s + (l.amount_cents || 0), 0)
+      if (Math.abs(sommeNets - mvt.credit) > 200) {
+        log.skipped++
+        log.details.push({ type: 'booking_lien_incoherent', montant: mvt.credit / 100, somme_lignes: sommeNets / 100, nb_lignes: lignes.length })
+        continue
+      }
+
+      // Détail enrichi — même format qu'importBookingCSV
+      const E = String.fromCharCode(8364) // €
+      const nbResas = lignes.filter(l => l.booking_ref).length
+      const totalComm = lignes.reduce((s, l) => s + Math.abs(l.commission_cents || 0), 0)
+      const totalTax = lignes.reduce((s, l) => s + (l.tourism_tax_cents || 0), 0)
+      const props = [...new Set(lignes.filter(l => l.property_name).map(l => l.property_name))]
+      const payoutRef = lignes.find(l => l.payout_id)?.payout_id
+      const taxSuffix = totalTax > 0 ? ' | taxe séjour: ' + (totalTax / 100).toFixed(2) + E : ''
+      const detail = 'Booking | ' + nbResas + ' resa(s) | commission: ' + (totalComm / 100).toFixed(2) + E +
+        taxSuffix + (props.length ? ' | ' + props.slice(0, 2).join(', ') : '') + (payoutRef ? ' | ref: ' + payoutRef : '')
+
+      await supabase.from('mouvement_bancaire')
+        .update({ statut_matching: 'rapproche', detail }).eq('id', mvt.id)
+      mvt.statut_matching = 'rapproche' // pour la passe d'enrichissement de ce même run
+      mvt.detail = detail
+      log.matched++
+      log.details.push({ type: 'booking_promotion', montant: mvt.credit / 100, nb_resas: nbResas })
+    } catch (e) {
+      log.errors++
+      console.error('promotion booking', mvt.id, e?.message)
+    }
+  }
 }
 
 /**
