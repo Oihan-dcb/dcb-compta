@@ -44,6 +44,7 @@ import PageLocationsLongues from './pages/PageLocationsLongues'
 import PageAchats from './pages/PageAchats'
 import PageAgence from './pages/PageAgence'
 import PageProprietaires from './pages/PageProprietaires'
+import PageDashboardProprietaire from './pages/PageDashboardProprietaire'
 import PageTaxeSejour from './pages/PageTaxeSejour'
 import PageCloture from './pages/PageCloture'
 import PageDemandesOwner from './pages/PageDemandesOwner'
@@ -227,6 +228,7 @@ function ConfigDropdown() {
           {[
             { to: '/agence', label: 'Agence' },
             { to: '/proprietaires', label: 'Propriétaires' },
+            { to: '/synthese-proprietaire', label: '📊 Synthèse proprio' },
             { to: '/demandes-owner', label: '🏠 Demandes Owner' },
             { to: '/taxe-sejour', label: 'Taxe de séjour' },
             { to: '/sms-reviews', label: 'Reviews' },
@@ -368,6 +370,7 @@ export default function App() {
             <Route path="/factures" element={<PageFactures />} />
             <Route path="/comptabilite" element={<PageComptabilite />} />
             <Route path="/rapports" element={<PageRapports />} />
+            <Route path="/synthese-proprietaire" element={<PageDashboardProprietaire />} />
             <Route path="/import" element={<PageImport />} />
             <Route path="/auto-entrepreneurs" element={<PageAutoEntrepreneurs />} />
             <Route path="/journal" element={<PageJournal />} />
