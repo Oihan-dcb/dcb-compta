@@ -1198,7 +1198,7 @@ export async function getFacturesMois(mois) {
     `)
     .eq('mois', mois)
     .eq('agence', AGENCE)
-    .in('type_facture', ['honoraires', 'debours', 'lauian_fmen'])
+    .in('type_facture', ['honoraires', 'debours', 'lauian_fmen', 'lld'])
     .order('created_at')
 
   if (error) throw error

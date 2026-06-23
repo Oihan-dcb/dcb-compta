@@ -11,6 +11,7 @@ import {
   reouvrirClotureFacture,
 } from '../services/facturesEvoliz'
 import { pousserFacturesMoisVersEvoliz, pingEvoliz, pousserFactureCOMVersEvoliz, syncNumerosEvoliz, refreshFacturesBrouillonsEvoliz, creerArticlesManquantsEvoliz, setupEvolizComplet } from '../services/evoliz'
+import { genererFacturesLLD } from '../services/facturesLLD'
 import { formatMontant } from '../lib/hospitable'
 
 const moisCourant = new Date().toISOString().substring(0, 7)
@@ -441,10 +442,16 @@ const [pushing, setPushing] = useState(false)
     setWarning(null)
     try {
       const result = await genererFacturesMois(mois)
-      setSuccess(`${result.created} factures créées, ${result.updated} mises à jour${result.skipped > 0 ? `, ${result.skipped} ignorée(s) (déjà envoyée(s))` : ''}${result.errors > 0 ? `, ${result.errors} erreurs` : ''}`)
+      // Factures d'honoraires LLD (locations longue durée) — chemin dédié, depuis les loyers reçus
+      const lld = await genererFacturesLLD(mois).catch(e => ({ creees: 0, mises_a_jour: 0, erreurs: [{ error: e.message }] }))
+      const lldTxt = (lld.creees || lld.mises_a_jour || lld.skipped_envoye)
+        ? ` · LLD : ${lld.creees} créée(s), ${lld.mises_a_jour} maj${lld.skipped_envoye ? `, ${lld.skipped_envoye} déjà envoyée(s)` : ''}`
+        : ''
+      setSuccess(`${result.created} factures créées, ${result.updated} mises à jour${result.skipped > 0 ? `, ${result.skipped} ignorée(s) (déjà envoyée(s))` : ''}${result.errors > 0 ? `, ${result.errors} erreurs` : ''}${lldTxt}`)
       if ((result.resteAPayer || 0) > 0) {
         setWarning(`⚠ Reversement entierement absorbe sur certaines factures. Reste total a payer : ${(result.resteAPayer / 100).toFixed(2)} €`)
       }
+      if (lld.erreurs?.length) setWarning(`⚠ LLD : ${lld.erreurs.length} erreur(s) — ${lld.erreurs[0].error}`)
       await charger()
     } catch (err) {
       setError(err.message)
@@ -838,6 +845,13 @@ const [pushing, setPushing] = useState(false)
                                          color: '#854d0e', borderRadius: 4, padding: '2px 6px',
                                          marginLeft: 8, verticalAlign: 'middle' }}>
                             FMEN Lauian
+                          </span>
+                        )}
+                        {f.type_facture === 'lld' && (
+                          <span style={{ fontSize: 10, fontWeight: 700, background: '#dcfce7',
+                                         color: '#166534', borderRadius: 4, padding: '2px 6px',
+                                         marginLeft: 8, verticalAlign: 'middle' }}>
+                            Honoraires LLD
                           </span>
                         )}
                         {f.bien?.agence === 'lauian' && f.type_facture !== 'lauian_fmen' && (
