@@ -41,6 +41,7 @@ import {
   mettreAJourMouvementLLD,
   majLoyersDepuisVirements,
   autoMatcherVirementsProprioLLD,
+  controleTresorerieLLD,
 } from '../services/lldBanque'
 
 const moisCourant = new Date().toISOString().slice(0, 7)
@@ -110,6 +111,7 @@ export default function PageLocationsLongues() {
   // Vue mensuelle
   const [loyers, setLoyers] = useState([])
   const [virements, setVirements] = useState([])
+  const [controleTreso, setControleTreso] = useState(null)
 
   // Vue étudiants
   const [etudiants, setEtudiants] = useState([])
@@ -197,12 +199,14 @@ export default function PageLocationsLongues() {
     setLoading(true)
     setError(null)
     try {
-      const [l, v] = await Promise.all([
+      const [l, v, ct] = await Promise.all([
         listerLoyersMois(mois),
         listerVirementsMois(mois),
+        controleTresorerieLLD(mois).catch(() => null),
       ])
       setLoyers(l)
       setVirements(v)
+      setControleTreso(ct)
     } catch (e) {
       setError(e.message)
     } finally {
@@ -788,6 +792,35 @@ export default function PageLocationsLongues() {
             </div>
           ) : (
             <>
+              {/* Contrôle de trésorerie : loyers reçus prouvés en banque (séquestre loyers) */}
+              {controleTreso && controleTreso.nbRecus > 0 && (() => {
+                const ct = controleTreso
+                const ok = ct.nbSansPreuve === 0
+                return (
+                  <div style={{
+                    margin: '0 0 18px', padding: '10px 14px', borderRadius: 10,
+                    background: ok ? '#ECFDF5' : '#FFFBEB',
+                    border: `1px solid ${ok ? '#A7F3D0' : '#FDE68A'}`,
+                  }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap', fontSize: 13, fontWeight: 600, color: 'var(--text)' }}>
+                      <span style={{ fontSize: 15 }}>{ok ? '🏦✓' : '⚠'}</span>
+                      <span>Tréso loyers {mois} :</span>
+                      <span>{ct.nbRecus} reçu{ct.nbRecus > 1 ? 's' : ''} ({formatMontant(ct.montantRecu)})</span>
+                      <span style={{ color: '#059669' }}>· {ct.nbProuves} prouvé{ct.nbProuves > 1 ? 's' : ''} en banque ({formatMontant(ct.montantProuve)})</span>
+                      {ct.nbSansPreuve > 0 && (
+                        <span style={{ color: '#B45309' }}>· {ct.nbSansPreuve} sans preuve ({formatMontant(ct.montantSansPreuve)})</span>
+                      )}
+                    </div>
+                    {ct.nbSansPreuve > 0 && (
+                      <div style={{ marginTop: 6, fontSize: 12, color: '#92400E' }}>
+                        Marqué reçu sans mouvement bancaire rapproché : {ct.sansPreuve.map(s => `${s.nom}${s.prenom ? ' ' + s.prenom : ''} (${s.bien})`).join(' · ')}
+                        <span style={{ color: '#A16207' }}> — rapprocher dans l'onglet Banque.</span>
+                      </div>
+                    )}
+                  </div>
+                )
+              })()}
+
               {/* Tableau loyers */}
               <h2 style={{ fontSize: 15, fontWeight: 700, color: 'var(--text)', margin: '0 0 10px' }}>
                 Loyers

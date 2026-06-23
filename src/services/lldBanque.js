@@ -273,6 +273,50 @@ export async function autoMatcherVirementsProprioLLD(agence = AGENCE) {
   return { lies }
 }
 
+// ── Contrôle de trésorerie LLD ────────────────────────────────────────────────
+// Pour un mois donné, vérifie que les loyers marqués "reçu" sont PROUVÉS en banque,
+// c.-à-d. adossés à un mouvement crédit rapproché sur le séquestre loyers LLD
+// (compte='loyers', statut='rapproche', mois_releve=mois). Même sémantique que
+// majLoyersDepuisVirements. Un loyer "reçu" sans mouvement rapproché = sans preuve
+// (marqué reçu à la main sans rapprochement bancaire → à creuser).
+export async function controleTresorerieLLD(mois, agence = AGENCE) {
+  const [{ data: loyers, error: e1 }, { data: mvts, error: e2 }] = await Promise.all([
+    supabase
+      .from('loyer_suivi')
+      .select('id, etudiant_id, montant_recu, etudiant(nom, prenom, bien:bien_id(code))')
+      .eq('agence', agence).eq('mois', mois).eq('statut', 'recu'),
+    supabase
+      .from('lld_mouvement_bancaire')
+      .select('etudiant_id, credit')
+      .eq('agence', agence).eq('compte', 'loyers').eq('statut', 'rapproche')
+      .eq('mois_releve', mois).gt('credit', 0),
+  ])
+  if (e1) throw e1
+  if (e2) throw e2
+
+  const prouvesSet = new Set((mvts || []).filter(m => m.etudiant_id).map(m => m.etudiant_id))
+  const recus = loyers || []
+  const prouves = recus.filter(l => l.etudiant_id && prouvesSet.has(l.etudiant_id))
+  const sansPreuve = recus.filter(l => !(l.etudiant_id && prouvesSet.has(l.etudiant_id)))
+  const sum = arr => arr.reduce((s, l) => s + (l.montant_recu || 0), 0)
+
+  return {
+    nbRecus: recus.length,
+    montantRecu: sum(recus),
+    nbProuves: prouves.length,
+    montantProuve: sum(prouves),
+    nbSansPreuve: sansPreuve.length,
+    montantSansPreuve: sum(sansPreuve),
+    montantBanque: (mvts || []).reduce((s, m) => s + (m.credit || 0), 0),
+    sansPreuve: sansPreuve.map(l => ({
+      nom: l.etudiant?.nom || '—',
+      prenom: l.etudiant?.prenom || '',
+      bien: l.etudiant?.bien?.code || '—',
+      montant: l.montant_recu || 0,
+    })),
+  }
+}
+
 export async function majLoyersDepuisVirements(agence = AGENCE) {
   // 1. Récupérer tous les mouvements rapprochés crédits sur le compte loyers
   const { data: mvts, error: errMvts } = await supabase
