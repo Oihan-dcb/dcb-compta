@@ -25,6 +25,7 @@ const CLASSIFICATION_CODE_MAP = {
   HAOWNER: '07', // Achats refacturés propriétaires
   HON_ETU: '08', // Honoraires locations étudiantes
   HON_MOB: '09', // Honoraires contrats mobilité
+  HON_LLD: '10', // Honoraires gestion longue durée (compte 7069)
   FRAIS:   '02', // Produits des activités annexes
   DEBP:    '02', // Produits des activités annexes (débours proprio)
 }
