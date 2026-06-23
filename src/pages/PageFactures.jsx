@@ -1,5 +1,5 @@
 import { AGENCE } from '../lib/agence'
-import { useState, useEffect } from 'react'
+import { useState, useEffect, Fragment } from 'react'
 import MoisSelector from '../components/MoisSelector'
 import { useMoisPersisted } from '../hooks/useMoisPersisted'
 import {
@@ -588,6 +588,10 @@ const [pushing, setPushing] = useState(false)
   }
   const isMaiteFacture = f => (f.proprietaire?.bien || []).some(b => b.groupe_facturation === 'MAITE')
   const facturesTries = [...facturesVisibles].sort((a, b) => {
+    // Factures LLD (locations longue durée) regroupées EN FIN de liste, séparées du saisonnier
+    const lA = a.type_facture === 'lld' ? 1 : 0
+    const lB = b.type_facture === 'lld' ? 1 : 0
+    if (lA !== lB) return lA - lB
     const mA = isMaiteFacture(a) ? 0 : 1
     const mB = isMaiteFacture(b) ? 0 : 1
     if (mA !== mB) return mA - mB
@@ -801,10 +805,12 @@ const [pushing, setPushing] = useState(false)
         </div>
       ) : (
         <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-          {facturesTries.map(f => {
+          {facturesTries.map((f, _i) => {
             const statutInfo = f.solde_negatif ? STATUTS.solde_negatif : (STATUTS[f.statut] || STATUTS.brouillon)
             const isExpanded = expanded === f.id
             const proprio = f.proprietaire
+            // Séparateur avant la 1ʳᵉ facture LLD (regroupées en fin de liste)
+            const isFirstLld = f.type_facture === 'lld' && (_i === 0 || facturesTries[_i - 1].type_facture !== 'lld')
             // Label du bien : code direct, ou "Maison Maïté" pour le groupe, ou codes séparés
             const bienCodes = f.bien?.code
               ? f.bien.code
@@ -813,7 +819,15 @@ const [pushing, setPushing] = useState(false)
                 : (proprio?.bien || []).slice().sort((a,b)=>(a.code||'').localeCompare(b.code||'')).map(b=>b.code).filter(Boolean).join(', ')
 
             return (
-              <div key={f.id} style={{
+              <Fragment key={f.id}>
+              {isFirstLld && (
+                <div style={{ marginTop: 18, padding: '6px 4px', fontSize: 12, fontWeight: 700,
+                              color: '#166534', textTransform: 'uppercase', letterSpacing: 0.6,
+                              borderTop: '2px solid #bbf7d0' }}>
+                  Honoraires — Locations longue durée (LLD)
+                </div>
+              )}
+              <div style={{
                 background: 'var(--white)',
                 border: `1px solid ${f.solde_negatif ? '#FCA5A5' : 'var(--border)'}`,
                 borderRadius: 'var(--radius)',
@@ -1150,6 +1164,7 @@ const [pushing, setPushing] = useState(false)
                   </div>
                 )}
               </div>
+              </Fragment>
             )
           })}
         </div>
