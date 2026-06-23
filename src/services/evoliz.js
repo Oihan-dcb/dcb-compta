@@ -466,6 +466,7 @@ export async function pousserFacturesMoisVersEvoliz(mois) {
     .eq('mois', mois)
     .eq('statut', 'valide')
     .eq('agence', AGENCE)
+    .eq('bloque_treso', false) // factures LLD bloquées (loyer non encaissé) → jamais poussées
 
   if (error) throw error
 

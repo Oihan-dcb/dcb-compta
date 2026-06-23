@@ -445,7 +445,7 @@ const [pushing, setPushing] = useState(false)
       // Factures d'honoraires LLD (locations longue durée) — chemin dédié, depuis les loyers reçus
       const lld = await genererFacturesLLD(mois).catch(e => ({ creees: 0, mises_a_jour: 0, erreurs: [{ error: e.message }] }))
       const lldTxt = (lld.creees || lld.mises_a_jour || lld.skipped_envoye)
-        ? ` · LLD : ${lld.creees} créée(s), ${lld.mises_a_jour} maj${lld.skipped_envoye ? `, ${lld.skipped_envoye} déjà envoyée(s)` : ''}`
+        ? ` · LLD : ${lld.creees} créée(s), ${lld.mises_a_jour} maj${lld.bloquees ? `, ${lld.bloquees} bloquée(s) (loyer non encaissé)` : ''}${lld.skipped_envoye ? `, ${lld.skipped_envoye} déjà envoyée(s)` : ''}`
         : ''
       setSuccess(`${result.created} factures créées, ${result.updated} mises à jour${result.skipped > 0 ? `, ${result.skipped} ignorée(s) (déjà envoyée(s))` : ''}${result.errors > 0 ? `, ${result.errors} erreurs` : ''}${lldTxt}`)
       if ((result.resteAPayer || 0) > 0) {
@@ -523,7 +523,7 @@ const [pushing, setPushing] = useState(false)
   }
 
   async function validerTout() {
-    const brouillons = factures.filter(f => f.statut === 'brouillon' && f.total_ttc > 0)
+    const brouillons = factures.filter(f => f.statut === 'brouillon' && f.total_ttc > 0 && !f.bloque_treso)
     if (brouillons.length === 0) return
     if (!confirm(`Valider ${brouillons.length} facture(s) pour ${mois} ?`)) return
     setError(null)
@@ -935,8 +935,16 @@ const [pushing, setPushing] = useState(false)
                       {statutInfo.label}
                     </span>
 
+                    {/* Facture LLD bloquée (loyer non encaissé) — ni validation ni push */}
+                    {f.bloque_treso && (
+                      <span style={{ padding: '4px 10px', borderRadius: 100, fontSize: 12, fontWeight: 600, background: '#FEE2E2', color: '#B91C1C' }}
+                        title="Loyer non encaissé — facture générée pour visibilité, bloquée jusqu'à réception du loyer (jamais envoyée à Evoliz)">
+                        ⛔ Bloquée — loyer non encaissé
+                      </span>
+                    )}
+
                     {/* Action valider — couleur différente pour débours sans gestion loyer */}
-                    {f.statut === 'brouillon' && (() => {
+                    {f.statut === 'brouillon' && !f.bloque_treso && (() => {
                       const isDeboursSansGestion = f.type_facture === 'debours' && f.bien?.gestion_loyer === false
                       return (
                         <button

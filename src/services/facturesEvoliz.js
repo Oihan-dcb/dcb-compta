@@ -1649,14 +1649,16 @@ export function telechargerCSV(contenu, nomFichier) {
 export async function getStatsFactures(mois) {
   const { data: factures } = await supabase
     .from('facture_evoliz')
-    .select('statut, total_ttc, solde_negatif')
+    .select('statut, total_ttc, solde_negatif, bloque_treso')
     .eq('mois', mois)
     .eq('agence', AGENCE)
 
   const all = factures || []
   return {
     total: all.length,
-    brouillons: all.filter(f => f.statut === 'brouillon').length,
+    // bloquées (loyer LLD non encaissé) : ni validables ni poussables → hors "à valider"
+    brouillons: all.filter(f => f.statut === 'brouillon' && !f.bloque_treso).length,
+    bloquees: all.filter(f => f.bloque_treso).length,
     valides: all.filter(f => f.statut === 'valide').length,
     envoyes: all.filter(f => f.statut === 'envoye_evoliz').length,
     payes: all.filter(f => f.statut === 'payee').length,

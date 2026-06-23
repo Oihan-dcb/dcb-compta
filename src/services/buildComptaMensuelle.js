@@ -615,6 +615,7 @@ export async function buildComptaMensuelle(mois, bienIds = null) {
       .eq('mois', mois)
       .eq('agence', AGENCE)
       .eq('type_facture', 'lld')
+      .eq('bloque_treso', false) // exclut les factures bloquées (loyer non encaissé) — pas du CA réel
     for (const f of (lldFacts || [])) {
       lldTotal.hon_ht  += f.total_ht  || 0
       lldTotal.hon_tva += f.total_tva || 0

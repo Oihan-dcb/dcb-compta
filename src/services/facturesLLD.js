@@ -11,19 +11,22 @@ const TVA_RATE = 0.20
 // Idempotent : réutilise/maj la facture lld brouillon du bien/mois ; ne touche JAMAIS une facture
 // déjà envoyée à Evoliz (id_evoliz non null).
 export async function genererFacturesLLD(mois, agence = AGENCE) {
-  const log = { creees: 0, mises_a_jour: 0, lignes: 0, skipped_envoye: 0, biens: [], erreurs: [] }
+  const log = { creees: 0, mises_a_jour: 0, lignes: 0, skipped_envoye: 0, bloquees: 0, biens: [], erreurs: [] }
 
-  // 1. Loyers REÇUS du mois (commission sur le réel encaissé).
-  //    On facture sur le RÉEL ENCAISSÉ : un loyer reçu = honoraires dus, même si la fiche
-  //    locataire est désormais archivée (locataire parti en cours de mois ayant payé son loyer).
+  // 1. Loyers du mois — reçus ET attendus/en retard.
+  //    - 'recu' : commission sur le réel encaissé → facture normale (brouillon).
+  //    - 'attendu'/'en_retard' : facture générée pour visibilité mais BLOQUÉE (pas de tréso) →
+  //      jamais poussée à Evoliz tant que le loyer n'est pas encaissé (bloque_treso=true).
+  //      Levée automatiquement au prochain « Générer » quand le loyer passe 'recu'.
+  //    On facture sur le RÉEL ENCAISSÉ quand reçu, sinon sur l'attendu (proratisé Phase 1).
   //    Le propriétaire = celui DU BIEN (autoritaire) et non celui de la fiche étudiant
   //    (qui peut être obsolète/erroné — ex. ERREGINA pointait Waldau au lieu de Nicolle).
   const { data: loyers, error } = await supabase
     .from('loyer_suivi')
-    .select('id, montant_recu, montant_attendu, etudiant (id, nom, prenom, bien_id, taux_commission, bien:bien_id(proprietaire_id, skip_facturation))')
+    .select('id, statut, montant_recu, montant_attendu, etudiant (id, nom, prenom, bien_id, taux_commission, bien:bien_id(proprietaire_id, skip_facturation))')
     .eq('agence', agence)
     .eq('mois', mois)
-    .eq('statut', 'recu')
+    .in('statut', ['recu', 'attendu', 'en_retard'])
   if (error) throw error
 
   // 2. Regrouper par bien (proprio = proprio du bien ; ignore les loyers sans bien/proprio).
@@ -44,9 +47,14 @@ export async function genererFacturesLLD(mois, agence = AGENCE) {
     try {
       const lignesData = []
       let ordre = 1, totalHT = 0, totalTVA = 0, totalTTC = 0, reversement = 0
+      // Bloquée si AU MOINS un loyer du bien n'est pas encore encaissé (statut ≠ 'recu').
+      let bloqueTreso = false
       for (const l of grp.loyers) {
         const e = l.etudiant
-        const base = l.montant_recu ?? l.montant_attendu ?? 0
+        const recu = l.statut === 'recu'
+        if (!recu) bloqueTreso = true
+        // Reçu → réel encaissé ; sinon → attendu (proratisé Phase 1) pour visibilité
+        const base = recu ? (l.montant_recu ?? l.montant_attendu ?? 0) : (l.montant_attendu ?? 0)
         const taux = e.taux_commission != null ? Number(e.taux_commission) : 0.10
         const honTTC = Math.round(base * taux)
         if (honTTC <= 0) continue
@@ -57,7 +65,7 @@ export async function genererFacturesLLD(mois, agence = AGENCE) {
         lignesData.push({
           code: 'HON_LLD',
           libelle: `Honoraires gestion LLD — ${[e.prenom, e.nom].filter(Boolean).join(' ')}`,
-          description: `Loyer ${mois}`,
+          description: `Loyer ${mois}${recu ? '' : ' — ⚠ non encaissé (bloqué)'}`,
           montant_ht: honHT, taux_tva: 20, montant_tva: honTVA, montant_ttc: honTTC,
           ordre: ordre++,
         })
@@ -75,7 +83,9 @@ export async function genererFacturesLLD(mois, agence = AGENCE) {
         mois, agence, proprietaire_id: grp.proprietaire_id, bien_id: grp.bien_id,
         type_facture: 'lld', total_ht: totalHT, total_tva: totalTVA, total_ttc: totalTTC,
         montant_reversement: reversement, statut: 'brouillon', solde_negatif: false,
+        bloque_treso: bloqueTreso,
       }
+      if (bloqueTreso) log.bloquees++
 
       let factureId
       if (existing) {
