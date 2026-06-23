@@ -13,21 +13,26 @@ const TVA_RATE = 0.20
 export async function genererFacturesLLD(mois, agence = AGENCE) {
   const log = { creees: 0, mises_a_jour: 0, lignes: 0, skipped_envoye: 0, biens: [], erreurs: [] }
 
-  // 1. Loyers REÇUS du mois (commission sur le réel encaissé)
+  // 1. Loyers REÇUS du mois (commission sur le réel encaissé).
+  //    On facture sur le RÉEL ENCAISSÉ : un loyer reçu = honoraires dus, même si la fiche
+  //    locataire est désormais archivée (locataire parti en cours de mois ayant payé son loyer).
+  //    Le propriétaire = celui DU BIEN (autoritaire) et non celui de la fiche étudiant
+  //    (qui peut être obsolète/erroné — ex. ERREGINA pointait Waldau au lieu de Nicolle).
   const { data: loyers, error } = await supabase
     .from('loyer_suivi')
-    .select('id, montant_recu, montant_attendu, etudiant (id, nom, prenom, bien_id, proprietaire_id, taux_commission, archived)')
+    .select('id, montant_recu, montant_attendu, etudiant (id, nom, prenom, bien_id, taux_commission, bien:bien_id(proprietaire_id))')
     .eq('agence', agence)
     .eq('mois', mois)
     .eq('statut', 'recu')
   if (error) throw error
 
-  // 2. Regrouper par bien (ignore archivés / sans bien ou proprio)
+  // 2. Regrouper par bien (proprio = proprio du bien ; ignore les loyers sans bien/proprio)
   const parBien = new Map()
   for (const l of (loyers || [])) {
     const e = l.etudiant
-    if (!e || e.archived || !e.bien_id || !e.proprietaire_id) continue
-    if (!parBien.has(e.bien_id)) parBien.set(e.bien_id, { bien_id: e.bien_id, proprietaire_id: e.proprietaire_id, loyers: [] })
+    const proprietaireId = e?.bien?.proprietaire_id
+    if (!e || !e.bien_id || !proprietaireId) continue
+    if (!parBien.has(e.bien_id)) parBien.set(e.bien_id, { bien_id: e.bien_id, proprietaire_id: proprietaireId, loyers: [] })
     parBien.get(e.bien_id).loyers.push(l)
   }
 
