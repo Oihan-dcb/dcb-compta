@@ -76,8 +76,8 @@ insert into public.contract_templates (agence,langue,type_contrat,version,nom,co
 <table class="parties">
   <tr><td class="k">Désignation</td><td><strong>{{prestataire_designation}}</strong></td></tr>
   {{#prestataire_statut}}<tr><td class="k">Statut</td><td>{{prestataire_statut}}</td></tr>{{/prestataire_statut}}
-  {{#prestataire_siret}}<tr><td class="k">N° SIRET</td><td>{{prestataire_siret}}</td></tr>{{/prestataire_siret}}
-  {{#prestataire_adresse}}<tr><td class="k">Adresse</td><td>{{prestataire_adresse}}</td></tr>{{/prestataire_adresse}}
+  <tr><td class="k">N° SIRET</td><td>{{prestataire_siret_l}}</td></tr>
+  <tr><td class="k">Adresse</td><td>{{prestataire_adresse_l}}</td></tr>
   {{#prestataire_tel}}<tr><td class="k">Téléphone</td><td>{{prestataire_tel}}</td></tr>{{/prestataire_tel}}
   {{#prestataire_email}}<tr><td class="k">E-mail</td><td>{{prestataire_email}}</td></tr>{{/prestataire_email}}
   {{#prestataire_assurance}}<tr><td class="k">Assurance RC pro</td><td>{{prestataire_assurance}}</td></tr>{{/prestataire_assurance}}
@@ -262,8 +262,8 @@ $aetpl$, '{"defaults": {"penalite_montant": "50", "preavis_resiliation": "trois 
 <table class="parties">
   <tr><td class="k">Désignation</td><td><strong>{{prestataire_designation}}</strong></td></tr>
   {{#prestataire_statut}}<tr><td class="k">Statut</td><td>{{prestataire_statut}}</td></tr>{{/prestataire_statut}}
-  {{#prestataire_siret}}<tr><td class="k">N° SIRET</td><td>{{prestataire_siret}}</td></tr>{{/prestataire_siret}}
-  {{#prestataire_adresse}}<tr><td class="k">Adresse</td><td>{{prestataire_adresse}}</td></tr>{{/prestataire_adresse}}
+  <tr><td class="k">N° SIRET</td><td>{{prestataire_siret_l}}</td></tr>
+  <tr><td class="k">Adresse</td><td>{{prestataire_adresse_l}}</td></tr>
   {{#prestataire_tel}}<tr><td class="k">Téléphone</td><td>{{prestataire_tel}}</td></tr>{{/prestataire_tel}}
   {{#prestataire_email}}<tr><td class="k">E-mail</td><td>{{prestataire_email}}</td></tr>{{/prestataire_email}}
   {{#prestataire_assurance}}<tr><td class="k">Assurance RC pro</td><td>{{prestataire_assurance}}</td></tr>{{/prestataire_assurance}}
