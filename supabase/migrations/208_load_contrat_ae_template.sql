@@ -67,6 +67,7 @@ insert into public.contract_templates (agence,langue,type_contrat,version,nom,co
   <div class="gold-line"></div>
   <div class="doc-subtitle">Entre le prestataire indépendant et {{agence_nom}}</div>
   <div class="doc-num">N° <strong>{{contrat_numero}}</strong></div>
+  {{#prestataire_siret}}<div class="small" style="margin-top:8px">Prestataire : <strong>{{prestataire_designation}}</strong> · SIRET <strong>{{prestataire_siret}}</strong></div>{{/prestataire_siret}}
 </div>
 
 <div class="section-title">Entre les soussignés</div>
@@ -109,8 +110,8 @@ insert into public.contract_templates (agence,langue,type_contrat,version,nom,co
 <div class="art">Article 6 — Durée</div>
 <p>Le présent contrat est conclu pour une durée indéterminée, à compter de sa signature.</p>
 
-<div class="art">Article 7 — Assurance responsabilité civile professionnelle (obligatoire)</div>
-<p>Le Prestataire <strong>doit justifier, préalablement à toute mission et pendant toute la durée du contrat, d'une assurance responsabilité civile professionnelle en cours de validité</strong> couvrant les dommages susceptibles d'être causés dans le cadre de ses prestations. Il en remet l'attestation au Client, s'engage à la maintenir et à l'informer sans délai de toute modification, suspension ou résiliation. <strong>L'absence d'assurance valide suspend de plein droit le droit du Prestataire à se voir confier des missions.</strong></p>
+<div class="art">Article 7 — Assurance responsabilité civile professionnelle</div>
+<p>Le Prestataire est <strong>vivement encouragé à souscrire et à maintenir une assurance responsabilité civile professionnelle</strong> couvrant les dommages susceptibles d'être causés dans le cadre de ses prestations. S'il en dispose, il en remet l'attestation au Client et l'informe de toute modification, suspension ou résiliation. À défaut d'assurance, le Prestataire demeure personnellement responsable des dommages qu'il pourrait causer dans l'exécution de ses missions.</p>
 
 <div class="art">Article 8 — Exécution et obligations de moyens</div>
 <p>Le Prestataire s'engage à mener à bien les tâches précisées à l'article 1, conformément aux règles de l'art, en autonomie, avec professionnalisme et dans le respect des règles de sécurité. Le Client et les voyageurs pourront évaluer les qualités de propreté et d'accueil. En cas de non-respect du cahier des charges relevé par le voyageur ou le Client, le Prestataire s'engage à retourner au logement afin de corriger sa prestation, sans rémunération supplémentaire. Si l'absence de résultat provient d'une faute du Client, le Prestataire est déchargé de toute responsabilité. Lorsqu'une mission lui a été affectée, le Prestataire s'engage à la réaliser ; en cas de force majeure, il avertit le Client au plus tôt afin qu'une solution de remplacement soit trouvée.</p>
@@ -141,7 +142,7 @@ insert into public.contract_templates (agence,langue,type_contrat,version,nom,co
 <p>La non-présentation à un rendez-vous de préparation ou d'accueil accepté et non annulé au moins 48 heures à l'avance engendre l'obligation pour le Prestataire de payer au Client la somme de <strong>{{penalite_montant}} €</strong> à titre de pénalité, retenue sur le montant restant dû.</p>
 
 <div class="art">Article 17 — Résiliation pour faute</div>
-<p>En cas de non-présentation à un rendez-vous accepté, d'insatisfaction manifeste du Client ou des voyageurs, de manquement aux obligations du Prestataire, de défaut d'assurance, de manquement à la confidentialité ou de sous-traitance non autorisée, le Client pourra résilier le présent contrat avec application immédiate.</p>
+<p>En cas de non-présentation à un rendez-vous accepté, d'insatisfaction manifeste du Client ou des voyageurs, de manquement aux obligations du Prestataire, de manquement à la confidentialité ou de sous-traitance non autorisée, le Client pourra résilier le présent contrat avec application immédiate.</p>
 
 <div class="art">Article 18 — Résiliation hors faute</div>
 <p>Le présent contrat pourra être résilié à tout instant par chacune des parties, sous réserve d'un préavis de <strong>{{preavis_resiliation}}</strong> notifié par e-mail ou courrier postal simple.</p>
@@ -153,7 +154,7 @@ insert into public.contract_templates (agence,langue,type_contrat,version,nom,co
 <p>Le présent contrat est conclu en considération de la personne du Prestataire, qui ne pourra substituer de tiers dans la réalisation des tâches définies.</p>
 
 <div class="art">Article 21 — Non-exclusivité et indépendance</div>
-<p>Le Prestataire exerce son activité <strong>en toute indépendance, sans aucun lien de subordination</strong> avec {{agence_nom}}. Il est libre d'accepter ou non les missions proposées et de travailler pour d'autres clients. Il organise librement son temps et ses moyens, et demeure seul responsable de ses obligations sociales, fiscales et déclaratives.</p>
+<p>Le Prestataire exerce son activité <strong>en toute indépendance, sans aucun lien de subordination</strong> avec {{agence_nom}}. Il est libre d'accepter ou non les missions proposées et de travailler pour d'autres clients. Il organise librement son temps et ses moyens, et demeure seul responsable de ses obligations sociales, fiscales et déclaratives. <strong>Le Prestataire s'engage à informer {{agence_nom}} sans délai de toute modification de sa situation ou de son statut</strong> (cessation ou radiation d'activité, changement de forme juridique, perte de la qualité d'auto-entrepreneur, modification du numéro SIRET, suspension ou résiliation de son assurance responsabilité civile professionnelle).</p>
 
 <div class="art">Article 22 — Interprétation</div>
 <p>Le présent contrat et ses annexes contiennent l'intégralité des engagements des parties ; les correspondances, offres ou propositions antérieures sont considérées comme non-avenues.</p>
@@ -252,6 +253,7 @@ $aetpl$, '{"defaults": {"penalite_montant": "50", "preavis_resiliation": "trois 
   <div class="gold-line"></div>
   <div class="doc-subtitle">Entre le prestataire indépendant et {{agence_nom}}</div>
   <div class="doc-num">N° <strong>{{contrat_numero}}</strong></div>
+  {{#prestataire_siret}}<div class="small" style="margin-top:8px">Prestataire : <strong>{{prestataire_designation}}</strong> · SIRET <strong>{{prestataire_siret}}</strong></div>{{/prestataire_siret}}
 </div>
 
 <div class="section-title">Entre les soussignés</div>
@@ -294,8 +296,8 @@ $aetpl$, '{"defaults": {"penalite_montant": "50", "preavis_resiliation": "trois 
 <div class="art">Article 6 — Durée</div>
 <p>Le présent contrat est conclu pour une durée indéterminée, à compter de sa signature.</p>
 
-<div class="art">Article 7 — Assurance responsabilité civile professionnelle (obligatoire)</div>
-<p>Le Prestataire <strong>doit justifier, préalablement à toute mission et pendant toute la durée du contrat, d'une assurance responsabilité civile professionnelle en cours de validité</strong> couvrant les dommages susceptibles d'être causés dans le cadre de ses prestations. Il en remet l'attestation au Client, s'engage à la maintenir et à l'informer sans délai de toute modification, suspension ou résiliation. <strong>L'absence d'assurance valide suspend de plein droit le droit du Prestataire à se voir confier des missions.</strong></p>
+<div class="art">Article 7 — Assurance responsabilité civile professionnelle</div>
+<p>Le Prestataire est <strong>vivement encouragé à souscrire et à maintenir une assurance responsabilité civile professionnelle</strong> couvrant les dommages susceptibles d'être causés dans le cadre de ses prestations. S'il en dispose, il en remet l'attestation au Client et l'informe de toute modification, suspension ou résiliation. À défaut d'assurance, le Prestataire demeure personnellement responsable des dommages qu'il pourrait causer dans l'exécution de ses missions.</p>
 
 <div class="art">Article 8 — Exécution et obligations de moyens</div>
 <p>Le Prestataire s'engage à mener à bien les tâches précisées à l'article 1, conformément aux règles de l'art, en autonomie, avec professionnalisme et dans le respect des règles de sécurité. Le Client et les voyageurs pourront évaluer les qualités de propreté et d'accueil. En cas de non-respect du cahier des charges relevé par le voyageur ou le Client, le Prestataire s'engage à retourner au logement afin de corriger sa prestation, sans rémunération supplémentaire. Si l'absence de résultat provient d'une faute du Client, le Prestataire est déchargé de toute responsabilité. Lorsqu'une mission lui a été affectée, le Prestataire s'engage à la réaliser ; en cas de force majeure, il avertit le Client au plus tôt afin qu'une solution de remplacement soit trouvée.</p>
@@ -326,7 +328,7 @@ $aetpl$, '{"defaults": {"penalite_montant": "50", "preavis_resiliation": "trois 
 <p>La non-présentation à un rendez-vous de préparation ou d'accueil accepté et non annulé au moins 48 heures à l'avance engendre l'obligation pour le Prestataire de payer au Client la somme de <strong>{{penalite_montant}} €</strong> à titre de pénalité, retenue sur le montant restant dû.</p>
 
 <div class="art">Article 17 — Résiliation pour faute</div>
-<p>En cas de non-présentation à un rendez-vous accepté, d'insatisfaction manifeste du Client ou des voyageurs, de manquement aux obligations du Prestataire, de défaut d'assurance, de manquement à la confidentialité ou de sous-traitance non autorisée, le Client pourra résilier le présent contrat avec application immédiate.</p>
+<p>En cas de non-présentation à un rendez-vous accepté, d'insatisfaction manifeste du Client ou des voyageurs, de manquement aux obligations du Prestataire, de manquement à la confidentialité ou de sous-traitance non autorisée, le Client pourra résilier le présent contrat avec application immédiate.</p>
 
 <div class="art">Article 18 — Résiliation hors faute</div>
 <p>Le présent contrat pourra être résilié à tout instant par chacune des parties, sous réserve d'un préavis de <strong>{{preavis_resiliation}}</strong> notifié par e-mail ou courrier postal simple.</p>
@@ -338,7 +340,7 @@ $aetpl$, '{"defaults": {"penalite_montant": "50", "preavis_resiliation": "trois 
 <p>Le présent contrat est conclu en considération de la personne du Prestataire, qui ne pourra substituer de tiers dans la réalisation des tâches définies.</p>
 
 <div class="art">Article 21 — Non-exclusivité et indépendance</div>
-<p>Le Prestataire exerce son activité <strong>en toute indépendance, sans aucun lien de subordination</strong> avec {{agence_nom}}. Il est libre d'accepter ou non les missions proposées et de travailler pour d'autres clients. Il organise librement son temps et ses moyens, et demeure seul responsable de ses obligations sociales, fiscales et déclaratives.</p>
+<p>Le Prestataire exerce son activité <strong>en toute indépendance, sans aucun lien de subordination</strong> avec {{agence_nom}}. Il est libre d'accepter ou non les missions proposées et de travailler pour d'autres clients. Il organise librement son temps et ses moyens, et demeure seul responsable de ses obligations sociales, fiscales et déclaratives. <strong>Le Prestataire s'engage à informer {{agence_nom}} sans délai de toute modification de sa situation ou de son statut</strong> (cessation ou radiation d'activité, changement de forme juridique, perte de la qualité d'auto-entrepreneur, modification du numéro SIRET, suspension ou résiliation de son assurance responsabilité civile professionnelle).</p>
 
 <div class="art">Article 22 — Interprétation</div>
 <p>Le présent contrat et ses annexes contiennent l'intégralité des engagements des parties ; les correspondances, offres ou propositions antérieures sont considérées comme non-avenues.</p>
