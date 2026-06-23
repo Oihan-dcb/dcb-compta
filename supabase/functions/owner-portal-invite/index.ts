@@ -45,7 +45,7 @@ Deno.serve(async (req) => {
     }
 
     // ── Paramètres ────────────────────────────────────────────────────────────
-    const { proprio_id, email } = await req.json()
+    const { proprio_id, email, mode = 'invite' } = await req.json()
     if (!proprio_id || !email) return jsonError('proprio_id et email requis', 400)
 
     const emailLower = email.trim().toLowerCase()
@@ -116,7 +116,7 @@ Deno.serve(async (req) => {
       type: 'magiclink',
       email: emailLower,
       options: {
-        redirectTo: PORTAL_URL,
+        redirectTo: mode === 'relance_questionnaire' ? `${PORTAL_URL}/?questionnaire=1` : PORTAL_URL,
       },
     })
     if (linkErr) throw linkErr
@@ -124,6 +124,52 @@ Deno.serve(async (req) => {
     const magicLink = linkData.properties.action_link
     const nomProprio = [proprio.prenom, proprio.nom].filter(Boolean).join(' ') || emailLower
     const prenomProprio = proprio.prenom || nomProprio
+
+    // ── Mode RELANCE QUESTIONNAIRE : email court + lien direct vers le questionnaire ──
+    if (mode === 'relance_questionnaire') {
+      const supabaseUrl = Deno.env.get('SUPABASE_URL') ?? ''
+      const anonKey = Deno.env.get('SUPABASE_ANON_KEY') ?? ''
+      let sent = false
+      try {
+        const er = await fetch(`${supabaseUrl}/functions/v1/smtp-send`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${anonKey}` },
+          body: JSON.stringify({
+            to: [emailLower],
+            subject: 'Une dernière étape : votre questionnaire propriétaire',
+            html: `<!DOCTYPE html><html lang="fr"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"></head>
+<body style="margin:0;padding:0;background:#F7F3EC;font-family:Arial,Helvetica,sans-serif">
+<table width="100%" cellpadding="0" cellspacing="0" style="background:#F7F3EC;padding:32px 16px"><tr><td align="center">
+<table width="100%" style="max-width:540px;background:#fff;border-radius:16px;overflow:hidden;box-shadow:0 4px 24px rgba(44,36,22,.10)">
+  <tr><td style="background:#CC9933;padding:28px 32px;text-align:center">
+    <div style="font-size:11px;letter-spacing:4px;text-transform:uppercase;color:rgba(255,255,255,.75);margin-bottom:8px">Espace propriétaire</div>
+    <div style="font-size:24px;font-weight:700;color:#fff">Destination Côte Basque</div>
+  </td></tr>
+  <tr><td style="padding:34px 32px 30px">
+    <p style="font-size:16px;font-weight:600;color:#2C2416;margin:0 0 8px">Bonjour ${prenomProprio},</p>
+    <p style="font-size:14px;line-height:1.75;color:#5A4E3C;margin:0 0 22px">
+      Il vous reste une petite étape : <strong>compléter votre questionnaire propriétaire</strong>. Quelques informations sur vous et votre bien, qui nous permettent d'établir votre mandat et de mieux gérer votre logement. Cela prend 2 minutes.
+    </p>
+    <table width="100%" cellpadding="0" cellspacing="0" style="margin-bottom:14px"><tr><td align="center">
+      <a href="${magicLink}" style="display:inline-block;background:#CC9933;color:#fff;text-decoration:none;padding:15px 34px;border-radius:10px;font-weight:700;font-size:15px">Compléter mon questionnaire →</a>
+    </td></tr></table>
+    <p style="font-size:12px;color:#6B5E4E;line-height:1.6;text-align:center;margin:0 0 24px">
+      Le lien vous connecte directement (valable 24h ; sinon, redemandez-en un depuis la page de connexion).
+    </p>
+    <p style="font-size:14px;color:#2C2416;line-height:1.7;margin:0">À très vite,<br><strong>Oihan</strong><br><span style="font-size:12px;color:#8C7B65">Destination Côte Basque · Biarritz</span></p>
+  </td></tr>
+  <tr><td style="background:#EAE3D4;border-top:1px solid #D9CEB8;padding:16px 32px;text-align:center">
+    <p style="font-size:11px;color:#8C7B65;margin:0"><a href="mailto:contact@destinationcotebasque.com" style="color:#CC9933;text-decoration:none">contact@destinationcotebasque.com</a></p>
+  </td></tr>
+</table></td></tr></table></body></html>`,
+          }),
+        })
+        sent = er.ok
+      } catch (_) { /* email best-effort */ }
+      return new Response(JSON.stringify({ success: true, mode: 'relance_questionnaire', email_sent: sent, magic_link: magicLink }), {
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      })
+    }
 
     // ── Envoyer le lien par email via smtp-send ───────────────────────────────
     const supabaseUrl  = Deno.env.get('SUPABASE_URL') ?? ''
