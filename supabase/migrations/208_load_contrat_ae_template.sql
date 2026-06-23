@@ -1,5 +1,5 @@
 -- Charge le template contrat de prestation AE (DCB + Lauïan) dans contract_templates.
--- Source de vérité : dcb-planning/contracts/contrat_prestation_ae_2026-v1.html
+-- Source : dcb-planning/contracts/contrat_prestation_ae_2026-v1.html
 delete from public.contract_templates where type_contrat='prestation_ae' and version='2026-v1';
 insert into public.contract_templates (agence,langue,type_contrat,version,nom,contenu_html,variables_attendues,is_active) values
 ('dcb','fr','prestation_ae','2026-v1','Contrat de prestation AE — DCB', $aetpl$<!--
@@ -7,8 +7,9 @@ insert into public.contract_templates (agence,langue,type_contrat,version,nom,co
   Source de vérité versionnée — à charger dans contract_templates (type_contrat='prestation_ae').
   Moteur : renderMustache (api/generate-contrat-ae.js) — {{var}}, {{#cond}}…{{/cond}}, {{^cond}}…{{/cond}}.
   Entité variable DCB / Lauïan : {{#est_lauian}}…{{/est_lauian}}.
-  Le PRESTATAIRE = l'auto-entrepreneur (ménage/accueil). Le CLIENT = l'agence (conciergerie).
+  Le PRESTATAIRE = l'auto-entrepreneur. Le CLIENT = l'agence (conciergerie DCB / Lauïan).
   Signé dans le portail AE (connecté). Données : auto_entrepreneur + ae_onboarding.reponses.
+  Vars config : penalite_montant, preavis_resiliation, non_solicit_jours, delai_paiement, incident_delai.
 -->
 <!DOCTYPE html>
 <html lang="fr"><head><meta charset="utf-8">
@@ -31,9 +32,8 @@ insert into public.contract_templates (agence,langue,type_contrat,version,nom,co
   .doc-num{display:inline-block;border:1.5px solid #CC9933;border-radius:8px;padding:4px 16px;font-size:11pt;margin-top:6px}
   .doc-num strong{color:#8a6d1f}
   .section-title{font-size:8.5pt;font-weight:700;text-transform:uppercase;letter-spacing:1.5px;color:#CC9933;border-bottom:1.5px solid #E8DCC8;padding-bottom:6px;margin:18px 0 10px}
-  .art{font-weight:700;margin:14px 0 3px;color:#1C1C1C;font-size:11.5px}
+  .art{font-weight:700;margin:13px 0 3px;color:#1C1C1C;font-size:11.5px}
   .sub{font-weight:700;margin:10px 0 2px;color:#1C1C1C}
-  .partie-box{background:#FDFAF5;border:1px solid #E8DCC8;border-left:3px solid #CC9933;border-radius:6px;padding:12px 16px;margin:8px 0}
   .muted{color:#6b6150}.small{font-size:9.5px;color:#8C7B65}
   .box{background:#FDFAF5;border:1px solid #E8DCC8;border-left:3px solid #CC9933;border-radius:6px;padding:10px 14px;margin:10px 0}
   .footer{margin-top:22px;border-top:2px solid #CC9933;padding-top:10px}
@@ -88,91 +88,81 @@ insert into public.contract_templates (agence,langue,type_contrat,version,nom,co
 <p><strong>Ci-après dénommée « le Client », d'autre part,</strong></p>
 
 <div class="section-title">Il a été préalablement exposé</div>
-<p>{{agence_nom}} est une agence spécialisée dans la gestion locative d'appartements et de maisons meublés. À ce titre, elle a reçu mandat de la part de ses clients propriétaires afin de gérer leurs logements et d'y accueillir des locataires.</p>
-<p>Dans ce cadre, le Prestataire a souhaité proposer ses services au Client, car il est en mesure de réaliser des prestations de préparation des logements et d'accueil des locataires. Ceci exposé, il a été convenu ce qui suit.</p>
+<p>{{agence_nom}} est une agence spécialisée dans la conciergerie et la gestion locative d'appartements et de maisons meublés sur la Côte Basque. À ce titre, elle a reçu mandat de la part de ses clients propriétaires afin de gérer leurs logements et d'y accueillir des voyageurs. Dans ce cadre, le Prestataire a souhaité proposer ses services au Client, étant en mesure de réaliser des prestations de préparation des logements et d'accueil des voyageurs. Ceci exposé, il a été convenu ce qui suit.</p>
 
 <div class="art">Article 1 — Objet</div>
-<p>Le présent contrat est un contrat de prestation de services ayant pour objet la réalisation de prestations de <strong>préparation des logements</strong> et d'<strong>accueil des locataires</strong> dans des logements meublés gérés par le Client.</p>
-<p><strong>1 — Chaque mission de préparation des logements</strong> consistera à :</p>
-<ul>
-  <li>Récupérer et rapporter dans une agence du Client les éléments nécessaires à la réalisation de la prestation (clés, linge de maison, produits divers…).</li>
-  <li>Remettre les logements en état.</li>
-  <li>Envoyer un compte-rendu au Client afin de remonter différentes informations.</li>
-</ul>
-<p><strong>2 — Chaque mission d'accueil des locataires</strong> consistera à :</p>
-<ul>
-  <li>Vérifier l'état général du logement avant l'arrivée des locataires et prendre les dispositions nécessaires afin que le logement soit fonctionnel.</li>
-  <li>Accueillir les locataires, leur présenter le logement et son fonctionnement, répondre à leurs questions et leur remettre les clés.</li>
-  <li>Envoyer un compte-rendu au Client afin de remonter différentes informations liées à la prestation et au logement.</li>
-</ul>
-<p>Le tout en respectant le cahier des charges du Client, fourni en amont de la signature du présent contrat et mis à jour au besoin. Des missions de préparation pourront aussi être effectuées en cours de séjour, à la demande des locataires, ainsi que des ménages de printemps à la demande du Client.</p>
+<p>Le présent contrat est un contrat de prestation de services ayant pour objet la réalisation de prestations de <strong>préparation des logements</strong> et d'<strong>accueil des voyageurs</strong> dans des logements meublés gérés par le Client, dans le respect du cahier des charges fourni en amont et mis à jour au besoin.</p>
+<p><strong>1 — Préparation des logements :</strong> récupérer et rapporter les éléments nécessaires (clés, linge, produits) ; remettre le logement en état conformément au cahier des charges ; envoyer un compte-rendu via le Portail AE. <strong>2 — Accueil des voyageurs :</strong> vérifier l'état du logement avant l'arrivée ; accueillir les voyageurs, présenter le logement et son fonctionnement, remettre les clés ; envoyer un compte-rendu via le Portail AE. Des missions en cours de séjour ou des ménages de printemps pourront aussi être réalisés à la demande.</p>
 
-<div class="art">Article 2 — Attribution des prestations et prix</div>
-<p>Pour obtenir de nouvelles prestations, le Prestataire se connectera à une interface conçue par le Client (le portail prestataire), sur laquelle il pourra choisir les missions qui l'intéressent. Pour chaque prestation, le Client indiquera la date, l'heure (ou à défaut une tranche horaire), un lieu, un descriptif ainsi qu'un prix associé. Le Prestataire sera libre de choisir les missions qui l'intéressent en fonction de ces éléments.</p>
-<p>Pour chaque mission, le prix proposé au Prestataire pourra varier en fonction de la date et de l'heure de la mission, du nombre de prestataires disponibles et de la qualité du logement. Le Client pourra modifier les éléments pris en compte à tout moment afin d'améliorer son système d'attribution.</p>
-<p>Les éventuels frais annexes nécessaires à l'exécution de la prestation et validés au préalable par le Client seront facturés en sus, sur relevé de dépenses. Les sommes dues au titre des prestations seront réglées par virement bancaire.</p>
+<div class="art">Article 2 — Portail AE : outil officiel de mission</div>
+<p>Le <strong>Portail AE {{agence_nom}}</strong> (application en ligne mise à disposition par le Client) constitue <strong>l'outil officiel unique</strong> de la relation : proposition et acceptation des missions, planning, comptes-rendus, photos, signalements d'incidents, prestations hors forfait et récapitulatifs de facturation y transitent. Le Prestataire s'engage à le consulter régulièrement, à y tenir son planning à jour et à y renseigner les comptes-rendus de chaque mission. Toute mission est réputée n'avoir été ni proposée ni acceptée en dehors du Portail.</p>
 
-<div class="art">Article 3 — Durée</div>
+<div class="art">Article 3 — Attribution des missions et prix</div>
+<p>Pour obtenir de nouvelles prestations, le Prestataire se connecte au Portail AE, sur lequel il choisit librement les missions qui l'intéressent. Pour chaque mission, le Client indique la date, l'heure (ou une tranche horaire), le lieu, un descriptif et un prix associé. Le prix peut varier selon la date et l'heure, le nombre de prestataires disponibles et les caractéristiques du logement. Le Client pourra faire évoluer ces éléments afin d'améliorer son système d'attribution.</p>
+
+<div class="art">Article 4 — Prestations hors forfait</div>
+<p>Outre les missions standard, des <strong>prestations hors forfait</strong> (ménage de printemps, gestion du linge, attente prolongée, intervention exceptionnelle, petit dépannage, etc.) peuvent être réalisées. Elles doivent être <strong>préalablement validées par le Client</strong> et sont saisies par le Prestataire dans le module « prestations hors forfait » du Portail AE, au tarif convenu. Toute prestation hors forfait non validée au préalable ne pourra donner lieu à rémunération.</p>
+
+<div class="art">Article 5 — Facturation et paiement</div>
+<p>La facturation est <strong>mensuelle</strong>. À la fin de chaque mois, le Prestataire établit une facture récapitulant l'ensemble des missions et prestations hors forfait <strong>validées</strong> au cours du mois écoulé, le Portail AE mettant à sa disposition le récapitulatif correspondant. Le règlement est effectué par <strong>virement bancaire</strong> sous <strong>{{delai_paiement}}</strong> à compter de la réception de la facture. Les éventuels frais annexes nécessaires à l'exécution d'une prestation, validés au préalable, sont facturés en sus sur relevé de dépenses. Le Prestataire fait son affaire personnelle de ses obligations sociales, fiscales et déclaratives.</p>
+
+<div class="art">Article 6 — Durée</div>
 <p>Le présent contrat est conclu pour une durée indéterminée, à compter de sa signature.</p>
 
-<div class="art">Article 4 — Exécution de la prestation</div>
-<p>Le Prestataire s'engage à mener à bien la tâche précisée à l'article 1. Le Client et les locataires pourront être amenés à évaluer les qualités de propreté et d'accueil. Le Prestataire effectuera ses missions avec professionnalisme.</p>
+<div class="art">Article 7 — Assurance responsabilité civile professionnelle (obligatoire)</div>
+<p>Le Prestataire <strong>doit justifier, préalablement à toute mission et pendant toute la durée du contrat, d'une assurance responsabilité civile professionnelle en cours de validité</strong> couvrant les dommages susceptibles d'être causés dans le cadre de ses prestations. Il en remet l'attestation au Client, s'engage à la maintenir et à l'informer sans délai de toute modification, suspension ou résiliation. <strong>L'absence d'assurance valide suspend de plein droit le droit du Prestataire à se voir confier des missions.</strong></p>
 
-<div class="art">Article 5 — Calendrier — délais</div>
-<p>Les missions pourront être proposées très en avance ou le jour même. Dans tous les cas, il appartiendra au Prestataire d'accepter ou non une mission et de tenir à jour son planning. Lorsqu'une mission lui aura été affectée, le Prestataire s'engage à la réaliser dans les conditions prévues. En cas de force majeure, il avertira le Client au plus tôt afin qu'une solution de remplacement puisse être trouvée. L'article 13 s'applique en cas de non-présentation à un rendez-vous d'accueil ou de préparation préalablement accepté.</p>
+<div class="art">Article 8 — Exécution et obligations de moyens</div>
+<p>Le Prestataire s'engage à mener à bien les tâches précisées à l'article 1, conformément aux règles de l'art, en autonomie, avec professionnalisme et dans le respect des règles de sécurité. Le Client et les voyageurs pourront évaluer les qualités de propreté et d'accueil. En cas de non-respect du cahier des charges relevé par le voyageur ou le Client, le Prestataire s'engage à retourner au logement afin de corriger sa prestation, sans rémunération supplémentaire. Si l'absence de résultat provient d'une faute du Client, le Prestataire est déchargé de toute responsabilité. Lorsqu'une mission lui a été affectée, le Prestataire s'engage à la réaliser ; en cas de force majeure, il avertit le Client au plus tôt afin qu'une solution de remplacement soit trouvée.</p>
 
-<div class="art">Article 6 — Obligations de moyens</div>
-<p>Pour l'accomplissement des diligences et prestations prévues à l'article 1, le Prestataire s'engage à donner ses meilleurs soins, conformément aux règles de l'art, en autonomie et en respectant les règles de sécurité. En cas de non-respect du cahier des charges relevé par le locataire ou le Client, le Prestataire s'engage à retourner au logement afin de corriger sa prestation, sans prétendre à rémunération. Dans le cas où l'absence de résultat proviendrait d'une faute du Client, le Prestataire sera déchargé de toute responsabilité.</p>
+<div class="art">Article 9 — Clés et codes d'accès</div>
+<p>Les clés, badges et codes d'accès remis au Prestataire le sont <strong>aux seules fins de l'exécution des missions acceptées</strong>. Le Prestataire en assure la garde et la stricte confidentialité : il s'interdit de les dupliquer, de les photographier, de les communiquer ou de les confier à quiconque. Il les restitue immédiatement à la demande du Client et au plus tard à la fin du contrat. <strong>Toute perte ou vol doit être signalé sans délai</strong> ; en cas de négligence, les frais de remplacement des clés et/ou de changement de serrure ou de codes seront à la charge du Prestataire.</p>
 
-<div class="art">Article 7 — Obligation de confidentialité</div>
-<p>Le Prestataire considérera comme strictement confidentiel, et s'interdit de divulguer, toute information, document, donnée ou concept dont il pourra avoir connaissance à l'occasion du présent contrat. Le Prestataire ne saurait toutefois être tenu pour responsable d'aucune divulgation si les éléments divulgués étaient dans le domaine public à la date de la divulgation, ou s'il en avait connaissance, ou les obtenait de tiers par des moyens légitimes.</p>
+<div class="art">Article 10 — Déclaration d'incident</div>
+<p>Tout incident, dégât, dysfonctionnement, anomalie de sécurité ou manquement constaté dans un logement (matériel, propreté, intrusion, sinistre…) doit être <strong>signalé sans délai au Client via le module « Signaler » du Portail AE</strong>, et au plus tard dans un délai de <strong>{{incident_delai}}</strong>, accompagné de photographies lorsque c'est possible. Le Prestataire ne réalise aucune réparation de sa propre initiative sans accord du Client, sauf mesure conservatoire urgente.</p>
 
-<div class="art">Article 8 — Interdiction d'accès et non-sollicitation</div>
-<p>Le Prestataire s'interdira d'accéder aux logements en dehors des périodes d'accueil et de préparation, et seulement sur demande formulée par le Client. Il ne pénétrera jamais dans les logements pour un usage autre que professionnel et ne permettra jamais à quiconque d'y pénétrer sans en avoir reçu l'autorisation du Client. Le manquement à cette obligation pourra s'accompagner d'une plainte auprès des autorités de police et de la résiliation immédiate du présent contrat.</p>
-<p>Par ailleurs, le Prestataire s'engage à ne pas contracter avec les propriétaires clients de la Société pendant toute la durée du partenariat et pendant une période supplémentaire de <strong>{{non_solicit_jours}} jours</strong> en cas de rupture du contrat, à compter de la date effective de fin de contrat.</p>
+<div class="art">Article 11 — Confidentialité et discrétion</div>
+<p>Le Prestataire considère comme strictement confidentiel et s'interdit de divulguer toute information, document ou donnée dont il a connaissance à l'occasion du présent contrat. Il observe une <strong>discrétion absolue à l'égard des propriétaires et des voyageurs</strong> : il respecte leur vie privée, leurs biens, leur identité et la confidentialité des logements, des codes et des séjours. Il s'interdit toute communication d'informations à des tiers, toute publication (notamment sur les réseaux sociaux) et tout contact direct avec les propriétaires en dehors du cadre défini par le Client. Cette obligation survit à la fin du contrat.</p>
 
-<div class="art">Article 9 — Obligation d'image</div>
-<p>Durant la durée du contrat, le Prestataire autorise à titre gracieux le Client à utiliser une photo qu'il aura fournie et à utiliser son image pour communiquer en amont avec les locataires pour les accueils, conformément aux dispositions relatives au droit à l'image et aux droits de la personnalité.</p>
+<div class="art">Article 12 — Interdiction d'accès et non-sollicitation</div>
+<p>Le Prestataire s'interdit d'accéder aux logements en dehors des périodes d'accueil et de préparation, et seulement sur demande du Client. Il ne pénètre jamais dans un logement pour un usage autre que professionnel et ne permet à personne d'y pénétrer sans autorisation. Le manquement à cette obligation pourra entraîner une plainte auprès des autorités et la résiliation immédiate. Par ailleurs, le Prestataire s'engage à ne pas contracter directement avec les propriétaires clients de la Société pendant toute la durée du partenariat et pendant <strong>{{non_solicit_jours}} jours</strong> suivant la fin du contrat.</p>
+
+<div class="art">Article 13 — Obligation d'image</div>
+<p>Durant la durée du contrat, le Prestataire autorise à titre gracieux le Client à utiliser une photo qu'il aura fournie, afin de communiquer en amont avec les voyageurs pour les accueils, conformément aux dispositions relatives au droit à l'image.</p>
 
 <div class="section-title">Obligations du Client</div>
-<div class="art">Article 10 — Obligation d'information</div>
-<p>Le Client s'engage à donner au Prestataire toute information et matériel nécessaires à l'accomplissement de ses missions, et notamment : les informations concernant le logement (accès, composition, fonctionnement), les informations concernant les locataires (nombre, nationalités, coordonnées) et les informations concernant la mission à accomplir (cahier des charges préparation, cahier des charges accueil…).</p>
+<div class="art">Article 14 — Information et collaboration</div>
+<p>Le Client s'engage à fournir au Prestataire toute information et tout matériel nécessaires à l'accomplissement de ses missions : informations sur le logement (accès, composition, fonctionnement), sur les voyageurs (nombre, coordonnées) et sur la mission (cahier des charges préparation et accueil). Il tient à sa disposition, via le Portail AE, les informations utiles à la bonne réalisation des prestations.</p>
 
-<div class="art">Article 11 — Obligation de collaboration</div>
-<p>Le Client tiendra à la disposition du Prestataire toutes les informations pouvant contribuer à la bonne réalisation de l'objet du présent contrat.</p>
+<div class="art">Article 15 — Responsabilités</div>
+<p>Quels que soient les fondements de sa réclamation, la responsabilité éventuelle du Prestataire au titre de l'exécution du présent contrat sera limitée à un montant n'excédant pas la somme totale effectivement payée par le Client pour les prestations concernées, sauf faute manifeste ayant conduit à des dommages matériels pouvant atteindre les immeubles, installations, matériels et mobiliers du Client et des clients propriétaires.</p>
 
-<div class="art">Article 12 — Responsabilités</div>
-<p>Le Client convient que, quels que soient les fondements de sa réclamation et la procédure suivie pour la mettre en œuvre, la responsabilité éventuelle du Prestataire à raison de l'exécution des obligations prévues au présent contrat sera limitée à un montant n'excédant pas la somme totale effectivement payée par le Client pour les services ou tâches fournis par le Prestataire, sauf faute manifeste ayant conduit à des dommages matériels pouvant atteindre les immeubles, installations, matériels et mobiliers du Client et des clients propriétaires.</p>
+<div class="art">Article 16 — Pénalités</div>
+<p>La non-présentation à un rendez-vous de préparation ou d'accueil accepté et non annulé au moins 48 heures à l'avance engendre l'obligation pour le Prestataire de payer au Client la somme de <strong>{{penalite_montant}} €</strong> à titre de pénalité, retenue sur le montant restant dû.</p>
 
-<div class="art">Article 13 — Pénalités</div>
-<p>La non-présentation à un rendez-vous de préparation d'un logement ou d'accueil accepté et non annulé au moins 48 heures avant la date et l'heure de rendez-vous prévu engendrera l'obligation pour le Prestataire de payer au Client la somme de <strong>{{penalite_montant}} €</strong> en pénalités. Ces sommes seraient retenues sur le montant restant dû au Prestataire.</p>
+<div class="art">Article 17 — Résiliation pour faute</div>
+<p>En cas de non-présentation à un rendez-vous accepté, d'insatisfaction manifeste du Client ou des voyageurs, de manquement aux obligations du Prestataire, de défaut d'assurance, de manquement à la confidentialité ou de sous-traitance non autorisée, le Client pourra résilier le présent contrat avec application immédiate.</p>
 
-<div class="art">Article 14 — Résiliation pour faute</div>
-<p>En cas de non-présentation à un rendez-vous de préparation d'un logement ou d'accueil prévu et accepté, d'insatisfaction manifeste du Client ou des locataires, de constatation d'un manquement à ses obligations de la part du Prestataire, ou de sous-traitance non autorisée au préalable, le Client pourra résilier purement et simplement le présent contrat avec application immédiate.</p>
+<div class="art">Article 18 — Résiliation hors faute</div>
+<p>Le présent contrat pourra être résilié à tout instant par chacune des parties, sous réserve d'un préavis de <strong>{{preavis_resiliation}}</strong> notifié par e-mail ou courrier postal simple.</p>
 
-<div class="art">Article 15 — Résiliation hors faute</div>
-<p>Le présent contrat pourra être résilié à tout instant par chacune des parties, sous réserve d'un préavis de <strong>{{preavis_resiliation}}</strong> envoyé par e-mail ou courrier postal simple.</p>
+<div class="art">Article 19 — Non sous-traitance</div>
+<p>Pour des raisons d'organisation, le Prestataire ne pourra pas sous-traiter les missions, sauf accord préalable du Client. Il pourra toutefois introduire auprès du Client de nouveaux prestataires potentiels en vue de leur référencement.</p>
 
-<div class="art">Article 16 — Non sous-traitance</div>
-<p>Pour des raisons d'organisation, le Prestataire ne pourra pas sous-traiter les missions à quiconque, sauf accord préalable du Client. Le Prestataire pourra cependant introduire auprès du Client de nouveaux prestataires potentiels en vue de les référencer.</p>
+<div class="art">Article 20 — Cession</div>
+<p>Le présent contrat est conclu en considération de la personne du Prestataire, qui ne pourra substituer de tiers dans la réalisation des tâches définies.</p>
 
-<div class="art">Article 17 — Cession de contrat</div>
-<p>Le présent contrat est conclu en considération de la personne du Prestataire, qui ne pourra substituer de tiers dans la réalisation de la tâche ci-dessus définie.</p>
+<div class="art">Article 21 — Non-exclusivité et indépendance</div>
+<p>Le Prestataire exerce son activité <strong>en toute indépendance, sans aucun lien de subordination</strong> avec {{agence_nom}}. Il est libre d'accepter ou non les missions proposées et de travailler pour d'autres clients. Il organise librement son temps et ses moyens, et demeure seul responsable de ses obligations sociales, fiscales et déclaratives.</p>
 
-<div class="art">Article 18 — Référencement</div>
-<p>Le Client accepte que le Prestataire puisse faire figurer parmi ses références les missions accomplies dans le cadre du présent contrat.</p>
+<div class="art">Article 22 — Interprétation</div>
+<p>Le présent contrat et ses annexes contiennent l'intégralité des engagements des parties ; les correspondances, offres ou propositions antérieures sont considérées comme non-avenues.</p>
 
-<div class="art">Article 19 — Non-exclusivité et indépendance</div>
-<p>Le Prestataire exerce son activité en toute indépendance, sans aucun lien de subordination avec la société {{agence_nom}}. Il est libre d'accepter ou non les missions proposées et est libre de travailler pour des clients autres que {{agence_nom}}. Le Prestataire est seul responsable de ses obligations sociales, fiscales et déclaratives liées à son statut. {{agence_nom}} pourra mettre fin au contrat de prestation à tout moment, sans préavis autre que celui précisé au présent contrat.</p>
-
-<div class="art">Article 20 — Interprétation du contrat</div>
-<p>Le présent contrat et ses annexes contiennent tous les engagements des parties ; les correspondances, offres ou propositions antérieures à la signature des présentes sont considérées comme non-avenues.</p>
-
-<div class="art">Article 21 — Juridiction compétente</div>
-<p>Tout litige susceptible de s'élever entre les parties, à propos de la formation, de l'exécution ou de l'interprétation du présent contrat, sera de la compétence exclusive du tribunal de commerce de {{agence_ville_tribunal}}.</p>
+<div class="art">Article 23 — Juridiction compétente</div>
+<p>Tout litige relatif à la formation, l'exécution ou l'interprétation du présent contrat relèvera de la compétence exclusive du tribunal de commerce de {{agence_ville_tribunal}}.</p>
 
 <div class="section-title">Collecte des données personnelles</div>
-<p class="small">Les données à caractère personnel du Prestataire, collectées à l'occasion des présentes, font l'objet de traitements nécessaires à l'exécution du contrat et conservées pendant sa durée augmentée des délais légaux. Le Prestataire peut exercer ses droits auprès du Client ou saisir la CNIL (www.cnil.fr). <span class="chk"></span><strong>En signant, le Prestataire l'accepte expressément.</strong></p>
+<p class="small">Les données personnelles du Prestataire, collectées à l'occasion des présentes, font l'objet de traitements nécessaires à l'exécution du contrat, conservées pendant sa durée augmentée des délais légaux. Le Prestataire peut exercer ses droits auprès du Client ou saisir la CNIL (www.cnil.fr). <span class="chk"></span><strong>En signant, le Prestataire l'accepte expressément.</strong></p>
 
 <div class="footer">
   <div class="section-title" style="margin-top:0">Date et signatures</div>
@@ -196,14 +186,15 @@ insert into public.contract_templates (agence,langue,type_contrat,version,nom,co
 </div>
 
 </body></html>
-$aetpl$, '{"defaults":{"penalite_montant":"50","preavis_resiliation":"trois semaines","non_solicit_jours":"365"}}'::jsonb, true),
+$aetpl$, '{"defaults": {"penalite_montant": "50", "preavis_resiliation": "trois semaines", "non_solicit_jours": "365", "delai_paiement": "30 jours", "incident_delai": "24 heures"}}'::jsonb, true),
 ('lauian','fr','prestation_ae','2026-v1','Contrat de prestation AE — Lauïan', $aetpl$<!--
   Template CONTRAT DE PRESTATION DE SERVICE — Auto-entrepreneur (AE) — v1 (2026)
   Source de vérité versionnée — à charger dans contract_templates (type_contrat='prestation_ae').
   Moteur : renderMustache (api/generate-contrat-ae.js) — {{var}}, {{#cond}}…{{/cond}}, {{^cond}}…{{/cond}}.
   Entité variable DCB / Lauïan : {{#est_lauian}}…{{/est_lauian}}.
-  Le PRESTATAIRE = l'auto-entrepreneur (ménage/accueil). Le CLIENT = l'agence (conciergerie).
+  Le PRESTATAIRE = l'auto-entrepreneur. Le CLIENT = l'agence (conciergerie DCB / Lauïan).
   Signé dans le portail AE (connecté). Données : auto_entrepreneur + ae_onboarding.reponses.
+  Vars config : penalite_montant, preavis_resiliation, non_solicit_jours, delai_paiement, incident_delai.
 -->
 <!DOCTYPE html>
 <html lang="fr"><head><meta charset="utf-8">
@@ -226,9 +217,8 @@ $aetpl$, '{"defaults":{"penalite_montant":"50","preavis_resiliation":"trois sema
   .doc-num{display:inline-block;border:1.5px solid #CC9933;border-radius:8px;padding:4px 16px;font-size:11pt;margin-top:6px}
   .doc-num strong{color:#8a6d1f}
   .section-title{font-size:8.5pt;font-weight:700;text-transform:uppercase;letter-spacing:1.5px;color:#CC9933;border-bottom:1.5px solid #E8DCC8;padding-bottom:6px;margin:18px 0 10px}
-  .art{font-weight:700;margin:14px 0 3px;color:#1C1C1C;font-size:11.5px}
+  .art{font-weight:700;margin:13px 0 3px;color:#1C1C1C;font-size:11.5px}
   .sub{font-weight:700;margin:10px 0 2px;color:#1C1C1C}
-  .partie-box{background:#FDFAF5;border:1px solid #E8DCC8;border-left:3px solid #CC9933;border-radius:6px;padding:12px 16px;margin:8px 0}
   .muted{color:#6b6150}.small{font-size:9.5px;color:#8C7B65}
   .box{background:#FDFAF5;border:1px solid #E8DCC8;border-left:3px solid #CC9933;border-radius:6px;padding:10px 14px;margin:10px 0}
   .footer{margin-top:22px;border-top:2px solid #CC9933;padding-top:10px}
@@ -283,91 +273,81 @@ $aetpl$, '{"defaults":{"penalite_montant":"50","preavis_resiliation":"trois sema
 <p><strong>Ci-après dénommée « le Client », d'autre part,</strong></p>
 
 <div class="section-title">Il a été préalablement exposé</div>
-<p>{{agence_nom}} est une agence spécialisée dans la gestion locative d'appartements et de maisons meublés. À ce titre, elle a reçu mandat de la part de ses clients propriétaires afin de gérer leurs logements et d'y accueillir des locataires.</p>
-<p>Dans ce cadre, le Prestataire a souhaité proposer ses services au Client, car il est en mesure de réaliser des prestations de préparation des logements et d'accueil des locataires. Ceci exposé, il a été convenu ce qui suit.</p>
+<p>{{agence_nom}} est une agence spécialisée dans la conciergerie et la gestion locative d'appartements et de maisons meublés sur la Côte Basque. À ce titre, elle a reçu mandat de la part de ses clients propriétaires afin de gérer leurs logements et d'y accueillir des voyageurs. Dans ce cadre, le Prestataire a souhaité proposer ses services au Client, étant en mesure de réaliser des prestations de préparation des logements et d'accueil des voyageurs. Ceci exposé, il a été convenu ce qui suit.</p>
 
 <div class="art">Article 1 — Objet</div>
-<p>Le présent contrat est un contrat de prestation de services ayant pour objet la réalisation de prestations de <strong>préparation des logements</strong> et d'<strong>accueil des locataires</strong> dans des logements meublés gérés par le Client.</p>
-<p><strong>1 — Chaque mission de préparation des logements</strong> consistera à :</p>
-<ul>
-  <li>Récupérer et rapporter dans une agence du Client les éléments nécessaires à la réalisation de la prestation (clés, linge de maison, produits divers…).</li>
-  <li>Remettre les logements en état.</li>
-  <li>Envoyer un compte-rendu au Client afin de remonter différentes informations.</li>
-</ul>
-<p><strong>2 — Chaque mission d'accueil des locataires</strong> consistera à :</p>
-<ul>
-  <li>Vérifier l'état général du logement avant l'arrivée des locataires et prendre les dispositions nécessaires afin que le logement soit fonctionnel.</li>
-  <li>Accueillir les locataires, leur présenter le logement et son fonctionnement, répondre à leurs questions et leur remettre les clés.</li>
-  <li>Envoyer un compte-rendu au Client afin de remonter différentes informations liées à la prestation et au logement.</li>
-</ul>
-<p>Le tout en respectant le cahier des charges du Client, fourni en amont de la signature du présent contrat et mis à jour au besoin. Des missions de préparation pourront aussi être effectuées en cours de séjour, à la demande des locataires, ainsi que des ménages de printemps à la demande du Client.</p>
+<p>Le présent contrat est un contrat de prestation de services ayant pour objet la réalisation de prestations de <strong>préparation des logements</strong> et d'<strong>accueil des voyageurs</strong> dans des logements meublés gérés par le Client, dans le respect du cahier des charges fourni en amont et mis à jour au besoin.</p>
+<p><strong>1 — Préparation des logements :</strong> récupérer et rapporter les éléments nécessaires (clés, linge, produits) ; remettre le logement en état conformément au cahier des charges ; envoyer un compte-rendu via le Portail AE. <strong>2 — Accueil des voyageurs :</strong> vérifier l'état du logement avant l'arrivée ; accueillir les voyageurs, présenter le logement et son fonctionnement, remettre les clés ; envoyer un compte-rendu via le Portail AE. Des missions en cours de séjour ou des ménages de printemps pourront aussi être réalisés à la demande.</p>
 
-<div class="art">Article 2 — Attribution des prestations et prix</div>
-<p>Pour obtenir de nouvelles prestations, le Prestataire se connectera à une interface conçue par le Client (le portail prestataire), sur laquelle il pourra choisir les missions qui l'intéressent. Pour chaque prestation, le Client indiquera la date, l'heure (ou à défaut une tranche horaire), un lieu, un descriptif ainsi qu'un prix associé. Le Prestataire sera libre de choisir les missions qui l'intéressent en fonction de ces éléments.</p>
-<p>Pour chaque mission, le prix proposé au Prestataire pourra varier en fonction de la date et de l'heure de la mission, du nombre de prestataires disponibles et de la qualité du logement. Le Client pourra modifier les éléments pris en compte à tout moment afin d'améliorer son système d'attribution.</p>
-<p>Les éventuels frais annexes nécessaires à l'exécution de la prestation et validés au préalable par le Client seront facturés en sus, sur relevé de dépenses. Les sommes dues au titre des prestations seront réglées par virement bancaire.</p>
+<div class="art">Article 2 — Portail AE : outil officiel de mission</div>
+<p>Le <strong>Portail AE {{agence_nom}}</strong> (application en ligne mise à disposition par le Client) constitue <strong>l'outil officiel unique</strong> de la relation : proposition et acceptation des missions, planning, comptes-rendus, photos, signalements d'incidents, prestations hors forfait et récapitulatifs de facturation y transitent. Le Prestataire s'engage à le consulter régulièrement, à y tenir son planning à jour et à y renseigner les comptes-rendus de chaque mission. Toute mission est réputée n'avoir été ni proposée ni acceptée en dehors du Portail.</p>
 
-<div class="art">Article 3 — Durée</div>
+<div class="art">Article 3 — Attribution des missions et prix</div>
+<p>Pour obtenir de nouvelles prestations, le Prestataire se connecte au Portail AE, sur lequel il choisit librement les missions qui l'intéressent. Pour chaque mission, le Client indique la date, l'heure (ou une tranche horaire), le lieu, un descriptif et un prix associé. Le prix peut varier selon la date et l'heure, le nombre de prestataires disponibles et les caractéristiques du logement. Le Client pourra faire évoluer ces éléments afin d'améliorer son système d'attribution.</p>
+
+<div class="art">Article 4 — Prestations hors forfait</div>
+<p>Outre les missions standard, des <strong>prestations hors forfait</strong> (ménage de printemps, gestion du linge, attente prolongée, intervention exceptionnelle, petit dépannage, etc.) peuvent être réalisées. Elles doivent être <strong>préalablement validées par le Client</strong> et sont saisies par le Prestataire dans le module « prestations hors forfait » du Portail AE, au tarif convenu. Toute prestation hors forfait non validée au préalable ne pourra donner lieu à rémunération.</p>
+
+<div class="art">Article 5 — Facturation et paiement</div>
+<p>La facturation est <strong>mensuelle</strong>. À la fin de chaque mois, le Prestataire établit une facture récapitulant l'ensemble des missions et prestations hors forfait <strong>validées</strong> au cours du mois écoulé, le Portail AE mettant à sa disposition le récapitulatif correspondant. Le règlement est effectué par <strong>virement bancaire</strong> sous <strong>{{delai_paiement}}</strong> à compter de la réception de la facture. Les éventuels frais annexes nécessaires à l'exécution d'une prestation, validés au préalable, sont facturés en sus sur relevé de dépenses. Le Prestataire fait son affaire personnelle de ses obligations sociales, fiscales et déclaratives.</p>
+
+<div class="art">Article 6 — Durée</div>
 <p>Le présent contrat est conclu pour une durée indéterminée, à compter de sa signature.</p>
 
-<div class="art">Article 4 — Exécution de la prestation</div>
-<p>Le Prestataire s'engage à mener à bien la tâche précisée à l'article 1. Le Client et les locataires pourront être amenés à évaluer les qualités de propreté et d'accueil. Le Prestataire effectuera ses missions avec professionnalisme.</p>
+<div class="art">Article 7 — Assurance responsabilité civile professionnelle (obligatoire)</div>
+<p>Le Prestataire <strong>doit justifier, préalablement à toute mission et pendant toute la durée du contrat, d'une assurance responsabilité civile professionnelle en cours de validité</strong> couvrant les dommages susceptibles d'être causés dans le cadre de ses prestations. Il en remet l'attestation au Client, s'engage à la maintenir et à l'informer sans délai de toute modification, suspension ou résiliation. <strong>L'absence d'assurance valide suspend de plein droit le droit du Prestataire à se voir confier des missions.</strong></p>
 
-<div class="art">Article 5 — Calendrier — délais</div>
-<p>Les missions pourront être proposées très en avance ou le jour même. Dans tous les cas, il appartiendra au Prestataire d'accepter ou non une mission et de tenir à jour son planning. Lorsqu'une mission lui aura été affectée, le Prestataire s'engage à la réaliser dans les conditions prévues. En cas de force majeure, il avertira le Client au plus tôt afin qu'une solution de remplacement puisse être trouvée. L'article 13 s'applique en cas de non-présentation à un rendez-vous d'accueil ou de préparation préalablement accepté.</p>
+<div class="art">Article 8 — Exécution et obligations de moyens</div>
+<p>Le Prestataire s'engage à mener à bien les tâches précisées à l'article 1, conformément aux règles de l'art, en autonomie, avec professionnalisme et dans le respect des règles de sécurité. Le Client et les voyageurs pourront évaluer les qualités de propreté et d'accueil. En cas de non-respect du cahier des charges relevé par le voyageur ou le Client, le Prestataire s'engage à retourner au logement afin de corriger sa prestation, sans rémunération supplémentaire. Si l'absence de résultat provient d'une faute du Client, le Prestataire est déchargé de toute responsabilité. Lorsqu'une mission lui a été affectée, le Prestataire s'engage à la réaliser ; en cas de force majeure, il avertit le Client au plus tôt afin qu'une solution de remplacement soit trouvée.</p>
 
-<div class="art">Article 6 — Obligations de moyens</div>
-<p>Pour l'accomplissement des diligences et prestations prévues à l'article 1, le Prestataire s'engage à donner ses meilleurs soins, conformément aux règles de l'art, en autonomie et en respectant les règles de sécurité. En cas de non-respect du cahier des charges relevé par le locataire ou le Client, le Prestataire s'engage à retourner au logement afin de corriger sa prestation, sans prétendre à rémunération. Dans le cas où l'absence de résultat proviendrait d'une faute du Client, le Prestataire sera déchargé de toute responsabilité.</p>
+<div class="art">Article 9 — Clés et codes d'accès</div>
+<p>Les clés, badges et codes d'accès remis au Prestataire le sont <strong>aux seules fins de l'exécution des missions acceptées</strong>. Le Prestataire en assure la garde et la stricte confidentialité : il s'interdit de les dupliquer, de les photographier, de les communiquer ou de les confier à quiconque. Il les restitue immédiatement à la demande du Client et au plus tard à la fin du contrat. <strong>Toute perte ou vol doit être signalé sans délai</strong> ; en cas de négligence, les frais de remplacement des clés et/ou de changement de serrure ou de codes seront à la charge du Prestataire.</p>
 
-<div class="art">Article 7 — Obligation de confidentialité</div>
-<p>Le Prestataire considérera comme strictement confidentiel, et s'interdit de divulguer, toute information, document, donnée ou concept dont il pourra avoir connaissance à l'occasion du présent contrat. Le Prestataire ne saurait toutefois être tenu pour responsable d'aucune divulgation si les éléments divulgués étaient dans le domaine public à la date de la divulgation, ou s'il en avait connaissance, ou les obtenait de tiers par des moyens légitimes.</p>
+<div class="art">Article 10 — Déclaration d'incident</div>
+<p>Tout incident, dégât, dysfonctionnement, anomalie de sécurité ou manquement constaté dans un logement (matériel, propreté, intrusion, sinistre…) doit être <strong>signalé sans délai au Client via le module « Signaler » du Portail AE</strong>, et au plus tard dans un délai de <strong>{{incident_delai}}</strong>, accompagné de photographies lorsque c'est possible. Le Prestataire ne réalise aucune réparation de sa propre initiative sans accord du Client, sauf mesure conservatoire urgente.</p>
 
-<div class="art">Article 8 — Interdiction d'accès et non-sollicitation</div>
-<p>Le Prestataire s'interdira d'accéder aux logements en dehors des périodes d'accueil et de préparation, et seulement sur demande formulée par le Client. Il ne pénétrera jamais dans les logements pour un usage autre que professionnel et ne permettra jamais à quiconque d'y pénétrer sans en avoir reçu l'autorisation du Client. Le manquement à cette obligation pourra s'accompagner d'une plainte auprès des autorités de police et de la résiliation immédiate du présent contrat.</p>
-<p>Par ailleurs, le Prestataire s'engage à ne pas contracter avec les propriétaires clients de la Société pendant toute la durée du partenariat et pendant une période supplémentaire de <strong>{{non_solicit_jours}} jours</strong> en cas de rupture du contrat, à compter de la date effective de fin de contrat.</p>
+<div class="art">Article 11 — Confidentialité et discrétion</div>
+<p>Le Prestataire considère comme strictement confidentiel et s'interdit de divulguer toute information, document ou donnée dont il a connaissance à l'occasion du présent contrat. Il observe une <strong>discrétion absolue à l'égard des propriétaires et des voyageurs</strong> : il respecte leur vie privée, leurs biens, leur identité et la confidentialité des logements, des codes et des séjours. Il s'interdit toute communication d'informations à des tiers, toute publication (notamment sur les réseaux sociaux) et tout contact direct avec les propriétaires en dehors du cadre défini par le Client. Cette obligation survit à la fin du contrat.</p>
 
-<div class="art">Article 9 — Obligation d'image</div>
-<p>Durant la durée du contrat, le Prestataire autorise à titre gracieux le Client à utiliser une photo qu'il aura fournie et à utiliser son image pour communiquer en amont avec les locataires pour les accueils, conformément aux dispositions relatives au droit à l'image et aux droits de la personnalité.</p>
+<div class="art">Article 12 — Interdiction d'accès et non-sollicitation</div>
+<p>Le Prestataire s'interdit d'accéder aux logements en dehors des périodes d'accueil et de préparation, et seulement sur demande du Client. Il ne pénètre jamais dans un logement pour un usage autre que professionnel et ne permet à personne d'y pénétrer sans autorisation. Le manquement à cette obligation pourra entraîner une plainte auprès des autorités et la résiliation immédiate. Par ailleurs, le Prestataire s'engage à ne pas contracter directement avec les propriétaires clients de la Société pendant toute la durée du partenariat et pendant <strong>{{non_solicit_jours}} jours</strong> suivant la fin du contrat.</p>
+
+<div class="art">Article 13 — Obligation d'image</div>
+<p>Durant la durée du contrat, le Prestataire autorise à titre gracieux le Client à utiliser une photo qu'il aura fournie, afin de communiquer en amont avec les voyageurs pour les accueils, conformément aux dispositions relatives au droit à l'image.</p>
 
 <div class="section-title">Obligations du Client</div>
-<div class="art">Article 10 — Obligation d'information</div>
-<p>Le Client s'engage à donner au Prestataire toute information et matériel nécessaires à l'accomplissement de ses missions, et notamment : les informations concernant le logement (accès, composition, fonctionnement), les informations concernant les locataires (nombre, nationalités, coordonnées) et les informations concernant la mission à accomplir (cahier des charges préparation, cahier des charges accueil…).</p>
+<div class="art">Article 14 — Information et collaboration</div>
+<p>Le Client s'engage à fournir au Prestataire toute information et tout matériel nécessaires à l'accomplissement de ses missions : informations sur le logement (accès, composition, fonctionnement), sur les voyageurs (nombre, coordonnées) et sur la mission (cahier des charges préparation et accueil). Il tient à sa disposition, via le Portail AE, les informations utiles à la bonne réalisation des prestations.</p>
 
-<div class="art">Article 11 — Obligation de collaboration</div>
-<p>Le Client tiendra à la disposition du Prestataire toutes les informations pouvant contribuer à la bonne réalisation de l'objet du présent contrat.</p>
+<div class="art">Article 15 — Responsabilités</div>
+<p>Quels que soient les fondements de sa réclamation, la responsabilité éventuelle du Prestataire au titre de l'exécution du présent contrat sera limitée à un montant n'excédant pas la somme totale effectivement payée par le Client pour les prestations concernées, sauf faute manifeste ayant conduit à des dommages matériels pouvant atteindre les immeubles, installations, matériels et mobiliers du Client et des clients propriétaires.</p>
 
-<div class="art">Article 12 — Responsabilités</div>
-<p>Le Client convient que, quels que soient les fondements de sa réclamation et la procédure suivie pour la mettre en œuvre, la responsabilité éventuelle du Prestataire à raison de l'exécution des obligations prévues au présent contrat sera limitée à un montant n'excédant pas la somme totale effectivement payée par le Client pour les services ou tâches fournis par le Prestataire, sauf faute manifeste ayant conduit à des dommages matériels pouvant atteindre les immeubles, installations, matériels et mobiliers du Client et des clients propriétaires.</p>
+<div class="art">Article 16 — Pénalités</div>
+<p>La non-présentation à un rendez-vous de préparation ou d'accueil accepté et non annulé au moins 48 heures à l'avance engendre l'obligation pour le Prestataire de payer au Client la somme de <strong>{{penalite_montant}} €</strong> à titre de pénalité, retenue sur le montant restant dû.</p>
 
-<div class="art">Article 13 — Pénalités</div>
-<p>La non-présentation à un rendez-vous de préparation d'un logement ou d'accueil accepté et non annulé au moins 48 heures avant la date et l'heure de rendez-vous prévu engendrera l'obligation pour le Prestataire de payer au Client la somme de <strong>{{penalite_montant}} €</strong> en pénalités. Ces sommes seraient retenues sur le montant restant dû au Prestataire.</p>
+<div class="art">Article 17 — Résiliation pour faute</div>
+<p>En cas de non-présentation à un rendez-vous accepté, d'insatisfaction manifeste du Client ou des voyageurs, de manquement aux obligations du Prestataire, de défaut d'assurance, de manquement à la confidentialité ou de sous-traitance non autorisée, le Client pourra résilier le présent contrat avec application immédiate.</p>
 
-<div class="art">Article 14 — Résiliation pour faute</div>
-<p>En cas de non-présentation à un rendez-vous de préparation d'un logement ou d'accueil prévu et accepté, d'insatisfaction manifeste du Client ou des locataires, de constatation d'un manquement à ses obligations de la part du Prestataire, ou de sous-traitance non autorisée au préalable, le Client pourra résilier purement et simplement le présent contrat avec application immédiate.</p>
+<div class="art">Article 18 — Résiliation hors faute</div>
+<p>Le présent contrat pourra être résilié à tout instant par chacune des parties, sous réserve d'un préavis de <strong>{{preavis_resiliation}}</strong> notifié par e-mail ou courrier postal simple.</p>
 
-<div class="art">Article 15 — Résiliation hors faute</div>
-<p>Le présent contrat pourra être résilié à tout instant par chacune des parties, sous réserve d'un préavis de <strong>{{preavis_resiliation}}</strong> envoyé par e-mail ou courrier postal simple.</p>
+<div class="art">Article 19 — Non sous-traitance</div>
+<p>Pour des raisons d'organisation, le Prestataire ne pourra pas sous-traiter les missions, sauf accord préalable du Client. Il pourra toutefois introduire auprès du Client de nouveaux prestataires potentiels en vue de leur référencement.</p>
 
-<div class="art">Article 16 — Non sous-traitance</div>
-<p>Pour des raisons d'organisation, le Prestataire ne pourra pas sous-traiter les missions à quiconque, sauf accord préalable du Client. Le Prestataire pourra cependant introduire auprès du Client de nouveaux prestataires potentiels en vue de les référencer.</p>
+<div class="art">Article 20 — Cession</div>
+<p>Le présent contrat est conclu en considération de la personne du Prestataire, qui ne pourra substituer de tiers dans la réalisation des tâches définies.</p>
 
-<div class="art">Article 17 — Cession de contrat</div>
-<p>Le présent contrat est conclu en considération de la personne du Prestataire, qui ne pourra substituer de tiers dans la réalisation de la tâche ci-dessus définie.</p>
+<div class="art">Article 21 — Non-exclusivité et indépendance</div>
+<p>Le Prestataire exerce son activité <strong>en toute indépendance, sans aucun lien de subordination</strong> avec {{agence_nom}}. Il est libre d'accepter ou non les missions proposées et de travailler pour d'autres clients. Il organise librement son temps et ses moyens, et demeure seul responsable de ses obligations sociales, fiscales et déclaratives.</p>
 
-<div class="art">Article 18 — Référencement</div>
-<p>Le Client accepte que le Prestataire puisse faire figurer parmi ses références les missions accomplies dans le cadre du présent contrat.</p>
+<div class="art">Article 22 — Interprétation</div>
+<p>Le présent contrat et ses annexes contiennent l'intégralité des engagements des parties ; les correspondances, offres ou propositions antérieures sont considérées comme non-avenues.</p>
 
-<div class="art">Article 19 — Non-exclusivité et indépendance</div>
-<p>Le Prestataire exerce son activité en toute indépendance, sans aucun lien de subordination avec la société {{agence_nom}}. Il est libre d'accepter ou non les missions proposées et est libre de travailler pour des clients autres que {{agence_nom}}. Le Prestataire est seul responsable de ses obligations sociales, fiscales et déclaratives liées à son statut. {{agence_nom}} pourra mettre fin au contrat de prestation à tout moment, sans préavis autre que celui précisé au présent contrat.</p>
-
-<div class="art">Article 20 — Interprétation du contrat</div>
-<p>Le présent contrat et ses annexes contiennent tous les engagements des parties ; les correspondances, offres ou propositions antérieures à la signature des présentes sont considérées comme non-avenues.</p>
-
-<div class="art">Article 21 — Juridiction compétente</div>
-<p>Tout litige susceptible de s'élever entre les parties, à propos de la formation, de l'exécution ou de l'interprétation du présent contrat, sera de la compétence exclusive du tribunal de commerce de {{agence_ville_tribunal}}.</p>
+<div class="art">Article 23 — Juridiction compétente</div>
+<p>Tout litige relatif à la formation, l'exécution ou l'interprétation du présent contrat relèvera de la compétence exclusive du tribunal de commerce de {{agence_ville_tribunal}}.</p>
 
 <div class="section-title">Collecte des données personnelles</div>
-<p class="small">Les données à caractère personnel du Prestataire, collectées à l'occasion des présentes, font l'objet de traitements nécessaires à l'exécution du contrat et conservées pendant sa durée augmentée des délais légaux. Le Prestataire peut exercer ses droits auprès du Client ou saisir la CNIL (www.cnil.fr). <span class="chk"></span><strong>En signant, le Prestataire l'accepte expressément.</strong></p>
+<p class="small">Les données personnelles du Prestataire, collectées à l'occasion des présentes, font l'objet de traitements nécessaires à l'exécution du contrat, conservées pendant sa durée augmentée des délais légaux. Le Prestataire peut exercer ses droits auprès du Client ou saisir la CNIL (www.cnil.fr). <span class="chk"></span><strong>En signant, le Prestataire l'accepte expressément.</strong></p>
 
 <div class="footer">
   <div class="section-title" style="margin-top:0">Date et signatures</div>
@@ -391,4 +371,4 @@ $aetpl$, '{"defaults":{"penalite_montant":"50","preavis_resiliation":"trois sema
 </div>
 
 </body></html>
-$aetpl$, '{"defaults":{"penalite_montant":"50","preavis_resiliation":"trois semaines","non_solicit_jours":"365"}}'::jsonb, true);
+$aetpl$, '{"defaults": {"penalite_montant": "50", "preavis_resiliation": "trois semaines", "non_solicit_jours": "365", "delai_paiement": "30 jours", "incident_delai": "24 heures"}}'::jsonb, true);
