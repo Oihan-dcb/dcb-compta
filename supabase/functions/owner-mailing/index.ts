@@ -25,9 +25,15 @@ Deno.serve(async (req) => {
     const admin = createClient(Deno.env.get('SUPABASE_URL') ?? '', SERVICE_KEY)
     if (token !== SERVICE_KEY) {
       const { data: { user: caller } } = await admin.auth.getUser(token)
-      if (!caller) return json({ error: 'Token invalide' }, 401)
-      const allowed = (Deno.env.get('ALLOWED_STAFF_EMAILS') ?? '').split(',').map(e => e.trim().toLowerCase()).filter(Boolean)
-      if (allowed.length && !allowed.includes(caller.email?.toLowerCase() ?? '')) return json({ error: 'Accès refusé' }, 403)
+      if (caller) {
+        const allowed = (Deno.env.get('ALLOWED_STAFF_EMAILS') ?? '').split(',').map(e => e.trim().toLowerCase()).filter(Boolean)
+        if (allowed.length && !allowed.includes(caller.email?.toLowerCase() ?? '')) return json({ error: 'Accès refusé' }, 403)
+      } else {
+        // pas un JWT utilisateur — autoriser uniquement un JWT service_role (envois système/auto)
+        let role = ''
+        try { role = JSON.parse(atob(token.split('.')[1] ?? '')).role } catch { /* token non décodable */ }
+        if (role !== 'service_role') return json({ error: 'Token invalide' }, 401)
+      }
     }
 
     const { subject, body, recipients, from_name, reply_to, campaign } = await req.json()
@@ -45,8 +51,10 @@ Deno.serve(async (req) => {
     const replyTo = reply_to || FROM_ADDR
     const camp = (campaign || ('pub-' + new Date().toISOString().slice(0, 16))).toString()
 
+    const portNum = Number(PORT)
+    // 465 = TLS implicite (smtps) ; 587/25 = connexion claire puis STARTTLS (OVH Exchange = 587).
     const client = new SMTPClient({
-      connection: { hostname: HOST, port: Number(PORT), tls: true, auth: { username: USER, password: PASS } },
+      connection: { hostname: HOST, port: portNum, tls: portNum === 465, auth: { username: USER, password: PASS } },
     })
 
     const merge = (s: string, r: any) => String(s ?? '')
