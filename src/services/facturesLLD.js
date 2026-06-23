@@ -1,5 +1,6 @@
 import { supabase } from '../lib/supabase'
 import { AGENCE } from '../lib/agence'
+import { montantTotalEtudiant } from './locationsLongues'
 
 const TVA_RATE = 0.20
 
@@ -23,7 +24,7 @@ export async function genererFacturesLLD(mois, agence = AGENCE) {
   //    (qui peut être obsolète/erroné — ex. ERREGINA pointait Waldau au lieu de Nicolle).
   const { data: loyers, error } = await supabase
     .from('loyer_suivi')
-    .select('id, statut, montant_recu, montant_attendu, etudiant (id, nom, prenom, bien_id, taux_commission, bien:bien_id(proprietaire_id, skip_facturation))')
+    .select('id, statut, montant_recu, montant_attendu, etudiant (id, nom, prenom, bien_id, taux_commission, loyer_nu, supplement_loyer, charges_eau, charges_copro, charges_internet, date_entree, date_sortie_reelle, date_sortie_prevue, bien:bien_id(proprietaire_id, skip_facturation))')
     .eq('agence', agence)
     .eq('mois', mois)
     .in('statut', ['recu', 'attendu', 'en_retard'])
@@ -53,8 +54,12 @@ export async function genererFacturesLLD(mois, agence = AGENCE) {
         const e = l.etudiant
         const recu = l.statut === 'recu'
         if (!recu) bloqueTreso = true
-        // Reçu → réel encaissé ; sinon → attendu (proratisé Phase 1) pour visibilité
-        const base = recu ? (l.montant_recu ?? l.montant_attendu ?? 0) : (l.montant_attendu ?? 0)
+        // Reçu → réel encaissé ; sinon → attendu (proratisé Phase 1) pour visibilité.
+        // Fallback si montant_attendu non persisté (mois pas réinitialisé) : on RECALCULE
+        // le CC proratisé du mois (montantTotalEtudiant) plutôt que de produire 0 silencieux.
+        const base = recu
+          ? (l.montant_recu ?? l.montant_attendu ?? montantTotalEtudiant(e, mois))
+          : (l.montant_attendu ?? montantTotalEtudiant(e, mois))
         const taux = e.taux_commission != null ? Number(e.taux_commission) : 0.10
         const honTTC = Math.round(base * taux)
         if (honTTC <= 0) continue
