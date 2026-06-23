@@ -20,18 +20,21 @@ export async function genererFacturesLLD(mois, agence = AGENCE) {
   //    (qui peut être obsolète/erroné — ex. ERREGINA pointait Waldau au lieu de Nicolle).
   const { data: loyers, error } = await supabase
     .from('loyer_suivi')
-    .select('id, montant_recu, montant_attendu, etudiant (id, nom, prenom, bien_id, taux_commission, bien:bien_id(proprietaire_id))')
+    .select('id, montant_recu, montant_attendu, etudiant (id, nom, prenom, bien_id, taux_commission, bien:bien_id(proprietaire_id, skip_facturation))')
     .eq('agence', agence)
     .eq('mois', mois)
     .eq('statut', 'recu')
   if (error) throw error
 
-  // 2. Regrouper par bien (proprio = proprio du bien ; ignore les loyers sans bien/proprio)
+  // 2. Regrouper par bien (proprio = proprio du bien ; ignore les loyers sans bien/proprio).
+  //    skip_facturation : biens persos du gérant (ex. LAGREOU/ASKIDA, Oïhan) → pas d'honoraires
+  //    (pas de commission sur ses propres biens), comme le saisonnier.
   const parBien = new Map()
   for (const l of (loyers || [])) {
     const e = l.etudiant
     const proprietaireId = e?.bien?.proprietaire_id
     if (!e || !e.bien_id || !proprietaireId) continue
+    if (e.bien?.skip_facturation) continue
     if (!parBien.has(e.bien_id)) parBien.set(e.bien_id, { bien_id: e.bien_id, proprietaire_id: proprietaireId, loyers: [] })
     parBien.get(e.bien_id).loyers.push(l)
   }
