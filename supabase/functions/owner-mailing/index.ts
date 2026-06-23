@@ -21,11 +21,14 @@ Deno.serve(async (req) => {
   try {
     const token = (req.headers.get('Authorization') ?? '').replace(/^Bearer\s+/i, '').trim()
     if (!token) return json({ error: 'Non authentifié' }, 401)
-    const admin = createClient(Deno.env.get('SUPABASE_URL') ?? '', Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? '')
-    const { data: { user: caller } } = await admin.auth.getUser(token)
-    if (!caller) return json({ error: 'Token invalide' }, 401)
-    const allowed = (Deno.env.get('ALLOWED_STAFF_EMAILS') ?? '').split(',').map(e => e.trim().toLowerCase()).filter(Boolean)
-    if (allowed.length && !allowed.includes(caller.email?.toLowerCase() ?? '')) return json({ error: 'Accès refusé' }, 403)
+    const SERVICE_KEY = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? ''
+    const admin = createClient(Deno.env.get('SUPABASE_URL') ?? '', SERVICE_KEY)
+    if (token !== SERVICE_KEY) {
+      const { data: { user: caller } } = await admin.auth.getUser(token)
+      if (!caller) return json({ error: 'Token invalide' }, 401)
+      const allowed = (Deno.env.get('ALLOWED_STAFF_EMAILS') ?? '').split(',').map(e => e.trim().toLowerCase()).filter(Boolean)
+      if (allowed.length && !allowed.includes(caller.email?.toLowerCase() ?? '')) return json({ error: 'Accès refusé' }, 403)
+    }
 
     const { subject, body, recipients, from_name, reply_to, campaign } = await req.json()
     if (!subject || !body || !Array.isArray(recipients) || recipients.length === 0) {
