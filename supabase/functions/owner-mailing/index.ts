@@ -40,12 +40,15 @@ Deno.serve(async (req) => {
     const merge = (s: string, r: any) => String(s ?? '')
       .replaceAll('{{prenom}}', r.prenom ?? '').replaceAll('{{nom}}', r.nom ?? '').replaceAll('{{bien}}', r.bien ?? '')
 
-    // Corps : texte saisi → HTML simple (sobre = perso, moins "marketing"/spam)
+    // Corps : texte saisi → HTML simple (sobre = perso, moins "marketing"/spam) + signature.
+    const SIG_URL = 'https://omuncchvypbtxkpalwcr.supabase.co/storage/v1/object/public/rapport-assets/email/signature-oihan.png'
     const wrap = (txtHtml: string) =>
       `<!DOCTYPE html><html lang="fr"><head><meta charset="UTF-8"></head>
 <body style="margin:0;background:#ffffff;font-family:-apple-system,Segoe UI,Arial,sans-serif">
-<div style="max-width:560px;margin:0 auto;padding:24px 20px;font-size:15px;line-height:1.7;color:#2C2416">${txtHtml}</div>
-</body></html>`
+<div style="max-width:560px;margin:0 auto;padding:24px 20px;font-size:15px;line-height:1.7;color:#2C2416">
+${txtHtml}
+<div style="margin-top:24px"><img src="${SIG_URL}" alt="Oïhan — Destination Côte Basque" width="360" style="max-width:360px;width:100%;height:auto;display:block"/></div>
+</div></body></html>`
 
     const results: any[] = []
     for (const r of recipients) {
