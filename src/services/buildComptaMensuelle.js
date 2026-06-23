@@ -604,6 +604,41 @@ export async function buildComptaMensuelle(mois, bienIds = null) {
     }
   }
 
+  // Honoraires LLD (locations longue durée) — sous-catégorie dédiée.
+  // Lignes hors totaux DCB saisonnier (comme Lauian) : HON = commission LLD,
+  // reversement = loyer net reversé au proprio (montant_reversement).
+  let lldTotal = { hon_ht: 0, hon_tva: 0, hon_ttc: 0, reversement: 0 }
+  {
+    const { data: lldFacts } = await supabase
+      .from('facture_evoliz')
+      .select('id, bien_id, proprietaire_id, total_ht, total_tva, total_ttc, montant_reversement, statut, bien:bien_id(code, hospitable_name), proprietaire:proprietaire_id(nom, prenom)')
+      .eq('mois', mois)
+      .eq('agence', AGENCE)
+      .eq('type_facture', 'lld')
+    for (const f of (lldFacts || [])) {
+      lldTotal.hon_ht  += f.total_ht  || 0
+      lldTotal.hon_tva += f.total_tva || 0
+      lldTotal.hon_ttc += f.total_ttc || 0
+      lldTotal.reversement += f.montant_reversement || 0
+      const pNom = f.proprietaire ? `${f.proprietaire.nom}${f.proprietaire.prenom ? ' ' + f.proprietaire.prenom : ''}` : null
+      rows.push({
+        bien_id: f.bien_id, bien_code: f.bien?.code || null, bien_nom: f.bien?.hospitable_name || null,
+        proprietaire_id: f.proprietaire_id, proprietaire_nom: pNom,
+        is_lld: true,
+        nb_resas: 0, nb_rapprochees: 0, nb_non_rapprochees: 0, nb_non_ventilees: 0,
+        hon_ht: f.total_ht || 0, hon_tva: f.total_tva || 0, hon_ttc: f.total_ttc || 0,
+        fmen_ht: 0, fmen_tva: 0, fmen_ttc: 0,
+        auto_ht: 0, loy_ht: 0, taxe_ht: 0, com_ht: 0, com_tva: 0, com_ttc: 0,
+        frais_loy: 0, frais_direct: 0, prest_deduct: 0, debours_prop: 0,
+        owner_stay_absorb: 0, auto_absorbable: 0, remboursements: 0,
+        reversement_calcule: f.montant_reversement || 0, groupe_facturation: null,
+        facture_id: f.id, facture_statut: f.statut, facture_montant_reversement: f.montant_reversement ?? null,
+        ecart_reversement_proprio: null, reversement_fait_at: null,
+        alert_count: 0, alert_level: null, alert_codes: [], alerts: [],
+      })
+    }
+  }
+
   return {
     mois,
     rows,
@@ -611,6 +646,7 @@ export async function buildComptaMensuelle(mois, bienIds = null) {
     alerts,
     fraisStripe,
     lauianFmenTotal,
+    lldTotal,
     metadata: {
       generated_at:       new Date().toISOString(),
       nb_biens:           biens.length,
@@ -703,8 +739,8 @@ export function exportComptaCSV(data, bienActif = {}) {
       const rowActif = isActif(r.bien_id)
       const faitStr = r.reversement_fait_at ? (() => { const d = new Date(r.reversement_fait_at); return `OUI — ${d.toLocaleDateString('fr-FR', { day: '2-digit', month: '2-digit' })} ${d.toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' })}h` })() : ''
       csvRows.push([
-        r.is_lauian_client ? `${r.bien_code} [FMEN Lauian]` : r.bien_code,
-        r.is_lauian_client ? `${r.bien_nom || ''} (client Lauian)` : r.bien_nom,
+        r.is_lauian_client ? `${r.bien_code} [FMEN Lauian]` : r.is_lld ? `${r.bien_code} [LLD]` : r.bien_code,
+        r.is_lauian_client ? `${r.bien_nom || ''} (client Lauian)` : r.is_lld ? `${r.bien_nom || ''} (LLD)` : r.bien_nom,
         r.proprietaire_nom,
         masked(r.nb_resas, rowActif), masked(r.nb_rapprochees, rowActif), masked(r.nb_non_rapprochees, rowActif), masked(r.nb_non_ventilees, rowActif),
         masked(fmt(r.hon_ht), rowActif), masked(fmt(r.hon_tva), rowActif), masked(fmt(r.hon_ttc), rowActif),
@@ -720,8 +756,9 @@ export function exportComptaCSV(data, bienActif = {}) {
   const rows = csvRows
   // Lignes totaux (3 lignes : DCB / FMEN Lauian / Global)
   const actifRows    = data.rows.filter(r => isActif(r.bien_id))
-  const actifDCB     = actifRows.filter(r => !r.is_lauian_client)
+  const actifDCB     = actifRows.filter(r => !r.is_lauian_client && !r.is_lld)
   const actifLau     = actifRows.filter(r =>  r.is_lauian_client)
+  const actifLld     = actifRows.filter(r =>  r.is_lld)
   const asum  = (arr, k) => arr.reduce((s, r) => s + (r[k] || 0), 0)
 
   // Total DCB
@@ -734,6 +771,17 @@ export function exportComptaCSV(data, bienActif = {}) {
     fmt(asum(actifDCB, 'loy_ht')), fmt(asum(actifDCB, 'frais_loy')), fmt(asum(actifDCB, 'taxe_ht')), fmt(asum(actifDCB, 'reversement_calcule')), '',
     '', '', '', '',
   ])
+  // Total Honoraires LLD (uniquement si des lignes LLD existent)
+  if (actifLld.length > 0) {
+    rows.push([
+      'TOTAL LLD', '', '',
+      '', '', '', '',
+      fmt(asum(actifLld, 'hon_ht')), fmt(asum(actifLld, 'hon_tva')), fmt(asum(actifLld, 'hon_ttc')),
+      '', '', '',
+      '', '', '', '', '', '', fmt(asum(actifLld, 'reversement_calcule')), '',
+      '', '', '', '',
+    ])
+  }
   // Total FMEN Lauian (uniquement si des lignes Lauian existent)
   if (actifLau.length > 0) {
     rows.push([
@@ -744,7 +792,9 @@ export function exportComptaCSV(data, bienActif = {}) {
       '', '', '', '', '', '', '', '',
       '', '', '', '',
     ])
-    // Total Global
+  }
+  // Total Global (dès qu'il y a du Lauian ou du LLD en plus du DCB)
+  if (actifLau.length > 0 || actifLld.length > 0) {
     rows.push([
       'TOTAL GLOBAL', '', '',
       asum(actifRows, 'nb_resas'), asum(actifRows, 'nb_rapprochees'), asum(actifRows, 'nb_non_rapprochees'), asum(actifRows, 'nb_non_ventilees'),

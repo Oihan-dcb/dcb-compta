@@ -381,7 +381,7 @@ export default function PageComptabilite() {
       {/* Cartes stats */}
       {data && (() => {
         const actRows = data.rows.filter(r => bienActif[r.bien_id] !== false)
-        const asum = k => actRows.reduce((s, r) => s + (r[k] || 0), 0)
+        const asum = k => actRows.filter(r => !r.is_lld).reduce((s, r) => s + (r[k] || 0), 0)
         return (
         <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap', marginBottom: 24 }}>
           <StatCard label="Biens actifs" value={data.metadata.nb_rows} sub={`${data.metadata.nb_biens} total`} />
@@ -389,6 +389,9 @@ export default function PageComptabilite() {
           <StatCard label="FMEN TTC" value={fmt(asum('fmen_ttc'))} sub={`HT ${fmt(asum('fmen_ht'))}`} />
           {data.lauianFmenTotal?.ttc > 0 && (
             <StatCard label="FMEN Lauian TTC" value={fmt(data.lauianFmenTotal.ttc)} sub={`HT ${fmt(data.lauianFmenTotal.ht)}`} />
+          )}
+          {data.lldTotal?.hon_ttc > 0 && (
+            <StatCard label="HON LLD TTC" value={fmt(data.lldTotal.hon_ttc)} sub={`HT ${fmt(data.lldTotal.hon_ht)} · reversé ${fmt(data.lldTotal.reversement)}`} />
           )}
           <StatCard label="AUTO HT" value={fmt(data.totals.auto_ht)} />
           <StatCard label="LOY HT" value={fmt(asum('loy_ht'))} />
@@ -590,13 +593,14 @@ export default function PageComptabilite() {
                 if (item.type === 'single') {
                   const r = item.row
                   return [
-                    <tr key={r.bien_id} style={{ background: r.is_lauian_client ? '#FFFBEB' : r.alert_level === 'error' ? '#FFF8F8' : i % 2 === 0 ? 'var(--bg-card)' : 'var(--bg)', borderBottom: '1px solid var(--border)', borderLeft: r.is_lauian_client ? '3px solid #f59e0b' : undefined }}>
+                    <tr key={r.bien_id} style={{ background: r.is_lauian_client ? '#FFFBEB' : r.is_lld ? '#F0FDF4' : r.alert_level === 'error' ? '#FFF8F8' : i % 2 === 0 ? 'var(--bg-card)' : 'var(--bg)', borderBottom: '1px solid var(--border)', borderLeft: r.is_lauian_client ? '3px solid #f59e0b' : r.is_lld ? '3px solid #16a34a' : undefined }}>
                       <td style={{ ...td, textAlign: 'center', width: 32 }}>
-                        {!r.is_lauian_client && <input type="checkbox" checked={isActif(r)} onChange={() => toggleActif(r)} style={{ cursor: 'pointer', accentColor: 'var(--brand)' }} />}
+                        {!r.is_lauian_client && !r.is_lld && <input type="checkbox" checked={isActif(r)} onChange={() => toggleActif(r)} style={{ cursor: 'pointer', accentColor: 'var(--brand)' }} />}
                       </td>
                       <td style={td}>
                         <span style={{ fontWeight: 600 }}>{r.bien_code || '—'}</span>
                         {r.is_lauian_client && <span style={{ fontSize: '0.7em', fontWeight: 700, padding: '1px 5px', borderRadius: 4, background: '#fef3c7', color: '#92400e', marginLeft: 5, verticalAlign: 'middle' }}>client Lauian</span>}
+                        {r.is_lld && <span style={{ fontSize: '0.7em', fontWeight: 700, padding: '1px 5px', borderRadius: 4, background: '#dcfce7', color: '#166534', marginLeft: 5, verticalAlign: 'middle' }}>LLD</span>}
                         {r.bien_nom && <div style={{ fontSize: '0.85em', color: '#9C8E7D', maxWidth: 140, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{r.bien_nom}</div>}
                       </td>
                       <td style={td}>{r.proprietaire_nom || <span style={{ color: '#9C8E7D', fontStyle: 'italic' }}>—</span>}</td>
@@ -648,8 +652,9 @@ export default function PageComptabilite() {
             {/* Ligne totaux */}
             {data && rowsFiltrees.length > 0 && (() => {
               const actifs      = rowsFiltrees.filter(r => bienActif[r.bien_id] !== false)
-              const actifsDCB   = actifs.filter(r => !r.is_lauian_client)
+              const actifsDCB   = actifs.filter(r => !r.is_lauian_client && !r.is_lld)
               const actifsLau   = actifs.filter(r =>  r.is_lauian_client)
+              const actifsLld   = actifs.filter(r =>  r.is_lld)
               const tsum = (arr, k) => arr.reduce((s, r) => s + (r[k] || 0), 0)
               return (
               <tfoot>
@@ -681,6 +686,36 @@ export default function PageComptabilite() {
                   {col('ecart_facture')       && <td style={td} />}
                   <td style={td} />
                 </tr>
+                {/* Ligne Total LLD (uniquement si des lignes LLD existent) */}
+                {actifsLld.length > 0 && (
+                  <tr style={{ background: '#F0FDF4', borderTop: '1px solid #16a34a', fontWeight: 700 }}>
+                    <td style={td} />
+                    <td style={{ ...td, color: '#166534', whiteSpace: 'nowrap' }}>TOTAL LLD</td>
+                    <td style={td} />
+                    {col('resas')       && <td style={td} />}
+                    {col('rappr')       && <td style={td} />}
+                    {col('non_vent')    && <td style={td} />}
+                    {col('hon_ht')      && <td style={{ ...td, textAlign: 'right', color: '#166534' }}>{fmtN(tsum(actifsLld, 'hon_ht'))}</td>}
+                    {col('hon_tva')     && <td style={{ ...td, textAlign: 'right', color: '#166534' }}>{fmtN(tsum(actifsLld, 'hon_tva'))}</td>}
+                    {col('hon_ttc')     && <td style={{ ...td, textAlign: 'right', color: '#166534' }}>{fmtN(tsum(actifsLld, 'hon_ttc'))}</td>}
+                    {col('com_ttc')     && <td style={td} />}
+                    {col('fmen_ht')     && <td style={td} />}
+                    {col('fmen_tva')    && <td style={td} />}
+                    {col('fmen_ttc')    && <td style={td} />}
+                    {col('auto_ht')     && <td style={td} />}
+                    {col('loy_ht')              && <td style={td} />}
+                    {col('frais_loy')           && <td style={td} />}
+                    {col('prest_deduct')        && <td style={td} />}
+                    {col('total_auto_ht')       && <td style={td} />}
+                    {col('taxe')                && <td style={td} />}
+                    {col('reversement_calcule') && <td style={{ ...td, textAlign: 'right', color: '#166534' }}>{fmtN(tsum(actifsLld, 'reversement_calcule'))}</td>}
+                    {col('fait')               && <td style={td} />}
+                    {col('facture')             && <td style={td} />}
+                    {col('reversement_facture') && <td style={td} />}
+                    {col('ecart_facture')       && <td style={td} />}
+                    <td style={td} />
+                  </tr>
+                )}
                 {/* Ligne Total FMEN Lauian (uniquement si des lignes Lauian existent) */}
                 {actifsLau.length > 0 && (
                   <tr style={{ background: '#FFFBEB', borderTop: '1px solid #f59e0b', fontWeight: 700 }}>
@@ -712,7 +747,7 @@ export default function PageComptabilite() {
                   </tr>
                 )}
                 {/* Ligne Total Global */}
-                {actifsLau.length > 0 && (
+                {(actifsLau.length > 0 || actifsLld.length > 0) && (
                   <tr style={{ background: '#EAE3D4', borderTop: '2px solid var(--border)', fontWeight: 700 }}>
                     <td style={td} />
                     <td style={{ ...td, color: 'var(--text)', whiteSpace: 'nowrap' }}>TOTAL GLOBAL</td>
