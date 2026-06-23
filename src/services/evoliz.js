@@ -282,8 +282,8 @@ export async function creerFactureEvoliz(facture) {
   // Si l'agence n'est pas renseignée ici, le push omet accountingAccountId et
   // s'appuie sur le compte porté par l'article HON_LLD (créé par Setup dans CETTE société).
   const HON_LLD_BY_AGENCE = {
-    dcb: 8715495, // société 114158
-    // lauian: <à renseigner après "⚙ Setup Evoliz" sur le déploiement Lauian (société 115576)>
+    dcb:    8715495, // société 114158
+    lauian: 8728266, // société 115576
   }
   if (HON_LLD_BY_AGENCE[AGENCE]) ACCOUNT_MAP.HON_LLD = HON_LLD_BY_AGENCE[AGENCE]
   // Charger les maps catalogue et classifications en parallèle
