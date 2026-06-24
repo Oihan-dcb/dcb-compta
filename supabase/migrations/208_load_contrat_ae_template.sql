@@ -31,8 +31,10 @@ insert into public.contract_templates (agence,langue,type_contrat,version,nom,co
   .gold-line{width:48px;height:2px;background:linear-gradient(90deg,#CC9933,#E4A853,#CC9933);margin:12px auto;border-radius:2px}
   .doc-num{display:inline-block;border:1.5px solid #CC9933;border-radius:8px;padding:4px 16px;font-size:11pt;margin-top:6px}
   .doc-num strong{color:#8a6d1f}
-  .section-title{font-size:8.5pt;font-weight:700;text-transform:uppercase;letter-spacing:1.5px;color:#CC9933;border-bottom:1.5px solid #E8DCC8;padding-bottom:6px;margin:18px 0 10px}
-  .art{font-weight:700;margin:13px 0 3px;color:#1C1C1C;font-size:11.5px}
+  .section-title{font-size:8.5pt;font-weight:700;text-transform:uppercase;letter-spacing:1.5px;color:#CC9933;border-bottom:1.5px solid #E8DCC8;padding-bottom:6px;margin:18px 0 10px;break-after:avoid;page-break-after:avoid}
+  /* Garde le titre d'article avec son 1er paragraphe (pas de titre orphelin en bas de page) */
+  .art{font-weight:700;margin:13px 0 3px;color:#1C1C1C;font-size:11.5px;break-after:avoid;page-break-after:avoid;break-inside:avoid}
+  .art + p{break-before:avoid;page-break-before:avoid}
   .sub{font-weight:700;margin:10px 0 2px;color:#1C1C1C}
   .muted{color:#6b6150}.small{font-size:9.5px;color:#8C7B65}
   .box{background:#FDFAF5;border:1px solid #E8DCC8;border-left:3px solid #CC9933;border-radius:6px;padding:10px 14px;margin:10px 0}
@@ -255,8 +257,10 @@ $aetpl$, '{"defaults": {"penalite_montant": "50", "preavis_resiliation": "trois 
   .gold-line{width:48px;height:2px;background:linear-gradient(90deg,#CC9933,#E4A853,#CC9933);margin:12px auto;border-radius:2px}
   .doc-num{display:inline-block;border:1.5px solid #CC9933;border-radius:8px;padding:4px 16px;font-size:11pt;margin-top:6px}
   .doc-num strong{color:#8a6d1f}
-  .section-title{font-size:8.5pt;font-weight:700;text-transform:uppercase;letter-spacing:1.5px;color:#CC9933;border-bottom:1.5px solid #E8DCC8;padding-bottom:6px;margin:18px 0 10px}
-  .art{font-weight:700;margin:13px 0 3px;color:#1C1C1C;font-size:11.5px}
+  .section-title{font-size:8.5pt;font-weight:700;text-transform:uppercase;letter-spacing:1.5px;color:#CC9933;border-bottom:1.5px solid #E8DCC8;padding-bottom:6px;margin:18px 0 10px;break-after:avoid;page-break-after:avoid}
+  /* Garde le titre d'article avec son 1er paragraphe (pas de titre orphelin en bas de page) */
+  .art{font-weight:700;margin:13px 0 3px;color:#1C1C1C;font-size:11.5px;break-after:avoid;page-break-after:avoid;break-inside:avoid}
+  .art + p{break-before:avoid;page-break-before:avoid}
   .sub{font-weight:700;margin:10px 0 2px;color:#1C1C1C}
   .muted{color:#6b6150}.small{font-size:9.5px;color:#8C7B65}
   .box{background:#FDFAF5;border:1px solid #E8DCC8;border-left:3px solid #CC9933;border-radius:6px;padding:10px 14px;margin:10px 0}
