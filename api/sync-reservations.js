@@ -270,7 +270,7 @@ async function syncMois(mois, agence) {
           });
           const ph = Array.isArray(payouts) ? payouts[0] : payouts;
           if (ph?.id) {
-            await sb('payout_reservation?on_conflict=payout_id', {
+            await sb('payout_reservation?on_conflict=payout_id,reservation_id', {
               method: 'POST',
               prefer: 'return=minimal,resolution=ignore-duplicates',
               body: JSON.stringify({ payout_id: ph.id, reservation_id: resaId }),
