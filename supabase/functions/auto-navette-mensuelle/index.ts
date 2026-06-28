@@ -225,6 +225,12 @@ Deno.serve(async (req) => {
     const heuresMap: Record<string, any> = {}
     for (const row of heuresRows || []) heuresMap[row.date] = row
 
+    // Garde-fou : aucune heure saisie ce mois → on n'envoie PAS de navette vide (ex. salarié pas encore démarré).
+    if (!heuresRows?.length) {
+      results.push({ ae: `${ae.prenom} ${ae.nom}`, ok: true, skipped: 'aucune heure ce mois' })
+      continue
+    }
+
     // Générer HTML navette
     const html = genererHtml(ae, mois, heuresMap)
     const moisLabel = new Date(mois + '-02').toLocaleDateString('fr-FR', { month: 'long', year: 'numeric' })
