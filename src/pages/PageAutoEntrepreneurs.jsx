@@ -3,6 +3,7 @@ import { useState, useEffect } from 'react'
 import { getAutoEntrepreneurs, saveAutoEntrepreneur, deleteAutoEntrepreneur, createAEWithAuth, createAEAccess, resetAEPassword } from '../services/autoEntrepreneurs'
 import { supabase } from '../lib/supabase'
 import { authPost } from '../lib/authFetch'
+import RepartitionManon from '../components/RepartitionManon'
 
 function escapeHtml(str) {
   if (!str) return ''
@@ -1261,6 +1262,7 @@ export default function PageAutoEntrepreneurs() {
 
             return (
               <div>
+                <RepartitionManon />
                 <div style={{ display: 'flex', gap: 10, marginBottom: 20, alignItems: 'center', flexWrap: 'wrap' }}>
                   <select value={heuresAeId || ''}
                     onChange={e => { const id = e.target.value || null; setHeuresAeId(id); setHeures({}); if (id) chargerHeures(id, heuresMois) }}
