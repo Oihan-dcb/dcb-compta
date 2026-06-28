@@ -4,6 +4,12 @@ import { AGENCE } from '../lib/agence'
 // ── Répartition mensuelle "Manon hybride" (CDI 15h + AE + SAP) ───────────────
 // Voir plan : note projet project_manon_hybride.
 //
+// ⚠️ À ADAPTER (règle confirmée 2026-06-28) : en mode SALARIÉ le temps se décompte EN CONTINU
+// (heure_fin − heure_debut − pause, via staff_heures_jour — la "mission Bureau" = pointage d'entrée),
+// PAS la somme des durées de missions. Les ménages d'une journée salariée sont couverts (impute_salaire)
+// mais inclus dans l'amplitude. L'AE = missions HORS journées salariées (compté à la mission).
+// La v1 ci-dessous somme les durées (logique AE) → base salariée à brancher sur les amplitudes staff_heures_jour.
+//
 // 2 axes INDÉPENDANTS :
 //  • COÛT DCB : salarié (dans le pool 15h) vs AE (surplus). Déterminé par la cascade.
 //  • FACTURATION PROPRIO : auto_dcb (normal) vs sap (résidence principale). Flag par ménage.
