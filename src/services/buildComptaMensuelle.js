@@ -31,7 +31,7 @@ export async function buildComptaMensuelle(mois, bienIds = null) {
   // Missions AE du mois de réalisation (montant réel facturé, pas provision ventilation)
   let missionsQuery = supabase
     .from('mission_menage')
-    .select('bien_id, montant, ae:ae_id(type)')
+    .select('bien_id, montant, impute_salaire, ae:ae_id(type)')
     .eq('mois', mois)
     .neq('statut', 'cancelled')
     .not('montant', 'is', null)
@@ -165,6 +165,7 @@ export async function buildComptaMensuelle(mois, bienIds = null) {
   const autoByBien = {}
   for (const m of (missionsData || [])) {
     if (m.ae?.type === 'staff') continue  // staff DCB → pas un débours AE externe
+    if (m.impute_salaire) continue        // ménage couvert par le salaire de Manon → pas de débours AE
     autoByBien[m.bien_id] = (autoByBien[m.bien_id] || 0) + (m.montant || 0)
   }
 

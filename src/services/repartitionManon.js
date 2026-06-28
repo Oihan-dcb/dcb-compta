@@ -1,125 +1,110 @@
 import { supabase } from '../lib/supabase'
 import { AGENCE } from '../lib/agence'
 
-// ── Répartition mensuelle "Manon hybride" (CDI 15h + AE + SAP) ───────────────
+// ── Répartition mensuelle "Manon hybride" (CDI 15h + AE + SAP) — v2 ──────────
 // Voir plan : note projet project_manon_hybride.
 //
-// ⚠️ À ADAPTER (règle confirmée 2026-06-28) : en mode SALARIÉ le temps se décompte EN CONTINU
-// (heure_fin − heure_debut − pause, via staff_heures_jour — la "mission Bureau" = pointage d'entrée),
-// PAS la somme des durées de missions. Les ménages d'une journée salariée sont couverts (impute_salaire)
-// mais inclus dans l'amplitude. L'AE = missions HORS journées salariées (compté à la mission).
-// La v1 ci-dessous somme les durées (logique AE) → base salariée à brancher sur les amplitudes staff_heures_jour.
+// PRINCIPE (révisé) : le temps SALARIÉ se mesure sur les AMPLITUDES POINTÉES
+// (staff_heures_jour : « Je commence / Je termine », pause 20min auto dès 6h),
+// PAS sur la somme des durées de missions.
 //
-// 2 axes INDÉPENDANTS :
-//  • COÛT DCB : salarié (dans le pool 15h) vs AE (surplus). Déterminé par la cascade.
-//  • FACTURATION PROPRIO : auto_dcb (normal) vs sap (résidence principale). Flag par ménage.
-//
-// Cascade de priorité (sature le pool salarié, missions ENTIÈRES, pas de cheval) :
-//   1. Bureau (manual_missions, staff_id slug)         → toujours salarié
-//   2. Ménages biens Oïhan (skip_facturation)
-//   3. Ménages SAP (regime='sap')
-//   4. Ménages DCB normaux (regime='auto_dcb')
-//   → au-delà du pool : surplus facturé en AE (statut auto).
+// Couverture (coût DCB) :
+//   • Un ménage est COUVERT par le salaire (impute_salaire=true → 0 débours AE) s'il est
+//     fait sur un BIEN DCB un JOUR où Manon a pointé une journée salariée.
+//   • Tout le reste = AE : biens Lauian (toujours), et ménages DCB hors jour pointé.
+// Axe FACTURATION proprio (indépendant) : regime 'auto_dcb' / 'sap' (par ménage).
 
 const POOL_HEBDO_H = 15
+const PAUSE_LEGALE_MIN = 20
+const SEUIL_PAUSE_MIN = 6 * 60
 
-const slugify = s => (s || '').toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '').replace(/[^a-z0-9]+/g, '')
+const toMin = hm => { if (!hm) return null; const [h, m] = String(hm).slice(0, 5).split(':').map(Number); return h * 60 + m }
+const round2 = n => Math.round(n * 100) / 100
 
-// Nb de semaines réelles du mois (le "réel", non lissé) = jours / 7.
+// Heures payées d'une journée pointée = amplitude − pause (20 min mini si > 6h).
+export function heuresPayeesJour(row) {
+  const d = toMin(row.heure_debut), f = toMin(row.heure_fin)
+  if (d == null || f == null) return 0
+  let amp = f - d; if (amp < 0) amp += 24 * 60
+  const pause = amp > SEUIL_PAUSE_MIN ? Math.max(row.pause_min || 0, PAUSE_LEGALE_MIN) : (row.pause_min || 0)
+  return Math.max(0, amp - pause) / 60
+}
+
 export function semainesDuMois(mois) {
   const [y, m] = String(mois).split('-').map(Number)
-  const jours = new Date(y, m, 0).getDate()
-  return jours / 7
+  return new Date(y, m, 0).getDate() / 7
 }
-export function poolMensuelH(mois) {
-  return Math.round(POOL_HEBDO_H * semainesDuMois(mois) * 100) / 100
+export function poolMensuelH(mois) { return round2(POOL_HEBDO_H * semainesDuMois(mois)) }
+
+async function comptesManon(agence) {
+  const { data } = await supabase.from('auto_entrepreneur')
+    .select('id, type').eq('agence', agence).ilike('nom', 'castet').ilike('prenom', 'manon')
+  return { staff: (data || []).find(c => c.type === 'staff'), ae: (data || []).find(c => c.type === 'ae') }
 }
 
-// Cascade pure : `missions` déjà triées par priorité. Remplit le pool avec des missions
-// ENTIÈRES (une mission qui dépasse le reste du pool bascule entièrement en AE).
-export function calculerCascade(poolH, missions) {
-  let cumul = 0
-  const salarie = [], ae = []
-  for (const m of missions) {
-    if (cumul + m.heures <= poolH) { salarie.push(m); cumul += m.heures }
-    else ae.push(m)
-  }
-  return { salarie, ae }
-}
-
-// Charge les données du mois et calcule la répartition. LECTURE SEULE (ne persiste rien).
+// Calcule la répartition du mois (LECTURE SEULE). Retourne aussi la liste des ménages
+// avec leur couverture (pour l'affichage + l'application).
 export async function chargerRepartitionManon(mois, agence = AGENCE) {
-  // 1. Comptes de Manon : staff (type=staff) + AE, repérés par nom
-  const { data: comptes } = await supabase
-    .from('auto_entrepreneur')
-    .select('id, prenom, nom, type, ae_user_id')
-    .eq('agence', agence)
-    .ilike('nom', 'castet')
-    .ilike('prenom', 'manon')
-  const staff = (comptes || []).find(c => c.type === 'staff')
-  const ae    = (comptes || []).find(c => c.type === 'ae')
+  const { staff, ae } = await comptesManon(agence)
   if (!ae) return { error: 'Compte AE de Manon introuvable' }
-  const slug = slugify(staff?.prenom || 'manon')
 
-  // 2. Heures bureau du mois : manual_missions (planning) sur son slug staff
-  const [y, m] = mois.split('-').map(Number)
-  const debut = `${mois}-01`
-  const fin   = `${mois}-${String(new Date(y, m, 0).getDate()).padStart(2, '0')}`
-  const { data: manuels } = await supabase
-    .from('manual_missions')
-    .select('id, date, duration, description, bien_id')
-    .eq('staff_id', slug)
-    .gte('date', debut).lte('date', fin)
-    .neq('deleted', true)
+  // Jours salariés pointés (terminés)
+  const { data: jours } = staff
+    ? await supabase.from('staff_heures_jour')
+        .select('date, heure_debut, heure_fin, pause_min')
+        .eq('ae_id', staff.id).eq('mois', mois).not('heure_fin', 'is', null)
+    : { data: [] }
+  const joursSalaries = new Set((jours || []).map(j => j.date))
+  const heuresSalarie = round2((jours || []).reduce((s, j) => s + heuresPayeesJour(j), 0))
 
-  // 3. Ménages du mois (compte AE), avec bien (skip_facturation) + régime
-  const { data: menages } = await supabase
-    .from('mission_menage')
-    .select('id, date_mission, duree_heures, duree_prevue, regime, statut, bien:bien_id(code, hospitable_name, skip_facturation)')
-    .eq('ae_id', ae.id)
-    .eq('mois', mois)
-    .neq('statut', 'cancelled')
+  // Ménages du mois
+  const { data: menages } = await supabase.from('mission_menage')
+    .select('id, date_mission, duree_heures, duree_prevue, regime, statut, impute_salaire, bien:bien_id(code, hospitable_name, agence, skip_facturation)')
+    .eq('ae_id', ae.id).eq('mois', mois).neq('statut', 'cancelled')
 
-  // 4. Construire les "blocs" avec priorité + heures
-  const blocs = []
-  for (const mm of (manuels || [])) {
-    blocs.push({ id: mm.id, kind: 'bureau', priorite: 1, regime: 'bureau',
-      heures: Number(mm.duration || 0), date: mm.date, label: mm.description || 'Bureau', bien: null })
-  }
-  for (const me of (menages || [])) {
-    const h = Number(me.duree_heures ?? me.duree_prevue ?? 0)
-    const estOihan = !!me.bien?.skip_facturation
-    const regime = me.regime || 'auto_dcb'
-    const priorite = estOihan ? 2 : (regime === 'sap' ? 3 : 4)
-    blocs.push({ id: me.id, kind: estOihan ? 'oihan' : (regime === 'sap' ? 'sap' : 'dcb'),
-      priorite, regime, heures: h, date: me.date_mission,
-      label: me.bien?.code || me.bien?.hospitable_name || '—', bien: me.bien?.code || null })
-  }
+  const lignes = (menages || []).map(m => {
+    const h = Number(m.duree_heures ?? m.duree_prevue ?? 0)
+    const lauian = m.bien?.agence === 'lauian'
+    const couvert = !lauian && joursSalaries.has(m.date_mission)
+    const bucket = couvert
+      ? (m.bien?.skip_facturation ? 'oihan' : (m.regime === 'sap' ? 'sap' : 'dcb'))
+      : (lauian ? 'ae_lauian' : 'ae_hors_pointage')
+    return { id: m.id, date: m.date_mission, heures: h, regime: m.regime || 'auto_dcb',
+      bien: m.bien?.code || m.bien?.hospitable_name || '—', lauian, couvert, bucket, impute_salaire: m.impute_salaire }
+  })
 
-  // 5. Tri par priorité puis date, puis cascade
-  blocs.sort((a, b) => a.priorite - b.priorite || String(a.date).localeCompare(String(b.date)))
+  const sumH = pred => round2(lignes.filter(pred).reduce((s, l) => s + l.heures, 0))
+  const nb = pred => lignes.filter(pred).length
   const poolH = poolMensuelH(mois)
-  const { salarie, ae: surplus } = calculerCascade(poolH, blocs)
-
-  // 6. Agrégats
-  const sumH = arr => Math.round(arr.reduce((s, b) => s + b.heures, 0) * 100) / 100
-  const parKind = kind => sumH(salarie.filter(b => b.kind === kind))
-  const heuresSalarie = sumH(salarie)
   return {
     mois, poolH,
-    salarie, surplus,
-    heuresSalarie,
-    heuresSurplusAe: sumH(surplus),
-    pool_restant: Math.round((poolH - heuresSalarie) * 100) / 100,
-    sature: heuresSalarie >= poolH,
-    detail: {
-      bureau:  parKind('bureau'),
-      oihan:   parKind('oihan'),
-      sap:     parKind('sap'),
-      dcb:     parKind('dcb'),
+    jours_pointes: (jours || []).length,
+    heures_salarie: heuresSalarie,
+    ecart_pool: round2(heuresSalarie - poolH),
+    couvert: {
+      oihan: { h: sumH(l => l.bucket === 'oihan'), nb: nb(l => l.bucket === 'oihan') },
+      sap:   { h: sumH(l => l.bucket === 'sap'),   nb: nb(l => l.bucket === 'sap') },
+      dcb:   { h: sumH(l => l.bucket === 'dcb'),   nb: nb(l => l.bucket === 'dcb') },
+      total_nb: nb(l => l.couvert),
     },
-    // Axe facturation proprio (indépendant du coût) : tous les ménages SAP du mois
-    sap_total_h: sumH([...salarie, ...surplus].filter(b => b.regime === 'sap')),
+    ae: {
+      lauian:        { h: sumH(l => l.bucket === 'ae_lauian'),        nb: nb(l => l.bucket === 'ae_lauian') },
+      hors_pointage: { h: sumH(l => l.bucket === 'ae_hors_pointage'), nb: nb(l => l.bucket === 'ae_hors_pointage') },
+      total_h: sumH(l => !l.couvert), total_nb: nb(l => !l.couvert),
+    },
+    sap_total_h: sumH(l => l.regime === 'sap'),
+    lignes,
     comptes: { staff_id: staff?.id || null, ae_id: ae.id },
   }
+}
+
+// Persiste impute_salaire sur les ménages (couvert=true) pour que la compta exclue le débours AUTO.
+export async function appliquerImputationManon(mois, agence = AGENCE) {
+  const r = await chargerRepartitionManon(mois, agence)
+  if (r.error) throw new Error(r.error)
+  const couverts = r.lignes.filter(l => l.couvert && !l.impute_salaire).map(l => l.id)
+  const aRetirer = r.lignes.filter(l => !l.couvert && l.impute_salaire).map(l => l.id)
+  if (couverts.length) await supabase.from('mission_menage').update({ impute_salaire: true }).in('id', couverts)
+  if (aRetirer.length) await supabase.from('mission_menage').update({ impute_salaire: false }).in('id', aRetirer)
+  return { couverts: couverts.length, retires: aRetirer.length }
 }
