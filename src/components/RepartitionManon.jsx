@@ -87,6 +87,45 @@ export default function RepartitionManon() {
           <div style={{ fontSize: 11, color: '#9CA3AF', marginTop: 10 }}>
             Couvert = ménages DCB faits un jour pointé salarié (0 débours AE). « Appliquer » fige l'imputation pour la compta du mois.
           </div>
+
+          {data.joursDetail?.length > 0 && (
+            <div style={{ marginTop: 18 }}>
+              <div style={{ fontSize: 13, fontWeight: 700, marginBottom: 8 }}>📅 Détail jour par jour</div>
+              <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12.5 }}>
+                <thead>
+                  <tr style={{ color: '#6B7280', textAlign: 'left' }}>
+                    <th style={{ padding: '4px 6px' }}>Jour</th>
+                    <th style={{ padding: '4px 6px' }}>Pointage</th>
+                    <th style={{ padding: '4px 6px', textAlign: 'right' }}>Heures</th>
+                    <th style={{ padding: '4px 6px' }}>Ménages du jour</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {data.joursDetail.map(j => {
+                    const dd = new Date(j.date + 'T12:00:00')
+                    const jourLabel = dd.toLocaleDateString('fr-FR', { weekday: 'short', day: '2-digit', month: '2-digit' })
+                    return (
+                      <tr key={j.date} style={{ borderTop: '1px solid #EEE' }}>
+                        <td style={{ padding: '5px 6px', fontWeight: 600, whiteSpace: 'nowrap' }}>{jourLabel}</td>
+                        <td style={{ padding: '5px 6px', color: '#374151', whiteSpace: 'nowrap' }}>
+                          {j.debut ? `${j.debut.slice(0, 5)}–${j.fin ? j.fin.slice(0, 5) : '…'}${j.pause ? ` · pause ${j.pause}min` : ''}` : <span style={{ color: '#B45309' }}>non pointé</span>}
+                        </td>
+                        <td style={{ padding: '5px 6px', textAlign: 'right', fontWeight: 700, color: j.debut ? '#15803D' : '#9CA3AF' }}>{j.heures ? fmtH(j.heures) : '—'}</td>
+                        <td style={{ padding: '5px 6px' }}>
+                          {j.menages.length === 0 ? <span style={{ color: '#9CA3AF' }}>—</span> : j.menages.map((m, i) => (
+                            <span key={i} title={m.couvert ? 'Couvert (salaire)' : (m.bucket === 'ae_lauian' ? 'Lauian → AE' : 'Hors pointage → AE')}
+                              style={{ display: 'inline-block', margin: '1px 4px 1px 0', padding: '1px 6px', borderRadius: 6, fontSize: 11, fontWeight: 600, background: m.couvert ? '#DCFCE7' : '#FEF3C7', color: m.couvert ? '#15803D' : '#B45309' }}>
+                              {m.bien}{m.regime === 'sap' ? ' · SAP' : ''} · {fmtH(m.heures)}
+                            </span>
+                          ))}
+                        </td>
+                      </tr>
+                    )
+                  })}
+                </tbody>
+              </table>
+            </div>
+          )}
         </>
       })()}
     </div>

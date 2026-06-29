@@ -76,8 +76,21 @@ export async function chargerRepartitionManon(mois, agence = AGENCE) {
   const sumH = pred => round2(lignes.filter(pred).reduce((s, l) => s + l.heures, 0))
   const nb = pred => lignes.filter(pred).length
   const poolH = poolMensuelH(mois)
+
+  // Détail jour par jour : pointage (début/fin/pause/heures) + ménages du jour
+  const jourMap = new Map()
+  for (const j of (jours || [])) {
+    jourMap.set(j.date, { date: j.date, debut: j.heure_debut, fin: j.heure_fin, pause: j.pause_min || 0, heures: round2(heuresPayeesJour(j)), menages: [] })
+  }
+  for (const l of lignes) {
+    if (!jourMap.has(l.date)) jourMap.set(l.date, { date: l.date, debut: null, fin: null, pause: 0, heures: 0, menages: [] })
+    jourMap.get(l.date).menages.push({ bien: l.bien, heures: l.heures, couvert: l.couvert, bucket: l.bucket, regime: l.regime })
+  }
+  const joursDetail = [...jourMap.values()].sort((a, b) => String(a.date).localeCompare(String(b.date)))
+
   return {
     mois, poolH,
+    joursDetail,
     jours_pointes: (jours || []).length,
     heures_salarie: heuresSalarie,
     ecart_pool: round2(heuresSalarie - poolH),
