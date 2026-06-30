@@ -88,7 +88,7 @@ function genererHtml(ae: any, mois: string, heuresMap: Record<string, any>): str
         <td style="${td}">${ae.matricule || ''}</td>
         <td style="${td};font-weight:600">${ae.nom.toUpperCase()}</td>
         <td style="${td}">${ae.prenom}</td>
-        <td style="${td};text-align:center">35</td>
+        <td style="${td};text-align:center">${ae.heures_contrat ?? 35}</td>
         <td style="${td};text-align:center">${sup[0] > 0 ? sup[0].toFixed(2) : ''}</td>
         <td style="${td};text-align:center">${sup[1] > 0 ? sup[1].toFixed(2) : ''}</td>
         <td style="${td};text-align:center">${sup[2] > 0 ? sup[2].toFixed(2) : ''}</td>
@@ -201,13 +201,17 @@ Deno.serve(async (req) => {
   const now  = new Date()
   const mois = body.mois || now.toISOString().slice(0, 7)
 
-  // Staff avec auto_send_navette activé
-  const { data: staffList, error: staffErr } = await sb
+  // Sélection des staff :
+  //  - envoi ciblé (body.ae_id) : ce staff précis, peu importe son flag auto_send_navette (envoi manuel) ;
+  //  - sinon (cron) : tous les staff avec auto_send_navette activé.
+  let staffQuery = sb
     .from('auto_entrepreneur')
-    .select('id, nom, prenom, agence')
+    .select('id, nom, prenom, agence, heures_contrat')
     .in('type', ['staff', 'assistante'])
-    .eq('auto_send_navette', true)
-    .eq('actif', true)
+  staffQuery = body.ae_id
+    ? staffQuery.eq('id', body.ae_id)
+    : staffQuery.eq('auto_send_navette', true).eq('actif', true)
+  const { data: staffList, error: staffErr } = await staffQuery
 
   if (staffErr) return json({ error: staffErr.message }, 500)
   if (!staffList?.length) return json({ ok: true, sent: 0, message: 'Aucun staff avec auto_send_navette actif' })
@@ -237,10 +241,11 @@ Deno.serve(async (req) => {
     const moisLabelCap = moisLabel.charAt(0).toUpperCase() + moisLabel.slice(1)
 
     // Envoyer via smtp-send
+    const destinataire = body.to || 'anne@compact.fr'  // body.to = preview (ex. vers Oïhan) avant envoi cabinet
     const { data: r, error: e } = await sb.functions.invoke('smtp-send', {
       body: {
-        to: 'anne@compact.fr',
-        subject: `Navette paie ${ae.prenom} ${ae.nom} — ${moisLabelCap}`,
+        to: destinataire,
+        subject: `${body.to ? '[PREVIEW] ' : ''}Navette paie ${ae.prenom} ${ae.nom} — ${moisLabelCap}`,
         html,
       },
     })
