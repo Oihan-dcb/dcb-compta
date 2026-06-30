@@ -447,6 +447,8 @@ Les prestations validées (`prestation_hors_forfait.statut = 'valide'`) doivent 
 
 **État actuel** : ✅ Largement implémenté. `deduction_loy` : déduit du reversement ✅. `haowner` : ligne TVA 20% dans la facture principale ✅. `debours_proprio` : absorption sur LOY (après AUTO) + ligne DEBP négative dans la facture honoraires + ligne DEBP positive dans la facture débours si surplus ✅ (session 30 mars 2026). `dcb_direct` : log interne uniquement (`log.dcbDirectTotal/Count`), non facturé au propriétaire ✅. Reste non implémenté : code EXTRA dans `ventilation.js`.
 
+> **Régime SAP (juin 2026)** : une prestation avec `regime='sap'` est facturée **en parallèle** via le crédit d'impôt (Service À la Personne), directement au particulier. Elle est donc **exclue de toute imputation propriétaire** : `deduction_loy` et `debours_proprio` SAP ne réduisent jamais le reversement (filtrés dans buildComptaMensuelle, buildRapportData, facturesEvoliz, PageFactures). Axe indépendant de `impute_salaire` (qui, lui, concerne le coût AE vs salaire côté staff hybride).
+
 ### 12.3 Achats DCB pour compte propriétaire (HAOWNER)
 
 Les achats réalisés par DCB pour le compte d'un propriétaire (fournitures, interventions…) sont refacturés via une prestation `type_imputation='haowner'` dans `prestation_hors_forfait`.

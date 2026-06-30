@@ -455,6 +455,8 @@ Prestations extras soumises par les AEs via le portail. Validées dans DCB Compt
 | `montant` | integer | Montant en centimes | |
 | `description` | text | Description détaillée de la prestation | |
 | `type_imputation` | text | `'deduction_loy'`, `'haowner'`, `'debours_proprio'`, `'dcb_direct'` | `deduction_loy` : déduit du reversement ✅. `haowner` : ligne HAOWNER TVA 20% dans la facture honoraires ✅. `debours_proprio` : absorption LOY bien-par-bien après AUTO + ligne DEBP avec TVA selon `ae.type` ✅ (CF-P1-BC, commit `b7bedc1`). `dcb_direct` : log interne `genererFacturesMois` uniquement — pas de facturation propriétaire, par conception ✅. |
+| `regime` | text | `'auto_dcb'` (défaut) ou `'sap'` | Axe FACTURATION (miroir de `mission_menage.regime`). `sap` = facturé en parallèle au crédit d'impôt (Service À la Personne) → **aucune imputation propriétaire** : exclu de `deduction_loy`/`debours_proprio` dans buildComptaMensuelle, buildRapportData, facturesEvoliz, PageFactures (juin 2026). |
+| `impute_salaire` | boolean | défaut false | Axe COÛT : true = couvert par le salaire d'un staff hybride (ex. Manon) → 0 débours AE. Indépendant de `regime`. |
 | `statut` | text | 'en_attente', 'valide', 'annule' | |
 | `valide_par` | text | 'DCB' | |
 | `valide_at` | timestamptz | Date de validation | |
