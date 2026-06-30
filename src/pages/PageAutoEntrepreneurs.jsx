@@ -736,7 +736,9 @@ export default function PageAutoEntrepreneurs() {
         const { error } = await supabase.from('prestation_type').insert(data)
         if (error) throw error
       }
-      await charger()
+      // Rafraîchir UNIQUEMENT la liste des types (évite le rechargement complet de la page = lenteur)
+      const { data: ptData } = await supabase.from('prestation_type').select('*').order('nom')
+      setPrestationTypes(ptData || [])
       setEditingPT(null)
     } catch (err) { setErrorPT(err.message) }
     finally { setSaving(false) }
@@ -748,7 +750,8 @@ export default function PageAutoEntrepreneurs() {
       onConfirm: async () => {
         setConfirmModal(null)
         await supabase.from('prestation_type').delete().eq('id', id)
-        await charger()
+        const { data: ptData } = await supabase.from('prestation_type').select('*').order('nom')
+        setPrestationTypes(ptData || [])
       }
     })
   }
