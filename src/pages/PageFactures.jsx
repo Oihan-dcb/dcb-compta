@@ -241,7 +241,7 @@ const [pushing, setPushing] = useState(false)
           .eq('reservation.owner_stay', false),
         supabase
           .from('prestation_hors_forfait')
-          .select('bien_id, type_imputation, montant_ht')
+          .select('bien_id, type_imputation, montant_ht, regime')
           .eq('mois', mois)
           .in('bien_id', uniqueBienIds)
           .in('type_imputation', ['deduction_loy', 'haowner']),
@@ -325,6 +325,7 @@ const [pushing, setPushing] = useState(false)
       // Prestations par bien
       const prestByBien = {}
       for (const p of (prestRows || [])) {
+        if (p.regime === 'sap' && p.type_imputation === 'deduction_loy') continue  // SAP : facturé en parallèle, pas d'imputation proprio
         if (!prestByBien[p.bien_id]) prestByBien[p.bien_id] = { PREST: 0, HAOWNER: 0 }
         if (p.type_imputation === 'deduction_loy') prestByBien[p.bien_id].PREST += (p.montant_ht || 0)
         else if (p.type_imputation === 'haowner') prestByBien[p.bien_id].HAOWNER += (p.montant_ht || 0)

@@ -97,14 +97,14 @@ export async function buildComptaMensuelle(mois, bienIds = null) {
     // prestations déduits du loyer (type_imputation='deduction_loy')
     supabase
       .from('prestation_hors_forfait')
-      .select('bien_id, montant, ae:ae_id(type)')
+      .select('bien_id, montant, regime, ae:ae_id(type)')
       .eq('mois', mois)
       .eq('type_imputation', 'deduction_loy')
       .eq('statut', 'valide'),
     // prestations débours proprio absorbés
     supabase
       .from('prestation_hors_forfait')
-      .select('bien_id, montant')
+      .select('bien_id, montant, regime')
       .eq('mois', mois)
       .eq('type_imputation', 'debours_proprio')
       .eq('statut', 'valide'),
@@ -219,6 +219,7 @@ export async function buildComptaMensuelle(mois, bienIds = null) {
   // Prestations deduction_loy par bien_id (staff × 1.20 TVA, autres HT brut)
   const prestDeductByBien = {}
   for (const p of (prestDeductData || [])) {
+    if (p.regime === 'sap') continue  // SAP : facturé en parallèle (crédit d'impôt), pas d'imputation proprio
     const isStaff = p.ae?.type === 'staff'
     const montant = isStaff ? Math.round((p.montant || 0) * 1.20) : (p.montant || 0)
     prestDeductByBien[p.bien_id] = (prestDeductByBien[p.bien_id] || 0) + montant
@@ -227,6 +228,7 @@ export async function buildComptaMensuelle(mois, bienIds = null) {
   // Prestations débours proprio absorbés par bien_id
   const deboursPropByBien = {}
   for (const p of (prestDeboursData || [])) {
+    if (p.regime === 'sap') continue  // SAP : facturé en parallèle, pas d'imputation proprio
     deboursPropByBien[p.bien_id] = (deboursPropByBien[p.bien_id] || 0) + (p.montant || 0)
   }
 

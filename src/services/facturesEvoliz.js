@@ -175,7 +175,7 @@ async function prechargerDonneesFacturation(mois, bienIds, proprietaireIds, agen
       .eq('owner_stay', true).eq('platform', 'manual'),
 
     supabase.from('prestation_hors_forfait')
-      .select('bien_id, montant, type_imputation, description, prestation_type:prestation_type_id(nom), ae:ae_id(type)')
+      .select('bien_id, montant, regime, type_imputation, description, prestation_type:prestation_type_id(nom), ae:ae_id(type)')
       .in('bien_id', bienIds).eq('mois', mois).eq('statut', 'valide')
       .in('type_imputation', ['deduction_loy', 'haowner', 'debours_proprio']),
 
@@ -227,7 +227,7 @@ async function genererFactureGroupe(proprio, biens, mois, ctx) {
 
   const aeParBien = new Map()
 
-  const prestationsDeduction = ctx.prestationsGlobales.filter(p => bienIds.includes(p.bien_id) && p.type_imputation === 'deduction_loy')
+  const prestationsDeduction = ctx.prestationsGlobales.filter(p => p.regime !== 'sap' && bienIds.includes(p.bien_id) && p.type_imputation === 'deduction_loy')
   const totalPrestations = (prestationsDeduction || []).reduce((s, p) => {
     const isStaff = p.ae?.type === 'staff'
     return s + (isStaff ? Math.round((p.montant || 0) * 1.20) : (p.montant || 0))
@@ -238,7 +238,7 @@ async function genererFactureGroupe(proprio, biens, mois, ctx) {
   const haownerTVA = Math.round(haownerHT * 0.20)
   const haownerTTC = haownerHT + haownerTVA
 
-  const prestationsDeboursProprio = ctx.prestationsGlobales.filter(p => bienIds.includes(p.bien_id) && p.type_imputation === 'debours_proprio')
+  const prestationsDeboursProprio = ctx.prestationsGlobales.filter(p => p.regime !== 'sap' && bienIds.includes(p.bien_id) && p.type_imputation === 'debours_proprio')
 
   const fraisDeduire = ctx.fraisGlobaux.filter(f =>
     bienIds.includes(f.bien_id) &&

@@ -146,6 +146,7 @@ export default function PagePrestationsAE() {
         montant: Math.round(parseFloat(formEdit.montant_eur || 0) * 100),
         description: formEdit.description || null,
         type_imputation: formEdit.type_imputation || 'deduction_loy',
+        regime: formEdit.regime === 'sap' ? 'sap' : 'auto_dcb',
         reservation_id: formEdit.reservation_id || null,
         updated_at: new Date().toISOString()
       }
@@ -253,6 +254,7 @@ export default function PagePrestationsAE() {
                     <span style={{ color: '#888', fontSize: 12 }}>
                       Imputation : {IMPUTATION_LABEL[p.type_imputation] || p.type_imputation}
                     </span>
+                    {p.regime === 'sap' && <span style={{ fontSize: 11, fontWeight: 700, background: '#F3E8FF', color: '#7C3AED', borderRadius: 4, padding: '2px 8px' }}>SAP · sans imputation proprio</span>}
                   </div>
                   {p.valide_par && (
                     <div style={{ fontSize: 11, color: '#aaa', marginTop: 4 }}>
@@ -265,7 +267,7 @@ export default function PagePrestationsAE() {
                 <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 8, flexShrink: 0 }}>
                   <div style={{ fontSize: 18, fontWeight: 700, color: STATUT_COLOR[p.statut] }}>{fmt(p.montant)}</div>
                   <div style={{ display: 'flex', gap: 6 }}>
-                    <button onClick={() => { setEditing(p.id); setFormEdit({ bien_id: p.bien_id, date_prestation: p.date_prestation, duree_minutes: p.duree_minutes, montant_eur: p.montant ? (p.montant/100).toFixed(2) : '', description: p.description || '', type_imputation: p.type_imputation || 'deduction_loy', reservation_id: p.reservation_id || '' }); chargerResasBien(p.bien_id) }}
+                    <button onClick={() => { setEditing(p.id); setFormEdit({ bien_id: p.bien_id, date_prestation: p.date_prestation, duree_minutes: p.duree_minutes, montant_eur: p.montant ? (p.montant/100).toFixed(2) : '', description: p.description || '', type_imputation: p.type_imputation || 'deduction_loy', regime: p.regime || 'auto_dcb', reservation_id: p.reservation_id || '' }); chargerResasBien(p.bien_id) }}
                       style={{ background: '#f3f4f6', border: 'none', borderRadius: 6, padding: '5px 10px', fontSize: 12, cursor: 'pointer', fontWeight: 600 }}>
                       ✏️ Modifier
                     </button>
@@ -361,6 +363,13 @@ export default function PagePrestationsAE() {
                   <option value="debours_proprio">Facture débours propriétaire</option>
                   <option value="dcb_direct">Facturé à DCB 🌅 (Pick'n'Drop, Lingerie)</option>
                 </select>
+              </div>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+                <label style={{ fontSize: 11, fontWeight: 600, color: '#666', textTransform: 'uppercase' }}>Régime</label>
+                <label style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 13, color: '#2C2416', padding: '8px 10px', borderRadius: 7, border: '1.5px solid #e5e7eb', cursor: 'pointer', background: formEdit.regime === 'sap' ? '#F3E8FF' : '#fff' }}>
+                  <input type="checkbox" checked={formEdit.regime === 'sap'} onChange={e => setFormEdit(f => ({ ...f, regime: e.target.checked ? 'sap' : 'auto_dcb' }))} />
+                  SAP (crédit d'impôt) — facturé en parallèle, <strong>aucune imputation propriétaire</strong>
+                </label>
               </div>
             </div>
             <div style={{ display: 'flex', gap: 10, justifyContent: 'flex-end', marginTop: 20 }}>

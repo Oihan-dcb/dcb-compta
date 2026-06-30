@@ -172,7 +172,7 @@ export async function buildRapportData(bienId, propId, mois, opts = {}) {
   try {
     let q = supabase
       .from('prestation_hors_forfait')
-      .select('id, bien_id, reservation_id, date_prestation, description, montant, type_imputation, prestation_type:prestation_type_id(nom), ae:ae_id(type)')
+      .select('id, bien_id, reservation_id, date_prestation, description, montant, regime, type_imputation, prestation_type:prestation_type_id(nom), ae:ae_id(type)')
       .eq('mois', mois)
       .eq('statut', 'valide')
       .in('type_imputation', ['deduction_loy', 'debours_proprio', 'haowner'])
@@ -190,7 +190,7 @@ export async function buildRapportData(bienId, propId, mois, opts = {}) {
   const extraByResa = {}
   const extrasParResa = []
   ;(prestations || [])
-    .filter(p => ['deduction_loy', 'debours_proprio'].includes(p.type_imputation) && p.reservation_id)
+    .filter(p => p.regime !== 'sap' && ['deduction_loy', 'debours_proprio'].includes(p.type_imputation) && p.reservation_id)
     .sort((a, b) => (a.date_prestation || '').localeCompare(b.date_prestation || ''))
     .forEach(p => {
       const isStaff = p.type_imputation === 'deduction_loy' && p.ae?.type === 'staff'
@@ -200,7 +200,7 @@ export async function buildRapportData(bienId, propId, mois, opts = {}) {
     })
 
   const extrasGlobaux = (prestations || [])
-    .filter(p => ['deduction_loy', 'debours_proprio'].includes(p.type_imputation) && !p.reservation_id)
+    .filter(p => p.regime !== 'sap' && ['deduction_loy', 'debours_proprio'].includes(p.type_imputation) && !p.reservation_id)
     .sort((a, b) => (a.date_prestation || '').localeCompare(b.date_prestation || ''))
     .map(p => {
       const isStaff = p.type_imputation === 'deduction_loy' && p.ae?.type === 'staff'
@@ -214,7 +214,7 @@ export async function buildRapportData(bienId, propId, mois, opts = {}) {
     .map(p => ({ ...p, montant_ttc: Math.round((p.montant || 0) * 1.20), libelle: p.description || p.prestation_type?.nom || '—' }))
 
   const totalDebours = (prestations || [])
-    .filter(p => ['deduction_loy', 'debours_proprio'].includes(p.type_imputation))
+    .filter(p => p.regime !== 'sap' && ['deduction_loy', 'debours_proprio'].includes(p.type_imputation))
     .reduce((s, p) => {
       const isStaff = p.type_imputation === 'deduction_loy' && p.ae?.type === 'staff'
       return s + (isStaff ? Math.round((p.montant || 0) * 1.20) : (p.montant || 0))
