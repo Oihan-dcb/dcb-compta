@@ -3,11 +3,12 @@
  *
  * Qualifie un ajustement Hospitable détecté (voir migration 222 + api/ventiler.js
  * _detecterAjustements) comme "hebergement" (impacte commissionableBase → HON),
- * "menage" (impacte uniquement fmenBase) ou "aucun" (résa annulée/remboursée à 100%,
- * pas d'impact réel — voir migration 223), puis déclenche la reventilation de la résa
- * concernée via /api/ventiler pour que le nouveau traitement s'applique immédiatement.
+ * "menage" (impacte FMEN/AUTO manuellement, zéro impact propriétaire — voir migration 224)
+ * ou "aucun" (résa annulée/remboursée à 100%, pas d'impact réel — voir migration 223),
+ * puis déclenche la reventilation de la résa via /api/ventiler.
  *
- * Body : { ajustement_id: 'uuid', type: 'hebergement' | 'menage' | 'aucun' }
+ * Body : { ajustement_id: 'uuid', type: 'hebergement' | 'menage' | 'aucun',
+ *          montant_fmen?: number, montant_auto?: number }  // centimes, requis si type='menage'
  * Auth : Bearer JWT Supabase valide requis (tout utilisateur authentifié).
  */
 
@@ -42,17 +43,21 @@ export default async function handler(req, res) {
   const user = await verifyToken(token)
   if (!user) return res.status(401).json({ error: 'Non authentifié' })
 
-  const { ajustement_id, type } = req.body || {}
+  const { ajustement_id, type, montant_fmen, montant_auto } = req.body || {}
   if (!ajustement_id) return res.status(400).json({ error: 'ajustement_id requis' })
   if (!['hebergement', 'menage', 'aucun'].includes(type))
     return res.status(400).json({ error: "type doit être 'hebergement', 'menage' ou 'aucun'" })
+  if (type === 'menage' && (!Number.isInteger(montant_fmen) || !Number.isInteger(montant_auto)))
+    return res.status(400).json({ error: 'montant_fmen et montant_auto (centimes) requis pour le type menage' })
 
   const supa = createClient(SUPABASE_URL, SUPABASE_SRK)
 
   try {
+    const patch = { type, statut: 'traite', qualifie_par: user.email || user.id, qualifie_le: new Date().toISOString() }
+    if (type === 'menage') { patch.montant_fmen = montant_fmen; patch.montant_auto = montant_auto }
     const { data: updated, error: updErr } = await supa
       .from('reservation_ajustement')
-      .update({ type, statut: 'traite', qualifie_par: user.email || user.id, qualifie_le: new Date().toISOString() })
+      .update(patch)
       .eq('id', ajustement_id)
       .select('reservation_id')
       .single()

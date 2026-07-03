@@ -44,7 +44,7 @@ export async function buildRapportData(bienId, propId, mois, opts = {}) {
     (() => {
       let q = supabase
         .from('reservation')
-        .select('id, bien_id, code, fin_revenue, fin_accommodation, fin_host_service_fee, fin_gross_revenue, fin_discount, nights, arrival_date, departure_date, final_status, platform, owner_stay, guest_name, hospitable_raw, bien:bien_id(hospitable_name, code, forfait_menage_proprio), reservation_fee(fee_type, label, amount), reservation_ajustement(id, montant, label, statut, type, qualifie_par)')
+        .select('id, bien_id, code, fin_revenue, fin_accommodation, fin_host_service_fee, fin_gross_revenue, fin_discount, nights, arrival_date, departure_date, final_status, platform, owner_stay, guest_name, hospitable_raw, bien:bien_id(hospitable_name, code, forfait_menage_proprio), reservation_fee(fee_type, label, amount), reservation_ajustement(id, montant, label, statut, type, qualifie_par, montant_fmen, montant_auto)')
         .eq('mois_comptable', mois)
         .order('arrival_date')
       return isGlobal ? q.in('bien_id', maiteIds) : q.eq('bien_id', bienId)

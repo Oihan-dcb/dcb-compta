@@ -336,19 +336,31 @@ export default function PageRapports() {
 
   useEffect(() => { charger() }, [charger])
 
-  // Qualification d'un ajustement Hospitable (voir migration 222)
+  // Qualification d'un ajustement Hospitable (voir migration 222 + 224)
   const [qualifyingId, setQualifyingId] = useState(null)
+  // Saisie FMEN/AUTO (en €, chaînes) pour le type 'menage' — clé = ajustement id
+  const [menageInputs, setMenageInputs] = useState({})
+  const setMenageInput = (id, field, value) =>
+    setMenageInputs(prev => ({ ...prev, [id]: { ...prev[id], [field]: value } }))
+  const euroToCents = v => Math.round((parseFloat(String(v).replace(',', '.')) || 0) * 100)
+
   const qualifierAjustementResa = useCallback(async (ajustementId, type) => {
     setQualifyingId(ajustementId)
     try {
-      await qualifierAjustement(ajustementId, type)
+      const extra = type === 'menage'
+        ? {
+            montantFmen: euroToCents(menageInputs[ajustementId]?.fmen),
+            montantAuto: euroToCents(menageInputs[ajustementId]?.auto),
+          }
+        : {}
+      await qualifierAjustement(ajustementId, type, extra)
       await charger()
     } catch (e) {
       setError(e.message)
     } finally {
       setQualifyingId(null)
     }
-  }, [charger])
+  }, [charger, menageInputs])
 
   useEffect(() => {
     if (data?.bien?.rapport_config?.colonnes) setColsConfig(data.bien.rapport_config.colonnes)
@@ -1168,25 +1180,45 @@ FORMAT :
                                       Qualifié {{ hebergement: 'hébergement', menage: 'ménage / extra', aucun: 'sans impact' }[adj.type] || adj.type}
                                     </span>
                                   )}
-                                  <div style={{ marginLeft: 'auto', display: 'flex', gap: 6 }}>
-                                    {[
-                                      { type: 'hebergement', label: 'Hébergement' },
-                                      { type: 'menage', label: 'Ménage / extra' },
-                                      { type: 'aucun', label: 'Sans impact' },
-                                    ].map(({ type, label }) => (
-                                      <button
-                                        key={type}
-                                        onClick={() => qualifierAjustementResa(adj.id, type)}
-                                        disabled={qualifyingId === adj.id}
-                                        className="btn btn-secondary"
-                                        style={{
-                                          padding: '3px 10px', fontSize: '0.85em',
-                                          ...(adj.type === type ? { borderColor: 'var(--brand)', fontWeight: 700 } : {}),
-                                        }}
-                                      >
-                                        {qualifyingId === adj.id ? '…' : label}
-                                      </button>
-                                    ))}
+                                  <div style={{ marginLeft: 'auto', display: 'flex', gap: 6, alignItems: 'center', flexWrap: 'wrap' }}>
+                                    <button
+                                      onClick={() => qualifierAjustementResa(adj.id, 'hebergement')}
+                                      disabled={qualifyingId === adj.id}
+                                      className="btn btn-secondary"
+                                      style={{ padding: '3px 10px', fontSize: '0.85em', ...(adj.type === 'hebergement' ? { borderColor: 'var(--brand)', fontWeight: 700 } : {}) }}
+                                    >
+                                      {qualifyingId === adj.id ? '…' : 'Hébergement'}
+                                    </button>
+                                    <span style={{ fontSize: '0.8em', color: '#9C8E7D' }}>FMEN</span>
+                                    <input
+                                      type="text" inputMode="decimal" placeholder="0,00"
+                                      defaultValue={adj.montant_fmen != null ? (adj.montant_fmen / 100).toFixed(2).replace('.', ',') : (menageInputs[adj.id]?.fmen ?? '')}
+                                      onChange={e => setMenageInput(adj.id, 'fmen', e.target.value)}
+                                      style={{ width: 60, fontSize: '0.85em', padding: '2px 5px', border: '1px solid var(--border)', borderRadius: 4 }}
+                                    />
+                                    <span style={{ fontSize: '0.8em', color: '#9C8E7D' }}>AUTO</span>
+                                    <input
+                                      type="text" inputMode="decimal" placeholder="0,00"
+                                      defaultValue={adj.montant_auto != null ? (adj.montant_auto / 100).toFixed(2).replace('.', ',') : (menageInputs[adj.id]?.auto ?? '')}
+                                      onChange={e => setMenageInput(adj.id, 'auto', e.target.value)}
+                                      style={{ width: 60, fontSize: '0.85em', padding: '2px 5px', border: '1px solid var(--border)', borderRadius: 4 }}
+                                    />
+                                    <button
+                                      onClick={() => qualifierAjustementResa(adj.id, 'menage')}
+                                      disabled={qualifyingId === adj.id}
+                                      className="btn btn-secondary"
+                                      style={{ padding: '3px 10px', fontSize: '0.85em', ...(adj.type === 'menage' ? { borderColor: 'var(--brand)', fontWeight: 700 } : {}) }}
+                                    >
+                                      {qualifyingId === adj.id ? '…' : 'Ménage / extra'}
+                                    </button>
+                                    <button
+                                      onClick={() => qualifierAjustementResa(adj.id, 'aucun')}
+                                      disabled={qualifyingId === adj.id}
+                                      className="btn btn-secondary"
+                                      style={{ padding: '3px 10px', fontSize: '0.85em', ...(adj.type === 'aucun' ? { borderColor: 'var(--brand)', fontWeight: 700 } : {}) }}
+                                    >
+                                      {qualifyingId === adj.id ? '…' : 'Sans impact'}
+                                    </button>
                                   </div>
                                 </div>
                               </td>

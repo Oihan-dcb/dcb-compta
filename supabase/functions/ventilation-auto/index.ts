@@ -64,7 +64,7 @@ interface Resa {
   bien_id: string
   bien: Bien | null
   reservation_fee: Fee[]
-  reservation_ajustement: { montant: number; type: string | null; statut: string }[]
+  reservation_ajustement: { montant: number; type: string | null; statut: string; montant_fmen: number | null; montant_auto: number | null }[]
   hospitable_raw: Record<string, unknown> | null
   isProlongation?: boolean
   originalResaId?: string | null
@@ -147,7 +147,8 @@ function _calculerLignes(resa: Resa): { lignes: LigneVentilation[]; isProlongati
   // qualifié (statut≠'traite'). Détection/insertion faite par _detecterAjustements.
   const ajustementsQualifies = (resa.reservation_ajustement || []).filter(a => a.statut === 'traite')
   const ajustementHebergement = ajustementsQualifies.filter(a => a.type === 'hebergement').reduce((s, a) => s + (a.montant || 0), 0)
-  const ajustementMenage = ajustementsQualifies.filter(a => a.type === 'menage').reduce((s, a) => s + (a.montant || 0), 0)
+  const ajustementFmenExtra = ajustementsQualifies.filter(a => a.type === 'menage').reduce((s, a) => s + (a.montant_fmen || 0), 0)
+  const ajustementAutoExtra = ajustementsQualifies.filter(a => a.type === 'menage').reduce((s, a) => s + (a.montant_auto || 0), 0)
 
   const discountsRaw = ((resa.hospitable_raw as Record<string, unknown>)?.financials as Record<string, unknown>)?.host as Record<string, unknown> | undefined
   const discountsFromApi = ((discountsRaw?.discounts as { amount: number }[]) || []).reduce((s, d) => s + (d.amount || 0), 0)
@@ -179,14 +180,17 @@ function _calculerLignes(resa: Resa): { lignes: LigneVentilation[]; isProlongati
   const airbnbFallbackActif = resa.platform === 'airbnb' && totalFeesAirbnb === 0 && (bien.forfait_dcb_ref || 0) > 0
   // Fallback Airbnb : Airbnb n'a pas transmis la ligne ménage → ménage voyageur FONDU dans
   // `accommodation`. Prix ménage facturé au voyageur = forfait_dcb_ref + provision_ae_ref (= 97,00 sur 416).
-  const fmenBase = (airbnbFallbackActif
+  const fmenBase = airbnbFallbackActif
     ? (bien.forfait_dcb_ref || 0) + (bien.provision_ae_ref || 0)
-    : totalFeesAirbnb) + ajustementMenage
+    : totalFeesAirbnb
   // Part du host service fee Airbnb imputée au ménage (Airbnb commissionne aussi le ménage).
   const dueToOwner = ((resa.platform === 'airbnb' || resa.platform === 'booking') && totalFeesForOwnerRate > 0)
     ? Math.round(Math.abs(hostServiceFee) * fmenBase / totalFeesForOwnerRate * (1 - tauxCom))
     : 0
-  const fmenTTC = Math.max(0, fmenBase - dueToOwner - aeAmount)
+  // aeAmountTotal inclut la part AUTO d'un ajustement ménage qualifié — ajoutée APRÈS le
+  // pro-rata dueToOwner (qui ne concerne que le ménage standard, pas l'ajustement).
+  const aeAmountTotal = aeAmount + ajustementAutoExtra
+  const fmenTTC = Math.max(0, fmenBase - dueToOwner - aeAmount) + ajustementFmenExtra
   const fmenHT = fmenTTC > 0 ? Math.round(fmenTTC / (1 + TVA_RATE)) : 0
 
   // En fallback, le ménage voyageur NET de la commission Airbnb (= fmenBase − dueToOwner) est
@@ -214,13 +218,13 @@ function _calculerLignes(resa: Resa): { lignes: LigneVentilation[]; isProlongati
   if (isDirect) {
     loyAmount = commissionableBase - honTTC + ownerFees
   } else {
-    loyAmount = revenue - honTTC - fmenTTC - aeAmount - taxesTotal
+    loyAmount = revenue - honTTC - fmenTTC - aeAmountTotal - taxesTotal
   }
 
   if (resa.platform === 'booking') {
     const remittedTotal = taxes.filter(t => isRemitted(t)).reduce((s, t) => s + (t.amount || 0), 0)
     // CITY_TAX (Withheld Tax) est déjà exclu de host.revenue.amount — ne pas déduire une 2e fois
-    loyAmount = (revenue - remittedTotal) - honTTC - fmenTTC - aeAmount - taxesTotal
+    loyAmount = (revenue - remittedTotal) - honTTC - fmenTTC - aeAmountTotal - taxesTotal
   }
 
   const horsSequestre = bien.gestion_loyer === false && (resa.platform === 'airbnb' || resa.platform === 'booking')
@@ -231,7 +235,7 @@ function _calculerLignes(resa: Resa): { lignes: LigneVentilation[]; isProlongati
   if (comHT > 0) lignes.push(ligneTVA('COM', 'Commission DCB', comHT, bien, resa, null, comAmount))
   if (honHT > 0) lignes.push(ligneTVA('HON', 'Honoraires de gestion', honHT, bien, resa, tauxCom, honTTC))
   if (fmenHT > 0) lignes.push(ligneTVA('FMEN', 'Forfait ménage', fmenHT, bien, resa, null, fmenTTC))
-  if (aeAmount > 0) lignes.push(ligneHorsTVA('AUTO', 'Débours auto-entrepreneur', aeAmount, bien, resa))
+  if (aeAmountTotal > 0) lignes.push(ligneHorsTVA('AUTO', 'Débours auto-entrepreneur', aeAmountTotal, bien, resa))
   if (loyAmount > 0 && !horsSequestre) lignes.push(ligneHorsTVA('LOY', 'Reversement propriétaire', loyAmount, bien, resa))
   if (virAmount > 0 && !horsSequestre) lignes.push(ligneHorsTVA('VIR', 'Virement propriétaire', virAmount, bien, resa))
 

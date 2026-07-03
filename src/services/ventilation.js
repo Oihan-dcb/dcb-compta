@@ -118,7 +118,8 @@ export function _calculerLignes(resa) {
   // qualifié (statut≠'traite'). Détection/insertion faite côté serveur (api/ventiler.js).
   const ajustementsQualifies = (resa.reservation_ajustement || []).filter(a => a.statut === 'traite')
   const ajustementHebergement = ajustementsQualifies.filter(a => a.type === 'hebergement').reduce((s, a) => s + (a.montant || 0), 0)
-  const ajustementMenage = ajustementsQualifies.filter(a => a.type === 'menage').reduce((s, a) => s + (a.montant || 0), 0)
+  const ajustementFmenExtra = ajustementsQualifies.filter(a => a.type === 'menage').reduce((s, a) => s + (a.montant_fmen || 0), 0)
+  const ajustementAutoExtra = ajustementsQualifies.filter(a => a.type === 'menage').reduce((s, a) => s + (a.montant_auto || 0), 0)
 
   // Remises promotionnelles (Promotion Discount, Last Minute Discount, Ad-hoc fee...)
   // Tableau séparé dans hospitable_raw.financials.host.discounts (négatifs)
@@ -229,13 +230,16 @@ export function _calculerLignes(resa) {
   //   Airbnb n'a pas transmis la ligne ménage → fmenBase = forfait_dcb_ref + provision_ae_ref.
   const totalFeesAirbnb = cleaningFeeAirbnb + communityFeeRaw
   const airbnbFallbackActif = resa.platform === 'airbnb' && totalFeesAirbnb === 0 && (bien.forfait_dcb_ref || 0) > 0
-  const fmenBase = (airbnbFallbackActif
+  const fmenBase = airbnbFallbackActif
     ? (bien.forfait_dcb_ref || 0) + (bien.provision_ae_ref || 0)
-    : totalFeesAirbnb) + ajustementMenage
+    : totalFeesAirbnb
   const dueToOwner = ((resa.platform === 'airbnb' || resa.platform === 'booking') && totalFeesForOwnerRate > 0)
     ? Math.round(Math.abs(hostServiceFee) * fmenBase / totalFeesForOwnerRate * (1 - tauxCom))
     : 0
-  const fmenTTC = Math.max(0, fmenBase - dueToOwner - aeAmount)
+  // aeAmountTotal inclut la part AUTO d'un ajustement ménage qualifié — ajoutée APRÈS le
+  // pro-rata dueToOwner (qui ne concerne que le ménage standard, pas l'ajustement).
+  const aeAmountTotal = aeAmount + ajustementAutoExtra
+  const fmenTTC = Math.max(0, fmenBase - dueToOwner - aeAmount) + ajustementFmenExtra
   const fmenHT  = fmenTTC > 0 ? Math.round(fmenTTC / (1 + TVA_RATE)) : 0
 
   // En fallback, le ménage voyageur NET de la commission Airbnb (= fmenBase − dueToOwner) est
@@ -277,13 +281,13 @@ export function _calculerLignes(resa) {
   if (isDirect) {
     loyAmount = commissionableBase - honTTC + ownerFees
   } else {
-    loyAmount = revenue - honTTC - fmenTTC - aeAmount - taxesTotal
+    loyAmount = revenue - honTTC - fmenTTC - aeAmountTotal - taxesTotal
   }
 
   if (resa.platform === 'booking') {
     const remittedTotal = taxes.filter(t => isRemitted(t)).reduce((s,t) => s + (t.amount||0), 0)
     // CITY_TAX (Withheld Tax) est déjà exclu de host.revenue.amount — ne pas déduire une 2e fois
-    loyAmount = (revenue - remittedTotal) - honTTC - fmenTTC - aeAmount - taxesTotal
+    loyAmount = (revenue - remittedTotal) - honTTC - fmenTTC - aeAmountTotal - taxesTotal
   }
 
   // --- Lignes de ventilation ---
@@ -310,8 +314,8 @@ export function _calculerLignes(resa) {
   }
 
   // AUTO — débours auto-entrepreneur (hors TVA)
-  if (aeAmount > 0) {
-    lignes.push(ligneHorsTVA('AUTO', 'Débours auto-entrepreneur', aeAmount, bien, resa))
+  if (aeAmountTotal > 0) {
+    lignes.push(ligneHorsTVA('AUTO', 'Débours auto-entrepreneur', aeAmountTotal, bien, resa))
   }
 
 
@@ -375,8 +379,10 @@ export async function calculerVentilationResa(resa) {
  * Qualifie un ajustement Hospitable (voir migration 222) comme 'hebergement' ou 'menage'
  * et reventile la résa concernée — délégué à /api/qualifier-ajustement.
  */
-export async function qualifierAjustement(ajustementId, type) {
-  const { ok, data } = await authPost('/api/qualifier-ajustement', { ajustement_id: ajustementId, type })
+export async function qualifierAjustement(ajustementId, type, { montantFmen, montantAuto } = {}) {
+  const body = { ajustement_id: ajustementId, type }
+  if (type === 'menage') { body.montant_fmen = montantFmen; body.montant_auto = montantAuto }
+  const { ok, data } = await authPost('/api/qualifier-ajustement', body)
   if (!ok) throw new Error(data?.error || 'Erreur qualification ajustement')
   return data
 }
