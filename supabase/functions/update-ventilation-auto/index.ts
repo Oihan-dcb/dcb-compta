@@ -128,6 +128,27 @@ async function traiterVentilAutoId(supabase: ReturnType<typeof createClient>, ve
   const provision = ventil.montant_ht || 0
   const reelActuel = ventil.montant_reel
 
+  // Bien clôturé (facture envoyée à Evoliz) : la saisie est FIGÉE — skip propre plutôt
+  // qu'une erreur du trigger trg_fige_cloture (migration 227). Les heures saisies après
+  // clôture ne modifient plus la facture ; réouvrir la saisie pour les prendre en compte.
+  const { data: resaInfo } = await supabase
+    .from('reservation')
+    .select('bien_id, mois_comptable')
+    .eq('id', ventil.reservation_id)
+    .maybeSingle()
+  if (resaInfo?.bien_id && resaInfo?.mois_comptable) {
+    const { data: cloture } = await supabase
+      .from('cloture_bien')
+      .select('id')
+      .eq('bien_id', resaInfo.bien_id)
+      .eq('mois', resaInfo.mois_comptable)
+      .eq('active', true)
+      .limit(1)
+    if (cloture?.length) {
+      return { action: 'skipped', ventilation_auto_id: ventilAutoId, reservation_id: ventil.reservation_id, reason: 'Bien clôturé (facture envoyée Evoliz) — saisie figée, rouvrir pour appliquer' }
+    }
+  }
+
   if (reelActuel === totalReel) {
     return { action: 'unchanged', ventilation_auto_id: ventilAutoId, reservation_id: ventil.reservation_id, provision, reel_actuel: reelActuel, total_missions: totalReel }
   }

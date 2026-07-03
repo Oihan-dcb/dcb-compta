@@ -1,0 +1,13 @@
+-- Migration 227 : la clôture par bien (cloture_bien.active, posée à l'envoi Evoliz) FIGE
+-- réellement la saisie AU NIVEAU BASE : ventilation, prestation_hors_forfait,
+-- frais_proprietaire. Toute tentative (app, edge function, SQL direct) est rejetée avec
+-- un message clair « 🔒 Bien clôturé… » affiché en popup par l'UI.
+-- Exceptions chirurgicales :
+--   - ventilation : UPDATE de pure liaison bancaire (mouvement_id) autorisé — le
+--     rapprochement du virement proprio (VIRPayinProuvé) reste possible après clôture ;
+--   - prestation/frais : transitions de STATUT autorisées (flux de facturation DEB_AE,
+--     déductions) tant que montants/imputations ne changent pas.
+-- Réouverture (🔓 Rouvrir saisie) = clôture inactive → tout redevient modifiable.
+-- NB : fonction en IF imbriqués par table — plpgsql résout tous les champs d'une
+-- expression AND même court-circuitée (new.montant sur ventilation → erreur 42703).
+-- Voir le corps exact de check_cloture_bien_fige() en base (appliqué le 2026-07-03).
