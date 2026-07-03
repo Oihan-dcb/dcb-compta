@@ -643,9 +643,9 @@ const [pushing, setPushing] = useState(false)
             className="btn btn-secondary"
             onClick={executerRefreshEvoliz}
             disabled={refreshing || pushing}
-            title="Supprime les brouillons T- chez Evoliz et repasse les factures en brouillon — puis Générer reconstruit les lignes depuis la ventilation courante (ajustements inclus), et Valider/Envoyer"
+            title="Action de MASSE : supprime TOUS les brouillons T- du mois chez Evoliz et repasse les factures en brouillon (sans rouvrir les clôtures de saisie). Utile après un changement global Evoliz (classification, paiement…). Puis Générer → Valider → Envoyer. Pour UNE facture : bouton 🔓 Rouvrir saisie sur sa carte."
           >
-            {refreshing ? <><span className="spinner" /> Refresh…</> : '↻ Refresh brouillons Evoliz'}
+            {refreshing ? <><span className="spinner" /> Refresh…</> : '↻ Refaire les brouillons Evoliz (mois)'}
           </button>
           <button
             className="btn btn-secondary"
