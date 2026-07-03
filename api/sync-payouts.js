@@ -213,6 +213,24 @@ async function syncPayouts(monthsBack = 2) {
   return log;
 }
 
+// Journalise l'exécution dans import_log — alimente le badge « ⏱ Dernier sync » de l'UI
+async function logImport(log, source) {
+  const mois = new Date().toISOString().slice(0, 7);
+  await sb('import_log', {
+    method: 'POST', prefer: 'return=minimal',
+    body: JSON.stringify({
+      type:                   'airbnb_payouts',
+      mois_concerne:          mois,
+      statut:                 log.errors > 0 ? 'partial' : 'success',
+      nb_lignes_traitees:     log.processed,
+      nb_lignes_creees:       log.created + log.real_created,
+      nb_lignes_mises_a_jour: log.updated,
+      nb_erreurs:             log.errors,
+      message: `[${source}] Sync payouts Airbnb — ${log.created} synthétiques + ${log.real_created} réels créés, ${log.updated} maj, ${log.not_found} codes introuvables, ${log.errors} erreurs`,
+    }),
+  }).catch(() => {});
+}
+
 // ── Handler ───────────────────────────────────────────────────────────────────
 
 export default async function handler(req, res) {
@@ -222,6 +240,7 @@ export default async function handler(req, res) {
   const token = req.query?.token || (req.headers.authorization || '').replace(/^Bearer\s+/i, '').trim();
   if (!WEBHOOK_SECRET) return res.status(500).json({ error: 'HOSPITABLE_WEBHOOK_SECRET non configuré' });
 
+  let source = 'cron';
   if (token !== WEBHOOK_SECRET) {
     if (!SUPABASE_ANON_KEY) return res.status(401).json({ error: 'Non autorisé' });
     const authRes = await fetch(`${SUPABASE_URL}/auth/v1/user`, {
@@ -232,13 +251,15 @@ export default async function handler(req, res) {
       const { email } = await authRes.json();
       if (!ALLOWED_EMAILS.includes((email || '').toLowerCase())) return res.status(403).json({ error: 'Accès refusé' });
     }
+    source = 'manuel';
   }
 
   const monthsBack = Math.min(12, Math.max(1, parseInt(req.query?.monthsBack || req.body?.monthsBack || '2', 10) || 2));
-  console.log(`[sync-payouts] monthsBack=${monthsBack}`);
+  console.log(`[sync-payouts] monthsBack=${monthsBack} source=${source}`);
 
   try {
     const log = await syncPayouts(monthsBack);
+    await logImport(log, source);
     console.log(`[sync-payouts] ✓ traités:${log.processed} créés:${log.created} réels:${log.real_created} maj:${log.updated} introuvables:${log.not_found} erreurs:${log.errors}`);
     return res.json({ ok: true, ...log });
   } catch (err) {

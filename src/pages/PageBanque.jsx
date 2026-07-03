@@ -6,9 +6,10 @@ import { supabase } from '../lib/supabase'
 import { importBookingCSV } from '../services/importBooking'
 import { annulerRapprochement, estMouvementReference, lancerMatchingAuto } from '../services/rapprochement'
 import { parserFichierBancaire, importerMouvementsBancaires } from '../services/importBanque'
-import { syncPayoutsFromHospitable } from '../services/syncPayouts'
+import { syncPayoutsServer } from '../services/syncPayouts'
 
 import MoisSelector from '../components/MoisSelector'
+import LastSyncBadge from '../components/LastSyncBadge'
 import { formatMontant } from '../lib/hospitable'
 import { format } from 'date-fns'
 import { fr } from 'date-fns/locale'
@@ -90,7 +91,7 @@ export default function PageBanque() {
     setSyncingPayouts(true)
     setSyncPayoutsLog(null)
     try {
-      const log = await syncPayoutsFromHospitable({ monthsBack: 3 })
+      const log = await syncPayoutsServer(3)
       setSyncPayoutsLog(log)
     } catch (err) {
       setSyncPayoutsLog({ errors: 1, details: [err.message] })
@@ -251,12 +252,15 @@ export default function PageBanque() {
             {importingBooking ? '⏳' : '📋'} CSV Booking
             <input ref={bookingRef} type='file' accept='.csv' style={{ display:'none' }} onChange={handleBookingFile} />
           </label>
-          <button
-            onClick={handleSyncPayouts}
-            disabled={syncingPayouts || moisBloque}
-            style={{ cursor: (syncingPayouts || moisBloque) ? 'not-allowed' : 'pointer', background: moisBloque ? '#aaa' : '#FF385C', color:'#fff', border:'none', borderRadius:8, padding:'8px 14px', fontWeight:600, fontSize:14, display:'inline-flex', alignItems:'center', gap:6 }}>
-            {syncingPayouts ? '⏳ Sync...' : moisBloque ? '🔒 Sync Airbnb' : '🔄 Sync Airbnb'}
-          </button>
+          <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 2 }}>
+            <button
+              onClick={handleSyncPayouts}
+              disabled={syncingPayouts || moisBloque}
+              style={{ cursor: (syncingPayouts || moisBloque) ? 'not-allowed' : 'pointer', background: moisBloque ? '#aaa' : '#FF385C', color:'#fff', border:'none', borderRadius:8, padding:'8px 14px', fontWeight:600, fontSize:14, display:'inline-flex', alignItems:'center', gap:6 }}>
+              {syncingPayouts ? '⏳ Sync...' : moisBloque ? '🔒 Sync Airbnb' : '🔄 Sync Airbnb'}
+            </button>
+            <LastSyncBadge type="airbnb_payouts" refreshKey={syncPayoutsLog} />
+          </div>
           <button
             onClick={() => setSuppression(suppression ? null : { source: 'CaisseEpargne', mois, count: mouvements.length })}
             style={{ background: '#FEF2F2', color: '#B91C1C', border: '1px solid #FCA5A5', borderRadius: 8, padding: '8px 14px', fontWeight: 600, cursor: 'pointer', fontSize: 14 }}>

@@ -2,6 +2,7 @@ import { AGENCE } from '../lib/agence'
 import { useState, useEffect, useRef } from 'react'
 import { useSearchParams } from 'react-router-dom'
 import MoisSelector from '../components/MoisSelector'
+import LastSyncBadge from '../components/LastSyncBadge'
 import { useMoisPersisted } from '../hooks/useMoisPersisted'
 import { supabase } from '../lib/supabase'
 import { syncReservations, getReservationsMois } from '../services/syncReservations'
@@ -237,9 +238,12 @@ export default function PageReservations() {
         <div style={{ display: 'flex', gap: 10, alignItems: 'center' }}>
           <MoisSelector mois={mois} setMois={setMois} moisDispos={moisDispos} />
           <button className="btn btn-secondary" onClick={charger} disabled={loading}>↺</button>
-          <button className="btn btn-secondary" onClick={lancerSync} disabled={syncing}>
-            {syncing ? <><span className="spinner" /> Sync…</> : '⟳ Sync Hospitable'}
-          </button>
+          <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 2 }}>
+            <button className="btn btn-secondary" onClick={lancerSync} disabled={syncing}>
+              {syncing ? <><span className="spinner" /> Sync…</> : '⟳ Sync Hospitable'}
+            </button>
+            <LastSyncBadge type="hospitable_reservations" refreshKey={syncResult} />
+          </div>
           <button className="btn btn-primary" onClick={lancerVentilation} disabled={calculant || reservations.length === 0}>
             {calculant ? <><span className="spinner" /> Calcul…</> : '⚡ Ventiler'}
           </button>

@@ -13,6 +13,25 @@
 import { supabase } from '../lib/supabase'
 import { fetchPayoutsList, fetchPayoutDetail } from '../lib/hospitable'
 
+/**
+ * Version serveur (recommandée pour l'UI) : délègue à /api/sync-payouts — rapide
+ * (transactions incluses dans la liste, écritures en batch) et couvre les 2 agences.
+ * La version client `syncPayoutsFromHospitable` ci-dessous reste en secours
+ * (1 appel API par payout via le proxy → lente, plusieurs minutes).
+ */
+export async function syncPayoutsServer(monthsBack = 3) {
+  const { data: { session } } = await supabase.auth.getSession()
+  if (!session) throw new Error('Session expirée')
+  const res = await fetch(`/api/sync-payouts?monthsBack=${monthsBack}`, {
+    method: 'POST',
+    headers: { Authorization: 'Bearer ' + session.access_token },
+  })
+  let log
+  try { log = await res.json() } catch { throw new Error(`Réponse invalide du serveur (${res.status})`) }
+  if (!res.ok) throw new Error(log?.error || `Erreur serveur ${res.status}`)
+  return log
+}
+
 // Suffixe IBAN configuré par déploiement (ex: '6555' pour DCB, '1234' pour Lauian)
 // Si absent, on ne filtre pas par IBAN (prend tous les payouts Airbnb)
 const IBAN_SUFFIX = import.meta.env.VITE_AIRBNB_IBAN || null
