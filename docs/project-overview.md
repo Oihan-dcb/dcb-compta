@@ -1023,3 +1023,15 @@ Granularité = **par bien** (1 facture = 1 bien, sauf Maïté = facture groupe �
   Stripe (5 233 € nets liés) mais flag jamais recalculé. (3) Silyanova 2KAQUI (Maison Maïté, août) :
   virement 4 676,36 € = acompte 50 % pile, payeur « Silianov » (translittération ≠ nom résa) → lié
   manuellement, résa reste en attente du solde.
+- **Suite (même session) — faux match Maeva/Naiara + matching par référence payout + cron Stripe** :
+  le virement de Maeva (327,23 €, 09/06) avait été rapproché à la résa d'AVRIL de Naiara T (payout au
+  même centime) par le fallback « montant unique » sans borne de date → Maeva « sans virement » et
+  Naiara payée deux fois. Data corrigée. Fixes structurels : (1) **Étape 0 du matching Airbnb** :
+  le détail bancaire Powens contient le `platform_id` du payout (« G-XXXX…-Airbnb ») → match sans
+  ambiguïté par référence, prioritaire sur le montant ; les syncs (client + serveur) stockent
+  désormais `platform_id` sur les lignes payout (backfill nightly des lignes non liées).
+  (2) Fallback « montant unique » borné à ±30 j. (3) **Cron Stripe** : `api/sync-stripe` accepte
+  l'auth cron (CRON_SECRET/webhook), GET, agence par défaut du projet, skip propre si STRIPE_KEY
+  absent (Lauian), journalise dans `import_log` (`stripe_payouts`) → cron Vercel 3h45 + badge
+  « ⏱ Dernier sync » sur le bouton ↻ Match Stripe. Nuit complète : 3h30 payouts Airbnb → 3h45
+  Stripe → 4h matching.

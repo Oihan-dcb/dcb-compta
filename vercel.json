@@ -19,6 +19,9 @@
     },
     "api/webhook-hospitable.js": {
       "maxDuration": 120
+    },
+    "api/sync-stripe.js": {
+      "maxDuration": 120
     }
   },
   "crons": [
@@ -37,6 +40,10 @@
     {
       "path": "/api/matching-auto",
       "schedule": "0 4 * * *"
+    },
+    {
+      "path": "/api/sync-stripe",
+      "schedule": "45 3 * * *"
     }
   ],
   "rewrites": [

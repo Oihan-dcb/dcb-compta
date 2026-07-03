@@ -150,6 +150,7 @@ export async function syncPayoutsFromHospitable({ monthsBack = 3 } = {}) {
               .insert({
                 hospitable_id:   hospId,
                 platform:        'airbnb',
+                platform_id:     payout.platform_id ?? null,
                 date_payout:     payoutDate,
                 amount,
                 mois_comptable:  moisComptable,
@@ -180,7 +181,7 @@ export async function syncPayoutsFromHospitable({ monthsBack = 3 } = {}) {
             // Existe, pas encore rapprochée → mettre à jour la date
             const { data: upd, error: updErr } = await supabase
               .from('payout_hospitable')
-              .update({ date_payout: payoutDate })
+              .update({ date_payout: payoutDate, platform_id: payout.platform_id ?? null })
               .eq('id', existing.id)
               .select('id')
 
@@ -218,6 +219,7 @@ export async function syncPayoutsFromHospitable({ monthsBack = 3 } = {}) {
               .insert({
                 hospitable_id:   payout.id,
                 platform:        'airbnb',
+                platform_id:     payout.platform_id ?? null,
                 date_payout:     payoutDate,
                 amount:          payout.amount?.amount ?? null,
                 mois_comptable:  payoutDate.slice(0, 7),

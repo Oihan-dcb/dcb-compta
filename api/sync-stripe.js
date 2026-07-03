@@ -10,6 +10,8 @@ const STRIPE_KEY         = process.env.STRIPE_KEY
 const SUPABASE_URL       = process.env.SUPABASE_URL    || 'https://omuncchvypbtxkpalwcr.supabase.co'
 const SUPABASE_ANON_KEY  = process.env.SUPABASE_ANON_KEY
 const SUPABASE_SERVICE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY
+const WEBHOOK_SECRET     = process.env.HOSPITABLE_WEBHOOK_SECRET
+const CRON_SECRET        = process.env.CRON_SECRET // envoyé par Vercel en Authorization: Bearer sur les crons
 const ALLOWED_EMAILS     = (process.env.ALLOWED_ADMIN_EMAILS || '')
   .split(',').map(e => e.trim().toLowerCase()).filter(Boolean)
 
@@ -26,30 +28,36 @@ export default async function handler(req, res) {
   res.setHeader('Access-Control-Allow-Methods', 'POST, OPTIONS')
   res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization')
   if (req.method === 'OPTIONS') return res.status(200).end()
-  if (req.method !== 'POST') return res.status(405).json({ error: 'POST uniquement' })
+  if (req.method !== 'POST' && req.method !== 'GET') return res.status(405).json({ error: 'POST/GET uniquement' })
 
-  if (!STRIPE_KEY)           return res.status(500).json({ error: 'STRIPE_KEY non configuré' })
   if (!SUPABASE_ANON_KEY)    return res.status(500).json({ error: 'SUPABASE_ANON_KEY non configuré' })
   if (!SUPABASE_SERVICE_KEY) return res.status(500).json({ error: 'SUPABASE_SERVICE_ROLE_KEY non configuré' })
 
-  // 1. Vérifier JWT Supabase
-  const token = (req.headers.authorization || '').replace(/^Bearer\s+/i, '').trim()
-  if (!token) return res.status(401).json({ error: 'Token manquant' })
-
-  const authRes = await fetch(`${SUPABASE_URL}/auth/v1/user`, {
-    headers: { apikey: SUPABASE_ANON_KEY, Authorization: 'Bearer ' + token }
-  })
-  if (!authRes.ok) return res.status(401).json({ error: 'Non authentifié' })
-  const { email } = await authRes.json()
-
-  // 2. Vérifier email admin
-  if (!ALLOWED_EMAILS.length) return res.status(500).json({ error: 'ALLOWED_ADMIN_EMAILS non configuré' })
-  if (!ALLOWED_EMAILS.includes((email || '').toLowerCase())) {
-    return res.status(403).json({ error: 'Accès refusé' })
+  // 1. Auth : secret cron (Vercel/webhook) OU JWT Supabase admin (UI)
+  const token = req.query?.token || (req.headers.authorization || '').replace(/^Bearer\s+/i, '').trim()
+  const isCronToken = (WEBHOOK_SECRET && token === WEBHOOK_SECRET) || (CRON_SECRET && token === CRON_SECRET)
+  let source = 'cron'
+  if (!isCronToken) {
+    if (!token) return res.status(401).json({ error: 'Token manquant' })
+    const authRes = await fetch(`${SUPABASE_URL}/auth/v1/user`, {
+      headers: { apikey: SUPABASE_ANON_KEY, Authorization: 'Bearer ' + token }
+    })
+    if (!authRes.ok) return res.status(401).json({ error: 'Non authentifié' })
+    const { email } = await authRes.json()
+    if (!ALLOWED_EMAILS.length) return res.status(500).json({ error: 'ALLOWED_ADMIN_EMAILS non configuré' })
+    if (!ALLOWED_EMAILS.includes((email || '').toLowerCase())) {
+      return res.status(403).json({ error: 'Accès refusé' })
+    }
+    source = 'manuel'
   }
 
-  const { agence } = req.body || {}
-  if (!agence) return res.status(400).json({ error: 'agence requis' })
+  // Projet sans compte Stripe (ex. Lauian) : skip propre plutôt qu'erreur cron
+  if (!STRIPE_KEY) {
+    if (source === 'cron') return res.status(200).json({ ok: true, skipped: 'STRIPE_KEY absent sur ce projet' })
+    return res.status(500).json({ error: 'STRIPE_KEY non configuré' })
+  }
+
+  const agence = req.body?.agence || req.query?.agence || process.env.VITE_AGENCE || 'dcb'
 
   const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_KEY)
   const log = { matched: 0, inserted: 0, updated: 0, errors: 0, errorDetails: [] }
@@ -96,7 +104,7 @@ export default async function handler(req, res) {
       }
     }
     log.matched = matches.length
-    if (!matches.length) return res.status(200).json(log)
+    if (!matches.length) { await logStripeImport(supabase, log, source); return res.status(200).json(log) }
 
     // 5. Pour chaque payout, récupérer les transactions et insérer les lignes
     for (const po of matches) {
@@ -198,5 +206,22 @@ export default async function handler(req, res) {
     log.errors++
   }
 
+  await logStripeImport(supabase, log, source)
   return res.status(200).json(log)
+}
+
+// Journalise l'exécution dans import_log — alimente le badge « ⏱ Dernier sync »
+async function logStripeImport(supabase, log, source) {
+  try {
+    await supabase.from('import_log').insert({
+      type:                   'stripe_payouts',
+      mois_concerne:          new Date().toISOString().slice(0, 7),
+      statut:                 log.errors > 0 ? 'partial' : 'success',
+      nb_lignes_traitees:     log.matched,
+      nb_lignes_creees:       log.inserted,
+      nb_lignes_mises_a_jour: log.updated,
+      nb_erreurs:             log.errors,
+      message: `[${source}] Match Stripe — ${log.matched} payouts matchés, ${log.inserted} lignes créées, ${log.updated} mouvements rapprochés, ${log.errors} erreur(s)`,
+    })
+  } catch { /* best effort */ }
 }

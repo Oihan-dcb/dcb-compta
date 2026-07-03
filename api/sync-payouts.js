@@ -149,7 +149,7 @@ async function syncPayouts(monthsBack = 2) {
       if (!ex && !seenSynth.has(hospId)) {
         seenSynth.add(hospId);
         synthInserts.push({
-          hospitable_id: hospId, platform: 'airbnb', date_payout: payoutDate,
+          hospitable_id: hospId, platform: 'airbnb', platform_id: payout.platform_id ?? null, date_payout: payoutDate,
           amount: tx.amount?.amount ?? resa.fin_revenue ?? null,
           mois_comptable: payoutDate.slice(0, 7), statut_matching: 'en_attente',
           _resa_id: resa.id,
@@ -157,7 +157,7 @@ async function syncPayouts(monthsBack = 2) {
       } else if (ex && !ex.mouvement_id) {
         // Mise à jour de la date (payout re-daté) — unitaire mais rare
         try {
-          await sb(`payout_hospitable?id=eq.${ex.id}`, { method: 'PATCH', prefer: 'return=minimal', body: JSON.stringify({ date_payout: payoutDate }) });
+          await sb(`payout_hospitable?id=eq.${ex.id}`, { method: 'PATCH', prefer: 'return=minimal', body: JSON.stringify({ date_payout: payoutDate, platform_id: payout.platform_id ?? null }) });
           log.updated++;
         } catch (e) { log.errors++; log.details.push(`update ${code}: ${e.message}`); }
       } else if (ex) {
@@ -172,7 +172,7 @@ async function syncPayouts(monthsBack = 2) {
         : 'Payout fractionné : ' + resaTxs.map(t => parseCode(t.details)).filter(Boolean).join(', ')
       ).slice(0, 500);
       realInserts.push({
-        hospitable_id: payout.id, platform: 'airbnb', date_payout: payoutDate,
+        hospitable_id: payout.id, platform: 'airbnb', platform_id: payout.platform_id ?? null, date_payout: payoutDate,
         amount: payout.amount?.amount ?? null,
         mois_comptable: payoutDate.slice(0, 7), statut_matching: 'en_attente', reference,
         _links: resasDuPayout.map(({ resa, txAmount }) => ({ reservation_id: resa.id, amount_cents: txAmount })),

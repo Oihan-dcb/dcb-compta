@@ -401,10 +401,13 @@ export default function PageRapprochement() {
         <div style={{ display: 'flex', gap: 10, alignItems: 'center', flexWrap: 'wrap' }}>
           <MoisSelector mois={mois} setMois={setMois} moisDispos={moisDispos} />
           {HAS_STRIPE && (
-            <button onClick={lancerSync} disabled={syncing || matching || moisBloque}
-              style={{ background: (syncing || moisBloque) ? '#aaa' : '#635BFF', color: '#fff', border: 'none', borderRadius: 8, padding: '8px 18px', fontWeight: 600, cursor: (syncing || matching || moisBloque) ? 'not-allowed' : 'pointer', fontSize: 14 }}>
-              {syncing ? '⏳ Sync...' : moisBloque ? '🔒 Match Stripe' : '↻ Match Stripe'}
-            </button>
+            <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 2 }}>
+              <button onClick={lancerSync} disabled={syncing || matching || moisBloque}
+                style={{ background: (syncing || moisBloque) ? '#aaa' : '#635BFF', color: '#fff', border: 'none', borderRadius: 8, padding: '8px 18px', fontWeight: 600, cursor: (syncing || matching || moisBloque) ? 'not-allowed' : 'pointer', fontSize: 14 }}>
+                {syncing ? '⏳ Sync...' : moisBloque ? '🔒 Match Stripe' : '↻ Match Stripe'}
+              </button>
+              <LastSyncBadge type="stripe_payouts" refreshKey={syncing} />
+            </div>
           )}
           <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 2 }}>
             <button onClick={lancerAuto} disabled={matching || syncing || moisBloque}

@@ -604,7 +604,7 @@ export async function lancerMatchingAuto(mois, source = 'manuel') {
     while (true) {
       const { data: page } = await supabase
         .from('payout_hospitable')
-        .select('id, hospitable_id, amount, platform, date_payout, mouvement_id, reference')
+        .select('id, hospitable_id, amount, platform, date_payout, mouvement_id, reference, platform_id')
         .is('mouvement_id', null)
         .range(from, from + PAGE - 1)
       if (!page || page.length === 0) break
@@ -647,10 +647,16 @@ export async function lancerMatchingAuto(mois, source = 'manuel') {
         })
       for (const mouv of mouvCanal) {
 
-        // Etape 1 : payout exact — fenetres de date croissantes J+0 a J+10 puis fallback
+        // Etape 0 : référence payout dans le libellé/détail bancaire — Powens fournit
+        // « G-XXXX…-Airbnb » = platform_id du payout → match SANS ambiguïté, même quand
+        // deux payouts ont le même montant (faux match Maeva/Naiara du 03/07 : deux
+        // payouts à 327,23 €, celui d'avril pris pour le virement de juin).
         const dateMvt1 = new Date(mouv.date_operation)
-        let payoutExact = null
-        for (let j = 0; j <= 10; j++) {
+        const refPayout = ((mouv.libelle || '') + ' ' + (mouv.detail || '')).toUpperCase().match(/\b[GM]-[A-Z0-9]{15,}\b/)
+        let payoutExact = refPayout ? payoutsCanal.find(p => p.platform_id === refPayout[0]) : null
+
+        // Etape 1 : payout exact — fenetres de date croissantes J+0 a J+10 puis fallback
+        if (!payoutExact) for (let j = 0; j <= 10; j++) {
           payoutExact = payoutsCanal.find(p =>
             Math.abs(p.amount - mouv.credit) <= 2 &&
             Math.abs((new Date(p.date_payout) - dateMvt1) / 86400000) <= j
@@ -658,9 +664,12 @@ export async function lancerMatchingAuto(mois, source = 'manuel') {
           if (payoutExact) break
         }
         if (!payoutExact) {
-          // Fallback sans date : seulement si le montant est unique parmi les payouts disponibles
-          // Évite le faux match type Cleret/Crepy (même fin_revenue, payouts de dates différentes)
-          const candidates = payoutsCanal.filter(p => Math.abs(p.amount - mouv.credit) <= 2)
+          // Fallback : montant unique parmi les payouts disponibles, borné à ±30 j
+          // (sans borne, le payout d'avril de Naiara a « expliqué » le virement de juin de Maeva)
+          const candidates = payoutsCanal.filter(p =>
+            Math.abs(p.amount - mouv.credit) <= 2 &&
+            Math.abs((new Date(p.date_payout) - dateMvt1) / 86400000) <= 30
+          )
           if (candidates.length === 1) payoutExact = candidates[0]
         }
 
