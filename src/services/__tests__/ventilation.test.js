@@ -629,30 +629,6 @@ describe('Batch / FK — calculerVentilationResa', () => {
     // AUTO = 0 (annulée)
     expect(ligne(lignes, 'AUTO')).toBeUndefined()
   })
-
-  it('résa cancelled avec community fee → requalifié en hébergement, pas en marge FMEN gratuite', () => {
-    // Cas réel Annick Lecointe (416, HMWQ3Q33XZ) : annulée, frais perçus, ménage jamais réalisé.
-    const resa = {
-      id: 'test-cancel-menage',
-      code: 'HMWQ3Q33XZ',
-      platform: 'airbnb',
-      fin_revenue: 29385,
-      fin_accommodation: 26400,
-      final_status: 'cancelled',
-      owner_stay: false,
-      mois_comptable: '2026-06',
-      reservation_fee: [
-        { label: 'Host Service Fee', amount: -6715, fee_type: 'host_fee' },
-        { label: 'Community fee', amount: 9700, fee_type: 'guest_fee' },
-      ],
-      bien: makeBien(),
-    }
-    const { lignes } = _calculerLignes(resa)
-    expect(ligne(lignes, 'FMEN')).toBeUndefined()
-    expect(ligne(lignes, 'AUTO')).toBeUndefined()
-    expect(ligne(lignes, 'HON').montant_ttc).toBe(7008)
-    expect(ligne(lignes, 'LOY').montant_ht).toBe(22377)
-  })
 })
 
 // ─────────────────────────────────────────────────────────────────────────

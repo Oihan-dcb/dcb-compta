@@ -231,21 +231,14 @@ export function _calculerLignes(resa) {
   // Fallback Airbnb sans frais ménage (cleaning=0 ET community=0 ET forfait_dcb_ref>0) :
   //   Airbnb n'a pas transmis la ligne ménage → fmenBase = forfait_dcb_ref + provision_ae_ref.
   const totalFeesAirbnb = cleaningFeeAirbnb + communityFeeRaw
-  const airbnbFallbackActif = resa.platform === 'airbnb' && totalFeesAirbnb === 0 && (bien.forfait_dcb_ref || 0) > 0 && !isCancelled
+  const airbnbFallbackActif = resa.platform === 'airbnb' && totalFeesAirbnb === 0 && (bien.forfait_dcb_ref || 0) > 0
   const fmenBase = airbnbFallbackActif
     ? (bien.forfait_dcb_ref || 0) + (bien.provision_ae_ref || 0)
     : totalFeesAirbnb
   const dueToOwner = ((resa.platform === 'airbnb' || resa.platform === 'booking') && totalFeesForOwnerRate > 0)
     ? Math.round(Math.abs(hostServiceFee) * fmenBase / totalFeesForOwnerRate * (1 - tauxCom))
     : 0
-  const fmenNet = Math.max(0, fmenBase - dueToOwner - aeAmount)
-  // Résa annulée (frais perçus) : aeAmount déjà à 0 plus haut (pas de ménage réel à payer) —
-  // la marge FMEN normale ne doit pas non plus rester une marge DCB gratuite sans coût en
-  // face. Requalifiée en hébergement (commissionnée normalement, le reste au propriétaire)
-  // plutôt que gardée intégralement par DCB. dueToOwner (part Airbnb) continue de remonter
-  // au propriétaire hors commission via le résidu LOY, inchangé.
-  const menageAnnuleHebergement = isCancelled ? fmenNet : 0
-  const fmenTTC = (isCancelled ? 0 : fmenNet) + ajustementFmenExtra
+  const fmenTTC = Math.max(0, fmenBase - dueToOwner - aeAmount) + ajustementFmenExtra
   // fmenHT peut être négatif si ajustementFmenExtra dépasse la marge FMEN normale (DCB
   // absorbe la perte) — pas de floor à 0 ici, pour que HON+FMEN+AUTO+LOY se recoupe exactement.
   const fmenHT  = fmenTTC !== 0 ? Math.round(fmenTTC / (1 + TVA_RATE)) : 0
@@ -258,7 +251,7 @@ export function _calculerLignes(resa) {
   // ── Base de commission — TOUTES PLATEFORMES ──────────────────────────
   //   Airbnb : accommodation + host_service_fee + discounts + extraGuestFee (− ménage fondu si fallback)
   //   Direct : accommodation + host_fees | Booking : accommodation + host_fees
-  commissionableBase = accommodation + hostServiceFee + discountsTotal + extraGuestFee - menageFonduAccommodation + ajustementHebergement + menageAnnuleHebergement
+  commissionableBase = accommodation + hostServiceFee + discountsTotal + extraGuestFee - menageFonduAccommodation + ajustementHebergement
 
   // HON = base × taux (TVA 20%). Direct : Math.floor pour coller au statement Hospitable.
   const honTTC = isDirect ? Math.floor(commissionableBase * tauxCom) : Math.round(commissionableBase * tauxCom)
