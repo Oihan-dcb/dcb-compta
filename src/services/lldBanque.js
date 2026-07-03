@@ -122,8 +122,22 @@ export async function importerMouvementsLLD(rows, compte, agence = AGENCE) {
     .map(r => ({ agence, compte, ...r, statut: 'non_rapproche' }))
 
   if (!nouveaux.length) return 0
-  const { error } = await supabase.from('lld_mouvement_bancaire').insert(nouveaux)
-  if (error) throw error
+
+  // Upsert pour les lignes à numero_operation : le filtre ci-dessus ne voit que les
+  // existants DANS la plage de dates du fichier — un même numero_operation déjà en base
+  // avec une date hors plage faisait exploser l'insert sur la contrainte
+  // (numero_operation, compte, agence). ignore-duplicates = réimport toujours idempotent.
+  const avecNum = nouveaux.filter(r => r.numero_operation)
+  const sansNum = nouveaux.filter(r => !r.numero_operation)
+  if (avecNum.length) {
+    const { error } = await supabase.from('lld_mouvement_bancaire')
+      .upsert(avecNum, { onConflict: 'numero_operation,compte,agence', ignoreDuplicates: true })
+    if (error) throw error
+  }
+  if (sansNum.length) {
+    const { error } = await supabase.from('lld_mouvement_bancaire').insert(sansNum)
+    if (error) throw error
+  }
   return nouveaux.length
 }
 
