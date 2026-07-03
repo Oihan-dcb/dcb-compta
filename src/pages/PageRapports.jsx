@@ -1165,7 +1165,7 @@ FORMAT :
                                   <span style={{ fontWeight: 700 }}>{fmt(adj.montant)}</span>
                                   {adj.statut === 'traite' ? (
                                     <span style={{ marginLeft: 'auto', fontSize: '0.85em', color: '#9C8E7D', fontStyle: 'italic' }}>
-                                      Qualifié {adj.type === 'hebergement' ? 'hébergement' : 'ménage / extra'} par {adj.qualifie_par || '—'}
+                                      Qualifié {adj.type === 'hebergement' ? 'hébergement' : 'ménage / extra'}
                                     </span>
                                   ) : (
                                     <div style={{ marginLeft: 'auto', display: 'flex', gap: 6 }}>
