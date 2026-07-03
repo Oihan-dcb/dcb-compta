@@ -480,6 +480,7 @@ export async function pousserFacturesMoisVersEvoliz(mois) {
     .eq('mois', mois)
     .eq('statut', 'valide')
     .eq('agence', AGENCE)
+    .neq('type_facture', 'com') // la facture COM a son flux dédié (pousserFactureCOMVersEvoliz, client fixe, pas de proprio)
     .eq('bloque_treso', false) // factures LLD bloquées (loyer non encaissé) → jamais poussées
 
   if (error) throw error
