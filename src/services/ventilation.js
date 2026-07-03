@@ -118,8 +118,9 @@ export function _calculerLignes(resa) {
   // qualifié (statut≠'traite'). Détection/insertion faite côté serveur (api/ventiler.js).
   const ajustementsQualifies = (resa.reservation_ajustement || []).filter(a => a.statut === 'traite')
   const ajustementHebergement = ajustementsQualifies.filter(a => a.type === 'hebergement').reduce((s, a) => s + (a.montant || 0), 0)
+  // montant_auto n'entre dans aucun calcul (info seulement) — la vraie rémunération AE passe
+  // par une prestation_hors_forfait réelle, jamais par cette ligne (sinon double paiement AE).
   const ajustementFmenExtra = ajustementsQualifies.filter(a => a.type === 'menage').reduce((s, a) => s + (a.montant_fmen || 0), 0)
-  const ajustementAutoExtra = ajustementsQualifies.filter(a => a.type === 'menage').reduce((s, a) => s + (a.montant_auto || 0), 0)
 
   // Remises promotionnelles (Promotion Discount, Last Minute Discount, Ad-hoc fee...)
   // Tableau séparé dans hospitable_raw.financials.host.discounts (négatifs)
@@ -236,9 +237,6 @@ export function _calculerLignes(resa) {
   const dueToOwner = ((resa.platform === 'airbnb' || resa.platform === 'booking') && totalFeesForOwnerRate > 0)
     ? Math.round(Math.abs(hostServiceFee) * fmenBase / totalFeesForOwnerRate * (1 - tauxCom))
     : 0
-  // aeAmountTotal inclut la part AUTO d'un ajustement ménage qualifié — ajoutée APRÈS le
-  // pro-rata dueToOwner (qui ne concerne que le ménage standard, pas l'ajustement).
-  const aeAmountTotal = aeAmount + ajustementAutoExtra
   const fmenTTC = Math.max(0, fmenBase - dueToOwner - aeAmount) + ajustementFmenExtra
   const fmenHT  = fmenTTC > 0 ? Math.round(fmenTTC / (1 + TVA_RATE)) : 0
 
@@ -281,13 +279,13 @@ export function _calculerLignes(resa) {
   if (isDirect) {
     loyAmount = commissionableBase - honTTC + ownerFees
   } else {
-    loyAmount = revenue - honTTC - fmenTTC - aeAmountTotal - taxesTotal
+    loyAmount = revenue - honTTC - fmenTTC - aeAmount - taxesTotal
   }
 
   if (resa.platform === 'booking') {
     const remittedTotal = taxes.filter(t => isRemitted(t)).reduce((s,t) => s + (t.amount||0), 0)
     // CITY_TAX (Withheld Tax) est déjà exclu de host.revenue.amount — ne pas déduire une 2e fois
-    loyAmount = (revenue - remittedTotal) - honTTC - fmenTTC - aeAmountTotal - taxesTotal
+    loyAmount = (revenue - remittedTotal) - honTTC - fmenTTC - aeAmount - taxesTotal
   }
 
   // --- Lignes de ventilation ---
@@ -314,8 +312,8 @@ export function _calculerLignes(resa) {
   }
 
   // AUTO — débours auto-entrepreneur (hors TVA)
-  if (aeAmountTotal > 0) {
-    lignes.push(ligneHorsTVA('AUTO', 'Débours auto-entrepreneur', aeAmountTotal, bien, resa))
+  if (aeAmount > 0) {
+    lignes.push(ligneHorsTVA('AUTO', 'Débours auto-entrepreneur', aeAmount, bien, resa))
   }
 
 
