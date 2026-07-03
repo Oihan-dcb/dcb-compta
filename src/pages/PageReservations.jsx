@@ -244,9 +244,12 @@ export default function PageReservations() {
             </button>
             <LastSyncBadge type="hospitable_reservations" refreshKey={syncResult} />
           </div>
-          <button className="btn btn-primary" onClick={lancerVentilation} disabled={calculant || reservations.length === 0}>
-            {calculant ? <><span className="spinner" /> Calcul…</> : '⚡ Ventiler'}
-          </button>
+          <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 2 }}>
+            <button className="btn btn-primary" onClick={lancerVentilation} disabled={calculant || reservations.length === 0}>
+              {calculant ? <><span className="spinner" /> Calcul…</> : '⚡ Ventiler'}
+            </button>
+            <LastSyncBadge journalOps={{ categorie: 'ventilation', actions: ['compute', 'compute_auto'] }} refreshKey={calculant} />
+          </div>
         </div>
       </div>
 
