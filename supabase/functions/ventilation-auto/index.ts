@@ -178,7 +178,7 @@ function _calculerLignes(resa: Resa): { lignes: LigneVentilation[]; isProlongati
   const totalFeesForOwnerRate = accommodation + guestFeesAll.reduce((s, f) => s + (f.amount || 0), 0)
 
   const totalFeesAirbnb = cleaningFeeAirbnb + communityFeeRaw
-  const airbnbFallbackActif = resa.platform === 'airbnb' && totalFeesAirbnb === 0 && (bien.forfait_dcb_ref || 0) > 0
+  const airbnbFallbackActif = resa.platform === 'airbnb' && totalFeesAirbnb === 0 && (bien.forfait_dcb_ref || 0) > 0 && !isCancelled
   // Fallback Airbnb : Airbnb n'a pas transmis la ligne ménage → ménage voyageur FONDU dans
   // `accommodation`. Prix ménage facturé au voyageur = forfait_dcb_ref + provision_ae_ref (= 97,00 sur 416).
   const fmenBase = airbnbFallbackActif
@@ -188,7 +188,14 @@ function _calculerLignes(resa: Resa): { lignes: LigneVentilation[]; isProlongati
   const dueToOwner = ((resa.platform === 'airbnb' || resa.platform === 'booking') && totalFeesForOwnerRate > 0)
     ? Math.round(Math.abs(hostServiceFee) * fmenBase / totalFeesForOwnerRate * (1 - tauxCom))
     : 0
-  const fmenTTC = Math.max(0, fmenBase - dueToOwner - aeAmount) + ajustementFmenExtra
+  const fmenNet = Math.max(0, fmenBase - dueToOwner - aeAmount)
+  // Résa annulée (frais perçus) : aeAmount déjà à 0 plus haut (pas de ménage réel à payer) —
+  // la marge FMEN normale ne doit pas non plus rester une marge DCB gratuite sans coût en
+  // face. Requalifiée en hébergement (commissionnée normalement, le reste au propriétaire)
+  // plutôt que gardée intégralement par DCB. dueToOwner (part Airbnb) continue de remonter
+  // au propriétaire hors commission via le résidu LOY, inchangé.
+  const menageAnnuleHebergement = isCancelled ? fmenNet : 0
+  const fmenTTC = (isCancelled ? 0 : fmenNet) + ajustementFmenExtra
   // fmenHT peut être négatif si ajustementFmenExtra dépasse la marge FMEN normale (DCB
   // absorbe la perte) — pas de floor à 0 ici, pour que HON+FMEN+AUTO+LOY se recoupe exactement.
   const fmenHT = fmenTTC !== 0 ? Math.round(fmenTTC / (1 + TVA_RATE)) : 0
@@ -198,7 +205,7 @@ function _calculerLignes(resa: Resa): { lignes: LigneVentilation[]; isProlongati
   // calculé sur le ménage. (Cas normal : le ménage est déjà hors accommodation.)
   const menageFonduAccommodation = airbnbFallbackActif ? (fmenBase - dueToOwner) : 0
 
-  const commissionableBase = accommodation + hostServiceFee + discountsTotal + extraGuestFee - menageFonduAccommodation + ajustementHebergement
+  const commissionableBase = accommodation + hostServiceFee + discountsTotal + extraGuestFee - menageFonduAccommodation + ajustementHebergement + menageAnnuleHebergement
   const honTTC = isDirect ? Math.floor(commissionableBase * tauxCom) : Math.round(commissionableBase * tauxCom)
   const honHT = Math.round(honTTC / (1 + TVA_RATE))
 
