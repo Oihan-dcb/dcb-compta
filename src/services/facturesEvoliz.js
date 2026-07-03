@@ -958,12 +958,20 @@ async function genererFactureDebours(proprio, biens, mois, ctx) {
       const autoAbsorbable    = Math.min(autoNetMenDeb, loyBienDisponible)
       montantAFacturer        = Math.max(0, autoNetMenDeb - autoAbsorbable)
 
+      // deduction_loy (main d'oeuvre, ex. menage de fond) non couvert par le LOY dispo
+      // (haowner deja toujours facture independamment, cf. ligne HAOWNER honoraires) -> créance
+      // a facturer en DEBP, symetrique du cas bien.mode_encaissement === 'proprio'
+      const prestBienItems   = bienPrest.filter(function(p){ return p.type_imputation === 'deduction_loy' })
+      const prestBienCouvert = Math.min(prestBien, Math.max(0, loyBien - haownerBienTTC))
+      const prestBienReliquat = prestBien - prestBienCouvert
+
       // debours_proprio : absorbe le LOY résiduel après AUTO
-      debPropItems = bienPrest.filter(function(p){ return p.type_imputation === 'debours_proprio' })
-      const deboursPropBien = debPropItems.reduce(function(s,p){ return s + (p.montant || 0) }, 0)
+      const debProprioItems = bienPrest.filter(function(p){ return p.type_imputation === 'debours_proprio' })
+      debPropItems = prestBienReliquat > 0 ? debProprioItems.concat(prestBienItems) : debProprioItems
+      const deboursPropBien = debProprioItems.reduce(function(s,p){ return s + (p.montant || 0) }, 0)
       const loyApresAuto    = Math.max(0, loyBienDisponible - autoAbsorbable)
       const debPropAbsorb   = Math.min(deboursPropBien, loyApresAuto)
-      debPropSurplus        = Math.max(0, deboursPropBien - debPropAbsorb)
+      debPropSurplus        = Math.max(0, deboursPropBien - debPropAbsorb) + prestBienReliquat
       montantAFacturer     += debPropSurplus
 
       // Owner stay AUTO : absorbe le LOY résiduel après deboursProp
