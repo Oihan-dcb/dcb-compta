@@ -579,7 +579,10 @@ async function genererFactureGroupe(proprio, biens, mois, ctx) {
   const lignes = []
   let ordre = 1
 
-  if (com.ht > 0) {
+  // !== 0 (pas > 0) : un ajustement réservation "hébergement" très négatif (ex. faute agence,
+  // Resolution Center) peut rendre com.ht négatif pour le mois — la ligne doit rester visible
+  // (crédit), sinon la facture (total_ht) ne correspondrait plus à la somme de ses lignes.
+  if (com.ht !== 0) {
     lignes.push({
       facture_id: factureId,
       code: 'HON',
@@ -594,7 +597,8 @@ async function genererFactureGroupe(proprio, biens, mois, ctx) {
   }
 
   // FMEN exclu des factures Lauian — c'est DCB qui facture le ménage aux proprios Lauian
-  if (menConsolide.ht > 0 && AGENCE !== 'lauian') {
+  // !== 0 : idem HON — un ajustement "ménage" très négatif peut rendre menConsolide.ht négatif.
+  if (menConsolide.ht !== 0 && AGENCE !== 'lauian') {
     lignes.push({
       facture_id: factureId,
       code: 'FMEN',
@@ -1138,7 +1142,7 @@ async function genererFactureLauianFMEN(proprio, biens, mois, ctx) {
   const lignes = []
   let ordre = 1
 
-  if (fmenHT > 0) {
+  if (fmenHT !== 0) {
     lignes.push({
       facture_id:  factureId,
       code:        'FMEN',
