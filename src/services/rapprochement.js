@@ -601,7 +601,7 @@ export async function lancerMatchingAuto(mois) {
     while (true) {
       const { data: page } = await supabase
         .from('payout_hospitable')
-        .select('id, hospitable_id, amount, platform, date_payout, mouvement_id')
+        .select('id, hospitable_id, amount, platform, date_payout, mouvement_id, reference')
         .is('mouvement_id', null)
         .range(from, from + PAGE - 1)
       if (!page || page.length === 0) break
@@ -633,11 +633,13 @@ export async function lancerMatchingAuto(mois) {
     // ── AIRBNB + BOOKING ───────────────────────────────────────────
     for (const canal of ['airbnb', 'booking']) {
       const mouvCanal = libres.filter(m => m.canal === canal)
-      // Pour Airbnb : utiliser uniquement les payouts synthétiques (fin_revenue → lien resa garanti)
+      // Pour Airbnb : payouts synthétiques (fin_revenue → lien resa garanti) + payouts RÉELS
+        // créés par le Sync Airbnb (reference non-null : résolutions/recouches, ajustements,
+        // payouts fractionnés) — leur montant = total bancaire, match exact garanti.
         // Pour Booking : payouts réels (ils ont payout_reservation via booking_payout_line)
         const payoutsCanal = payoutsAll.filter(p => {
           if (p.platform !== canal) return false
-          if (canal === 'airbnb') return p.hospitable_id?.endsWith('_airbnb_payout')
+          if (canal === 'airbnb') return p.hospitable_id?.endsWith('_airbnb_payout') || p.reference != null
           return true
         })
       for (const mouv of mouvCanal) {
@@ -663,13 +665,16 @@ export async function lancerMatchingAuto(mois) {
           // Récupérer les resaIds EN PREMIER
           const { data: prLinks } = await supabase
             .from('payout_reservation')
-            .select('reservation_id')
+            .select('reservation_id, amount_cents')
             .eq('payout_id', payoutExact.id)
           let resaIds = (prLinks || []).map(r => r.reservation_id).filter(Boolean)
 
+          const isRealAirbnb = canal === 'airbnb' && !payoutExact.hospitable_id?.endsWith('_airbnb_payout')
+
           // Fallback : payout_reservation vide → chercher par fin_revenue exact + platform + mois
           // Contrainte triple pour éviter tout faux match (≠ ancien fallback VIR ±200)
-          if (!resaIds.length) {
+          // (pas pour les payouts réels : une résolution/recouche n'a légitimement pas de résa)
+          if (!resaIds.length && !isRealAirbnb) {
             const { data: resaFallback } = await supabase
               .from('reservation')
               .select('id')
@@ -682,8 +687,43 @@ export async function lancerMatchingAuto(mois) {
             }
           }
 
-          // _lierViaPayout crée reservation_paiement + met statut_matching AVANT payout_hospitable
-          await _lierViaPayout(mouv.id, resaIds, mouv)
+          if (isRealAirbnb) {
+            // Payout réel Airbnb (résolution/recouche, ajustement, fractionné) :
+            // créditer chaque résa de SA part (amount_cents du payout, PAS le crédit bancaire
+            // total qui peut inclure un ajustement négatif d'une autre résa)
+            if (resaIds.length) {
+              const { data: resasData } = await supabase
+                .from('reservation').select('id, code').in('id', resaIds)
+              const codeById = Object.fromEntries((resasData || []).map(r => [r.id, r.code]))
+              const lignes = (prLinks || [])
+                .map(l => ({ ref: codeById[l.reservation_id], amount_cents: l.amount_cents }))
+                .filter(l => l.ref && l.amount_cents != null)
+              if (lignes.length) {
+                await propagerRapprochementResas(mouv, 'airbnb', lignes)
+              } else {
+                await _lierViaPayout(mouv.id, resaIds, mouv)
+              }
+              // Sortir du pool les lignes synthétiques jumelles (même argent sous forme par-résa)
+              const twinIds = resaIds.map(id => id + '_airbnb_payout')
+              await supabase.from('payout_hospitable')
+                .update({ mouvement_id: mouv.id, statut_matching: 'rapproche' })
+                .in('hospitable_id', twinIds).is('mouvement_id', null)
+              for (const tid of twinIds) {
+                const tw = payoutsCanal.find(p => p.hospitable_id === tid)
+                if (tw) payoutsCanal.splice(payoutsCanal.indexOf(tw), 1)
+              }
+            }
+            // Marquer le mouvement (avec le détail de la résolution si pas de résa)
+            const detailMaj = resaIds.length
+              ? {}
+              : { detail: ('Résolution Airbnb : ' + (payoutExact.reference || '')).slice(0, 500) }
+            await supabase.from('mouvement_bancaire')
+              .update({ statut_matching: 'rapproche', ...detailMaj })
+              .eq('id', mouv.id)
+          } else {
+            // _lierViaPayout crée reservation_paiement + met statut_matching AVANT payout_hospitable
+            await _lierViaPayout(mouv.id, resaIds, mouv)
+          }
 
           // Mettre à jour payout_hospitable APRÈS que reservation_paiement existe
           await supabase.from('payout_hospitable')
@@ -703,9 +743,13 @@ export async function lancerMatchingAuto(mois) {
         const FENETRES_AIRBNB = [2, 7, 14, 999]
         let subsetPay = null
         for (const fenetre of FENETRES_AIRBNB) {
+          // Les payouts réels (reference non-null) correspondent 1:1 à un virement bancaire :
+          // ils ne participent pas aux regroupements (et feraient doublon avec leurs
+          // jumeaux synthétiques par-résa dans les combinaisons)
+          const poolGroupe = payoutsCanal.filter(p => !(canal === 'airbnb' && p.reference != null))
           const paysFiltres = fenetre >= 999
-            ? payoutsCanal
-            : payoutsCanal.filter(p => Math.abs((new Date(p.date_payout) - dateMvt2) / 86400000) <= fenetre)
+            ? poolGroupe
+            : poolGroupe.filter(p => Math.abs((new Date(p.date_payout) - dateMvt2) / 86400000) <= fenetre)
           subsetPay = _subsetSum(paysFiltres, mouv.credit, 2)
           if (subsetPay) break
         }

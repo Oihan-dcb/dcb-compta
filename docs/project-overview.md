@@ -959,3 +959,18 @@ Granularité = **par bien** (1 facture = 1 bien, sauf Maïté = facture groupe �
   les payouts **des deux agences** (pas de colonne agence sur `payout_hospitable`) → bruit + risque de
   faux groupe inter-agences. Fix : résolution de l'agence via l'id de résa embarqué dans le
   `hospitable_id` synthétique, filtre `agence = AGENCE`.
+- **Suite (même session) — résolutions/ajustements/payouts fractionnés Airbnb** : le Sync Airbnb
+  (`syncPayouts.js`) ne gardait que les transactions `Reservation` des payouts Hospitable — il jetait
+  les `Resolution Payout` (recouches facturées via Airbnb, dédommagements AirCover) et les
+  `Resolution Adjustment` (retenue sur le virement pour un remboursement passé, ex. Sara Michel
+  −130 € résolution 17812626938665), et ne savait pas représenter un payout fractionné (Julia
+  Fauquenoi 272,09 € versés 97,18 + 174,91 — une seule ligne synthétique par résa). Ces virements
+  restaient donc à jamais non-rapprochables.
+  Fix : le sync stocke désormais un **payout réel** (`hospitable_id` = uuid du payout, `amount` =
+  total bancaire, `reference` = détail des résolutions) + `payout_reservation.amount_cents`
+  (migration 221 : part de chaque résa dans CE payout). Le matching auto inclut ces payouts réels
+  (match exact garanti), crédite chaque résa de SA part via `propagerRapprochementResas` (et pas du
+  crédit bancaire total), sort les jumeaux synthétiques du pool, et marque les mouvements de
+  résolution sans résa avec le détail (« Résolution Airbnb : … »). Les payouts réels sont exclus du
+  subset-sum (1 payout = 1 virement).
+  Workflow : « 🔄 Sync Airbnb » (Banque) puis « matching auto » (Rapprochement).
