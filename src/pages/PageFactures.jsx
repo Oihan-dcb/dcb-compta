@@ -1032,8 +1032,9 @@ const [pushing, setPushing] = useState(false)
                       </button>
                     )}
 
-                    {/* Envoyer au proprio — uniquement débours sans gestion loyer, statut valide */}
-                    {f.type_facture === 'debours' && f.bien?.gestion_loyer === false && f.statut === 'valide' && (
+                    {/* Envoyer au proprio — toute facture débours validée (l'existence même de la facture
+                        signale un surplus non absorbé par le LOY, gestion_loyer true ou false) */}
+                    {f.type_facture === 'debours' && f.statut === 'valide' && (
                       <button
                         className="btn btn-sm"
                         style={{ background: '#9EB39A', color: '#fff', border: 'none' }}
