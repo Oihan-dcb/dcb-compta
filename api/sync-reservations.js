@@ -10,6 +10,7 @@ const SUPABASE_URL     = process.env.SUPABASE_URL || 'https://omuncchvypbtxkpalw
 const SUPABASE_KEY     = process.env.SUPABASE_SERVICE_ROLE_KEY;
 const SUPABASE_ANON_KEY = process.env.SUPABASE_ANON_KEY;
 const WEBHOOK_SECRET   = process.env.HOSPITABLE_WEBHOOK_SECRET;
+const CRON_SECRET = process.env.CRON_SECRET; // envoyé par Vercel en Authorization: Bearer sur les crons
 const ALLOWED_EMAILS   = (process.env.ALLOWED_ADMIN_EMAILS || '').split(',').map(e => e.trim().toLowerCase()).filter(Boolean);
 const HOSP_BASE        = 'https://public.api.hospitable.com';
 
@@ -319,7 +320,8 @@ export default async function handler(req, res) {
     return res.status(500).json({ error: 'HOSPITABLE_WEBHOOK_SECRET non configuré' });
   }
 
-  if (token !== WEBHOOK_SECRET) {
+  const isCronToken = token === WEBHOOK_SECRET || (CRON_SECRET && token === CRON_SECRET);
+  if (!isCronToken) {
     // Fallback : vérifier JWT Supabase (appel depuis l'UI)
     if (!SUPABASE_ANON_KEY) return res.status(401).json({ error: 'Non autorisé' });
     const authRes = await fetch(`${SUPABASE_URL}/auth/v1/user`, {
