@@ -1042,3 +1042,15 @@ Granularité = **par bien** (1 facture = 1 bien, sauf Maïté = facture groupe �
   étendu (mode `journalOps: {categorie, actions}`) et posé sous ⚡ Ventiler (`compute` = bouton,
   `compute_auto` = cron). Les 5 boutons doublés par un cron ont désormais leur horodatage :
   Sync Hospitable, Sync Airbnb, Match Stripe, Matching auto, Ventiler.
+- **Suite (même session) — ajustement manuel de la ventilation à total constant** (fonctionnalité
+  rare, modal Réservations) : bouton « ⚖️ Ajuster » → saisie des **TTC** des prestations
+  (HON / FMEN / AUTO), HT recalculé (TTC/1,20 ; AUTO hors TVA), **LOY + VIR absorbent le delta** →
+  le total de la résa est conservé PAR CONSTRUCTION (approche delta, indépendante de la formule
+  d'identité par plateforme). Cas d'usage : baisser les HON pour augmenter le LOY.
+  Verrou `reservation.ventilation_manuelle` (migration 226) : les moteurs de ventilation
+  (`api/ventiler._writeResa`, `ventilation-auto` nightly — edge redéployée) **skippent** ces résas ;
+  `update-ventilation-auto` (montant_reel only) reste actif, compatible. La saisie libre existante
+  (résas manual, `VentilationEdit`) pose désormais aussi le verrou. Bouton « ↺ Réactiver le calcul
+  auto » (confirm) → lève le verrou + recalcule immédiatement. Journalisé dans `journal_ops`
+  (action `ajustement_manuel`). Service : `ajusterVentilationManuelle` / `reactiverVentilationAuto`
+  dans src/services/ventilation.js.

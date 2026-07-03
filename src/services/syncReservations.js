@@ -36,7 +36,7 @@ export async function getReservationsMois(mois) {
     .from('reservation')
     .select(`
       id, code, platform, arrival_date, departure_date, nights, guest_name,
-      fin_revenue, fin_accommodation, owner_stay, ventilation_calculee, rapprochee,
+      fin_revenue, fin_accommodation, owner_stay, ventilation_calculee, ventilation_manuelle, rapprochee,
       final_status, mois_comptable,
       bien (
         id, hospitable_name, code, proprietaire_id, agence,
@@ -45,7 +45,7 @@ export async function getReservationsMois(mois) {
         proprietaire!proprietaire_id (id, nom, prenom, taux_commission)
       ),
       reservation_fee (*),
-      ventilation (code, taux_calcule, montant_ht, montant_tva, montant_ttc, libelle),
+      ventilation (id, code, taux_calcule, montant_ht, montant_tva, montant_ttc, libelle),
       hospitable_raw
     `)
     .eq('mois_comptable', mois)

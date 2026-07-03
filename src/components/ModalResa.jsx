@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react'
 import { supabase } from '../lib/supabase'
 import { formatMontant, fetchReservationById } from '../lib/hospitable'
 import { toggleOwnerStay } from '../hooks/useOwnerStay'
-import { calculerVentilationResa } from '../services/ventilation'
+import { calculerVentilationResa, ajusterVentilationManuelle, reactiverVentilationAuto } from '../services/ventilation'
 import { format } from 'date-fns'
 import { fr } from 'date-fns/locale'
 
@@ -69,6 +69,98 @@ function BoutonProprio({ resa, onDone }) {
   )
 }
 
+// Ajustement manuel « total constant » (fonctionnalité rare) : saisir les TTC des
+// prestations (HON / FMEN / AUTO), le HT se recalcule (TTC/1,20), et LOY + VIR
+// absorbent le delta — le total de la résa ne change JAMAIS. Pose le verrou
+// ventilation_manuelle : plus aucun recalcul auto n'écrase ces montants.
+function AjusterVentil({ resa, ventil, onDone, onCancel }) {
+  const EDITABLE = ['HON', 'FMEN', 'AUTO']
+  const editables = ventil.filter(v => EDITABLE.includes(v.code))
+  const loy = ventil.find(v => v.code === 'LOY')
+  const vir = ventil.find(v => v.code === 'VIR')
+  const autres = ventil.filter(v => !EDITABLE.includes(v.code) && v.code !== 'LOY' && v.code !== 'VIR')
+  const [vals, setVals] = useState(() => Object.fromEntries(editables.map(v => [v.code, ((v.montant_ttc ?? v.montant_ht ?? 0) / 100).toFixed(2)])))
+  const [saving, setSaving] = useState(false)
+  const parse = (x) => { const n = Math.round(parseFloat(String(x).replace(',', '.')) * 100); return isNaN(n) || n < 0 ? null : n }
+
+  let delta = 0, invalid = false
+  for (const v of editables) {
+    const n = parse(vals[v.code])
+    if (n === null) { invalid = true; continue }
+    delta += (v.montant_ttc ?? v.montant_ht ?? 0) - n
+  }
+  const loyNew = (loy?.montant_ht || 0) + delta
+  const fmtE = (c) => (c / 100).toLocaleString('fr-FR', { minimumFractionDigits: 2 }) + ' €'
+
+  async function save() {
+    setSaving(true)
+    try {
+      const edits = Object.fromEntries(editables.map(v => [v.code, parse(vals[v.code])]))
+      await ajusterVentilationManuelle(resa, edits)
+      if (onDone) onDone()
+    } catch (e) {
+      alert('Erreur : ' + e.message)
+    } finally { setSaving(false) }
+  }
+
+  return (
+    <div style={{ borderTop: '1px solid #eee', paddingTop: 12 }}>
+      <div style={{ fontWeight: 700, fontSize: '0.8em', color: '#B45309', textTransform: 'uppercase', letterSpacing: '0.08em', marginBottom: 8 }}>
+        ⚖️ Ajustement manuel — total constant
+      </div>
+      <table style={{ width: '100%', fontSize: '0.9em' }}>
+        <thead>
+          <tr style={{ color: '#888', fontSize: '0.8em' }}>
+            <th style={{ textAlign: 'left', paddingBottom: 6 }}>Code</th>
+            <th style={{ textAlign: 'right', paddingBottom: 6 }}>HT (calculé)</th>
+            <th style={{ textAlign: 'right', paddingBottom: 6 }}>TTC</th>
+          </tr>
+        </thead>
+        <tbody>
+          {editables.map(v => {
+            const n = parse(vals[v.code])
+            const ht = n === null ? null : (v.code === 'AUTO' ? n : Math.round(n / 1.2))
+            return (
+              <tr key={v.code} style={{ borderTop: '1px solid #eee' }}>
+                <td style={{ padding: '6px 0' }}><strong>{v.code}</strong> <span style={{ color: '#999', fontSize: '0.85em' }}>{v.libelle}</span></td>
+                <td style={{ textAlign: 'right', color: '#666' }}>{ht === null ? '—' : fmtE(ht)}</td>
+                <td style={{ textAlign: 'right', padding: '4px 0' }}>
+                  <input value={vals[v.code]} onChange={e => setVals(p => ({ ...p, [v.code]: e.target.value }))}
+                    style={{ width: 100, textAlign: 'right', padding: '4px 6px', border: '1px solid ' + (parse(vals[v.code]) === null ? '#DC2626' : '#ccc'), borderRadius: 5 }} /> €
+                </td>
+              </tr>
+            )
+          })}
+          {loy && (
+            <tr style={{ borderTop: '1px solid #eee', background: '#F0FDF4' }}>
+              <td style={{ padding: '6px 0' }}><strong>LOY</strong> <span style={{ color: '#999', fontSize: '0.85em' }}>absorbe le delta</span></td>
+              <td style={{ textAlign: 'right', color: loyNew < 0 ? '#DC2626' : '#15803D', fontWeight: 700 }} colSpan={2}>
+                {fmtE(loy.montant_ht || 0)} → {fmtE(loyNew)} {vir ? '(VIR suit)' : ''}
+              </td>
+            </tr>
+          )}
+          {autres.map(v => (
+            <tr key={v.code} style={{ borderTop: '1px solid #eee', color: '#999' }}>
+              <td style={{ padding: '6px 0' }}>{v.code} <span style={{ fontSize: '0.85em' }}>{v.libelle} (inchangé)</span></td>
+              <td style={{ textAlign: 'right' }} colSpan={2}>{fmtE(v.montant_ttc ?? v.montant_ht ?? 0)}</td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+      <div style={{ fontSize: '0.8em', color: loyNew < 0 ? '#DC2626' : '#15803D', marginTop: 8, fontWeight: 600 }}>
+        {loyNew < 0 ? '⛔ Le reversement propriétaire deviendrait négatif' : '✓ Total de la résa inchangé — les recalculs auto seront désactivés pour cette résa'}
+      </div>
+      <div style={{ display: 'flex', gap: 8, marginTop: 10, justifyContent: 'flex-end' }}>
+        <button onClick={onCancel} style={{ padding: '6px 14px', borderRadius: 6, border: '1px solid #ddd', background: '#fff', cursor: 'pointer' }}>Annuler</button>
+        <button onClick={save} disabled={saving || invalid || loyNew < 0}
+          style={{ padding: '6px 16px', borderRadius: 6, border: 'none', background: (saving || invalid || loyNew < 0) ? '#aaa' : '#B45309', color: '#fff', fontWeight: 600, cursor: (saving || invalid || loyNew < 0) ? 'not-allowed' : 'pointer' }}>
+          {saving ? '…' : 'Enregistrer l\'ajustement'}
+        </button>
+      </div>
+    </div>
+  )
+}
+
 function VentilationEdit({ resa, ventil, onSaved, onCancel }) {
   const [lines, setLines] = useState(() =>
     ventil.length > 0
@@ -110,8 +202,9 @@ function VentilationEdit({ resa, ventil, onSaved, onCancel }) {
         const { error } = await supabase.from('ventilation').insert(lignes)
         if (error) throw error
       }
-      await supabase.from('reservation').update({ ventilation_calculee: true }).eq('id', resa.id)
-      if (onSaved) onSaved(false, { id: resa.id, ventilation: lignes, ventilation_calculee: true })
+      // Saisie libre = ajustement manuel : verrou contre les recalculs auto (migration 226)
+      await supabase.from('reservation').update({ ventilation_calculee: true, ventilation_manuelle: true }).eq('id', resa.id)
+      if (onSaved) onSaved(false, { id: resa.id, ventilation: lignes, ventilation_calculee: true, ventilation_manuelle: true })
     } catch (err) {
       alert('Erreur : ' + err.message)
     } finally {
@@ -246,6 +339,7 @@ export default function ModalResa({ resa, onClose, onSaved }) {
   const ventil = resa.ventilation || []
   const isManual = resa.platform === 'manual' || (resa.final_status === 'cancelled' && (resa.platform === 'direct' || resa.platform === 'manual'))
   const [editing, setEditing] = useState(false)
+  const [adjusting, setAdjusting] = useState(false)
   const [modeVentil, setModeVentil] = useState('normal')
   const [ventilating, setVentilating] = useState(false)
   const [virements, setVirements] = useState([])
@@ -437,17 +531,47 @@ export default function ModalResa({ resa, onClose, onSaved }) {
         ) : ventil.length > 0 ? (
           <>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderTop: '1px solid #eee', paddingTop: 16, marginBottom: 12 }}>
-              <div style={{ fontWeight: 700, fontSize: '0.8em', color: '#888', textTransform: 'uppercase', letterSpacing: '0.08em' }}>Ventilation</div>
-              {isManual && (
-                <div style={{ display: 'flex', gap: 6 }}>
-                  <button onClick={() => setEditing(true)}
-                    style={{ fontSize: '0.8em', padding: '3px 10px', background: '#f5f5f5', border: '1px solid #ddd', borderRadius: 5, cursor: 'pointer' }}>
-                    ✏️ Modifier
+              <div style={{ fontWeight: 700, fontSize: '0.8em', color: '#888', textTransform: 'uppercase', letterSpacing: '0.08em' }}>
+                Ventilation{resa.ventilation_manuelle ? ' · ✋ ajustée manuellement' : ''}
+              </div>
+              <div style={{ display: 'flex', gap: 6 }}>
+                {!adjusting && ventil.some(v => v.code === 'LOY') && (
+                  <button onClick={() => setAdjusting(true)}
+                    title="Ajuster les prestations (TTC) à total constant — LOY absorbe le delta"
+                    style={{ fontSize: '0.8em', padding: '3px 10px', background: '#FFF7ED', border: '1px solid #FDBA74', borderRadius: 5, cursor: 'pointer', color: '#B45309' }}>
+                    ⚖️ Ajuster
                   </button>
-                  <BoutonProprio resa={resa} onDone={handleProprio} />
-                </div>
-              )}
+                )}
+                {resa.ventilation_manuelle && (
+                  <button onClick={async () => {
+                    if (!window.confirm('Réactiver le calcul automatique ?\n\nLa ventilation sera recalculée immédiatement et vos ajustements manuels seront remplacés.')) return
+                    try {
+                      await reactiverVentilationAuto(resa.id)
+                      await calculerVentilationResa({ ...resa, ventilation_manuelle: false })
+                      if (onSaved) onSaved()
+                    } catch (e) { alert('Erreur : ' + e.message) }
+                  }}
+                    style={{ fontSize: '0.8em', padding: '3px 10px', background: '#f5f5f5', border: '1px solid #ddd', borderRadius: 5, cursor: 'pointer' }}>
+                    ↺ Réactiver le calcul auto
+                  </button>
+                )}
+                {isManual && (
+                  <>
+                    <button onClick={() => setEditing(true)}
+                      style={{ fontSize: '0.8em', padding: '3px 10px', background: '#f5f5f5', border: '1px solid #ddd', borderRadius: 5, cursor: 'pointer' }}>
+                      ✏️ Modifier
+                    </button>
+                    <BoutonProprio resa={resa} onDone={handleProprio} />
+                  </>
+                )}
+              </div>
             </div>
+            {adjusting ? (
+              <AjusterVentil resa={resa} ventil={ventil}
+                onDone={() => { setAdjusting(false); if (onSaved) onSaved() }}
+                onCancel={() => setAdjusting(false)} />
+            ) : null}
+            {!adjusting && (
             <table style={{ width: '100%', fontSize: '0.9em' }}>
               <thead>
                 <tr style={{ color: '#888', fontSize: '0.8em' }}>
@@ -468,6 +592,7 @@ export default function ModalResa({ resa, onClose, onSaved }) {
                 ))}
               </tbody>
             </table>
+            )}
           </>
         ) : (
           <div style={{ borderTop: '1px solid #eee', paddingTop: 16 }}>

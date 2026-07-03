@@ -276,6 +276,10 @@ async function _detecterAjustements(resa: Resa, supa: ReturnType<typeof createCl
 // ── calculerVentilationResa (port avec supabase admin) ────────────────────────
 
 async function calculerVentilationResa(resa: Resa, supa: ReturnType<typeof createClient>, dryRun: boolean): Promise<void> {
+  // Verrou ajustement manuel (migration 226) : ventilation saisie à la main dans le
+  // modal Réservations — ne JAMAIS l'écraser par le recalcul nightly.
+  if ((resa as { ventilation_manuelle?: boolean }).ventilation_manuelle) return
+
   const bien = resa.bien!
 
   // Séjour propriétaire

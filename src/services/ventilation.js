@@ -17,6 +17,7 @@
  */
 
 import { supabase } from '../lib/supabase'
+import { logOp } from './journal'
 import { AGENCE } from '../lib/agence'
 import { authPost } from '../lib/authFetch'
 import { STATUTS_NON_VENTILABLES } from '../lib/constants'
@@ -492,4 +493,60 @@ export async function getRecapVentilation(mois) {
     parProprio: Object.values(parProprio).sort((a, b) => a.nom.localeCompare(b.nom)),
     lignes,
   }
+}
+
+/**
+ * Ajustement manuel « total constant » de la ventilation (fonctionnalité rare —
+ * modal Réservations). `edits` = { CODE: nouveau_TTC_centimes } pour les lignes
+ * prestations (HON, FMEN, AUTO). Le HT est recalculé (TTC / 1,20 pour les lignes
+ * TVA, = TTC pour AUTO hors TVA) et LOY + VIR absorbent le delta → le total de la
+ * résa est conservé PAR CONSTRUCTION. Pose reservation.ventilation_manuelle = true :
+ * plus aucun recalcul auto (api/ventiler + ventilation-auto nightly, migration 226).
+ */
+export async function ajusterVentilationManuelle(resa, edits) {
+  const lignes = resa.ventilation || []
+  const get = (c) => lignes.find(l => l.code === c)
+  let delta = 0
+  const updates = []
+  for (const [code, ttcNew] of Object.entries(edits)) {
+    const l = get(code)
+    if (!l || ttcNew == null || ttcNew < 0) continue
+    const horsTVA = code === 'AUTO'
+    const ttcOld = l.montant_ttc ?? l.montant_ht ?? 0
+    if (ttcNew === ttcOld) continue
+    const ht = horsTVA ? ttcNew : Math.round(ttcNew / 1.2)
+    updates.push({ id: l.id, vals: { montant_ht: ht, montant_tva: horsTVA ? l.montant_tva : ttcNew - ht, montant_ttc: ttcNew, calcul_source: 'manual' } })
+    delta += ttcOld - ttcNew
+  }
+  if (!updates.length) return { changed: false, delta: 0 }
+
+  const loy = get('LOY')
+  if (!loy) throw new Error('Ligne LOY absente — ajustement impossible sur cette résa')
+  const loyNew = (loy.montant_ht || 0) + delta
+  if (loyNew < 0) throw new Error('Le reversement propriétaire deviendrait négatif (' + (loyNew / 100).toFixed(2) + ' €)')
+  updates.push({ id: loy.id, vals: { montant_ht: loyNew, montant_ttc: loyNew, calcul_source: 'manual' } })
+  const vir = get('VIR')
+  if (vir) updates.push({ id: vir.id, vals: { montant_ht: (vir.montant_ht || 0) + delta, montant_ttc: (vir.montant_ttc ?? vir.montant_ht ?? 0) + delta, calcul_source: 'manual' } })
+
+  for (const u of updates) {
+    if (!u.id) throw new Error('Ligne de ventilation sans id — rechargez la page')
+    const { error } = await supabase.from('ventilation').update(u.vals).eq('id', u.id)
+    if (error) throw error
+  }
+  const { error: flagErr } = await supabase.from('reservation').update({ ventilation_manuelle: true }).eq('id', resa.id)
+  if (flagErr) throw flagErr
+
+  logOp({
+    categorie: 'ventilation', action: 'ajustement_manuel', statut: 'ok', source: 'app',
+    mois_comptable: resa.mois_comptable, reservation_id: resa.id, bien_id: resa.bien?.id || resa.bien_id,
+    message: `Ajustement manuel ${resa.code} : ` + Object.entries(edits).map(([c, v]) => `${c}=${(v / 100).toFixed(2)}€ TTC`).join(', ') + ` → delta LOY ${(delta / 100).toFixed(2)}€ (total conservé)`,
+    meta: { edits, delta },
+  })
+  return { changed: true, delta }
+}
+
+/** Lève le verrou d'ajustement manuel — la résa redevient recalculable par les moteurs auto. */
+export async function reactiverVentilationAuto(resaId) {
+  const { error } = await supabase.from('reservation').update({ ventilation_manuelle: false }).eq('id', resaId)
+  if (error) throw error
 }

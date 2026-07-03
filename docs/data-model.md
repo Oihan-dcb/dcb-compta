@@ -822,3 +822,8 @@ Table de configuration historique du périmètre de perception des loyers platef
 **Usage** : filtre appliqué dans `SequestreCloture` (PageComptabilite.jsx) sur les réservations Airbnb et Booking uniquement. Les canaux direct / stripe / manual ne sont **jamais** filtrés par ce périmètre.
 
 **Saisie** : via le sous-onglet "Périmètre mensuel" de l'onglet Séquestre → Clôture. Grille biens × 12 mois, upsert DB immédiat au clic.
+
+
+## Ajout 2026-07-03 — reservation.ventilation_manuelle (migration 226)
+
+`reservation.ventilation_manuelle boolean not null default false` : verrou d'ajustement manuel de la ventilation. Quand true, aucun moteur (api/ventiler, ventilation-auto) ne recalcule la résa — montants saisis à la main préservés. Posé par « ⚖️ Ajuster » et par la saisie libre du modal ; levé par « ↺ Réactiver le calcul auto ».

@@ -271,6 +271,9 @@ async function _detecterAjustements(resa, supa) {
 // ── Ecriture DB d'une réservation (port de calculerVentilationResa) ───────────
 
 async function _writeResa(resa, agence, supa) {
+  // Verrou ajustement manuel : la ventilation de cette résa a été saisie à la main
+  // (modal Réservations, migration 226) — ne JAMAIS l'écraser par un recalcul auto.
+  if (resa.ventilation_manuelle) return
   const bien = resa.bien
   if (!bien) throw new Error(`Bien manquant pour résa ${resa.code}`)
   if ((bien.agence || agence) !== agence) return
