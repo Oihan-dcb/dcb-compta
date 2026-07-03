@@ -329,7 +329,7 @@ export default function PageComptabilite() {
                           {row && a.code === 'VIR_SANS_RAPPROCHEMENT' && row.nb_non_rapprochees > 0 && (
                             <span style={{ color: LEVEL_COLOR[level], fontWeight: 700, whiteSpace: 'nowrap' }}>{row.nb_non_rapprochees} non rappr.</span>
                           )}
-                          {row && a.code === 'NO_FACTURE' && row.hon_ttc > 0 && (
+                          {row && a.code === 'NO_FACTURE' && row.hon_ttc !== 0 && (
                             <span style={{ color: LEVEL_COLOR[level], fontWeight: 700, whiteSpace: 'nowrap' }}>{fmt(row.hon_ttc)}</span>
                           )}
                           {row && a.code === 'NON_VENTILEES' && row.nb_non_ventilees > 0 && (
@@ -562,7 +562,7 @@ export default function PageComptabilite() {
                     {isChild ? <span style={{ color: '#9C8E7D', fontSize: '0.8em' }}>—</span>
                       : r.facture_statut
                         ? <span style={{ padding: '2px 7px', borderRadius: 10, fontSize: '0.8em', fontWeight: 600, background: r.facture_statut === 'validee' ? '#D1FAE5' : '#FEF3C7', color: r.facture_statut === 'validee' ? '#059669' : '#92400E' }}>{r.facture_statut}</span>
-                        : r.hon_ttc > 0
+                        : r.hon_ttc !== 0
                           ? <span style={{ color: '#ef4444', fontWeight: 600, fontSize: '0.8em' }}>manquante</span>
                           : <span style={{ color: '#9C8E7D', fontSize: '0.8em' }}>—</span>}
                   </td>}

@@ -370,7 +370,9 @@ export async function buildComptaMensuelle(mois, bienIds = null) {
     if (nb_non_ventilees > 0)
       rowAlerts.push({ level: 'warning', code: 'NON_VENTILEES', message: `${nb_non_ventilees} résa(s) non ventilée(s)`, bien_id: b.id })
 
-    if (hon.ttc > 0 && !facture && !b.skip_facturation)
+    // !== 0 (pas > 0) : un ajustement réservation "hébergement" très négatif peut rendre
+    // hon.ttc négatif pour le mois — le mérite quand même une facture (ou un report, migration 225).
+    if (hon.ttc !== 0 && !facture && !b.skip_facturation)
       rowAlerts.push({ level: 'error', code: 'NO_FACTURE', message: `HON ${(hon.ttc/100).toFixed(2)} € sans facture`, bien_id: b.id })
 
     // Écart reversement : per-bien si facture per-bien, sinon per-proprio
