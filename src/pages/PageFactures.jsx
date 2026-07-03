@@ -597,11 +597,18 @@ const [pushing, setPushing] = useState(false)
     return biens.slice().sort((a,b)=>(a.code||'').localeCompare(b.code||''))[0]?.code || ''
   }
   const isMaiteFacture = f => (f.proprietaire?.bien || []).some(b => b.groupe_facturation === 'MAITE')
+  // Ordre de lecture : 0 = gestion loyer (biens gérés) · 1 = biens sans collecte de loyer
+  // (gestion_loyer=false, factures à régler compte courant) · 2 = FMEN clients Lauian ·
+  // 3 = LLD en fin de liste
+  const groupeFacture = (f) => {
+    if (f.type_facture === 'lld') return 3
+    if (f.type_facture === 'lauian_fmen') return 2
+    if (f.bien?.gestion_loyer === false) return 1
+    return 0
+  }
   const facturesTries = [...facturesVisibles].sort((a, b) => {
-    // Factures LLD (locations longue durée) regroupées EN FIN de liste, séparées du saisonnier
-    const lA = a.type_facture === 'lld' ? 1 : 0
-    const lB = b.type_facture === 'lld' ? 1 : 0
-    if (lA !== lB) return lA - lB
+    const gA = groupeFacture(a), gB = groupeFacture(b)
+    if (gA !== gB) return gA - gB
     const mA = isMaiteFacture(a) ? 0 : 1
     const mB = isMaiteFacture(b) ? 0 : 1
     if (mA !== mB) return mA - mB
