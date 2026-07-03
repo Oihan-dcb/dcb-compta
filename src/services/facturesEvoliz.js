@@ -1558,6 +1558,18 @@ export async function validerFacture(factureId) {
   if (error) throw error
 }
 
+/** Toggle inverse : une facture validée (pas encore envoyée à Evoliz) repasse en brouillon. */
+export async function devaliderFacture(factureId) {
+  const { error } = await supabase
+    .from('facture_evoliz')
+    .update({ statut: 'brouillon' })
+    .eq('id', factureId)
+    .eq('statut', 'valide')
+    .is('id_evoliz', null)
+
+  if (error) throw error
+}
+
 /**
  * Marque une facture comme envoyÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂ©e dans Evoliz
  * @param {string} factureId

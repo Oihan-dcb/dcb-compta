@@ -3,7 +3,7 @@ import { useState, useEffect, Fragment } from 'react'
 import MoisSelector from '../components/MoisSelector'
 import { useMoisPersisted } from '../hooks/useMoisPersisted'
 import {
-  getFacturesMois, genererFacturesMois, validerFacture,
+  getFacturesMois, genererFacturesMois, validerFacture, devaliderFacture,
   getStatsFactures,
   getFactureCOM, genererFactureCOM, validerFactureCOM,
   envoyerEmailDeboursProprio,
@@ -496,6 +496,13 @@ const [pushing, setPushing] = useState(false)
     } finally {
       setGenerating(false)
     }
+  }
+
+  async function devalider(factureId) {
+    try {
+      await devaliderFacture(factureId)
+      await charger()
+    } catch (err) { setError(err.message) }
   }
 
   async function valider(factureId) {
@@ -1012,6 +1019,18 @@ const [pushing, setPushing] = useState(false)
                         </button>
                       )
                     })()}
+
+                    {/* Toggle inverse : re-cliquer sur une facture validée la dévalide */}
+                    {f.statut === 'valide' && !f.id_evoliz && (
+                      <button
+                        className="btn btn-sm"
+                        style={{ background: '#F0FDF4', color: '#15803D', border: '1px solid #86EFAC' }}
+                        title="Facture validée — cliquer pour la repasser en brouillon (dévalider)"
+                        onClick={e => { e.stopPropagation(); devalider(f.id) }}
+                      >
+                        ✓ Validée · ↩ dévalider
+                      </button>
+                    )}
 
                     {/* Envoyer au proprio — uniquement débours sans gestion loyer, statut valide */}
                     {f.type_facture === 'debours' && f.bien?.gestion_loyer === false && f.statut === 'valide' && (
