@@ -50,6 +50,7 @@ export async function buildComptaMensuelle(mois, bienIds = null) {
     { data: prestDeboursData,  error: prestDeboursErr  },
     { data: reversementFaitData },
     { data: missionsData },
+    { data: ajustementsData },
   ] = await Promise.all([
     biensQuery,
     supabase
@@ -115,6 +116,12 @@ export async function buildComptaMensuelle(mois, bienIds = null) {
       .eq('mois', mois)
       .eq('agence', AGENCE),
     missionsQuery,
+    // ajustements Hospitable non qualifiés (voir migration 222)
+    supabase
+      .from('reservation_ajustement')
+      .select('id, reservation_id, montant, label, reservation:reservation_id(bien_id, code, guest_name)')
+      .eq('mois_comptable', mois)
+      .eq('statut', 'a_qualifier'),
   ])
 
   if (biensErr)  throw new Error(`buildComptaMensuelle — biens: ${biensErr.message}`)
@@ -127,6 +134,22 @@ export async function buildComptaMensuelle(mois, bienIds = null) {
   const biens    = biensData    || []
   const resas    = resasData    || []
   const honFacts = facturesHon  || []
+
+  // Ajustements Hospitable non qualifiés, par bien_id
+  const ajustementsByBien = {}
+  for (const a of (ajustementsData || [])) {
+    const bienId = a.reservation?.bien_id
+    if (!bienId) continue
+    if (!ajustementsByBien[bienId]) ajustementsByBien[bienId] = []
+    ajustementsByBien[bienId].push({
+      id: a.id,
+      reservation_id: a.reservation_id,
+      montant: a.montant,
+      label: a.label,
+      code: a.reservation?.code || null,
+      guest_name: a.reservation?.guest_name || null,
+    })
+  }
 
   // ── Phase 2 : indexation ─────────────────────────────────────────────────
 
@@ -437,6 +460,18 @@ export async function buildComptaMensuelle(mois, bienIds = null) {
 
     if (!b.listed && (nb_resas > 0 || hon.ttc > 0 || loy.ht > 0))
       rowAlerts.push({ level: 'warning', code: 'BIEN_INACTIF_AVEC_MOUVEMENTS', message: 'Bien non listé avec mouvements', bien_id: b.id })
+
+    const ajustementsBien = ajustementsByBien[b.id] || []
+    if (ajustementsBien.length > 0) {
+      const total = ajustementsBien.reduce((s, a) => s + (a.montant || 0), 0)
+      rowAlerts.push({
+        level: 'warning',
+        code: 'AJUSTEMENT_A_QUALIFIER',
+        message: `${ajustementsBien.length} ajustement(s) Hospitable à qualifier (${(total / 100).toFixed(2)} €)`,
+        bien_id: b.id,
+        details: { ajustements: ajustementsBien },
+      })
+    }
 
     rows.push({
       bien_id:           b.id,

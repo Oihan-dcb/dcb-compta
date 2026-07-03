@@ -3,6 +3,7 @@ import MoisSelector, { MOIS_FR } from '../components/MoisSelector'
 import { useMoisPersisted } from '../hooks/useMoisPersisted'
 import { supabase } from '../lib/supabase'
 import { buildComptaMensuelle } from '../services/buildComptaMensuelle'
+import { qualifierAjustement } from '../services/ventilation'
 import { syncStripeAcomptesSequestre, HAS_STRIPE_SEQUESTRE } from '../services/syncStripeAcomptesSequestre'
 import { AGENCE } from '../lib/agence'
 
@@ -149,6 +150,20 @@ export default function PageComptabilite() {
       setLoading(false)
     }
   }, [mois])
+
+  // Qualification d'un ajustement Hospitable (voir migration 222)
+  const [qualifyingId, setQualifyingId] = useState(null)
+  const qualifier = useCallback(async (ajustementId, type) => {
+    setQualifyingId(ajustementId)
+    try {
+      await qualifierAjustement(ajustementId, type)
+      await charger()
+    } catch (e) {
+      setError(e.message)
+    } finally {
+      setQualifyingId(null)
+    }
+  }, [charger])
 
   const toggleFait = useCallback(async (bienId, currentFaitAt) => {
     if (currentFaitAt) {
@@ -364,6 +379,37 @@ export default function PageComptabilite() {
                                   return <span style={{ background: c + '22', color: c, fontWeight: 700, fontSize: '0.85em', padding: '1px 6px', borderRadius: 4, whiteSpace: 'nowrap', textTransform: 'capitalize' }}>{r.platform}</span>
                                 })()}
                                 {r.fin_revenue > 0 && <span style={{ marginLeft: 'auto', fontWeight: 700, whiteSpace: 'nowrap' }}>{fmtN(r.fin_revenue)} €</span>}
+                              </div>
+                            ))}
+                          </div>
+                        )}
+                        {/* Détail AJUSTEMENT_A_QUALIFIER */}
+                        {a.code === 'AJUSTEMENT_A_QUALIFIER' && a.details?.ajustements?.length > 0 && (
+                          <div style={{ marginTop: 6, paddingTop: 6, borderTop: `1px solid ${LEVEL_COLOR[level]}22`, display: 'flex', flexDirection: 'column', gap: 5 }}>
+                            {a.details.ajustements.map(adj => (
+                              <div key={adj.id} style={{ display: 'flex', gap: 10, fontSize: '0.92em', color: '#6B5E4E', alignItems: 'center', flexWrap: 'wrap' }}>
+                                <span style={{ fontWeight: 700, minWidth: 110 }}>{adj.code || '—'}</span>
+                                {adj.guest_name && <span style={{ color: '#9C8E7D' }}>{adj.guest_name}</span>}
+                                <span style={{ fontStyle: 'italic' }}>{adj.label}</span>
+                                <span style={{ fontWeight: 700, whiteSpace: 'nowrap' }}>{fmtN(adj.montant)} €</span>
+                                <div style={{ marginLeft: 'auto', display: 'flex', gap: 6 }}>
+                                  <button
+                                    onClick={() => qualifier(adj.id, 'hebergement')}
+                                    disabled={qualifyingId === adj.id}
+                                    className="btn btn-secondary"
+                                    style={{ padding: '3px 10px', fontSize: '0.85em' }}
+                                  >
+                                    {qualifyingId === adj.id ? '…' : 'Hébergement'}
+                                  </button>
+                                  <button
+                                    onClick={() => qualifier(adj.id, 'menage')}
+                                    disabled={qualifyingId === adj.id}
+                                    className="btn btn-secondary"
+                                    style={{ padding: '3px 10px', fontSize: '0.85em' }}
+                                  >
+                                    {qualifyingId === adj.id ? '…' : 'Ménage / extra'}
+                                  </button>
+                                </div>
                               </div>
                             ))}
                           </div>

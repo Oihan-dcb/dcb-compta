@@ -82,7 +82,12 @@ export async function buildRapportData(bienId, propId, mois, opts = {}) {
       .eq('id', bienId)
       .maybeSingle()
       .then(r => ({
-        tauxCommission:   r.data?.taux_commission_override || r.data?.proprietaire?.taux_commission || 25,
+        // taux_commission_override est stocké en ratio (0.17 = 17%), proprietaire.taux_commission
+        // en pourcentage (17). tauxCommission doit toujours être un pourcentage (convention utilisée
+        // partout ailleurs : PageRapports "${tauxCommission}%", rapportProprietaire.js, ligne 324 ci-dessous).
+        tauxCommission:   r.data?.taux_commission_override != null
+          ? r.data.taux_commission_override * 100
+          : (r.data?.proprietaire?.taux_commission || 25),
         modeEncaissement: r.data?.mode_encaissement || 'dcb',
       })),
     // 6. Ventilation historique VIRProprio (3 mois précédents) pour projection

@@ -64,6 +64,7 @@ interface Resa {
   bien_id: string
   bien: Bien | null
   reservation_fee: Fee[]
+  reservation_ajustement: { montant: number; type: string | null; statut: string }[]
   hospitable_raw: Record<string, unknown> | null
   isProlongation?: boolean
   originalResaId?: string | null
@@ -140,8 +141,13 @@ function _calculerLignes(resa: Resa): { lignes: LigneVentilation[]; isProlongati
   const hostServiceFee = hostFees.reduce((s, f) => s + (f.amount || 0), 0)
   const guestFeesAll = fees.filter(f => f.fee_type === 'guest_fee')
   const taxes = fees.filter(f => f.fee_type === 'tax')
-  const adjustments = fees.filter(f => f.fee_type === 'adjustment')
-  const adjustmentsTotal = adjustments.reduce((s, f) => s + (f.amount || 0), 0); void adjustmentsTotal
+
+  // Ajustements Hospitable (Resolution Center Airbnb) : non qualifiables automatiquement
+  // (hébergement ou ménage/extra ?) — voir migration 222. Contribution nulle tant que non
+  // qualifié (statut≠'traite'). Détection/insertion faite par _detecterAjustements.
+  const ajustementsQualifies = (resa.reservation_ajustement || []).filter(a => a.statut === 'traite')
+  const ajustementHebergement = ajustementsQualifies.filter(a => a.type === 'hebergement').reduce((s, a) => s + (a.montant || 0), 0)
+  const ajustementMenage = ajustementsQualifies.filter(a => a.type === 'menage').reduce((s, a) => s + (a.montant || 0), 0)
 
   const discountsRaw = ((resa.hospitable_raw as Record<string, unknown>)?.financials as Record<string, unknown>)?.host as Record<string, unknown> | undefined
   const discountsFromApi = ((discountsRaw?.discounts as { amount: number }[]) || []).reduce((s, d) => s + (d.amount || 0), 0)
@@ -173,9 +179,9 @@ function _calculerLignes(resa: Resa): { lignes: LigneVentilation[]; isProlongati
   const airbnbFallbackActif = resa.platform === 'airbnb' && totalFeesAirbnb === 0 && (bien.forfait_dcb_ref || 0) > 0
   // Fallback Airbnb : Airbnb n'a pas transmis la ligne ménage → ménage voyageur FONDU dans
   // `accommodation`. Prix ménage facturé au voyageur = forfait_dcb_ref + provision_ae_ref (= 97,00 sur 416).
-  const fmenBase = airbnbFallbackActif
+  const fmenBase = (airbnbFallbackActif
     ? (bien.forfait_dcb_ref || 0) + (bien.provision_ae_ref || 0)
-    : totalFeesAirbnb
+    : totalFeesAirbnb) + ajustementMenage
   // Part du host service fee Airbnb imputée au ménage (Airbnb commissionne aussi le ménage).
   const dueToOwner = ((resa.platform === 'airbnb' || resa.platform === 'booking') && totalFeesForOwnerRate > 0)
     ? Math.round(Math.abs(hostServiceFee) * fmenBase / totalFeesForOwnerRate * (1 - tauxCom))
@@ -188,7 +194,7 @@ function _calculerLignes(resa: Resa): { lignes: LigneVentilation[]; isProlongati
   // calculé sur le ménage. (Cas normal : le ménage est déjà hors accommodation.)
   const menageFonduAccommodation = airbnbFallbackActif ? (fmenBase - dueToOwner) : 0
 
-  const commissionableBase = accommodation + hostServiceFee + discountsTotal + extraGuestFee - menageFonduAccommodation
+  const commissionableBase = accommodation + hostServiceFee + discountsTotal + extraGuestFee - menageFonduAccommodation + ajustementHebergement
   const honTTC = isDirect ? Math.floor(commissionableBase * tauxCom) : Math.round(commissionableBase * tauxCom)
   const honHT = Math.round(honTTC / (1 + TVA_RATE))
 
@@ -243,6 +249,26 @@ function _calculerLignes(resa: Resa): { lignes: LigneVentilation[]; isProlongati
   return { lignes, isProlongation, fallbackAirbnb: airbnbFallbackActif ? { motif: 'airbnb_fees_missing' } : null }
 }
 
+// ── Détection ajustements Hospitable (Resolution Center) — voir migration 222 ─
+// Insère les nouveaux ajustements en statut 'a_qualifier' sans écraser une qualification
+// existante (contrainte unique + ignoreDuplicates). _calculerLignes ne prend en compte
+// que les lignes statut='traite'.
+
+async function _detecterAjustements(resa: Resa, supa: ReturnType<typeof createClient>): Promise<void> {
+  const fin = ((resa.hospitable_raw as Record<string, unknown>)?.financials as Record<string, unknown>)?.host as Record<string, unknown> | undefined
+  const rawAdjustments = (fin?.adjustments as { label: string; amount: number }[]) || []
+  const rows = rawAdjustments
+    .filter(a => (a.amount || 0) !== 0)
+    .map(a => ({
+      reservation_id: resa.id,
+      mois_comptable: resa.mois_comptable,
+      montant: a.amount,
+      label: a.label || null,
+    }))
+  if (rows.length === 0) return
+  await supa.from('reservation_ajustement').upsert(rows, { onConflict: 'reservation_id,label,montant', ignoreDuplicates: true })
+}
+
 // ── calculerVentilationResa (port avec supabase admin) ────────────────────────
 
 async function calculerVentilationResa(resa: Resa, supa: ReturnType<typeof createClient>, dryRun: boolean): Promise<void> {
@@ -287,6 +313,8 @@ async function calculerVentilationResa(resa: Resa, supa: ReturnType<typeof creat
     if (!dryRun) await supa.from('reservation').update({ ventilation_calculee: true }).eq('id', resa.id)
     return
   }
+
+  if (!dryRun) await _detecterAjustements(resa, supa)
 
   const { lignes, isProlongation } = _calculerLignes(resa)
 
@@ -378,7 +406,8 @@ async function calculerVentilationMois(mois: string, agence: string, supa: Retur
       taux_commission_override, gestion_loyer, agence,
       proprietaire!proprietaire_id (id, taux_commission)
     ),
-    reservation_fee (*)
+    reservation_fee (*),
+    reservation_ajustement (*)
   `)
     .eq('mois_comptable', mois)
     .or('fin_revenue.gt.0,final_status.not.in.("cancelled","not_accepted","not accepted","declined","expired")')

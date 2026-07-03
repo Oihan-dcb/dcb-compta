@@ -113,9 +113,12 @@ export function _calculerLignes(resa) {
   // Taxes pass-through
   const taxes = fees.filter(f => f.fee_type === 'tax')
   
-  // Adjustments et discounts
-  const adjustments = fees.filter(f => f.fee_type === 'adjustment')
-  const adjustmentsTotal = adjustments.reduce((s, f) => s + (f.amount || 0), 0)
+  // Ajustements Hospitable (Resolution Center Airbnb) : non qualifiables automatiquement
+  // (hébergement ou ménage/extra ?) — voir migration 222. Contribution nulle tant que non
+  // qualifié (statut≠'traite'). Détection/insertion faite côté serveur (api/ventiler.js).
+  const ajustementsQualifies = (resa.reservation_ajustement || []).filter(a => a.statut === 'traite')
+  const ajustementHebergement = ajustementsQualifies.filter(a => a.type === 'hebergement').reduce((s, a) => s + (a.montant || 0), 0)
+  const ajustementMenage = ajustementsQualifies.filter(a => a.type === 'menage').reduce((s, a) => s + (a.montant || 0), 0)
 
   // Remises promotionnelles (Promotion Discount, Last Minute Discount, Ad-hoc fee...)
   // Tableau séparé dans hospitable_raw.financials.host.discounts (négatifs)
@@ -226,9 +229,9 @@ export function _calculerLignes(resa) {
   //   Airbnb n'a pas transmis la ligne ménage → fmenBase = forfait_dcb_ref + provision_ae_ref.
   const totalFeesAirbnb = cleaningFeeAirbnb + communityFeeRaw
   const airbnbFallbackActif = resa.platform === 'airbnb' && totalFeesAirbnb === 0 && (bien.forfait_dcb_ref || 0) > 0
-  const fmenBase = airbnbFallbackActif
+  const fmenBase = (airbnbFallbackActif
     ? (bien.forfait_dcb_ref || 0) + (bien.provision_ae_ref || 0)
-    : totalFeesAirbnb
+    : totalFeesAirbnb) + ajustementMenage
   const dueToOwner = ((resa.platform === 'airbnb' || resa.platform === 'booking') && totalFeesForOwnerRate > 0)
     ? Math.round(Math.abs(hostServiceFee) * fmenBase / totalFeesForOwnerRate * (1 - tauxCom))
     : 0
@@ -243,7 +246,7 @@ export function _calculerLignes(resa) {
   // ── Base de commission — TOUTES PLATEFORMES ──────────────────────────
   //   Airbnb : accommodation + host_service_fee + discounts + extraGuestFee (− ménage fondu si fallback)
   //   Direct : accommodation + host_fees | Booking : accommodation + host_fees
-  commissionableBase = accommodation + hostServiceFee + discountsTotal + extraGuestFee - menageFonduAccommodation
+  commissionableBase = accommodation + hostServiceFee + discountsTotal + extraGuestFee - menageFonduAccommodation + ajustementHebergement
 
   // HON = base × taux (TVA 20%). Direct : Math.floor pour coller au statement Hospitable.
   const honTTC = isDirect ? Math.floor(commissionableBase * tauxCom) : Math.round(commissionableBase * tauxCom)
@@ -366,6 +369,16 @@ export function _calculerLignes(resa) {
 export async function calculerVentilationResa(resa) {
   const { ok, data } = await authPost('/api/ventiler', { reservation_id: resa.id, agence: AGENCE })
   if (!ok) throw new Error(data?.error || 'Erreur serveur ventilation')
+}
+
+/**
+ * Qualifie un ajustement Hospitable (voir migration 222) comme 'hebergement' ou 'menage'
+ * et reventile la résa concernée — délégué à /api/qualifier-ajustement.
+ */
+export async function qualifierAjustement(ajustementId, type) {
+  const { ok, data } = await authPost('/api/qualifier-ajustement', { ajustement_id: ajustementId, type })
+  if (!ok) throw new Error(data?.error || 'Erreur qualification ajustement')
+  return data
 }
 
 // --- Helpers ---

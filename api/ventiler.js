@@ -96,8 +96,16 @@ function _calculerLignes(resa, agence) {
   const hostServiceFee = hostFees.reduce((s, f) => s + (f.amount || 0), 0)
   const guestFeesAll   = fees.filter(f => f.fee_type === 'guest_fee')
   const taxes          = fees.filter(f => f.fee_type === 'tax')
-  const adjustments    = fees.filter(f => f.fee_type === 'adjustment')
-  void adjustments.reduce((s, f) => s + (f.amount || 0), 0)  // adjustmentsTotal — tracé seulement
+
+  // Ajustements Hospitable (Resolution Center Airbnb, ex. remboursement partiel) : montant
+  // signé, non qualifiable automatiquement (hébergement ou ménage/extra ?) → voir migration
+  // 222. Tant que non qualifié (statut≠'traite'), contribution nulle au calcul (comportement
+  // identique à avant leur prise en compte) ; la détection/alerte est gérée par _writeResa.
+  const ajustementsQualifies = (resa.reservation_ajustement || []).filter(a => a.statut === 'traite')
+  const ajustementHebergement = ajustementsQualifies
+    .filter(a => a.type === 'hebergement').reduce((s, a) => s + (a.montant || 0), 0)
+  const ajustementMenage = ajustementsQualifies
+    .filter(a => a.type === 'menage').reduce((s, a) => s + (a.montant || 0), 0)
 
   const discountsRaw    = resa.hospitable_raw?.financials?.host?.discounts || []
   const discountsFromApi = discountsRaw.reduce((s, d) => s + (d.amount || 0), 0)
@@ -136,9 +144,9 @@ function _calculerLignes(resa, agence) {
   // Fallback Airbnb : Airbnb n'a pas transmis la ligne ménage → le ménage voyageur est FONDU
   // dans `accommodation`. Prix ménage facturé au voyageur = forfait_dcb_ref + provision_ae_ref
   // (vérifié : 97,00 = 72,00 + 25,00 sur le 416).
-  const fmenBase = airbnbFallbackActif
+  const fmenBase = (airbnbFallbackActif
     ? (bien.forfait_dcb_ref || 0) + (bien.provision_ae_ref || 0)
-    : totalFeesAirbnb
+    : totalFeesAirbnb) + ajustementMenage
   // Part du host service fee Airbnb imputée au ménage (Airbnb commissionne aussi le ménage).
   const dueToOwner = ((resa.platform === 'airbnb' || resa.platform === 'booking') && totalFeesForOwnerRate > 0)
     ? Math.round(Math.abs(hostServiceFee) * fmenBase / totalFeesForOwnerRate * (1 - tauxCom))
@@ -151,7 +159,7 @@ function _calculerLignes(resa, agence) {
   // calculé sur le ménage. (Cas normal : le ménage est déjà hors accommodation.)
   const menageFonduAccommodation = airbnbFallbackActif ? (fmenBase - dueToOwner) : 0
 
-  const commissionableBase = accommodation + hostServiceFee + discountsTotal + extraGuestFee - menageFonduAccommodation
+  const commissionableBase = accommodation + hostServiceFee + discountsTotal + extraGuestFee - menageFonduAccommodation + ajustementHebergement
   const honTTC = isDirect
     ? Math.floor(commissionableBase * tauxCom)
     : Math.round(commissionableBase * tauxCom)
@@ -229,6 +237,26 @@ function _calculerLignes(resa, agence) {
   }
 }
 
+// ── Détection ajustements Hospitable (Resolution Center) — voir migration 222 ─
+// Insère les nouveaux ajustements en statut 'a_qualifier' (jamais écrasé si déjà qualifié,
+// grâce à la contrainte unique + ignoreDuplicates). Ne touche pas au calcul lui-même :
+// _calculerLignes ne prend en compte que les lignes statut='traite'.
+
+async function _detecterAjustements(resa, supa) {
+  const rawAdjustments = resa.hospitable_raw?.financials?.host?.adjustments || []
+  const rows = rawAdjustments
+    .filter(a => (a.amount || 0) !== 0)
+    .map(a => ({
+      reservation_id: resa.id,
+      mois_comptable: resa.mois_comptable,
+      montant: a.amount,
+      label: a.label || null,
+    }))
+  if (rows.length === 0) return
+  await supa.from('reservation_ajustement')
+    .upsert(rows, { onConflict: 'reservation_id,label,montant', ignoreDuplicates: true })
+}
+
 // ── Ecriture DB d'une réservation (port de calculerVentilationResa) ───────────
 
 async function _writeResa(resa, agence, supa) {
@@ -279,6 +307,8 @@ async function _writeResa(resa, agence, supa) {
     await supa.from('reservation').update({ ventilation_calculee: true }).eq('id', resa.id)
     return
   }
+
+  await _detecterAjustements(resa, supa)
 
   const { lignes, fallbackAirbnb, isProlongation } = _calculerLignes(resa, agence)
 
@@ -407,7 +437,8 @@ async function processMois(mois, agence, supa) {
       taux_commission_override, gestion_loyer, agence,
       proprietaire!proprietaire_id (id, taux_commission)
     ),
-    reservation_fee (*)
+    reservation_fee (*),
+    reservation_ajustement (*)
   `)
     .eq('mois_comptable', mois)
     .or('fin_revenue.gt.0,final_status.not.in.("cancelled","not_accepted","not accepted","declined","expired")')
@@ -508,7 +539,8 @@ export default async function handler(req, res) {
           taux_commission_override, gestion_loyer, agence,
           proprietaire!proprietaire_id (id, taux_commission)
         ),
-        reservation_fee (*)
+        reservation_fee (*),
+        reservation_ajustement (*)
       `).eq('id', reservation_id).single()
       if (fetchErr) throw fetchErr
       if (!resa) return res.status(404).json({ error: 'Réservation introuvable' })
