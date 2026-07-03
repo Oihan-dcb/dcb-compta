@@ -332,11 +332,17 @@ export async function creerFactureEvoliz(facture) {
   }
 
   // 4. Note de bas de facture
+  // Bien sans collecte de loyer (gestion_loyer=false) : le proprio encaisse lui-même →
+  // la facture est à RÉGLER par virement, sur le compte COURANT de l'agence (celui du
+  // bankAccountId 'agence' porté par la facture) — PAS le séquestre des débours AE.
+  const isChargesProprio = !isDebours && facture.type_facture === 'honoraires' && facture.bien?.gestion_loyer === false
   const comment = isDebours
     ? `Remboursement de débours auto-entrepreneur — mois ${facture.mois}\n\n⚠ ATTENTION : ce règlement est à effectuer sur le compte séquestre, différent du compte courant utilisé pour les factures d'honoraires et de forfaits ménage.\n\nVirement à effectuer sur le compte séquestre :\nIBAN : FR76 1333 5000 4008 0030 4976 555\nBIC : CEPAFRPP333`
-    : facture.solde_negatif
-      ? `Remboursement de frais avancés — mois ${facture.mois}`
-      : `Honoraires de gestion locative — ${facture.mois}\n\nConformément au mandat de gestion, les honoraires de gestion sont directement prélevés sur le loyer encaissé avant reversement au propriétaire.`
+    : isChargesProprio
+      ? `Honoraires et prestations — ${facture.mois}\n\nFacture à régler par virement sur le compte COURANT de l'agence (coordonnées bancaires portées sur cette facture).\n\n⚠ ATTENTION : ce RIB est différent du compte séquestre utilisé pour les remboursements de main d'œuvre (débours auto-entrepreneur).`
+      : facture.solde_negatif
+        ? `Remboursement de frais avancés — mois ${facture.mois}`
+        : `Honoraires de gestion locative — ${facture.mois}\n\nConformément au mandat de gestion, les honoraires de gestion sont directement prélevés sur le loyer encaissé avant reversement au propriétaire.`
 
   // 4b. Objet de la facture
   const bienNomEvoliz = facture.bien?.hospitable_name || facture.proprietaire?.nom || 'bien'
@@ -458,7 +464,7 @@ export async function pousserFacturesMoisVersEvoliz(mois) {
     .select(`
       *,
       proprietaire (id, nom, prenom, email, adresse, ville, code_postal, telephone, iban, id_evoliz, agence),
-      bien (hospitable_name),
+      bien (hospitable_name, gestion_loyer),
       facture_evoliz_ligne (*)
     `)
     .eq('mois', mois)
