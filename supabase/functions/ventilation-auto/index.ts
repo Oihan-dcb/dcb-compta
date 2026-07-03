@@ -189,7 +189,9 @@ function _calculerLignes(resa: Resa): { lignes: LigneVentilation[]; isProlongati
     ? Math.round(Math.abs(hostServiceFee) * fmenBase / totalFeesForOwnerRate * (1 - tauxCom))
     : 0
   const fmenTTC = Math.max(0, fmenBase - dueToOwner - aeAmount) + ajustementFmenExtra
-  const fmenHT = fmenTTC > 0 ? Math.round(fmenTTC / (1 + TVA_RATE)) : 0
+  // fmenHT peut être négatif si ajustementFmenExtra dépasse la marge FMEN normale (DCB
+  // absorbe la perte) — pas de floor à 0 ici, pour que HON+FMEN+AUTO+LOY se recoupe exactement.
+  const fmenHT = fmenTTC !== 0 ? Math.round(fmenTTC / (1 + TVA_RATE)) : 0
 
   // En fallback, le ménage voyageur NET de la commission Airbnb (= fmenBase − dueToOwner) est
   // fondu dans `accommodation` → on le retranche de la base de commission, sinon HON serait
@@ -232,7 +234,7 @@ function _calculerLignes(resa: Resa): { lignes: LigneVentilation[]; isProlongati
   if (menAmount > 0) lignes.push(ligneHorsTVA('MEN', 'Ménage brut voyageur', menAmount, bien, resa))
   if (comHT > 0) lignes.push(ligneTVA('COM', 'Commission DCB', comHT, bien, resa, null, comAmount))
   if (honHT > 0) lignes.push(ligneTVA('HON', 'Honoraires de gestion', honHT, bien, resa, tauxCom, honTTC))
-  if (fmenHT > 0) lignes.push(ligneTVA('FMEN', 'Forfait ménage', fmenHT, bien, resa, null, fmenTTC))
+  if (fmenHT !== 0) lignes.push(ligneTVA('FMEN', 'Forfait ménage', fmenHT, bien, resa, null, fmenTTC))
   if (aeAmount > 0) lignes.push(ligneHorsTVA('AUTO', 'Débours auto-entrepreneur', aeAmount, bien, resa))
   if (loyAmount > 0 && !horsSequestre) lignes.push(ligneHorsTVA('LOY', 'Reversement propriétaire', loyAmount, bien, resa))
   if (virAmount > 0 && !horsSequestre) lignes.push(ligneHorsTVA('VIR', 'Virement propriétaire', virAmount, bien, resa))

@@ -238,7 +238,9 @@ export function _calculerLignes(resa) {
     ? Math.round(Math.abs(hostServiceFee) * fmenBase / totalFeesForOwnerRate * (1 - tauxCom))
     : 0
   const fmenTTC = Math.max(0, fmenBase - dueToOwner - aeAmount) + ajustementFmenExtra
-  const fmenHT  = fmenTTC > 0 ? Math.round(fmenTTC / (1 + TVA_RATE)) : 0
+  // fmenHT peut être négatif si ajustementFmenExtra dépasse la marge FMEN normale (DCB
+  // absorbe la perte) — pas de floor à 0 ici, pour que HON+FMEN+AUTO+LOY se recoupe exactement.
+  const fmenHT  = fmenTTC !== 0 ? Math.round(fmenTTC / (1 + TVA_RATE)) : 0
 
   // En fallback, le ménage voyageur NET de la commission Airbnb (= fmenBase − dueToOwner) est
   // fondu dans `accommodation` → on le retranche de la base de commission, sinon HON serait
@@ -306,8 +308,9 @@ export function _calculerLignes(resa) {
     lignes.push(ligneTVA('HON', 'Honoraires de gestion', honHT, bien, resa, tauxCalcule, honTTC))
   }
 
-  // FMEN — forfait ménage DCB = cleaning fee - AUTO (TVA 20%)
-  if (fmenHT > 0) {
+  // FMEN — forfait ménage DCB = cleaning fee - AUTO (TVA 20%). Peut être négatif (voir formule
+  // fmenHT plus haut) si un ajustement dépasse la marge normale — ligne créée quand même.
+  if (fmenHT !== 0) {
     lignes.push(ligneTVA('FMEN', 'Forfait ménage', fmenHT, bien, resa, null, fmenTTC))
   }
 
