@@ -128,6 +128,24 @@ function AjusterVentil({ resa, ventil, onDone, onCancel }) {
                 <td style={{ textAlign: 'right', padding: '4px 0' }}>
                   <input value={vals[v.code]} onChange={e => setVals(p => ({ ...p, [v.code]: e.target.value }))}
                     style={{ width: 100, textAlign: 'right', padding: '4px 6px', border: '1px solid ' + (parse(vals[v.code]) === null ? '#DC2626' : '#ccc'), borderRadius: 5 }} /> €
+                  {v.code === 'FMEN' && (() => {
+                    // Flux naturel : MEN factuel (voyageur) → AUTO réel (portail AE) → FMEN = le reste.
+                    const men = parse(vals.MEN) ?? (ventil.find(x => x.code === 'MEN')?.montant_ht ?? 0)
+                    const auto = parse(vals.AUTO) ?? 0
+                    const suggere = Math.max(0, men - auto)
+                    return men > 0 && suggere !== parse(vals[v.code]) ? (
+                      <div onClick={() => setVals(p => ({ ...p, FMEN: (suggere / 100).toFixed(2) }))}
+                        style={{ fontSize: '0.75em', color: '#B45309', cursor: 'pointer', textDecoration: 'underline', marginTop: 2 }}>
+                        caler sur MEN − AUTO = {(suggere / 100).toFixed(2)} €
+                      </div>
+                    ) : null
+                  })()}
+                  {v.code === 'AUTO' && v.montant_reel != null && v.montant_reel !== parse(vals[v.code]) && (
+                    <div onClick={() => setVals(p => ({ ...p, AUTO: (v.montant_reel / 100).toFixed(2) }))}
+                      style={{ fontSize: '0.75em', color: '#B45309', cursor: 'pointer', textDecoration: 'underline', marginTop: 2 }}>
+                      réel portail AE : {(v.montant_reel / 100).toFixed(2)} €
+                    </div>
+                  )}
                   {v.code === 'MEN' && (() => {
                     // Règle métier : MEN ≈ FMEN + AUTO (+ part ménage remontée au proprio via LOY).
                     // Raccourci : caler MEN sur FMEN + AUTO saisis.
