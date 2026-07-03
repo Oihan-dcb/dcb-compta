@@ -869,6 +869,49 @@ export async function lancerMatchingAuto(mois, source = 'manuel') {
       log.details.push({ type: 'sepa_code_resa', montant: mouv.credit / 100, code: resa.code, guest: resa.guest_name })
     }
 
+    // ── SEPA/direct : nom du voyageur + montant cohérent ─────────────────────
+    // Cas « Solde 50 RICHET appt PATXI aout » : pas de code résa dans le libellé,
+    // mais un mot du nom (≥4 lettres) + un montant qui colle EXACTEMENT (±1 €) au
+    // total, au restant dû, ou à l'acompte 50 %. Candidat unique requis.
+    // Fenêtre arrival −3 mois → +13 mois : les acomptes précèdent le séjour.
+    const sepaRestants = libres.filter(m => m.canal === 'sepa_manuel' && m.statut_matching === 'en_attente' && (m.credit || 0) > 0)
+    if (sepaRestants.length) {
+      const dMin = new Date(mois + '-01'); dMin.setMonth(dMin.getMonth() - 3)
+      const dMax = new Date(mois + '-01'); dMax.setMonth(dMax.getMonth() + 13)
+      const { data: resasDirect } = await supabase
+        .from('reservation')
+        .select('id, code, guest_name, fin_revenue, bien!inner(agence)')
+        .in('platform', ['manual', 'direct'])
+        .eq('bien.agence', AGENCE)
+        .not('final_status', 'in', '("not accepted","cancelled")')
+        .gt('fin_revenue', 0)
+        .gte('arrival_date', dMin.toISOString().slice(0, 10))
+        .lte('arrival_date', dMax.toISOString().slice(0, 10))
+      const normTxt = (t) => (t || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toUpperCase()
+      // Restant dû par résa (paiements déjà enregistrés)
+      const idsDirect = (resasDirect || []).map(r => r.id)
+      const recuByResa = {}
+      for (let i = 0; i < idsDirect.length; i += 200) {
+        const { data: ps } = await supabase.from('reservation_paiement').select('reservation_id, montant').in('reservation_id', idsDirect.slice(i, i + 200))
+        for (const p of (ps || [])) recuByResa[p.reservation_id] = (recuByResa[p.reservation_id] || 0) + (p.montant || 0)
+      }
+      for (const mouv of sepaRestants) {
+        const texte = normTxt((mouv.libelle || '') + ' ' + (mouv.detail || ''))
+        const candidats = (resasDirect || []).filter(r => {
+          const mots = normTxt(r.guest_name).split(/[^A-Z]+/).filter(w => w.length >= 4)
+          if (!mots.some(w => texte.includes(w))) return false
+          const restant = (r.fin_revenue || 0) - (recuByResa[r.id] || 0)
+          const c = mouv.credit
+          return Math.abs(c - restant) <= 100 || Math.abs(c - r.fin_revenue) <= 100 || Math.abs(c - Math.round(r.fin_revenue / 2)) <= 100
+        })
+        if (candidats.length !== 1) continue
+        await _lierViaPayout(mouv.id, [candidats[0].id], mouv)
+        libres.splice(libres.indexOf(mouv), 1)
+        log.matched++
+        log.details.push({ type: 'sepa_nom_montant', montant: mouv.credit / 100, code: candidats[0].code, guest: candidats[0].guest_name })
+      }
+    }
+
   } catch (err) {
     log.errors++
     console.error('Erreur matching auto:', err)

@@ -1015,3 +1015,11 @@ Granularité = **par bien** (1 facture = 1 bien, sauf Maïté = facture groupe �
   débours par les proprios, pas des payins résa) ; 3 mouvements reclassés (Marc 106,25, Carossio
   250 + 75). Élucidé aussi : le payout 1 294,25 € du 08/06 = Alan Yum 3 234,84 − ajustement
   −1 581,59 (remboursement résa mai HMRXENECBE) − autres ajustements.
+- **Suite (même session) — SEPA nom+montant, flag rapprochee désync, liens manuels** : (1) nouvelle
+  étape du matching auto : mot du nom de voyageur (≥4 lettres, normalisé) dans le libellé + montant
+  qui colle EXACTEMENT (±1 €) au total / restant dû / acompte 50 %, candidat unique (cas Richet :
+  « Solde 50 RICHET » = restant dû exact de L2K15B). (2) Resync flag : 8 résas payées ≥96 %
+  (somme reservation_paiement) mais rapprochee=false — dont Annie Barone, intégralement payée via
+  Stripe (5 233 € nets liés) mais flag jamais recalculé. (3) Silyanova 2KAQUI (Maison Maïté, août) :
+  virement 4 676,36 € = acompte 50 % pile, payeur « Silianov » (translittération ≠ nom résa) → lié
+  manuellement, résa reste en attente du solde.
