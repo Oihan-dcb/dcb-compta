@@ -280,11 +280,16 @@ export async function importBookingCSV(csvText) {
         })
       }
       // Fallback : match par date (anciens fichiers ou payout_id absent)
+      // Garde-fou montant : la somme des nets du payout doit ≈ le crédit bancaire (±2 €),
+      // comme importAirbnb et _promouvoirBookingLignes. Sans lui, un payout dont le virement
+      // n'est pas encore arrivé se collait par date sur le virement d'un AUTRE payout
+      // (cas Sinnika 02/07/2026 : payout 1 369,25 € rattaché au virement 8 427,32 €).
       if (!mouv) {
+        const sommeNets = rows.reduce((s, r) => s + (r.amount_cents || 0), 0)
         mouv = mouvs?.find(m => {
           if (usedMouvIds.has(m.id)) return false
           const diff = (new Date(m.date_operation).getTime() - pdateMs) / 86400000
-          return diff >= 0 && diff <= 5
+          return diff >= 0 && diff <= 5 && Math.abs(m.credit - sommeNets) <= 200
         })
       }
 
