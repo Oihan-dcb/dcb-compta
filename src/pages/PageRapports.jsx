@@ -10,7 +10,7 @@ import { genererStatementHTML, genererMailStatementHTML } from '../services/rapp
 import { buildRapportData as buildRapportDataService } from '../services/buildRapportData'
 import { qualifierAjustement } from '../services/ventilation'
 import { STATUTS_NON_VENTILABLES } from '../lib/constants'
-import { AGENCE } from '../lib/agence'
+import { AGENCE, AGENCE_BRAND } from '../lib/agence'
 
 const moisCourant = new Date().toISOString().substring(0, 7)
 const fmt = c => ((c || 0) / 100).toFixed(2).replace('.', ',') + ' €'
@@ -482,7 +482,7 @@ export default function PageRapports() {
     const tauxCommission = data.tauxCommission
     const isBordeaux = isBordeauxEarly
     const villeLabel = isBordeaux ? 'Bordeaux' : 'la Côte Basque'
-    const agenceLabel = isBordeaux ? 'Destination Bordeaux' : 'Destination Côte Basque'
+    const agenceLabel = AGENCE_BRAND.label
     const isGlobalMaite = isMaite && modeMaite === 'global'
     const isChambreMaite = isMaite && modeMaite === 'chambre'
     const resasGuest = (data.resas || []).filter(r => !r.owner_stay)
@@ -1284,7 +1284,7 @@ FORMAT :
               return (
                 <div style={{ marginBottom: 24 }}>
                   <div style={{ fontSize: '0.8em', fontWeight: 600, color: '#9C8E7D', marginBottom: 8, textTransform: 'uppercase', letterSpacing: 0.5 }}>
-                    Charges DCB ({total})
+                    Charges {AGENCE_BRAND.short} ({total})
                   </div>
                   <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.82em' }}>
                     <thead>
@@ -1516,7 +1516,7 @@ FORMAT :
                 />
               </div>
               <div>
-                <label style={{ fontSize: '0.82em', fontWeight: 600, color: 'var(--brand)', display: 'block', marginBottom: 6 }}>Recommandations DCB</label>
+                <label style={{ fontSize: '0.82em', fontWeight: 600, color: 'var(--brand)', display: 'block', marginBottom: 6 }}>Recommandations {AGENCE_BRAND.short}</label>
                 <textarea value={noteReco} onChange={e => setNoteReco(e.target.value)} onBlur={handleNoteRecoBlur}
                   placeholder="Actions recommandées pour le propriétaire…" rows={3}
                   style={{ width: '100%', border: '1px solid var(--border)', borderRadius: 6, padding: '8px 10px', fontSize: '0.88em', background: 'var(--bg)', color: 'var(--text)', resize: 'vertical', fontFamily: 'inherit' }}
@@ -1636,9 +1636,9 @@ FORMAT :
               <button onClick={() => setShowMailPreview(false)} style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: '1.2em' }}>×</button>
             </div>
             <div style={{ fontSize: '0.82em', background: 'var(--bg-secondary, #F0EBE1)', padding: '12px 16px', borderRadius: 8, marginBottom: 16, lineHeight: 1.8, border: '1px solid var(--border)' }}>
-              <div><strong>De :</strong> oihan@destinationcotebasque.com</div>
+              <div><strong>De :</strong> {AGENCE_BRAND.email}</div>
               <div><strong>À :</strong> {email || '(email non renseigné)'}</div>
-              <div><strong>Objet :</strong> Rapport mensuel {moisLabel} - Destination Cote Basque - {data.bien?.hospitable_name || data.proprio?.nom}</div>
+              <div><strong>Objet :</strong> Rapport mensuel {moisLabel} - {AGENCE_BRAND.short} - {data.bien?.hospitable_name || data.proprio?.nom}</div>
               {useStatement && <div><strong>PJ :</strong> 📎 Statement PDF (paysage)</div>}
               {joindrePDF && <div><strong>PJ :</strong> 📎 Facture PDF Evoliz</div>}
             </div>

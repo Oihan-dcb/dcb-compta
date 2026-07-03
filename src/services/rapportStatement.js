@@ -1,3 +1,5 @@
+import { AGENCE_BRAND } from '../lib/agence'
+
 function escapeNonAscii(s) {
   return s.replace(/[^\x00-\x7F]/g, c => `&#${c.codePointAt(0)};`)
 }
@@ -207,25 +209,22 @@ export function genererStatementHTML(proprio, mois, data) {
 
 <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:16px;padding-bottom:14px;border-bottom:2px solid #CC9933">
   <div>
-    <div style="font-size:10px;font-weight:600;color:#CC9933;letter-spacing:0.05em;text-transform:uppercase;margin-bottom:2px">Destination Côte Basque</div>
+    <div style="font-size:10px;font-weight:600;color:#CC9933;letter-spacing:0.05em;text-transform:uppercase;margin-bottom:2px">${AGENCE_BRAND.label}</div>
     <div style="font-size:17px;font-weight:700;color:#2C2416;margin-bottom:2px">${bienNom}</div>
     <div style="font-size:10px;color:#9c8c7a">${proprio?.nom || ''} · ${moisLabel}</div>
   </div>
   <div style="text-align:right;font-size:9.5px;color:#9c8c7a">
     <div style="font-weight:600;color:#2C2416;font-size:12px;margin-bottom:2px">Statement mensuel</div>
     <div>Généré le ${new Date().toLocaleDateString('fr-FR')}</div>
-    <div style="margin-top:3px;font-size:8.5px">oihan@destinationcotebasque.com</div>
+    <div style="margin-top:3px;font-size:8.5px">${AGENCE_BRAND.email}</div>
   </div>
 </div>
 
 <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:16px;align-items:stretch">
   <div style="background:#F7F4EC;border-radius:7px;padding:12px 14px;box-sizing:border-box;display:flex;flex-direction:column">
-    <div style="font-size:8.5px;letter-spacing:0.08em;text-transform:uppercase;color:#9c8c7a;margin-bottom:8px">Charges DCB</div>
+    <div style="font-size:8.5px;letter-spacing:0.08em;text-transform:uppercase;color:#9c8c7a;margin-bottom:8px">Charges ${AGENCE_BRAND.short}</div>
     <div style="display:flex;justify-content:space-between;padding:3px 0;border-bottom:1px solid #ece8e2;font-size:10px">
-      <span style="color:#9c8c7a">Commissions DCB (HON)</span><span style="font-weight:500">${fmt(honTotal)}</span>
-    </div>
-    <div style="display:flex;justify-content:space-between;padding:3px 0;border-bottom:1px solid #ece8e2;font-size:10px">
-      <span style="color:#9c8c7a">Ménage total (voyageurs)</span><span>${fmt(menageTotal)}</span>
+      <span style="color:#9c8c7a">Commissions ${AGENCE_BRAND.short} (HON)</span><span style="font-weight:500">${fmt(honTotal)}</span>
     </div>
     ${ownerStayMenageTotal > 0 ? `<div style="display:flex;justify-content:space-between;padding:3px 0;border-bottom:1px solid #ece8e2;font-size:10px">
       <span style="color:#9c8c7a">Ménage(s) séjour propriétaire</span><span>${fmt(ownerStayMenageTotal)}</span>
@@ -243,7 +242,7 @@ export function genererStatementHTML(proprio, mois, data) {
     </div>`
     }).join('')}
     <div style="display:flex;justify-content:space-between;padding:6px 0 0;font-weight:700;font-size:10.5px;margin-top:auto">
-      <span>Total dû à DCB</span><span style="color:#CC9933">${fmt(totalManager)}</span>
+      <span>Total dû à ${AGENCE_BRAND.short}</span><span style="color:#CC9933">${fmt(totalManager)}</span>
     </div>
   </div>
   <div style="background:#F7F4EC;border-radius:7px;padding:12px 14px;box-sizing:border-box;display:flex;flex-direction:column">
@@ -351,8 +350,8 @@ export function genererStatementHTML(proprio, mois, data) {
 ${transactions}
 
 <div style="margin-top:16px;padding-top:10px;border-top:1px solid #ece8e2;font-size:8.5px;color:#9c8c7a;display:flex;justify-content:space-between">
-  <span>Destination Côte Basque — Conciergerie de prestige, Biarritz</span>
-  <span>oihan@destinationcotebasque.com</span>
+  <span>${AGENCE_BRAND.label} — ${AGENCE_BRAND.tagline}</span>
+  <span>${AGENCE_BRAND.email}</span>
 </div>
 
 </body>
@@ -465,7 +464,7 @@ export function genererMailStatementHTML(proprio, mois, data) {
 
   <!-- Header -->
   <div style="padding:20px 24px 16px;border-bottom:2px solid #CC9933;background:#fff;">
-    <div style="font-size:0.65em;font-weight:700;letter-spacing:2px;text-transform:uppercase;color:#CC9933;margin-bottom:4px;">Destination Côte Basque</div>
+    <div style="font-size:0.65em;font-weight:700;letter-spacing:2px;text-transform:uppercase;color:#CC9933;margin-bottom:4px;">${AGENCE_BRAND.label}</div>
     <div style="font-size:1.25em;font-weight:700;color:#2C2416;">${bienNom}</div>
     <div style="font-size:0.85em;color:#9C8E7D;margin-top:2px;">${moisLabel}</div>
   </div>
@@ -486,8 +485,8 @@ export function genererMailStatementHTML(proprio, mois, data) {
 
   <!-- Footer -->
   <div style="text-align:center;padding:12px 24px;font-size:0.75em;color:#9C8E7D;background:#F7F4EF;border-top:2px solid #CC9933;">
-    Destination Côte Basque · oihan@destinationcotebasque.com<br>
-    Conciergerie de prestige — Biarritz
+    ${AGENCE_BRAND.label} · ${AGENCE_BRAND.email}<br>
+    ${AGENCE_BRAND.tagline}
   </div>
 
 </div>

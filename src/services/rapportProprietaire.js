@@ -1,5 +1,5 @@
 import { supabase } from '../lib/supabase'
-import { AGENCE } from '../lib/agence'
+import { AGENCE, AGENCE_BRAND } from '../lib/agence'
 import { getInvoicePDFBase64 } from './evoliz'
 import heroSrc from '../assets/rapport-hero.jpg?inline'
 import logoSrc from '../assets/rapport-logo.png?inline'
@@ -387,12 +387,12 @@ export function genererRapportHTML(proprio, mois, data, colonnes = {}) {
         ${deltaCA !== null ? `<div style="font-size:9px;color:${deltaCA >= 0 ? '#4ADE80' : '#F87171'};">${deltaCA >= 0 ? SVG.arrowUp('#4ADE80') : SVG.arrowDown('#F87171')} vs N-1</div>` : ''}
       </div>
       <div style="text-align:center;border-left:1px solid rgba(204,153,51,0.4);border-right:1px solid rgba(204,153,51,0.4);padding:0 20px;">
-        <div style="font-size:8px;letter-spacing:0.04em;text-transform:uppercase;color:#CC9933;margin-bottom:3px;">Honoraires DCB</div>
+        <div style="font-size:8px;letter-spacing:0.04em;text-transform:uppercase;color:#CC9933;margin-bottom:3px;">Honoraires ${AGENCE_BRAND.short}</div>
         <div style="font-size:18px;font-weight:400;color:#CC9933;">${fmt(kpis.honTotal)}</div>
         <div style="font-size:9px;color:rgba(204,153,51,0.7);">${tauxCommission ? tauxCommission + '% TTC' : 'gestion & services'}</div>
       </div>
       <div style="text-align:center;">
-        <div style="font-size:8px;letter-spacing:0.04em;text-transform:uppercase;color:rgba(212,196,176,0.8);margin-bottom:3px;">${modeEncaissement === 'proprio' && virTotalProprioEncaisse > 0 ? 'Reversement DCB' : 'Virement propriétaire'}</div>
+        <div style="font-size:8px;letter-spacing:0.04em;text-transform:uppercase;color:rgba(212,196,176,0.8);margin-bottom:3px;">${modeEncaissement === 'proprio' && virTotalProprioEncaisse > 0 ? `Reversement ${AGENCE_BRAND.short}` : 'Virement propriétaire'}</div>
         <div style="font-size:18px;font-weight:400;color:#fff;">${fmt(virementNetCalc || kpis.loyTotal)}</div>
         ${modeEncaissement === 'proprio' && virTotalProprioEncaisse > 0 ? `<div style="font-size:9px;color:rgba(212,196,176,0.7);margin-top:2px;">+ ${fmt(virTotalProprioEncaisse)} perçu direct</div>` : ''}
       </div>
@@ -562,13 +562,13 @@ export function genererRapportHTML(proprio, mois, data, colonnes = {}) {
   ${noteReco ? `
   <!-- RECOMMANDATIONS -->
   <div class="section section-synthese" style="background:#FDFAF7;">
-    <div class="section-title">Recommandations DCB</div>
+    <div class="section-title">Recommandations ${AGENCE_BRAND.short}</div>
     <p style="margin:0;color:#2C2416;line-height:1.7;font-size:0.95em;">${noteReco.replace(/\n/g, '<br/>')}</p>
   </div>` : ''}
 
   <div class="footer">
-    <div style="margin-bottom:4px;">Destination Côte Basque — Conciergerie de prestige, Biarritz</div>
-    <div>Rapport généré le ${new Date().toLocaleDateString('fr-FR')} · oihan@destinationcotebasque.com</div>
+    <div style="margin-bottom:4px;">${AGENCE_BRAND.label} — ${AGENCE_BRAND.tagline}</div>
+    <div>Rapport généré le ${new Date().toLocaleDateString('fr-FR')} · ${AGENCE_BRAND.email}</div>
   </div>
 
 </div>
@@ -624,7 +624,7 @@ export async function envoyerRapportEmail(proprio, mois, htmlBody, joindrePDF = 
       },
       body: JSON.stringify({
         to: toEmails,
-        subject: `Rapport mensuel ${moisLabel} - Destination Cote Basque - ${proprio.bienName || proprio.nom}`,
+        subject: `Rapport mensuel ${moisLabel} - ${AGENCE_BRAND.short} - ${proprio.bienName || proprio.nom}`,
         html: htmlBody,
         attachments: attachments.length ? attachments : undefined,
       }),
