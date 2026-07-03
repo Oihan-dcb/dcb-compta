@@ -44,7 +44,7 @@ export async function buildRapportData(bienId, propId, mois, opts = {}) {
     (() => {
       let q = supabase
         .from('reservation')
-        .select('id, bien_id, code, fin_revenue, fin_accommodation, fin_host_service_fee, fin_gross_revenue, fin_discount, nights, arrival_date, departure_date, final_status, platform, owner_stay, guest_name, hospitable_raw, bien:bien_id(hospitable_name, code, forfait_menage_proprio), reservation_fee(fee_type, label, amount), reservation_ajustement(id, montant, label, statut)')
+        .select('id, bien_id, code, fin_revenue, fin_accommodation, fin_host_service_fee, fin_gross_revenue, fin_discount, nights, arrival_date, departure_date, final_status, platform, owner_stay, guest_name, hospitable_raw, bien:bien_id(hospitable_name, code, forfait_menage_proprio), reservation_fee(fee_type, label, amount), reservation_ajustement(id, montant, label, statut, type, qualifie_par)')
         .eq('mois_comptable', mois)
         .order('arrival_date')
       return isGlobal ? q.in('bien_id', maiteIds) : q.eq('bien_id', bienId)
@@ -327,16 +327,24 @@ export async function buildRapportData(bienId, propId, mois, opts = {}) {
           .filter(f => ['cleaning fee', 'community fee'].includes((f.label || '').toLowerCase()))
           .reduce((s, f) => s + (f.amount || 0), 0)
         const tauxRatio = (tauxCommission || 25) / 100
-        // Airbnb sans frais ménage transmis = cas fallback → dériver de HON
+        // Ajustement Hospitable qualifié 'hebergement' (voir migration 222) — doit se répercuter
+        // sur la base affichée exactement comme sur commissionableBase côté moteur de ventilation.
+        const ajustementHebergement = (r.reservation_ajustement || [])
+          .filter(a => a.statut === 'traite' && a.type === 'hebergement')
+          .reduce((s, a) => s + (a.montant || 0), 0)
+        // Airbnb sans frais ménage transmis = cas fallback → dériver de HON (déjà net de l'ajustement,
+        // celui-ci étant appliqué en amont dans commissionableBase avant calcul de HON)
         if (r.platform === 'airbnb' && cleaning === 0 && tauxRatio > 0 && (v.HON?.montant_ttc || 0) > 0) {
           return Math.round(v.HON.montant_ttc / tauxRatio)
         }
         return (r.fin_accommodation || 0) + (r.fin_host_service_fee || 0) - (r.fin_discount || 0)
           + guestFees.filter(f => (f.label || '').toLowerCase() === 'extra_guest_fee').reduce((s, f) => s + (f.amount || 0), 0)
+          + ajustementHebergement
       })(),
       proprio_encaisse: isProprioEncaisse(r.id),
-      // Ajustements Hospitable (Resolution Center) non qualifiés — voir migration 222
-      ajustements_a_qualifier: (r.reservation_ajustement || []).filter(a => a.statut === 'a_qualifier'),
+      // Ajustements Hospitable (Resolution Center) — voir migration 222. Ligne conservée après
+      // qualification (transparence propriétaire) : distinguer via statut/type.
+      ajustements: r.reservation_ajustement || [],
       hon:  v.HON?.montant_ttc || 0,
       loy:  loyHt,
       vir:  virHt,

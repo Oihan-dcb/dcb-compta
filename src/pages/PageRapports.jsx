@@ -316,8 +316,8 @@ export default function PageRapports() {
       if (reviews.length === 0 && kpis.nbResas > 0) alertes.push({ type: 'info', msg: 'Aucun avis reçu ce mois' })
       if (!proprio?.email) alertes.push({ type: 'warn', msg: 'Email propriétaire manquant' })
       if (kpisN1.caHeb > 0 && kpis.caHeb < kpisN1.caHeb * 0.8) alertes.push({ type: 'warn', msg: `CA en baisse vs N-1 (${fmt(kpis.caHeb)} vs ${fmt(kpisN1.caHeb)})` })
-      const nbAjustements = (result.resas || []).reduce((s, r) => s + (r.ajustements_a_qualifier?.length || 0), 0)
-      if (nbAjustements > 0) alertes.push({ type: 'warn', msg: `${nbAjustements} ajustement(s) Hospitable à qualifier (voir tableau réservations)` })
+      const nbAjustementsAQualifier = (result.resas || []).reduce((s, r) => s + (r.ajustements || []).filter(a => a.statut === 'a_qualifier').length, 0)
+      if (nbAjustementsAQualifier > 0) alertes.push({ type: 'warn', msg: `${nbAjustementsAQualifier} ajustement(s) Hospitable à qualifier (voir tableau réservations)` })
 
       if (reqRef.current !== reqId) return
       setData({
@@ -1156,31 +1156,37 @@ FORMAT :
                             {(colsConfig.vir          ?? true)  && <td style={{ padding: '6px 8px', textAlign: 'right', color: '#2d7a50', whiteSpace: 'nowrap' }}>{v.VIR ? fmt(v.VIR.montant_ht) : '—'}</td>}
                             {(colsConfig.debours      ?? false) && <td style={{ padding: '6px 8px', textAlign: 'right', color: r.extra > 0 ? '#DC2626' : '#9C8E7D', whiteSpace: 'nowrap' }}>{r.extra > 0 ? fmt(r.extra) : '—'}</td>}
                           </tr>
-                          {(r.ajustements_a_qualifier || []).map(adj => (
-                            <tr key={adj.id} style={{ background: '#FFFBEB' }}>
-                              <td colSpan={16} style={{ padding: '5px 8px', borderTop: '1px solid #f59e0b33', borderBottom: '1px solid #f59e0b33' }}>
+                          {(r.ajustements || []).map(adj => (
+                            <tr key={adj.id} style={{ background: adj.statut === 'traite' ? '#F7F3EC' : '#FFFBEB' }}>
+                              <td colSpan={16} style={{ padding: '5px 8px', borderTop: `1px solid ${adj.statut === 'traite' ? 'var(--border)' : '#f59e0b33'}`, borderBottom: `1px solid ${adj.statut === 'traite' ? 'var(--border)' : '#f59e0b33'}` }}>
                                 <div style={{ display: 'flex', gap: 10, alignItems: 'center', flexWrap: 'wrap', fontSize: '0.95em' }}>
-                                  <span>⚠️ Ajustement Hospitable non qualifié :</span>
+                                  <span>{adj.statut === 'traite' ? 'ℹ️ Ajustement Hospitable' : '⚠️ Ajustement Hospitable non qualifié'} :</span>
                                   <span style={{ fontStyle: 'italic', color: '#6B5E4E' }}>{adj.label}</span>
                                   <span style={{ fontWeight: 700 }}>{fmt(adj.montant)}</span>
-                                  <div style={{ marginLeft: 'auto', display: 'flex', gap: 6 }}>
-                                    <button
-                                      onClick={() => qualifierAjustementResa(adj.id, 'hebergement')}
-                                      disabled={qualifyingId === adj.id}
-                                      className="btn btn-secondary"
-                                      style={{ padding: '3px 10px', fontSize: '0.85em' }}
-                                    >
-                                      {qualifyingId === adj.id ? '…' : 'Hébergement'}
-                                    </button>
-                                    <button
-                                      onClick={() => qualifierAjustementResa(adj.id, 'menage')}
-                                      disabled={qualifyingId === adj.id}
-                                      className="btn btn-secondary"
-                                      style={{ padding: '3px 10px', fontSize: '0.85em' }}
-                                    >
-                                      {qualifyingId === adj.id ? '…' : 'Ménage / extra'}
-                                    </button>
-                                  </div>
+                                  {adj.statut === 'traite' ? (
+                                    <span style={{ marginLeft: 'auto', fontSize: '0.85em', color: '#9C8E7D', fontStyle: 'italic' }}>
+                                      Qualifié {adj.type === 'hebergement' ? 'hébergement' : 'ménage / extra'} par {adj.qualifie_par || '—'}
+                                    </span>
+                                  ) : (
+                                    <div style={{ marginLeft: 'auto', display: 'flex', gap: 6 }}>
+                                      <button
+                                        onClick={() => qualifierAjustementResa(adj.id, 'hebergement')}
+                                        disabled={qualifyingId === adj.id}
+                                        className="btn btn-secondary"
+                                        style={{ padding: '3px 10px', fontSize: '0.85em' }}
+                                      >
+                                        {qualifyingId === adj.id ? '…' : 'Hébergement'}
+                                      </button>
+                                      <button
+                                        onClick={() => qualifierAjustementResa(adj.id, 'menage')}
+                                        disabled={qualifyingId === adj.id}
+                                        className="btn btn-secondary"
+                                        style={{ padding: '3px 10px', fontSize: '0.85em' }}
+                                      >
+                                        {qualifyingId === adj.id ? '…' : 'Ménage / extra'}
+                                      </button>
+                                    </div>
+                                  )}
                                 </div>
                               </td>
                             </tr>
