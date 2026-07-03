@@ -86,7 +86,7 @@ export function genererStatementHTML(proprio, mois, data) {
     return s
   }, 0)
   const deboursTotal  = deboursSeuls + haownerTotal + ownerStayMenageTotal
-  const totalManager  = honTotal + menageTotal + deboursTotal + fraisDeductionLoyTotal
+  const totalManager  = honTotal + deboursTotal + fraisDeductionLoyTotal
   // virementNet calculé depuis les totaux du tableau pour garantir la cohérence :
   // tout changement dans les règles de calcul des lignes se répercute automatiquement dans le bloc
   const virementNet   = Math.max(0, virTotal - fraisDeductionLoyTotal + remboursementsTotal - deboursSeuls - haownerTotal - ownerStayMenageTotal)
