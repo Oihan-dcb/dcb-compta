@@ -1,6 +1,10 @@
 /**
  * syncPayouts.js — Synchronisation des dates de payout Airbnb via MCP Hospitable
  *
+ * ⚠️ DUPLICATION CONTRÔLÉE : api/sync-payouts.js (cron nightly 3h30, les deux agences)
+ * porte la même logique métier côté serveur. Toute modification ici (payouts réels,
+ * résolutions/ajustements, payouts fractionnés) doit y être répercutée — et vice-versa.
+ *
  * Pour chaque payout Airbnb DCB (IBAN 6555) dans la fenêtre temporelle :
  * - Si payout_hospitable existe + mouvement_id IS NULL → UPDATE date_payout
  * - Si payout_hospitable n'existe pas (resa créée par webhook) → INSERT + payout_reservation

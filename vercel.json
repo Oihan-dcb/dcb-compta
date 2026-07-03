@@ -11,6 +11,9 @@
     "api/sync-reservations.js": {
       "maxDuration": 120
     },
+    "api/sync-payouts.js": {
+      "maxDuration": 120
+    },
     "api/webhook-hospitable.js": {
       "maxDuration": 120
     }
@@ -23,6 +26,10 @@
     {
       "path": "/api/sync-reservations?agence=lauian",
       "schedule": "15 3 * * *"
+    },
+    {
+      "path": "/api/sync-payouts",
+      "schedule": "30 3 * * *"
     }
   ],
   "rewrites": [

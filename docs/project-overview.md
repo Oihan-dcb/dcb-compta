@@ -974,3 +974,12 @@ Granularité = **par bien** (1 facture = 1 bien, sauf Maïté = facture groupe �
   résolution sans résa avec le détail (« Résolution Airbnb : … »). Les payouts réels sont exclus du
   subset-sum (1 payout = 1 virement).
   Workflow : « 🔄 Sync Airbnb » (Banque) puis « matching auto » (Rapprochement).
+- **Suite (même session) — Sync Airbnb automatisé (cron nightly)** : nouveau `api/sync-payouts.js`
+  (cron Vercel 3h30, après les sync-reservations) — version serveur de `src/services/syncPayouts.js`
+  (duplication contrôlée, avertissements croisés dans les deux fichiers). Couvre les DEUX agences en
+  un run (filtre IBAN : DCB •6555, Lauian •4240, surchargables via `AIRBNB_IBAN_SUFFIXES`),
+  `include=transactions` sur la liste (pas d'appel détail par payout), lectures/écritures Supabase en
+  batch. Même auth que sync-reservations (HOSPITABLE_WEBHOOK_SECRET ou JWT admin). Le bouton
+  « 🔄 Sync Airbnb » reste dispo pour un rafraîchissement manuel. Le matching, lui, reste déclenché
+  par l'humain (auto-matching après import de relevé, ou bouton « Lancer auto ») — la donnée payout
+  est désormais toujours fraîche quand il tourne.
