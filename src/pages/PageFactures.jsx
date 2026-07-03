@@ -492,12 +492,12 @@ const [pushing, setPushing] = useState(false)
   }
 
   async function reopenFacture(facture) {
-    const motif = window.prompt('Motif de réouverture (obligatoire) — déverrouille la saisie AE/heures pour ce bien/mois :')
+    const motif = window.prompt('Motif de réouverture (obligatoire).\n\nDéverrouille la saisie pour ce bien/mois ET supprime le brouillon chez Evoliz (la facture repasse en brouillon, à régénérer/renvoyer).\nSi la facture Evoliz est déjà validée/payée, la réouverture sera refusée :')
     if (motif === null) return
     try {
       setReopening(facture.id)
       const n = await reouvrirClotureFacture(facture, motif)
-      setSuccess(n > 0 ? `Saisie rouverte (${n} bien(s)).` : 'Aucune clôture active à rouvrir.')
+      setSuccess((n > 0 ? `Saisie rouverte (${n} bien(s)).` : 'Aucune clôture active à rouvrir.') + (['envoye_evoliz','payee'].includes(facture.statut) ? ' Brouillon Evoliz supprimé — facture repassée en brouillon : Générer → Valider → Envoyer.' : ''))
       await charger()
     } catch (err) {
       setError(err.message)
@@ -996,7 +996,7 @@ const [pushing, setPushing] = useState(false)
                           style={{ background: '#fff', color: '#B91C1C', border: '1px solid #FCA5A5' }}
                           disabled={reopening === f.id}
                           onClick={e => { e.stopPropagation(); reopenFacture(f) }}
-                          title="Rouvrir la saisie prestations/heures pour ce bien et ce mois (réservé à Oïhan)"
+                          title="Rouvrir la saisie (réservé à Oïhan) — supprime aussi le brouillon Evoliz ; la facture repasse en brouillon, à régénérer puis renvoyer. Refusé si la facture Evoliz est validée/payée."
                         >
                           {reopening === f.id ? <><span className="spinner" /> …</> : '🔓 Rouvrir saisie'}
                         </button>

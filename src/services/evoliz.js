@@ -85,7 +85,7 @@ async function getAgencyBankIds() {
 // APPEL GÃÂNÃÂRIQUE
 // ============================================================
 
-async function evolizCall(action, payload = {}) {
+export async function evolizCall(action, payload = {}) {
   const { data, error } = await supabase.functions.invoke('evoliz-proxy', {
     body: { action, payload, companyId: COMPANY_ID },
   })

@@ -18,6 +18,7 @@
 import { supabase } from '../lib/supabase'
 import { AGENCE } from '../lib/agence'
 import { logOp } from './journal'
+import { evolizCall } from './evoliz'
 
 const MENTION_MANDAT = "Conformément au mandat de gestion, les honoraires de gestion sont directement prélevés sur le loyer encaissé avant reversement au propriétaire."
 
@@ -1258,6 +1259,27 @@ export async function reouvrirClotureFacture(facture, motif) {
   if (!motif || !motif.trim()) throw new Error('Un motif est obligatoire pour rouvrir')
   const { data: { session } } = await supabase.auth.getSession()
   if (!session) throw new Error('Session requise')
+
+  // Rouvrir la saisie = la facture envoyée n'est plus valable → on retire d'abord le
+  // brouillon T- chez Evoliz. Si Evoliz refuse (facture déjà validée F- / payée), la
+  // réouverture est BLOQUÉE : impossible de diverger d'une facture comptabilisée
+  // (le recours est un avoir chez Evoliz).
+  if (['envoye_evoliz', 'payee'].includes(facture.statut) && facture.id_evoliz && facture.id_evoliz !== 'N/A') {
+    try {
+      await evolizCall('deleteInvoice', { invoiceId: facture.id_evoliz })
+    } catch (e) {
+      throw new Error(`Réouverture refusée : le brouillon Evoliz ${facture.numero_facture || facture.id_evoliz} n'a pas pu être supprimé (probablement déjà validé/payé — passez par un avoir). Détail : ${e.message}`)
+    }
+    await supabase.from('facture_evoliz')
+      .update({ statut: 'brouillon', id_evoliz: null, numero_facture: null })
+      .eq('id', facture.id)
+    logOp({
+      categorie: 'facture', action: 'delete', statut: 'ok', source: 'app',
+      mois_comptable: facture.mois, bien_id: facture.bien_id || null, proprietaire_id: facture.proprietaire_id || null,
+      message: `Réouverture saisie : brouillon Evoliz ${facture.numero_facture || facture.id_evoliz} supprimé, facture repassée en brouillon (motif : ${motif.trim()})`,
+    })
+  }
+
   let bienIds = []
   if (facture.bien_id) bienIds = [facture.bien_id]
   else if (facture.proprietaire_id) {
