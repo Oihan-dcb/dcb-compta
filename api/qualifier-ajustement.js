@@ -2,11 +2,12 @@
  * POST /api/qualifier-ajustement
  *
  * Qualifie un ajustement Hospitable détecté (voir migration 222 + api/ventiler.js
- * _detecterAjustements) comme "hebergement" (impacte commissionableBase → HON) ou
- * "menage" (impacte uniquement fmenBase), puis déclenche la reventilation de la résa
+ * _detecterAjustements) comme "hebergement" (impacte commissionableBase → HON),
+ * "menage" (impacte uniquement fmenBase) ou "aucun" (résa annulée/remboursée à 100%,
+ * pas d'impact réel — voir migration 223), puis déclenche la reventilation de la résa
  * concernée via /api/ventiler pour que le nouveau traitement s'applique immédiatement.
  *
- * Body : { ajustement_id: 'uuid', type: 'hebergement' | 'menage' }
+ * Body : { ajustement_id: 'uuid', type: 'hebergement' | 'menage' | 'aucun' }
  * Auth : Bearer JWT Supabase valide requis (tout utilisateur authentifié).
  */
 
@@ -43,8 +44,8 @@ export default async function handler(req, res) {
 
   const { ajustement_id, type } = req.body || {}
   if (!ajustement_id) return res.status(400).json({ error: 'ajustement_id requis' })
-  if (!['hebergement', 'menage'].includes(type))
-    return res.status(400).json({ error: "type doit être 'hebergement' ou 'menage'" })
+  if (!['hebergement', 'menage', 'aucun'].includes(type))
+    return res.status(400).json({ error: "type doit être 'hebergement', 'menage' ou 'aucun'" })
 
   const supa = createClient(SUPABASE_URL, SUPABASE_SRK)
 

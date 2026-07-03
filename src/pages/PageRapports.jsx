@@ -1163,30 +1163,31 @@ FORMAT :
                                   <span>{adj.statut === 'traite' ? 'ℹ️ Ajustement Hospitable' : '⚠️ Ajustement Hospitable non qualifié'} :</span>
                                   <span style={{ fontStyle: 'italic', color: '#6B5E4E' }}>{adj.label}</span>
                                   <span style={{ fontWeight: 700 }}>{fmt(adj.montant)}</span>
-                                  {adj.statut === 'traite' ? (
-                                    <span style={{ marginLeft: 'auto', fontSize: '0.85em', color: '#9C8E7D', fontStyle: 'italic' }}>
-                                      Qualifié {adj.type === 'hebergement' ? 'hébergement' : 'ménage / extra'}
+                                  {adj.statut === 'traite' && (
+                                    <span style={{ fontSize: '0.85em', color: '#9C8E7D', fontStyle: 'italic' }}>
+                                      Qualifié {{ hebergement: 'hébergement', menage: 'ménage / extra', aucun: 'sans impact' }[adj.type] || adj.type}
                                     </span>
-                                  ) : (
-                                    <div style={{ marginLeft: 'auto', display: 'flex', gap: 6 }}>
-                                      <button
-                                        onClick={() => qualifierAjustementResa(adj.id, 'hebergement')}
-                                        disabled={qualifyingId === adj.id}
-                                        className="btn btn-secondary"
-                                        style={{ padding: '3px 10px', fontSize: '0.85em' }}
-                                      >
-                                        {qualifyingId === adj.id ? '…' : 'Hébergement'}
-                                      </button>
-                                      <button
-                                        onClick={() => qualifierAjustementResa(adj.id, 'menage')}
-                                        disabled={qualifyingId === adj.id}
-                                        className="btn btn-secondary"
-                                        style={{ padding: '3px 10px', fontSize: '0.85em' }}
-                                      >
-                                        {qualifyingId === adj.id ? '…' : 'Ménage / extra'}
-                                      </button>
-                                    </div>
                                   )}
+                                  <div style={{ marginLeft: 'auto', display: 'flex', gap: 6 }}>
+                                    {[
+                                      { type: 'hebergement', label: 'Hébergement' },
+                                      { type: 'menage', label: 'Ménage / extra' },
+                                      { type: 'aucun', label: 'Sans impact' },
+                                    ].map(({ type, label }) => (
+                                      <button
+                                        key={type}
+                                        onClick={() => qualifierAjustementResa(adj.id, type)}
+                                        disabled={qualifyingId === adj.id}
+                                        className="btn btn-secondary"
+                                        style={{
+                                          padding: '3px 10px', fontSize: '0.85em',
+                                          ...(adj.type === type ? { borderColor: 'var(--brand)', fontWeight: 700 } : {}),
+                                        }}
+                                      >
+                                        {qualifyingId === adj.id ? '…' : label}
+                                      </button>
+                                    ))}
+                                  </div>
                                 </div>
                               </td>
                             </tr>
