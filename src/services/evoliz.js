@@ -247,13 +247,16 @@ export async function creerFactureEvoliz(facture) {
   // chercher l'entrée proprio de la bonne agence pour obtenir le bon id_evoliz Evoliz.
   let proprioForEvoliz = proprio
   if (proprio.agence && facture.agence && proprio.agence !== facture.agence) {
-    const { data: sameProprio } = await supabase
+    let sameQ = supabase
       .from('proprietaire')
       .select('id, nom, prenom, id_evoliz, adresse, ville, code_postal, telephone, agence')
       .eq('nom', proprio.nom)
-      .eq('prenom', proprio.prenom)
       .eq('agence', facture.agence)
-      .maybeSingle()
+    // prenom NULL (sociétés : SCI, AIA BIARRITZ…) : .eq(null) ne matche JAMAIS en
+    // PostgREST (il faut is.null) → le fallback échouait et on envoyait le clientid
+    // de l'autre société Evoliz (« The selected clientid is invalid »)
+    sameQ = proprio.prenom == null ? sameQ.is('prenom', null) : sameQ.eq('prenom', proprio.prenom)
+    const { data: sameProprio } = await sameQ.maybeSingle()
     if (sameProprio) proprioForEvoliz = sameProprio
   }
   const clientId = await getOuCreerClientEvoliz(proprioForEvoliz)
