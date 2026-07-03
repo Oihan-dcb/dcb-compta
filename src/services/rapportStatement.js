@@ -116,13 +116,13 @@ export function genererStatementHTML(proprio, mois, data) {
       ${showBrut         ? `<td style="padding:4px 5px;font-size:9px;text-align:right;white-space:nowrap">${r.owner_stay ? '—' : fmt(r.gross_revenue ?? r.fin_revenue)}</td>` : ''}
       ${showEncaissement ? `<td style="padding:4px 5px;font-size:9px;text-align:right;white-space:nowrap;color:#4A3728">${r.owner_stay ? '—' : (r.encaissement || 0) > 0 ? fmt(r.encaissement) : '—'}</td>` : ''}
       ${showFraisDist    ? `<td style="padding:4px 5px;font-size:9px;text-align:right;white-space:nowrap;color:#9c8c7a">${!r.owner_stay && (r.frais_plateforme || 0) > 0 ? fmt(r.frais_plateforme) : '—'}</td>` : ''}
-      ${showTaxe         ? `<td style="padding:4px 5px;font-size:9px;text-align:right;white-space:nowrap;color:#9c8c7a">${taxeR > 0 ? fmt(taxeR) : '—'}</td>` : ''}
+      ${showTaxe         ? `<td style="padding:4px 5px;font-size:9px;text-align:right;white-space:nowrap;color:#9c8c7a">${taxeR !== 0 ? fmt(taxeR) : '—'}</td>` : ''}
       ${showNetPlat      ? `<td style="padding:4px 5px;font-size:9px;text-align:right;white-space:nowrap;color:#4A3728">${r.owner_stay ? '—' : fmt(r.net_plateforme ?? (r.fin_revenue || 0))}</td>` : ''}
-      ${showBaseComm     ? `<td style="padding:4px 5px;font-size:9px;text-align:right;white-space:nowrap;color:#4A3728">${r.owner_stay ? '—' : (r.base_comm || 0) > 0 ? fmt(r.base_comm) : '—'}</td>` : ''}
-      ${showHon          ? `<td style="padding:4px 5px;font-size:9px;text-align:right;white-space:nowrap;color:#9c8c7a">${honR > 0 ? fmt(honR) : '—'}</td>` : ''}
-      ${showLoy          ? `<td style="padding:4px 5px;font-size:9px;text-align:right;white-space:nowrap;color:${r.proprio_encaisse ? '#9c8c7a' : '#CC9933'};font-weight:500">${r.proprio_encaisse ? '<span style="font-style:italic;font-weight:400">perçu direct</span>' : (loyR > 0 ? fmt(loyR) : '—')}</td>` : ''}
-      ${showMenage       ? `<td style="padding:4px 5px;font-size:9px;text-align:right;white-space:nowrap;color:#4A3728">${menR > 0 ? fmt(menR) : '—'}</td>` : ''}
-      ${showVir          ? `<td style="padding:4px 5px;font-size:9px;text-align:right;white-space:nowrap;color:${r.proprio_encaisse ? '#9c8c7a' : '#2d7a50'};font-weight:500">${r.proprio_encaisse ? '<span style="font-style:italic;font-weight:400">perçu direct</span>' : (virR > 0 ? fmt(virR) : '—')}</td>` : ''}
+      ${showBaseComm     ? `<td style="padding:4px 5px;font-size:9px;text-align:right;white-space:nowrap;color:#4A3728">${r.owner_stay ? '—' : (r.base_comm || 0) !== 0 ? fmt(r.base_comm) : '—'}</td>` : ''}
+      ${showHon          ? `<td style="padding:4px 5px;font-size:9px;text-align:right;white-space:nowrap;color:#9c8c7a">${honR !== 0 ? fmt(honR) : '—'}</td>` : ''}
+      ${showLoy          ? `<td style="padding:4px 5px;font-size:9px;text-align:right;white-space:nowrap;color:${r.proprio_encaisse ? '#9c8c7a' : '#CC9933'};font-weight:500">${r.proprio_encaisse ? '<span style="font-style:italic;font-weight:400">perçu direct</span>' : (loyR !== 0 ? fmt(loyR) : '—')}</td>` : ''}
+      ${showMenage       ? `<td style="padding:4px 5px;font-size:9px;text-align:right;white-space:nowrap;color:#4A3728">${menR !== 0 ? fmt(menR) : '—'}</td>` : ''}
+      ${showVir          ? `<td style="padding:4px 5px;font-size:9px;text-align:right;white-space:nowrap;color:${r.proprio_encaisse ? '#9c8c7a' : '#2d7a50'};font-weight:500">${r.proprio_encaisse ? '<span style="font-style:italic;font-weight:400">perçu direct</span>' : (virR !== 0 ? fmt(virR) : '—')}</td>` : ''}
     </tr>`
   }).join('')
 
@@ -333,12 +333,12 @@ export function genererStatementHTML(proprio, mois, data) {
         ${showBrut         ? `<td style="padding:5px 5px;text-align:right;font-size:9.5px">${fmt(grossTotal)}</td>` : ''}
         ${showEncaissement ? `<td style="padding:5px 5px;text-align:right;font-size:9.5px;color:#4A3728">${encaissementTotal > 0 ? fmt(encaissementTotal) : '—'}</td>` : ''}
         ${showFraisDist    ? `<td style="padding:5px 5px;text-align:right;font-size:9.5px;color:#9c8c7a">${fraisDistTotal > 0 ? fmt(fraisDistTotal) : '—'}</td>` : ''}
-        ${showTaxe         ? `<td style="padding:5px 5px;text-align:right;font-size:9.5px;color:#9c8c7a">${taxeTotal > 0 ? fmt(taxeTotal) : '—'}</td>` : ''}
+        ${showTaxe         ? `<td style="padding:5px 5px;text-align:right;font-size:9.5px;color:#9c8c7a">${taxeTotal !== 0 ? fmt(taxeTotal) : '—'}</td>` : ''}
         ${showNetPlat      ? `<td style="padding:5px 5px;text-align:right;font-size:9.5px;color:#4A3728">${fmt(netPlatTotal)}</td>` : ''}
-        ${showBaseComm     ? `<td style="padding:5px 5px;text-align:right;font-size:9.5px;color:#4A3728">${baseCommTotal > 0 ? fmt(baseCommTotal) : '—'}</td>` : ''}
+        ${showBaseComm     ? `<td style="padding:5px 5px;text-align:right;font-size:9.5px;color:#4A3728">${baseCommTotal !== 0 ? fmt(baseCommTotal) : '—'}</td>` : ''}
         ${showHon          ? `<td style="padding:5px 5px;text-align:right;font-size:9.5px;color:#9c8c7a">${fmt(honTotal)}</td>` : ''}
-        ${showLoy          ? `<td style="padding:5px 5px;text-align:right;font-size:9.5px;color:#CC9933">${loyTotal > 0 ? fmt(loyTotal) : '—'}</td>` : ''}
-        ${showMenage       ? `<td style="padding:5px 5px;text-align:right;font-size:9.5px;color:#4A3728">${menageTotal > 0 ? fmt(menageTotal) : '—'}</td>` : ''}
+        ${showLoy          ? `<td style="padding:5px 5px;text-align:right;font-size:9.5px;color:#CC9933">${loyTotal !== 0 ? fmt(loyTotal) : '—'}</td>` : ''}
+        ${showMenage       ? `<td style="padding:5px 5px;text-align:right;font-size:9.5px;color:#4A3728">${menageTotal !== 0 ? fmt(menageTotal) : '—'}</td>` : ''}
         ${showVir          ? `<td style="padding:5px 5px;text-align:right;font-size:9.5px;color:#2d7a50">${fmt(virTotal)}</td>` : ''}
       </tr>
     </tfoot>

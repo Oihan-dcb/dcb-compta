@@ -229,7 +229,7 @@ export function genererRapportHTML(proprio, mois, data, colonnes = {}) {
               ${cols.loy          ? `<td style="padding:5px 4px;text-align:right;font-weight:500;white-space:nowrap;color:${r.proprio_encaisse ? '#9c8c7a' : '#CC9933'};">${r.proprio_encaisse ? '<span style="font-size:9px;font-weight:400;font-style:italic;">direct</span>' : (v.LOY ? fmt(v.LOY.montant_ht) : '—')}</td>` : ''}
               ${cols.vir          ? `<td style="padding:5px 4px;text-align:right;white-space:nowrap;color:${r.proprio_encaisse ? '#9c8c7a' : '#2d7a50'};">${r.proprio_encaisse ? '<span style="font-size:9px;font-style:italic;">perçu direct</span>' : (v.VIR ? fmt(v.VIR.montant_ht) : '—')}</td>` : ''}
               ${cols.debours      ? `<td style="padding:5px 4px;text-align:right;white-space:nowrap;color:#4A3728;">${r.extra > 0 ? fmt(r.extra) : '—'}</td>` : ''}
-              ${cols.menage       ? `<td style="padding:5px 4px;text-align:right;white-space:nowrap;color:#4A3728;">${(r.menage_voyageur || 0) > 0 ? fmt(r.menage_voyageur) : '—'}</td>` : ''}
+              ${cols.menage       ? `<td style="padding:5px 4px;text-align:right;white-space:nowrap;color:#4A3728;">${(r.menage_voyageur || 0) !== 0 ? fmt(r.menage_voyageur) : '—'}</td>` : ''}
             </tr>`}).join('')}
           ${(() => {
             const tot = (resas || []).reduce((acc, r) => {
