@@ -1003,3 +1003,15 @@ Granularité = **par bien** (1 facture = 1 bien, sauf Maïté = facture groupe �
   ne s'exécute que depuis le projet dcb, il couvre les 2 agences) + upserts `on_conflict`.
   Tuile « Resas rapprochées » : le filtre agence manquait dans `getStatsRapprochement` (93/141 =
   résas des 2 agences mélangées) — corrigé (`bien!inner.agence`), renommée « Résas payin reçu ».
+- **Suite (même session) — trigger prevent_ghost_match vs résolutions + SEPA par code + débours AE** :
+  (1) les mouvements de résolution Airbnb (75/75/85 €) restaient `en_attente` après matching : le
+  trigger `prevent_ghost_match` refuse le passage à `rapproche` sans lien FK, or le code marquait le
+  mouvement AVANT de lier le payout (seul lien possible pour une résolution sans résa) — erreur
+  silencieuse (`error` non vérifié). Fix : lier `payout_hospitable` d'abord, vérifier l'erreur de
+  l'update mouvement ; data resync des 3 mouvements. (2) Nouvelle étape SEPA du matching auto :
+  détection du **code de résa dans le libellé bancaire** (ex. « KDQBMR-KDQBMR » → résa manual
+  KDQBMR, acompte 50 % lié via _lierViaPayout, partiel géré). Match exact + unique + garde-fou
+  montant. (3) `detectCanal` (importBanque + banque) : « Debours AE » → `interne` (remboursements de
+  débours par les proprios, pas des payins résa) ; 3 mouvements reclassés (Marc 106,25, Carossio
+  250 + 75). Élucidé aussi : le payout 1 294,25 € du 08/06 = Alan Yum 3 234,84 − ajustement
+  −1 581,59 (remboursement résa mai HMRXENECBE) − autres ajustements.

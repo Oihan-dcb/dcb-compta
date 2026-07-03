@@ -716,13 +716,25 @@ export async function lancerMatchingAuto(mois, source = 'manuel') {
                 if (tw) payoutsCanal.splice(payoutsCanal.indexOf(tw), 1)
               }
             }
+            // Lier le payout AVANT de marquer le mouvement — le trigger prevent_ghost_match
+            // refuse un passage à 'rapproche' sans lien FK (pour une résolution sans résa,
+            // payout_hospitable est le SEUL lien possible). Bug du 03/07 : les mouvements
+            // 75/75/85 € restaient en_attente alors que leurs payouts étaient consommés.
+            await supabase.from('payout_hospitable')
+              .update({ mouvement_id: mouv.id, statut_matching: 'rapproche' })
+              .eq('id', payoutExact.id)
             // Marquer le mouvement (avec le détail de la résolution si pas de résa)
             const detailMaj = resaIds.length
               ? {}
               : { detail: ('Résolution Airbnb : ' + (payoutExact.reference || '')).slice(0, 500) }
-            await supabase.from('mouvement_bancaire')
+            const { error: mvtUpdErr } = await supabase.from('mouvement_bancaire')
               .update({ statut_matching: 'rapproche', ...detailMaj })
               .eq('id', mouv.id)
+            if (mvtUpdErr) {
+              log.errors++
+              log.details.push({ type: 'airbnb_reel_mvt_err', montant: mouv.credit / 100, message: mvtUpdErr.message })
+              continue
+            }
           } else {
             // _lierViaPayout crée reservation_paiement + met statut_matching AVANT payout_hospitable
             await _lierViaPayout(mouv.id, resaIds, mouv)
@@ -826,6 +838,35 @@ export async function lancerMatchingAuto(mois, source = 'manuel') {
       await _lierViaPayout(mouv.id, resaIds, mouv)
       log.matched++
       log.details.push({ type: 'stripe_payout', montant: mouv.credit / 100, nb_resas: resaIds.length })
+    }
+
+    // ── SEPA/direct : code de résa dans le libellé bancaire ──────────────────
+    // Les virements voyageurs manuels portent souvent le code de résa (ex.
+    // « VIR INST M.OU MME SKELTON WILL / KDQBMR-KDQBMR » → résa manual KDQBMR,
+    // acompte 50 %). Match exact sur le code, unique, avec garde-fou montant.
+    // _lierViaPayout gère le partiel : rapprochee ne passe à true que si le total
+    // reçu couvre ≥96 % du fin_revenue.
+    const sepaLibres = libres.filter(m => m.canal === 'sepa_manuel' && m.statut_matching === 'en_attente' && (m.credit || 0) > 0)
+    for (const mouv of sepaLibres) {
+      const texte = ((mouv.libelle || '') + ' ' + (mouv.detail || '')).toUpperCase()
+      const brut = texte.match(/[A-Z0-9][A-Z0-9-]*[A-Z0-9]/g) || []
+      const tokens = [...new Set([...brut, ...brut.flatMap(t => t.split('-'))])]
+        .filter(t => t.length >= 5 && t.length <= 12 && !/^[0-9]+$/.test(t))
+      if (!tokens.length) continue
+      const { data: resasCode } = await supabase
+        .from('reservation')
+        .select('id, code, fin_revenue, guest_name, bien!inner(agence)')
+        .in('platform', ['manual', 'direct'])
+        .eq('bien.agence', AGENCE)
+        .in('code', tokens)
+      if (!resasCode || resasCode.length !== 1) continue   // exactement 1 résa identifiée, sinon revue manuelle
+      const resa = resasCode[0]
+      // Garde-fou : le virement ne doit pas dépasser le montant de la résa (+1 €)
+      if (mouv.credit > (resa.fin_revenue || 0) + 100) { log.skipped++; continue }
+      await _lierViaPayout(mouv.id, [resa.id], mouv)
+      libres.splice(libres.indexOf(mouv), 1)
+      log.matched++
+      log.details.push({ type: 'sepa_code_resa', montant: mouv.credit / 100, code: resa.code, guest: resa.guest_name })
     }
 
   } catch (err) {

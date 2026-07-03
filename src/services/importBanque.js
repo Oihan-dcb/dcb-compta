@@ -50,7 +50,10 @@ function detectCanal(lib, det, debit) {
   if (l.includes('retour virement') || l.includes('rejet virement') ||
       l.includes('virement non execute') || l.includes('regul virement')) return 'interne'
   // Reversement de débours / main d'œuvre par le propriétaire vers le séquestre
+  // + remboursements de débours AE par les proprios (libellés « Debours AE Viky 2026 05 »,
+  //   « DEBOURS-AE-AITA-2026-05 »…) — pas des payins résa, hors périmètre rapprochement
   if (l.includes('reverse par le proprietaire') || l.includes('reversee par le proprietaire') ||
+      l.includes('debours ae') || l.includes('debours-ae') ||
       (l.includes('sequestre') && l.includes('main d'))) return 'interne'
   // Frais bancaires (tenue de compte, cotisation, frais Stripe)
   if (l.includes('frais de tenue') || l.includes('frais tenue') || l.includes('cotisation') ||

@@ -95,6 +95,9 @@ function detecterCanal(libelle, detail) {
       lib.includes('REGUL VIREMENT')) return 'interne'
   if (det.includes('CHANGEMENT DE BANQUE') || det.includes('TRANSFERT COMPTE')) return 'interne'
   if (det.includes('REVERS') && det.includes('PROPRI')) return 'interne'
+  // Remboursements de débours AE par les proprios — pas des payins résa
+  if (lib.includes('DEBOURS AE') || lib.includes('DEBOURS-AE') ||
+      det.includes('DEBOURS AE') || det.includes('DEBOURS-AE')) return 'interne'
 
   // Virements sortants
   if (lib.includes('HONORAIRES')) return 'sortant_honoraires'
