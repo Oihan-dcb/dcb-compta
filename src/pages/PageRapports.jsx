@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, useRef } from 'react'
+import { useState, useEffect, useCallback, useRef, Fragment } from 'react'
 import MoisSelector, { MOIS_FR } from '../components/MoisSelector'
 import { useMoisPersisted } from '../hooks/useMoisPersisted'
 import { supabase } from '../lib/supabase'
@@ -8,6 +8,7 @@ import {
 } from '../services/rapportProprietaire'
 import { genererStatementHTML, genererMailStatementHTML } from '../services/rapportStatement'
 import { buildRapportData as buildRapportDataService } from '../services/buildRapportData'
+import { qualifierAjustement } from '../services/ventilation'
 import { STATUTS_NON_VENTILABLES } from '../lib/constants'
 import { AGENCE } from '../lib/agence'
 
@@ -315,6 +316,8 @@ export default function PageRapports() {
       if (reviews.length === 0 && kpis.nbResas > 0) alertes.push({ type: 'info', msg: 'Aucun avis reçu ce mois' })
       if (!proprio?.email) alertes.push({ type: 'warn', msg: 'Email propriétaire manquant' })
       if (kpisN1.caHeb > 0 && kpis.caHeb < kpisN1.caHeb * 0.8) alertes.push({ type: 'warn', msg: `CA en baisse vs N-1 (${fmt(kpis.caHeb)} vs ${fmt(kpisN1.caHeb)})` })
+      const nbAjustements = (result.resas || []).reduce((s, r) => s + (r.ajustements_a_qualifier?.length || 0), 0)
+      if (nbAjustements > 0) alertes.push({ type: 'warn', msg: `${nbAjustements} ajustement(s) Hospitable à qualifier (voir tableau réservations)` })
 
       if (reqRef.current !== reqId) return
       setData({
@@ -332,6 +335,20 @@ export default function PageRapports() {
   }, [selectedBienId, selectedPropId, mois, proprietaires, modeMaite])
 
   useEffect(() => { charger() }, [charger])
+
+  // Qualification d'un ajustement Hospitable (voir migration 222)
+  const [qualifyingId, setQualifyingId] = useState(null)
+  const qualifierAjustementResa = useCallback(async (ajustementId, type) => {
+    setQualifyingId(ajustementId)
+    try {
+      await qualifierAjustement(ajustementId, type)
+      await charger()
+    } catch (e) {
+      setError(e.message)
+    } finally {
+      setQualifyingId(null)
+    }
+  }, [charger])
 
   useEffect(() => {
     if (data?.bien?.rapport_config?.colonnes) setColsConfig(data.bien.rapport_config.colonnes)
@@ -1115,7 +1132,8 @@ FORMAT :
                       {data.resas.map((r, i) => {
                         const v = r.vent
                         return (
-                          <tr key={r.id} style={{ background: i % 2 === 0 ? '#FDFAF4' : '#F7F3EC' }}>
+                          <Fragment key={r.id}>
+                          <tr style={{ background: i % 2 === 0 ? '#FDFAF4' : '#F7F3EC' }}>
                             <td style={{ padding: '6px 8px', color: '#9C8E7D', fontFamily: 'monospace' }}>{r.code}</td>
                             <td style={{ padding: '6px 8px', color: 'var(--text)' }}>
                               {r.guest_name || '—'}
@@ -1138,6 +1156,36 @@ FORMAT :
                             {(colsConfig.vir          ?? true)  && <td style={{ padding: '6px 8px', textAlign: 'right', color: '#2d7a50', whiteSpace: 'nowrap' }}>{v.VIR ? fmt(v.VIR.montant_ht) : '—'}</td>}
                             {(colsConfig.debours      ?? false) && <td style={{ padding: '6px 8px', textAlign: 'right', color: r.extra > 0 ? '#DC2626' : '#9C8E7D', whiteSpace: 'nowrap' }}>{r.extra > 0 ? fmt(r.extra) : '—'}</td>}
                           </tr>
+                          {(r.ajustements_a_qualifier || []).map(adj => (
+                            <tr key={adj.id} style={{ background: '#FFFBEB' }}>
+                              <td colSpan={16} style={{ padding: '5px 8px', borderTop: '1px solid #f59e0b33', borderBottom: '1px solid #f59e0b33' }}>
+                                <div style={{ display: 'flex', gap: 10, alignItems: 'center', flexWrap: 'wrap', fontSize: '0.95em' }}>
+                                  <span>⚠️ Ajustement Hospitable non qualifié :</span>
+                                  <span style={{ fontStyle: 'italic', color: '#6B5E4E' }}>{adj.label}</span>
+                                  <span style={{ fontWeight: 700 }}>{fmt(adj.montant)}</span>
+                                  <div style={{ marginLeft: 'auto', display: 'flex', gap: 6 }}>
+                                    <button
+                                      onClick={() => qualifierAjustementResa(adj.id, 'hebergement')}
+                                      disabled={qualifyingId === adj.id}
+                                      className="btn btn-secondary"
+                                      style={{ padding: '3px 10px', fontSize: '0.85em' }}
+                                    >
+                                      {qualifyingId === adj.id ? '…' : 'Hébergement'}
+                                    </button>
+                                    <button
+                                      onClick={() => qualifierAjustementResa(adj.id, 'menage')}
+                                      disabled={qualifyingId === adj.id}
+                                      className="btn btn-secondary"
+                                      style={{ padding: '3px 10px', fontSize: '0.85em' }}
+                                    >
+                                      {qualifyingId === adj.id ? '…' : 'Ménage / extra'}
+                                    </button>
+                                  </div>
+                                </div>
+                              </td>
+                            </tr>
+                          ))}
+                          </Fragment>
                         )
                       })}
                       {(() => {

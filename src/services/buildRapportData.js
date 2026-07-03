@@ -44,7 +44,7 @@ export async function buildRapportData(bienId, propId, mois, opts = {}) {
     (() => {
       let q = supabase
         .from('reservation')
-        .select('id, bien_id, code, fin_revenue, fin_accommodation, fin_host_service_fee, fin_gross_revenue, fin_discount, nights, arrival_date, departure_date, final_status, platform, owner_stay, guest_name, hospitable_raw, bien:bien_id(hospitable_name, code, forfait_menage_proprio), reservation_fee(fee_type, label, amount)')
+        .select('id, bien_id, code, fin_revenue, fin_accommodation, fin_host_service_fee, fin_gross_revenue, fin_discount, nights, arrival_date, departure_date, final_status, platform, owner_stay, guest_name, hospitable_raw, bien:bien_id(hospitable_name, code, forfait_menage_proprio), reservation_fee(fee_type, label, amount), reservation_ajustement(id, montant, label, statut)')
         .eq('mois_comptable', mois)
         .order('arrival_date')
       return isGlobal ? q.in('bien_id', maiteIds) : q.eq('bien_id', bienId)
@@ -335,6 +335,8 @@ export async function buildRapportData(bienId, propId, mois, opts = {}) {
           + guestFees.filter(f => (f.label || '').toLowerCase() === 'extra_guest_fee').reduce((s, f) => s + (f.amount || 0), 0)
       })(),
       proprio_encaisse: isProprioEncaisse(r.id),
+      // Ajustements Hospitable (Resolution Center) non qualifiés — voir migration 222
+      ajustements_a_qualifier: (r.reservation_ajustement || []).filter(a => a.statut === 'a_qualifier'),
       hon:  v.HON?.montant_ttc || 0,
       loy:  loyHt,
       vir:  virHt,
