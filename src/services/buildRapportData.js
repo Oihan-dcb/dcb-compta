@@ -106,8 +106,12 @@ export async function buildRapportData(bienId, propId, mois, opts = {}) {
   const tauxCommission    = bienConfig.tauxCommission
   const modeEncaissement  = bienConfig.modeEncaissement
 
+  // Une résa annulée à revenu nul reste incluse si elle porte un ajustement réservation
+  // (voir migration 222) non qualifié — sinon impossible de la qualifier depuis Rapports
+  // (elle n'apparaît dans aucun tableau).
   const resasValides = (resas || []).filter(r =>
     !STATUTS_NON_VENTILABLES.includes(r.final_status) || (r.fin_revenue || 0) > 0
+    || (r.reservation_ajustement || []).length > 0
   )
   const resaIds = resasValides.map(r => r.id)
 
