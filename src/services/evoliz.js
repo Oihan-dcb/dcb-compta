@@ -322,6 +322,16 @@ export async function creerFactureEvoliz(facture) {
     })
     .filter(Boolean)
 
+  // Débours ménage d'un bien SANS collecte de loyer : pas de facture Evoliz — le canal
+  // officiel est l'email « Info charges » au proprio (remboursement direct au séquestre).
+  if (isDebours && facture.bien?.gestion_loyer === false) {
+    await supabase.from('facture_evoliz')
+      .update({ statut: 'envoye_evoliz', id_evoliz: 'N/A', numero_facture: 'N/A' })
+      .eq('id', facture.id)
+    await cloturerBiensFacture(facture)
+    return { skipped: true, reason: 'debours_gestion_loyer_false_email_only' }
+  }
+
   if (lignes.length === 0) {
     // Facture sans ligne Evoliz (ex: que du DEB_AE) — on marque comme envoyée sans passer par Evoliz
     await supabase.from('facture_evoliz')

@@ -94,6 +94,22 @@ function parseReservation(resa, bien, mois) {
     && fin.revenue?.amount != null && fin.revenue.amount > 0
     && fin.revenue.amount === hostFeesTotal;
 
+  // Bug agrégat Hospitable (constaté 03/07/2026, résa HMQR9Q5ASN) : quand host.adjustments
+  // existe (résolutions Airbnb), leur champ revenue compte l'ajustement DEUX FOIS
+  // (1160,76 + 2×75 = 1310,76 alors que le ledger ne porte qu'une résolution de 75 €).
+  // → on recompose depuis les composantes : accommodation + guest_fees + host_fees
+  //   + discounts + adjustments.
+  const hostAdjustments = fin.adjustments || [];
+  let revenueFiable = fin.revenue?.amount ?? null;
+  if (platform === 'airbnb' && hostAdjustments.length > 0 && revenueFiable != null) {
+    const recompose = (fin.accommodation?.amount || 0)
+      + (fin.guest_fees || []).reduce((s, x) => s + (x.amount || 0), 0)
+      + (fin.host_fees || []).reduce((s, x) => s + (x.amount || 0), 0)
+      + (fin.discounts || []).reduce((s, x) => s + (x.amount || 0), 0)
+      + hostAdjustments.reduce((s, x) => s + (x.amount || 0), 0);
+    if (recompose !== revenueFiable) revenueFiable = recompose;
+  }
+
   // Owner stay : fin_revenue = forfait ménage (cleaning fee invité ou fallback fiche bien)
   const isOwnerStay = resa.stay_type === 'owner_stay' ||
     (typeof resa.owner_stay === 'boolean' ? resa.owner_stay : (resa.owner_stay != null && resa.owner_stay !== false));
@@ -121,7 +137,7 @@ function parseReservation(resa, bien, mois) {
     reservation_status:  resa.reservation_status,
     final_status:        resa.reservation_status?.current?.category || resa.status || 'accepted',
     fin_accommodation:   isOwnerStay ? ownerCleaningFee : (fin.accommodation?.amount ?? null),
-    fin_revenue:         isOwnerStay ? ownerCleaningFee : (notAccepted || isFullRefundDirect ? 0 : (fin.revenue?.amount ?? null)),
+    fin_revenue:         isOwnerStay ? ownerCleaningFee : (notAccepted || isFullRefundDirect ? 0 : revenueFiable),
     fin_host_service_fee: hostServiceFee?.amount ?? null,
     fin_taxes_total:     taxesTotal || null,
     fin_currency:        fin.currency || 'EUR',

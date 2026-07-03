@@ -97,7 +97,18 @@ function parseReservation(resa: any, bien: any, fallbackMois: string) {
     final_status: currentCategory,
     fin_accommodation: fin.accommodation?.amount ?? null,
     // Forcer 0 pour les resas annulées/refusées (Airbnb renvoie parfois un revenue non nul)
-    fin_revenue: isCancelled ? 0 : (fin.revenue?.amount ?? null),
+    // Recomposition anti double-compte Hospitable des adjustments (cf. api/sync-reservations.js 03/07/2026)
+    fin_revenue: isCancelled ? 0 : (() => {
+      const adjs = fin.adjustments || []
+      const brut = fin.revenue?.amount ?? null
+      if (resa.platform !== 'airbnb' || !adjs.length || brut == null) return brut
+      const recompose = (fin.accommodation?.amount || 0)
+        + (fin.guest_fees || []).reduce((s: number, x: { amount?: number }) => s + (x.amount || 0), 0)
+        + (fin.host_fees || []).reduce((s: number, x: { amount?: number }) => s + (x.amount || 0), 0)
+        + (fin.discounts || []).reduce((s: number, x: { amount?: number }) => s + (x.amount || 0), 0)
+        + adjs.reduce((s: number, x: { amount?: number }) => s + (x.amount || 0), 0)
+      return recompose
+    })(),
     fin_host_service_fee: hostServiceFee?.amount ?? null,
     fin_taxes_total: taxesTotal || null,
     fin_currency: fin.currency || 'EUR',
