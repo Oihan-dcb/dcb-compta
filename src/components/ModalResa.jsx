@@ -89,18 +89,28 @@ function AjusterVentil({ resa, ventil, onDone, onCancel }) {
     HON: (ttcDe(lHon) / 100).toFixed(2),
   }))
   const [saving, setSaving] = useState(false)
+  // Taux de commission de la résa (stocké sur la ligne HON) — sert à répartir proportionnellement
+  // la baisse de MEN entre HON et LOY au lieu de tout faire absorber par LOY.
+  const tauxCom = lHon?.taux_calcule ?? 0.25
+  const [keepProportion, setKeepProportion] = useState(false)
   const parse = (x) => { const n = Math.round(parseFloat(String(x).replace(',', '.')) * 100); return isNaN(n) || n < 0 ? null : n }
   const fmtE = (c) => (c / 100).toLocaleString('fr-FR', { minimumFractionDigits: 2 }) + ' €'
 
   const menNew = lMen ? parse(vals.MEN) : 0
-  const honNew = lHon ? parse(vals.HON) : 0
-  const invalid = (lMen && menNew === null) || (lHon && honNew === null)
+  const honSaisi = lHon ? parse(vals.HON) : 0
+  const invalid = (lMen && menNew === null) || (lHon && honSaisi === null)
   // FMEN dérivé de la règle MEN = FMEN + AUTO
   const fmenNew = lMen ? (menNew === null ? null : menNew - autoFige) : ttcDe(lFmen)
   const fmenNegatif = fmenNew !== null && fmenNew < 0
 
-  // Delta absorbé par LOY : variations de HON + FMEN + AUTO (MEN est l'agrégat, hors delta)
-  // Chaque terme du delta n'existe que si la ligne existe (le service n'écrit que les lignes présentes)
+  // Delta libéré par la baisse de MEN/FMEN (positif si MEN baisse). Si "garder proportionnalité"
+  // est coché, une part (taux de commission de la résa) revient à HON, le reste à LOY — sinon
+  // (comportement historique) tout revient à LOY.
+  const fmenDelta = (!invalid && lFmen && fmenNew !== null) ? ttcDe(lFmen) - fmenNew : 0
+  const honProportionExtra = keepProportion ? Math.round(fmenDelta * tauxCom) : 0
+  const honNew = lHon ? (honSaisi ?? 0) + honProportionExtra : null
+
+  // Delta absorbé par LOY : variations de HON (saisie + part proportionnelle) + FMEN + AUTO
   const delta = (invalid || fmenNegatif) ? 0
     : (lHon ? ttcDe(lHon) - (honNew ?? 0) : 0)
     + (lFmen ? ttcDe(lFmen) - (fmenNew ?? 0) : 0)
@@ -112,7 +122,7 @@ function AjusterVentil({ resa, ventil, onDone, onCancel }) {
     try {
       const edits = {}
       if (lMen && menNew !== null) edits.MEN = menNew
-      if (lHon && honNew !== null) edits.HON = honNew
+      if (lHon && honSaisi !== null) edits.HON = honNew
       if (lAuto) edits.AUTO = autoFige
       if (lFmen && fmenNew !== null) edits.FMEN = fmenNew
       await ajusterVentilationManuelle(resa, edits)
@@ -141,12 +151,28 @@ function AjusterVentil({ resa, ventil, onDone, onCancel }) {
               </td>
             </tr>
           )}
+          {lMen && lHon && (
+            <tr style={rowStyle}>
+              <td colSpan={2} style={{ padding: '6px 0' }}>
+                <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: '0.85em', color: '#666', cursor: 'pointer' }}>
+                  <input type="checkbox" checked={keepProportion} onChange={e => setKeepProportion(e.target.checked)} />
+                  Garder la proportionnalité HON/LOY sur la baisse de MEN
+                  {keepProportion && fmenDelta !== 0 && (
+                    <span style={{ color: '#B45309' }}> (+{fmtE(honProportionExtra)} sur HON, taux {(tauxCom * 100).toFixed(0)} %)</span>
+                  )}
+                </label>
+              </td>
+            </tr>
+          )}
           {lHon && (
             <tr style={rowStyle}>
-              <td style={{ padding: '6px 0' }}><strong>HON</strong> <span style={{ color: '#999', fontSize: '0.85em' }}>honoraires TTC — levier (HT {honNew === null ? '—' : fmtE(Math.round(honNew / 1.2))})</span></td>
+              <td style={{ padding: '6px 0' }}><strong>HON</strong> <span style={{ color: '#999', fontSize: '0.85em' }}>honoraires TTC — levier (HT {honNew === null || honSaisi === null ? '—' : fmtE(Math.round(honNew / 1.2))})</span></td>
               <td style={{ textAlign: 'right', padding: '4px 0' }}>
                 <input value={vals.HON} onChange={e => setVals(p => ({ ...p, HON: e.target.value }))}
-                  style={{ width: 100, textAlign: 'right', padding: '4px 6px', border: '1px solid ' + (honNew === null ? '#DC2626' : '#ccc'), borderRadius: 5 }} /> €
+                  style={{ width: 100, textAlign: 'right', padding: '4px 6px', border: '1px solid ' + (honSaisi === null ? '#DC2626' : '#ccc'), borderRadius: 5 }} /> €
+                {keepProportion && honProportionExtra !== 0 && honSaisi !== null && (
+                  <div style={{ fontSize: '0.78em', color: '#B45309' }}>→ {fmtE(honNew)} avec la part MEN</div>
+                )}
               </td>
             </tr>
           )}
