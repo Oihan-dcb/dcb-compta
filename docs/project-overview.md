@@ -950,3 +950,12 @@ Granularité = **par bien** (1 facture = 1 bien, sauf Maïté = facture groupe �
   Lauian pouvait donc se coller sur un virement du compte DCB (c'est arrivé : payout Lauian Sinnika →
   virement DCB du 02/07). Fix : `.eq('agence', AGENCE)` ajouté aux deux requêtes mouvements. Audit
   croisé bien.agence vs mouvement.agence sur booking_payout_line + airbnb_payout_line : 0 autre cas.
+- **Suite (même session) — matching auto Airbnb saturé en haute saison** (17 résas juin 2026 non
+  rapprochées alors que les virements étaient en banque) : deux causes dans `lancerMatchingAuto`.
+  (1) `_subsetSum` limitait les candidats aux **12 plus gros** payouts de la fenêtre **sans écarter
+  ceux plus gros que le virement cible** — en juin, 45 payouts non matchés dans la fenêtre ±7 j dont
+  29 > 373 € : les petits payouts composant réellement le virement (ex. 699,24 € = 373,07 + 326,17)
+  n'étaient jamais considérés. Fix : filtre `montant ≤ cible` puis top-20. (2) `payoutsAll` chargeait
+  les payouts **des deux agences** (pas de colonne agence sur `payout_hospitable`) → bruit + risque de
+  faux groupe inter-agences. Fix : résolution de l'agence via l'id de résa embarqué dans le
+  `hospitable_id` synthétique, filtre `agence = AGENCE`.

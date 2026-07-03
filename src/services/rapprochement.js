@@ -610,6 +610,26 @@ export async function lancerMatchingAuto(mois) {
       from += PAGE
     }
 
+    // Filtre agence : les payouts synthétiques Airbnb embarquent l'id de résa dans hospitable_id.
+    // Sans ce filtre, les payouts de l'AUTRE agence polluent les candidats du subset-sum
+    // (bruit haute saison) et un virement DCB pourrait être « expliqué » par des payouts Lauian.
+    const synthResaIds = payoutsAll
+      .filter(p => p.hospitable_id?.endsWith('_airbnb_payout'))
+      .map(p => p.hospitable_id.replace('_airbnb_payout', ''))
+    const agenceByResa = {}
+    for (let i = 0; i < synthResaIds.length; i += 300) {
+      const { data: rs } = await supabase
+        .from('reservation')
+        .select('id, bien!inner(agence)')
+        .in('id', synthResaIds.slice(i, i + 300))
+      for (const r of (rs || [])) agenceByResa[r.id] = r.bien?.agence
+    }
+    payoutsAll = payoutsAll.filter(p => {
+      if (!p.hospitable_id?.endsWith('_airbnb_payout')) return true
+      const ag = agenceByResa[p.hospitable_id.replace('_airbnb_payout', '')]
+      return !ag || ag === AGENCE
+    })
+
     // ── AIRBNB + BOOKING ───────────────────────────────────────────
     for (const canal of ['airbnb', 'booking']) {
       const mouvCanal = libres.filter(m => m.canal === canal)
@@ -986,8 +1006,13 @@ async function _lierViaPayout(mouvementId, resaIds, mvt = null, statut = 'rappro
 
 function _subsetSum(virs, cible, tol = 2) {
   const getMontant = (v) => v.amount ?? v.reservation?.fin_revenue ?? v.montant_ttc ?? 0
-  // Trier par montant desc et limiter à 12 candidats pour éviter explosion combinatoire
-  const s = [...virs].sort((a, b) => getMontant(b) - getMontant(a)).slice(0, 12)
+  // 1. Écarter les payouts plus gros que la cible : ils ne peuvent pas faire partie de la somme.
+  //    Sans ce filtre, en haute saison les gros payouts saturaient la liste des candidats et
+  //    les petits (ceux qui composent réellement le virement) n'étaient jamais considérés
+  //    (juin 2026 : 45 payouts dans la fenêtre, top-12 par montant → 373 € + 326 € invisibles).
+  // 2. Trier par montant desc et limiter à 20 candidats pour borner la combinatoire.
+  const s = [...virs].filter(v => getMontant(v) <= cible + tol)
+    .sort((a, b) => getMontant(b) - getMontant(a)).slice(0, 20)
   const cibleArrondie = Math.round(cible)
 
   // Tester par taille croissante : 2 par 2, puis 3 par 3, jusqu'à 6
