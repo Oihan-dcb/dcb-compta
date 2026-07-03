@@ -26,7 +26,7 @@ const MENTION_MANDAT = "Conformément au mandat de gestion, les honoraires de ge
  * @param {string} mois - YYYY-MM
  */
 export async function genererFacturesMois(mois) {
-  const log = { created: 0, updated: 0, skipped: 0, errors: 0, resteAPayer: 0, deboursCreated: 0, deboursUpdated: 0, lauianFmenCreated: 0, lauianFmenUpdated: 0 }
+  const log = { created: 0, updated: 0, skipped: 0, errors: 0, resteAPayer: 0, deboursCreated: 0, deboursUpdated: 0, lauianFmenCreated: 0, lauianFmenUpdated: 0, bloquesAjustements: [], aReporter: [] }
 
   // RÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂ©cupÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂ©rer tous les propriÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂ©taires avec des biens actifs
   const { data: proprietaires, error: propErr } = await supabase
@@ -66,10 +66,16 @@ export async function genererFacturesMois(mois) {
     for (const [key, biens] of Object.entries(groupes)) {
       try {
         const facture = await genererFactureGroupe(proprio, biens, mois, ctx)
-        if (facture.skipped) log.skipped++
+        if (facture.skipped) {
+          log.skipped++
+          if (facture.ajustementsBloquants?.length) {
+            log.bloquesAjustements.push({ proprio: proprio.nom, biens: biens.map(b => b.code), raison: facture.raison })
+          }
+        }
         else if (facture.created) log.created++
         else log.updated++
         if ((facture.resteAPayer || 0) > 0) log.resteAPayer += facture.resteAPayer
+        if (facture.aReporter) log.aReporter.push({ proprio: proprio.nom, biens: biens.map(b => b.code), totalHT: facture.totalHT })
 
         const debours = await genererFactureDebours(proprio, biens, mois, ctx)
         if (debours && !debours.skipped) {
@@ -159,6 +165,7 @@ async function prechargerDonneesFacturation(mois, bienIds, proprietaireIds, agen
     { data: fraisData },
     { data: expenseData },
     { data: facturesData },
+    { data: ajustementsData },
   ] = await Promise.all([
     supabase.from('ventilation')
       .select('bien_id, code, montant_ht, montant_tva, montant_ttc, montant_reel, reservation_id')
@@ -193,6 +200,11 @@ async function prechargerDonneesFacturation(mois, bienIds, proprietaireIds, agen
       .select('id, statut, proprietaire_id, bien_id, type_facture')
       .in('proprietaire_id', proprietaireIds).eq('mois', mois).eq('agence', agenceFactures)
       .in('type_facture', ['honoraires', 'debours', 'lauian_fmen']),
+
+    // Ajustements réservation non qualifiés — bloquent la facturation (voir migration 222-224)
+    supabase.from('reservation_ajustement')
+      .select('reservation_id, montant, label, reservation:reservation_id(bien_id, code)')
+      .eq('mois_comptable', mois).eq('statut', 'a_qualifier'),
   ])
 
   const facturesExistantes = new Map()
@@ -209,6 +221,13 @@ async function prechargerDonneesFacturation(mois, bienIds, proprietaireIds, agen
     fraisGlobaux:         fraisData     || [],
     expensesGlobales:     expenseData   || [],
     facturesExistantes,
+    ajustementsAQualifier: (ajustementsData || []).map(a => ({
+      reservation_id: a.reservation_id,
+      bien_id: a.reservation?.bien_id,
+      code: a.reservation?.code,
+      montant: a.montant,
+      label: a.label,
+    })).filter(a => a.bien_id),
   }
 }
 
@@ -218,6 +237,18 @@ async function genererFactureGroupe(proprio, biens, mois, ctx) {
   const libelleGroupe = biens.length === 1
     ? biens[0].hospitable_name
     : (biens[0].groupe_facturation === 'MAITE' ? 'Maison Maïté' : biens.map(b => b.code).join(', '))
+
+  // Bloquant : au moins un ajustement réservation non qualifié sur ces biens ce mois-ci
+  // (voir migration 222-224) — les montants HON/FMEN ne sont pas fiables tant qu'il n'est
+  // pas traité (Hébergement / Ménage / Sans impact).
+  const ajustementsBloquants = ctx.ajustementsAQualifier.filter(a => bienIds.includes(a.bien_id))
+  if (ajustementsBloquants.length > 0) {
+    return {
+      created: false, skipped: true,
+      raison: `${ajustementsBloquants.length} ajustement(s) réservation non qualifié(s) (${ajustementsBloquants.map(a => a.code).join(', ')})`,
+      ajustementsBloquants,
+    }
+  }
 
   // RÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂ©cupÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂ©rer les rÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂ©servations du mois pour ces biens
   const reservations  = ctx.reservationsGlobales.filter(r => bienIds.includes(r.bien_id))
@@ -486,6 +517,13 @@ async function genererFactureGroupe(proprio, biens, mois, ctx) {
     return { created: !existingSkip, factureId: skipFactureId, totalHT: 0, totalTTC: 0, resteAPayer: 0 }
   }
   const soldeNegatif = totalHT === 0 && div.ht > 0
+  // total_ht négatif (ajustement réservation "hébergement"/"ménage" très négatif, voir
+  // migration 222-225) : une vraie facture ne peut pas avoir un total négatif — on la crée
+  // quand même (transparence, lignes visibles) mais flaguée pour report manuel sur le mois
+  // suivant plutôt qu'un envoi Evoliz tel quel.
+  const aReporter = totalHT < 0
+  const [anneeMois, moisMois] = mois.split('-').map(Number)
+  const moisSuivant = moisMois === 12 ? `${anneeMois + 1}-01` : `${anneeMois}-${String(moisMois + 1).padStart(2, '0')}`
 
   // VÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂ©rifier si facture existante
   const existingFacture = ctx.facturesExistantes.get(
@@ -546,6 +584,8 @@ async function genererFactureGroupe(proprio, biens, mois, ctx) {
     statut: totalHT === 0 && div.ht === 0 ? 'calcul_en_cours' : 'brouillon',
     solde_negatif: soldeNegatif,
     montant_reclame: soldeNegatif ? div.ht : null,
+    a_reporter: aReporter,
+    note: aReporter ? `Total négatif — à reporter sur ${moisSuivant}` : null,
   }
 
   let factureId

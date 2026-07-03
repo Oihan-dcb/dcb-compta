@@ -26,6 +26,7 @@ const STATUTS = {
   remboursement_recu: { label: 'Remboursé ✓', color: '#059669', bg: '#D1FAE5' },
   payee: { label: 'Payée', color: '#059669', bg: '#D1FAE5' },
   solde_negatif: { label: 'Solde négatif', color: '#DC2626', bg: '#FEE2E2' },
+  a_reporter: { label: 'À reporter', color: '#DC2626', bg: '#FEE2E2' },
 }
 
 export default function PageFactures() {
@@ -807,7 +808,7 @@ const [pushing, setPushing] = useState(false)
       ) : (
         <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
           {facturesTries.map((f, _i) => {
-            const statutInfo = f.solde_negatif ? STATUTS.solde_negatif : (STATUTS[f.statut] || STATUTS.brouillon)
+            const statutInfo = f.a_reporter ? STATUTS.a_reporter : f.solde_negatif ? STATUTS.solde_negatif : (STATUTS[f.statut] || STATUTS.brouillon)
             const isExpanded = expanded === f.id
             const proprio = f.proprietaire
             // Séparateur avant la 1ʳᵉ facture LLD (regroupées en fin de liste)
@@ -830,7 +831,7 @@ const [pushing, setPushing] = useState(false)
               )}
               <div style={{
                 background: 'var(--white)',
-                border: `1px solid ${f.solde_negatif ? '#FCA5A5' : 'var(--border)'}`,
+                border: `1px solid ${(f.a_reporter || f.solde_negatif) ? '#FCA5A5' : 'var(--border)'}`,
                 borderRadius: 'var(--radius)',
                 overflow: 'hidden',
               }}>
@@ -900,6 +901,13 @@ const [pushing, setPushing] = useState(false)
                       <div style={{ textAlign: 'right' }}>
                         <div style={{ fontSize: 11, color: 'var(--danger)', textTransform: 'uppercase' }}>À réclamer</div>
                         <div style={{ fontWeight: 700, color: 'var(--danger)' }}>{formatMontant(f.montant_reclame)}</div>
+                      </div>
+                    )}
+                    {f.a_reporter && (
+                      <div style={{ textAlign: 'right' }}>
+                        <div style={{ fontSize: 11, color: 'var(--danger)', textTransform: 'uppercase' }}>Total négatif</div>
+                        <div style={{ fontWeight: 700, color: 'var(--danger)' }}>{formatMontant(f.total_ht)}</div>
+                        {f.note && <div style={{ fontSize: 11, color: 'var(--text-muted)' }}>{f.note}</div>}
                       </div>
                     )}
 
