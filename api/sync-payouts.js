@@ -183,7 +183,7 @@ async function syncPayouts(monthsBack = 2) {
   // 4. Écritures en batch
   if (synthInserts.length) {
     const rows = synthInserts.map(({ _resa_id, ...r }) => r);
-    const inserted = await sb('payout_hospitable', { method: 'POST', body: JSON.stringify(rows) });
+    const inserted = await sb('payout_hospitable?on_conflict=hospitable_id', { method: 'POST', prefer: 'resolution=ignore-duplicates,return=representation', body: JSON.stringify(rows) });
     log.created += inserted?.length || 0;
     const idByHosp = Object.fromEntries((inserted || []).map(r => [r.hospitable_id, r.id]));
     for (const s of synthInserts) {
@@ -193,7 +193,7 @@ async function syncPayouts(monthsBack = 2) {
   }
   if (realInserts.length) {
     const rows = realInserts.map(({ _links, ...r }) => r);
-    const inserted = await sb('payout_hospitable', { method: 'POST', body: JSON.stringify(rows) });
+    const inserted = await sb('payout_hospitable?on_conflict=hospitable_id', { method: 'POST', prefer: 'resolution=ignore-duplicates,return=representation', body: JSON.stringify(rows) });
     log.real_created += inserted?.length || 0;
     const idByHosp = Object.fromEntries((inserted || []).map(r => [r.hospitable_id, r.id]));
     for (const r of realInserts) {
@@ -252,6 +252,12 @@ export default async function handler(req, res) {
       if (!ALLOWED_EMAILS.includes((email || '').toLowerCase())) return res.status(403).json({ error: 'Accès refusé' });
     }
     source = 'manuel';
+  }
+
+  // Le cron tourne sur les DEUX projets Vercel (dcb-compta + lauian-compta, même repo)
+  // mais un seul run couvre les deux agences (filtre IBAN) → le projet Lauian s'abstient.
+  if (source === 'cron' && (process.env.VITE_AGENCE || 'dcb') !== 'dcb') {
+    return res.json({ ok: true, skipped: 'cron exécuté depuis le projet dcb (couvre les 2 agences)' });
   }
 
   const monthsBack = Math.min(12, Math.max(1, parseInt(req.query?.monthsBack || req.body?.monthsBack || '2', 10) || 2));

@@ -2,7 +2,7 @@
  * Service journal des opérations — traçabilité NF
  * Toutes les opérations métier significatives sont loggées ici
  */
-import { supabase } from '../lib/supabase'
+import { supabase } from '../lib/supabase.js'
 
 /**
  * Ajoute une entrée dans le journal

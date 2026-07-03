@@ -14,6 +14,9 @@
     "api/sync-payouts.js": {
       "maxDuration": 120
     },
+    "api/matching-auto.js": {
+      "maxDuration": 120
+    },
     "api/webhook-hospitable.js": {
       "maxDuration": 120
     }
@@ -30,6 +33,10 @@
     {
       "path": "/api/sync-payouts",
       "schedule": "30 3 * * *"
+    },
+    {
+      "path": "/api/matching-auto",
+      "schedule": "0 4 * * *"
     }
   ],
   "rewrites": [

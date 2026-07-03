@@ -24,9 +24,9 @@
  *   L'utilisateur sélectionne des réservations (affichées via leurs lignes VIR proxy)
  *   à associer au paiement reçu.
  */
-import { supabase } from '../lib/supabase'
-import { logOp } from './journal'
-import { AGENCE } from '../lib/agence'
+import { supabase } from '../lib/supabase.js'
+import { logOp } from './journal.js'
+import { AGENCE } from '../lib/agence.js'
 
 // ── LECTURE ────────────────────────────────────────────────────
 
@@ -557,7 +557,10 @@ export async function getResasEnAttentePayin(mois) {
 export async function getStatsRapprochement(mois) {
   const [{ data: m }, { data: r }] = await Promise.all([
     supabase.from('mouvement_bancaire').select('statut_matching,credit,debit,canal').eq('mois_releve', mois).eq('agence', AGENCE),
-    supabase.from('reservation').select('rapprochee,final_status').eq('mois_comptable', mois)
+    // bien!inner(agence) : sans ce filtre la tuile « Résas payin reçu » mélangeait les
+    // résas des deux agences (ex. 93/141 affiché côté DCB au lieu de 78/125)
+    supabase.from('reservation').select('rapprochee,final_status,bien!inner(agence)').eq('mois_comptable', mois)
+      .eq('bien.agence', AGENCE)
       .not('final_status', 'in', '("not accepted","cancelled")').gt('fin_revenue', 0),
   ])
   const mouvements = m || [], resas = r || []
@@ -575,7 +578,7 @@ export async function getStatsRapprochement(mois) {
 
 // ── MATCHING AUTO ──────────────────────────────────────────────
 
-export async function lancerMatchingAuto(mois) {
+export async function lancerMatchingAuto(mois, source = 'manuel') {
   const log = { matched: 0, skipped: 0, errors: 0, details: [] }
 
   try {
@@ -829,6 +832,19 @@ export async function lancerMatchingAuto(mois) {
     log.errors++
     console.error('Erreur matching auto:', err)
   }
+
+  // Journaliser dans import_log — alimente le badge « ⏱ Dernier sync » (cron ET manuel)
+  await supabase.from('import_log').insert({
+    type:                   'matching_auto',
+    mois_concerne:          mois,
+    statut:                 log.errors > 0 ? 'partial' : 'success',
+    nb_lignes_traitees:     log.matched + log.skipped,
+    nb_lignes_creees:       log.matched,
+    nb_lignes_mises_a_jour: 0,
+    nb_erreurs:             log.errors,
+    message: `[${source}] Matching auto ${mois} ${AGENCE} — ${log.matched} rapproché(s), ${log.skipped} ignoré(s), ${log.errors} erreur(s)`,
+  }).then(() => {}, () => {})
+
   return log
 }
 

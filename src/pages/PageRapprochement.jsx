@@ -9,6 +9,7 @@ import {
 import { syncStripe, HAS_STRIPE } from '../services/syncStripe'
 
 import MoisSelector from '../components/MoisSelector'
+import LastSyncBadge from '../components/LastSyncBadge'
 import ModalResa from '../components/ModalResa'
 import { useMoisPersisted } from '../hooks/useMoisPersisted'
 import { useMoisCloture, BanniereCloture } from '../hooks/useMoisCloture'
@@ -405,10 +406,13 @@ export default function PageRapprochement() {
               {syncing ? '⏳ Sync...' : moisBloque ? '🔒 Match Stripe' : '↻ Match Stripe'}
             </button>
           )}
-          <button onClick={lancerAuto} disabled={matching || syncing || moisBloque}
-            style={{ background: (matching || moisBloque) ? '#aaa' : '#CC9933', color: '#fff', border: 'none', borderRadius: 8, padding: '8px 18px', fontWeight: 600, cursor: (matching || syncing || moisBloque) ? 'not-allowed' : 'pointer', fontSize: 14 }}>
-            {matching ? '⏳ Matching...' : moisBloque ? '🔒 Matching auto' : '⚡ Matching auto'}
-          </button>
+          <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 2 }}>
+            <button onClick={lancerAuto} disabled={matching || syncing || moisBloque}
+              style={{ background: (matching || moisBloque) ? '#aaa' : '#CC9933', color: '#fff', border: 'none', borderRadius: 8, padding: '8px 18px', fontWeight: 600, cursor: (matching || syncing || moisBloque) ? 'not-allowed' : 'pointer', fontSize: 14 }}>
+              {matching ? '⏳ Matching...' : moisBloque ? '🔒 Matching auto' : '⚡ Matching auto'}
+            </button>
+            <LastSyncBadge type="matching_auto" refreshKey={matchLog} />
+          </div>
           <button onClick={lancerRapprocheContrats} disabled={rapprocheContratsRunning || matching || syncing || moisBloque}
             style={{ background: (rapprocheContratsRunning || moisBloque) ? '#aaa' : '#635BFF', color: '#fff', border: 'none', borderRadius: 8, padding: '8px 18px', fontWeight: 600, cursor: (rapprocheContratsRunning || matching || syncing || moisBloque) ? 'not-allowed' : 'pointer', fontSize: 14 }}>
             {rapprocheContratsRunning ? '⏳ Contrats...' : moisBloque ? '🔒 Rapprocher contrats' : '💳 Rapprocher contrats'}
@@ -490,7 +494,7 @@ export default function PageRapprochement() {
             { label: 'En attente', value: stats.en_attente, color: '#E65100' },
             { label: 'Non géré', value: mouvements.filter(m => m._resa?.gestion_loyer === false).length, color: '#9CA3AF' },
             { label: 'Non identifiés', value: stats.non_identifie, color: '#B71C1C' },
-            { label: 'Resas rapprochées', value: `${stats.resas_rapprochees}/${stats.resas_total}`, color: '#7C3AED' },
+            { label: 'Résas payin reçu', value: `${stats.resas_rapprochees}/${stats.resas_total}`, color: '#7C3AED' },
             { label: 'Entrées', value: fmt(stats.total_entrees), color: '#2E7D32', small: true },
           ].map(s => (
             <div key={s.label} style={{ background: '#fff', border: '1px solid #e5e7eb', borderRadius: 10, padding: '14px 16px' }}>
