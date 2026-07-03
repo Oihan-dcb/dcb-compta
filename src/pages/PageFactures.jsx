@@ -36,6 +36,7 @@ export default function PageFactures() {
     return Array.from({ length: cm }, (_, i) => `${cy}-${String(i + 1).padStart(2, '0')}`)
   })
   const [factures, setFactures] = useState([])
+  const [cloturesActives, setCloturesActives] = useState(new Set())
   const [stats, setStats] = useState(null)
   const [loading, setLoading] = useState(false)
   const [generating, setGenerating] = useState(false)
@@ -424,6 +425,11 @@ const [pushing, setPushing] = useState(false)
       const [f, s] = await Promise.all([getFacturesMois(mois), getStatsFactures(mois)])
       setFactures(f)
       setStats(s)
+      // État réel du verrou de saisie par bien (le bouton « Rouvrir » doit refléter la base)
+      import('../lib/supabase').then(({ supabase }) =>
+        supabase.from('cloture_bien').select('bien_id').eq('mois', mois).eq('agence', AGENCE).eq('active', true)
+          .then(({ data }) => setCloturesActives(new Set((data || []).map(c => c.bien_id))))
+      )
       chargerSoldesControle(f)
       calculerEncaissements(f)
       // Sync silencieuse des numéros Evoliz en arrière-plan
@@ -982,15 +988,22 @@ const [pushing, setPushing] = useState(false)
 
                     {/* Rouvrir la saisie (clôture per-bien) — facture envoyée, réservé à Oïhan (enforcé edge fn) */}
                     {['envoye_evoliz','payee'].includes(f.statut) && f.type_facture !== 'com' && (
-                      <button
-                        className="btn btn-sm"
-                        style={{ background: '#fff', color: '#B91C1C', border: '1px solid #FCA5A5' }}
-                        disabled={reopening === f.id}
-                        onClick={e => { e.stopPropagation(); reopenFacture(f) }}
-                        title="Rouvrir la saisie prestations/heures pour ce bien et ce mois (réservé à Oïhan)"
-                      >
-                        {reopening === f.id ? <><span className="spinner" /> …</> : '🔓 Rouvrir saisie'}
-                      </button>
+                      cloturesActives.has(f.bien_id) ? (
+                        <button
+                          className="btn btn-sm"
+                          style={{ background: '#fff', color: '#B91C1C', border: '1px solid #FCA5A5' }}
+                          disabled={reopening === f.id}
+                          onClick={e => { e.stopPropagation(); reopenFacture(f) }}
+                          title="Rouvrir la saisie prestations/heures pour ce bien et ce mois (réservé à Oïhan)"
+                        >
+                          {reopening === f.id ? <><span className="spinner" /> …</> : '🔓 Rouvrir saisie'}
+                        </button>
+                      ) : (
+                        <span title="La saisie de ce bien/mois est ouverte (clôture levée)"
+                          style={{ fontSize: '0.8em', color: '#15803D', border: '1px solid #86EFAC', background: '#F0FDF4', borderRadius: 6, padding: '3px 8px' }}>
+                          🔓 saisie ouverte
+                        </span>
+                      )
                     )}
 
 
