@@ -436,22 +436,17 @@ export async function refreshFacturesBrouillonsEvoliz(mois) {
     try {
       // Supprimer le brouillon Evoliz (echoue si deja valide/paye -> on skipe)
       await evolizCall('deleteInvoice', { invoiceId: f.id_evoliz })
-      // Remettre en 'valide' dans notre DB pour permettre le repush
+      // Remettre en 'brouillon' dans notre DB : les LIGNES doivent être régénérées depuis
+      // la ventilation courante par « Générer » (avant : reset 'valide' + re-push immédiat
+      // → renvoyait les ANCIENNES lignes, un ajustement post-envoi n'était jamais appliqué)
       await supabase.from('facture_evoliz')
-        .update({ statut: 'valide', id_evoliz: null, numero_facture: null })
+        .update({ statut: 'brouillon', id_evoliz: null, numero_facture: null })
         .eq('id', f.id)
       results.deleted++
     } catch {
       // Deja valide/paye dans Evoliz ou autre erreur -> ne pas toucher
       results.skipped++
     }
-  }
-
-  // Repousser toutes les factures remises en 'valide'
-  if (results.deleted > 0) {
-    const pushResult = await pousserFacturesMoisVersEvoliz(mois)
-    results.pushed = pushResult.pushed
-    results.pushErrors = pushResult.errors
   }
 
   return results

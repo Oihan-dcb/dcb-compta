@@ -570,7 +570,9 @@ const [pushing, setPushing] = useState(false)
     setError(null)
     try {
       const result = await refreshFacturesBrouillonsEvoliz(mois)
-      setPushResult({ pushed: result.pushed ?? 0, errors: result.pushErrors ?? [], refreshed: result.deleted })
+      setSuccess(`${result.deleted} brouillon(s) Evoliz supprimé(s) — factures repassées en brouillon.` +
+        (result.deleted > 0 ? ' Clique « Générer » pour reconstruire les lignes, puis Valider / Envoyer.' : '') +
+        (result.skipped > 0 ? ` ${result.skipped} intouchée(s) (déjà validée(s)/payée(s) chez Evoliz).` : ''))
       await charger()
     } catch (err) {
       setError(err.message)
