@@ -913,11 +913,25 @@ export async function lancerMatchingAuto(mois, source = 'manuel') {
           const c = mouv.credit
           return Math.abs(c - restant) <= 100 || Math.abs(c - r.fin_revenue) <= 100 || Math.abs(c - Math.round(r.fin_revenue / 2)) <= 100
         })
-        if (candidats.length !== 1) continue
-        await _lierViaPayout(mouv.id, [candidats[0].id], mouv)
+        let lier = candidats.length === 1 ? [candidats[0]] : null
+        if (!lier) {
+          // Multi-résas : même payeur qui règle plusieurs résas en un virement
+          // (ex. SO TALENTS : 2 chambres 194,82 + 195,17 = 389,99). Somme des
+          // restants dus des résas au nom matché = crédit exact (±1 €).
+          const nomMatches = (resasDirect || []).filter(r => {
+            const mots = normTxt(r.guest_name).split(/[^A-Z]+/).filter(w => w.length >= 4)
+            return mots.some(w => texte.includes(w))
+          })
+          if (nomMatches.length >= 2 && nomMatches.length <= 6) {
+            const sommeRestants = nomMatches.reduce((t, r) => t + Math.max(0, (r.fin_revenue || 0) - (recuByResa[r.id] || 0)), 0)
+            if (Math.abs(mouv.credit - sommeRestants) <= 100) lier = nomMatches
+          }
+        }
+        if (!lier) continue
+        await _lierViaPayout(mouv.id, lier.map(r => r.id), mouv)
         libres.splice(libres.indexOf(mouv), 1)
         log.matched++
-        log.details.push({ type: 'sepa_nom_montant', montant: mouv.credit / 100, code: candidats[0].code, guest: candidats[0].guest_name })
+        log.details.push({ type: 'sepa_nom_montant', montant: mouv.credit / 100, code: lier.map(r => r.code).join('+'), guest: lier[0].guest_name })
       }
     }
 
