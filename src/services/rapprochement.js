@@ -468,6 +468,52 @@ export async function getMouvementsMois(mois) {
 }
 
 /**
+ * Propage un rapprochement payout CSV → niveau réservation.
+ *
+ * Appelé par importBooking/importAirbnb dès qu'un payout CSV est lié à un mouvement
+ * bancaire : upsert reservation_paiement + reservation.rapprochee (si paiement complet ≥96%,
+ * même règle que _lierViaPayout). Sans cette propagation immédiate, la résa restait
+ * « sans virement » dans son mois comptable tant que la page Rapprochement du mois du
+ * MOUVEMENT n'avait pas été ouverte (passe d'enrichissement de getMouvementsMois) —
+ * fausse alerte alors que le contrôle trésorerie (reservation_mouvement) voyait, lui,
+ * l'argent arrivé. Cas Sinnika/MIRAMARVEL 2026-06, corrigé le 03/07/2026.
+ *
+ * @param mouv   mouvement bancaire { id, date_operation }
+ * @param platform 'booking' (match reservation.platform_id) ou 'airbnb' (match reservation.code)
+ * @param lignes [{ ref, amount_cents }] — une entrée par ligne payout CSV
+ * @returns nombre de réservations marquées rapprochées
+ */
+export async function propagerRapprochementResas(mouv, platform, lignes) {
+  const refs = [...new Set(lignes.map(l => l.ref).filter(Boolean))]
+  if (!refs.length) return 0
+  const col = platform === 'booking' ? 'platform_id' : 'code'
+  const { data: resas } = await supabase
+    .from('reservation')
+    .select(`id, ${col}, fin_revenue, rapprochee`)
+    .eq('platform', platform)
+    .in(col, refs)
+  let n = 0
+  for (const r of (resas || [])) {
+    const line = lignes.find(l => l.ref === r[col])
+    const montant = line?.amount_cents ?? 0
+    await supabase.from('reservation_paiement').upsert({
+      reservation_id: r.id, mouvement_id: mouv.id, montant,
+      date_paiement: mouv.date_operation,
+      type_paiement: (r.fin_revenue && montant >= r.fin_revenue * 0.99) ? 'total' : 'acompte',
+    }, { onConflict: 'reservation_id,mouvement_id', ignoreDuplicates: true })
+    if (r.rapprochee) continue
+    // rapprochee=true uniquement si paiement complet — si acompte/partiel, laisser false
+    const { data: allP } = await supabase.from('reservation_paiement').select('montant').eq('reservation_id', r.id)
+    const totalRecu = (allP || []).reduce((s, p) => s + (p.montant || 0), 0)
+    if (!r.fin_revenue || totalRecu >= r.fin_revenue * 0.96) {
+      await supabase.from('reservation').update({ rapprochee: true }).eq('id', r.id)
+      n++
+    }
+  }
+  return n
+}
+
+/**
  * Charge les réservations en attente de PAYIN (paiement entrant non encore rapproché).
  *
  * Requête directe sur `reservation` — plus de proxy ventilation VIR.

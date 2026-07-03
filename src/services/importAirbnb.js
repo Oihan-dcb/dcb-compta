@@ -13,6 +13,7 @@
  * - Complément au système synthétique, pas un remplacement
  */
 import { supabase } from '../lib/supabase'
+import { propagerRapprochementResas } from './rapprochement'
 
 function parseCSVLine(line) {
   const result = []
@@ -191,6 +192,15 @@ export async function importAirbnbCSV(csvText) {
       }
 
       log.inserted += group.rows.length
+
+      // Propager au niveau réservation (reservation_paiement + rapprochee) —
+      // même logique que l'import Booking : la preuve d'encaissement est établie ici
+      const nProp = await propagerRapprochementResas(
+        mouv, 'airbnb',
+        group.rows.map(r => ({ ref: r.confirmation_code, amount_cents: r.amount_cents }))
+      )
+      if (nProp) log.details.push(nProp + ' réservation(s) marquée(s) rapprochée(s)')
+
       const props = [...new Set(group.rows.map(r => r.property_name).filter(Boolean))]
       log.details.push(
         'Airbnb ' + date + ' | ' + group.rows.length + ' resa(s) | ' +

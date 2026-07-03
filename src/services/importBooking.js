@@ -14,6 +14,7 @@
  * - Fenetre de 5 jours apres la payout date
  */
 import { supabase } from '../lib/supabase'
+import { propagerRapprochementResas } from './rapprochement'
 
 function parseCSVLine(line, sep = ',') {
   const result = []
@@ -349,6 +350,15 @@ export async function importBookingCSV(csvText) {
         .from('mouvement_bancaire')
         .update({ statut_matching: 'rapproche', detail })
         .eq('id', mouv.id)
+
+      // Propager au niveau réservation (reservation_paiement + rapprochee) —
+      // sinon la résa reste « sans virement » dans son mois comptable jusqu'à
+      // l'ouverture de la page Rapprochement du mois du mouvement
+      const nProp = await propagerRapprochementResas(
+        mouv, 'booking',
+        rows.filter(r => r.booking_ref).map(r => ({ ref: r.booking_ref, amount_cents: r.amount_cents }))
+      )
+      if (nProp) log.details.push(nProp + ' réservation(s) marquée(s) rapprochée(s)')
     }
 
   } catch (e) {
