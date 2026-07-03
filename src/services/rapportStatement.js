@@ -24,7 +24,10 @@ export function genererStatementHTML(proprio, mois, data) {
   const fraisProprietaire = data.fraisProprietaire || []
   const modeEncaissement = data.kpis?.modeEncaissement || 'dcb'
   const virTotalProprioEncaisse = data.kpis?.virTotalProprioEncaisse || 0
-  const showBrut         = data.colonnes?.brut          ?? true
+  // Défauts alignés sur COLS_DEFS (PageRapports.jsx) et rapportProprietaire.js — sinon une
+  // colonne jamais explicitement enregistrée pour ce bien s'affiche décochée dans l'UI (son
+  // propre défaut) mais apparaît quand même dans ce PDF (défaut différent ici auparavant).
+  const showBrut         = data.colonnes?.brut          ?? false
   const showEncaissement = data.colonnes?.encaissement   ?? false
   const showFraisDist    = data.colonnes?.frais_dist     ?? false
   const showTaxe         = data.colonnes?.taxe           ?? false
@@ -32,7 +35,7 @@ export function genererStatementHTML(proprio, mois, data) {
   const showBaseComm     = data.colonnes?.base_comm      ?? true
   const showHon          = data.colonnes?.hon            ?? true
   const showLoy          = data.colonnes?.loy            ?? true
-  const showMenage       = data.colonnes?.menage         ?? true
+  const showMenage       = data.colonnes?.menage         ?? false
   const showVir          = data.colonnes?.vir            ?? true
 
   const fmt = (centimes) => {
