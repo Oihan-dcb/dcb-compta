@@ -237,7 +237,9 @@ export default function TableReservations({ reservations, onSelect, onRefresh, l
                 })()}
               </td>
               <td className="right">
-                {r.bien?.taux_commission_override != null
+                {r.ventilation_manuelle
+                  ? <span title="Ventilation ajustée manuellement — le taux paramétré ne s'applique plus" style={{ color: '#B45309', fontWeight: 600 }}>✋ manuel</span>
+                  : r.bien?.taux_commission_override != null
                   ? <span title="Override bien" style={{ fontWeight: 600 }}>{Math.round(r.bien.taux_commission_override * 100)}%</span>
                   : r.bien?.proprietaire?.taux_commission != null
                   ? <span title="Taux proprio">{r.bien.proprietaire.taux_commission}%</span>
