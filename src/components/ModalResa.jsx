@@ -419,11 +419,14 @@ export default function ModalResa({ resa, onClose, onSaved }) {
       for (const p of rp || []) {
         const mb = p.mouvement_bancaire
         const key = mb?.id || ('rp_' + p.date_paiement)
+        // p.montant = part réellement allouée à CETTE résa (reservation_paiement) — le virement
+        // bancaire lié (mb.credit) peut être mutualisé avec d'autres résas (payout Airbnb groupé),
+        // donc ne jamais l'utiliser en priorité sinon "trop perçu" fantôme sur les résas partagées.
         if (!seen.has(key)) seen.set(key, {
           mouvement_id: mb?.id || null,
           date: mb?.date_operation || p.date_paiement,
           libelle: mb?.libelle || p.description_paiement || '—',
-          montant: mb?.credit || p.montant,
+          montant: p.montant || mb?.credit,
           canal: mb?.canal || null,
           type_paiement: p.type_paiement,
         })
@@ -431,18 +434,21 @@ export default function ModalResa({ resa, onClose, onSaved }) {
       // Chemin 2 : payout_reservation → payout_hospitable → mouvement_bancaire
       const { data: pr } = await supabase
         .from('payout_reservation')
-        .select('payout_hospitable(id, amount, date_payout, mouvement_id, mouvement_bancaire(id, date_operation, libelle, credit, canal))')
+        .select('amount_cents, payout_hospitable(id, amount, date_payout, mouvement_id, mouvement_bancaire(id, date_operation, libelle, credit, canal))')
         .eq('reservation_id', resa.id)
       for (const row of pr || []) {
         const ph = row.payout_hospitable
         if (!ph?.mouvement_id) continue
         const mb = ph.mouvement_bancaire
         const key = mb?.id || ph.mouvement_id
+        // amount_cents = part de CETTE résa dans le payout (migration 221, payout fractionné) —
+        // priorité sur ph.amount/mb.credit qui sont le total du payout/virement, potentiellement
+        // partagé avec d'autres résas.
         if (!seen.has(key)) seen.set(key, {
           mouvement_id: mb?.id || ph.mouvement_id,
           date: mb?.date_operation || ph.date_payout,
           libelle: mb?.libelle || '—',
-          montant: mb?.credit || ph.amount,
+          montant: row.amount_cents || ph.amount || mb?.credit,
           canal: mb?.canal || 'airbnb',
           type_paiement: 'total',
         })
