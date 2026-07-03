@@ -86,7 +86,7 @@ export function genererStatementHTML(proprio, mois, data) {
     return s
   }, 0)
   const deboursTotal  = deboursSeuls + haownerTotal + ownerStayMenageTotal
-  const totalManager  = honTotal + deboursTotal + fraisDeductionLoyTotal
+  const totalManager  = honTotal + (showMenage ? menageTotal : 0) + deboursTotal + fraisDeductionLoyTotal
   // virementNet calculé depuis les totaux du tableau pour garantir la cohérence :
   // tout changement dans les règles de calcul des lignes se répercute automatiquement dans le bloc
   const virementNet   = Math.max(0, virTotal - fraisDeductionLoyTotal + remboursementsTotal - deboursSeuls - haownerTotal - ownerStayMenageTotal)
@@ -226,6 +226,9 @@ export function genererStatementHTML(proprio, mois, data) {
     <div style="display:flex;justify-content:space-between;padding:3px 0;border-bottom:1px solid #ece8e2;font-size:10px">
       <span style="color:#9c8c7a">Commissions ${AGENCE_BRAND.short} (HON)</span><span style="font-weight:500">${fmt(honTotal)}</span>
     </div>
+    ${showMenage ? `<div style="display:flex;justify-content:space-between;padding:3px 0;border-bottom:1px solid #ece8e2;font-size:10px">
+      <span style="color:#9c8c7a">Ménage total (voyageurs)</span><span>${fmt(menageTotal)}</span>
+    </div>` : ''}
     ${ownerStayMenageTotal > 0 ? `<div style="display:flex;justify-content:space-between;padding:3px 0;border-bottom:1px solid #ece8e2;font-size:10px">
       <span style="color:#9c8c7a">Ménage(s) séjour propriétaire</span><span>${fmt(ownerStayMenageTotal)}</span>
     </div>` : ''}
