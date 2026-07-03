@@ -249,6 +249,34 @@ const [pushing, setPushing] = useState(false)
           .in('type_imputation', ['deduction_loy', 'haowner']),
       ])
 
+      // ── Ajustements de résolution croisés ───────────────────────────────────
+      // Un payout peut être amputé d'un ajustement appartenant à une AUTRE résa
+      // (ex. Sara Michel : −130 € retenus sur son virement pour la résolution de Maeva).
+      // Lien : n° de résolution dans payout_hospitable.reference ↔ reservation_ajustement.label.
+      // → l'attendu cash de la résa PORTEUSE est corrigé du montant de l'ajustement.
+      const crossDelta = {}   // reservation_id porteuse → delta centimes (négatif)
+      try {
+        const { supabase } = await import('../lib/supabase')
+        const { data: realPayouts } = await supabase.from('payout_hospitable')
+          .select('id, reference, mouvement_id, payout_reservation(reservation_id)')
+          .eq('mois_comptable', mois).not('reference', 'is', null).not('mouvement_id', 'is', null)
+        const numeros = [...new Set((realPayouts || []).flatMap(p => [...(p.reference || '').matchAll(/resolution (\d{8,})/gi)].map(m => m[1])))]
+        if (numeros.length) {
+          const { data: ajs } = await supabase.from('reservation_ajustement').select('reservation_id, montant, label')
+          for (const p of (realPayouts || [])) {
+            const porteuses = (p.payout_reservation || []).map(x => x.reservation_id)
+            if (!porteuses.length) continue
+            for (const m of (p.reference || '').matchAll(/resolution (\d{8,})/gi)) {
+              const aj = (ajs || []).find(a => (a.label || '').includes(m[1]))
+              if (aj && !porteuses.includes(aj.reservation_id)) {
+                // ajustement d'une AUTRE résa retenu sur ce payout → la porteuse reçoit d'autant moins
+                for (const rid of porteuses) crossDelta[rid] = (crossDelta[rid] || 0) + (aj.montant || 0)
+              }
+            }
+          }
+        }
+      } catch (e) { console.error('crossDelta ajustements:', e) }
+
       // Resas proprio_encaisse : Airbnb/Booking pour biens mode_encaissement='proprio'
       // → DCB ne perçoit pas ces fonds, exclus du scope tréso
       const PLATFORMS_DCB_CTRL = ['direct', 'manual']
@@ -294,7 +322,8 @@ const [pushing, setPushing] = useState(false)
       for (const r of (resasRows || [])) {
         if (proprioEncaisseResaIds.has(r.id)) continue
         totalResasByBien[r.bien_id] = (totalResasByBien[r.bien_id] || 0) + 1
-        payinAttenduByBien[r.bien_id] = (payinAttenduByBien[r.bien_id] || 0) + (r.fin_revenue || 0)
+        // attendu cash = fin_revenue + ajustements d'AUTRES résas retenus sur son payout (négatifs)
+        payinAttenduByBien[r.bien_id] = (payinAttenduByBien[r.bien_id] || 0) + (r.fin_revenue || 0) + (crossDelta[r.id] || 0)
         if (!resaIdsInScopeByBien[r.bien_id]) resaIdsInScopeByBien[r.bien_id] = new Set()
         resaIdsInScopeByBien[r.bien_id].add(r.id)
         if (!resasByBienId[r.bien_id]) resasByBienId[r.bien_id] = []
@@ -359,8 +388,9 @@ const [pushing, setPushing] = useState(false)
 
           for (const r of (resasByBienId[bid] || [])) {
             const recu = creditByResaId[r.id] || 0
-            const manque = (r.fin_revenue || 0) - recu
-            if (manque > 0) payinManquantResas.push({ guest_name: r.guest_name, platform: r.platform, fin_revenue: r.fin_revenue, recu, manque })
+            const attenduCash = (r.fin_revenue || 0) + (crossDelta[r.id] || 0)
+            const manque = attenduCash - recu
+            if (manque > 0) payinManquantResas.push({ guest_name: r.guest_name, platform: r.platform, fin_revenue: attenduCash, recu, manque })
           }
         }
 

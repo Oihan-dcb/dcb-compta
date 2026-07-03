@@ -1073,3 +1073,12 @@ Granularité = **par bien** (1 facture = 1 bien, sauf Maïté = facture groupe �
   (raison explicite dans le log) au lieu d'erreurs de trigger — edge redéployée. Testé en réel :
   modification de montant sur BITXI clôturée → rejetée ; liaison bancaire → passe ; PALMARIA
   renvoyée (T-20260000136, HON 1 248,40 TTC ajusté) et re-clôturée automatiquement.
+- **Suite (même session) — ajustements de résolution croisés dans le contrôle trésorerie** : deux
+  fausses alertes « manque X € » élucidées. (1) Sara Michel (−130 €) : l'ajustement d'une AUTRE résa
+  (Maeva) retenu sur SON payout → le contrôle tréso corrige désormais l'attendu cash de la résa
+  porteuse via le lien n° de résolution (`payout_hospitable.reference` ↔
+  `reservation_ajustement.label`). (2) Shelly Kamiel (recouche 150 € facturée via Airbnb) : le payout
+  de résolution encaissé séparément cite le code résa dans sa référence (« Reservation HMQR9Q5ASN »)
+  → le matching crédite désormais la résa (propagerRapprochementResas) ; data : 75 € crédités.
+  Le manque résiduel de Shelly (75 €) est RÉEL (solde de la recouche pas encore versé par Airbnb) —
+  l'alerte reste, à raison.

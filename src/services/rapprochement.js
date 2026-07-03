@@ -732,6 +732,21 @@ export async function lancerMatchingAuto(mois, source = 'manuel') {
             await supabase.from('payout_hospitable')
               .update({ mouvement_id: mouv.id, statut_matching: 'rapproche' })
               .eq('id', payoutExact.id)
+            // Payout de résolution sans lien résa : si la référence cite un code de résa
+            // (« Resolution payout … - Reservation HMXXXX »), créditer cette résa — sinon
+            // le contrôle trésorerie ne voit jamais ce cash (cas Shelly Kamiel, recouche 75 €)
+            if (!resaIds.length && payoutExact.reference) {
+              const codeRef = payoutExact.reference.toUpperCase().match(/\b(HM[A-Z0-9]{8,10})\b/)
+              if (codeRef) {
+                const { data: resaRef } = await supabase
+                  .from('reservation').select('id, code, bien!inner(agence)')
+                  .eq('code', codeRef[1]).eq('bien.agence', AGENCE).maybeSingle()
+                if (resaRef) {
+                  await propagerRapprochementResas(mouv, 'airbnb', [{ ref: resaRef.code, amount_cents: payoutExact.amount }])
+                  resaIds = [resaRef.id]
+                }
+              }
+            }
             // Marquer le mouvement (avec le détail de la résolution si pas de résa)
             const detailMaj = resaIds.length
               ? {}
