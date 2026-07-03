@@ -69,34 +69,52 @@ function BoutonProprio({ resa, onDone }) {
   )
 }
 
-// Ajustement manuel « total constant » (fonctionnalité rare) : saisir les TTC des
-// prestations (HON / FMEN / AUTO), le HT se recalcule (TTC/1,20), et LOY + VIR
-// absorbent le delta — le total de la résa ne change JAMAIS. Pose le verrou
-// ventilation_manuelle : plus aucun recalcul auto n'écrase ces montants.
+// Ajustement manuel « total constant » (fonctionnalité rare) — logique métier :
+// MEN (ménage voyageur, factuel) et HON sont les deux seuls leviers saisissables.
+// AUTO est figé sur le coût réel du Portail AE (montant_reel, sinon provision).
+// FMEN se calcule naturellement : FMEN = MEN − AUTO (règle MEN = FMEN + AUTO).
+// LOY + VIR absorbent le delta → le total de la résa ne change JAMAIS.
+// Pose le verrou ventilation_manuelle : plus aucun recalcul auto n'écrase ces montants.
 function AjusterVentil({ resa, ventil, onDone, onCancel }) {
-  const EDITABLE = ['HON', 'FMEN', 'AUTO', 'MEN']
-  const HORS_DELTA = ['MEN']   // factuel, hors identité — n'impacte pas le LOY
-  const editables = ventil.filter(v => EDITABLE.includes(v.code))
-  const loy = ventil.find(v => v.code === 'LOY')
-  const vir = ventil.find(v => v.code === 'VIR')
-  const autres = ventil.filter(v => !EDITABLE.includes(v.code) && v.code !== 'LOY' && v.code !== 'VIR')
-  const [vals, setVals] = useState(() => Object.fromEntries(editables.map(v => [v.code, ((v.montant_ttc ?? v.montant_ht ?? 0) / 100).toFixed(2)])))
+  const ligne = (c) => ventil.find(v => v.code === c)
+  const lMen = ligne('MEN'), lHon = ligne('HON'), lFmen = ligne('FMEN'), lAuto = ligne('AUTO'), lLoy = ligne('LOY'), lVir = ligne('VIR')
+  const ttcDe = (l) => l ? (l.montant_ttc ?? l.montant_ht ?? 0) : 0
+
+  // AUTO figé : réel portail AE si dispo, sinon la provision actuelle
+  const autoFige = lAuto ? (lAuto.montant_reel ?? lAuto.montant_ht ?? 0) : 0
+  const autoSource = lAuto ? (lAuto.montant_reel != null ? 'réel portail AE' : 'provision — pas de réel saisi') : null
+
+  const [vals, setVals] = useState(() => ({
+    MEN: (ttcDe(lMen) / 100).toFixed(2),
+    HON: (ttcDe(lHon) / 100).toFixed(2),
+  }))
   const [saving, setSaving] = useState(false)
   const parse = (x) => { const n = Math.round(parseFloat(String(x).replace(',', '.')) * 100); return isNaN(n) || n < 0 ? null : n }
-
-  let delta = 0, invalid = false
-  for (const v of editables) {
-    const n = parse(vals[v.code])
-    if (n === null) { invalid = true; continue }
-    if (!HORS_DELTA.includes(v.code)) delta += (v.montant_ttc ?? v.montant_ht ?? 0) - n
-  }
-  const loyNew = (loy?.montant_ht || 0) + delta
   const fmtE = (c) => (c / 100).toLocaleString('fr-FR', { minimumFractionDigits: 2 }) + ' €'
+
+  const menNew = lMen ? parse(vals.MEN) : 0
+  const honNew = lHon ? parse(vals.HON) : 0
+  const invalid = (lMen && menNew === null) || (lHon && honNew === null)
+  // FMEN dérivé de la règle MEN = FMEN + AUTO
+  const fmenNew = lMen ? (menNew === null ? null : menNew - autoFige) : ttcDe(lFmen)
+  const fmenNegatif = fmenNew !== null && fmenNew < 0
+
+  // Delta absorbé par LOY : variations de HON + FMEN + AUTO (MEN est l'agrégat, hors delta)
+  // Chaque terme du delta n'existe que si la ligne existe (le service n'écrit que les lignes présentes)
+  const delta = (invalid || fmenNegatif) ? 0
+    : (lHon ? ttcDe(lHon) - (honNew ?? 0) : 0)
+    + (lFmen ? ttcDe(lFmen) - (fmenNew ?? 0) : 0)
+    + (lAuto ? (lAuto.montant_ht ?? 0) - autoFige : 0)
+  const loyNew = (lLoy?.montant_ht || 0) + delta
 
   async function save() {
     setSaving(true)
     try {
-      const edits = Object.fromEntries(editables.map(v => [v.code, parse(vals[v.code])]))
+      const edits = {}
+      if (lMen && menNew !== null) edits.MEN = menNew
+      if (lHon && honNew !== null) edits.HON = honNew
+      if (lAuto) edits.AUTO = autoFige
+      if (lFmen && fmenNew !== null) edits.FMEN = fmenNew
       await ajusterVentilationManuelle(resa, edits)
       if (onDone) onDone()
     } catch (e) {
@@ -104,87 +122,66 @@ function AjusterVentil({ resa, ventil, onDone, onCancel }) {
     } finally { setSaving(false) }
   }
 
+  const rowStyle = { borderTop: '1px solid #eee' }
+  const calcStyle = { textAlign: 'right', color: '#666' }
+
   return (
     <div style={{ borderTop: '1px solid #eee', paddingTop: 12 }}>
       <div style={{ fontWeight: 700, fontSize: '0.8em', color: '#B45309', textTransform: 'uppercase', letterSpacing: '0.08em', marginBottom: 8 }}>
         ⚖️ Ajustement manuel — total constant
       </div>
       <table style={{ width: '100%', fontSize: '0.9em' }}>
-        <thead>
-          <tr style={{ color: '#888', fontSize: '0.8em' }}>
-            <th style={{ textAlign: 'left', paddingBottom: 6 }}>Code</th>
-            <th style={{ textAlign: 'right', paddingBottom: 6 }}>HT (calculé)</th>
-            <th style={{ textAlign: 'right', paddingBottom: 6 }}>TTC</th>
-          </tr>
-        </thead>
         <tbody>
-          {editables.map(v => {
-            const n = parse(vals[v.code])
-            const ht = n === null ? null : (v.code === 'AUTO' || v.code === 'MEN' ? n : Math.round(n / 1.2))
-            return (
-              <tr key={v.code} style={{ borderTop: '1px solid #eee' }}>
-                <td style={{ padding: '6px 0' }}><strong>{v.code}</strong> <span style={{ color: '#999', fontSize: '0.85em' }}>{v.libelle}{HORS_DELTA.includes(v.code) ? ' · hors total, n\'impacte pas le LOY' : ''}</span></td>
-                <td style={{ textAlign: 'right', color: '#666' }}>{ht === null ? '—' : fmtE(ht)}</td>
-                <td style={{ textAlign: 'right', padding: '4px 0' }}>
-                  <input value={vals[v.code]} onChange={e => setVals(p => ({ ...p, [v.code]: e.target.value }))}
-                    style={{ width: 100, textAlign: 'right', padding: '4px 6px', border: '1px solid ' + (parse(vals[v.code]) === null ? '#DC2626' : '#ccc'), borderRadius: 5 }} /> €
-                  {v.code === 'FMEN' && (() => {
-                    // Flux naturel : MEN factuel (voyageur) → AUTO réel (portail AE) → FMEN = le reste.
-                    const men = parse(vals.MEN) ?? (ventil.find(x => x.code === 'MEN')?.montant_ht ?? 0)
-                    const auto = parse(vals.AUTO) ?? 0
-                    const suggere = Math.max(0, men - auto)
-                    return men > 0 && suggere !== parse(vals[v.code]) ? (
-                      <div onClick={() => setVals(p => ({ ...p, FMEN: (suggere / 100).toFixed(2) }))}
-                        style={{ fontSize: '0.75em', color: '#B45309', cursor: 'pointer', textDecoration: 'underline', marginTop: 2 }}>
-                        caler sur MEN − AUTO = {(suggere / 100).toFixed(2)} €
-                      </div>
-                    ) : null
-                  })()}
-                  {v.code === 'AUTO' && v.montant_reel != null && v.montant_reel !== parse(vals[v.code]) && (
-                    <div onClick={() => setVals(p => ({ ...p, AUTO: (v.montant_reel / 100).toFixed(2) }))}
-                      style={{ fontSize: '0.75em', color: '#B45309', cursor: 'pointer', textDecoration: 'underline', marginTop: 2 }}>
-                      réel portail AE : {(v.montant_reel / 100).toFixed(2)} €
-                    </div>
-                  )}
-                  {v.code === 'MEN' && (() => {
-                    // Règle métier : MEN ≈ FMEN + AUTO (+ part ménage remontée au proprio via LOY).
-                    // Raccourci : caler MEN sur FMEN + AUTO saisis.
-                    const suggere = (parse(vals.FMEN) ?? 0) + (parse(vals.AUTO) ?? 0)
-                    return suggere > 0 && suggere !== parse(vals[v.code]) ? (
-                      <div onClick={() => setVals(p => ({ ...p, MEN: (suggere / 100).toFixed(2) }))}
-                        style={{ fontSize: '0.75em', color: '#B45309', cursor: 'pointer', textDecoration: 'underline', marginTop: 2 }}>
-                        caler sur FMEN + AUTO = {(suggere / 100).toFixed(2)} €
-                      </div>
-                    ) : null
-                  })()}
-                </td>
-              </tr>
-            )
-          })}
-          {loy && (
-            <tr style={{ borderTop: '1px solid #eee', background: '#F0FDF4' }}>
-              <td style={{ padding: '6px 0' }}><strong>LOY</strong> <span style={{ color: '#999', fontSize: '0.85em' }}>absorbe le delta</span></td>
-              <td style={{ textAlign: 'right', color: loyNew < 0 ? '#DC2626' : '#15803D', fontWeight: 700 }} colSpan={2}>
-                {fmtE(loy.montant_ht || 0)} → {fmtE(loyNew)} {vir ? '(VIR suit)' : ''}
+          {lMen && (
+            <tr style={rowStyle}>
+              <td style={{ padding: '6px 0' }}><strong>MEN</strong> <span style={{ color: '#999', fontSize: '0.85em' }}>ménage voyageur — levier</span></td>
+              <td style={{ textAlign: 'right', padding: '4px 0' }}>
+                <input value={vals.MEN} onChange={e => setVals(p => ({ ...p, MEN: e.target.value }))}
+                  style={{ width: 100, textAlign: 'right', padding: '4px 6px', border: '1px solid ' + (menNew === null ? '#DC2626' : '#ccc'), borderRadius: 5 }} /> €
               </td>
             </tr>
           )}
-          {autres.map(v => (
-            <tr key={v.code} style={{ borderTop: '1px solid #eee', color: '#999' }}>
-              <td style={{ padding: '6px 0' }}>{v.code} <span style={{ fontSize: '0.85em' }}>{v.libelle} (inchangé)</span></td>
-              <td style={{ textAlign: 'right' }} colSpan={2}>{fmtE(v.montant_ttc ?? v.montant_ht ?? 0)}</td>
+          {lHon && (
+            <tr style={rowStyle}>
+              <td style={{ padding: '6px 0' }}><strong>HON</strong> <span style={{ color: '#999', fontSize: '0.85em' }}>honoraires TTC — levier (HT {honNew === null ? '—' : fmtE(Math.round(honNew / 1.2))})</span></td>
+              <td style={{ textAlign: 'right', padding: '4px 0' }}>
+                <input value={vals.HON} onChange={e => setVals(p => ({ ...p, HON: e.target.value }))}
+                  style={{ width: 100, textAlign: 'right', padding: '4px 6px', border: '1px solid ' + (honNew === null ? '#DC2626' : '#ccc'), borderRadius: 5 }} /> €
+              </td>
             </tr>
-          ))}
+          )}
+          {lAuto && (
+            <tr style={rowStyle}>
+              <td style={{ padding: '6px 0' }}>AUTO <span style={{ color: '#999', fontSize: '0.85em' }}>{autoSource}</span></td>
+              <td style={calcStyle}>{fmtE(autoFige)}</td>
+            </tr>
+          )}
+          {lFmen && (
+            <tr style={rowStyle}>
+              <td style={{ padding: '6px 0' }}>FMEN <span style={{ color: '#999', fontSize: '0.85em' }}>= MEN − AUTO, calculé (HT {fmenNew === null || fmenNegatif ? '—' : fmtE(Math.round(fmenNew / 1.2))})</span></td>
+              <td style={{ ...calcStyle, color: fmenNegatif ? '#DC2626' : '#666' }}>{fmenNew === null ? '—' : fmtE(fmenNew)}</td>
+            </tr>
+          )}
+          {lLoy && (
+            <tr style={{ ...rowStyle, background: '#F0FDF4' }}>
+              <td style={{ padding: '6px 0' }}><strong>LOY</strong> <span style={{ color: '#999', fontSize: '0.85em' }}>absorbe le delta{lVir ? ' (VIR suit)' : ''}</span></td>
+              <td style={{ textAlign: 'right', color: loyNew < 0 ? '#DC2626' : '#15803D', fontWeight: 700 }}>
+                {fmtE(lLoy.montant_ht || 0)} → {fmtE(loyNew)}
+              </td>
+            </tr>
+          )}
         </tbody>
       </table>
-      <div style={{ fontSize: '0.8em', color: loyNew < 0 ? '#DC2626' : '#15803D', marginTop: 8, fontWeight: 600 }}>
-        {loyNew < 0 ? '⛔ Le reversement propriétaire deviendrait négatif' : '✓ Total de la résa inchangé — les recalculs auto seront désactivés pour cette résa'}
+      <div style={{ fontSize: '0.8em', color: (loyNew < 0 || fmenNegatif) ? '#DC2626' : '#15803D', marginTop: 8, fontWeight: 600 }}>
+        {fmenNegatif ? '⛔ MEN < AUTO : le forfait ménage deviendrait négatif'
+          : loyNew < 0 ? '⛔ Le reversement propriétaire deviendrait négatif'
+          : '✓ Total de la résa inchangé — les recalculs auto seront désactivés pour cette résa'}
       </div>
       <div style={{ display: 'flex', gap: 8, marginTop: 10, justifyContent: 'flex-end' }}>
         <button onClick={onCancel} style={{ padding: '6px 14px', borderRadius: 6, border: '1px solid #ddd', background: '#fff', cursor: 'pointer' }}>Annuler</button>
-        <button onClick={save} disabled={saving || invalid || loyNew < 0}
-          style={{ padding: '6px 16px', borderRadius: 6, border: 'none', background: (saving || invalid || loyNew < 0) ? '#aaa' : '#B45309', color: '#fff', fontWeight: 600, cursor: (saving || invalid || loyNew < 0) ? 'not-allowed' : 'pointer' }}>
-          {saving ? '…' : 'Enregistrer l\'ajustement'}
+        <button onClick={save} disabled={saving || invalid || loyNew < 0 || fmenNegatif}
+          style={{ padding: '6px 16px', borderRadius: 6, border: 'none', background: (saving || invalid || loyNew < 0 || fmenNegatif) ? '#aaa' : '#B45309', color: '#fff', fontWeight: 600, cursor: (saving || invalid || loyNew < 0 || fmenNegatif) ? 'not-allowed' : 'pointer' }}>
+          {saving ? '…' : "Enregistrer l'ajustement"}
         </button>
       </div>
     </div>
