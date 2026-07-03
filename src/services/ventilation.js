@@ -503,7 +503,22 @@ export async function getRecapVentilation(mois) {
  * résa est conservé PAR CONSTRUCTION. Pose reservation.ventilation_manuelle = true :
  * plus aucun recalcul auto (api/ventiler + ventilation-auto nightly, migration 226).
  */
+/**
+ * Verrou de saisie (cloture_bien) : throw si le bien/mois est clôturé — la facture
+ * du bien est envoyée à Evoliz, les modifications sont figées jusqu'à réouverture.
+ */
+export async function verifierSaisieOuverte(bienId, mois) {
+  if (!bienId || !mois) return
+  const { data } = await supabase.from('cloture_bien').select('id')
+    .eq('bien_id', bienId).eq('mois', mois).eq('active', true).limit(1)
+  if (data?.length) {
+    throw new Error('Saisie clôturée : la facture de ce bien/mois est envoyée à Evoliz. Rouvrez d\'abord la saisie depuis la Facturation (🔓 Rouvrir saisie — supprime aussi le brouillon Evoliz).')
+  }
+}
+
 export async function ajusterVentilationManuelle(resa, edits) {
+  // Facture envoyée = répartition figée (verrou cloture_bien posé à l'envoi Evoliz)
+  await verifierSaisieOuverte(resa.bien?.id || resa.bien_id, resa.mois_comptable)
   const lignes = resa.ventilation || []
   const get = (c) => lignes.find(l => l.code === c)
   // MEN (ménage brut voyageur) : éditable mais HORS identité comptable

@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react'
 import { supabase } from '../lib/supabase'
 import { formatMontant, fetchReservationById } from '../lib/hospitable'
 import { toggleOwnerStay } from '../hooks/useOwnerStay'
-import { calculerVentilationResa, ajusterVentilationManuelle, reactiverVentilationAuto } from '../services/ventilation'
+import { calculerVentilationResa, ajusterVentilationManuelle, reactiverVentilationAuto, verifierSaisieOuverte } from '../services/ventilation'
 import { format } from 'date-fns'
 import { fr } from 'date-fns/locale'
 
@@ -235,6 +235,8 @@ function VentilationEdit({ resa, ventil, onSaved, onCancel }) {
   async function save() {
     setSaving(true)
     try {
+      // Facture envoyée = saisie figée (verrou cloture_bien)
+      await verifierSaisieOuverte(resa.bien?.id || resa.bien_id, resa.mois_comptable)
       await supabase.from('ventilation').delete().eq('reservation_id', resa.id)
       const lignes = lines
         .filter(l => l.code && parseFloat(l.ttc) > 0)
@@ -393,6 +395,14 @@ export default function ModalResa({ resa, onClose, onSaved }) {
   const isManual = resa.platform === 'manual' || (resa.final_status === 'cancelled' && (resa.platform === 'direct' || resa.platform === 'manual'))
   const [editing, setEditing] = useState(false)
   const [adjusting, setAdjusting] = useState(false)
+  const [saisieCloturee, setSaisieCloturee] = useState(false)
+
+  useEffect(() => {
+    const bienId = resa?.bien?.id || resa?.bien_id
+    if (!bienId || !resa?.mois_comptable) return
+    supabase.from('cloture_bien').select('id').eq('bien_id', bienId).eq('mois', resa.mois_comptable).eq('active', true).limit(1)
+      .then(({ data }) => setSaisieCloturee((data || []).length > 0))
+  }, [resa?.id])
   const [modeVentil, setModeVentil] = useState('normal')
   const [ventilating, setVentilating] = useState(false)
   const [virements, setVirements] = useState([])
@@ -594,14 +604,20 @@ export default function ModalResa({ resa, onClose, onSaved }) {
                 Ventilation{resa.ventilation_manuelle ? ' · ✋ ajustée manuellement' : ''}
               </div>
               <div style={{ display: 'flex', gap: 6 }}>
-                {!adjusting && ventil.some(v => ['LOY', 'MEN', 'FMEN', 'HON', 'AUTO'].includes(v.code)) && (
+                {saisieCloturee && (
+                  <span title="Facture envoyée à Evoliz — saisie figée. Rouvrir depuis Facturation (🔓 Rouvrir saisie)."
+                    style={{ fontSize: '0.8em', padding: '3px 10px', background: '#FEF2F2', border: '1px solid #FCA5A5', borderRadius: 5, color: '#B91C1C' }}>
+                    🔒 figée (facture envoyée)
+                  </span>
+                )}
+                {!adjusting && !saisieCloturee && ventil.some(v => ['LOY', 'MEN', 'FMEN', 'HON', 'AUTO'].includes(v.code)) && (
                   <button onClick={() => setAdjusting(true)}
                     title="Ajuster les prestations (TTC) à total constant — LOY absorbe le delta"
                     style={{ fontSize: '0.8em', padding: '3px 10px', background: '#FFF7ED', border: '1px solid #FDBA74', borderRadius: 5, cursor: 'pointer', color: '#B45309' }}>
                     ⚖️ Ajuster
                   </button>
                 )}
-                {resa.ventilation_manuelle && (
+                {resa.ventilation_manuelle && !saisieCloturee && (
                   <button onClick={async () => {
                     if (!window.confirm('Réactiver le calcul automatique ?\n\nLa ventilation sera recalculée immédiatement et vos ajustements manuels seront remplacés.')) return
                     try {
