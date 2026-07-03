@@ -231,14 +231,21 @@ export function _calculerLignes(resa) {
   // Fallback Airbnb sans frais ménage (cleaning=0 ET community=0 ET forfait_dcb_ref>0) :
   //   Airbnb n'a pas transmis la ligne ménage → fmenBase = forfait_dcb_ref + provision_ae_ref.
   const totalFeesAirbnb = cleaningFeeAirbnb + communityFeeRaw
-  const airbnbFallbackActif = resa.platform === 'airbnb' && totalFeesAirbnb === 0 && (bien.forfait_dcb_ref || 0) > 0
+  const airbnbFallbackActif = resa.platform === 'airbnb' && totalFeesAirbnb === 0 && (bien.forfait_dcb_ref || 0) > 0 && !isCancelled
   const fmenBase = airbnbFallbackActif
     ? (bien.forfait_dcb_ref || 0) + (bien.provision_ae_ref || 0)
     : totalFeesAirbnb
   const dueToOwner = ((resa.platform === 'airbnb' || resa.platform === 'booking') && totalFeesForOwnerRate > 0)
     ? Math.round(Math.abs(hostServiceFee) * fmenBase / totalFeesForOwnerRate * (1 - tauxCom))
     : 0
-  const fmenTTC = Math.max(0, fmenBase - dueToOwner - aeAmount) + ajustementFmenExtra
+  const fmenNet = Math.max(0, fmenBase - dueToOwner - aeAmount)
+  // Résa annulée (frais perçus) : aeAmount déjà à 0 plus haut (pas de ménage réel à payer) —
+  // la marge FMEN normale ne doit pas non plus rester une marge DCB gratuite sans coût en
+  // face. Requalifiée en hébergement (commissionnée normalement, le reste au propriétaire)
+  // plutôt que gardée intégralement par DCB. dueToOwner (part Airbnb) continue de remonter
+  // au propriétaire hors commission via le résidu LOY, inchangé.
+  const menageAnnuleHebergement = isCancelled ? fmenNet : 0
+  const fmenTTC = (isCancelled ? 0 : fmenNet) + ajustementFmenExtra
   // fmenHT peut être négatif si ajustementFmenExtra dépasse la marge FMEN normale (DCB
   // absorbe la perte) — pas de floor à 0 ici, pour que HON+FMEN+AUTO+LOY se recoupe exactement.
   const fmenHT  = fmenTTC !== 0 ? Math.round(fmenTTC / (1 + TVA_RATE)) : 0
@@ -251,7 +258,7 @@ export function _calculerLignes(resa) {
   // ── Base de commission — TOUTES PLATEFORMES ──────────────────────────
   //   Airbnb : accommodation + host_service_fee + discounts + extraGuestFee (− ménage fondu si fallback)
   //   Direct : accommodation + host_fees | Booking : accommodation + host_fees
-  commissionableBase = accommodation + hostServiceFee + discountsTotal + extraGuestFee - menageFonduAccommodation + ajustementHebergement
+  commissionableBase = accommodation + hostServiceFee + discountsTotal + extraGuestFee - menageFonduAccommodation + ajustementHebergement + menageAnnuleHebergement
 
   // HON = base × taux (TVA 20%). Direct : Math.floor pour coller au statement Hospitable.
   const honTTC = isDirect ? Math.floor(commissionableBase * tauxCom) : Math.round(commissionableBase * tauxCom)
@@ -506,27 +513,35 @@ export async function getRecapVentilation(mois) {
 export async function ajusterVentilationManuelle(resa, edits) {
   const lignes = resa.ventilation || []
   const get = (c) => lignes.find(l => l.code === c)
+  // MEN (ménage brut voyageur) : éditable mais HORS identité comptable
+  // (total = LOY + HON + FMEN) → sa modification n'impacte PAS le LOY.
+  const HORS_DELTA = ['MEN']
+  const HORS_TVA = ['AUTO', 'MEN']
   let delta = 0
   const updates = []
   for (const [code, ttcNew] of Object.entries(edits)) {
     const l = get(code)
     if (!l || ttcNew == null || ttcNew < 0) continue
-    const horsTVA = code === 'AUTO'
+    const horsTVA = HORS_TVA.includes(code)
     const ttcOld = l.montant_ttc ?? l.montant_ht ?? 0
     if (ttcNew === ttcOld) continue
     const ht = horsTVA ? ttcNew : Math.round(ttcNew / 1.2)
     updates.push({ id: l.id, vals: { montant_ht: ht, montant_tva: horsTVA ? l.montant_tva : ttcNew - ht, montant_ttc: ttcNew, calcul_source: 'manual' } })
-    delta += ttcOld - ttcNew
+    if (!HORS_DELTA.includes(code)) delta += ttcOld - ttcNew
   }
   if (!updates.length) return { changed: false, delta: 0 }
 
-  const loy = get('LOY')
-  if (!loy) throw new Error('Ligne LOY absente — ajustement impossible sur cette résa')
-  const loyNew = (loy.montant_ht || 0) + delta
-  if (loyNew < 0) throw new Error('Le reversement propriétaire deviendrait négatif (' + (loyNew / 100).toFixed(2) + ' €)')
-  updates.push({ id: loy.id, vals: { montant_ht: loyNew, montant_ttc: loyNew, calcul_source: 'manual' } })
-  const vir = get('VIR')
-  if (vir) updates.push({ id: vir.id, vals: { montant_ht: (vir.montant_ht || 0) + delta, montant_ttc: (vir.montant_ttc ?? vir.montant_ht ?? 0) + delta, calcul_source: 'manual' } })
+  // LOY/VIR n'absorbent le delta que s'il y en a un (modifier seulement MEN → delta 0,
+  // pas besoin de ligne LOY — ex. séjours propriétaires sans reversement)
+  if (delta !== 0) {
+    const loy = get('LOY')
+    if (!loy) throw new Error('Ligne LOY absente — ajustement impossible sur cette résa')
+    const loyNew = (loy.montant_ht || 0) + delta
+    if (loyNew < 0) throw new Error('Le reversement propriétaire deviendrait négatif (' + (loyNew / 100).toFixed(2) + ' €)')
+    updates.push({ id: loy.id, vals: { montant_ht: loyNew, montant_ttc: loyNew, calcul_source: 'manual' } })
+    const vir = get('VIR')
+    if (vir) updates.push({ id: vir.id, vals: { montant_ht: (vir.montant_ht || 0) + delta, montant_ttc: (vir.montant_ttc ?? vir.montant_ht ?? 0) + delta, calcul_source: 'manual' } })
+  }
 
   for (const u of updates) {
     if (!u.id) throw new Error('Ligne de ventilation sans id — rechargez la page')

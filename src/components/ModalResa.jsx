@@ -74,7 +74,8 @@ function BoutonProprio({ resa, onDone }) {
 // absorbent le delta — le total de la résa ne change JAMAIS. Pose le verrou
 // ventilation_manuelle : plus aucun recalcul auto n'écrase ces montants.
 function AjusterVentil({ resa, ventil, onDone, onCancel }) {
-  const EDITABLE = ['HON', 'FMEN', 'AUTO']
+  const EDITABLE = ['HON', 'FMEN', 'AUTO', 'MEN']
+  const HORS_DELTA = ['MEN']   // factuel, hors identité — n'impacte pas le LOY
   const editables = ventil.filter(v => EDITABLE.includes(v.code))
   const loy = ventil.find(v => v.code === 'LOY')
   const vir = ventil.find(v => v.code === 'VIR')
@@ -87,7 +88,7 @@ function AjusterVentil({ resa, ventil, onDone, onCancel }) {
   for (const v of editables) {
     const n = parse(vals[v.code])
     if (n === null) { invalid = true; continue }
-    delta += (v.montant_ttc ?? v.montant_ht ?? 0) - n
+    if (!HORS_DELTA.includes(v.code)) delta += (v.montant_ttc ?? v.montant_ht ?? 0) - n
   }
   const loyNew = (loy?.montant_ht || 0) + delta
   const fmtE = (c) => (c / 100).toLocaleString('fr-FR', { minimumFractionDigits: 2 }) + ' €'
@@ -119,10 +120,10 @@ function AjusterVentil({ resa, ventil, onDone, onCancel }) {
         <tbody>
           {editables.map(v => {
             const n = parse(vals[v.code])
-            const ht = n === null ? null : (v.code === 'AUTO' ? n : Math.round(n / 1.2))
+            const ht = n === null ? null : (v.code === 'AUTO' || v.code === 'MEN' ? n : Math.round(n / 1.2))
             return (
               <tr key={v.code} style={{ borderTop: '1px solid #eee' }}>
-                <td style={{ padding: '6px 0' }}><strong>{v.code}</strong> <span style={{ color: '#999', fontSize: '0.85em' }}>{v.libelle}</span></td>
+                <td style={{ padding: '6px 0' }}><strong>{v.code}</strong> <span style={{ color: '#999', fontSize: '0.85em' }}>{v.libelle}{HORS_DELTA.includes(v.code) ? ' · hors total, n\'impacte pas le LOY' : ''}</span></td>
                 <td style={{ textAlign: 'right', color: '#666' }}>{ht === null ? '—' : fmtE(ht)}</td>
                 <td style={{ textAlign: 'right', padding: '4px 0' }}>
                   <input value={vals[v.code]} onChange={e => setVals(p => ({ ...p, [v.code]: e.target.value }))}
@@ -535,7 +536,7 @@ export default function ModalResa({ resa, onClose, onSaved }) {
                 Ventilation{resa.ventilation_manuelle ? ' · ✋ ajustée manuellement' : ''}
               </div>
               <div style={{ display: 'flex', gap: 6 }}>
-                {!adjusting && ventil.some(v => v.code === 'LOY') && (
+                {!adjusting && ventil.some(v => ['LOY', 'MEN', 'FMEN', 'HON', 'AUTO'].includes(v.code)) && (
                   <button onClick={() => setAdjusting(true)}
                     title="Ajuster les prestations (TTC) à total constant — LOY absorbe le delta"
                     style={{ fontSize: '0.8em', padding: '3px 10px', background: '#FFF7ED', border: '1px solid #FDBA74', borderRadius: 5, cursor: 'pointer', color: '#B45309' }}>
