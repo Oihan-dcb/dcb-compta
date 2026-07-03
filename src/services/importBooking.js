@@ -14,6 +14,7 @@
  * - Fenetre de 5 jours apres la payout date
  */
 import { supabase } from '../lib/supabase'
+import { AGENCE } from '../lib/agence'
 import { propagerRapprochementResas } from './rapprochement'
 
 function parseCSVLine(line, sep = ',') {
@@ -255,6 +256,9 @@ export async function importBookingCSV(csvText) {
       .from('mouvement_bancaire')
       .select('id, credit, date_operation, statut_matching, libelle, detail')
       .eq('canal', 'booking')
+      // Ne matcher que les virements du compte de L'AGENCE COURANTE — sans ce filtre,
+      // un CSV Booking Lauian pouvait se coller sur un virement DCB (cas Sinnika 02/07/2026)
+      .eq('agence', AGENCE)
       .gte('date_operation', dateMin)
       .lte('date_operation', dateMaxStr)
       .order('date_operation')

@@ -13,6 +13,7 @@
  * - Complément au système synthétique, pas un remplacement
  */
 import { supabase } from '../lib/supabase'
+import { AGENCE } from '../lib/agence'
 import { propagerRapprochementResas } from './rapprochement'
 
 function parseCSVLine(line) {
@@ -129,6 +130,8 @@ export async function importAirbnbCSV(csvText) {
       .from('mouvement_bancaire')
       .select('id, credit, date_operation, statut_matching')
       .eq('canal', 'airbnb')
+      // Compte de l'agence courante uniquement — évite le mélange DCB/Lauian (cf. importBooking)
+      .eq('agence', AGENCE)
       .gte('date_operation', dateMin)
       .lte('date_operation', dateMax)
       .order('date_operation')

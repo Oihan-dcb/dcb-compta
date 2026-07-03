@@ -944,3 +944,9 @@ Granularité = **par bien** (1 facture = 1 bien, sauf Maïté = facture groupe �
   (affichage « ⏳ payout prévu » dans l'alerte). Data : ligne Sinnika déliée (orpheline),
   `reservation_paiement`/allocation retirés, `rapprochee=false`, détail du mouvement restauré (19 résas,
   ref wZ6). Audit global : c'était le **seul** mouvement Booking avec Σ(lignes) ≠ crédit.
+- **Suite (même session) — imports CSV plateformes sans filtre agence** : cause profonde du cas Sinnika :
+  `importBooking` et `importAirbnb` cherchaient leur mouvement bancaire dans **toute** la table
+  (DCB + Lauian confondus) alors que tout le reste du système filtre `agence = AGENCE`. Un CSV Booking
+  Lauian pouvait donc se coller sur un virement du compte DCB (c'est arrivé : payout Lauian Sinnika →
+  virement DCB du 02/07). Fix : `.eq('agence', AGENCE)` ajouté aux deux requêtes mouvements. Audit
+  croisé bien.agence vs mouvement.agence sur booking_payout_line + airbnb_payout_line : 0 autre cas.
