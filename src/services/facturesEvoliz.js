@@ -16,11 +16,29 @@
  */
 
 import { supabase } from '../lib/supabase'
-import { AGENCE } from '../lib/agence'
+import { AGENCE, AGENCE_BRAND } from '../lib/agence'
 import { logOp } from './journal'
 import { evolizCall } from './evoliz'
 
 const MENTION_MANDAT = "Conformément au mandat de gestion, les honoraires de gestion sont directement prélevés sur le loyer encaissé avant reversement au propriétaire."
+
+// Cache config de facturation par agence (IBAN séquestre, SIRET, adresse — lus depuis agency_config)
+let _agencyBillingConfig = null
+async function getAgencyBillingConfig() {
+  if (_agencyBillingConfig) return _agencyBillingConfig
+  const { data } = await supabase
+    .from('agency_config')
+    .select('seq_lc_iban, seq_lc_bic, siret, adresse_ligne1, adresse_ligne2')
+    .eq('agence', AGENCE)
+    .single()
+  _agencyBillingConfig = {
+    iban: data?.seq_lc_iban || '',
+    bic:  data?.seq_lc_bic  || '',
+    siret: data?.siret || '',
+    adresse: [data?.adresse_ligne1, data?.adresse_ligne2].filter(Boolean).join(', ').trim(),
+  }
+  return _agencyBillingConfig
+}
 
 /**
  * GÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂ©nÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂ¨re les brouillons de factures pour tous les propriÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂ©taires actifs d'un mois
@@ -1337,6 +1355,10 @@ export async function envoyerEmailDeboursProprio(facture) {
   const bienNom = bien?.code || proprio?.nom || 'votre bien'
   const ref = `DEBOURS-AE-${bienNom.replace(/[^A-Z0-9]/gi, '-').toUpperCase()}-${mois}`
   const prenom = proprio.prenom || proprio.nom
+  const billing = await getAgencyBillingConfig()
+  const footerLegal = AGENCE === 'dcb'
+    ? 'Destination Côte Basque SARL · RCS Bayonne 904 781 671 · 6 allée des Chênes, 64200 Biarritz'
+    : `${AGENCE_BRAND.label} · SIRET ${billing.siret} · ${billing.adresse}`
 
   // Générer URL de confirmation signée (HMAC-SHA256, valable 30 jours)
   const confirmUrl = await (async () => {
@@ -1359,14 +1381,14 @@ export async function envoyerEmailDeboursProprio(facture) {
     <tr><td align="center">
       <table width="600" cellpadding="0" cellspacing="0" style="background:#fff;border-radius:10px;overflow:hidden;max-width:600px;width:100%;box-shadow:0 2px 12px rgba(44,36,22,0.08)">
         <tr><td style="background:#CC9933;padding:30px 40px;text-align:center">
-          <p style="margin:0;color:#fff;font-size:11px;letter-spacing:2px;text-transform:uppercase;opacity:0.85">Destination Côte Basque</p>
+          <p style="margin:0;color:#fff;font-size:11px;letter-spacing:2px;text-transform:uppercase;opacity:0.85">${AGENCE_BRAND.label}</p>
           <p style="margin:8px 0 0;color:#fff;font-size:20px;font-weight:bold;letter-spacing:0.3px">Remboursement débours AE</p>
           <p style="margin:6px 0 0;color:rgba(255,255,255,0.75);font-size:13px">${bienNom} · ${moisLabel}</p>
         </td></tr>
         <tr><td style="padding:36px 40px">
           <p style="margin:0 0 20px;font-size:15px;color:#2C2416">Bonjour ${prenom},</p>
           <p style="margin:0 0 28px;font-size:14px;color:#666;line-height:1.7">
-            Dans le cadre de la gestion de votre bien <strong style="color:#2C2416">${bienNom}</strong>, Destination Côte Basque a avancé pour votre compte les honoraires de l'auto-entrepreneur pour le mois de <strong style="color:#2C2416">${moisLabel}</strong>.
+            Dans le cadre de la gestion de votre bien <strong style="color:#2C2416">${bienNom}</strong>, ${AGENCE_BRAND.label} a avancé pour votre compte les honoraires de l'auto-entrepreneur pour le mois de <strong style="color:#2C2416">${moisLabel}</strong>.
           </p>
           <table cellpadding="0" cellspacing="0" width="100%" style="margin:0 0 28px">
             <tr>
@@ -1384,13 +1406,13 @@ export async function envoyerEmailDeboursProprio(facture) {
                 <tr>
                   <td style="padding-bottom:12px">
                     <div style="font-size:10px;color:#9C8E7D;letter-spacing:1px;text-transform:uppercase;margin-bottom:3px">IBAN destinataire (séquestre)</div>
-                    <div style="font-size:15px;font-family:'Courier New',monospace;color:#2C2416;font-weight:600;letter-spacing:2px">FR76 1333 5000 4008 0030 4976 555</div>
+                    <div style="font-size:15px;font-family:'Courier New',monospace;color:#2C2416;font-weight:600;letter-spacing:2px">${billing.iban}</div>
                   </td>
                 </tr>
                 <tr>
                   <td style="border-top:1px solid #EDEBE5;padding-top:12px;padding-bottom:12px">
                     <div style="font-size:10px;color:#9C8E7D;letter-spacing:1px;text-transform:uppercase;margin-bottom:3px">BIC</div>
-                    <div style="font-size:14px;font-family:'Courier New',monospace;color:#2C2416">CEPAFRPP333</div>
+                    <div style="font-size:14px;font-family:'Courier New',monospace;color:#2C2416">${billing.bic}</div>
                   </td>
                 </tr>
                 <tr>
@@ -1404,13 +1426,13 @@ export async function envoyerEmailDeboursProprio(facture) {
           </table>
 
           <p style="margin:0 0 24px;font-size:12px;color:#9C8E7D;line-height:1.6;border-top:1px solid #EDEBE5;padding-top:20px">
-            Ce remboursement est distinct de votre reversement de loyer habituel. Il correspond aux débours avancés par Destination Côte Basque pour le compte de l'auto-entrepreneur intervenant sur votre bien.
+            Ce remboursement est distinct de votre reversement de loyer habituel. Il correspond aux débours avancés par ${AGENCE_BRAND.label} pour le compte de l'auto-entrepreneur intervenant sur votre bien.
           </p>
 
           ${confirmUrl ? '<table cellpadding="0" cellspacing="0" style="margin:0 auto"><tr><td style="background:#9EB39A;border-radius:6px;padding:14px 32px"><a href="' + confirmUrl + '" style="color:#fff;text-decoration:none;font-size:15px;font-weight:bold">✓ Confirmer mon virement →</a></td></tr></table><p style="text-align:center;margin:12px 0 0;font-size:11px;color:#9C8E7D">Cliquez une fois votre virement effectué</p>' : ''}
         </td></tr>
         <tr><td style="background:#f9f6f0;border-top:2px solid #CC9933;padding:18px 40px;text-align:center">
-          <p style="margin:0;font-size:11px;color:#9C8E7D">Destination Côte Basque SARL · RCS Bayonne 904 781 671 · 6 allée des Chênes, 64200 Biarritz</p>
+          <p style="margin:0;font-size:11px;color:#9C8E7D">${footerLegal}</p>
         </td></tr>
 
       </table>
@@ -1426,6 +1448,7 @@ export async function envoyerEmailDeboursProprio(facture) {
     },
     body: JSON.stringify({
       to: [proprio.email],
+      ...(AGENCE === 'lauian' ? { cc: ['laura@destinationcotebasque.com'] } : {}),
       subject: `Remboursement débours auto-entrepreneur — ${moisLabel} — ${bienNom}`,
       html,
     }),
