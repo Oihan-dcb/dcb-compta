@@ -310,10 +310,17 @@ const [pushing, setPushing] = useState(false)
             // Repli : aucune ligne reservation_ajustement (résa d'origine clôturée, jamais
             // re-synchronisée depuis l'ajout de l'ajustement côté Hospitable) → recherche
             // directe du n° de résolution dans hospitable_raw des résas du même périmètre.
+            // Scope mois courant + mois précédent (ces ajustements croisés portent sur une
+            // résa récemment close) pour éviter de rapatrier hospitable_raw (gros JSON) de
+            // tout l'historique des biens affichés.
             const manquants = resolutions.filter(num => !ajByResolution.has(num))
             if (manquants.length) {
-              const { data: resasRaw } = await supabase.from('reservation')
-                .select('id, hospitable_raw').in('bien_id', uniqueBienIds)
+              const [y, m] = mois.split('-').map(Number)
+              const prevDate = new Date(Date.UTC(y, m - 2, 1))
+              const moisPrecedent = `${prevDate.getUTCFullYear()}-${String(prevDate.getUTCMonth() + 1).padStart(2, '0')}`
+              const { data: resasRaw, error: errRaw } = await supabase.from('reservation')
+                .select('id, hospitable_raw').in('bien_id', uniqueBienIds).in('mois_comptable', [mois, moisPrecedent])
+              if (errRaw) console.error('crossDelta repli hospitable_raw:', errRaw)
               for (const num of manquants) {
                 const r = (resasRaw || []).find(rr => JSON.stringify(rr.hospitable_raw || {}).includes(num))
                 if (r) ajByResolution.set(num, r.id)
