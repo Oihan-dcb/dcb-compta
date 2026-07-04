@@ -260,18 +260,23 @@ export default function PageRapports() {
     if (isNaN(montantCents) || montantCents < 0) return
     setSavingMenage(true)
     try {
-      await supabase.from('ventilation').upsert({
+      // Contrainte unique réelle : (reservation_id, code, libelle) — cf. ventilation_resa_code_libelle_unique
+      const { error } = await supabase.from('ventilation').upsert({
         reservation_id: row.id,
         bien_id: row.bien_id,
-        mois: mois,
+        mois_comptable: mois,
         code: 'FMEN',
         libelle: 'Forfait ménage séjour propriétaire',
         montant_ht: montantCents,
         montant_ttc: montantCents,
-      }, { onConflict: 'reservation_id,code' })
+        calcul_source: 'manual',
+      }, { onConflict: 'reservation_id,code,libelle' })
+      if (error) throw error
       setSaisirMenageId(null)
       setSaisirMontant('')
       await charger()
+    } catch (e) {
+      setError(`Saisie ménage proprio impossible : ${e.message}`)
     } finally {
       setSavingMenage(false)
     }
