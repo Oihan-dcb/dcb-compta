@@ -250,29 +250,68 @@ const [pushing, setPushing] = useState(false)
       ])
 
       // ── Ajustements de résolution croisés ───────────────────────────────────
-      // Un payout peut être amputé d'un ajustement appartenant à une AUTRE résa
-      // (ex. Sara Michel : −130 € retenus sur son virement pour la résolution de Maeva).
-      // Lien : n° de résolution dans payout_hospitable.reference ↔ reservation_ajustement.label.
-      // → l'attendu cash de la résa PORTEUSE est corrigé du montant de l'ajustement.
+      // Un payout peut être amputé d'un montant appartenant à une AUTRE résa
+      // (ex. Sara Michel : −130 € retenus sur son virement pour la résolution de Maeva ;
+      // Alan Yum/CERES : −1581,59 € + −359 € retenus pour Robert Bunes (recomplément de
+      // payout précédent) et une résolution, cf. reference Hospitable multi-segments
+      // "Adjustment: ... HMXXXXXXXX (-1581.59€) | Resolution Adjustment: ... resolution
+      // NNNNNNNN (-359.00€)").
+      // Le montant est lu DIRECTEMENT dans payout_hospitable.reference (parenthèse finale
+      // de chaque segment) plutôt que dans reservation_ajustement : ça fonctionne même si
+      // l'ajustement n'a jamais été détecté côté résa d'origine (résa déjà clôturée, jamais
+      // re-synchronisée depuis que Hospitable a ajouté l'ajustement — cas Robert Bunes/mai,
+      // qui n'a plus été re-ventilé depuis juin).
+      // Résolution de la résa d'origine du segment : par code résa cité (HMXXXXXXXX) en
+      // priorité, sinon par n° de résolution via reservation_ajustement.label (fallback,
+      // ancien mécanisme). Si la résa résolue diffère de la/les porteuse(s) du payout →
+      // l'attendu cash de la porteuse est corrigé du montant lu.
       const crossDelta = {}   // reservation_id porteuse → delta centimes (négatif)
       try {
         const { supabase } = await import('../lib/supabase')
         const { data: realPayouts } = await supabase.from('payout_hospitable')
           .select('id, reference, mouvement_id, payout_reservation(reservation_id)')
           .eq('mois_comptable', mois).not('reference', 'is', null).not('mouvement_id', 'is', null)
-        const numeros = [...new Set((realPayouts || []).flatMap(p => [...(p.reference || '').matchAll(/resolution (\d{8,})/gi)].map(m => m[1])))]
-        if (numeros.length) {
-          const { data: ajs } = await supabase.from('reservation_ajustement').select('reservation_id, montant, label')
-          for (const p of (realPayouts || [])) {
-            const porteuses = (p.payout_reservation || []).map(x => x.reservation_id)
-            if (!porteuses.length) continue
-            for (const m of (p.reference || '').matchAll(/resolution (\d{8,})/gi)) {
-              const aj = (ajs || []).find(a => (a.label || '').includes(m[1]))
-              if (aj && !porteuses.includes(aj.reservation_id)) {
-                // ajustement d'une AUTRE résa retenu sur ce payout → la porteuse reçoit d'autant moins
-                for (const rid of porteuses) crossDelta[rid] = (crossDelta[rid] || 0) + (aj.montant || 0)
-              }
+        const segRe = /([^|]+)/g
+        const codeRe = /\b(HM[A-Z0-9]{8,10})\b/i
+        const resolutionRe = /resolution (\d{8,})/i
+        const amountRe = /\(-?\s*([\d.,]+)\s*€?\)\s*$/
+        const segments = []
+        for (const p of (realPayouts || [])) {
+          const porteuses = (p.payout_reservation || []).map(x => x.reservation_id)
+          if (!porteuses.length) continue
+          for (const raw of (p.reference || '').match(segRe) || []) {
+            const seg = raw.trim()
+            const amountMatch = seg.match(amountRe)
+            if (!amountMatch) continue
+            const montant = -Math.round(parseFloat(amountMatch[1].replace(',', '.')) * 100)
+            if (!montant) continue
+            const codeMatch = seg.match(codeRe)
+            const resoMatch = seg.match(resolutionRe)
+            if (!codeMatch && !resoMatch) continue
+            segments.push({ porteuses, montant, code: codeMatch?.[1]?.toUpperCase() || null, resolution: resoMatch?.[1] || null })
+          }
+        }
+        if (segments.length) {
+          const codes = [...new Set(segments.filter(s => s.code).map(s => s.code))]
+          const resaByCode = new Map()
+          if (codes.length) {
+            const { data: resasCode } = await supabase.from('reservation')
+              .select('id, code, bien!inner(agence)').in('code', codes).eq('bien.agence', AGENCE)
+            for (const r of (resasCode || [])) resaByCode.set(r.code, r.id)
+          }
+          const resolutions = [...new Set(segments.filter(s => !s.code && s.resolution).map(s => s.resolution))]
+          const ajByResolution = new Map()
+          if (resolutions.length) {
+            const { data: ajs } = await supabase.from('reservation_ajustement').select('reservation_id, label')
+            for (const num of resolutions) {
+              const aj = (ajs || []).find(a => (a.label || '').includes(num))
+              if (aj) ajByResolution.set(num, aj.reservation_id)
             }
+          }
+          for (const s of segments) {
+            const origineId = s.code ? resaByCode.get(s.code) : (s.resolution ? ajByResolution.get(s.resolution) : null)
+            if (!origineId || s.porteuses.includes(origineId)) continue
+            for (const rid of s.porteuses) crossDelta[rid] = (crossDelta[rid] || 0) + s.montant
           }
         }
       } catch (e) { console.error('crossDelta ajustements:', e) }
