@@ -90,8 +90,14 @@ export function genererStatementHTML(proprio, mois, data) {
     if (f.statut === 'a_facturer')                                       return s + (f.montant_ttc || 0)
     return s
   }, 0)
+  // Frais proprio facturés directement (mode facturer_direct) : pas déduits du reversement
+  // (facture séparée) mais bien DUS à l'agence ce mois → affichés dans le bloc Charges
+  // (ex. « Gestion comptable exceptionnelle » sur GASQ, bien sans collecte de loyer)
+  const fraisFacturesDirectList = fraisProprietaire.filter(f =>
+    f.mode_traitement === 'facturer_direct' && ['a_facturer', 'facture'].includes(f.statut))
+  const fraisFacturesDirectTotal = fraisFacturesDirectList.reduce((s, f) => s + (f.montant_ttc || 0), 0)
   const deboursTotal  = deboursSeuls + haownerTotal + ownerStayMenageTotal
-  const totalManager  = honTotal + (sansGestionLoyer ? fmenTotalK + autoReelTotalK : (showMenage ? menageTotal : 0)) + deboursTotal + fraisDeductionLoyTotal
+  const totalManager  = honTotal + (sansGestionLoyer ? fmenTotalK + autoReelTotalK : (showMenage ? menageTotal : 0)) + deboursTotal + fraisDeductionLoyTotal + fraisFacturesDirectTotal
   // virementNet calculé depuis les totaux du tableau pour garantir la cohérence :
   // tout changement dans les règles de calcul des lignes se répercute automatiquement dans le bloc
   const virementNet   = Math.max(0, virTotal - fraisDeductionLoyTotal + remboursementsTotal - deboursSeuls - haownerTotal - ownerStayMenageTotal)
@@ -245,6 +251,9 @@ export function genererStatementHTML(proprio, mois, data) {
     <div style="display:flex;justify-content:space-between;padding:3px 0;border-bottom:1px solid #ece8e2;font-size:10px">
       <span style="color:#9c8c7a">Débours / Achats</span><span>${deboursTotal > 0 ? fmt(deboursTotal) : '—'}</span>
     </div>
+    ${fraisFacturesDirectList.map(f => `<div style="display:flex;justify-content:space-between;padding:3px 0;border-bottom:1px solid #ece8e2;font-size:10px">
+      <span style="color:#9c8c7a">${escapeNonAscii(f.libelle || 'Frais propriétaire')} <span style="font-size:8px;font-style:italic">(facturé)</span></span><span>${fmt(f.montant_ttc || 0)}</span>
+    </div>`).join('')}
     ${fraisDeductionLoyList.map(f => {
       const montant = (f.statut === 'facture' && f.statut_deduction !== 'en_attente') ? (f.montant_deduit_loy || 0)
         : (f.statut === 'facture' && f.statut_deduction === 'en_attente') ? (f.montant_ttc || 0)
