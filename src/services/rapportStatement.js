@@ -299,6 +299,9 @@ export function genererStatementHTML(proprio, mois, data) {
     ${deboursSeuls > 0 ? `<div style="display:flex;justify-content:space-between;padding:3px 0;border-bottom:1px solid #ece8e2;font-size:10px">
       <span style="color:#9c8c7a">Débours / prestations</span><span style="color:#DC2626">− ${fmt(deboursSeuls)}</span>
     </div>` : ''}
+    ${sansGestionLoyer ? fraisFacturesDirectList.map(f => `<div style="display:flex;justify-content:space-between;padding:3px 0;border-bottom:1px solid #ece8e2;font-size:10px">
+      <span style="color:#9c8c7a">${escapeNonAscii(f.libelle || 'Frais propriétaire')}</span><span style="color:#DC2626">− ${fmt(f.montant_ttc || 0)}</span>
+    </div>`).join('') : ''}
     ${haownerTotal > 0 ? `<div style="display:flex;justify-content:space-between;padding:3px 0;border-bottom:1px solid #ece8e2;font-size:10px">
       <span style="color:#CC9933">Achats HAOWNER</span><span style="color:#DC2626">− ${fmt(haownerTotal)}</span>
     </div>` : ''}
