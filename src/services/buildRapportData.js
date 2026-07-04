@@ -78,7 +78,7 @@ export async function buildRapportData(bienId, propId, mois, opts = {}) {
     // 5. Taux de commission
     supabase
       .from('bien')
-      .select('taux_commission_override, mode_encaissement, proprietaire:proprietaire_id(taux_commission)')
+      .select('taux_commission_override, mode_encaissement, gestion_loyer, proprietaire:proprietaire_id(taux_commission)')
       .eq('id', bienId)
       .maybeSingle()
       .then(r => ({
@@ -89,6 +89,7 @@ export async function buildRapportData(bienId, propId, mois, opts = {}) {
           ? r.data.taux_commission_override * 100
           : (r.data?.proprietaire?.taux_commission || 25),
         modeEncaissement: r.data?.mode_encaissement || 'dcb',
+        gestionLoyer:     r.data?.gestion_loyer !== false,
       })),
     // 6. Ventilation historique VIRProprio (3 mois précédents) pour projection
     (() => {
@@ -481,6 +482,11 @@ export async function buildRapportData(bienId, propId, mois, opts = {}) {
   const honTotal  = resasGuest.reduce((s, r) => s + (r.hon || 0), 0)
   const fmenTotal = resasEnrichies.reduce((s, r) => s + (r.fmen || 0), 0)
   const autoTotal = resasEnrichies.reduce((s, r) => s + (ventByResa[r.id]?.AUTO?.montant_ht || 0), 0)
+  // AUTO réel : coût AE réel saisi au Portail AE (montant_reel), fallback provision (montant_ht)
+  const autoReelTotal = resasEnrichies.reduce((s, r) => {
+    const a = ventByResa[r.id]?.AUTO
+    return s + (a ? (a.montant_reel ?? a.montant_ht ?? 0) : 0)
+  }, 0)
 
   // RevPAR = virementNet / nuitsDispos
   const revpar = nuitsDispos > 0 && virementNet > 0 ? Math.round(virementNet / nuitsDispos) : null
@@ -531,7 +537,8 @@ export async function buildRapportData(bienId, propId, mois, opts = {}) {
     nbReviewsGlobal: allReviewsData?.length || 0,
     kpis: {
       nbResas, caHeb, baseCommTotal, nuitsOccupees, nuitsDispos,
-      tauxOcc, dureeMoy, loyTotal, honTotal, fmenTotal, autoTotal, virementNet,
+      tauxOcc, dureeMoy, loyTotal, honTotal, fmenTotal, autoTotal, autoReelTotal, virementNet,
+      gestionLoyer: bienConfig.gestionLoyer,
       modeEncaissement, virTotalProprioEncaisse,
       revpar, projection_revenus,
       // Debug interne

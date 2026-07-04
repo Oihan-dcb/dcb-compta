@@ -62,6 +62,11 @@ export function genererStatementHTML(proprio, mois, data) {
   // Calculs Summary — valeurs pré-calculées dans PageRapports.jsx (r.hon, r.vir, etc.)
   const honTotal          = resas.reduce((s, r) => s + (r.hon  || 0), 0)
   const menageTotal       = resas.reduce((s, r) => s + (r.menage_voyageur || 0), 0)
+  // Bien sans collecte de loyer : le proprio PAIE les charges → détailler FMEN (facturé
+  // compte courant) et main d'œuvre AE réelle (remboursée au séquestre) en haut du bloc
+  const sansGestionLoyer  = data.kpis?.gestionLoyer === false
+  const fmenTotalK        = data.kpis?.fmenTotal || 0
+  const autoReelTotalK    = data.kpis?.autoReelTotal ?? data.kpis?.autoTotal ?? 0
   const grossTotal        = resas.reduce((s, r) => s + ((r.gross_revenue ?? r.fin_revenue) || 0), 0)
   const caHeb             = resas.filter(r => !r.owner_stay).reduce((s, r) => s + (r.fin_revenue || 0) - getMgmtFee(r), 0)
   const virTotal          = resas.reduce((s, r) => r.proprio_encaisse ? s : s + (r.vir  || 0), 0)
@@ -86,7 +91,7 @@ export function genererStatementHTML(proprio, mois, data) {
     return s
   }, 0)
   const deboursTotal  = deboursSeuls + haownerTotal + ownerStayMenageTotal
-  const totalManager  = honTotal + (showMenage ? menageTotal : 0) + deboursTotal + fraisDeductionLoyTotal
+  const totalManager  = honTotal + (sansGestionLoyer ? fmenTotalK + autoReelTotalK : (showMenage ? menageTotal : 0)) + deboursTotal + fraisDeductionLoyTotal
   // virementNet calculé depuis les totaux du tableau pour garantir la cohérence :
   // tout changement dans les règles de calcul des lignes se répercute automatiquement dans le bloc
   const virementNet   = Math.max(0, virTotal - fraisDeductionLoyTotal + remboursementsTotal - deboursSeuls - haownerTotal - ownerStayMenageTotal)
@@ -226,7 +231,12 @@ export function genererStatementHTML(proprio, mois, data) {
     <div style="display:flex;justify-content:space-between;padding:3px 0;border-bottom:1px solid #ece8e2;font-size:10px">
       <span style="color:#9c8c7a">Commissions ${AGENCE_BRAND.short} (HON)</span><span style="font-weight:500">${fmt(honTotal)}</span>
     </div>
-    ${showMenage ? `<div style="display:flex;justify-content:space-between;padding:3px 0;border-bottom:1px solid #ece8e2;font-size:10px">
+    ${sansGestionLoyer ? `<div style="display:flex;justify-content:space-between;padding:3px 0;border-bottom:1px solid #ece8e2;font-size:10px">
+      <span style="color:#9c8c7a">Forfait ménage (FMEN)</span><span style="font-weight:500">${fmt(fmenTotalK)}</span>
+    </div>
+    <div style="display:flex;justify-content:space-between;padding:3px 0;border-bottom:1px solid #ece8e2;font-size:10px">
+      <span style="color:#9c8c7a">Main d'œuvre AE (réel)</span><span style="font-weight:500">${fmt(autoReelTotalK)}</span>
+    </div>` : showMenage ? `<div style="display:flex;justify-content:space-between;padding:3px 0;border-bottom:1px solid #ece8e2;font-size:10px">
       <span style="color:#9c8c7a">Ménage total (voyageurs)</span><span>${fmt(menageTotal)}</span>
     </div>` : ''}
     ${ownerStayMenageTotal > 0 ? `<div style="display:flex;justify-content:space-between;padding:3px 0;border-bottom:1px solid #ece8e2;font-size:10px">
