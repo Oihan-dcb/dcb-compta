@@ -307,6 +307,18 @@ const [pushing, setPushing] = useState(false)
               const aj = (ajs || []).find(a => (a.label || '').includes(num))
               if (aj) ajByResolution.set(num, aj.reservation_id)
             }
+            // Repli : aucune ligne reservation_ajustement (résa d'origine clôturée, jamais
+            // re-synchronisée depuis l'ajout de l'ajustement côté Hospitable) → recherche
+            // directe du n° de résolution dans hospitable_raw des résas du même périmètre.
+            const manquants = resolutions.filter(num => !ajByResolution.has(num))
+            if (manquants.length) {
+              const { data: resasRaw } = await supabase.from('reservation')
+                .select('id, hospitable_raw').in('bien_id', uniqueBienIds)
+              for (const num of manquants) {
+                const r = (resasRaw || []).find(rr => JSON.stringify(rr.hospitable_raw || {}).includes(num))
+                if (r) ajByResolution.set(num, r.id)
+              }
+            }
           }
           for (const s of segments) {
             const origineId = s.code ? resaByCode.get(s.code) : (s.resolution ? ajByResolution.get(s.resolution) : null)
