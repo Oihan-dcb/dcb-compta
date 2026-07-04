@@ -240,17 +240,21 @@ export async function buildComptaMensuelle(mois, bienIds = null) {
 
   // Owner stay : FMEN TTC + AUTO HT par bien (depuis ventilation, réservations owner_stay)
   // Identique à facturesEvoliz.js — absorbés par LOY résiduel, réduit le reversement
-  // Seuls les owner stays avec fin_revenue > 0 (proprio paie le ménage) sont absorbés sur le LOY.
-  // Si fin_revenue = null (séjour gratuit), l'AUTO ne réduit pas le reversement — aligné sur buildRapportData.
-  const osResaIds = new Set(resas.filter(r => r.owner_stay && (r.fin_revenue || 0) > 0).map(r => r.id))
+  // Absorbés si fin_revenue > 0 (proprio paie le ménage) OU ménage saisi manuellement
+  // (ligne MEN posée depuis PageRapports). Sinon (séjour gratuit) rien ne réduit le reversement.
+  const osAllIds = new Set(resas.filter(r => r.owner_stay).map(r => r.id))
+  const osMenSaisiIds = new Set(ventils.filter(v => v.code === 'MEN' && osAllIds.has(v.reservation_id)).map(v => v.reservation_id))
+  const osResaIds = new Set(resas.filter(r => r.owner_stay && ((r.fin_revenue || 0) > 0 || osMenSaisiIds.has(r.id))).map(r => r.id))
   const osVentByBien = {}
   if (osResaIds.size > 0) {
     for (const v of ventils) {
       if (!osResaIds.has(v.reservation_id)) continue
-      if (v.code !== 'FMEN' && v.code !== 'AUTO') continue
+      if (v.code !== 'FMEN' && v.code !== 'AUTO' && v.code !== 'MEN') continue
       if (!osVentByBien[v.bien_id]) osVentByBien[v.bien_id] = { fmenTTC: 0, autoHT: 0 }
       if (v.code === 'FMEN') osVentByBien[v.bien_id].fmenTTC += (v.montant_ttc || 0)
       if (v.code === 'AUTO') osVentByBien[v.bien_id].autoHT += (v.montant_reel != null ? v.montant_reel : (v.montant_ht || 0))
+      // MEN saisi manuellement = coût AE refacturé au proprio, hors TVA → canal AUTO (cf. facturesEvoliz)
+      if (v.code === 'MEN')  osVentByBien[v.bien_id].autoHT += (v.montant_ht || 0)
     }
   }
 
@@ -285,6 +289,9 @@ export async function buildComptaMensuelle(mois, bienIds = null) {
     const virHt2      = vent(b.id, 'VIR').ht
     const fraisDirect = fraisDirectByBien[b.id] || 0
     const rembours    = remboursParBien[b.id]   || 0
+    // menHt garde le MEN owner-stay : autoHt (missions) inclut la mission du séjour proprio,
+    // le MEN saisi la neutralise ici — la déduction passe par ownerStayAbsorb, pas par autoAbsorbable.
+    // (facturesEvoliz l'exclut au contraire car son autoBien vient des ventilations, sans la mission owner.)
     const menHt       = vent(b.id, 'MEN').ht
     const autoAbsorbable = Math.max(0, autoHt - menHt)
     // Source de vérité : facture per-bien si validée, sinon calcul ventilation

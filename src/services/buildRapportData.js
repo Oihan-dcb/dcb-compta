@@ -376,11 +376,13 @@ export async function buildRapportData(bienId, propId, mois, opts = {}) {
     .filter(r => r.owner_stay)
     .map(r => {
       const vent = ventByResa[r.id] || {}
-      // FMEN TTC + AUTO réel (ou HT) = montant total ménage owner
+      // MEN saisi manuellement (PageRapports) = total ménage refacturé au proprio.
+      // Sinon FMEN TTC + AUTO réel (ou HT) = montant total ménage owner
       // FMEN.montant_ttc car TVA incluse → 6000 + AUTO 2500 = 8500 cts = 85 €
+      const men  = vent.MEN?.montant_ttc || 0
       const fmen = vent.FMEN?.montant_ttc || 0
       const auto = vent.AUTO?.montant_reel ?? vent.AUTO?.montant_ht ?? 0
-      const montantVentile = fmen + auto
+      const montantVentile = men > 0 ? men : fmen + auto
       // Fallback si pas encore ventilé : fin_accommodation > fin_revenue > forfait_menage_proprio
       // Tous en centimes — fmt() divise par 100
       const fallback = r.fin_accommodation || r.fin_revenue || r.bien?.forfait_menage_proprio || 0

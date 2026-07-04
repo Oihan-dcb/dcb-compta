@@ -261,12 +261,14 @@ export default function PageRapports() {
     setSavingMenage(true)
     try {
       // Contrainte unique réelle : (reservation_id, code, libelle) — cf. ventilation_resa_code_libelle_unique
+      // Code MEN (pas FMEN) : c'est le ménage total refacturé au proprio (coût AE, hors TVA),
+      // pas le forfait DCB — un FMEN partirait dans la facture Evoliz forfait ménage.
       const { error } = await supabase.from('ventilation').upsert({
         reservation_id: row.id,
         bien_id: row.bien_id,
         mois_comptable: mois,
-        code: 'FMEN',
-        libelle: 'Forfait ménage séjour propriétaire',
+        code: 'MEN',
+        libelle: 'Ménage séjour propriétaire',
         montant_ht: montantCents,
         montant_ttc: montantCents,
         calcul_source: 'manual',

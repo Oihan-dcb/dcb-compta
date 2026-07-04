@@ -335,16 +335,22 @@ async function genererFactureGroupe(proprio, biens, mois, ctx) {
       !PLATFORMS_DCB_FACT.includes(resaPlatMapFact.get(v.reservation_id) || '')
   }
 
-  // Seuls les owner stays avec fin_revenue > 0 sont absorbés sur le LOY — aligné sur buildRapportData.
-  const osResaIds = new Set((ownerStayResas || []).filter(r => (r.fin_revenue || 0) > 0).map(r => r.id))
+  // Owner stays absorbés sur le LOY : fin_revenue > 0 OU ménage saisi manuellement
+  // (ligne MEN posée depuis PageRapports — le proprio paie même si fin_revenue est null).
+  const osAllIds = new Set((ownerStayResas || []).map(r => r.id))
+  const osMenSaisiIds = new Set(ventilation.filter(l => l.code === 'MEN' && osAllIds.has(l.reservation_id)).map(l => l.reservation_id))
+  const osResaIds = new Set((ownerStayResas || []).filter(r => (r.fin_revenue || 0) > 0 || osMenSaisiIds.has(r.id)).map(r => r.id))
 
   const osVentByBien = new Map()
   if (osResaIds.size > 0) {
-    for (const v of ventilation.filter(l => osResaIds.has(l.reservation_id) && (l.code === 'FMEN' || l.code === 'AUTO'))) {
+    for (const v of ventilation.filter(l => osResaIds.has(l.reservation_id) && (l.code === 'FMEN' || l.code === 'AUTO' || l.code === 'MEN'))) {
       if (!osVentByBien.has(v.bien_id)) osVentByBien.set(v.bien_id, { fmenTTC: 0, autoHT: 0 })
       const e = osVentByBien.get(v.bien_id)
       if (v.code === 'FMEN') e.fmenTTC += (v.montant_ttc || 0)
       if (v.code === 'AUTO') e.autoHT += (v.montant_ht || 0)
+      // MEN saisi manuellement = coût AE refacturé au proprio, hors TVA → canal AUTO (débours),
+      // jamais canal FMEN (qui part en prestation TVA 20% sur la facture en cas de surplus)
+      if (v.code === 'MEN')  e.autoHT += (v.montant_ht || 0)
     }
   }
 
@@ -443,8 +449,10 @@ async function genererFactureGroupe(proprio, biens, mois, ctx) {
       .reduce(function(s, l) { return s + (l.montant_reel !== null ? l.montant_reel : (l.montant_ht || 0)) }, 0)
     // MEN de ce bien : AUTO est deja deduit du MEN pour donner FMEN
     // La part AUTO couverte par MEN ne touche pas le LOY du proprio (CAS DCB)
+    // Exclure le MEN des owner stays (saisie manuelle refacturée au proprio via l'absorption
+    // owner stay — pas un ménage collecté auprès d'un voyageur)
     const menBien = ventilation
-      .filter(function(l) { return l.bien_id === bien.id && l.code === 'MEN' })
+      .filter(function(l) { return l.bien_id === bien.id && l.code === 'MEN' && !osAllIds.has(l.reservation_id) })
       .reduce(function(s, l) { return s + l.montant_ht }, 0)
     const autoCouvertMen = Math.min(autoBien, menBien)
     const autoNetMen     = Math.max(0, autoBien - autoCouvertMen)
