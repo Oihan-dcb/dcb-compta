@@ -9,6 +9,8 @@ export async function exportFacturesEvoliz(mois, bienIds = null) {
       bien:bien_id(hospitable_name)`
 
   // Requête principale (avec filtre bienIds si actif)
+  // bien_id IS NULL = facture groupe (ex. Maison Maïté, plusieurs biens sur une facture
+  // proprio globale) : jamais exclue par le filtre bienIds, un IN() ne matche jamais NULL.
   let query = supabase
     .from('facture_evoliz')
     .select(selectStr)
@@ -16,7 +18,7 @@ export async function exportFacturesEvoliz(mois, bienIds = null) {
     .eq('agence', AGENCE)
     .neq('type_facture', 'lauian_fmen')
     .order('created_at', { ascending: true })
-  if (bienIds) query = query.in('bien_id', bienIds)
+  if (bienIds) query = query.or(`bien_id.in.(${bienIds.join(',')}),bien_id.is.null`)
   const { data: facturesDCB, error: fetchError } = await query
   if (fetchError) throw new Error(`Export factures Evoliz : ${fetchError.message}`)
 
