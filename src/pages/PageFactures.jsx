@@ -1114,9 +1114,10 @@ const [pushing, setPushing] = useState(false)
                       </button>
                     )}
 
-                    {/* Rouvrir la saisie (clôture per-bien) — facture envoyée, réservé à Oïhan (enforcé edge fn) */}
+                    {/* Rouvrir la saisie (clôture per-bien) — facture envoyée, réservé à Oïhan (enforcé edge fn).
+                        Facture globale (bien_id null, ex. Maison Maïté) : clôturée si l'un des biens du proprio l'est. */}
                     {['envoye_evoliz','payee'].includes(f.statut) && f.type_facture !== 'com' && (
-                      cloturesActives.has(f.bien_id) ? (
+                      (f.bien_id ? cloturesActives.has(f.bien_id) : (f.proprietaire?.bien || []).some(b => cloturesActives.has(b.id))) ? (
                         <button
                           className="btn btn-sm"
                           style={{ background: '#fff', color: '#B91C1C', border: '1px solid #FCA5A5' }}
