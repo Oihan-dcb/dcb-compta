@@ -353,7 +353,10 @@ export async function buildRapportData(bienId, propId, mois, opts = {}) {
       hon:  v.HON?.montant_ttc || 0,
       loy:  loyHt,
       vir:  virHt,
-      fmen: v.FMEN?.montant_ttc || 0,
+      // Le réel prime : FMEN.montant_reel (TTC, = FMEN prévu + AUTO prévu − AUTO réel).
+      // Cohérent avec l'AUTO réel utilisé partout — sinon les charges des biens
+      // gestion_loyer=false (FMEN + AUTO réel) sont fausses de l'écart prévu/réel.
+      fmen: v.FMEN?.montant_reel ?? v.FMEN?.montant_ttc ?? 0,
       taxe: taxeDisplay,
       frais_plateforme: fraisPlat,
       net_plateforme: netPlat,
