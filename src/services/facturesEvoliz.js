@@ -1572,7 +1572,7 @@ export async function envoyerEmailDeboursProprio(facture) {
 
   const { error } = await supabase
     .from('facture_evoliz')
-    .update({ statut: 'envoye_proprio' })
+    .update({ statut: 'envoye_proprio', envoye_proprio_at: new Date().toISOString(), nb_relances: 0, derniere_relance_at: null })
     .eq('id', facture.id)
   if (error) throw error
   return true

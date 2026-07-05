@@ -1067,6 +1067,21 @@ const [pushing, setPushing] = useState(false)
                       {statutInfo.label}
                     </span>
 
+                    {/* Relances débours (cron relance-debours) : ×1/×2 puis escalade sans réponse */}
+                    {f.statut === 'envoye_proprio' && (f.nb_relances || 0) > 0 && (
+                      (f.nb_relances >= 3) ? (
+                        <span title="2 relances envoyées sans confirmation — escaladé (push), à traiter manuellement"
+                          style={{ padding: '4px 10px', borderRadius: 100, fontSize: 11, fontWeight: 700, background: '#FEE2E2', color: '#B91C1C' }}>
+                          ⚠ sans réponse
+                        </span>
+                      ) : (
+                        <span title={`Relance ${f.nb_relances} envoyée le ${f.derniere_relance_at ? new Date(f.derniere_relance_at).toLocaleDateString('fr-FR') : '—'}`}
+                          style={{ padding: '4px 10px', borderRadius: 100, fontSize: 11, fontWeight: 600, background: '#FEF3C7', color: '#92400E' }}>
+                          🔔 relancé ×{f.nb_relances}
+                        </span>
+                      )
+                    )}
+
                     {/* Facture LLD bloquée (loyer non encaissé) — ni validation ni push */}
                     {f.bloque_treso && (
                       <span style={{ padding: '4px 10px', borderRadius: 100, fontSize: 12, fontWeight: 600, background: '#FEE2E2', color: '#B91C1C' }}

@@ -100,7 +100,7 @@ serve(async (req) => {
   // Vérifier l'état actuel
   const { data: facture } = await supabase
     .from('facture_evoliz')
-    .select('id, statut, mois')
+    .select('id, statut, mois, total_ttc, bien:bien_id(code), proprietaire:proprietaire_id(nom, prenom)')
     .eq('id', verified.factureId)
     .maybeSingle()
 
@@ -132,6 +132,33 @@ serve(async (req) => {
       { status: 500, headers: { 'Content-Type': 'text/html; charset=utf-8' } }
     )
   }
+
+  // Push Oïhan (PowerHouse + Portail AE — table push_subscriptions partagée). Best-effort.
+  try {
+    const pushSecret = Deno.env.get('PORTAIL_CRON_SECRET')
+    if (pushSecret) {
+      const { data: oihan } = await supabase
+        .from('auto_entrepreneur')
+        .select('ae_user_id')
+        .eq('nom', 'CAMPANDEGUI').ilike('prenom', 'oihan%')
+        .maybeSingle()
+      if (oihan?.ae_user_id) {
+        const proprioNom = [facture.proprietaire?.prenom, facture.proprietaire?.nom].filter(Boolean).join(' ') || 'Un propriétaire'
+        const bienCode = facture.bien?.code || ''
+        const montant = ((facture.total_ttc || 0) / 100).toFixed(2)
+        await fetch('https://staff-app.destinationcotebasque.com/api/push-user', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${pushSecret}` },
+          body: JSON.stringify({
+            user_id: oihan.ae_user_id,
+            title: '💶 Virement débours confirmé',
+            body: `${proprioNom} a confirmé le virement débours ${bienCode} ${facture.mois} — ${montant} €`,
+            url: '/',
+          }),
+        }).catch(() => {})
+      }
+    }
+  } catch { /* best-effort — la confirmation proprio n'échoue jamais pour un push raté */ }
 
   return new Response(
     htmlPage(
