@@ -513,9 +513,11 @@ const [pushing, setPushing] = useState(false)
       const [f, s] = await Promise.all([getFacturesMois(mois), getStatsFactures(mois)])
       setFactures(f)
       setStats(s)
-      // État réel du verrou de saisie par bien (le bouton « Rouvrir » doit refléter la base)
+      // État réel du verrou de saisie par bien (le bouton « Rouvrir » doit refléter la base).
+      // Pas de filtre agence : la page affiche aussi des biens Lauian (FMEN clients) dont les
+      // clôtures sont posées avec agence='lauian' — le trigger de protection ne filtre pas non plus.
       import('../lib/supabase').then(({ supabase }) =>
-        supabase.from('cloture_bien').select('bien_id').eq('mois', mois).eq('agence', AGENCE).eq('active', true)
+        supabase.from('cloture_bien').select('bien_id').eq('mois', mois).eq('active', true)
           .then(({ data }) => setCloturesActives(new Set((data || []).map(c => c.bien_id))))
       )
       chargerSoldesControle(f)
