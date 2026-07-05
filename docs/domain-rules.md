@@ -452,6 +452,16 @@ FMEN Lauian) et `buildComptaMensuelle` (onglet comptabilité) lisent `FMEN.monta
 n'est jamais impacté par le passage prévu→réel. ⚠ La facture honoraires DCB (`sumByCode('FMEN')`)
 lit encore le prévu — extension à arbitrer.
 
+**Facture FMEN Lauian — réel > provision > report + M+1 (session 05/07/2026, migration 228)** :
+par résa du mois M : RÉEL si saisi, sinon PROVISION (invariant métier « l'AE respecte la provision
+ou fait moins » → jamais de surfacturation), sinon la résa est **reportée** (ni réel ni provision —
+AUTO à 0). Le FMEN facturé par résa est marqué dans `ventilation.fmen_facture` (TTC) à la génération.
+Sur la facture de M+1 (uniquement pour les mois dont la facture est `envoye_evoliz`/`payee`) :
+- **Rattrapage** : résa reportée dont le réel est arrivé → ligne « Rattrapage ménage {resa} ({mois}) ».
+- **Ajustement** : résa facturée dont l'effectif a changé → ligne delta « Ajustement ménage {resa} ({mois}) ».
+Traçabilité : `journal_ops` (`fmen_lauian_reporte`, `fmen_lauian_ajustement`) + une ligne facture par résa.
+Cas neutralisés au backfill : ARROSA (cas particulier), BITXI juin 2026 (avoir manuel).
+
 **Avant** (comportement incorrect supprimé) : AUTO absorbait du LOY même quand MEN le couvrait → DEB_AE fantôme et double-déduction du proprio.
 
 ### 12.2 Prestations hors forfait validées (code EXTRA)

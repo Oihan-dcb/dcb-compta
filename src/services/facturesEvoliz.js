@@ -187,7 +187,7 @@ async function prechargerDonneesFacturation(mois, bienIds, proprietaireIds, agen
     { data: ajustementsData },
   ] = await Promise.all([
     supabase.from('ventilation')
-      .select('bien_id, code, montant_ht, montant_tva, montant_ttc, montant_reel, reservation_id')
+      .select('id, bien_id, code, montant_ht, montant_tva, montant_ttc, montant_reel, fmen_facture, reservation_id')
       .in('bien_id', bienIds).eq('mois_comptable', mois),
 
     supabase.from('reservation')
@@ -1151,20 +1151,71 @@ async function genererFactureLauianFMEN(proprio, biens, mois, ctx) {
   const fmenVentil = ctx.ventilationGlobale.filter(function(v) {
     return bienIds.includes(v.bien_id) && v.code === 'FMEN'
   })
-  // Le RÉEL prime : FMEN.montant_reel (TTC, posé par update-ventilation-auto = FMEN prévu
-  // + AUTO prévu − AUTO réel des missions) remplace le prévu quand il existe.
-  // On facture au client Lauian le ménage réellement dû à DCB, pas l'estimation.
-  const fmenLignes = fmenVentil.map(function(v) {
+  // ── FMEN du mois — par résa, dans l'ordre : RÉEL > PROVISION > REPORT ─────
+  // Réel = FMEN.montant_reel (posé par update-ventilation-auto = FMEN prévu + AUTO prévu
+  // − AUTO réel). Provision = montant_ttc (calculé avec bien.provision_ae_ref).
+  // Ni réel ni provision (AUTO à 0) → résa REPORTÉE : facturée dès que le réel arrive
+  // (rattrapage M+1). L'invariant « réel ≤ provision » garantit qu'on ne surfacture jamais.
+  const autoByResa = new Map()
+  for (const v of ctx.ventilationGlobale) {
+    if (bienIds.includes(v.bien_id) && v.code === 'AUTO') autoByResa.set(v.reservation_id, v)
+  }
+  const fmenInclus  = [] // { id, ttc, ht, tva }
+  const fmenReporte = [] // ventilation ids sans réel ni provision
+  for (const v of fmenVentil) {
+    let ttc = null
     if (v.montant_reel != null) {
-      const ttc = v.montant_reel
-      const ht  = Math.round(ttc / 1.20)
-      return { ht: ht, tva: ttc - ht, ttc: ttc }
+      ttc = v.montant_reel
+    } else {
+      const auto = autoByResa.get(v.reservation_id)
+      // Pas de ligne AUTO = ventilation antérieure au mécanisme → comportement historique (prévu)
+      const provisionConnue = !auto || (auto.montant_ht || 0) > 0
+      if (provisionConnue) ttc = v.montant_ttc || 0
     }
-    return { ht: v.montant_ht || 0, tva: v.montant_tva || 0, ttc: v.montant_ttc || 0 }
-  })
-  const fmenHT  = fmenLignes.reduce(function(s, l) { return s + l.ht  }, 0)
-  const fmenTVA = fmenLignes.reduce(function(s, l) { return s + l.tva }, 0)
-  const fmenTTC = fmenLignes.reduce(function(s, l) { return s + l.ttc }, 0)
+    if (ttc === null) { fmenReporte.push(v.id); continue }
+    const ht = Math.round(ttc / 1.20)
+    fmenInclus.push({ id: v.id, ttc: ttc, ht: ht, tva: ttc - ht })
+  }
+  const fmenHT  = fmenInclus.reduce(function(s, l) { return s + l.ht  }, 0)
+  const fmenTVA = fmenInclus.reduce(function(s, l) { return s + l.tva }, 0)
+  const fmenTTC = fmenInclus.reduce(function(s, l) { return s + l.ttc }, 0)
+
+  // ── Rattrapages / ajustements des mois antérieurs (facture déjà envoyée) ──
+  // Rattrapage : résa reportée (fmen_facture null) dont le réel est arrivé → facturée en entier.
+  // Ajustement : résa facturée (fmen_facture) dont l'effectif a changé → delta (≥ 0 si réel ≤ provision).
+  const [{ data: pastFactures }, { data: pastFmen }] = await Promise.all([
+    supabase.from('facture_evoliz')
+      .select('mois, statut').eq('proprietaire_id', proprio.id)
+      .eq('type_facture', 'lauian_fmen').lt('mois', mois),
+    supabase.from('ventilation')
+      .select('id, bien_id, mois_comptable, montant_ttc, montant_reel, fmen_facture, reservation:reservation_id(code)')
+      .in('bien_id', bienIds).eq('code', 'FMEN')
+      .gte('mois_comptable', '2026-04').lt('mois_comptable', mois),
+  ])
+  const moisEnvoyes = new Set((pastFactures || [])
+    .filter(function(f) { return ['envoye_evoliz', 'payee'].includes(f.statut) })
+    .map(function(f) { return f.mois }))
+  const ajustements = [] // { id, ttc, effectif, libelle }
+  for (const v of (pastFmen || [])) {
+    if (!moisEnvoyes.has(v.mois_comptable)) continue // mois pas encore facturé → sa propre facture s'en charge
+    const resaCode = v.reservation?.code || ''
+    if (v.fmen_facture == null) {
+      if (v.montant_reel != null) {
+        ajustements.push({ id: v.id, ttc: v.montant_reel, effectif: v.montant_reel,
+          libelle: `Rattrapage ménage ${resaCode} (${v.mois_comptable})` })
+      }
+      continue
+    }
+    const effectif = v.montant_reel != null ? v.montant_reel : (v.montant_ttc || 0)
+    const delta = effectif - v.fmen_facture
+    if (delta !== 0) {
+      ajustements.push({ id: v.id, ttc: delta, effectif: effectif,
+        libelle: `Ajustement ménage ${resaCode} (${v.mois_comptable})` })
+    }
+  }
+  const ajustHT  = ajustements.reduce(function(s, a) { return s + Math.round(a.ttc / 1.20) }, 0)
+  const ajustTTC = ajustements.reduce(function(s, a) { return s + a.ttc }, 0)
+  const ajustTVA = ajustTTC - ajustHT
 
   // Frais directs DCB→proprio Lauïan (facturer_direct ou facturer_et_deduire saisis depuis dcb-compta)
   const fraisDirect = ctx.fraisGlobaux.filter(function(f) {
@@ -1177,7 +1228,7 @@ async function genererFactureLauianFMEN(proprio, biens, mois, ctx) {
   const fraisDirectHT  = Math.round(fraisDirectTTC / 1.20)
   const fraisDirectTVA = fraisDirectTTC - fraisDirectHT
 
-  if (fmenHT === 0 && fraisDirect.length === 0) return null
+  if (fmenHT === 0 && fraisDirect.length === 0 && ajustements.length === 0) return null
 
   const existing = ctx.facturesExistantes.get(
     `${proprio.id}__${bienId ?? 'null'}__lauian_fmen`
@@ -1189,9 +1240,9 @@ async function genererFactureLauianFMEN(proprio, biens, mois, ctx) {
 
   const libelleGroupe = biens.length === 1 ? biens[0].hospitable_name : biens.map(function(b) { return b.code }).join(', ')
 
-  const totalHT  = fmenHT  + fraisDirectHT
-  const totalTVA = fmenTVA + fraisDirectTVA
-  const totalTTC = fmenTTC + fraisDirectTTC
+  const totalHT  = fmenHT  + fraisDirectHT  + ajustHT
+  const totalTVA = fmenTVA + fraisDirectTVA + ajustTVA
+  const totalTTC = fmenTTC + fraisDirectTTC + ajustTTC
 
   const factureData = {
     proprietaire_id:     proprio.id,
@@ -1242,6 +1293,22 @@ async function genererFactureLauianFMEN(proprio, biens, mois, ctx) {
     })
   }
 
+  // Rattrapages / ajustements des mois antérieurs — une ligne par résa (traçabilité)
+  for (const a of ajustements) {
+    const ht = Math.round(a.ttc / 1.20)
+    lignes.push({
+      facture_id:  factureId,
+      code:        'FMEN',
+      libelle:     a.libelle,
+      description: `Coût AE réel saisi après facturation — ${libelleGroupe}`,
+      montant_ht:  ht,
+      taux_tva:    20,
+      montant_tva: a.ttc - ht,
+      montant_ttc: a.ttc,
+      ordre:       ordre++,
+    })
+  }
+
   for (const frais of fraisDirect) {
     const ht  = Math.round(frais.montant_ttc / 1.20)
     const tva = frais.montant_ttc - ht
@@ -1260,6 +1327,32 @@ async function genererFactureLauianFMEN(proprio, biens, mois, ctx) {
 
   if (lignes.length > 0) {
     await supabase.from('facture_evoliz_ligne').insert(lignes)
+  }
+
+  // Marquer le FMEN facturé par résa (fmen_facture, TTC) — base du rattrapage/ajustement M+1.
+  // Posé à la génération : une régénération du brouillon re-marque aux valeurs courantes ;
+  // les factures envoyées ne sont plus régénérées (skip envoye_evoliz), les marques sont figées.
+  for (const l of fmenInclus) {
+    await supabase.from('ventilation').update({ fmen_facture: l.ttc }).eq('id', l.id)
+  }
+  for (const a of ajustements) {
+    await supabase.from('ventilation').update({ fmen_facture: a.effectif }).eq('id', a.id)
+  }
+  if (fmenReporte.length > 0) {
+    supabase.from('journal_ops').insert({
+      categorie: 'facturation', action: 'fmen_lauian_reporte', source: 'app', statut: 'ok',
+      mois_comptable: mois, proprietaire_id: proprio.id,
+      message: `FMEN Lauian ${mois} : ${fmenReporte.length} résa(s) reportée(s) — ni coût AE réel ni provision (rattrapage auto dès saisie du réel)`,
+      meta: { ventilation_ids: fmenReporte },
+    }).then(null, function() {})
+  }
+  if (ajustements.length > 0) {
+    supabase.from('journal_ops').insert({
+      categorie: 'facturation', action: 'fmen_lauian_ajustement', source: 'app', statut: 'ok',
+      mois_comptable: mois, proprietaire_id: proprio.id,
+      message: `FMEN Lauian ${mois} : ${ajustements.length} rattrapage(s)/ajustement(s) mois antérieurs (${(ajustTTC / 100).toFixed(2)} € TTC)`,
+      meta: { details: ajustements.map(function(a) { return { ventilation_id: a.id, ttc: a.ttc, libelle: a.libelle } }) },
+    }).then(null, function() {})
   }
 
   // Marquer les frais directs comme facturés
