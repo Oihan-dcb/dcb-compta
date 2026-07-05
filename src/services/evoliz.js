@@ -12,7 +12,7 @@
  */
 
 import { supabase } from '../lib/supabase'
-import { AGENCE } from '../lib/agence'
+import { AGENCE, AGENCE_BRAND } from '../lib/agence'
 
 const COMPANY_ID = import.meta.env.VITE_EVOLIZ_COMPANY_ID // ex: "12345"
 
@@ -346,10 +346,21 @@ export async function creerFactureEvoliz(facture) {
   // la facture est à RÉGLER par virement, sur le compte COURANT de l'agence (celui du
   // bankAccountId 'agence' porté par la facture) — PAS le séquestre des débours AE.
   const isChargesProprio = !isDebours && facture.type_facture === 'honoraires' && facture.bien?.gestion_loyer === false
+  // RIB de l'agence (compte courant + séquestre) depuis agency_config — jamais en dur
+  // (le séquestre était hardcodé DCB : faux pour Lauian)
+  const { data: ribCfg } = await supabase.from('agency_config')
+    .select('agence_iban, agence_bic, agence_titulaire, seq_lc_iban, seq_lc_bic')
+    .eq('agence', facture.agence || AGENCE).single()
+  const ribCourant = ribCfg?.agence_iban
+    ? `\n\nVirement à effectuer sur le compte COURANT :\nTitulaire : ${ribCfg.agence_titulaire || AGENCE_BRAND.label}\nIBAN : ${ribCfg.agence_iban}\nBIC : ${ribCfg.agence_bic || ''}`
+    : ''
+  const ribSequestre = ribCfg?.seq_lc_iban
+    ? `\n\nVirement à effectuer sur le compte séquestre :\nIBAN : ${ribCfg.seq_lc_iban}\nBIC : ${ribCfg.seq_lc_bic || ''}`
+    : `\n\nVirement à effectuer sur le compte séquestre :\nIBAN : FR76 1333 5000 4008 0030 4976 555\nBIC : CEPAFRPP333`
   const comment = isDebours
-    ? `Remboursement de débours auto-entrepreneur — mois ${facture.mois}\n\n⚠ ATTENTION : ce règlement est à effectuer sur le compte séquestre, différent du compte courant utilisé pour les factures d'honoraires et de forfaits ménage.\n\nVirement à effectuer sur le compte séquestre :\nIBAN : FR76 1333 5000 4008 0030 4976 555\nBIC : CEPAFRPP333`
+    ? `Remboursement de débours auto-entrepreneur — mois ${facture.mois}\n\n⚠ ATTENTION : ce règlement est à effectuer sur le compte séquestre, différent du compte courant utilisé pour les factures d'honoraires et de forfaits ménage.${ribSequestre}`
     : isChargesProprio
-      ? `Honoraires et prestations — ${facture.mois}\n\nFacture à régler par virement sur le compte COURANT de l'agence (coordonnées bancaires portées sur cette facture).\n\n⚠ ATTENTION : ce RIB est différent du compte séquestre utilisé pour les remboursements de main d'œuvre (débours auto-entrepreneur).`
+      ? `Honoraires et prestations — ${facture.mois}\n\nFacture à régler par virement sur le compte COURANT de l'agence.${ribCourant}\n\n⚠ ATTENTION : ce RIB est différent du compte séquestre utilisé pour les remboursements de main d'œuvre (débours auto-entrepreneur).`
       : facture.solde_negatif
         ? `Remboursement de frais avancés — mois ${facture.mois}`
         : `Honoraires de gestion locative — ${facture.mois}\n\nConformément au mandat de gestion, les honoraires de gestion sont directement prélevés sur le loyer encaissé avant reversement au propriétaire.`
