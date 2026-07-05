@@ -235,7 +235,10 @@ function _calculerLignes(resa: Resa): { lignes: LigneVentilation[]; isProlongati
   if (comHT > 0) lignes.push(ligneTVA('COM', 'Commission DCB', comHT, bien, resa, null, comAmount))
   if (honHT > 0) lignes.push(ligneTVA('HON', 'Honoraires de gestion', honHT, bien, resa, tauxCom, honTTC))
   if (fmenHT !== 0) lignes.push(ligneTVA('FMEN', 'Forfait ménage', fmenHT, bien, resa, null, fmenTTC))
-  if (aeAmount > 0) lignes.push(ligneHorsTVA('AUTO', 'Débours auto-entrepreneur', aeAmount, bien, resa))
+  // Ligne AUTO créée même à 0 quand il y a un ménage : provision_ae_ref absent ≠ coût nul,
+  // la ligne sert d'ancrage aux missions réelles (lier_ventilation_auto_mission +
+  // update-ventilation-auto qui pose montant_reel et le FMEN réel dérivé).
+  if (aeAmount > 0 || menAmount > 0) lignes.push(ligneHorsTVA('AUTO', 'Débours auto-entrepreneur', aeAmount, bien, resa))
   if (loyAmount > 0 && !horsSequestre) lignes.push(ligneHorsTVA('LOY', 'Reversement propriétaire', loyAmount, bien, resa))
   if (virAmount > 0 && !horsSequestre) lignes.push(ligneHorsTVA('VIR', 'Virement propriétaire', virAmount, bien, resa))
 
@@ -296,9 +299,10 @@ async function calculerVentilationResa(resa: Resa, supa: ReturnType<typeof creat
       await supa.from('ventilation').delete().eq('reservation_id', resa.id)
       const lignes: LigneVentilation[] = []
       if (fmenTTC > 0) lignes.push(ligneTVA('FMEN', 'Forfait ménage séjour propriétaire', fmenHT, bien, resa, null, fmenTTC))
-      if (autoHT > 0 && men > 0) lignes.push(ligneHorsTVA('AUTO', 'Débours auto-entrepreneur', autoHT, bien, resa))
+      // Ligne AUTO même à 0 (provision_ae_ref absent = info manquante, pas coût nul)
+      if (men > 0) lignes.push(ligneHorsTVA('AUTO', 'Débours auto-entrepreneur', autoHT, bien, resa))
       if (lignes.length > 0) { const { error } = await supa.from('ventilation').insert(lignes); if (error) throw error }
-      if (autoReel !== null && autoHT > 0) await supa.from('ventilation').update({ montant_reel: autoReel }).eq('reservation_id', resa.id).eq('code', 'AUTO')
+      if (autoReel !== null && men > 0) await supa.from('ventilation').update({ montant_reel: autoReel }).eq('reservation_id', resa.id).eq('code', 'AUTO')
       await supa.from('reservation').update({ ventilation_calculee: true }).eq('id', resa.id)
       const { data: ligneAuto } = await supa.from('ventilation').select('id').eq('reservation_id', resa.id).eq('code', 'AUTO').single()
       if (ligneAuto?.id) { try { await supa.rpc('lier_ventilation_auto_mission', { p_reservation_id: resa.id, p_ventilation_id: ligneAuto.id }) } catch {} }

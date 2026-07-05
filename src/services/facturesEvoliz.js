@@ -1151,9 +1151,20 @@ async function genererFactureLauianFMEN(proprio, biens, mois, ctx) {
   const fmenVentil = ctx.ventilationGlobale.filter(function(v) {
     return bienIds.includes(v.bien_id) && v.code === 'FMEN'
   })
-  const fmenHT  = fmenVentil.reduce(function(s, v) { return s + (v.montant_ht  || 0) }, 0)
-  const fmenTVA = fmenVentil.reduce(function(s, v) { return s + (v.montant_tva || 0) }, 0)
-  const fmenTTC = fmenVentil.reduce(function(s, v) { return s + (v.montant_ttc || 0) }, 0)
+  // Le RÉEL prime : FMEN.montant_reel (TTC, posé par update-ventilation-auto = FMEN prévu
+  // + AUTO prévu − AUTO réel des missions) remplace le prévu quand il existe.
+  // On facture au client Lauian le ménage réellement dû à DCB, pas l'estimation.
+  const fmenLignes = fmenVentil.map(function(v) {
+    if (v.montant_reel != null) {
+      const ttc = v.montant_reel
+      const ht  = Math.round(ttc / 1.20)
+      return { ht: ht, tva: ttc - ht, ttc: ttc }
+    }
+    return { ht: v.montant_ht || 0, tva: v.montant_tva || 0, ttc: v.montant_ttc || 0 }
+  })
+  const fmenHT  = fmenLignes.reduce(function(s, l) { return s + l.ht  }, 0)
+  const fmenTVA = fmenLignes.reduce(function(s, l) { return s + l.tva }, 0)
+  const fmenTTC = fmenLignes.reduce(function(s, l) { return s + l.ttc }, 0)
 
   // Frais directs DCB→proprio Lauïan (facturer_direct ou facturer_et_deduire saisis depuis dcb-compta)
   const fraisDirect = ctx.fraisGlobaux.filter(function(f) {

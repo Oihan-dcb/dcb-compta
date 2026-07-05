@@ -315,8 +315,10 @@ export function _calculerLignes(resa) {
     lignes.push(ligneTVA('FMEN', 'Forfait ménage', fmenHT, bien, resa, null, fmenTTC))
   }
 
-  // AUTO — débours auto-entrepreneur (hors TVA)
-  if (aeAmount > 0) {
+  // AUTO — débours auto-entrepreneur (hors TVA). Ligne créée même à 0 quand il y a
+  // un ménage : provision_ae_ref absent ≠ coût nul — la ligne sert d'ancrage aux
+  // missions réelles (lier_ventilation_auto_mission + update-ventilation-auto).
+  if (aeAmount > 0 || menAmount > 0) {
     lignes.push(ligneHorsTVA('AUTO', 'Débours auto-entrepreneur', aeAmount, bien, resa))
   }
 

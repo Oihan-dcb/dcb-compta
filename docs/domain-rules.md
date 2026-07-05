@@ -439,6 +439,19 @@ autoNetMen     = max(0, autoBien - menBien) → seul ce surplus va sur LOY/DEB_A
 FMEN.montant_reel = FMEN.montant_ttc + AUTO.provision - AUTO.réel
 ```
 
+**Ligne AUTO toujours créée (session 05/07/2026)** : `provision_ae_ref = 0` signifie « info non
+renseignée », PAS « coût nul ». La ligne AUTO est désormais créée dès qu'il y a un ménage
+(`menAmount > 0`), même avec provision 0 — elle sert d'ancrage aux missions réelles
+(`lier_ventilation_auto_mission` + `update-ventilation-auto`). Sans elle, le réel ne pouvait
+jamais remonter et FMEN restait = MEN (bug FMEN Lauian : BITXI, PALMARIA). Synchronisé dans
+les 3 moteurs (api/ventiler.js, ventilation-auto, src/services/ventilation.js).
+
+**Le réel prime dans les lecteurs (session 05/07/2026)** : `genererFactureLauianFMEN` (facture
+FMEN Lauian) et `buildComptaMensuelle` (onglet comptabilité) lisent `FMEN.montant_reel ?? montant_ttc`
+(HT dérivé = ttc/1,20). Invariant : FMEN_réel + AUTO_réel = FMEN_prévu + AUTO_prévu → le LOY
+n'est jamais impacté par le passage prévu→réel. ⚠ La facture honoraires DCB (`sumByCode('FMEN')`)
+lit encore le prévu — extension à arbitrer.
+
 **Avant** (comportement incorrect supprimé) : AUTO absorbait du LOY même quand MEN le couvrait → DEB_AE fantôme et double-déduction du proprio.
 
 ### 12.2 Prestations hors forfait validées (code EXTRA)
