@@ -96,8 +96,9 @@ export function genererStatementHTML(proprio, mois, data) {
   const fraisFacturesDirectList = fraisProprietaire.filter(f =>
     f.mode_traitement === 'facturer_direct' && ['a_facturer', 'facture'].includes(f.statut))
   const fraisFacturesDirectTotal = fraisFacturesDirectList.reduce((s, f) => s + (f.montant_ttc || 0), 0)
-  const deboursTotal  = deboursSeuls + haownerTotal + ownerStayMenageTotal
-  const totalManager  = honTotal + (sansGestionLoyer ? fmenTotalK + autoReelTotalK : (showMenage ? menageTotal : 0)) + deboursTotal + fraisDeductionLoyTotal + fraisFacturesDirectTotal
+  // ownerStayMenageTotal a sa propre ligne d'affichage — ne pas l'inclure dans « Débours / Achats »
+  const deboursTotal  = deboursSeuls + haownerTotal
+  const totalManager  = honTotal + (sansGestionLoyer ? fmenTotalK + autoReelTotalK : (showMenage ? menageTotal : 0)) + deboursTotal + ownerStayMenageTotal + fraisDeductionLoyTotal + fraisFacturesDirectTotal
   // virementNet calculé depuis les totaux du tableau pour garantir la cohérence :
   // tout changement dans les règles de calcul des lignes se répercute automatiquement dans le bloc
   const virementNet   = Math.max(0, virTotal - fraisDeductionLoyTotal + remboursementsTotal - deboursSeuls - haownerTotal - ownerStayMenageTotal)
