@@ -20,6 +20,7 @@ async function fetchData(mois, bienIds = null) {
     `)
     .eq('mois', mois)
     .eq('bien.agence', AGENCE)
+    .not('statut', 'in', '(cancelled,refuse)')
     .order('date_mission', { ascending: true })
   if (bienIds) missQuery = missQuery.in('bien_id', bienIds)
   const [{ data: missions, error: missErr }, { data: prestations, error: prestErr }] = await Promise.all([
@@ -27,6 +28,7 @@ async function fetchData(mois, bienIds = null) {
     supabase.from('prestation_hors_forfait')
       .select(`id, mission_id, ae_id, montant, prestation_type:prestation_type_id(nom)`)
       .eq('mois', mois)
+      .neq('statut', 'annule')
       .not('ae_id', 'is', null),
   ])
   if (missErr) throw new Error(`AUTO/Débours — missions : ${missErr.message}`)
