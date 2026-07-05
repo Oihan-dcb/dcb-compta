@@ -1577,6 +1577,11 @@ export async function envoyerEmailDeboursProprio(facture) {
     .update({ statut: 'envoye_proprio', envoye_proprio_at: new Date().toISOString(), nb_relances: 0, derniere_relance_at: null })
     .eq('id', facture.id)
   if (error) throw error
+  logOp({
+    categorie: 'facturation', action: 'email_debours_envoye', statut: 'ok', source: 'app',
+    mois_comptable: mois, bien_id: facture.bien_id || null, proprietaire_id: facture.proprietaire_id || null,
+    message: `Email débours ${bienNom} ${mois} envoyé à ${proprio.email} (${montantEur} €)`,
+  })
   return true
 }
 
