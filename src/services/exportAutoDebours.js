@@ -14,7 +14,7 @@ const GREY   = '9C8E7D'
 async function fetchData(mois, bienIds = null) {
   let missQuery = supabase.from('mission_menage')
     .select(`
-      id, reservation_id, ae_id, date_mission, duree_heures, montant, titre_ical,
+      id, reservation_id, ae_id, date_mission, duree_heures, montant, titre_ical, impute_salaire,
       bien:bien_id!inner(code, hospitable_name, agence, proprietaire:proprietaire_id(nom, prenom)),
       auto_entrepreneur:ae_id(id, prenom, nom, taux_horaire, type)
     `)
@@ -23,10 +23,10 @@ async function fetchData(mois, bienIds = null) {
     .not('statut', 'in', '(cancelled,refuse)')
     .order('date_mission', { ascending: true })
   if (bienIds) missQuery = missQuery.in('bien_id', bienIds)
-  const [{ data: missions, error: missErr }, { data: prestations, error: prestErr }] = await Promise.all([
+  const [{ data: missionsRaw, error: missErr }, { data: prestationsRaw, error: prestErr }] = await Promise.all([
     missQuery,
     supabase.from('prestation_hors_forfait')
-      .select(`id, mission_id, ae_id, montant, prestation_type:prestation_type_id(nom)`)
+      .select(`id, mission_id, ae_id, montant, impute_salaire, prestation_type:prestation_type_id(nom)`)
       .eq('mois', mois)
       .neq('statut', 'annule')
       .not('ae_id', 'is', null),
@@ -34,18 +34,23 @@ async function fetchData(mois, bienIds = null) {
   if (missErr) throw new Error(`AUTO/Débours — missions : ${missErr.message}`)
   if (prestErr) throw new Error(`AUTO/Débours — prestations : ${prestErr.message}`)
 
+  // Ménages/extras couverts par le salaire (cas hybride type Manon, CDI + AE) : pas de débours
+  // AE dessus, cf. buildComptaMensuelle.js ligne ~178 (même règle, à respecter ici aussi).
+  const missions = (missionsRaw || []).filter(m => !m.impute_salaire)
+  const prestations = (prestationsRaw || []).filter(p => !p.impute_salaire)
+
   const moisLabel = format(new Date(mois + '-01'), 'MMMM yyyy', { locale: fr })
   const nomMois = moisLabel.charAt(0).toUpperCase() + moisLabel.slice(1)
 
   const prestByMission = {}
-  for (const p of (prestations || [])) {
+  for (const p of prestations) {
     if (!p.mission_id) continue
     if (!prestByMission[p.mission_id]) prestByMission[p.mission_id] = []
     prestByMission[p.mission_id].push(p)
   }
 
   const missionsByAe = {}
-  for (const m of (missions || [])) {
+  for (const m of missions) {
     const aeId = m.ae_id
     if (!missionsByAe[aeId]) missionsByAe[aeId] = { ae: m.auto_entrepreneur, missions: [] }
     missionsByAe[aeId].missions.push(m)
