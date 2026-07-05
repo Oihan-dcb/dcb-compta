@@ -1081,7 +1081,9 @@ async function genererFactureDebours(proprio, biens, mois, ctx) {
     return null
   }
 
-  if (existing && ['envoye_evoliz', 'payee'].includes(existing.statut)) {
+  // envoye_proprio / remboursement_recu : l'email de remboursement est parti — la régénération
+  // ne doit JAMAIS remettre en brouillon (sinon perte du suivi + relances cassées)
+  if (existing && ['envoye_evoliz', 'payee', 'envoye_proprio', 'remboursement_recu'].includes(existing.statut)) {
     return { created: false, skipped: true }
   }
 
