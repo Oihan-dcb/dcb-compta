@@ -921,8 +921,17 @@ const [pushing, setPushing] = useState(false)
             const statutInfo = f.a_reporter ? STATUTS.a_reporter : f.solde_negatif ? STATUTS.solde_negatif : (STATUTS[f.statut] || STATUTS.brouillon)
             const isExpanded = expanded === f.id
             const proprio = f.proprietaire
-            // Séparateur avant la 1ʳᵉ facture LLD (regroupées en fin de liste)
-            const isFirstLld = f.type_facture === 'lld' && (_i === 0 || facturesTries[_i - 1].type_facture !== 'lld')
+            // En-tête de section avant la 1ʳᵉ facture de chaque groupe (cf. groupeFacture)
+            const gCur = groupeFacture(f)
+            const isFirstOfGroupe = _i === 0 || groupeFacture(facturesTries[_i - 1]) !== gCur
+            const SECTION_HEADERS = {
+              0: { label: 'Factures owners DCB — gestion du loyer',                          color: '#92400E', border: '#EAD9A6' },
+              1: { label: 'Owners DCB — sans collecte de loyer · règlement compte courant',  color: '#C2410C', border: '#FED7AA' },
+              2: { label: 'FMEN — clients Lauian',                                           color: '#86198F', border: '#F5D0FE' },
+              3: { label: 'Honoraires — Locations longue durée (LLD)',                       color: '#166534', border: '#bbf7d0' },
+            }
+            const section = SECTION_HEADERS[gCur]
+            const nbGroupe = facturesTries.filter(x => groupeFacture(x) === gCur).length
             // Label du bien : code direct, ou "Maison Maïté" pour le groupe, ou codes séparés
             const bienCodes = f.bien?.code
               ? f.bien.code
@@ -932,11 +941,13 @@ const [pushing, setPushing] = useState(false)
 
             return (
               <Fragment key={f.id}>
-              {isFirstLld && (
-                <div style={{ marginTop: 18, padding: '6px 4px', fontSize: 12, fontWeight: 700,
-                              color: '#166534', textTransform: 'uppercase', letterSpacing: 0.6,
-                              borderTop: '2px solid #bbf7d0' }}>
-                  Honoraires — Locations longue durée (LLD)
+              {isFirstOfGroupe && (
+                <div style={{ marginTop: _i === 0 ? 0 : 18, padding: '6px 4px', fontSize: 12, fontWeight: 700,
+                              color: section.color, textTransform: 'uppercase', letterSpacing: 0.6,
+                              borderTop: `2px solid ${section.border}`,
+                              display: 'flex', justifyContent: 'space-between', alignItems: 'baseline' }}>
+                  <span>{section.label}</span>
+                  <span style={{ fontWeight: 500, fontSize: 11, opacity: 0.75 }}>{nbGroupe} facture{nbGroupe > 1 ? 's' : ''}</span>
                 </div>
               )}
               <div style={{
