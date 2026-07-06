@@ -20,6 +20,12 @@
     "api/pennylane-mouvement-sync.js": {
       "maxDuration": 60
     },
+    "api/pennylane-lld-sync.js": {
+      "maxDuration": 60
+    },
+    "api/pennylane-achats-statut.js": {
+      "maxDuration": 60
+    },
     "api/webhook-hospitable.js": {
       "maxDuration": 120
     },
@@ -51,6 +57,14 @@
     {
       "path": "/api/pennylane-mouvement-sync",
       "schedule": "50 3 * * *"
+    },
+    {
+      "path": "/api/pennylane-lld-sync",
+      "schedule": "55 3 * * *"
+    },
+    {
+      "path": "/api/pennylane-achats-statut",
+      "schedule": "5 4 * * *"
     }
   ],
   "rewrites": [
