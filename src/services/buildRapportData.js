@@ -349,7 +349,14 @@ export async function buildRapportData(bienId, propId, mois, opts = {}) {
         if (r.platform === 'airbnb' && cleaning === 0 && tauxRatio > 0 && (v.HON?.montant_ttc || 0) > 0) {
           return Math.round(v.HON.montant_ttc / tauxRatio)
         }
-        return (r.fin_accommodation || 0) + (r.fin_host_service_fee || 0) - (r.fin_discount || 0)
+        // Remises : source raw Hospitable en priorité (fin_discount souvent null alors que la
+        // remise existe — ex. Length of Stay Discount Bernardon/ERDIGUNEA), même règle que le
+        // moteur de ventilation (discountsRaw d'abord, fallback fin_discount).
+        const remise = Math.abs(
+          (r.hospitable_raw?.financials?.host?.discounts || []).reduce((s, d) => s + (d.amount || 0), 0)
+          || -(r.fin_discount || 0)
+        )
+        return (r.fin_accommodation || 0) + (r.fin_host_service_fee || 0) - remise
           + guestFees.filter(f => (f.label || '').toLowerCase() === 'extra_guest_fee').reduce((s, f) => s + (f.amount || 0), 0)
           + ajustementHebergement
       })(),
