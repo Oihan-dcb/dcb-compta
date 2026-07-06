@@ -4,7 +4,7 @@
 // Cron (Vercel, nightly 3h50 — juste avant matching-auto 4h00) : récupère les nouvelles
 // transactions Pennylane du compte séquestre location saisonnière, les importe dans
 // mouvement_bancaire (remplace l'import CSV manuel pour ce compte), puis lance le
-// matching automatique.
+// matching automatique sur tous les mois touchés (backfill historique inclus).
 //
 // ZÉRO duplication : réutilise src/services/importBanque.js (detectCanal,
 // importerMouvementsBancaires) et src/services/rapprochement.js (lancerMatchingAuto) —
@@ -16,9 +16,9 @@
 
 import { detectCanal, importerMouvementsBancaires } from '../src/services/importBanque.js'
 import { lancerMatchingAuto } from '../src/services/rapprochement.js'
+import { fetchAllPennylaneTransactions } from '../src/services/pennylaneTransactions.js'
 import { AGENCE } from '../src/lib/agence.js'
 
-const SUPABASE_URL = process.env.SUPABASE_URL || 'https://omuncchvypbtxkpalwcr.supabase.co'
 const SUPABASE_SRK = process.env.SUPABASE_SERVICE_ROLE_KEY
 const CRON_SECRET = process.env.CRON_SECRET // envoyé par Vercel en Authorization: Bearer sur les crons
 const HOSPITABLE_WEBHOOK_SECRET = process.env.HOSPITABLE_WEBHOOK_SECRET // fallback secret partagé, comme matching-auto.js
@@ -35,23 +35,10 @@ export default async function handler(req, res) {
   if (!SUPABASE_SRK) return res.status(500).json({ error: 'SUPABASE_SERVICE_ROLE_KEY non configuré' })
 
   try {
-    const pennylaneRes = await fetch(`${SUPABASE_URL}/functions/v1/pennylane-proxy`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${SUPABASE_SRK}` },
-      body: JSON.stringify({
-        action: 'listTransactions',
-        agency: 'DCB',
-        payload: { limit: 100, filter: [{ field: 'bank_account_id', operator: 'eq', value: BANK_ACCOUNT_ID }] },
-      }),
-    })
-    const { status, data } = await pennylaneRes.json()
-    if (status !== 200) throw new Error(`Pennylane listTransactions échoué (${status}) : ${JSON.stringify(data)}`)
+    const transactions = await fetchAllPennylaneTransactions(BANK_ACCOUNT_ID, SUPABASE_SRK)
 
-    const transactions = data.items || []
-
-    // Convention de signe non documentée par Pennylane (vérifié le 06/07/2026, compte
-    // vide à ce moment-là) — à confirmer sur les premières vraies transactions.
-    // Hypothèse : amount négatif = débit, positif = crédit (convention standard).
+    // Convention de signe confirmée le 06/07/2026 sur données réelles (compte SEQUESTRE) :
+    // amount négatif = débit, positif = crédit.
     const rows = transactions
       .map(tx => {
         const montant = Number(tx.amount)
@@ -76,19 +63,21 @@ export default async function handler(req, res) {
 
     const importLog = await importerMouvementsBancaires(rows)
 
+    // Matching sur tous les mois touchés par l'import (backfill historique possible),
+    // plus le mois courant même si rien de nouveau (mouvements en_attente déjà présents).
     const now = new Date()
-    const mois = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`
-    const matchLog = await lancerMatchingAuto(mois, 'pennylane')
+    const moisCourant = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`
+    const moisAtraiter = new Set([moisCourant, ...rows.map(r => r.mois_releve)])
 
-    console.log(`[pennylane-mouvement-sync] ${AGENCE} — ${transactions.length} tx récupérées, ${importLog.inseres} importée(s), ${matchLog.matched} rapprochée(s)`)
+    const matchResults = {}
+    for (const mois of moisAtraiter) {
+      const log = await lancerMatchingAuto(mois, 'pennylane')
+      matchResults[mois] = { matched: log.matched, skipped: log.skipped, errors: log.errors }
+    }
 
-    return res.json({
-      ok: true,
-      agence: AGENCE,
-      fetched: transactions.length,
-      import: importLog,
-      matching: { matched: matchLog.matched, skipped: matchLog.skipped, errors: matchLog.errors },
-    })
+    console.log(`[pennylane-mouvement-sync] ${AGENCE} — ${transactions.length} tx récupérées, ${importLog.inseres} importée(s), mois traités: ${[...moisAtraiter].join(',')}`)
+
+    return res.json({ ok: true, agence: AGENCE, fetched: transactions.length, import: importLog, matching: matchResults })
   } catch (err) {
     console.error('[pennylane-mouvement-sync] erreur:', err.message)
     return res.status(500).json({ error: err.message })

@@ -16,9 +16,9 @@
 // manuel dans PageLocationsLongues jusqu'à nouvel ordre.
 
 import { importerMouvementsLLD, autoMatcherMouvementsLLD, majLoyersDepuisVirements } from '../src/services/lldBanque.js'
+import { fetchAllPennylaneTransactions } from '../src/services/pennylaneTransactions.js'
 import { AGENCE } from '../src/lib/agence.js'
 
-const SUPABASE_URL = process.env.SUPABASE_URL || 'https://omuncchvypbtxkpalwcr.supabase.co'
 const SUPABASE_SRK = process.env.SUPABASE_SERVICE_ROLE_KEY
 const CRON_SECRET = process.env.CRON_SECRET
 const HOSPITABLE_WEBHOOK_SECRET = process.env.HOSPITABLE_WEBHOOK_SECRET
@@ -35,21 +35,10 @@ export default async function handler(req, res) {
   if (!SUPABASE_SRK) return res.status(500).json({ error: 'SUPABASE_SERVICE_ROLE_KEY non configuré' })
 
   try {
-    const pennylaneRes = await fetch(`${SUPABASE_URL}/functions/v1/pennylane-proxy`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${SUPABASE_SRK}` },
-      body: JSON.stringify({
-        action: 'listTransactions',
-        agency: 'DCB',
-        payload: { limit: 100, filter: [{ field: 'bank_account_id', operator: 'eq', value: BANK_ACCOUNT_ID }] },
-      }),
-    })
-    const { status, data } = await pennylaneRes.json()
-    if (status !== 200) throw new Error(`Pennylane listTransactions échoué (${status}) : ${JSON.stringify(data)}`)
+    const transactions = await fetchAllPennylaneTransactions(BANK_ACCOUNT_ID, SUPABASE_SRK)
 
-    const transactions = data.items || []
-
-    // Même hypothèse de signe que pennylane-mouvement-sync.js (à confirmer sur données réelles)
+    // Convention de signe confirmée le 06/07/2026 sur données réelles de ce compte :
+    // amount négatif = débit, positif = crédit.
     const rows = transactions
       .map(tx => {
         const montant = Number(tx.amount)
