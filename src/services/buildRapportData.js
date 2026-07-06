@@ -67,14 +67,19 @@ export async function buildRapportData(bienId, propId, mois, opts = {}) {
         .lt('date', `${moisSuivant}-01`)
       return isGlobal ? q.in('bien_id', maiteIds) : q.eq('bien_id', bienId)
     })(),
-    // 4. Facture honoraires du mois
-    supabase
-      .from('facture_evoliz')
-      .select('id, id_evoliz, statut, total_ttc, montant_reversement')
-      .eq('proprietaire_id', propId)
-      .eq('mois', mois)
-      .eq('type_facture', 'honoraires')
-      .maybeSingle(),
+    // 4. Facture honoraires du mois — scopée par bien (un proprio multi-biens a une facture
+    // distincte par bien/mois ; sans le filtre bien_id, .maybeSingle() trouve plusieurs lignes
+    // et échoue silencieusement, faisant retomber virementNet sur la formule de repli au lieu
+    // du montant réellement confirmé/reversé)
+    (() => {
+      let q = supabase
+        .from('facture_evoliz')
+        .select('id, id_evoliz, statut, total_ttc, montant_reversement')
+        .eq('proprietaire_id', propId)
+        .eq('mois', mois)
+        .eq('type_facture', 'honoraires')
+      return (isGlobal ? q.in('bien_id', maiteIds) : q.eq('bien_id', bienId)).maybeSingle()
+    })(),
     // 5. Taux de commission
     supabase
       .from('bien')
