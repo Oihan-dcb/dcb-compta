@@ -371,6 +371,14 @@ export async function buildRapportData(bienId, propId, mois, opts = {}) {
       // Pour owner_stay : le ménage est dans DÉBOURS (FMEN+AUTO), pas dans les colonnes voyageur
       menage_voyageur: r.owner_stay ? 0 : (v.FMEN?.montant_ttc || 0) + (v.AUTO?.montant_ht || 0),
     }
+  }).map(r => {
+    // Annulée sans aucun revenu conservé : la ligne n'est là que pour porter/tracer son
+    // ajustement (cf. filtre resasValides). Toutes les colonnes financières sont neutralisées
+    // pour ne gonfler ni le brut, ni la base de commission, ni les totaux
+    // (ex. Lea Coussy DUL2 juin 2026 : base comm 355 € comptée pour rien).
+    if (!(STATUTS_NON_VENTILABLES.includes(r.final_status) && (r.fin_revenue || 0) === 0)) return r
+    return { ...r, gross_revenue: 0, base_comm: 0, encaissement: 0, net_plateforme: 0,
+             frais_plateforme: 0, taxe: 0, menage_voyageur: 0, hon: 0, loy: 0, vir: 0, fmen: 0 }
   })
 
   // ── Owner stay ménage ────────────────────────────────────────────────────
