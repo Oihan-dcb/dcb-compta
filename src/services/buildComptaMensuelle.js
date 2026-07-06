@@ -593,6 +593,19 @@ export async function buildComptaMensuelle(mois, bienIds = null) {
     }
   }
 
+  // Régularisations post-clôture du mois (journal_ops action='correction_manuelle') —
+  // pour que l'export comptable trace les corrections faites après envoi des factures
+  let regularisations = []
+  {
+    const { data: regs } = await supabase
+      .from('journal_ops')
+      .select('created_at, message')
+      .eq('mois_comptable', mois)
+      .eq('action', 'correction_manuelle')
+      .order('created_at')
+    regularisations = regs || []
+  }
+
   // FMEN Lauian facturé par DCB — lignes dans le tableau + total stats
   let lauianFmenTotal = { ht: 0, tva: 0, ttc: 0 }
   if (AGENCE === 'dcb') {
@@ -668,6 +681,7 @@ export async function buildComptaMensuelle(mois, bienIds = null) {
     totals,
     alerts,
     fraisStripe,
+    regularisations,
     lauianFmenTotal,
     lldTotal,
     metadata: {
@@ -840,6 +854,18 @@ export function exportComptaCSV(data, bienActif = {}) {
     csv += `\n"--- FRAIS STRIPE ---","${fmtE(data.fraisStripe.total)}","À virer compte courant → compte de gestion"`
     for (const p of Object.values(data.fraisStripe.parPayout)) {
       csv += `\n"Virement ${p.date}","${fmtE(p.credit)}","frais: ${fmtE(p.frais)}"`
+    }
+  }
+
+  // Régularisations post-clôture — corrections faites après envoi des factures du mois
+  // (journal_ops action='correction_manuelle'). Le comptable voit quoi/pourquoi/combien.
+  if (data.regularisations?.length) {
+    const esc = (s) => String(s || '').replace(/"/g, '""')
+    csv += '\n'
+    csv += `\n"--- RÉGULARISATIONS POST-CLÔTURE (${data.regularisations.length}) ---","",""`
+    for (const r of data.regularisations) {
+      const d = new Date(r.created_at).toLocaleDateString('fr-FR')
+      csv += `\n"${d}","${esc(r.message)}"`
     }
   }
 
