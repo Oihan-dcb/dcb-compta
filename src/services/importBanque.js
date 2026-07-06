@@ -1,5 +1,5 @@
-import { supabase } from '../lib/supabase'
-import { AGENCE } from '../lib/agence'
+import { supabase } from '../lib/supabase.js'
+import { AGENCE } from '../lib/agence.js'
 
 export function detecterFormatCSV(texte) {
   const lignes = texte.split('\n').slice(0, 10).map(l => l.toLowerCase())

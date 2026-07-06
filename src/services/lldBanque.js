@@ -1,5 +1,5 @@
-import { supabase } from '../lib/supabase'
-import { AGENCE } from '../lib/agence'
+import { supabase } from '../lib/supabase.js'
+import { AGENCE } from '../lib/agence.js'
 
 // ── Parsing CSV Caisse d'Épargne ──────────────────────────────────────────────
 
