@@ -130,7 +130,7 @@ export function genererStatementHTML(proprio, mois, data) {
       </td>
       <td style="padding:4px 5px;font-size:8.5px;white-space:nowrap">${fmtDate(r.arrival_date)} – ${fmtDate(r.departure_date)}</td>
       <td style="padding:4px 5px;font-size:9px;text-align:right">${r.nights || '—'}</td>
-      ${showBrut         ? `<td style="padding:4px 5px;font-size:9px;text-align:right;white-space:nowrap">${r.owner_stay ? '—' : fmt(r.gross_revenue ?? r.fin_revenue)}</td>` : ''}
+      ${showBrut         ? `<td style="padding:4px 5px;font-size:9px;text-align:right;white-space:nowrap">${r.owner_stay ? '—' : fmt(r.gross_revenue ?? r.fin_revenue)}${!r.owner_stay && (r.discount || 0) > 0 ? `<div style="font-size:7px;color:#C2410C;font-style:italic">après remise −${fmt(r.discount)}</div>` : ''}</td>` : ''}
       ${showEncaissement ? `<td style="padding:4px 5px;font-size:9px;text-align:right;white-space:nowrap;color:#4A3728">${r.owner_stay ? '—' : (r.encaissement || 0) > 0 ? fmt(r.encaissement) : '—'}</td>` : ''}
       ${showFraisDist    ? `<td style="padding:4px 5px;font-size:9px;text-align:right;white-space:nowrap;color:#9c8c7a">${!r.owner_stay && (r.frais_plateforme || 0) > 0 ? fmt(r.frais_plateforme) : '—'}</td>` : ''}
       ${showTaxe         ? `<td style="padding:4px 5px;font-size:9px;text-align:right;white-space:nowrap;color:#9c8c7a">${taxeR !== 0 ? fmt(taxeR) : '—'}</td>` : ''}

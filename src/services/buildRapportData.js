@@ -320,6 +320,13 @@ export async function buildRapportData(bienId, propId, mois, opts = {}) {
       vent: v,
       extra: extraByResa[r.id] || 0,
       gross_revenue: grossRev,
+      // Remise accordée au voyageur (ex. « Length of Stay Discount » Airbnb) — affichée
+      // sous le brut dans le statement : la base de commission est nette de remise,
+      // sans cette mention le proprio croit la base erronée (cas Bernardon/ERDIGUNEA 06/2026).
+      discount: Math.abs(
+        (r.hospitable_raw?.financials?.host?.discounts || []).reduce((s, d) => s + (d.amount || 0), 0)
+        || -(r.fin_discount || 0)
+      ),
       // base_comm = base RÉELLE de la commission DCB.
       // Cas normal : accommodation + host_service_fee + discounts + extra_guest_fee
       //   (identique à commissionableBase de api/ventiler.js).
