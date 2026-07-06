@@ -17,6 +17,9 @@
     "api/matching-auto.js": {
       "maxDuration": 120
     },
+    "api/pennylane-mouvement-sync.js": {
+      "maxDuration": 60
+    },
     "api/webhook-hospitable.js": {
       "maxDuration": 120
     },
@@ -44,6 +47,10 @@
     {
       "path": "/api/sync-stripe",
       "schedule": "45 3 * * *"
+    },
+    {
+      "path": "/api/pennylane-mouvement-sync",
+      "schedule": "50 3 * * *"
     }
   ],
   "rewrites": [

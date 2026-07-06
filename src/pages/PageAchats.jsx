@@ -433,7 +433,139 @@ Si anomalie (montant très différent, catégorie suspecte) → ok:false, messag
     setFactures(prev => prev.map(f => f.id === id ? { ...f, statut } : f))
     if (statut === 'valide') {
       const facture = factures.find(f => f.id === id)
-      if (facture) analyserFacture({ ...facture, statut })
+      if (facture) {
+        analyserFacture({ ...facture, statut })
+        pousserVersPennylane({ ...facture, statut })
+      }
+    }
+  }
+
+  // ── Push Pennylane (facture fournisseur) ──────────────────────────────────
+
+  const fetchAsBase64 = async (url) => {
+    const res = await fetch(url)
+    const ab = await res.arrayBuffer()
+    const u8 = new Uint8Array(ab)
+    let b64 = ''
+    for (let i = 0; i < u8.length; i += 3072) b64 += btoa(String.fromCharCode(...u8.slice(i, i + 3072)))
+    return b64
+  }
+
+  const appelPennylaneProxy = async (action, payload) => {
+    const { data: { session } } = await supabase.auth.getSession()
+    const token = session?.access_token || import.meta.env.VITE_SUPABASE_ANON_KEY
+    const res = await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/pennylane-proxy`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+      body: JSON.stringify({ action, agency: AGENCE.toUpperCase(), payload }),
+    })
+    return res.json()
+  }
+
+  // Résout l'id fournisseur Pennylane depuis fournisseur_recurrent, en crée un si besoin
+  const resolverFournisseurPennylane = async (nomFournisseur) => {
+    const { data: existant } = await supabase
+      .from('fournisseur_recurrent')
+      .select('id, pennylane_supplier_id')
+      .eq('agence', AGENCE)
+      .ilike('nom', nomFournisseur)
+      .maybeSingle()
+
+    if (existant?.pennylane_supplier_id) return existant.pennylane_supplier_id
+
+    const { status, data } = await appelPennylaneProxy('createSupplier', { name: nomFournisseur })
+    if (status !== 200 && status !== 201) {
+      throw new Error(`Création fournisseur Pennylane échouée (${status}) : ${JSON.stringify(data)}`)
+    }
+    const supplierId = data.id
+
+    if (existant) {
+      await supabase.from('fournisseur_recurrent').update({ pennylane_supplier_id: supplierId }).eq('id', existant.id)
+    } else {
+      await supabase.from('fournisseur_recurrent').insert({ agence: AGENCE, nom: nomFournisseur, pennylane_supplier_id: supplierId })
+    }
+    return supplierId
+  }
+
+  // Détermine le taux de TVA (enum Pennylane) à partir de montant_ht / montant_ttc
+  const deduireVatRate = (ht, ttc) => {
+    const tva = Math.max(0, ttc - ht)
+    if (tva < 0.01 || ht <= 0) return { vatRate: 'exempt', tva: 0 }
+    const taux = tva / ht
+    const paliers = [[0.20, 'FR_200'], [0.10, 'FR_100'], [0.055, 'FR_55'], [0.021, 'FR_21']]
+    const [, vatRate] = paliers.reduce((best, p) => Math.abs(taux - p[0]) < Math.abs(taux - best[0]) ? p : best, paliers[0])
+    return { vatRate, tva }
+  }
+
+  const pousserVersPennylane = async (facture) => {
+    if (facture.pennylane_document_id) return // déjà poussée, on ne double-importe pas
+
+    if (!facture.categorie) {
+      alert(`Facture ${facture.fournisseur} : catégorie manquante — non poussée vers Pennylane, à faire manuellement.`)
+      return
+    }
+    if (!facture.pdf_url) {
+      alert(`Facture ${facture.fournisseur} : pas de PDF attaché — Pennylane exige un fichier, non poussée.`)
+      return
+    }
+
+    const { data: mapping } = await supabase
+      .from('pennylane_categorie_compte')
+      .select('pennylane_ledger_account_num')
+      .eq('agence', AGENCE)
+      .eq('categorie', facture.categorie)
+      .maybeSingle()
+
+    const numeroCompte = mapping?.pennylane_ledger_account_num
+    if (!numeroCompte) {
+      alert(`Facture ${facture.fournisseur} : catégorie "${facture.categorie}" pas encore mappée à un compte Pennylane — à pousser manuellement une fois le compte défini.`)
+      return
+    }
+
+    try {
+      const ht  = facture.montant_ht != null ? Number(facture.montant_ht) : Number(facture.montant_ttc)
+      const ttc = Number(facture.montant_ttc)
+      const { vatRate, tva } = deduireVatRate(ht, ttc)
+
+      const comptesRes = await appelPennylaneProxy('listLedgerAccounts', {
+        filter: [{ field: 'number', operator: 'eq', value: numeroCompte }],
+      })
+      const compte = comptesRes.data?.items?.find(c => c.vat_rate === vatRate) || comptesRes.data?.items?.[0]
+      if (!compte) throw new Error(`Compte Pennylane ${numeroCompte} introuvable`)
+
+      const supplierId = await resolverFournisseurPennylane(facture.fournisseur)
+
+      const fileBase64 = await fetchAsBase64(facture.pdf_url)
+      const uploadRes = await appelPennylaneProxy('uploadFile', {
+        fileBase64,
+        filename: `${facture.fournisseur}_${facture.mois}.pdf`,
+      })
+      if (uploadRes.status !== 200 && uploadRes.status !== 201) {
+        throw new Error(`Upload PDF échoué : ${JSON.stringify(uploadRes.data)}`)
+      }
+      const fileAttachmentId = uploadRes.data.id
+
+      const dateFacture = facture.date_facture || `${facture.mois}-01`
+      const importRes = await appelPennylaneProxy('importSupplierInvoice', {
+        fileAttachmentId,
+        supplierId,
+        date: dateFacture,
+        deadline: dateFacture, // pas de délai de paiement suivi côté facture_achat — échéance = date facture par défaut
+        amountBeforeTax: ht.toFixed(2),
+        tax: tva.toFixed(2),
+        amount: ttc.toFixed(2),
+        lines: [{ ledgerAccountId: compte.id, amount: ttc.toFixed(2), tax: tva.toFixed(2), vatRate }],
+      })
+      if (importRes.status !== 200 && importRes.status !== 201) {
+        throw new Error(`Import facture Pennylane échoué : ${JSON.stringify(importRes.data)}`)
+      }
+
+      const pennylaneId = String(importRes.data.id)
+      await supabase.from('facture_achat').update({ pennylane_document_id: pennylaneId }).eq('id', facture.id)
+      setFactures(prev => prev.map(f => f.id === facture.id ? { ...f, pennylane_document_id: pennylaneId } : f))
+
+    } catch (e) {
+      alert(`Erreur push Pennylane pour ${facture.fournisseur} : ${e.message}`)
     }
   }
 

@@ -28,7 +28,7 @@ function parseMontant(str) {
   return Math.round(Math.abs(v) * 100)
 }
 
-function detectCanal(lib, det, debit) {
+export function detectCanal(lib, det, debit) {
   // Texte normalisé (minuscules + sans accents) pour matcher "reversée", "propriétaire", etc.
   const l = ((lib || '') + ' ' + (det || '')).normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase()
 
