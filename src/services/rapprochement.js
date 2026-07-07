@@ -1506,3 +1506,23 @@ export async function matcherDeboursProprietaires(agence = AGENCE) {
 
   return { lies }
 }
+
+/**
+ * Sort du périmètre "à rapprocher" les mouvements canal='frais_bancaires' (tenue de
+ * compte, cotisation, virements internes Stripe faits par Oïhan chaque mois du courant
+ * vers le séquestre) — décision déjà prise lors d'un nettoyage ponctuel passé
+ * (voir project-overview.md, session 21 avril 2026), jamais automatisée depuis.
+ * Aucun de ces mouvements n'a de résa/facture à lier — les laisser en 'en_attente'
+ * les fait juste réapparaître indéfiniment dans les listes "à traiter".
+ */
+export async function marquerFraisBancairesNonGeres(agence = AGENCE) {
+  const { data, error } = await supabase
+    .from('mouvement_bancaire')
+    .update({ statut_matching: 'non_gere' })
+    .eq('agence', agence)
+    .eq('canal', 'frais_bancaires')
+    .eq('statut_matching', 'en_attente')
+    .select('id')
+  if (error) throw error
+  return { marques: data?.length || 0 }
+}

@@ -11,7 +11,7 @@
 // L'agence traitée = VITE_AGENCE du projet Vercel (dcb-compta → dcb, lauian-compta →
 // lauian) — chaque projet matche SON agence, comme le front.
 
-import { lancerMatchingAuto } from '../src/services/rapprochement.js'
+import { lancerMatchingAuto, marquerFraisBancairesNonGeres } from '../src/services/rapprochement.js'
 import { AGENCE } from '../src/lib/agence.js'
 
 const SUPABASE_URL      = process.env.SUPABASE_URL || 'https://omuncchvypbtxkpalwcr.supabase.co';
@@ -58,7 +58,13 @@ export default async function handler(req, res) {
       results[mois] = { matched: log.matched, skipped: log.skipped, errors: log.errors };
       console.log(`[matching-auto] ${mois} ${AGENCE} — ${log.matched} rapprochés, ${log.skipped} ignorés`);
     }
-    return res.json({ ok: true, agence: AGENCE, results });
+
+    // Frais bancaires (tenue/cotisation/Stripe) : jamais de résa/facture à lier, on les
+    // sort du périmètre "à traiter" plutôt que de les laisser réapparaître chaque mois.
+    const { marques } = await marquerFraisBancairesNonGeres(AGENCE);
+    if (marques > 0) console.log(`[matching-auto] ${AGENCE} — ${marques} frais bancaire(s) passé(s) non_gere`);
+
+    return res.json({ ok: true, agence: AGENCE, results, fraisBancairesNonGeres: marques });
   } catch (err) {
     console.error('[matching-auto] erreur:', err.message);
     return res.status(500).json({ error: err.message, results });
