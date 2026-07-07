@@ -1443,3 +1443,62 @@ export async function resetEtRematcher(mois) {
 
   return log
 }
+
+/**
+ * Rapproche les PAYINs de remboursement de débours (propriétaire qui rembourse une
+ * avance ménage/AE au séquestre) avec la facture_evoliz débours correspondante.
+ *
+ * Flux indépendant du matching résa (Flux 1) : ne touche jamais payout_hospitable ni
+ * reservation.rapprochee. Cible spécifiquement canal='sepa_manuel' (ces virements ne
+ * matchent ni Airbnb ni Booking) par nom du propriétaire + montant exact.
+ *
+ * Sur match : facture_evoliz.statut → 'remboursement_recu' (même effet que le clic
+ * manuel dans PageFactures), mouvement_bancaire.statut_matching → 'matche_auto'
+ * (jamais 'rapproche', réservé au Flux 1 résa / VIRPayinProuvé).
+ */
+export async function matcherDeboursProprietaires(agence = AGENCE) {
+  const norm = s => (s || '').toUpperCase().normalize('NFD').replace(/[̀-ͯ]/g, '')
+
+  const [{ data: debours }, { data: mvts }] = await Promise.all([
+    supabase.from('facture_evoliz')
+      .select('id, total_ttc, proprietaire:proprietaire_id(nom), bien:bien_id(code)')
+      .eq('agence', agence)
+      .eq('type_facture', 'debours')
+      .eq('statut', 'envoye_proprio'),
+    supabase.from('mouvement_bancaire')
+      .select('id, libelle, detail, credit')
+      .eq('agence', agence)
+      .eq('statut_matching', 'en_attente')
+      .eq('canal', 'sepa_manuel')
+      .gt('credit', 0),
+  ])
+
+  if (!debours?.length || !mvts?.length) return { lies: 0 }
+
+  const disponibles = [...(mvts || [])]
+  let lies = 0
+
+  for (const d of debours) {
+    const nomNorm = norm(d.proprietaire?.nom)
+    if (!nomNorm) continue
+
+    const candidats = disponibles.filter(m =>
+      m.credit === d.total_ttc && norm(`${m.libelle || ''} ${m.detail || ''}`).includes(nomNorm)
+    )
+    if (candidats.length !== 1) continue
+
+    const m = candidats[0]
+    const [e1, e2] = await Promise.all([
+      supabase.from('facture_evoliz').update({ statut: 'remboursement_recu' }).eq('id', d.id).then(r => r.error),
+      supabase.from('mouvement_bancaire')
+        .update({ statut_matching: 'matche_auto', note_matching: `Débours ${d.proprietaire.nom} ${d.bien?.code || ''} — auto` })
+        .eq('id', m.id).then(r => r.error),
+    ])
+    if (!e1 && !e2) {
+      lies++
+      disponibles.splice(disponibles.indexOf(m), 1)
+    }
+  }
+
+  return { lies }
+}

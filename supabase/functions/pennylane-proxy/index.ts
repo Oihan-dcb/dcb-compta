@@ -267,6 +267,34 @@ serve(async (req) => {
         break
       }
 
+      // ── CATÉGORIES ANALYTIQUES (tag distributeur sur transactions) ─
+      case 'listCategoryGroups': {
+        result = await pennylaneReq('GET', '/category_groups', ag)
+        break
+      }
+
+      case 'listCategories': {
+        // payload: { categoryGroupId } — liste les catégories d'un groupe
+        result = await pennylaneReq('GET', `/category_groups/${payload.categoryGroupId}/categories`, ag)
+        break
+      }
+
+      case 'createCategory': {
+        // payload: { categoryGroupId, label, direction? }
+        result = await pennylaneReq('POST', '/categories', ag, {
+          category_group_id: payload.categoryGroupId,
+          label: payload.label,
+          direction: payload.direction || undefined,
+        })
+        break
+      }
+
+      case 'putTransactionCategories': {
+        // payload: { transactionId, categories: [{ id, weight }] }
+        result = await pennylaneReq('PUT', `/transactions/${payload.transactionId}/categories`, ag, payload.categories)
+        break
+      }
+
       default:
         throw new Error(`Action inconnue: ${action}`)
     }

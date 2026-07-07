@@ -15,7 +15,7 @@
 // touchés ici — voir la cartographie validée avec Oïhan le 06/07/2026.
 
 import { detectCanal, importerMouvementsBancaires } from '../src/services/importBanque.js'
-import { lancerMatchingAuto } from '../src/services/rapprochement.js'
+import { lancerMatchingAuto, matcherDeboursProprietaires } from '../src/services/rapprochement.js'
 import { fetchAllPennylaneTransactions } from '../src/services/pennylaneTransactions.js'
 import { filtrerTransactionsDupliquees } from '../src/services/pennylaneDedup.js'
 import { supabase } from '../src/lib/supabase.js'
@@ -88,17 +88,21 @@ export default async function handler(req, res) {
       matchResults[mois] = { matched: log.matched, skipped: log.skipped, errors: log.errors }
     }
 
-    console.log(`[pennylane-mouvement-sync] ${AGENCE} — ${transactionsBrutes.length} tx récupérées, ${doublonsEvites} doublon(s) évité(s), ${importLog.inseres} importée(s), mois traités: ${[...moisAtraiter].join(',')}`)
+    // Rapprochement débours propriétaire (remboursement ménage/AE) — flux indépendant,
+    // ne touche pas au matching résa ci-dessus.
+    const { lies: deboursLies } = await matcherDeboursProprietaires(AGENCE)
+
+    console.log(`[pennylane-mouvement-sync] ${AGENCE} — ${transactionsBrutes.length} tx récupérées, ${doublonsEvites} doublon(s) évité(s), ${importLog.inseres} importée(s), ${deboursLies} débours rapproché(s), mois traités: ${[...moisAtraiter].join(',')}`)
 
     await supabase.from('import_log').insert({
       type: 'pennylane_sequestre_saisonniere',
       statut: doublonsEvites > 0 ? 'partial' : 'success',
       nb_lignes_traitees: transactionsBrutes.length,
       nb_lignes_creees: importLog.inseres,
-      message: `${transactionsBrutes.length} tx récupérées, ${doublonsEvites} doublon(s) évité(s), ${importLog.inseres} importée(s)`,
+      message: `${transactionsBrutes.length} tx récupérées, ${doublonsEvites} doublon(s) évité(s), ${importLog.inseres} importée(s), ${deboursLies} débours rapproché(s)`,
     })
 
-    return res.json({ ok: true, agence: AGENCE, fetched: transactionsBrutes.length, doublonsEvites, import: importLog, matching: matchResults })
+    return res.json({ ok: true, agence: AGENCE, fetched: transactionsBrutes.length, doublonsEvites, import: importLog, matching: matchResults, deboursLies })
   } catch (err) {
     console.error('[pennylane-mouvement-sync] erreur:', err.message)
     await supabase.from('import_log').insert({ type: 'pennylane_sequestre_saisonniere', statut: 'error', message: err.message }).catch(() => {})
