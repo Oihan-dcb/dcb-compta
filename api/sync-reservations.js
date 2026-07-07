@@ -272,7 +272,7 @@ async function syncMois(mois, agence) {
       // Payout synthétique Airbnb
       if (resa.platform === 'airbnb' && parsed.fin_revenue && parsed.arrival_date && bien.gestion_loyer !== false) {
         try {
-          const payoutId = resa.id + '_airbnb_payout';
+          const payoutId = resaId + '_airbnb_payout';
           const payouts = await sb('payout_hospitable?on_conflict=hospitable_id', {
             method: 'POST',
             prefer: 'return=representation,resolution=merge-duplicates',
