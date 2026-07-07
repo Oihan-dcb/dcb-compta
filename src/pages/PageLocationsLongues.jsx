@@ -3,6 +3,7 @@ import { useState, useEffect } from 'react'
 
 import { supabase } from '../lib/supabase'
 import MoisSelector from '../components/MoisSelector'
+import LastSyncBadge from '../components/LastSyncBadge'
 import { formatMontant } from '../lib/hospitable'
 import { useMoisPersisted } from '../hooks/useMoisPersisted'
 import {
@@ -1758,11 +1759,21 @@ export default function PageLocationsLongues() {
                   </button>
                 </div>
               )}
-              <label style={{ marginLeft: 'auto', cursor: 'pointer' }}>
-                <input type="file" accept=".csv,.txt" style={{ display: 'none' }}
-                  onChange={e => { if (e.target.files[0]) handleFichierBanque(e.target.files[0]); e.target.value = '' }} />
-                <span className="btn btn-primary" style={{ fontSize: 13 }}>⬆ Importer CSV</span>
-              </label>
+              {banqueCompte === 'loyers' ? (
+                // Import CSV manuel masqué : compte alimenté automatiquement par
+                // api/pennylane-lld-sync (cron nightly 3h55) depuis le 07/07/2026.
+                // Réactiver ferait doublonner (voir src/services/pennylaneDedup.js).
+                <div style={{ marginLeft: 'auto', display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 2 }}>
+                  <span style={{ fontSize: 12, color: '#8C7B65', fontWeight: 600 }}>🔗 Pennylane</span>
+                  <LastSyncBadge type="pennylane_lld_loyers" />
+                </div>
+              ) : (
+                <label style={{ marginLeft: 'auto', cursor: 'pointer' }}>
+                  <input type="file" accept=".csv,.txt" style={{ display: 'none' }}
+                    onChange={e => { if (e.target.files[0]) handleFichierBanque(e.target.files[0]); e.target.value = '' }} />
+                  <span className="btn btn-primary" style={{ fontSize: 13 }}>⬆ Importer CSV</span>
+                </label>
+              )}
             </div>
 
             {/* Panel d'import après sélection fichier */}
@@ -1791,7 +1802,9 @@ export default function PageLocationsLongues() {
             {!banqueLoading && banqueMouvements.length === 0 && (
               <div className="empty-state">
                 Aucun mouvement pour {banqueCompte} — {banqueMois}.<br />
-                <span style={{ fontSize: 13, color: 'var(--text-muted)' }}>Importez un relevé CSV Caisse d'Épargne.</span>
+                <span style={{ fontSize: 13, color: 'var(--text-muted)' }}>
+                  {banqueCompte === 'loyers' ? 'Synchronisé automatiquement depuis Pennylane chaque nuit.' : "Importez un relevé CSV Caisse d'Épargne."}
+                </span>
               </div>
             )}
 

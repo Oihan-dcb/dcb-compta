@@ -244,10 +244,15 @@ export default function PageBanque() {
           <button onClick={charger} className='btn btn-secondary btn-sm' disabled={loading}>
             {loading ? '...' : String.fromCodePoint(0x21BB)}
           </button>
-          <label className='btn btn-primary' style={{ cursor: 'pointer' }}>
-            {String.fromCodePoint(0x2191)} Import CSV
-            <input ref={fileRef} type='file' accept='.csv' style={{ display: 'none' }} onChange={handleFile} />
-          </label>
+          {/* Import CSV manuel masqué : ce compte (CAISSE EPARGNE LOCATION SAISONNIERE) est
+              alimenté automatiquement par api/pennylane-mouvement-sync (cron nightly 3h50)
+              depuis le 07/07/2026. Réactiver ferait doublonner (voir pennylaneDedup.js). */}
+          <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 2 }}>
+            <span style={{ fontSize: 12, color: '#8C7B65', fontWeight: 600, display: 'inline-flex', alignItems: 'center', gap: 6 }}>
+              🔗 Pennylane
+            </span>
+            <LastSyncBadge type="pennylane_sequestre_saisonniere" />
+          </div>
           <label style={{ cursor:'pointer', background:'#0071C2', color:'#fff', border:'none', borderRadius:8, padding:'8px 14px', fontWeight:600, fontSize:14, display:'inline-flex', alignItems:'center', gap:6 }}>
             {importingBooking ? '⏳' : '📋'} CSV Booking
             <input ref={bookingRef} type='file' accept='.csv' style={{ display:'none' }} onChange={handleBookingFile} />

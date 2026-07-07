@@ -17,6 +17,8 @@
 import { detectCanal, importerMouvementsBancaires } from '../src/services/importBanque.js'
 import { lancerMatchingAuto } from '../src/services/rapprochement.js'
 import { fetchAllPennylaneTransactions } from '../src/services/pennylaneTransactions.js'
+import { filtrerTransactionsDupliquees } from '../src/services/pennylaneDedup.js'
+import { supabase } from '../src/lib/supabase.js'
 import { AGENCE } from '../src/lib/agence.js'
 
 const SUPABASE_SRK = process.env.SUPABASE_SERVICE_ROLE_KEY
@@ -35,7 +37,18 @@ export default async function handler(req, res) {
   if (!SUPABASE_SRK) return res.status(500).json({ error: 'SUPABASE_SERVICE_ROLE_KEY non configuré' })
 
   try {
-    const transactions = await fetchAllPennylaneTransactions(BANK_ACCOUNT_ID, SUPABASE_SRK)
+    const transactionsBrutes = await fetchAllPennylaneTransactions(BANK_ACCOUNT_ID, SUPABASE_SRK)
+
+    // Garde-fou : évite les doublons avec un éventuel import CSV manuel resté actif sur
+    // ce compte (voir incident du 07/07/2026 — 213 mouvements dupliqués sur ce compte).
+    const { transactions, doublonsEvites } = await filtrerTransactionsDupliquees(supabase, {
+      table: 'mouvement_bancaire',
+      agence: AGENCE,
+      transactions: transactionsBrutes,
+    })
+    if (doublonsEvites > 0) {
+      console.warn(`[pennylane-mouvement-sync] ${doublonsEvites} doublon(s) évité(s) — un import CSV manuel semble encore actif sur ce compte, à vérifier.`)
+    }
 
     // Convention de signe confirmée le 06/07/2026 sur données réelles (compte SEQUESTRE) :
     // amount négatif = débit, positif = crédit.
@@ -75,11 +88,20 @@ export default async function handler(req, res) {
       matchResults[mois] = { matched: log.matched, skipped: log.skipped, errors: log.errors }
     }
 
-    console.log(`[pennylane-mouvement-sync] ${AGENCE} — ${transactions.length} tx récupérées, ${importLog.inseres} importée(s), mois traités: ${[...moisAtraiter].join(',')}`)
+    console.log(`[pennylane-mouvement-sync] ${AGENCE} — ${transactionsBrutes.length} tx récupérées, ${doublonsEvites} doublon(s) évité(s), ${importLog.inseres} importée(s), mois traités: ${[...moisAtraiter].join(',')}`)
 
-    return res.json({ ok: true, agence: AGENCE, fetched: transactions.length, import: importLog, matching: matchResults })
+    await supabase.from('import_log').insert({
+      type: 'pennylane_sequestre_saisonniere',
+      statut: doublonsEvites > 0 ? 'partial' : 'success',
+      nb_lignes_traitees: transactionsBrutes.length,
+      nb_lignes_creees: importLog.inseres,
+      message: `${transactionsBrutes.length} tx récupérées, ${doublonsEvites} doublon(s) évité(s), ${importLog.inseres} importée(s)`,
+    })
+
+    return res.json({ ok: true, agence: AGENCE, fetched: transactionsBrutes.length, doublonsEvites, import: importLog, matching: matchResults })
   } catch (err) {
     console.error('[pennylane-mouvement-sync] erreur:', err.message)
+    await supabase.from('import_log').insert({ type: 'pennylane_sequestre_saisonniere', statut: 'error', message: err.message }).catch(() => {})
     return res.status(500).json({ error: err.message })
   }
 }
