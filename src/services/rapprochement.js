@@ -1488,10 +1488,12 @@ export async function matcherDeboursProprietaires(agence = AGENCE) {
     if (candidats.length !== 1) continue
 
     const m = candidats[0]
+    // Pas de colonne note_matching sur mouvement_bancaire (contrairement à d'autres
+    // tables du projet) — statut_matching seul suffit à sortir le mouvement de "en_attente".
     const [e1, e2] = await Promise.all([
       supabase.from('facture_evoliz').update({ statut: 'remboursement_recu' }).eq('id', d.id).then(r => r.error),
       supabase.from('mouvement_bancaire')
-        .update({ statut_matching: 'matche_auto', note_matching: `Débours ${d.proprietaire.nom} ${d.bien?.code || ''} — auto` })
+        .update({ statut_matching: 'matche_auto' })
         .eq('id', m.id).then(r => r.error),
     ])
     if (!e1 && !e2) {
