@@ -1449,8 +1449,10 @@ export async function resetEtRematcher(mois) {
  * avance ménage/AE au séquestre) avec la facture_evoliz débours correspondante.
  *
  * Flux indépendant du matching résa (Flux 1) : ne touche jamais payout_hospitable ni
- * reservation.rapprochee. Cible spécifiquement canal='sepa_manuel' (ces virements ne
- * matchent ni Airbnb ni Booking) par nom du propriétaire + montant exact.
+ * reservation.rapprochee. Cible canal IN ('sepa_manuel', 'interne') — ces virements ne
+ * matchent ni Airbnb ni Booking, que le libellé référence explicitement "Debours AE-..."
+ * (classé 'interne' par detectCanal) ou non (classé 'sepa_manuel') — par nom du
+ * propriétaire + montant exact.
  *
  * Sur match : facture_evoliz.statut → 'remboursement_recu' (même effet que le clic
  * manuel dans PageFactures), mouvement_bancaire.statut_matching → 'matche_auto'
@@ -1469,7 +1471,7 @@ export async function matcherDeboursProprietaires(agence = AGENCE) {
       .select('id, libelle, detail, credit')
       .eq('agence', agence)
       .eq('statut_matching', 'en_attente')
-      .eq('canal', 'sepa_manuel')
+      .in('canal', ['sepa_manuel', 'interne']) // 'interne' : libellés "Debours AE-<bien>-<mois>" (detectCanal les classe à part)
       .gt('credit', 0),
   ])
 
