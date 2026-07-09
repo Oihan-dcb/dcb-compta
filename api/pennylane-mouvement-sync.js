@@ -36,6 +36,14 @@ export default async function handler(req, res) {
   if (!isCronToken) return res.status(401).json({ error: 'Non autorisé' })
   if (!SUPABASE_SRK) return res.status(500).json({ error: 'SUPABASE_SERVICE_ROLE_KEY non configuré' })
 
+  // Compte Pennylane ciblé (14431436800) = compte DCB uniquement. Pennylane n'est
+  // connecté qu'à DCB pour l'instant (Lauïan n'a pas encore son propre compte séquestre
+  // sur Pennylane) — ce cron tourne aussi sur le déploiement lauian-compta (même repo),
+  // ce qui créait une course avec le cron dcb-compta : le déploiement le plus rapide
+  // "gagnait" les nouvelles transactions et les taguait agence=lauian par erreur
+  // (incident constaté le 09/07/2026, transactions Airbnb réelles DCB mal attribuées).
+  if (AGENCE !== 'dcb') return res.status(200).json({ ok: true, skipped: 'pennylane_dcb_only', agence: AGENCE })
+
   try {
     const transactionsBrutes = await fetchAllPennylaneTransactions(BANK_ACCOUNT_ID, SUPABASE_SRK)
 
