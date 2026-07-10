@@ -7,6 +7,8 @@ import { importBookingCSV } from '../services/importBooking'
 import { annulerRapprochement, estMouvementReference, lancerMatchingAuto } from '../services/rapprochement'
 import { parserFichierBancaire, importerMouvementsBancaires } from '../services/importBanque'
 import { syncPayoutsServer } from '../services/syncPayouts'
+import { filtrerTransactionsDupliquees } from '../services/pennylaneDedup'
+import { AGENCE } from '../lib/agence'
 
 import MoisSelector from '../components/MoisSelector'
 import LastSyncBadge from '../components/LastSyncBadge'
@@ -187,9 +189,23 @@ export default function PageBanque() {
     if (!preview) return
     if (moisBloque) { setError('🔒 Mois clôturé (Rapprochement) — import impossible.'); return }
     setImporting(true)
-    const rows = preview.rows
+    let rows = preview.rows
     try {
+      // Garde-fou anti-doublon inter-sources : si Pennylane a déjà synchronisé ces jours
+      // (cron nightly), ne pas réimporter les mêmes mouvements via le CSV manuel (incident
+      // du 09/07/2026 — 11 mouvements dupliqués dont un double paiement résa Skelton).
+      const asTx = rows.map(r => ({
+        date: r.date_operation,
+        amount: r.debit ? -(r.debit / 100) : (r.credit || 0) / 100,
+        label: r.libelle,
+        _row: r,
+      }))
+      const { transactions: restants, doublonsEvites } = await filtrerTransactionsDupliquees(supabase, {
+        table: 'mouvement_bancaire', agence: AGENCE, transactions: asTx, direction: 'pennylane',
+      })
+      rows = restants.map(t => t._row)
       const result = await importerMouvementsBancaires(rows)
+      if (doublonsEvites > 0) result.doublonsEvitesPennylane = doublonsEvites
       setImportResult(result)
       setPreview(null)
       setFormatDetecte(null)
