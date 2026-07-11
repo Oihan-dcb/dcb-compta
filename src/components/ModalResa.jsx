@@ -70,14 +70,14 @@ function BoutonProprio({ resa, onDone }) {
 }
 
 // Ajustement manuel « total constant » (fonctionnalité rare) — logique métier :
-// MEN (ménage voyageur, factuel) et HON sont les deux seuls leviers saisissables.
-// AUTO est figé sur le coût réel du Portail AE (montant_reel, sinon provision).
-// FMEN se calcule naturellement : FMEN = MEN − AUTO (règle MEN = FMEN + AUTO).
+// MEN (ménage voyageur, factuel), HON et COM (quand présent — direct/manual) sont les
+// leviers saisissables. AUTO est figé sur le coût réel du Portail AE (montant_reel, sinon
+// provision). FMEN se calcule naturellement : FMEN = MEN − AUTO (règle MEN = FMEN + AUTO).
 // LOY + VIR absorbent le delta → le total de la résa ne change JAMAIS.
 // Pose le verrou ventilation_manuelle : plus aucun recalcul auto n'écrase ces montants.
 function AjusterVentil({ resa, ventil, onDone, onCancel }) {
   const ligne = (c) => ventil.find(v => v.code === c)
-  const lMen = ligne('MEN'), lHon = ligne('HON'), lFmen = ligne('FMEN'), lAuto = ligne('AUTO'), lLoy = ligne('LOY'), lVir = ligne('VIR')
+  const lMen = ligne('MEN'), lHon = ligne('HON'), lFmen = ligne('FMEN'), lAuto = ligne('AUTO'), lLoy = ligne('LOY'), lVir = ligne('VIR'), lCom = ligne('COM')
   const ttcDe = (l) => l ? (l.montant_ttc ?? l.montant_ht ?? 0) : 0
 
   // AUTO figé : réel portail AE si dispo, sinon la provision actuelle
@@ -87,6 +87,7 @@ function AjusterVentil({ resa, ventil, onDone, onCancel }) {
   const [vals, setVals] = useState(() => ({
     MEN: (ttcDe(lMen) / 100).toFixed(2),
     HON: (ttcDe(lHon) / 100).toFixed(2),
+    COM: (ttcDe(lCom) / 100).toFixed(2),
   }))
   const [saving, setSaving] = useState(false)
   // Taux de commission de la résa (stocké sur la ligne HON) — sert à répartir proportionnellement
@@ -98,7 +99,8 @@ function AjusterVentil({ resa, ventil, onDone, onCancel }) {
 
   const menNew = lMen ? parse(vals.MEN) : 0
   const honSaisi = lHon ? parse(vals.HON) : 0
-  const invalid = (lMen && menNew === null) || (lHon && honSaisi === null)
+  const comSaisi = lCom ? parse(vals.COM) : 0
+  const invalid = (lMen && menNew === null) || (lHon && honSaisi === null) || (lCom && comSaisi === null)
   // FMEN dérivé de la règle MEN = FMEN + AUTO
   const fmenNew = lMen ? (menNew === null ? null : menNew - autoFige) : ttcDe(lFmen)
   const fmenNegatif = fmenNew !== null && fmenNew < 0
@@ -110,9 +112,10 @@ function AjusterVentil({ resa, ventil, onDone, onCancel }) {
   const honProportionExtra = keepProportion ? Math.round(fmenDelta * tauxCom) : 0
   const honNew = lHon ? (honSaisi ?? 0) + honProportionExtra : null
 
-  // Delta absorbé par LOY : variations de HON (saisie + part proportionnelle) + FMEN + AUTO
+  // Delta absorbé par LOY : variations de HON (saisie + part proportionnelle) + COM + FMEN + AUTO
   const delta = (invalid || fmenNegatif) ? 0
     : (lHon ? ttcDe(lHon) - (honNew ?? 0) : 0)
+    + (lCom ? ttcDe(lCom) - (comSaisi ?? 0) : 0)
     + (lFmen ? ttcDe(lFmen) - (fmenNew ?? 0) : 0)
     + (lAuto ? (lAuto.montant_ht ?? 0) - autoFige : 0)
   const loyNew = (lLoy?.montant_ht || 0) + delta
@@ -123,6 +126,7 @@ function AjusterVentil({ resa, ventil, onDone, onCancel }) {
       const edits = {}
       if (lMen && menNew !== null) edits.MEN = menNew
       if (lHon && honSaisi !== null) edits.HON = honNew
+      if (lCom && comSaisi !== null) edits.COM = comSaisi
       if (lAuto) edits.AUTO = autoFige
       if (lFmen && fmenNew !== null) edits.FMEN = fmenNew
       await ajusterVentilationManuelle(resa, edits)
@@ -173,6 +177,15 @@ function AjusterVentil({ resa, ventil, onDone, onCancel }) {
                 {keepProportion && honProportionExtra !== 0 && honSaisi !== null && (
                   <div style={{ fontSize: '0.78em', color: '#B45309' }}>→ {fmtE(honNew)} avec la part MEN</div>
                 )}
+              </td>
+            </tr>
+          )}
+          {lCom && (
+            <tr style={rowStyle}>
+              <td style={{ padding: '6px 0' }}><strong>COM</strong> <span style={{ color: '#999', fontSize: '0.85em' }}>commission DCB TTC — levier (HT {comSaisi === null ? '—' : fmtE(Math.round((comSaisi ?? 0) / 1.2))})</span></td>
+              <td style={{ textAlign: 'right', padding: '4px 0' }}>
+                <input value={vals.COM} onChange={e => setVals(p => ({ ...p, COM: e.target.value }))}
+                  style={{ width: 100, textAlign: 'right', padding: '4px 6px', border: '1px solid ' + (comSaisi === null ? '#DC2626' : '#ccc'), borderRadius: 5 }} /> €
               </td>
             </tr>
           )}
