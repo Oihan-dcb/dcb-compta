@@ -686,13 +686,19 @@ export async function lancerMatchingAuto(mois, source = 'manuel') {
           // Fallback : payout_reservation vide → chercher par fin_revenue exact + platform + mois
           // Contrainte triple pour éviter tout faux match (≠ ancien fallback VIR ±200)
           // (pas pour les payouts réels : une résolution/recouche n'a légitimement pas de résa)
+          // + bien.agence/gestion_loyer : sans ça un bien géré par une autre agence, ou un bien
+          // sans gestion loyer (l'OTA paye directement le proprio, DCB ne reçoit jamais ce PAYIN),
+          // peut être "expliqué" à tort par un virement qui n'est pas le sien (incident du
+          // 12/07/2026 : Jeremy Hippolyte/Marie Falguieres/Julien Vigneron/Garance Bourgault).
           if (!resaIds.length && !isRealAirbnb) {
             const { data: resaFallback } = await supabase
               .from('reservation')
-              .select('id')
+              .select('id, bien!inner(agence, gestion_loyer)')
               .eq('platform', canal)
               .eq('fin_revenue', payoutExact.amount)
               .eq('mois_comptable', mois)
+              .eq('bien.agence', AGENCE)
+              .eq('bien.gestion_loyer', true)
             if (resaFallback?.length === 1) {
               resaIds = resaFallback.map(r => r.id)
               log.details.push({ type: canal + '_fallback_finrevenue', montant: mouv.credit / 100 })
@@ -803,9 +809,13 @@ export async function lancerMatchingAuto(mois, source = 'manuel') {
               allResaIds.push(...prLinks.map(r => r.reservation_id))
             } else {
               // Fallback par payout : fin_revenue exact + platform + mois
+              // + bien.agence/gestion_loyer : voir commentaire équivalent plus haut (ligne ~690) —
+              // même garde-fou contre un faux match inter-agence ou sur un bien sans gestion loyer.
               const { data: resaFb } = await supabase
-                .from('reservation').select('id')
+                .from('reservation').select('id, bien!inner(agence, gestion_loyer)')
                 .eq('platform', canal).eq('fin_revenue', p.amount).eq('mois_comptable', mois)
+                .eq('bien.agence', AGENCE)
+                .eq('bien.gestion_loyer', true)
               if (resaFb?.length === 1) {
                 allResaIds.push(resaFb[0].id)
               } else {
