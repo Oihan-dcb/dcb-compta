@@ -36,11 +36,14 @@ async function apiFetch(path: string, params: Record<string, any> = {}) {
 async function fetchAll(path: string, params: Record<string, any> = {}) {
   let page = 1, all: any[] = []
   while (true) {
-    const data = await apiFetch(path, { ...params, limit: 50, page })
+    // Hospitable attend "per_page" (pas "limit") — un mauvais nom de paramètre ici faisait
+    // retomber l'API sur sa pagination par défaut et ne synchronisait que la 1ère page de
+    // chaque bien, perdant ~80% des avis (constaté le 12/07/2026 : 17/85 avis DUL2 en base).
+    const data = await apiFetch(path, { ...params, per_page: 100, page })
     const items: any[] = data.data || []
     all = all.concat(items)
     const meta = data.meta || {}
-    if (page >= (meta.last_page || 1) || items.length < 50) break
+    if (page >= (meta.last_page || 1) || items.length < 100) break
     page++
     await new Promise(r => setTimeout(r, 100))
   }
@@ -53,6 +56,10 @@ Deno.serve(async (req) => {
   try {
   const body = await req.json().catch(() => ({}))
   const mois: string | undefined = body.mois  // optionnel, format YYYY-MM
+  // backfill=true : ne déclenche PAS le SMS 5★ (utilisé pour le rattrapage historique après le
+  // fix de pagination du 12/07/2026 — sans ça, tous les vieux avis 5★ jamais vus jusqu'ici
+  // déclencheraient un SMS de remerciement rétroactif à des voyageurs partis depuis longtemps).
+  const skipSms: boolean = body.backfill === true
 
   const sb = createClient(SUPABASE_URL, SERVICE_KEY)
 
@@ -67,12 +74,20 @@ Deno.serve(async (req) => {
   if (envGoogleUrl && agenceMap['dcb']) agenceMap['dcb'].googleUrl = agenceMap['dcb'].googleUrl || envGoogleUrl
 
   // Récupérer tous nos biens avec leur hospitable_id + agence
-  const { data: biens } = await sb
+  const { data: allBiens } = await sb
     .from('bien')
     .select('id, hospitable_id, hospitable_name, agence, zone')
     .not('hospitable_id', 'is', null)
+    .order('id')
 
-  if (!biens?.length) return json({ ok: true, total: 0, synced: 0 })
+  if (!allBiens?.length) return json({ ok: true, total: 0, synced: 0 })
+
+  // offset/batchSize : découpage en lots pour rester sous le idle timeout (150s) de la
+  // fonction — utilisé pour le rattrapage historique (12/07/2026), un seul appel sur les
+  // ~69 biens dépassait le temps imparti et se faisait couper en cours de route.
+  const offset: number = Number(body.offset) || 0
+  const batchSize: number = Number(body.batchSize) || allBiens.length
+  const biens = allBiens.slice(offset, offset + batchSize)
 
   let total = 0, synced = 0, errors = 0, smsQueued = 0
 
@@ -115,6 +130,11 @@ Deno.serve(async (req) => {
         rating:                    review.public?.rating ?? null,
         comment:                   review.public?.review ?? null,
         submitted_at:              review.reviewed_at ?? null,
+        // Feedback privé (jamais public, souvent plus franc) + notes détaillées par
+        // catégorie (propreté, communication, emplacement...) — utilisés pour la synthèse
+        // "axes d'amélioration" par bien.
+        private_feedback:          review.private?.feedback ?? null,
+        detailed_ratings:          review.private?.detailed_ratings ?? null,
       }
 
       const { error } = await sb
@@ -173,7 +193,7 @@ Deno.serve(async (req) => {
       const agenceCfg  = agenceMap[bienAgence] || agenceMap['dcb'] || { googleUrl: null, label: 'Destination Côte Basque' }
       const googleUrl  = agenceCfg.googleUrl
 
-      if (row.rating !== null && row.rating >= 5 && googleUrl) {
+      if (!skipSms && row.rating !== null && row.rating >= 5 && googleUrl) {
         const resaForSms = resaRow || matchedResa
         const guestPhone   = resaForSms?.guest_phone   || null
         const guestCountry = resaForSms?.guest_country || null
@@ -221,7 +241,8 @@ Deno.serve(async (req) => {
   }
 
   console.log(`sync-reviews: ${synced} ok, ${errors} errors / ${total} reviews, ${biens.length} properties, ${smsQueued} SMS queued`)
-  return json({ ok: true, total, synced, errors, smsQueued, properties: biens.length })
+  const nextOffset = offset + batchSize
+  return json({ ok: true, total, synced, errors, smsQueued, properties: biens.length, offset, batchSize, totalProperties: allBiens.length, nextOffset: nextOffset < allBiens.length ? nextOffset : null })
   } catch (e: any) {
     console.error('sync-reviews UNCAUGHT:', e?.message, e?.stack)
     return json({ error: e?.message ?? String(e), stack: e?.stack }, 200)
