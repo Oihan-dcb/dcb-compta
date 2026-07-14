@@ -1,9 +1,10 @@
 /**
  * alerte-solde-manuel — Edge Function Supabase (cron quotidien 8h05 UTC via pg_cron)
  *
- * Failsafe : alerte le staff quand une réservation manuelle/directe (paiement encaissé
- * par l'agence, pas par une OTA) arrive dans ≤ 15 jours sans que le solde ait été
- * intégralement reçu (calculé sur reservation_paiement, PAS sur le seul flag rapprochee —
+ * Failsafe : alerte le staff quand une réservation manuelle (platform='manual' — paiement
+ * encaissé par l'agence, entrée manuellement, pas via une OTA) arrive dans ≤ 15 jours sans
+ * que le solde ait été intégralement reçu (calculé sur reservation_paiement, PAS sur le seul
+ * flag rapprochee —
  * un failsafe se fie aux montants réels, pas à un statut qui peut être en retard/faux).
  *
  * Un seul mail récap quotidien tant qu'au moins une résa est à risque (pas d'escalade à
@@ -50,7 +51,7 @@ function htmlRecap(rows: {
     <table width="640" cellpadding="0" cellspacing="0" style="background:#fff;border-radius:10px;overflow:hidden;max-width:640px;width:100%">
       <tr><td style="background:#CC9933;padding:26px 40px;text-align:center">
         <p style="margin:0;color:#fff;font-size:11px;letter-spacing:2px;text-transform:uppercase;opacity:0.85">Destination Côte Basque</p>
-        <p style="margin:8px 0 0;color:#fff;font-size:19px;font-weight:bold">⚠ Soldes manquants — réservations manuelles/directes</p>
+        <p style="margin:8px 0 0;color:#fff;font-size:19px;font-weight:bold">⚠ Soldes manquants — réservations manuelles</p>
         <p style="margin:6px 0 0;color:rgba(255,255,255,0.75);font-size:13px">${rows.length} réservation${rows.length > 1 ? 's' : ''} · arrivée dans ≤ ${JOURS_FENETRE} jours</p>
       </td></tr>
       <tr><td style="padding:24px 0">
@@ -81,7 +82,7 @@ serve(async (req) => {
   const { data: resas, error } = await supabase
     .from('reservation')
     .select('id, guest_name, guest_email, guest_phone, arrival_date, fin_revenue, bien!inner(code, agence)')
-    .in('platform', ['manual', 'direct'])
+    .eq('platform', 'manual')
     .not('final_status', 'in', '("not accepted","cancelled")')
     .gt('fin_revenue', 0)
     .gte('arrival_date', today)
@@ -130,14 +131,14 @@ serve(async (req) => {
       headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${SERVICE_KEY}` },
       body: JSON.stringify({
         to: [to],
-        subject: `⚠ ${risques.length} solde${risques.length > 1 ? 's' : ''} manquant${risques.length > 1 ? 's' : ''} — réservation${risques.length > 1 ? 's' : ''} manuelle${risques.length > 1 ? 's' : ''}/directe${risques.length > 1 ? 's' : ''}`,
+        subject: `⚠ ${risques.length} solde${risques.length > 1 ? 's' : ''} manquant${risques.length > 1 ? 's' : ''} — réservation${risques.length > 1 ? 's' : ''} manuelle${risques.length > 1 ? 's' : ''}`,
         html: htmlRecap(rows),
       }),
     })
     if (!res.ok) return json({ error: 'erreur_smtp', detail: await res.text() }, 500)
     await supabase.from('journal_ops').insert({
       categorie: 'facturation', action: 'alerte_solde_manuel', source: 'cron', statut: 'ok',
-      message: `${risques.length} résa(s) manuelle(s)/directe(s) avec solde manquant (agence ${AGENCE}), alerte envoyée à ${to}`,
+      message: `${risques.length} résa(s) manuelle(s) avec solde manquant (agence ${AGENCE}), alerte envoyée à ${to}`,
     })
   }
 
