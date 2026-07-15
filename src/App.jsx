@@ -276,8 +276,12 @@ export default function App() {
     if (!session) return
     const mois = new Date().toISOString().slice(0, 7)
     const chargerBadge = () => {
-      supabase.from('prestation_hors_forfait').select('id', { count: 'exact' })
-        .eq('statut', 'en_attente').eq('mois', mois)
+      // bien:bien_id!inner + eq('bien.agence', AGENCE) : même filtrage que PagePrestationsAE.
+      // Sans ça la pastille comptait aussi les prestations de l'AUTRE agence (base partagée)
+      // et les prestations orphelines (bien_id null) invisibles dans la liste — incident du
+      // 15/07/2026 (badge à 3, seulement 2 visibles).
+      supabase.from('prestation_hors_forfait').select('id, bien:bien_id!inner(agence)', { count: 'exact' })
+        .eq('statut', 'en_attente').eq('mois', mois).eq('bien.agence', AGENCE)
         .then(({ count }) => setNbEnAttente(count || 0))
     }
     chargerBadge()
