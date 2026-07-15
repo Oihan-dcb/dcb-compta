@@ -103,6 +103,15 @@ serve(async (req) => {
     const jours = (now - new Date(refDate).getTime()) / 86400000
     if (jours < JOURS_ENTRE_RELANCES) { results.push({ id: f.id, action: 'attente', nb, jours: Math.floor(jours) }); continue }
 
+    // Re-vérification juste avant l'envoi : la liste `factures` est une PHOTO prise au début
+    // du cron — si le propriétaire a confirmé le virement entre-temps (le cron traite parfois
+    // des dizaines de factures, ça prend du temps), on ne veut SURTOUT PAS lui envoyer une
+    // relance obsolète. Incident du 15/07/2026 : relances reçues après confirmation.
+    if (!dryRun) {
+      const { data: fresh } = await supabase.from('facture_evoliz').select('statut').eq('id', f.id).maybeSingle()
+      if (fresh?.statut !== 'envoye_proprio') { results.push({ id: f.id, action: 'skip_deja_confirme_entretemps' }); continue }
+    }
+
     const bienNom = f.bien?.code || f.proprietaire?.nom || 'votre bien'
     const [y, m] = (f.mois || '').split('-')
     const moisLabel = `${MOIS_FR[parseInt(m) - 1] || f.mois} ${y}`
@@ -126,7 +135,7 @@ serve(async (req) => {
             }).catch(() => {})
           }
         }
-        await supabase.from('facture_evoliz').update({ nb_relances: 3, derniere_relance_at: new Date().toISOString() }).eq('id', f.id)
+        await supabase.from('facture_evoliz').update({ nb_relances: 3, derniere_relance_at: new Date().toISOString() }).eq('id', f.id).eq('statut', 'envoye_proprio')
         await supabase.from('journal_ops').insert({
           categorie: 'facturation', action: 'relance_debours_escalade', source: 'cron', statut: 'ok',
           mois_comptable: f.mois, message: `Débours ${bienNom} ${f.mois} : escalade Oïhan après 2 relances sans confirmation (${montantEur} €)`,
@@ -159,7 +168,7 @@ serve(async (req) => {
         }),
       })
       if (!res.ok) { results.push({ id: f.id, action: 'erreur_smtp', detail: await res.text() }); continue }
-      await supabase.from('facture_evoliz').update({ nb_relances: numero, derniere_relance_at: new Date().toISOString() }).eq('id', f.id)
+      await supabase.from('facture_evoliz').update({ nb_relances: numero, derniere_relance_at: new Date().toISOString() }).eq('id', f.id).eq('statut', 'envoye_proprio')
       await supabase.from('journal_ops').insert({
         categorie: 'facturation', action: 'relance_debours', source: 'cron', statut: 'ok',
         mois_comptable: f.mois, message: `Relance ${numero} débours ${bienNom} ${f.mois} envoyée à ${f.proprietaire.email} (${montantEur} €)`,

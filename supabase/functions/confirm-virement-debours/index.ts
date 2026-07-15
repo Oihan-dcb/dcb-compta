@@ -10,7 +10,7 @@
  *  1. Vérifie la signature HMAC
  *  2. Vérifie l'expiration
  *  3. Met à jour facture_evoliz.statut = 'remboursement_recu'
- *  4. Retourne une page HTML de confirmation
+ *  4. Redirige vers une page publique de confirmation
  *
  * ⚠ DÉPLOIEMENT : cette fonction DOIT être déployée avec verify_jwt=false
  *   (lien public cliqué depuis un email, sans JWT ; auth custom par token HMAC).
@@ -25,23 +25,12 @@ const SUPABASE_URL = Deno.env.get('SUPABASE_URL') ?? ''
 const SERVICE_KEY  = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? ''
 const SECRET       = Deno.env.get('DEBOURS_CONFIRM_SECRET') ?? ''
 
-function htmlPage(titre: string, message: string, isError = false) {
-  const color = isError ? '#DC2626' : '#CC9933'
-  const icon  = isError ? '⚠' : '✓'
-  return `<!DOCTYPE html><html lang="fr"><head><meta charset="utf-8">
-<meta name="viewport" content="width=device-width,initial-scale=1">
-<title>${titre} — Destination Côte Basque</title></head>
-<body style="margin:0;padding:0;background:#f5f0e8;font-family:Arial,sans-serif;min-height:100vh;display:flex;align-items:center;justify-content:center">
-  <div style="background:#fff;border-radius:10px;padding:48px 40px;max-width:480px;width:90%;text-align:center;box-shadow:0 2px 16px rgba(44,36,22,0.10)">
-    <div style="font-size:48px;margin-bottom:20px">${icon}</div>
-    <div style="font-size:11px;letter-spacing:2px;text-transform:uppercase;color:#9C8E7D;margin-bottom:12px">Destination Côte Basque</div>
-    <h1 style="margin:0 0 16px;font-size:22px;color:${color};font-weight:bold">${titre}</h1>
-    <p style="margin:0 0 32px;font-size:14px;color:#666;line-height:1.6">${message}</p>
-    <div style="border-top:2px solid ${color};padding-top:20px;font-size:11px;color:#9C8E7D">
-      Destination Côte Basque SARL · RCS Bayonne 904 781 671
-    </div>
-  </div>
-</body></html>`
+const CONFIRM_PAGE_URL = Deno.env.get('DEBOURS_CONFIRM_PAGE_URL') ?? 'https://dcb-compta.vercel.app/debours-confirmation.html'
+
+function confirmationRedirect(status: string) {
+  const target = new URL(CONFIRM_PAGE_URL)
+  target.searchParams.set('status', status)
+  return Response.redirect(target.toString(), 303)
 }
 
 async function verifyToken(token: string): Promise<{ factureId: string } | null> {
@@ -74,25 +63,16 @@ serve(async (req) => {
   const token  = url.searchParams.get('token')
 
   if (!token) {
-    return new Response(
-      htmlPage('Lien invalide', 'Ce lien de confirmation est invalide ou incomplet.', true),
-      { status: 400, headers: { 'Content-Type': 'text/html; charset=utf-8' } }
-    )
+    return confirmationRedirect('invalid')
   }
 
   if (!SECRET) {
-    return new Response(
-      htmlPage('Erreur configuration', 'DEBOURS_CONFIRM_SECRET non configuré.', true),
-      { status: 500, headers: { 'Content-Type': 'text/html; charset=utf-8' } }
-    )
+    return confirmationRedirect('config')
   }
 
   const verified = await verifyToken(token)
   if (!verified) {
-    return new Response(
-      htmlPage('Lien expiré', 'Ce lien de confirmation a expiré ou est invalide. Contactez Oïhan si vous avez effectué le virement.', true),
-      { status: 400, headers: { 'Content-Type': 'text/html; charset=utf-8' } }
-    )
+    return confirmationRedirect('expired')
   }
 
   const supabase = createClient(SUPABASE_URL, SERVICE_KEY)
@@ -105,32 +85,36 @@ serve(async (req) => {
     .maybeSingle()
 
   if (!facture) {
-    return new Response(
-      htmlPage('Facture introuvable', 'Ce lien ne correspond à aucune facture. Contactez Oïhan.', true),
-      { status: 404, headers: { 'Content-Type': 'text/html; charset=utf-8' } }
-    )
+    return confirmationRedirect('not-found')
   }
 
   // Déjà confirmé
   if (facture.statut === 'remboursement_recu') {
-    return new Response(
-      htmlPage('Déjà confirmé', 'Ce virement a déjà été enregistré. Merci.'),
-      { headers: { 'Content-Type': 'text/html; charset=utf-8' } }
-    )
+    return confirmationRedirect('already')
   }
 
-  // Mettre à jour
-  const { error } = await supabase
+  // Mettre à jour — .select() pour vérifier qu'une ligne a RÉELLEMENT été modifiée.
+  // Sans ce contrôle, un update qui touche 0 ligne (ex. statut plus tout à fait
+  // 'envoye_proprio' au moment du clic) ne renvoie PAS d'erreur côté PostgREST : la page
+  // affichait "confirmé" au propriétaire alors que rien n'avait changé en base, et
+  // relance-debours continuait de le relancer (incident du 15/07/2026).
+  const { data: updated, error } = await supabase
     .from('facture_evoliz')
     .update({ statut: 'remboursement_recu' })
     .eq('id', verified.factureId)
     .eq('statut', 'envoye_proprio')
+    .select('id')
 
   if (error) {
-    return new Response(
-      htmlPage('Erreur', `Impossible de confirmer : ${error.message}`, true),
-      { status: 500, headers: { 'Content-Type': 'text/html; charset=utf-8' } }
-    )
+    return confirmationRedirect('error')
+  }
+  if (!updated || updated.length === 0) {
+    await supabase.from('journal_ops').insert({
+      categorie: 'facturation', action: 'confirm_debours_noop', source: 'confirm-virement-debours', statut: 'warning',
+      mois_comptable: facture.mois,
+      message: `Confirmation débours facture ${verified.factureId} : update 0 ligne (statut lu="${facture.statut}", attendu "envoye_proprio") — investiguer.`,
+    }).catch(() => {})
+    return confirmationRedirect('error')
   }
 
   // Push Oïhan (PowerHouse + Portail AE — table push_subscriptions partagée). Best-effort.
@@ -160,11 +144,5 @@ serve(async (req) => {
     }
   } catch { /* best-effort — la confirmation proprio n'échoue jamais pour un push raté */ }
 
-  return new Response(
-    htmlPage(
-      'Virement confirmé',
-      `Merci — votre virement pour le mois de <strong>${facture.mois}</strong> a bien été enregistré. Destination Côte Basque en a été informée.`
-    ),
-    { headers: { 'Content-Type': 'text/html; charset=utf-8' } }
-  )
+  return confirmationRedirect('ok')
 })
