@@ -477,12 +477,14 @@ async function calculerVentilationMois(mois: string, agence: string, supa: Retur
   // Log
   if (!dryRun) {
     // journal_ops (≠ 'journal' qui n'existe pas — le log échouait silencieusement)
-    await supa.from('journal_ops').insert({
-      categorie: 'ventilation', action: 'compute_auto', mois_comptable: mois,
-      statut: errors > 0 ? 'warning' : 'ok', source: 'cron',
-      message: `Ventilation auto ${mois} : ${total} résa(s)${skipped > 0 ? ', ' + skipped + ' verrouillée(s)' : ''}${errors > 0 ? ', ' + errors + ' erreur(s)' : ''}`,
-      meta: { total, skipped, errors, errorDetails },
-    }).catch(() => {})
+    try {
+      await supa.from('journal_ops').insert({
+        categorie: 'ventilation', action: 'compute_auto', mois_comptable: mois,
+        statut: errors > 0 ? 'warning' : 'ok', source: 'cron',
+        message: `Ventilation auto ${mois} : ${total} résa(s)${skipped > 0 ? ', ' + skipped + ' verrouillée(s)' : ''}${errors > 0 ? ', ' + errors + ' erreur(s)' : ''}`,
+        meta: { total, skipped, errors, errorDetails },
+      })
+    } catch { /* logging ne doit jamais faire échouer le recalcul */ }
   }
 
   return { mois, total, skipped, errors, errorDetails }
