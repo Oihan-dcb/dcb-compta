@@ -160,10 +160,10 @@ function _calculerLignes(resa, agence) {
   const dueToOwner = ((resa.platform === 'airbnb' || resa.platform === 'booking') && totalFeesForOwnerRate > 0)
     ? Math.round(Math.abs(hostServiceFee) * fmenBase / totalFeesForOwnerRate * (1 - tauxCom))
     : 0
-  const fmenTTC = Math.max(0, fmenBase - dueToOwner - aeAmount) + ajustementFmenExtra
+  let fmenTTC = Math.max(0, fmenBase - dueToOwner - aeAmount) + ajustementFmenExtra
   // fmenHT peut être négatif si ajustementFmenExtra dépasse la marge FMEN normale (DCB
   // absorbe la perte) — pas de floor à 0 ici, pour que HON+FMEN+AUTO+LOY se recoupe exactement.
-  const fmenHT  = fmenTTC !== 0 ? Math.round(fmenTTC / (1 + TVA_RATE)) : 0
+  let fmenHT  = fmenTTC !== 0 ? Math.round(fmenTTC / (1 + TVA_RATE)) : 0
 
   // En fallback, le ménage voyageur NET de la commission Airbnb (= fmenBase − dueToOwner) est
   // fondu dans `accommodation` → on le retranche de la base de commission, sinon HON serait
@@ -171,10 +171,17 @@ function _calculerLignes(resa, agence) {
   const menageFonduAccommodation = airbnbFallbackActif ? (fmenBase - dueToOwner) : 0
 
   const commissionableBase = accommodation + hostServiceFee + discountsTotal + extraGuestFee - menageFonduAccommodation + ajustementHebergement
-  const honTTC = isDirect
+  let honTTC = isDirect
     ? Math.floor(commissionableBase * tauxCom)
     : Math.round(commissionableBase * tauxCom)
-  const honHT = Math.round(honTTC / (1 + TVA_RATE))
+  let honHT = Math.round(honTTC / (1 + TVA_RATE))
+
+  // skip_facturation : bien perso du gérant (ex. LAGREOU/ASKIDA) — aucun honoraire ni
+  // forfait ménage ne doit être prélevé, pas juste "non facturé" (cf. facturesLLD.js).
+  // Le revenu correspondant remonte intégralement au propriétaire via LOY/VIR ci-dessous.
+  if (bien.skip_facturation) {
+    honHT = 0; honTTC = 0; fmenHT = 0; fmenTTC = 0
+  }
 
   const menLabelsToExclude = ['management fee', 'host service fee', 'resort fee']
   const menFees   = guestFeesAll.filter(f => !menLabelsToExclude.includes(f.label?.toLowerCase()))
@@ -452,7 +459,7 @@ async function processMois(mois, agence, supa) {
     bien (
       id, proprietaire_id,
       provision_ae_ref, forfait_dcb_ref, has_ae,
-      taux_commission_override, gestion_loyer, agence,
+      taux_commission_override, gestion_loyer, agence, skip_facturation,
       proprietaire!proprietaire_id (id, taux_commission)
     ),
     reservation_fee (*),
