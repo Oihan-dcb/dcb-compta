@@ -119,7 +119,7 @@ async function handleReservation(supabase: any, event: string, data: any): Promi
     if (resa?.id) {
       // Supprimer la ventilation existante
       await supabase.from('ventilation').delete().eq('reservation_id', resa.id)
-      console.log('Ventilation supprim\u00e9e (annulation):', hospId)
+      console.log('Ventilation supprimée (annulation):', hospId)
     }
     return 'cancelled + ventilation deleted'
   }
@@ -263,8 +263,12 @@ async function handleReservation(supabase: any, event: string, data: any): Promi
 
   console.log('Upserted:', data.code, event)
 
-  // Génération contrat (draft) sur nouvelle réservation acceptée
-  if (event === 'reservation.created' && finalStatus === 'accepted' && upserted?.id) {
+  // Génération contrat (draft) sur réservation acceptée. On déclenche aussi sur les updates
+  // (changed/updated/modified) car un booking direct arrive souvent en 'request' via
+  // reservation.created PUIS passe 'accepted' via reservation.changed : sans ça, le contrat
+  // n'était jamais généré en temps réel. Idempotent : le garde "contrat déjà existant" ci-dessous
+  // (y compris cancelled) empêche tout doublon / recréation d'un contrat annulé par le staff.
+  if (['reservation.created', 'reservation.changed', 'reservation.updated', 'reservation.modified'].includes(event) && finalStatus === 'accepted' && upserted?.id) {
     try {
       const guestLocale: string = data.guest?.locale || data.guest?.language || ''
       const langue = guestLocale.startsWith('en') ? 'en' : guestLocale.startsWith('es') ? 'es' : 'fr'
@@ -404,7 +408,7 @@ async function handleProperty(supabase: any, event: string, data: any): Promise<
   if (!hospId) return 'no hospitable_id'
 
   if (event === 'property.created') {
-    // V\u00e9rifier si le bien existe d\u00e9j\u00e0
+    // Vérifier si le bien existe déjà
     const { data: existing } = await supabase
       .from('bien')
       .select('id')
@@ -412,7 +416,7 @@ async function handleProperty(supabase: any, event: string, data: any): Promise<
       .single()
 
     if (!existing) {
-      // Cr\u00e9er le bien avec les infos de base
+      // Créer le bien avec les infos de base
       await supabase.from('bien').insert({
         hospitable_id:   hospId,
         hospitable_name: data.name,
