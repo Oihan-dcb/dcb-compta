@@ -104,6 +104,7 @@ export default async function handler(req, res) {
 
     await supabase.from('import_log').insert({
       type: 'pennylane_sequestre_saisonniere',
+      agence: AGENCE,
       statut: doublonsEvites > 0 ? 'partial' : 'success',
       nb_lignes_traitees: transactionsBrutes.length,
       nb_lignes_creees: importLog.inseres,
@@ -113,7 +114,7 @@ export default async function handler(req, res) {
     return res.json({ ok: true, agence: AGENCE, fetched: transactionsBrutes.length, doublonsEvites, import: importLog, matching: matchResults, deboursLies })
   } catch (err) {
     console.error('[pennylane-mouvement-sync] erreur:', err.message)
-    await supabase.from('import_log').insert({ type: 'pennylane_sequestre_saisonniere', statut: 'error', message: err.message }).catch(() => {})
+    await supabase.from('import_log').insert({ type: 'pennylane_sequestre_saisonniere', agence: AGENCE, statut: 'error', message: err.message }).catch(() => {})
     return res.status(500).json({ error: err.message })
   }
 }

@@ -77,6 +77,7 @@ export async function syncBiens() {
     // 5. Logger la sync
     await supabase.from('import_log').insert({
       type: 'hospitable_properties',
+      agence: AGENCE,
       statut: 'success',
       nb_lignes_traitees: log.total,
       nb_lignes_creees: log.created,
@@ -90,6 +91,7 @@ export async function syncBiens() {
 
     try { await supabase.from('import_log').insert({
       type: 'hospitable_properties',
+      agence: AGENCE,
       statut: 'error',
       nb_erreurs: 1,
       message: err.message,

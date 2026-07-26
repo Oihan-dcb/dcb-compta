@@ -1,11 +1,18 @@
 import { useState, useEffect } from 'react'
 import { supabase } from '../lib/supabase'
+import { AGENCE } from '../lib/agence'
 
 /**
  * Badge « ⏱ Dernier sync » — dernière exécution (cron nightly ou clic manuel) d'un
  * type d'import_log. À placer à côté de tout bouton doublé par un cron journalier
  * (Sync Airbnb → 'airbnb_payouts', Sync Hospitable → 'hospitable_reservations').
  * `refreshKey` : changer sa valeur force un rechargement (ex. après un sync manuel).
+ *
+ * import_log.agence : filtré sur l'agence courante OU null (lignes historiques
+ * antérieures à la migration 20260726, ou crons intentionnellement partagés comme
+ * 'airbnb_payouts' — voir api/sync-payouts.js, un seul run couvre DCB + Lauian).
+ * Sans ce filtre, lauian-compta affichait le dernier sync DCB (bug du 26/07/2026).
+ * journal_ops n'a pas de colonne agence (dette connue, non traitée ici).
  */
 export default function LastSyncBadge({ type, journalOps, refreshKey }) {
   const [last, setLast] = useState(null)
@@ -21,6 +28,7 @@ export default function LastSyncBadge({ type, journalOps, refreshKey }) {
           .order('created_at', { ascending: false }).limit(1)
       : supabase.from('import_log').select('created_at, statut, message')
           .eq('type', type)
+          .or(`agence.eq.${AGENCE},agence.is.null`)
           .order('created_at', { ascending: false }).limit(1)
     q.then(({ data }) => { if (alive) setLast(data?.[0] || null) })
     return () => { alive = false }

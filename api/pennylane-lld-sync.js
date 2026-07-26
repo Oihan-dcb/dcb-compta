@@ -87,6 +87,7 @@ export default async function handler(req, res) {
 
     await supabase.from('import_log').insert({
       type: 'pennylane_lld_loyers',
+      agence: AGENCE,
       statut: doublonsEvites > 0 ? 'partial' : 'success',
       nb_lignes_traitees: transactionsBrutes.length,
       nb_lignes_creees: inseres,
@@ -96,7 +97,7 @@ export default async function handler(req, res) {
     return res.json({ ok: true, agence: AGENCE, fetched: transactionsBrutes.length, doublonsEvites, inseres, lies, loyers: { updated, skipped } })
   } catch (err) {
     console.error('[pennylane-lld-sync] erreur:', err.message)
-    await supabase.from('import_log').insert({ type: 'pennylane_lld_loyers', statut: 'error', message: err.message }).catch(() => {})
+    await supabase.from('import_log').insert({ type: 'pennylane_lld_loyers', agence: AGENCE, statut: 'error', message: err.message }).catch(() => {})
     return res.status(500).json({ error: err.message })
   }
 }

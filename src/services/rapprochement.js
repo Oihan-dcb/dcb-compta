@@ -968,6 +968,7 @@ export async function lancerMatchingAuto(mois, source = 'manuel') {
   // Journaliser dans import_log — alimente le badge « ⏱ Dernier sync » (cron ET manuel)
   await supabase.from('import_log').insert({
     type:                   'matching_auto',
+    agence:                 AGENCE,
     mois_concerne:          mois,
     statut:                 log.errors > 0 ? 'partial' : 'success',
     nb_lignes_traitees:     log.matched + log.skipped,

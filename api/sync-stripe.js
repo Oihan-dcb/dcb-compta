@@ -104,7 +104,7 @@ export default async function handler(req, res) {
       }
     }
     log.matched = matches.length
-    if (!matches.length) { await logStripeImport(supabase, log, source); return res.status(200).json(log) }
+    if (!matches.length) { await logStripeImport(supabase, log, source, agence); return res.status(200).json(log) }
 
     // 5. Pour chaque payout, récupérer les transactions et insérer les lignes
     for (const po of matches) {
@@ -206,15 +206,16 @@ export default async function handler(req, res) {
     log.errors++
   }
 
-  await logStripeImport(supabase, log, source)
+  await logStripeImport(supabase, log, source, agence)
   return res.status(200).json(log)
 }
 
 // Journalise l'exécution dans import_log — alimente le badge « ⏱ Dernier sync »
-async function logStripeImport(supabase, log, source) {
+async function logStripeImport(supabase, log, source, agence) {
   try {
     await supabase.from('import_log').insert({
       type:                   'stripe_payouts',
+      agence,
       mois_concerne:          new Date().toISOString().slice(0, 7),
       statut:                 log.errors > 0 ? 'partial' : 'success',
       nb_lignes_traitees:     log.matched,

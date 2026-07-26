@@ -1759,10 +1759,11 @@ export default function PageLocationsLongues() {
                   </button>
                 </div>
               )}
-              {banqueCompte === 'loyers' ? (
-                // Import CSV manuel masqué : compte alimenté automatiquement par
-                // api/pennylane-lld-sync (cron nightly 3h55) depuis le 07/07/2026.
-                // Réactiver ferait doublonner (voir src/services/pennylaneDedup.js).
+              {banqueCompte === 'loyers' && AGENCE === 'dcb' ? (
+                // Import CSV manuel masqué uniquement pour DCB : compte alimenté automatiquement
+                // par api/pennylane-lld-sync (cron nightly 3h55) depuis le 07/07/2026. Réactiver
+                // ferait doublonner (voir src/services/pennylaneDedup.js). Lauian/Bordeaux n'ont
+                // pas encore de token Pennylane (tâche #5) : import CSV conservé pour eux.
                 <div style={{ marginLeft: 'auto', display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 2 }}>
                   <span style={{ fontSize: 12, color: '#8C7B65', fontWeight: 600 }}>🔗 Pennylane</span>
                   <LastSyncBadge type="pennylane_lld_loyers" />

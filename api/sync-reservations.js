@@ -312,6 +312,7 @@ async function syncMois(mois, agence) {
     prefer: 'return=minimal',
     body: JSON.stringify({
       type:                  'hospitable_reservations',
+      agence,
       mois_concerne:         mois,
       statut:                log.errors > 0 ? 'partial' : 'success',
       nb_lignes_traitees:    log.total,

@@ -1128,3 +1128,46 @@ et vérifiée en direct sur la DB (bien BGH, juin 2026) :
   exclusion ajoutée. `virements.js` (Bilan annuel) reste un montant VIR brut sans déductions — pas
   refondu dans cette session (portée plus large, cf. audit `[[project_portail_owner_audit]]` qui
   recommandait un helper `_calc.js` partagé — toujours pas fait, dette technique connue).
+
+## Fixes session 07 juillet 2026 — Payouts Airbnb dupliqués (cron legacy) + doublons mouvements CaisseEpargne
+
+Signalé par Oïhan (transferts Airbnb non rapprochés dans l'écran Rapprochement). Deux bugs distincts
+trouvés et corrigés, tous deux liés à des **doublons de données** (concern récurrent d'Oïhan « attention
+aux doublons »).
+
+### Bug 1 — 234 réservations avec `payout_hospitable` synthétique en double (root cause : cron legacy)
+
+Le job **pg_cron `sync-reservations-cron` / `-lauian`** (Edge Function Deno `sync-reservations-cron`,
+2h/2h30 UTC) tournait **encore chaque nuit en doublon** avec le cron Vercel `/api/sync-reservations`,
+censé l'avoir remplacé depuis le refactor de mars 2026 (commit `2db85b9` « unifier sync reservations »).
+Le pg_cron n'avait jamais été désactivé. Les deux créaient un `payout_hospitable` synthétique Airbnb
+avec une **clé `hospitable_id` différente** :
+- `api/sync-reservations.js` (Vercel) → clé `resaId + '_airbnb_payout'` (ID **interne** DB)
+- `sync-reservations-cron/index.ts` (Edge, legacy) → clé `resa.id + '_airbnb_payout'` où `resa.id` = ID
+  **Hospitable externe** brut de l'API.
+
+Comme les deux upsertent sur `on_conflict=hospitable_id` avec des chaînes différentes, jamais de
+collision → 2 lignes par résa. Sur 234 résas : 27 payouts liés au même mouvement, **2 liés à des
+mouvements bancaires DIFFÉRENTS** (double-réconciliation réelle : Aline Rauber 322,79€ et Sonny Gabriel
+465,61€ — chacun avait volé le vrai virement Airbnb d'une AUTRE résa par coïncidence de montant).
+
+**Fix** : (1) `cron.unschedule('sync-reservations-cron')` + `-lauian` (migration
+`20260707155115_disable_legacy_sync_reservations_cron.sql`, idempotente) ; (2) Edge Function orpheline
+supprimée ; (3) `api/sync-reservations.js:275` : `resa.id` → `resaId` (clé interne cohérente avec
+`sync-payouts.js`) ; (4) nettoyage des 234 paires (backup `_backup_payout_hospitable_20260707`), les 2
+mouvements volés repassés `en_attente` pour re-matching manuel. Commit `b9daac9`.
+
+### Bug 2 — 34 mouvements bancaires dupliqués (index unique inclut `source`)
+
+Découvert en creusant des PAYINs « à lier » (BETAK, ANNETTE DUSEK, CEYSSENS…). Des imports bancaires
+sous **sources différentes** (`csv` mars, `CaisseEpargne` réimport 27/04 + 10/05, `Pennylane_...` juillet)
+ont recréé les mêmes transactions réelles. L'index `mouvement_unique` porte sur
+`(source, date_operation, libelle, credit, debit)` → **`source` dans la clé = deux imports de la même
+transaction sous des sources différentes ne sont jamais bloqués**. 34 doublons supprimés (backups
+`_backup_mouvement_bancaire_20260707b` / `_20260707c`), en gardant la ligne déjà rapprochée. 3 faux
+positifs volontairement conservés (Booking Scheuer en 3 parts égales, 2 frais Pennylane 0,21€,
+coïncidence BudgetBakers). **Incident annexe** : un doublon (SIGNOURET 3862€) avait été faussement
+re-matché en « solde » par un `matching-auto` manuel → double-paiement annulé (paiement + 2 ventilation
+RGLM supprimés, correction tracée dans `journal_ops`). **Dette connue non corrigée** : l'index
+`mouvement_unique` gagnerait à exclure `source` de sa clé, mais risque inverse (bloquer 2 vraies
+transactions coïncidentes) — arbitrage laissé à Oïhan.

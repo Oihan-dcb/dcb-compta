@@ -144,6 +144,7 @@ export async function importerMouvements(mouvements) {
   // Logger
   await supabase.from('import_log').insert({
     type: 'csv_bancaire',
+    agence: AGENCE,
     mois_concerne: moisReleve,
     statut: 'success',
     nb_lignes_traitees: mouvements.length,
