@@ -47,7 +47,7 @@ Deno.serve(async (req) => {
       null
 
     // Normaliser les events du périmètre
-    type Ev = { uid: string | null; titre: string; dateStr: string; mois: string; bien: any; duree: number | null; cancelled: boolean; isCleaningCheckout: boolean; isCheckin: boolean }
+    type Ev = { uid: string | null; titre: string; dateStr: string; mois: string; bien: any; duree: number | null; heure: string | null; cancelled: boolean; isCleaningCheckout: boolean; isCheckin: boolean }
     const evs: Ev[] = []
     for (const e of events) {
       const titre = e.summary || ''
@@ -65,6 +65,7 @@ Deno.serve(async (req) => {
         mois: moisDe(d),
         bien: findBien(m[1]),
         duree: computeDureeHeures(e.dtstart, e.dtend),
+        heure: extractHeure(e.dtstart),
         cancelled: e.status?.toUpperCase() === 'CANCELLED',
         isCleaningCheckout: titreLC.startsWith('cleaning') || titreLC.startsWith('check-out') || titreLC.startsWith('checkout'),
         isCheckin: titreLC.startsWith('check-in') || titreLC.startsWith('checkin'),
@@ -151,6 +152,7 @@ Deno.serve(async (req) => {
         type_mission: e.isCheckin ? 'checkin' : (e.isCleaningCheckout ? 'checkout' : 'autre'),
         imputation: 'ventilation_dcb',
         duree_prevue: e.duree,
+        heure_mission: e.heure,
       }
       const prev = e.uid ? existingByUid.get(e.uid) : null
       if (prev) {
@@ -235,6 +237,16 @@ function parseDatetime(s: string): Date | null {
   const m = clean.match(/^(\d{4})(\d{2})(\d{2})T(\d{2})(\d{2})(\d{2})/)
   if (m) return new Date(Date.UTC(+m[1], +m[2]-1, +m[3], +m[4], +m[5], +m[6]))
   return null
+}
+
+// Hospitable envoie DTSTART;TZID=Europe/Paris:20260726T110000 — l'heure locale est
+// déjà dans les chiffres bruts (pas de conversion de fuseau à faire, juste extraire).
+function extractHeure(dtstart: string): string | null {
+  if (!dtstart) return null
+  const clean = dtstart.replace(/[^0-9T]/g, '')
+  const m = clean.match(/T(\d{2})(\d{2})(\d{2})/)
+  if (!m) return null
+  return `${m[1]}:${m[2]}:${m[3]}`
 }
 
 function computeDureeHeures(dtstart: string, dtend: string): number | null {
