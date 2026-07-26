@@ -47,7 +47,7 @@ Deno.serve(async (req) => {
       null
 
     // Normaliser les events du périmètre
-    type Ev = { uid: string | null; titre: string; dateStr: string; mois: string; bien: any; duree: number | null; cancelled: boolean; isCleaningCheckout: boolean }
+    type Ev = { uid: string | null; titre: string; dateStr: string; mois: string; bien: any; duree: number | null; cancelled: boolean; isCleaningCheckout: boolean; isCheckin: boolean }
     const evs: Ev[] = []
     for (const e of events) {
       const titre = e.summary || ''
@@ -67,6 +67,7 @@ Deno.serve(async (req) => {
         duree: computeDureeHeures(e.dtstart, e.dtend),
         cancelled: e.status?.toUpperCase() === 'CANCELLED',
         isCleaningCheckout: titreLC.startsWith('cleaning') || titreLC.startsWith('check-out') || titreLC.startsWith('checkout'),
+        isCheckin: titreLC.startsWith('check-in') || titreLC.startsWith('checkin'),
       })
     }
 
@@ -147,7 +148,7 @@ Deno.serve(async (req) => {
         titre_ical: e.titre,
         ical_uid: e.uid,
         mois: e.mois,
-        type_mission: 'checkout',
+        type_mission: e.isCheckin ? 'checkin' : (e.isCleaningCheckout ? 'checkout' : 'autre'),
         imputation: 'ventilation_dcb',
         duree_prevue: e.duree,
       }
