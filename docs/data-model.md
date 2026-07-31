@@ -77,6 +77,9 @@ Propriétaires des biens. Source de synchronisation : Evoliz (clients facturés)
 | `taux_commission` | numeric | Taux par défaut pour tous ses biens | Écrasé par `bien.taux_commission_override` |
 | `evoliz_id` | text | ID client dans Evoliz | Mis à jour lors du push ou sync Evoliz |
 | `actif` | boolean | Propriétaire actif | ❓ Filtre non appliqué dans genererFacturesMois (CF-F8) |
+| `auth_user_id` | uuid | Compte Supabase Auth lié (Portail Owner) | Lié par `owner-portal-invite`, jamais par le proprio lui-même (sauf super-admin) |
+| `parent_proprietaire_id` | uuid FK → proprietaire | Compte secondaire/co-propriétaire → fiche parent | Feature "Accès secondaires" (PageProprietaires) |
+| `duplicate_of_id` | uuid FK → proprietaire | Fiche coquille → fiche primaire (avec bien réel) de la MÊME personne, autre agence | Ajouté 2026-07-31 (migration 236). Cas FMEN facturé par DCB pour un bien géré par Lauian (ou l'inverse) : la coquille n'a aucun bien. `owner-portal-invite` propage `auth_user_id` aux deux fiches automatiquement. Distinct de `parent_proprietaire_id`. |
 | `created_at` | timestamptz | | |
 
 ---
