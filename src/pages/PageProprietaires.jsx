@@ -860,6 +860,9 @@ function TabPortailOwner({ proprio, visConfig, visLoading, visErr, visOk, invite
         )}
       </div>
 
+      {/* ── Fiche liée (doublon inter-agence) ── */}
+      <DuplicateLinkSection proprio={proprio} />
+
       {/* ── Accès secondaires ── */}
       <SecondaryAccessSection proprio={proprio} />
 
@@ -1147,6 +1150,160 @@ function SecondaryAccessSection({ proprio }) {
         >
           + Ajouter un accès secondaire
         </button>
+      )}
+    </div>
+  )
+}
+
+// ── Fiche liée (doublon inter-agence) ─────────────────────────────────────────
+// Une même personne peut avoir 2 fiches proprietaire, une par agence, quand DCB
+// facture du ménage (FMEN) pour un bien géré par Lauian : la fiche de l'autre
+// agence n'a alors aucun bien, elle sert uniquement à la facturation interne.
+// Ce lien (duplicate_of_id) permet à owner-portal-invite de propager auth_user_id
+// sur les deux fiches automatiquement à l'invitation, sans intervention manuelle.
+
+function DuplicateLinkSection({ proprio, onProprioPatched }) {
+  const [linkedFiche, setLinkedFiche] = useState(undefined) // undefined = pas encore chargé, null = aucune
+  const [reverseFiches, setReverseFiches] = useState([])    // fiches qui pointent VERS celle-ci
+  const [search, setSearch] = useState('')
+  const [results, setResults] = useState([])
+  const [searching, setSearching] = useState(false)
+  const [saving, setSaving] = useState(false)
+  const [syncing, setSyncing] = useState(false)
+  const [syncOk, setSyncOk] = useState(false)
+  const [err, setErr] = useState(null)
+
+  async function charger() {
+    if (proprio.duplicate_of_id) {
+      const { data } = await supabase.from('proprietaire')
+        .select('id, nom, prenom, agence, auth_user_id')
+        .eq('id', proprio.duplicate_of_id).maybeSingle()
+      setLinkedFiche(data || null)
+    } else {
+      setLinkedFiche(null)
+    }
+    const { data: reverse } = await supabase.from('proprietaire')
+      .select('id, nom, prenom, agence, auth_user_id')
+      .eq('duplicate_of_id', proprio.id)
+    setReverseFiches(reverse || [])
+  }
+
+  useEffect(() => { charger() }, [proprio.id, proprio.duplicate_of_id])
+
+  async function lancerRecherche(q) {
+    setSearch(q)
+    if (q.trim().length < 2) { setResults([]); return }
+    setSearching(true)
+    const { data } = await supabase.from('proprietaire')
+      .select('id, nom, prenom, agence')
+      .neq('id', proprio.id)
+      .or(`nom.ilike.%${q.trim()}%,prenom.ilike.%${q.trim()}%`)
+      .limit(8)
+    setResults(data || [])
+    setSearching(false)
+  }
+
+  async function lier(autreId) {
+    setSaving(true); setErr(null)
+    try {
+      await updateProprietaire(proprio.id, { duplicate_of_id: autreId })
+      setSearch(''); setResults([])
+      await charger()
+      onProprioPatched?.({ duplicate_of_id: autreId })
+    } catch (e) { setErr(e.message) }
+    finally { setSaving(false) }
+  }
+
+  async function delier() {
+    if (!window.confirm('Retirer le lien avec cette fiche ?')) return
+    setSaving(true); setErr(null)
+    try {
+      await updateProprietaire(proprio.id, { duplicate_of_id: null })
+      await charger()
+      onProprioPatched?.({ duplicate_of_id: null })
+    } catch (e) { setErr(e.message) }
+    finally { setSaving(false) }
+  }
+
+  async function synchroniserAcces(autreFiche) {
+    setSyncing(true); setErr(null); setSyncOk(false)
+    try {
+      const source = proprio.auth_user_id ? proprio : autreFiche
+      const cible = proprio.auth_user_id ? autreFiche : proprio
+      if (!source.auth_user_id) throw new Error('Aucune des deux fiches n\'a encore de compte portail actif')
+      await updateProprietaire(cible.id, { auth_user_id: source.auth_user_id })
+      await charger()
+      setSyncOk(true); setTimeout(() => setSyncOk(false), 3000)
+    } catch (e) { setErr(e.message) }
+    finally { setSyncing(false) }
+  }
+
+  const autresFiches = [...(linkedFiche ? [linkedFiche] : []), ...reverseFiches]
+  const desynchro = autresFiches.some(f => !!f.auth_user_id !== !!proprio.auth_user_id)
+
+  return (
+    <div style={{ background: 'var(--cream)', border: '1px solid var(--border)', borderRadius: 8, padding: '14px 16px', marginBottom: 20 }}>
+      <div style={{ fontSize: 11, fontWeight: 700, letterSpacing: 1.5, textTransform: 'uppercase', color: 'var(--text-muted)', marginBottom: 10 }}>
+        Fiche liée (doublon autre agence)
+      </div>
+
+      {err && <div className="alert alert-error" style={{ marginBottom: 10 }}>✗ {err}</div>}
+
+      {linkedFiche === undefined ? (
+        <div style={{ fontSize: 12, color: 'var(--text-muted)' }}>Chargement…</div>
+      ) : (
+        <>
+          {autresFiches.length > 0 ? (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+              {autresFiches.map(f => (
+                <div key={f.id} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10, fontSize: 13 }}>
+                  <div>
+                    <strong>{[f.prenom, f.nom].filter(Boolean).join(' ')}</strong>
+                    <span style={{ marginLeft: 6, fontSize: 11, color: 'var(--text-muted)', textTransform: 'uppercase' }}>{f.agence}</span>
+                    {f.auth_user_id
+                      ? <span style={{ marginLeft: 8, color: '#15803D', fontSize: 11, fontWeight: 600 }}>✓ Portail actif</span>
+                      : <span style={{ marginLeft: 8, color: 'var(--warning)', fontSize: 11, fontWeight: 600 }}>Portail inactif</span>}
+                  </div>
+                  {linkedFiche?.id === f.id && (
+                    <button className="btn btn-secondary btn-sm" disabled={saving} onClick={delier}>Délier</button>
+                  )}
+                </div>
+              ))}
+              {desynchro && (
+                <div style={{ marginTop: 8 }}>
+                  <button className="btn btn-secondary btn-sm" disabled={syncing} onClick={() => synchroniserAcces(autresFiches[0])}>
+                    {syncing ? '⏳' : '🔗 Synchroniser l\'accès portail maintenant'}
+                  </button>
+                  {syncOk && <span style={{ marginLeft: 8, fontSize: 12, color: '#15803D' }}>✓ Synchronisé</span>}
+                </div>
+              )}
+            </div>
+          ) : (
+            <div style={{ fontSize: 12, color: 'var(--text-muted)', marginBottom: 8 }}>
+              Aucune fiche liée — utile si cette personne a une 2e fiche dans l'autre agence (ex: FMEN facturé par DCB pour un bien géré par Lauian).
+            </div>
+          )}
+
+          {!linkedFiche && (
+            <div style={{ marginTop: 10, position: 'relative' }}>
+              <input type="text" value={search} onChange={e => lancerRecherche(e.target.value)}
+                placeholder="Chercher une fiche à lier (nom)…"
+                style={{ fontSize: 12, padding: '6px 10px', border: '1.5px solid var(--border)', borderRadius: 6, width: 260 }} />
+              {searching && <span style={{ marginLeft: 8, fontSize: 11, color: 'var(--text-muted)' }}>…</span>}
+              {results.length > 0 && (
+                <div style={{ marginTop: 4, border: '1px solid var(--border)', borderRadius: 6, background: 'white', maxWidth: 320 }}>
+                  {results.map(r => (
+                    <div key={r.id} onClick={() => lier(r.id)}
+                      style={{ padding: '6px 10px', fontSize: 12, cursor: 'pointer', borderBottom: '1px solid var(--border)', display: 'flex', justifyContent: 'space-between' }}>
+                      <span>{[r.prenom, r.nom].filter(Boolean).join(' ')}</span>
+                      <span style={{ color: 'var(--text-muted)', textTransform: 'uppercase', fontSize: 10 }}>{r.agence}</span>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          )}
+        </>
       )}
     </div>
   )
