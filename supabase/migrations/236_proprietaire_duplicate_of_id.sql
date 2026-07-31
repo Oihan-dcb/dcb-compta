@@ -8,10 +8,13 @@
 -- devait être recopié à la main sur la fiche coquille à chaque incident.
 --
 -- Ajoute duplicate_of_id (fiche coquille → fiche primaire avec bien réel) +
--- backfill des 15 paires détectées avec certitude (même nom/prénom/téléphone
--- exact, une seule des deux fiches avec un bien réel). 7 paires ambiguës (aucune
--- des deux fiches n'a de bien actif des deux côtés) laissées volontairement non
--- liées — à confirmer manuellement via l'onglet Portail Owner > Fiche liée.
+-- backfill de 22 paires au total :
+--   - 15 paires certaines (même nom/prénom/téléphone exact, une seule des deux
+--     fiches avec un bien réel actif)
+--   - 7 paires supplémentaires liées ensuite à la demande (même nom/prénom exact,
+--     aucun bien actif des deux côtés — direction dcb→lauian par convention,
+--     sans incidence fonctionnelle car owner-portal-invite propage dans les
+--     deux sens)
 --
 -- L'edge function owner-portal-invite propage désormais auth_user_id sur les deux
 -- fiches automatiquement à l'invitation (voir dcb-portail-owner/api, fonction
@@ -43,3 +46,21 @@ UPDATE proprietaire p
 SET duplicate_of_id = pairs.primary_id
 FROM pairs
 WHERE p.id = pairs.shell_id AND p.duplicate_of_id IS NULL;
+
+-- Backfill des 7 paires restantes (même nom/prénom exact, aucun bien actif des
+-- deux côtés — impossible de deviner laquelle est "primaire" par le bien, donc
+-- direction dcb→lauian par simple convention)
+WITH pairs2 AS (
+  SELECT a.id AS dcb_id, b.id AS lauian_id
+  FROM proprietaire a
+  JOIN proprietaire b ON a.id <> b.id
+    AND a.agence = 'dcb' AND b.agence = 'lauian'
+    AND lower(a.nom) = lower(b.nom)
+    AND coalesce(lower(a.prenom),'') = coalesce(lower(b.prenom),'')
+  WHERE a.duplicate_of_id IS NULL AND b.duplicate_of_id IS NULL
+    AND NOT EXISTS (SELECT 1 FROM proprietaire x WHERE x.duplicate_of_id = a.id OR x.duplicate_of_id = b.id)
+)
+UPDATE proprietaire p
+SET duplicate_of_id = pairs2.lauian_id
+FROM pairs2
+WHERE p.id = pairs2.dcb_id;
