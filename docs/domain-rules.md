@@ -751,6 +751,8 @@ Le mot "VIR" désigne quatre objets distincts dans ce projet. **Toujours utilise
 
 **Alias dans le code** : `ventilation.code = 'VIR'`
 
+**Reversement manuel hors circuit** (ajouté 2026-08-03) : quand un VIRProprio a été payé au propriétaire *à la main* (hors compte bancaire DCB — ex: Laura pour Lauian, sur des biens à réservation unique sans rapport mensuel à envoyer), on le trace dans `reversement_fait` (`bien_id, mois, agence, fait_at, montant_reverse_cts, note`) via la case "Fait" de la matrice de contrôle (`PageComptabilite.jsx`). C'est **purement déclaratif** — ne touche ni `ventilation.js`, ni la génération des factures Evoliz (HON/FMEN/management fee, indépendante), ni le rapprochement bancaire. **Ne pas confondre avec VIRPayinProuvé ci-dessous** : celui-ci concerne l'argent qui *arrive* sur le compte DCB (payout plateforme), pas l'argent qui *part* vers le propriétaire.
+
 ---
 
 ### VIRPayinProuvé : `ventilation.code = 'VIR'` avec `mouvement_id IS NOT NULL`

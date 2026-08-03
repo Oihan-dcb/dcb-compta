@@ -45,8 +45,10 @@ export default function PageComptabilite() {
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState(null)
 
-  // Reversements faits (bien_id → fait_at ISO string)
+  // Reversements faits (bien_id → { fait_at, montant_reverse_cts, note })
   const [reversementsFaits, setReversementsFaits] = useState({})
+  // Modal de saisie montant/note à l'ouverture d'un "Fait" (bien simple, hors groupe)
+  const [modalFait, setModalFait] = useState(null) // { bienId, bienNom, montantSuggere } | null
 
   // Biens actifs (bien_id → boolean, défaut true). Persisté par mois.
   const [bienActif, setBienActif] = useState({})
@@ -139,10 +141,10 @@ export default function PageComptabilite() {
     try {
       const [result, { data: faits }] = await Promise.all([
         buildComptaMensuelle(mois),
-        supabase.from('reversement_fait').select('bien_id, fait_at').eq('mois', mois).eq('agence', AGENCE),
+        supabase.from('reversement_fait').select('bien_id, fait_at, montant_reverse_cts, note').eq('mois', mois).eq('agence', AGENCE),
       ])
       setData(result)
-      setReversementsFaits(Object.fromEntries((faits || []).map(f => [f.bien_id, f.fait_at])))
+      setReversementsFaits(Object.fromEntries((faits || []).map(f => [f.bien_id, { fait_at: f.fait_at, montant_reverse_cts: f.montant_reverse_cts, note: f.note }])))
     } catch (e) {
       setError(e.message)
     } finally {
@@ -150,18 +152,27 @@ export default function PageComptabilite() {
     }
   }, [mois])
 
-  const toggleFait = useCallback(async (bienId, currentFaitAt) => {
-    if (currentFaitAt) {
-      // Décocher → supprimer
-      await supabase.from('reversement_fait').delete().eq('bien_id', bienId).eq('mois', mois).eq('agence', AGENCE)
-      setReversementsFaits(prev => { const n = { ...prev }; delete n[bienId]; return n })
-    } else {
-      // Cocher → insérer
-      const fait_at = new Date().toISOString()
-      await supabase.from('reversement_fait').upsert({ bien_id: bienId, mois, agence: AGENCE, fait_at }, { onConflict: 'bien_id,mois,agence' })
-      setReversementsFaits(prev => ({ ...prev, [bienId]: fait_at }))
-    }
+  // Décocher "Fait" (bien simple) → supprime la ligne (montant/note perdus, confirmés au clic)
+  const unmarkFait = useCallback(async (bienId) => {
+    if (!window.confirm('Décocher ce reversement ? Le montant/note enregistrés seront perdus.')) return
+    await supabase.from('reversement_fait').delete().eq('bien_id', bienId).eq('mois', mois).eq('agence', AGENCE)
+    setReversementsFaits(prev => { const n = { ...prev }; delete n[bienId]; return n })
   }, [mois])
+
+  // Confirme la modale montant/note → insère le reversement fait
+  const confirmerModalFait = useCallback(async () => {
+    if (!modalFait) return
+    const montantEur = parseFloat(String(modalFait.montant).replace(',', '.'))
+    if (!(montantEur > 0)) return
+    const montant_reverse_cts = Math.round(montantEur * 100)
+    const fait_at = new Date().toISOString()
+    await supabase.from('reversement_fait').upsert(
+      { bien_id: modalFait.bienId, mois, agence: AGENCE, fait_at, montant_reverse_cts, note: modalFait.note || null },
+      { onConflict: 'bien_id,mois,agence' }
+    )
+    setReversementsFaits(prev => ({ ...prev, [modalFait.bienId]: { fait_at, montant_reverse_cts, note: modalFait.note || null } }))
+    setModalFait(null)
+  }, [mois, modalFait])
 
   useEffect(() => {
     charger()
@@ -520,39 +531,51 @@ export default function PageComptabilite() {
                   {col('reversement_calcule') && <td style={{ ...td, textAlign: 'right', fontVariantNumeric: 'tabular-nums', fontWeight: actif && r.reversement_calcule ? 600 : 400 }}>{actif ? (r.reversement_calcule ? fmtN(r.reversement_calcule) : '—') : dash}</td>}
                   {col('fait') && <td style={{ ...td, textAlign: 'center' }}>
                     {!isChild && !r.is_lauian_client && (() => {
-                      let faitAt, handleClick
+                      let faitEntry, handleClick
                       if (r._isGroup && r._childrenBienIds?.length) {
+                        // Groupe multi-biens : toggle simple, pas de saisie montant (ambigu à répartir)
                         const allFait = r._childrenBienIds.every(id => !!reversementsFaits[id])
-                        faitAt = allFait ? reversementsFaits[r._childrenBienIds[0]] : null
+                        faitEntry = allFait ? reversementsFaits[r._childrenBienIds[0]] : null
                         handleClick = async () => {
-                          const fait_at = new Date().toISOString()
                           if (allFait) {
+                            if (!window.confirm('Décocher ce reversement sur tout le groupe ?')) return
                             await Promise.all(r._childrenBienIds.map(id =>
                               supabase.from('reversement_fait').delete().eq('bien_id', id).eq('mois', mois).eq('agence', AGENCE)
                             ))
                             setReversementsFaits(prev => { const n = { ...prev }; r._childrenBienIds.forEach(id => delete n[id]); return n })
                           } else {
+                            const fait_at = new Date().toISOString()
                             await Promise.all(r._childrenBienIds.map(id =>
                               supabase.from('reversement_fait').upsert({ bien_id: id, mois, agence: AGENCE, fait_at }, { onConflict: 'bien_id,mois,agence' })
                             ))
-                            setReversementsFaits(prev => { const n = { ...prev }; r._childrenBienIds.forEach(id => { n[id] = fait_at }); return n })
+                            setReversementsFaits(prev => { const n = { ...prev }; r._childrenBienIds.forEach(id => { n[id] = { fait_at } }); return n })
                           }
                         }
                       } else {
-                        faitAt = reversementsFaits[r.bien_id]
-                        handleClick = () => toggleFait(r.bien_id, faitAt)
+                        faitEntry = reversementsFaits[r.bien_id]
+                        handleClick = faitEntry
+                          ? () => unmarkFait(r.bien_id)
+                          : () => setModalFait({
+                              bienId: r.bien_id,
+                              bienNom: r.bien_nom || r.code || '',
+                              montant: r.reversement_calcule ? (r.reversement_calcule / 100).toFixed(2) : '',
+                              note: '',
+                            })
                       }
-                      const d = faitAt ? new Date(faitAt) : null
+                      const d = faitEntry?.fait_at ? new Date(faitEntry.fait_at) : null
+                      const montantLabel = faitEntry?.montant_reverse_cts != null ? fmt(faitEntry.montant_reverse_cts) : null
                       const label = d
-                        ? `Virement fait le ${d.toLocaleDateString('fr-FR', { day: '2-digit', month: '2-digit' })} à ${d.toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' })}h`
+                        ? `VIRProprio reversé le ${d.toLocaleDateString('fr-FR', { day: '2-digit', month: '2-digit' })} à ${d.toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' })}h`
+                          + (montantLabel ? ` — ${montantLabel}` : '')
+                          + (faitEntry?.note ? ` — ${faitEntry.note}` : '')
                         : ''
                       return (
                         <div title={label} style={{ display: 'inline-flex', alignItems: 'center', gap: 4, cursor: 'pointer' }} onClick={handleClick}>
-                          <span style={{ fontSize: 18, color: faitAt ? '#059669' : '#D9CEB8', lineHeight: 1 }}>
-                            {faitAt ? '✅' : '○'}
+                          <span style={{ fontSize: 18, color: d ? '#059669' : '#D9CEB8', lineHeight: 1 }}>
+                            {d ? '✅' : '○'}
                           </span>
-                          {faitAt && <span style={{ fontSize: '0.7em', color: '#059669', whiteSpace: 'nowrap' }}>
-                            {d.toLocaleDateString('fr-FR', { day: '2-digit', month: '2-digit' })} {d.toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' })}h
+                          {d && <span style={{ fontSize: '0.7em', color: '#059669', whiteSpace: 'nowrap' }}>
+                            {montantLabel || `${d.toLocaleDateString('fr-FR', { day: '2-digit', month: '2-digit' })} ${d.toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' })}h`}
                           </span>}
                         </div>
                       )
@@ -789,6 +812,50 @@ export default function PageComptabilite() {
         </div>
       )}
       </>}
+
+      {modalFait && (
+        <div onClick={() => setModalFait(null)}
+          style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,.45)', zIndex: 500, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 16 }}>
+          <div onClick={e => e.stopPropagation()}
+            style={{ background: '#fff', borderRadius: 14, padding: '22px 24px', maxWidth: 420, width: '100%', boxShadow: '0 8px 32px rgba(0,0,0,.2)' }}>
+            <h3 style={{ margin: '0 0 4px', fontSize: 16, fontWeight: 700, color: 'var(--text)' }}>
+              ✅ Marquer le VIRProprio comme reversé
+            </h3>
+            <p style={{ color: '#8C7B65', fontSize: 13, margin: '0 0 16px' }}>
+              {modalFait.bienNom} · {mois}
+            </p>
+
+            <label style={{ display: 'block', fontSize: 12, fontWeight: 600, color: 'var(--text)', marginBottom: 4 }}>
+              Montant net effectivement reversé (€) *
+            </label>
+            <input
+              type="text" inputMode="decimal" autoFocus
+              value={modalFait.montant}
+              onChange={e => setModalFait(m => ({ ...m, montant: e.target.value }))}
+              placeholder="0.00"
+              style={{ width: '100%', padding: '8px 10px', border: '1.5px solid var(--border)', borderRadius: 8, fontSize: 14, marginBottom: 14, boxSizing: 'border-box' }}
+            />
+
+            <label style={{ display: 'block', fontSize: 12, fontWeight: 600, color: 'var(--text)', marginBottom: 4 }}>
+              Note (optionnel)
+            </label>
+            <textarea
+              value={modalFait.note}
+              onChange={e => setModalFait(m => ({ ...m, note: e.target.value }))}
+              placeholder="Ex : acompte 3000€ + solde 5197,68€, ménage réglé au black par le propriétaire…"
+              rows={3}
+              style={{ width: '100%', padding: '8px 10px', border: '1.5px solid var(--border)', borderRadius: 8, fontSize: 13, marginBottom: 18, boxSizing: 'border-box', resize: 'vertical', fontFamily: 'inherit' }}
+            />
+
+            <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
+              <button className="btn btn-secondary btn-sm" onClick={() => setModalFait(null)}>Annuler</button>
+              <button className="btn btn-primary btn-sm" disabled={!(parseFloat(String(modalFait.montant).replace(',', '.')) > 0)} onClick={confirmerModalFait}>
+                ✓ Confirmer
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   )
 }
