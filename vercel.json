@@ -11,6 +11,9 @@
     "api/sync-reservations.js": {
       "maxDuration": 120
     },
+    "api/sync-biens.js": {
+      "maxDuration": 60
+    },
     "api/sync-payouts.js": {
       "maxDuration": 120
     },
@@ -34,6 +37,14 @@
     }
   },
   "crons": [
+    {
+      "path": "/api/sync-biens?agence=dcb",
+      "schedule": "40 2 * * *"
+    },
+    {
+      "path": "/api/sync-biens?agence=lauian",
+      "schedule": "45 2 * * *"
+    },
     {
       "path": "/api/sync-reservations?agence=dcb",
       "schedule": "0 3 * * *"

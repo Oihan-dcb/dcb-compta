@@ -337,6 +337,23 @@ export default function PageBiens() {
           (total : {syncResult.total})
         </div>
       )}
+      {syncResult?.collisions?.length > 0 && (
+        <div className="alert alert-warning" style={{ marginBottom: 16 }}>
+          ⚠ {syncResult.collisions.length} collision(s) détectée(s) — un bien Hospitable porte le même nom
+          qu'un bien déjà existant en base, mais avec un identifiant différent (probablement un bien jusque-là
+          suivi manuellement qui vient d'être connecté à Hospitable). Pour éviter un doublon, la création a été
+          bloquée — à résoudre à la main (mettre à jour l'<code>hospitable_id</code> du bien existant plutôt que
+          d'en créer un nouveau) :
+          <ul style={{ margin: '8px 0 0', paddingLeft: 20 }}>
+            {syncResult.collisions.map(c => (
+              <li key={c.hospitable_id_nouveau}>
+                <strong>{c.hospitable_name}</strong> — bien existant <code>{c.bien_existant_code}</code>
+                {' '}(hospitable_id actuel : <code>{c.bien_existant_hospitable_id}</code>) → nouveau : <code>{c.hospitable_id_nouveau}</code>
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
       {error && (
         <div className="alert alert-error">
           ✕ Erreur : {error}

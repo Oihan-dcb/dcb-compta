@@ -1,6 +1,11 @@
 /**
  * Service de synchronisation des biens Hospitable → Supabase
  * Appelé au démarrage de l'app et via le bouton "Synchroniser"
+ *
+ * Doublon volontaire avec api/sync-biens.js (version serveur, utilisée par le
+ * cron nightly) — même pattern que ventilation.js/api/ventiler.js. Toute
+ * modification de la logique de matching/collision ici doit être répercutée
+ * là-bas, et inversement.
  */
 
 import { supabase } from '../lib/supabase'
@@ -8,14 +13,36 @@ import { AGENCE } from '../lib/agence'
 import { fetchProperties } from '../lib/hospitable'
 
 /**
+ * Normalise un nom de bien pour comparaison ("Villa Bacalan" == "villa   bacalan !")
+ * — minuscules, sans accents, sans ponctuation, espaces compactés.
+ */
+function normalizeName(s) {
+  if (!s) return ''
+  return s
+    .normalize('NFD').replace(/[̀-ͯ]/g, '') // accents
+    .toLowerCase()
+    .replace(/[^a-z0-9\s]/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim()
+}
+
+/**
  * Synchronise les biens Hospitable dans la table `bien`
  * Crée les nouveaux biens, met à jour les existants
  * Ne supprime jamais un bien (désactivation uniquement)
  *
- * @returns {Promise<{created: number, updated: number, total: number}>}
+ * Garde-fou anti-doublon (ajouté 2026-08-03, incident Villa Bacalan) : un bien
+ * suivi manuellement (hospitable_id placeholder type "manual-..."/"MANUAL-...")
+ * qui se connecte réellement à Hospitable arrive avec un NOUVEL hospitable_id —
+ * sans vérification, il serait créé en doublon (fiche vide, sans propriétaire)
+ * au lieu de mettre à jour la fiche existante. On détecte ce cas par nom
+ * normalisé identique à un bien déjà existant et on NE crée PAS : on remonte
+ * la collision pour résolution manuelle (cf. PageBiens.jsx).
+ *
+ * @returns {Promise<{created: number, updated: number, total: number, collisions: Array}>}
  */
 export async function syncBiens() {
-  const log = { created: 0, updated: 0, errors: 0, total: 0 }
+  const log = { created: 0, updated: 0, errors: 0, total: 0, collisions: [] }
 
   try {
     // 1. Récupérer tous les biens depuis Hospitable
@@ -25,10 +52,13 @@ export async function syncBiens() {
     // 2. Récupérer les biens existants dans Supabase
     const { data: existingBiens } = await supabase
       .from('bien')
-      .select('id, hospitable_id, listed')
+      .select('id, code, hospitable_name, hospitable_id, listed')
 
     const existingMap = new Map(
       (existingBiens || []).map(b => [b.hospitable_id, b])
+    )
+    const existingByName = new Map(
+      (existingBiens || []).map(b => [normalizeName(b.hospitable_name), b])
     )
 
     // 3. Préparer les upserts
@@ -47,8 +77,27 @@ export async function syncBiens() {
 
     // 4. Upsert dans Supabase (conflit sur hospitable_id)
     // Séparer nouveaux et existants pour protéger gestion_loyer
-    const nouveaux = toUpsert.filter(p => !existingMap.has(p.hospitable_id))
+    const candidatsNouveaux = toUpsert.filter(p => !existingMap.has(p.hospitable_id))
     const existants = toUpsert.filter(p => existingMap.has(p.hospitable_id))
+
+    // Parmi les "nouveaux" (hospitable_id inconnu), écarter ceux dont le nom
+    // matche déjà un bien existant : probable connexion Hospitable d'un bien
+    // jusqu'ici suivi manuellement → collision à résoudre à la main, pas de création.
+    const nouveaux = []
+    for (const p of candidatsNouveaux) {
+      const match = existingByName.get(normalizeName(p.hospitable_name))
+      if (match) {
+        log.collisions.push({
+          hospitable_name: p.hospitable_name,
+          hospitable_id_nouveau: p.hospitable_id,
+          bien_existant_id: match.id,
+          bien_existant_code: match.code,
+          bien_existant_hospitable_id: match.hospitable_id,
+        })
+      } else {
+        nouveaux.push(p)
+      }
+    }
 
     // Insérer les nouveaux avec gestion_loyer: true par défaut
     if (nouveaux.length) {
@@ -65,8 +114,10 @@ export async function syncBiens() {
     const upserted = { data: [] } // compatibilité
 
 
-    // Compter créations vs mises à jour
+    // Compter créations vs mises à jour (les collisions ne comptent ni l'un ni l'autre)
+    const collisionIds = new Set(log.collisions.map(c => c.hospitable_id_nouveau))
     for (const prop of properties) {
+      if (collisionIds.has(prop.id)) continue
       if (existingMap.has(prop.id)) {
         log.updated++
       } else {
@@ -78,11 +129,12 @@ export async function syncBiens() {
     await supabase.from('import_log').insert({
       type: 'hospitable_properties',
       agence: AGENCE,
-      statut: 'success',
+      statut: log.collisions.length ? 'warning' : 'success',
       nb_lignes_traitees: log.total,
       nb_lignes_creees: log.created,
       nb_lignes_mises_a_jour: log.updated,
-      message: `Sync biens OK — ${log.created} créés, ${log.updated} mis à jour`,
+      message: `Sync biens OK — ${log.created} créés, ${log.updated} mis à jour`
+        + (log.collisions.length ? ` — ⚠ ${log.collisions.length} collision(s) à résoudre manuellement : ${log.collisions.map(c => c.hospitable_name).join(', ')}` : ''),
     })
 
     return log
