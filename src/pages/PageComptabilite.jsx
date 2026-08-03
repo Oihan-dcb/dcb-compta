@@ -563,20 +563,39 @@ export default function PageComptabilite() {
                             })
                       }
                       const d = faitEntry?.fait_at ? new Date(faitEntry.fait_at) : null
-                      const montantLabel = faitEntry?.montant_reverse_cts != null ? fmt(faitEntry.montant_reverse_cts) : null
+                      const dateStr = d ? d.toLocaleDateString('fr-FR', { day: '2-digit', month: '2-digit' }) : ''
+                      const montantReverse = faitEntry?.montant_reverse_cts ?? null
+                      const montantLabel = montantReverse != null ? fmt(montantReverse) : null
+                      // Solde = ce qui reste dû au proprio par rapport au reversement calculé
+                      // (VIRProprio) — utile pour repérer un écart (sous/sur-reversé). Non calculable
+                      // si le montant reversé n'a pas été renseigné (ex: Augusta, montant à préciser).
+                      const solde = (montantReverse != null && r.reversement_calcule != null)
+                        ? r.reversement_calcule - montantReverse
+                        : null
+                      const soldeSignificatif = solde != null && Math.abs(solde) >= 100 // ignorer écarts < 1€ (arrondis)
                       const label = d
-                        ? `VIRProprio reversé le ${d.toLocaleDateString('fr-FR', { day: '2-digit', month: '2-digit' })} à ${d.toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' })}h`
-                          + (montantLabel ? ` — ${montantLabel}` : '')
+                        ? `VIRProprio reversé le ${dateStr} à ${d.toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' })}h`
+                          + (montantLabel ? ` — ${montantLabel}` : ' — montant non renseigné')
+                          + (solde != null ? ` — solde ${fmt(solde)}` : '')
                           + (faitEntry?.note ? ` — ${faitEntry.note}` : '')
                         : ''
                       return (
-                        <div title={label} style={{ display: 'inline-flex', alignItems: 'center', gap: 4, cursor: 'pointer' }} onClick={handleClick}>
+                        <div title={label} style={{ display: 'inline-flex', flexDirection: 'column', alignItems: 'center', gap: 1, cursor: 'pointer' }} onClick={handleClick}>
                           <span style={{ fontSize: 18, color: d ? '#059669' : '#D9CEB8', lineHeight: 1 }}>
                             {d ? '✅' : '○'}
                           </span>
-                          {d && <span style={{ fontSize: '0.7em', color: '#059669', whiteSpace: 'nowrap' }}>
-                            {montantLabel || `${d.toLocaleDateString('fr-FR', { day: '2-digit', month: '2-digit' })} ${d.toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' })}h`}
-                          </span>}
+                          {d && (
+                            <div style={{ fontSize: '0.68em', lineHeight: 1.35, whiteSpace: 'nowrap', textAlign: 'center' }}>
+                              <div style={{ color: '#059669', fontWeight: 600 }}>
+                                {montantLabel ? `${montantLabel} fait le ${dateStr}` : `Fait le ${dateStr}`}
+                              </div>
+                              {soldeSignificatif && (
+                                <div style={{ color: solde > 0 ? '#DC2626' : '#2563EB', fontWeight: 600 }}>
+                                  Solde {solde > 0 ? '+' : ''}{fmt(solde)}
+                                </div>
+                              )}
+                            </div>
+                          )}
                         </div>
                       )
                     })()}
