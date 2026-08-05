@@ -156,7 +156,14 @@ export function parseBookingCSV(text) {
   const iCheckout   = col('Date de départ',                 'Check-out date')
   const iProp       = col("Nom de l'établissement",         'Property name')
   const iPropId     = col("Identifiant de l'établissement", 'Property ID')
-  const iAmount     = col('Montant du versement',           'Payable amount')
+  // "Montant du versement" = total du virement, présent UNIQUEMENT sur la ligne
+  // "(Payout)" récapitulative — vide ("-") sur chaque ligne "Réservation". Le montant
+  // net PAR résa (celui qu'on doit stocker) est dans "Montant payable" : la somme des
+  // "Montant payable" de toutes les résas d'un payout == "Montant du versement" du
+  // payout (vérifié sur données réelles, ex. 600.98+639.74=1240.72€). Utiliser la
+  // mauvaise colonne mettait amount_cents=0 sur TOUTES les lignes réservation (bug
+  // trouvé 2026-08-05 — cf. backfill migration/correction des lignes déjà importées).
+  const iAmount     = col('Montant payable',                'Payable amount')
   const iGross      = col('Montant brut',                   'Gross amount')
   const iComm       = col('Commission',                     'Commission')
   const iStatus     = col('Statut de la réservation',       'Reservation status')
