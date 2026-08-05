@@ -751,7 +751,9 @@ Le mot "VIR" désigne quatre objets distincts dans ce projet. **Toujours utilise
 
 **Alias dans le code** : `ventilation.code = 'VIR'`
 
-**Reversement manuel hors circuit** (ajouté 2026-08-03) : quand un VIRProprio a été payé au propriétaire *à la main* (hors compte bancaire DCB — ex: Laura pour Lauian, sur des biens à réservation unique sans rapport mensuel à envoyer), on le trace dans `reversement_fait` (`bien_id, mois, agence, fait_at, montant_reverse_cts, note`) via la case "Fait" de la matrice de contrôle (`PageComptabilite.jsx`). C'est **purement déclaratif** — ne touche ni `ventilation.js`, ni la génération des factures Evoliz (HON/FMEN/management fee, indépendante), ni le rapprochement bancaire. **Ne pas confondre avec VIRPayinProuvé ci-dessous** : celui-ci concerne l'argent qui *arrive* sur le compte DCB (payout plateforme), pas l'argent qui *part* vers le propriétaire.
+**Reversement manuel hors circuit — bien+mois** (ajouté 2026-08-03) : quand un VIRProprio a été payé au propriétaire *à la main* (hors compte bancaire DCB — ex: Laura pour Lauian, sur des biens à réservation unique sans rapport mensuel à envoyer), on le trace dans `reversement_fait` (`bien_id, mois, agence, fait_at, montant_reverse_cts, note`) via la case "Fait" de la Vue mensuelle (`PageComptabilite.jsx`). C'est **purement déclaratif** — ne touche ni `ventilation.js`, ni la génération des factures Evoliz (HON/FMEN/management fee, indépendante), ni le rapprochement bancaire. **Ne pas confondre avec VIRPayinProuvé ci-dessous** : celui-ci concerne l'argent qui *arrive* sur le compte DCB (payout plateforme), pas l'argent qui *part* vers le propriétaire.
+
+**Reversement manuel hors circuit — par résa** (ajouté 2026-08-05) : besoin distinct du précédent — un propriétaire multi-résa qui veut sa part dès qu'*une* résa précise encaisse, avant la clôture du mois (donc avant que le VIRProprio total du bien/mois soit connu). Tracé dans `reversement_resa` (`reservation_id UNIQUE, bien_id, mois_comptable, montant_cts, date_virement, note`), saisi depuis un bloc dédié dans `ModalResa.jsx` ("Reversement propriétaire — virement anticipé"). Agrégé par bien dans `buildComptaMensuelle.js` (`virement_resa_total_cts`/`virement_resa_count`/`virement_resa_items` par row) et affiché dans une colonne séparée "Viré (résa)" de la Vue mensuelle — **jamais fusionné** avec la case "Fait" bien+mois pour éviter le double comptage : le pré-remplissage de la case "Fait" et son calcul de solde soustraient explicitement `virement_resa_total_cts`. Également remonté dans `buildRapportData.js` (`virementResaList`/`virementResaTotal`) et affiché en ligne "− Déjà versé" + "Reste à verser" dans le rapport propriétaire (`rapportStatement.js`, `rapportProprietaire.js`) et dans l'export CSV comptable (`exportComptaCSV`). Comme `reversement_fait`, **purement déclaratif** : ne touche ni la ventilation, ni la facturation Evoliz, ni le rapprochement bancaire (le virement, hors circuit bancaire DCB entrant, n'a pas de `mouvement_bancaire` associé).
 
 ---
 
@@ -801,6 +803,26 @@ Le mot "VIR" désigne quatre objets distincts dans ce projet. **Toujours utilise
 | **VIRProprioRéel** | Calcul résiduel | Ce que DCB peut réellement virer au proprio | Matrice de contrôle PageComptabilite |
 
 **Règle obligatoire pour toutes les sessions Claude Code** : ne jamais écrire "VIR" seul dans un commentaire de code, une conversation ou un commit. Toujours utiliser l'un des 4 noms officiels : VIRProprio, VIRPayinProuvé, PAYIN, VIRProprioRéel.
+
+---
+
+### `skip_facturation` : reversement 100% (biens perso du gérant)
+
+**Biens concernés** : LAGREOU et ASKIDA uniquement (`bien.skip_facturation=true`, commission 0%) — ce
+sont les biens personnels d'Oïhan, gérés gratuitement. **Ne pas confondre** avec AITA/VIKY (biens de la
+famille d'Oïhan) : ces derniers ont `skip_facturation=false`, HON/FMEN sont calculés normalement, une
+facture Evoliz *est* générée mais reste en brouillon (jamais envoyée) — degré de gratuité différent, cf.
+mémoire `project_biens_gratuits_famille_dcb`.
+
+**Règle** : sur un bien `skip_facturation=true`, Oïhan se reverse **100% de l'encaissement**
+(`revenue`/`fin_revenue`, déjà net des frais de distribution plateforme type Stripe) — HON et FMEN à 0
+(déjà géré), et le ménage AE réel n'est **jamais** déduit du LOY/VIR non plus : c'est une créance séparée
+réglée à part (ligne AUTO, "Total dû à DCB" sur le rapport), pas une retenue sur le reversement.
+
+**Implémentation** : `loyAmount = revenue - taxesTotal` (donc `virAmount = loyAmount + taxesTotal =
+revenue`), en override après tous les autres calculs de `loyAmount` dans `_calculerLignes` — ne pas
+recalculer via `commissionableBase` (formule pensée pour Airbnb/Booking, pas fiable sur une résa Direct
+sans breakdown standard Hospitable, cf. invariant I-124).
 
 *Ajout session 10 mai 2026 — suite à ambiguïté constatée dans SequestreCloture. Noms officiels validés par Oïhan.*
 

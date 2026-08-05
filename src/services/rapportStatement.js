@@ -104,6 +104,11 @@ export function genererStatementHTML(proprio, mois, data) {
   const virementNet   = Math.max(0, virTotal - fraisDeductionLoyTotal + remboursementsTotal - deboursSeuls - haownerTotal - ownerStayMenageTotal)
   const netProprio    = virementNet
   const totalDuOwner  = virementNet
+  // Virements anticipés déjà faits au propriétaire, par résa (reversement_resa, saisis
+  // depuis ModalResa avant la clôture) — purement informatif, ne modifie pas totalDuOwner.
+  const virementResaList  = data.virementResaList || []
+  const virementResaTotal = data.virementResaTotal || 0
+  const resteAVerser      = totalDuOwner - virementResaTotal
 
   const [annee, moisNum] = mois.split('-')
   const moisLabel = `${MOIS_FR[parseInt(moisNum) - 1]} ${annee}`
@@ -309,9 +314,15 @@ export function genererStatementHTML(proprio, mois, data) {
     ${ownerStayMenageTotal > 0 ? `<div style="display:flex;justify-content:space-between;padding:3px 0;border-bottom:1px solid #ece8e2;font-size:10px">
       <span style="color:#9c8c7a">Ménage(s) séjour propriétaire</span><span style="color:#DC2626">− ${fmt(ownerStayMenageTotal)}</span>
     </div>` : ''}
-    <div style="display:flex;justify-content:space-between;padding:6px 0 0;font-weight:700;font-size:10.5px;margin-top:auto">
+    <div style="display:flex;justify-content:space-between;padding:6px 0 0;font-weight:700;font-size:10.5px;${virementResaTotal > 0 ? '' : 'margin-top:auto'}">
       <span>Total reversement</span><span style="color:#2d7a50">${fmt(totalDuOwner)}</span>
     </div>
+    ${virementResaTotal > 0 ? `${virementResaList.map(v => `<div style="display:flex;justify-content:space-between;padding:3px 0;border-bottom:1px solid #ece8e2;font-size:10px">
+      <span style="color:#c2410c">Déjà versé — ${v.resa_code || 'résa'} le ${fmtDate(v.date_virement)}${v.note ? ` <span style="font-size:8px;font-style:italic">(${escapeNonAscii(v.note)})</span>` : ''}</span><span style="color:#DC2626">&#8722; ${fmt(v.montant_cts)}</span>
+    </div>`).join('')}
+    <div style="display:flex;justify-content:space-between;padding:6px 0 0;font-weight:700;font-size:10.5px;margin-top:auto">
+      <span>Reste à verser</span><span style="color:#2d7a50">${fmt(resteAVerser)}</span>
+    </div>` : ''}
   </div>
 </div>
 

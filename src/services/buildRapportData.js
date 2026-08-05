@@ -236,6 +236,22 @@ export async function buildRapportData(bienId, propId, mois, opts = {}) {
     }, 0)
   const totalHaowner = haownerList.reduce((s, p) => s + (p.montant_ttc || 0), 0)
 
+  // ── Virements anticipés par résa (reversement_resa) — saisis depuis ModalResa avant
+  // la clôture du mois. Purement déclaratif (docs/domain-rules.md §17) — n'entre dans
+  // aucun calcul de virementNet, affiché seulement pour transparence sur le rapport.
+  let virementResaRows = []
+  try {
+    let vrQ = supabase.from('reversement_resa').select('reservation_id, montant_cts, date_virement, note').eq('mois_comptable', mois)
+    if (isGlobal) {
+      if (maiteIds.length > 0) { const { data } = await vrQ.in('bien_id', maiteIds); virementResaRows = data || [] }
+    } else {
+      const { data } = await vrQ.eq('bien_id', bienId); virementResaRows = data || []
+    }
+  } catch (_) { /* ne bloque pas */ }
+  const resaCodeById = Object.fromEntries((resas || []).map(r => [r.id, r.code]))
+  const virementResaList = virementResaRows.map(v => ({ ...v, resa_code: resaCodeById[v.reservation_id] || null }))
+  const virementResaTotal = virementResaList.reduce((s, v) => s + (v.montant_cts || 0), 0)
+
   // ── Helper gross_revenue ─────────────────────────────────────────────────
   // gross_revenue = total payé par le voyageur (hors remitted taxes reversées directement)
   // Direct  : total_price CSV (fin_gross_revenue)
@@ -562,6 +578,8 @@ export async function buildRapportData(bienId, propId, mois, opts = {}) {
     haownerList,
     assuranceList,
     ownerStayList,
+    virementResaList,
+    virementResaTotal,
     ventByResa,
     reviews,
     noteMoisMoy,

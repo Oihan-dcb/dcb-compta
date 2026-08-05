@@ -395,6 +395,7 @@ export function genererRapportHTML(proprio, mois, data, colonnes = {}) {
         <div style="font-size:8px;letter-spacing:0.04em;text-transform:uppercase;color:rgba(212,196,176,0.8);margin-bottom:3px;">${modeEncaissement === 'proprio' && virTotalProprioEncaisse > 0 ? `Reversement ${AGENCE_BRAND.short}` : 'Virement propriétaire'}</div>
         <div style="font-size:18px;font-weight:400;color:#fff;">${fmt(virementNetCalc || kpis.loyTotal)}</div>
         ${modeEncaissement === 'proprio' && virTotalProprioEncaisse > 0 ? `<div style="font-size:9px;color:rgba(212,196,176,0.7);margin-top:2px;">+ ${fmt(virTotalProprioEncaisse)} perçu direct</div>` : ''}
+        ${(data.virementResaTotal || 0) > 0 ? `<div style="font-size:9px;color:#F59E0B;margin-top:2px;">dont ${fmt(data.virementResaTotal)} déjà versé</div>` : ''}
       </div>
       </div>
     </div>

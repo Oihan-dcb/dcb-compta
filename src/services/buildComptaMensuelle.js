@@ -49,6 +49,7 @@ export async function buildComptaMensuelle(mois, bienIds = null) {
     { data: prestDeductData,   error: prestDeductErr   },
     { data: prestDeboursData,  error: prestDeboursErr  },
     { data: reversementFaitData },
+    { data: reversementResaData },
     { data: missionsData },
   ] = await Promise.all([
     biensQuery,
@@ -108,12 +109,17 @@ export async function buildComptaMensuelle(mois, bienIds = null) {
       .eq('mois', mois)
       .eq('type_imputation', 'debours_proprio')
       .eq('statut', 'valide'),
-    // reversements faits (cochés manuellement dans PageComptabilite)
+    // reversements faits (cochés manuellement dans PageComptabilite) — case globale bien+mois
     supabase
       .from('reversement_fait')
-      .select('bien_id, fait_at')
+      .select('bien_id, fait_at, montant_reverse_cts, note')
       .eq('mois', mois)
       .eq('agence', AGENCE),
+    // virements anticipés par résa (saisis depuis ModalResa, avant la clôture du mois)
+    supabase
+      .from('reversement_resa')
+      .select('reservation_id, bien_id, montant_cts, date_virement, note, reservation:reservation_id(code)')
+      .eq('mois_comptable', mois),
     missionsQuery,
   ])
 
@@ -242,10 +248,24 @@ export async function buildComptaMensuelle(mois, bienIds = null) {
     deboursPropByBien[p.bien_id] = (deboursPropByBien[p.bien_id] || 0) + (p.montant || 0)
   }
 
-  // Reversements faits par bien_id → fait_at
+  // Reversements faits par bien_id — case globale bien+mois (fait_at, montant_reverse_cts, note)
   const reversementFaitByBien = {}
   for (const f of (reversementFaitData || [])) {
-    reversementFaitByBien[f.bien_id] = f.fait_at
+    reversementFaitByBien[f.bien_id] = f
+  }
+
+  // Virements anticipés par résa, agrégés par bien_id (saisis depuis ModalResa)
+  const virementResaByBien = {}
+  for (const v of (reversementResaData || [])) {
+    if (!virementResaByBien[v.bien_id]) virementResaByBien[v.bien_id] = { total_cts: 0, count: 0, items: [] }
+    virementResaByBien[v.bien_id].total_cts += (v.montant_cts || 0)
+    virementResaByBien[v.bien_id].count += 1
+    virementResaByBien[v.bien_id].items.push({
+      resa_code:    v.reservation?.code || null,
+      montant_cts:  v.montant_cts,
+      date_virement: v.date_virement,
+      note:         v.note || null,
+    })
   }
 
   // Owner stay : FMEN TTC + AUTO HT par bien (depuis ventilation, réservations owner_stay)
@@ -499,7 +519,13 @@ export async function buildComptaMensuelle(mois, bienIds = null) {
       facture_montant_reversement: facture?.montant_reversement         ?? null,
       ecart_reversement_proprio,
 
-      reversement_fait_at: reversementFaitByBien[b.id] ?? null,
+      reversement_fait_at:          reversementFaitByBien[b.id]?.fait_at ?? null,
+      reversement_fait_montant_cts: reversementFaitByBien[b.id]?.montant_reverse_cts ?? null,
+      reversement_fait_note:        reversementFaitByBien[b.id]?.note ?? null,
+
+      virement_resa_total_cts: virementResaByBien[b.id]?.total_cts ?? 0,
+      virement_resa_count:     virementResaByBien[b.id]?.count ?? 0,
+      virement_resa_items:     virementResaByBien[b.id]?.items ?? [],
 
       alert_count: rowAlerts.length,
       alert_level: rowAlerts.some(a => a.level === 'error') ? 'error'
@@ -707,9 +733,12 @@ export function exportComptaCSV(data, bienActif = {}) {
     'Nb réservations', 'Rapprochées', 'Non rapprochées', 'Non ventilées',
     'HON HT', 'HON TVA', 'HON TTC',
     'FMEN HT', 'FMEN TVA', 'FMEN TTC',
-    'AUTO HT', 'Prest. déduit', 'Total AUTO HT', 'LOY HT', 'Frais HA proprio.', 'Frais facturés direct', 'TAXE HT', 'Réversement calculé', 'Virement fait',
+    'AUTO HT', 'Prest. déduit', 'Total AUTO HT', 'LOY HT', 'Frais HA proprio.', 'Frais facturés direct', 'TAXE HT', 'Réversement calculé', 'Virement fait', 'Virements anticipés (résa)',
     'Statut facture', 'Réversement facturé', 'Écart facture', 'Alertes',
   ]
+  const fmtVirResa = (r) => r.virement_resa_count > 0
+    ? `${r.virement_resa_count} — ${fmt(r.virement_resa_total_cts)} (${r.virement_resa_items.map(it => `${it.resa_code || '?'} ${it.date_virement}`).join(' ; ')})`
+    : ''
   // Regrouper les biens par groupe_facturation pour le CSV
   const GROUPE_LABELS = { MAITE: 'Maison Maïté' }
   const groupsMap = {}
@@ -745,6 +774,11 @@ export function exportComptaCSV(data, bienActif = {}) {
         const groupeActif = children.some(c => isActif(c.bien_id))
         const actifChildren = children.filter(c => isActif(c.bien_id))
         const nsumA = key => actifChildren.reduce((s, c) => s + (c[key] || 0), 0)
+        const virResaStrGroupe = fmtVirResa({
+          virement_resa_count:     nsumA('virement_resa_count'),
+          virement_resa_total_cts: nsumA('virement_resa_total_cts'),
+          virement_resa_items:     actifChildren.flatMap(c => c.virement_resa_items),
+        })
         csvRows.push([
           glabel,
           '(groupe)',
@@ -752,7 +786,7 @@ export function exportComptaCSV(data, bienActif = {}) {
           masked(nsumA('nb_resas'), groupeActif), masked(nsumA('nb_rapprochees'), groupeActif), masked(nsumA('nb_non_rapprochees'), groupeActif), masked(nsumA('nb_non_ventilees'), groupeActif),
           masked(fmt(nsumA('hon_ht')), groupeActif), masked(fmt(nsumA('hon_tva')), groupeActif), masked(fmt(nsumA('hon_ttc')), groupeActif),
           masked(fmt(nsumA('fmen_ht')), groupeActif), masked(fmt(nsumA('fmen_tva')), groupeActif), masked(fmt(nsumA('fmen_ttc')), groupeActif),
-          fmt(nsum('auto_ht')), masked(fmt(nsumA('prest_deduct')), groupeActif), fmt(nsum('auto_ht') + nsumA('prest_deduct')), masked(fmt(nsumA('loy_ht')), groupeActif), masked(fmt(nsumA('frais_loy')), groupeActif), masked(fmt(nsumA('frais_direct')), groupeActif), masked(fmt(nsumA('taxe_ht')), groupeActif), masked(fmt(nsumA('reversement_calcule')), groupeActif), masked(faitStrGroupe, groupeActif),
+          fmt(nsum('auto_ht')), masked(fmt(nsumA('prest_deduct')), groupeActif), fmt(nsum('auto_ht') + nsumA('prest_deduct')), masked(fmt(nsumA('loy_ht')), groupeActif), masked(fmt(nsumA('frais_loy')), groupeActif), masked(fmt(nsumA('frais_direct')), groupeActif), masked(fmt(nsumA('taxe_ht')), groupeActif), masked(fmt(nsumA('reversement_calcule')), groupeActif), masked(faitStrGroupe, groupeActif), masked(virResaStrGroupe, groupeActif),
           masked(first.facture_statut || '', groupeActif),
           masked(fmt(reversementFactureGroupe), groupeActif),
           masked(first.ecart_reversement_proprio != null ? fmt(first.ecart_reversement_proprio) : '', groupeActif),
@@ -769,7 +803,7 @@ export function exportComptaCSV(data, bienActif = {}) {
         masked(r.nb_resas, enfantActif), masked(r.nb_rapprochees, enfantActif), masked(r.nb_non_rapprochees, enfantActif), masked(r.nb_non_ventilees, enfantActif),
         masked(fmt(r.hon_ht), enfantActif), masked(fmt(r.hon_tva), enfantActif), masked(fmt(r.hon_ttc), enfantActif),
         masked(fmt(r.fmen_ht), enfantActif), masked(fmt(r.fmen_tva), enfantActif), masked(fmt(r.fmen_ttc), enfantActif),
-        fmt(r.auto_ht), masked(fmt(r.prest_deduct), enfantActif), fmt((r.auto_ht || 0) + (r.prest_deduct || 0)), masked(fmt(r.loy_ht), enfantActif), masked(fmt(r.frais_loy), enfantActif), masked(fmt(r.frais_direct), enfantActif), masked(fmt(r.taxe_ht), enfantActif), masked(fmt(r.reversement_calcule), enfantActif), masked(faitEnfant, enfantActif),
+        fmt(r.auto_ht), masked(fmt(r.prest_deduct), enfantActif), fmt((r.auto_ht || 0) + (r.prest_deduct || 0)), masked(fmt(r.loy_ht), enfantActif), masked(fmt(r.frais_loy), enfantActif), masked(fmt(r.frais_direct), enfantActif), masked(fmt(r.taxe_ht), enfantActif), masked(fmt(r.reversement_calcule), enfantActif), masked(faitEnfant, enfantActif), masked(fmtVirResa(r), enfantActif),
         '', '', '', r.alert_codes.join(' | '),
       ])
     } else {
@@ -782,7 +816,7 @@ export function exportComptaCSV(data, bienActif = {}) {
         masked(r.nb_resas, rowActif), masked(r.nb_rapprochees, rowActif), masked(r.nb_non_rapprochees, rowActif), masked(r.nb_non_ventilees, rowActif),
         masked(fmt(r.hon_ht), rowActif), masked(fmt(r.hon_tva), rowActif), masked(fmt(r.hon_ttc), rowActif),
         masked(fmt(r.fmen_ht), rowActif), masked(fmt(r.fmen_tva), rowActif), masked(fmt(r.fmen_ttc), rowActif),
-        fmt(r.auto_ht), masked(fmt(r.prest_deduct), rowActif), fmt((r.auto_ht || 0) + (r.prest_deduct || 0)), masked(fmt(r.loy_ht), rowActif), masked(fmt(r.frais_loy), rowActif), masked(fmt(r.frais_direct), rowActif), masked(fmt(r.taxe_ht), rowActif), masked(fmt(r.reversement_calcule), rowActif), masked(faitStr, rowActif),
+        fmt(r.auto_ht), masked(fmt(r.prest_deduct), rowActif), fmt((r.auto_ht || 0) + (r.prest_deduct || 0)), masked(fmt(r.loy_ht), rowActif), masked(fmt(r.frais_loy), rowActif), masked(fmt(r.frais_direct), rowActif), masked(fmt(r.taxe_ht), rowActif), masked(fmt(r.reversement_calcule), rowActif), masked(faitStr, rowActif), masked(fmtVirResa(r), rowActif),
         masked(r.facture_statut || '', rowActif),
         masked(fmt(r.facture_montant_reversement), rowActif),
         masked(r.ecart_reversement_proprio != null ? fmt(r.ecart_reversement_proprio) : '', rowActif),
@@ -797,6 +831,7 @@ export function exportComptaCSV(data, bienActif = {}) {
   const actifLau     = actifRows.filter(r =>  r.is_lauian_client)
   const actifLld     = actifRows.filter(r =>  r.is_lld)
   const asum  = (arr, k) => arr.reduce((s, r) => s + (r[k] || 0), 0)
+  const fmtVirResaTotal = (arr) => { const cnt = asum(arr, 'virement_resa_count'); return cnt > 0 ? `${cnt} — ${fmt(asum(arr, 'virement_resa_total_cts'))}` : '' }
 
   // Total DCB
   rows.push([
@@ -805,7 +840,7 @@ export function exportComptaCSV(data, bienActif = {}) {
     fmt(asum(actifDCB, 'hon_ht')), fmt(asum(actifDCB, 'hon_tva')), fmt(asum(actifDCB, 'hon_ttc')),
     fmt(asum(actifDCB, 'fmen_ht')), fmt(asum(actifDCB, 'fmen_tva')), fmt(asum(actifDCB, 'fmen_ttc')),
     fmt(asum(actifDCB, 'auto_ht')), fmt(asum(actifDCB, 'prest_deduct')), fmt(asum(actifDCB, 'auto_ht') + asum(actifDCB, 'prest_deduct')),
-    fmt(asum(actifDCB, 'loy_ht')), fmt(asum(actifDCB, 'frais_loy')), fmt(asum(actifDCB, 'frais_direct')), fmt(asum(actifDCB, 'taxe_ht')), fmt(asum(actifDCB, 'reversement_calcule')), '',
+    fmt(asum(actifDCB, 'loy_ht')), fmt(asum(actifDCB, 'frais_loy')), fmt(asum(actifDCB, 'frais_direct')), fmt(asum(actifDCB, 'taxe_ht')), fmt(asum(actifDCB, 'reversement_calcule')), '', fmtVirResaTotal(actifDCB),
     '', '', '', '',
   ])
   // Total Honoraires LLD (uniquement si des lignes LLD existent)
@@ -815,7 +850,7 @@ export function exportComptaCSV(data, bienActif = {}) {
       '', '', '', '',
       fmt(asum(actifLld, 'hon_ht')), fmt(asum(actifLld, 'hon_tva')), fmt(asum(actifLld, 'hon_ttc')),
       '', '', '',
-      '', '', '', '', '', '', '', fmt(asum(actifLld, 'reversement_calcule')), '',
+      '', '', '', '', '', '', '', fmt(asum(actifLld, 'reversement_calcule')), '', fmtVirResaTotal(actifLld),
       '', '', '', '',
     ])
   }
@@ -826,7 +861,7 @@ export function exportComptaCSV(data, bienActif = {}) {
       '', '', '', '',
       '', '', '',
       fmt(asum(actifLau, 'fmen_ht')), fmt(asum(actifLau, 'fmen_tva')), fmt(asum(actifLau, 'fmen_ttc')),
-      '', '', '', '', '', '', '', '', '',
+      '', '', '', '', '', '', '', '', '', '',
       '', '', '', '',
     ])
   }
@@ -838,7 +873,7 @@ export function exportComptaCSV(data, bienActif = {}) {
       fmt(asum(actifRows, 'hon_ht')), fmt(asum(actifRows, 'hon_tva')), fmt(asum(actifRows, 'hon_ttc')),
       fmt(asum(actifRows, 'fmen_ht')), fmt(asum(actifRows, 'fmen_tva')), fmt(asum(actifRows, 'fmen_ttc')),
       fmt(asum(actifRows, 'auto_ht')), fmt(asum(actifRows, 'prest_deduct')), fmt(asum(actifRows, 'auto_ht') + asum(actifRows, 'prest_deduct')),
-      fmt(asum(actifRows, 'loy_ht')), fmt(asum(actifRows, 'frais_loy')), fmt(asum(actifRows, 'frais_direct')), fmt(asum(actifRows, 'taxe_ht')), fmt(asum(actifRows, 'reversement_calcule')), '',
+      fmt(asum(actifRows, 'loy_ht')), fmt(asum(actifRows, 'frais_loy')), fmt(asum(actifRows, 'frais_direct')), fmt(asum(actifRows, 'taxe_ht')), fmt(asum(actifRows, 'reversement_calcule')), '', fmtVirResaTotal(actifRows),
       '', '', '', '',
     ])
   }

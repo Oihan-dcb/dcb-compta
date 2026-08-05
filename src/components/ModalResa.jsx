@@ -402,6 +402,113 @@ function EncaissementsRecap({ virements, finRevenue }) {
   )
 }
 
+// Virement propriétaire anticipé, saisi sur CETTE résa précise (avant la clôture mensuelle
+// du bien) — ex: propriétaire multi-résa qui veut sa part dès qu'une résa encaisse.
+// Distinct de la case "Fait" bien+mois (PageComptabilite.jsx) : purement déclaratif, ne
+// déclenche/ne bloque ni ventilation ni facturation Evoliz (docs/domain-rules.md §17).
+function VirementProprioResa({ resa }) {
+  const [entry, setEntry] = useState(null)
+  const [loading, setLoading] = useState(true)
+  const [editing, setEditing] = useState(false)
+  const [montantVal, setMontantVal] = useState('')
+  const [dateVal, setDateVal] = useState('')
+  const [noteVal, setNoteVal] = useState('')
+  const [saving, setSaving] = useState(false)
+
+  useEffect(() => {
+    if (!resa?.id) return
+    setLoading(true)
+    supabase.from('reversement_resa').select('id, montant_cts, date_virement, note').eq('reservation_id', resa.id).maybeSingle()
+      .then(({ data }) => { setEntry(data || null); setLoading(false) })
+  }, [resa?.id])
+
+  function openEdit() {
+    setMontantVal(entry ? (entry.montant_cts / 100).toFixed(2) : '')
+    setDateVal(entry?.date_virement || new Date().toISOString().slice(0, 10))
+    setNoteVal(entry?.note || '')
+    setEditing(true)
+  }
+
+  async function save() {
+    const bienId = resa.bien?.id || resa.bien_id
+    const montantEur = parseFloat(String(montantVal).replace(',', '.'))
+    if (!(montantEur > 0)) { alert('Montant invalide'); return }
+    if (!dateVal) { alert('Date du virement requise'); return }
+    if (!bienId) { alert('Bien introuvable sur cette réservation — impossible d\'enregistrer'); return }
+    setSaving(true)
+    try {
+      const montant_cts = Math.round(montantEur * 100)
+      const { data, error } = await supabase.from('reversement_resa').upsert(
+        { reservation_id: resa.id, bien_id: bienId, mois_comptable: resa.mois_comptable, montant_cts, date_virement: dateVal, note: noteVal || null },
+        { onConflict: 'reservation_id' }
+      ).select('id, montant_cts, date_virement, note').single()
+      if (error) throw error
+      setEntry(data)
+      setEditing(false)
+    } catch (e) {
+      alert('Erreur : ' + e.message)
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  async function remove() {
+    if (!entry) return
+    if (!window.confirm('Supprimer ce virement anticipé enregistré ?')) return
+    const { error } = await supabase.from('reversement_resa').delete().eq('id', entry.id)
+    if (error) { alert('Erreur : ' + error.message); return }
+    setEntry(null)
+  }
+
+  if (loading) return null
+
+  return (
+    <div style={{ marginTop: 14, borderTop: '1px solid #eee', paddingTop: 14 }}>
+      <div style={{ fontWeight: 700, fontSize: '0.78em', color: '#CC9933', textTransform: 'uppercase', letterSpacing: '0.08em', marginBottom: 8 }}>
+        Reversement propriétaire — virement anticipé
+      </div>
+      {!editing && entry && (
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: '0.9em' }}>
+          <div>
+            <span style={{ fontWeight: 700, color: '#059669' }}>{(entry.montant_cts / 100).toFixed(2)} €</span>
+            <span style={{ color: '#666', marginLeft: 8 }}>viré le {new Date(entry.date_virement).toLocaleDateString('fr-FR')}</span>
+            {entry.note && <div style={{ color: '#9CA3AF', fontSize: '0.85em', marginTop: 2 }}>{entry.note}</div>}
+          </div>
+          <div style={{ display: 'flex', gap: 6 }}>
+            <button onClick={openEdit} title="Modifier" style={{ fontSize: '0.85em', padding: '3px 8px', border: '1px solid #d1d5db', borderRadius: 5, background: '#f9fafb', cursor: 'pointer' }}>✏️</button>
+            <button onClick={remove} title="Supprimer" style={{ fontSize: '0.85em', padding: '3px 8px', border: '1px solid #d1d5db', borderRadius: 5, background: '#f9fafb', cursor: 'pointer' }}>🗑️</button>
+          </div>
+        </div>
+      )}
+      {!editing && !entry && (
+        <button onClick={openEdit} style={{ fontSize: '0.85em', padding: '5px 12px', border: '1px dashed #CC9933', borderRadius: 6, background: 'transparent', color: '#CC9933', cursor: 'pointer', fontWeight: 600 }}>
+          + Enregistrer un virement fait au propriétaire
+        </button>
+      )}
+      {editing && (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+          <div style={{ display: 'flex', gap: 8 }}>
+            <input type="date" value={dateVal} onChange={e => setDateVal(e.target.value)}
+              style={{ padding: '5px 8px', border: '1px solid #d1d5db', borderRadius: 5, fontSize: '0.88em' }} />
+            <input type="text" inputMode="decimal" placeholder="Montant €" value={montantVal} onChange={e => setMontantVal(e.target.value)}
+              style={{ width: 100, padding: '5px 8px', border: '1px solid #d1d5db', borderRadius: 5, fontSize: '0.88em', textAlign: 'right' }} />
+          </div>
+          <input type="text" placeholder="Note (facultatif)" value={noteVal} onChange={e => setNoteVal(e.target.value)}
+            style={{ padding: '5px 8px', border: '1px solid #d1d5db', borderRadius: 5, fontSize: '0.88em' }} />
+          <div style={{ display: 'flex', gap: 6 }}>
+            <button onClick={save} disabled={saving} style={{ fontSize: '0.85em', padding: '5px 14px', background: '#CC9933', color: 'white', border: 'none', borderRadius: 6, cursor: 'pointer', fontWeight: 600 }}>
+              {saving ? '…' : '✓ Enregistrer'}
+            </button>
+            <button onClick={() => setEditing(false)} style={{ fontSize: '0.85em', padding: '5px 14px', border: '1px solid #d1d5db', borderRadius: 6, background: 'white', cursor: 'pointer' }}>
+              Annuler
+            </button>
+          </div>
+        </div>
+      )}
+    </div>
+  )
+}
+
 export default function ModalResa({ resa, onClose, onSaved }) {
   if (!resa) return null
   const ventil = resa.ventilation || []
@@ -729,7 +836,7 @@ export default function ModalResa({ resa, onClose, onSaved }) {
                             } catch (_) {}
                           }
                           if (!cleaningFee) {
-                            const { data: bienData } = await supabase.from('bien').select('forfait_menage_proprio').eq('id', resa.bien_id).single()
+                            const { data: bienData } = await supabase.from('bien').select('forfait_menage_proprio').eq('id', resa.bien?.id || resa.bien_id).single()
                             cleaningFee = bienData?.forfait_menage_proprio || null
                           }
                           if (cleaningFee) {
@@ -756,6 +863,7 @@ export default function ModalResa({ resa, onClose, onSaved }) {
           </div>
         )}
         <EncaissementsRecap virements={virements} finRevenue={resa.fin_revenue} />
+        <VirementProprioResa resa={resa} />
 
         {/* Paiements contrat DCB (Stripe) */}
         {paiementsContrat.length > 0 && (

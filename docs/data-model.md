@@ -830,3 +830,32 @@ Table de configuration historique du périmètre de perception des loyers platef
 ## Ajout 2026-07-03 — reservation.ventilation_manuelle (migration 226)
 
 `reservation.ventilation_manuelle boolean not null default false` : verrou d'ajustement manuel de la ventilation. Quand true, aucun moteur (api/ventiler, ventilation-auto) ne recalcule la résa — montants saisis à la main préservés. Posé par « ⚖️ Ajuster » et par la saisie libre du modal ; levé par « ↺ Réactiver le calcul auto ».
+
+
+## Ajout 2026-08-03 — reversement_fait.montant_reverse_cts / note (migration 237)
+
+Étend `reversement_fait` (case "Fait" bien+mois de la Vue mensuelle, `PageComptabilite.jsx`) avec `montant_reverse_cts integer` et `note text` — trace le montant réellement reversé à la main (hors circuit bancaire DCB) et un commentaire libre, en plus du booléen/horodatage `fait_at` déjà existant. Clé toujours `(bien_id, mois, agence)` — 1 seule ligne par bien+mois+agence. Purement déclaratif (voir `domain-rules.md` §17).
+
+## Ajout 2026-08-05 — table `reversement_resa` (migration 238)
+
+```sql
+create table reversement_resa (
+  id             uuid        primary key default gen_random_uuid(),
+  reservation_id uuid        not null references reservation(id) on delete cascade,
+  bien_id        uuid        not null references bien(id) on delete cascade,
+  mois_comptable text        not null,          -- YYYY-MM, dénormalisé depuis reservation.mois_comptable
+  montant_cts    integer     not null check (montant_cts > 0),
+  date_virement  date        not null,
+  note           text,
+  created_at     timestamptz not null default now(),
+  unique (reservation_id)
+);
+```
+
+Virement propriétaire anticipé enregistré au niveau d'**une réservation précise** (avant la clôture mensuelle du bien) — distinct de `reversement_fait` qui est au niveau bien+mois. Cas d'usage : propriétaire multi-résa qui veut sa part dès qu'une résa encaisse, sans attendre le VIRProprio total du mois. Un seul virement par résa (`UNIQUE reservation_id`) ; pour un acompte + solde sur la même résa, mettre à jour le montant total lors du solde.
+
+**Saisie** : bloc "Reversement propriétaire — virement anticipé" dans `ModalResa.jsx`.
+
+**Agrégation** : `buildComptaMensuelle.js` indexe par `bien_id` (`virement_resa_total_cts`, `virement_resa_count`, `virement_resa_items`), exposé dans la Vue mensuelle (colonne "Viré (résa)", distincte de "Fait") et dans `exportComptaCSV`. `buildRapportData.js` l'expose aussi (`virementResaList`, `virementResaTotal`) pour le rapport propriétaire (`rapportStatement.js`, `rapportProprietaire.js` — ligne "Déjà versé" / "Reste à verser").
+
+Purement déclaratif comme `reversement_fait` — voir `domain-rules.md` §17.

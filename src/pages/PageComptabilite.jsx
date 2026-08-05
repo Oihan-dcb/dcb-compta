@@ -100,6 +100,7 @@ export default function PageComptabilite() {
     { key: 'taxe',                 label: 'TAXE',          def: true },
     { key: 'reversement_calcule',  label: 'Reversement',   def: true },
     { key: 'fait',                 label: 'Fait',          def: true },
+    { key: 'virement_resa',        label: 'Viré (résa)',   def: true },
     { key: 'facture',              label: 'Facture',       def: true },
     { key: 'reversement_facture',  label: 'Rev. facturé',  def: false },
     { key: 'ecart_facture',        label: 'Écart facture', def: false },
@@ -184,6 +185,7 @@ export default function PageComptabilite() {
       .on('postgres_changes', { event: '*', schema: 'public', table: 'facture_evoliz' }, () => charger())
       .on('postgres_changes', { event: '*', schema: 'public', table: 'frais_proprietaire' }, () => charger())
       .on('postgres_changes', { event: '*', schema: 'public', table: 'prestation_hors_forfait' }, () => charger())
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'reversement_resa' }, () => charger())
       .subscribe()
     return () => {
       document.removeEventListener('visibilitychange', onVisible)
@@ -488,6 +490,7 @@ export default function PageComptabilite() {
                 {col('taxe')                && <th style={{ ...th, textAlign: 'right' }}>TAXE</th>}
                 {col('reversement_calcule') && <th style={{ ...th, textAlign: 'right' }}>Reversement</th>}
                 {col('fait')               && <th style={{ ...th, textAlign: 'center' }}>Fait</th>}
+                {col('virement_resa')       && <th style={{ ...th, textAlign: 'center' }}>Viré (résa)</th>}
                 {col('facture')             && <th style={th}>Facture</th>}
                 {col('reversement_facture') && <th style={{ ...th, textAlign: 'right' }}>Rev. facturé</th>}
                 {col('ecart_facture')       && <th style={{ ...th, textAlign: 'right' }}>Écart facture</th>}
@@ -558,7 +561,10 @@ export default function PageComptabilite() {
                           : () => setModalFait({
                               bienId: r.bien_id,
                               bienNom: r.bien_nom || r.code || '',
-                              montant: r.reversement_calcule ? (r.reversement_calcule / 100).toFixed(2) : '',
+                              // Pré-rempli avec le reversement calculé MOINS ce qui a déjà été
+                              // viré par résa (reversement_resa) — évite le double comptage si
+                              // un virement anticipé a été saisi depuis ModalResa.
+                              montant: r.reversement_calcule ? (Math.max(0, r.reversement_calcule - (r.virement_resa_total_cts || 0)) / 100).toFixed(2) : '',
                               note: '',
                             })
                       }
@@ -567,26 +573,30 @@ export default function PageComptabilite() {
                       const montantReverse = faitEntry?.montant_reverse_cts ?? null
                       const montantLabel = montantReverse != null ? fmt(montantReverse) : null
                       // Solde = ce qui reste dû au proprio par rapport au reversement calculé
-                      // (VIRProprio) — utile pour repérer un écart (sous/sur-reversé). Non calculable
-                      // si le montant reversé n'a pas été renseigné (ex: Augusta, montant à préciser).
+                      // (VIRProprio), net des virements anticipés déjà faits par résa — utile
+                      // pour repérer un écart (sous/sur-reversé). Non calculable si le montant
+                      // reversé n'a pas été renseigné (ex: Augusta, montant à préciser).
                       const solde = (montantReverse != null && r.reversement_calcule != null)
-                        ? r.reversement_calcule - montantReverse
+                        ? r.reversement_calcule - montantReverse - (r.virement_resa_total_cts || 0)
                         : null
                       const soldeSignificatif = solde != null && Math.abs(solde) >= 100 // ignorer écarts < 1€ (arrondis)
+                      const isPartiel = d && soldeSignificatif
+                      const icon = !d ? '○' : (isPartiel ? '◐' : '✅')
+                      const iconColor = !d ? '#D9CEB8' : (isPartiel ? '#f59e0b' : '#059669')
                       const label = d
-                        ? `VIRProprio reversé le ${dateStr} à ${d.toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' })}h`
+                        ? (isPartiel ? 'Reversement PARTIEL' : 'VIRProprio reversé') + ` le ${dateStr} à ${d.toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' })}h`
                           + (montantLabel ? ` — ${montantLabel}` : ' — montant non renseigné')
                           + (solde != null ? ` — solde ${fmt(solde)}` : '')
                           + (faitEntry?.note ? ` — ${faitEntry.note}` : '')
                         : ''
                       return (
                         <div title={label} style={{ display: 'inline-flex', flexDirection: 'column', alignItems: 'center', gap: 1, cursor: 'pointer' }} onClick={handleClick}>
-                          <span style={{ fontSize: 18, color: d ? '#059669' : '#D9CEB8', lineHeight: 1 }}>
-                            {d ? '✅' : '○'}
+                          <span style={{ fontSize: 18, color: iconColor, lineHeight: 1 }}>
+                            {icon}
                           </span>
                           {d && (
                             <div style={{ fontSize: '0.68em', lineHeight: 1.35, whiteSpace: 'nowrap', textAlign: 'center' }}>
-                              <div style={{ color: '#059669', fontWeight: 600 }}>
+                              <div style={{ color: isPartiel ? '#f59e0b' : '#059669', fontWeight: 600 }}>
                                 {montantLabel ? `${montantLabel} fait le ${dateStr}` : `Fait le ${dateStr}`}
                               </div>
                               {soldeSignificatif && (
@@ -596,6 +606,21 @@ export default function PageComptabilite() {
                               )}
                             </div>
                           )}
+                        </div>
+                      )
+                    })()}
+                  </td>}
+                  {col('virement_resa') && <td style={{ ...td, textAlign: 'center' }}>
+                    {!isChild && r.virement_resa_count > 0 && (() => {
+                      const items = r.virement_resa_items || []
+                      const tip = items.map(it => {
+                        const dd = new Date(it.date_virement)
+                        return `${it.resa_code || '?'} — ${fmt(it.montant_cts)} le ${dd.toLocaleDateString('fr-FR', { day: '2-digit', month: '2-digit' })}${it.note ? ` (${it.note})` : ''}`
+                      }).join('\n')
+                      return (
+                        <div title={tip} style={{ display: 'inline-flex', flexDirection: 'column', alignItems: 'center', gap: 1, cursor: 'default' }}>
+                          <span style={{ fontSize: '0.85em', fontWeight: 700, color: '#CC9933' }}>{fmt(r.virement_resa_total_cts)}</span>
+                          <span style={{ fontSize: '0.68em', color: '#9C8E7D' }}>{r.virement_resa_count} résa{r.virement_resa_count > 1 ? 's' : ''}</span>
                         </div>
                       )
                     })()}
@@ -723,6 +748,7 @@ export default function PageComptabilite() {
                   {col('taxe')                && <td style={{ ...td, textAlign: 'right' }}>{fmtN(tsum(actifsDCB, 'taxe_ht'))}</td>}
                   {col('reversement_calcule') && <td style={{ ...td, textAlign: 'right' }}>{fmtN(tsum(actifsDCB, 'reversement_calcule'))}</td>}
                   {col('fait')               && <td style={{ ...td, textAlign: 'center', fontSize: '0.8em', color: '#9C8E7D' }}>{Object.keys(reversementsFaits).length > 0 ? `${Object.keys(reversementsFaits).length} ✅` : ''}</td>}
+                  {col('virement_resa')      && <td style={{ ...td, textAlign: 'center', fontSize: '0.8em', color: '#CC9933', fontWeight: 700 }}>{tsum(actifsDCB, 'virement_resa_total_cts') > 0 ? fmtN(tsum(actifsDCB, 'virement_resa_total_cts')) : ''}</td>}
                   {col('facture')             && <td style={td} />}
                   {col('reversement_facture') && <td style={td} />}
                   {col('ecart_facture')       && <td style={td} />}
@@ -752,6 +778,7 @@ export default function PageComptabilite() {
                     {col('taxe')                && <td style={td} />}
                     {col('reversement_calcule') && <td style={{ ...td, textAlign: 'right', color: '#166534' }}>{fmtN(tsum(actifsLld, 'reversement_calcule'))}</td>}
                     {col('fait')               && <td style={td} />}
+                    {col('virement_resa')      && <td style={{ ...td, textAlign: 'center', fontSize: '0.8em', color: '#166534', fontWeight: 700 }}>{tsum(actifsLld, 'virement_resa_total_cts') > 0 ? fmtN(tsum(actifsLld, 'virement_resa_total_cts')) : ''}</td>}
                     {col('facture')             && <td style={td} />}
                     {col('reversement_facture') && <td style={td} />}
                     {col('ecart_facture')       && <td style={td} />}
@@ -782,6 +809,7 @@ export default function PageComptabilite() {
                     {col('taxe')                && <td style={td} />}
                     {col('reversement_calcule') && <td style={td} />}
                     {col('fait')               && <td style={td} />}
+                    {col('virement_resa')      && <td style={td} />}
                     {col('facture')             && <td style={td} />}
                     {col('reversement_facture') && <td style={td} />}
                     {col('ecart_facture')       && <td style={td} />}
@@ -812,6 +840,7 @@ export default function PageComptabilite() {
                     {col('taxe')                && <td style={{ ...td, textAlign: 'right' }}>{fmtN(tsum(actifs, 'taxe_ht'))}</td>}
                     {col('reversement_calcule') && <td style={{ ...td, textAlign: 'right' }}>{fmtN(tsum(actifs, 'reversement_calcule'))}</td>}
                     {col('fait')               && <td style={td} />}
+                    {col('virement_resa')      && <td style={{ ...td, textAlign: 'center', fontSize: '0.8em', color: '#CC9933', fontWeight: 700 }}>{tsum(actifs, 'virement_resa_total_cts') > 0 ? fmtN(tsum(actifs, 'virement_resa_total_cts')) : ''}</td>}
                     {col('facture')             && <td style={td} />}
                     {col('reversement_facture') && <td style={td} />}
                     {col('ecart_facture')       && <td style={td} />}
