@@ -19,11 +19,17 @@
 //     exact — flux indépendant du matching résa) de continuer à fonctionner sur ces
 //     mouvements, ce qui est légitime : les remboursements de débours AE des
 //     propriétaires atterrissent bien sur CE compte.
+//   - matcherHonorairesProprietaires (même mécanique) matche en plus les factures
+//     honoraires/débours réellement envoyées à Evoliz (statut='envoye_evoliz') restées
+//     impayées localement : sur match, crée un vrai paiement Evoliz (createPayment) puis
+//     marque la facture 'payee'. Avant ce fix (2026-08-05), rien ne faisait ce lien —
+//     seul sync-evoliz-statut existait, et il ne lit que le statut qu'Evoliz reporte
+//     lui-même (déjà constaté faux/périmé, cf. cas Cresseveur).
 //
 // Compte Pennylane ciblé : CAISSE EPARGNE COURANT (id 14431211520) UNIQUEMENT.
 
 import { detectCanal, importerMouvementsBancaires } from '../src/services/importBanque.js'
-import { matcherDeboursProprietaires } from '../src/services/rapprochement.js'
+import { matcherDeboursProprietaires, matcherHonorairesProprietaires } from '../src/services/rapprochement.js'
 import { fetchAllPennylaneTransactions } from '../src/services/pennylaneTransactions.js'
 import { filtrerTransactionsDupliquees } from '../src/services/pennylaneDedup.js'
 import { supabase } from '../src/lib/supabase.js'
@@ -89,18 +95,24 @@ export default async function handler(req, res) {
     // déjà ce `source`).
     const { lies: deboursLies } = await matcherDeboursProprietaires(AGENCE)
 
-    console.log(`[pennylane-courant-sync] ${AGENCE} — ${transactionsBrutes.length} tx récupérées, ${doublonsEvites} doublon(s) évité(s), ${importLog.inseres} importée(s), ${deboursLies} débours rapproché(s)`)
+    // Rapprochement paiement honoraires/débours (factures réellement envoyées à Evoliz,
+    // statut='envoye_evoliz') — crée un vrai paiement Evoliz (preuve tiers) + marque la
+    // facture 'payee' localement. Voir commentaire matcherHonorairesProprietaires pour le
+    // pourquoi (avant ce fix, un virement honoraires payé sur le courant ne remontait jamais).
+    const { lies: honorairesLies, errors: honorairesErrors } = await matcherHonorairesProprietaires(AGENCE)
+
+    console.log(`[pennylane-courant-sync] ${AGENCE} — ${transactionsBrutes.length} tx récupérées, ${doublonsEvites} doublon(s) évité(s), ${importLog.inseres} importée(s), ${deboursLies} débours rapproché(s), ${honorairesLies} facture(s) honoraires/débours payée(s) auto`)
 
     await supabase.from('import_log').insert({
       type: 'pennylane_courant',
       agence: AGENCE,
-      statut: doublonsEvites > 0 ? 'partial' : 'success',
+      statut: doublonsEvites > 0 || honorairesErrors?.length ? 'partial' : 'success',
       nb_lignes_traitees: transactionsBrutes.length,
       nb_lignes_creees: importLog.inseres,
-      message: `${transactionsBrutes.length} tx récupérées, ${doublonsEvites} doublon(s) évité(s), ${importLog.inseres} importée(s), ${deboursLies} débours rapproché(s)`,
+      message: `${transactionsBrutes.length} tx récupérées, ${doublonsEvites} doublon(s) évité(s), ${importLog.inseres} importée(s), ${deboursLies} débours rapproché(s), ${honorairesLies} facture(s) honoraires/débours payée(s) auto${honorairesErrors?.length ? ` (${honorairesErrors.length} erreur(s) createPayment)` : ''}`,
     })
 
-    return res.json({ ok: true, agence: AGENCE, fetched: transactionsBrutes.length, doublonsEvites, import: importLog, deboursLies })
+    return res.json({ ok: true, agence: AGENCE, fetched: transactionsBrutes.length, doublonsEvites, import: importLog, deboursLies, honorairesLies, honorairesErrors })
   } catch (err) {
     console.error('[pennylane-courant-sync] erreur:', err.message)
     await supabase.from('import_log').insert({ type: 'pennylane_courant', agence: AGENCE, statut: 'error', message: err.message }).catch(() => {})

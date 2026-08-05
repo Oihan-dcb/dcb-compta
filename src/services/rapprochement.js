@@ -1518,6 +1518,113 @@ export async function matcherDeboursProprietaires(agence = AGENCE) {
   return { lies }
 }
 
+// dcb=114158, lauian=115576 — cf. supabase/functions/evoliz-proxy/index.ts
+const EVOLIZ_COMPANY_ID = { dcb: '114158', lauian: '115576' }
+
+/**
+ * Rapprochement paiement propriétaire (honoraires/débours envoyés à Evoliz) ↔ compte courant.
+ *
+ * Contrairement à matcherDeboursProprietaires (qui matche les remboursements de débours AE,
+ * flux 'envoye_proprio' → 'remboursement_recu', jamais poussé à Evoliz), cette fonction cible
+ * les factures RÉELLEMENT envoyées à Evoliz (statut='envoye_evoliz') qui restent marquées
+ * impayées localement alors qu'un virement est arrivé sur le compte courant.
+ *
+ * Avant ce fix (2026-08-05), rien ne détectait ce cas : sync-evoliz-statut ne lit que le
+ * statut qu'Evoliz reporte lui-même (peut être faux/périmé, cf. cas Cresseveur), et
+ * pennylane-courant-sync n'appelait que matcherDeboursProprietaires (débours uniquement) —
+ * un virement honoraires payé sur le courant ne mettait donc JAMAIS à jour Evoliz, avec le
+ * risque concret que relance-facture-impayee relance quelqu'un ayant déjà payé.
+ *
+ * Sur match (nom + montant exact, candidat unique — même exigence que matcherDeboursProprietaires) :
+ *   1. Crée un vrai paiement Evoliz (createPayment, paytypeid=2 Virement) — preuve côté Evoliz,
+ *      pas seulement un flag local.
+ *   2. facture_evoliz.statut → 'payee' (seulement si (1) a réussi).
+ *   3. mouvement_bancaire.statut_matching → 'matche_auto'.
+ * Loggé dans journal_ops (action='paiement_honoraires_auto') — création réelle d'un paiement
+ * chez un tiers, traçabilité obligatoire.
+ */
+export async function matcherHonorairesProprietaires(agence = AGENCE) {
+  const norm = s => (s || '').toUpperCase().normalize('NFD').replace(/[̀-ͯ]/g, '')
+
+  const [{ data: factures }, { data: mvts }] = await Promise.all([
+    supabase.from('facture_evoliz')
+      .select('id, mois, type_facture, total_ttc, id_evoliz, numero_facture, proprietaire:proprietaire_id(nom), bien:bien_id(code)')
+      .eq('agence', agence)
+      .in('type_facture', ['honoraires', 'debours'])
+      .eq('statut', 'envoye_evoliz')
+      .not('id_evoliz', 'is', null)
+      .neq('id_evoliz', 'N/A'),
+    supabase.from('mouvement_bancaire')
+      .select('id, libelle, detail, credit')
+      .eq('agence', agence)
+      .eq('statut_matching', 'en_attente')
+      .in('canal', ['sepa_manuel', 'interne'])
+      .gt('credit', 0),
+  ])
+
+  if (!factures?.length || !mvts?.length) return { lies: 0, errors: [] }
+
+  const disponibles = [...(mvts || [])]
+  const companyId = EVOLIZ_COMPANY_ID[agence] || EVOLIZ_COMPANY_ID.dcb
+  let lies = 0
+  const errors = []
+
+  for (const f of factures) {
+    const nomNorm = norm(f.proprietaire?.nom)
+    if (!nomNorm || !f.total_ttc) continue
+
+    const candidats = disponibles.filter(m =>
+      m.credit === f.total_ttc && norm(`${m.libelle || ''} ${m.detail || ''}`).includes(nomNorm)
+    )
+    if (candidats.length !== 1) continue
+    const m = candidats[0]
+
+    try {
+      const { data: payRes, error: payErr } = await supabase.functions.invoke('evoliz-proxy', {
+        body: {
+          action: 'createPayment',
+          companyId,
+          payload: {
+            invoiceId: f.id_evoliz,
+            paydate: new Date().toISOString().slice(0, 10),
+            paytypeid: 2, // Virement
+            amount: f.total_ttc / 100,
+            label: 'Virement compte courant (rapprochement auto)',
+          },
+        },
+      })
+      if (payErr) throw new Error(payErr.message)
+      if (payRes?.error || (payRes?.status && payRes.status >= 400)) {
+        throw new Error(payRes?.error || JSON.stringify(payRes?.data))
+      }
+
+      const [e1, e2] = await Promise.all([
+        supabase.from('facture_evoliz').update({ statut: 'payee' }).eq('id', f.id).then(r => r.error),
+        supabase.from('mouvement_bancaire').update({ statut_matching: 'matche_auto' }).eq('id', m.id).then(r => r.error),
+      ])
+      if (e1 || e2) throw new Error(e1?.message || e2?.message)
+
+      lies++
+      disponibles.splice(disponibles.indexOf(m), 1)
+      const bienNom = f.bien?.code || f.proprietaire?.nom || '?'
+      await logOp({
+        categorie: 'facture', action: 'paiement_honoraires_auto', source: 'cron', statut: 'ok',
+        mois_comptable: f.mois,
+        message: `Facture ${f.type_facture} ${bienNom} ${f.mois} (${(f.total_ttc / 100).toFixed(2)} €) : virement détecté compte courant, createPayment Evoliz OK, facture ${f.numero_facture || f.id_evoliz} marquée payée`,
+      })
+    } catch (err) {
+      errors.push({ id: f.id, error: err.message })
+      await logOp({
+        categorie: 'facture', action: 'paiement_honoraires_auto', source: 'cron', statut: 'error',
+        mois_comptable: f.mois,
+        message: `Match courant trouvé pour facture ${f.id} (${f.numero_facture || f.id_evoliz}) mais createPayment Evoliz a échoué : ${err.message} — statut local NON modifié`,
+      })
+    }
+  }
+
+  return { lies, errors }
+}
+
 /**
  * Sort du périmètre "à rapprocher" les mouvements canal='frais_bancaires' (tenue de
  * compte, cotisation, virements internes Stripe faits par Oïhan chaque mois du courant

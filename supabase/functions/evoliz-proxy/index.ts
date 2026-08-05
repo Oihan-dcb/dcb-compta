@@ -275,7 +275,7 @@ serve(async (req) => {
         result = await evolizReq('POST', `/invoices/${payload.invoiceId}/payments`, company, {
           paydate: payload.paydate,
           label: payload.label || 'Règlement',
-          paytypeid: payload.paytypeid || 4, // 4 = virement
+          paytypeid: payload.paytypeid ?? 2, // 2 = Virement (4 = Chèque, faux défaut jusqu'au 2026-08-05)
           amount: payload.amount,
         })
         break
