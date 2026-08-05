@@ -26,6 +26,9 @@
     "api/pennylane-mouvement-sync.js": {
       "maxDuration": 60
     },
+    "api/pennylane-courant-sync.js": {
+      "maxDuration": 60
+    },
     "api/pennylane-lld-sync.js": {
       "maxDuration": 60
     },
@@ -79,6 +82,10 @@
     {
       "path": "/api/pennylane-mouvement-sync",
       "schedule": "50 3 * * *"
+    },
+    {
+      "path": "/api/pennylane-courant-sync",
+      "schedule": "52 3 * * *"
     },
     {
       "path": "/api/pennylane-lld-sync",
