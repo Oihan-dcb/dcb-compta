@@ -70,11 +70,21 @@ export default function PageFraisProprietaire() {
   async function chargerBiens() {
     const { data } = await supabase
       .from('bien')
-      .select('id, code, hospitable_name, agence, proprietaire_id, proprietaire!proprietaire_id (id, nom, prenom)')
+      .select('id, code, hospitable_name, agence, mode_encaissement, proprietaire_id, proprietaire!proprietaire_id (id, nom, prenom)')
       .in('agence', ['dcb', 'lauian'])
       .eq('listed', true)
       .order('code')
     setBiens(data || [])
+  }
+
+  // Biens mode_encaissement='proprio' : DCB ne perçoit pas le loyer (le proprio
+  // encaisse directement Airbnb/Booking) — il n'y a donc jamais de loyer disponible
+  // pour déduire un frais. "deduire_loyer" y crée systématiquement un reliquat non
+  // réclamé (cf. cas Patxi/PATXI, juillet 2026, 323,54€ oubliés). Ces biens doivent
+  // toujours être en "facturer_direct".
+  function modeTraitementParDefaut(bienId, biensListe) {
+    const bien = (biensListe || biens).find(b => b.id === bienId)
+    return bien?.mode_encaissement === 'proprio' ? 'facturer_direct' : 'deduire_loyer'
   }
 
   async function charger() {
@@ -368,7 +378,7 @@ export default function PageFraisProprietaire() {
                     onChange={e => setFormEdit(f => ({ ...f, bien_id: e.target.value }))}>
                     <option value="">— Sélectionner un bien —</option>
                     {biens.map(b => (
-                      <option key={b.id} value={b.id}>{b.agence !== AGENCE ? `[${b.agence.toUpperCase()}] ` : ''}{b.code} — {b.hospitable_name}</option>
+                      <option key={b.id} value={b.id}>{b.agence !== AGENCE ? `[${b.agence.toUpperCase()}] ` : ''}{b.code} — {b.hospitable_name}{b.mode_encaissement === 'proprio' ? ' (sans collecte loyer)' : ''}</option>
                     ))}
                   </select>
                 </div>
@@ -404,6 +414,11 @@ export default function PageFraisProprietaire() {
                     <option value="facturer_direct">Refacturer au propriétaire</option>
                     <option value="remboursement">Remboursement (+ LOY)</option>
                   </select>
+                  {biens.find(b => b.id === formEdit.bien_id)?.mode_encaissement === 'proprio' && formEdit.mode_traitement === 'deduire_loyer' && (
+                    <span style={{ fontSize: '0.8em', color: '#DC2626', marginTop: 4, display: 'block' }}>
+                      ⚠ Ce bien ne collecte pas de loyer (le propriétaire encaisse directement) — la déduction ne trouvera jamais de loyer disponible et créera un reliquat non réclamé. Préférez "Refacturer au propriétaire".
+                    </span>
+                  )}
                 </div>
 
                 <div>
@@ -453,10 +468,13 @@ export default function PageFraisProprietaire() {
                 <div>
                   <label className="form-label">Bien *</label>
                   <select className="form-select" value={form.bien_id} required
-                    onChange={e => setForm(f => ({ ...f, bien_id: e.target.value }))}>
+                    onChange={e => {
+                      const bienId = e.target.value
+                      setForm(f => ({ ...f, bien_id: bienId, mode_traitement: modeTraitementParDefaut(bienId) }))
+                    }}>
                     <option value="">— Sélectionner un bien —</option>
                     {biens.map(b => (
-                      <option key={b.id} value={b.id}>{b.agence !== AGENCE ? `[${b.agence.toUpperCase()}] ` : ''}{b.code} — {b.hospitable_name}</option>
+                      <option key={b.id} value={b.id}>{b.agence !== AGENCE ? `[${b.agence.toUpperCase()}] ` : ''}{b.code} — {b.hospitable_name}{b.mode_encaissement === 'proprio' ? ' (sans collecte loyer)' : ''}</option>
                     ))}
                   </select>
                 </div>
@@ -489,6 +507,11 @@ export default function PageFraisProprietaire() {
                     <option value="facturer_direct">Refacturer au propriétaire</option>
                     <option value="remboursement">Remboursement (+ LOY)</option>
                   </select>
+                  {biens.find(b => b.id === form.bien_id)?.mode_encaissement === 'proprio' && form.mode_traitement === 'deduire_loyer' && (
+                    <span style={{ fontSize: '0.8em', color: '#DC2626', marginTop: 4, display: 'block' }}>
+                      ⚠ Ce bien ne collecte pas de loyer (le propriétaire encaisse directement) — la déduction ne trouvera jamais de loyer disponible et créera un reliquat non réclamé. Préférez "Refacturer au propriétaire".
+                    </span>
+                  )}
                 </div>
 
                 <div>

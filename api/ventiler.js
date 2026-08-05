@@ -208,6 +208,14 @@ function _calculerLignes(resa, agence) {
     loyAmount = (revenue - remittedTotal) - honTTC - fmenTTC - aeAmount - taxesTotal
   }
 
+  // skip_facturation : 100% de l'encaissement reversé (hors frais plateforme déjà exclus de
+  // `revenue`), ménage AE réel payé à part via la ligne AUTO — pas de déduction commission/
+  // ménage/AE sur le LOY. commissionableBase n'est pas fiable ici (formule pensée pour
+  // Airbnb/Booking, pas pour une résa Direct sans breakdown standard Hospitable).
+  if (bien.skip_facturation) {
+    loyAmount = revenue - taxesTotal
+  }
+
   const horsSequestre = bien.gestion_loyer === false
     && (resa.platform === 'airbnb' || resa.platform === 'booking')
 

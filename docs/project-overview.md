@@ -1171,3 +1171,37 @@ re-matché en « solde » par un `matching-auto` manuel → double-paiement annu
 RGLM supprimés, correction tracée dans `journal_ops`). **Dette connue non corrigée** : l'index
 `mouvement_unique` gagnerait à exclure `source` de sa clé, mais risque inverse (bloquer 2 vraies
 transactions coïncidentes) — arbitrage laissé à Oïhan.
+
+## Fixes session 03 août 2026 — LOY sous-évalué sur biens perso `skip_facturation` (LAGREOU/ASKIDA)
+
+Trouvé lors d'un audit croisé mensuel dcb-compta vs statements Hospitable (juillet 2026). Règle métier
+confirmée par Oïhan : sur LAGREOU et ASKIDA (biens perso, `skip_facturation=true`, commission 0%), il se
+reverse **100% de l'encaissement** (`revenue`), le ménage AE réel restant une créance séparée réglée à
+part (ligne AUTO / "Total dû à DCB") — jamais déduit du LOY/VIR.
+
+**Bug** : `commissionableBase` (`accommodation + hostServiceFee + discountsTotal + extraGuestFee`)
+alimentait quand même le LOY des réservations `platform=direct` sur ces biens. Or Hospitable calcule sa
+propre "commissionable base" différemment selon le statement (confirmé par comparaison brute :
+`accommodation+hostServiceFee` colle exactement pour Harea/416 mais pas pour LAGREOU, où Hospitable
+affiche lui-même `revenue - taxes`) — sans lien direct avec `platform=direct` en général. Un correctif
+générique "si direct alors revenue-taxes" aurait cassé Harea (vérifié par simulation sur données réelles
+Hospitable via MCP avant tout changement de code).
+
+**Fix scopé** : ajout d'un override `if (bien.skip_facturation) loyAmount = revenue - taxesTotal` placé
+après tous les calculs existants de `loyAmount` (isDirect / else / booking), dans `api/ventiler.js` ET
+`supabase/functions/ventilation-auto/index.ts` (sync obligatoire). Ne touche aucun autre bien
+(`skip_facturation=true` uniquement sur LAGREOU et ASKIDA en base — vérifié). AITA/VIKY (biens famille,
+HON/FMEN calculés mais facture jamais envoyée) ne sont pas concernés, `skip_facturation=false` chez eux.
+
+**Impact rétroactif calculé** (simulation sur l'historique complet des réservations `direct` via API
+Hospitable, LAGREOU depuis 2023-04, ASKIDA depuis 2023-02) : **LAGREOU 2 352,33€ + ASKIDA 4 885,10€ =
+7 237,43€** que DCB aurait dû reverser en plus à Oïhan sur cette période. Chiffre à considérer comme
+indicatif pour les années 2023-2024 (pas de certitude que la règle 0%-commission/skip_facturation était
+déjà en vigueur aussi loin). Anomalie notée : résa ASKIDA `HOST-DNW4SI` (avril 2025, revenue 2,89€) donne
+un LOY simulé négatif (-4,31€) — probablement un artefact de données (résa quasi nulle), à vérifier
+manuellement avant tout virement rétroactif réel.
+
+**Dette connue non traitée** : `src/services/ventilation.js` (copie utilisée uniquement par les tests
+unitaires, cf. règle d'architecture 3 fichiers en tête de ce document) n'implémente **même pas** le
+zeroing `skip_facturation` existant (HON/FMEN) — déjà désynchronisée avant ce fix, non corrigée ici
+(hors périmètre demandé, aucun test ne couvre `skip_facturation`).

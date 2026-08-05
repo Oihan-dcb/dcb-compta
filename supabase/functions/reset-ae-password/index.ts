@@ -33,6 +33,9 @@ Deno.serve(async (req) => {
     const { data: linkData, error: linkErr } = await supabaseAdmin.auth.admin.generateLink({
       type: 'recovery',
       email: ae.email,
+      // Sans redirectTo explicite, Supabase retombe sur le Site URL global du projet
+      // (partagé avec dcb-compta) — envoyait les AE sur dcb-compta au lieu du portail.
+      options: { redirectTo: 'https://staff-app.destinationcotebasque.com' },
     })
     if (linkErr) throw linkErr
 

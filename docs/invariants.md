@@ -254,7 +254,13 @@ Aucun invariant actif violé à l'issue de la session du 12 avril 2026.
 | I-54 | Prestation validée doit produire une écriture EXTRA dans la ventilation |
 | I-73 | Modification après clôture doit être explicite et documentée |
 
-**Total actuel** : 0 invariants violés actifs (⚠ I-60 partiellement couvert), 21 corrigés, 35 nouveaux, sur 76 documentés.
+**Total actuel** : 0 invariants violés actifs (⚠ I-60 partiellement couvert), 22 corrigés, 36 nouveaux, sur 77 documentés.
+
+### Invariants ajoutés (3 août 2026 — Fix LOY skip_facturation LAGREOU/ASKIDA)
+
+| ID | Description | Statut |
+|---|---|---|
+| I-124 | **`skip_facturation=true` : le LOY doit être 100% de `revenue - taxesTotal`, jamais dérivé de `commissionableBase`.** Sur LAGREOU/ASKIDA (biens perso, commission 0%), Oïhan se reverse l'intégralité de l'encaissement — le ménage AE réel restant une créance séparée (ligne AUTO), jamais déduite du LOY/VIR. `commissionableBase` (formule Airbnb/Booking `accommodation+hostServiceFee+...`) n'est pas fiable sur les résas `platform=direct` de ces biens (Hospitable calcule sa propre base différemment selon le statement, confirmé par comparaison de données réelles). **Fichiers corrigés simultanément** : `api/ventiler.js` ET `supabase/functions/ventilation-auto/index.ts`. Impact rétroactif estimé (simulation, non appliqué en base) : LAGREOU 2 352,33€ + ASKIDA 4 885,10€ = 7 237,43€ dus en plus à Oïhan sur l'historique. | ✅ Corrigé (session 03/08/2026) — override `loyAmount = revenue - taxesTotal` ajouté dans les deux fichiers pour `bien.skip_facturation`. |
 
 ### Invariants ajoutés (5 juin 2026 — Fix LOY Booking double déduction CITY_TAX)
 

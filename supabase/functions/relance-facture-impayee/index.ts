@@ -104,6 +104,10 @@ serve(async (req) => {
     .select('id, mois, agence, type_facture, total_ttc, total_ht, nb_relances, date_emission, derniere_relance_at, id_evoliz, numero_facture, bien:bien_id(code, hospitable_name), proprietaire:proprietaire_id(nom, prenom, email)')
     .in('type_facture', ['honoraires', 'debours'])
     .eq('statut', 'envoye_evoliz')
+    // DCB uniquement pour l'instant : Lauïan n'a pas Pennylane, donc pas de vérité
+    // bancaire indépendante pour valider le statut Evoliz avant de relancer (cf.
+    // cas Cresseveur, statut Evoliz faux ~50% du temps sur l'échantillon vérifié).
+    .eq('agence', 'dcb')
   if (idsFilter) query = query.in('id', idsFilter)
   const { data: factures, error } = await query
   if (error) return json({ error: error.message }, 500)
