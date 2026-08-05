@@ -552,6 +552,12 @@ export default function PageRapprochement() {
                             Payout {r.platform === 'airbnb' ? 'Airbnb' : 'Booking'} prévu le {fmtDate(r._payout_prevu)}
                           </span>
                         )}
+                        {!r._payout_prevu && r.platform === 'booking' && (
+                          <span title="Aucune ligne booking_payout_line trouvée pour ce code — le CSV Booking couvrant ce paiement n'a probablement pas encore été importé (à distinguer d'un échec de matching : ici, aucune donnée n'a été fournie au système)."
+                            style={{ display: 'block', marginTop: 2, color: '#B45309', fontSize: 11, fontWeight: 600, cursor: 'help' }}>
+                            ⚠ CSV Booking pas encore importé
+                          </span>
+                        )}
                       </td>
                     </tr>
                   ))}
