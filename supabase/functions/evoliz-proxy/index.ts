@@ -283,22 +283,42 @@ serve(async (req) => {
 
       // ── PDF ──────────────────────────────────────────────
       case 'getInvoicePDF': {
-        // Télécharge le PDF d'une facture et retourne son contenu en base64
+        // Télécharge le PDF d'une facture.
+        // Chemin correct (constaté 2026-08-05) : /api/companies/{id}/files/invoice/{id}
+        // (PAS /api/v1/.../invoices/{id}/pdf, qui renvoie 404 même sur une facture
+        // par ailleurs accessible). La réponse est un JSON
+        // {file_name, file_size, file_content} où file_content est déjà le vrai
+        // base64 du PDF — ne pas re-base64-encoder tout le JSON par-dessus.
         const token = await getToken(company)
-        const url = `${EVOLIZ_BASE}/api/v1/companies/${company}/invoices/${payload.invoiceId}/pdf`
-        const pdfRes = await fetch(url, {
-          method: 'GET',
-          headers: { 'Authorization': `Bearer ${token}`, 'Accept': 'application/pdf' },
-        })
-        if (!pdfRes.ok) {
-          result = { status: pdfRes.status, data: { error: `PDF ${pdfRes.status}` } }
+        const candidates = [
+          `${EVOLIZ_BASE}/api/companies/${company}/files/invoice/${payload.invoiceId}`,
+          `${EVOLIZ_BASE}/api/v1/companies/${company}/invoices/${payload.invoiceId}/pdf`,
+        ]
+        let pdfRes: Response | null = null
+        let lastStatus = 0
+        for (const url of candidates) {
+          pdfRes = await fetch(url, {
+            method: 'GET',
+            headers: { 'Authorization': `Bearer ${token}`, 'Accept': 'application/pdf' },
+          })
+          lastStatus = pdfRes.status
+          if (pdfRes.ok) break
+        }
+        if (!pdfRes || !pdfRes.ok) {
+          result = { status: lastStatus, data: { error: `PDF ${lastStatus}` } }
           break
         }
-        const ab = await pdfRes.arrayBuffer()
-        const u8 = new Uint8Array(ab)
-        let b64 = ''
-        for (let i = 0; i < u8.length; i += 3072) b64 += btoa(String.fromCharCode(...u8.slice(i, i + 3072)))
-        result = { status: 200, data: { pdf_base64: b64 } }
+        const contentType = pdfRes.headers.get('content-type') || ''
+        if (contentType.includes('application/json')) {
+          const json = await pdfRes.json()
+          result = { status: 200, data: { pdf_base64: json.file_content, file_name: json.file_name } }
+        } else {
+          const ab = await pdfRes.arrayBuffer()
+          const u8 = new Uint8Array(ab)
+          let b64 = ''
+          for (let i = 0; i < u8.length; i += 3072) b64 += btoa(String.fromCharCode(...u8.slice(i, i + 3072)))
+          result = { status: 200, data: { pdf_base64: b64 } }
+        }
         break
       }
 
@@ -380,7 +400,6 @@ serve(async (req) => {
       }
 
       case 'createAccount': {
-        // Créer un compte comptable Evoliz : { code, label }
         result = await evolizReq('POST', '/accounts', company, {
           code: payload.code,
           label: payload.label,
