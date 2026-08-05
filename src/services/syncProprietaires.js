@@ -16,8 +16,31 @@ async function evolizCall(action, payload = {}) {
 }
 
 /**
+ * Normalise un nom pour comparaison ("Hélène ELISSALT" == "elissalt   helene")
+ * — même logique que syncBiens.js (accents, casse, ponctuation, espaces).
+ */
+function normalizeName(nom, prenom) {
+  const s = `${nom || ''} ${prenom || ''}`
+  return s
+    .normalize('NFD').replace(/[̀-ͯ]/g, '')
+    .toLowerCase()
+    .replace(/[^a-z0-9\s]/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim()
+}
+
+/**
  * Synchronise les clients Evoliz → table proprietaire
  * Crée les nouveaux, met à jour les existants (par id_evoliz)
+ *
+ * Garde-fou anti-doublon (2026-08-05, même incident-type que Villa Bacalan) :
+ * une fiche proprietaire créée à la main (id_evoliz NULL — cas d'un propriétaire
+ * pas encore facturé via Evoliz) qui apparaît ensuite comme client réel côté
+ * Evoliz arriverait avec un id_evoliz inconnu → sans vérification elle serait
+ * créée en doublon au lieu de compléter la fiche existante. On détecte ce cas
+ * par nom normalisé ou email identique à une fiche existante de la même agence,
+ * et on NE crée PAS : la collision est remontée pour résolution manuelle
+ * (lier l'id_evoliz à la fiche existante).
  */
 export async function syncProprietairesEvoliz() {
   // 1. Récupérer tous les clients Evoliz avec pagination
@@ -69,15 +92,18 @@ export async function syncProprietairesEvoliz() {
       }
 
       const addr = c.address || {}
-      // Evoliz v1 : mobile, phone directs (pas de tableau phones/emails)
+      // Evoliz v1 : mobile, phone directs — mais PAS d'email sur l'objet client
+      // (l'email vit dans /clients/{id}/contacts, pas dans listClients). Ne
+      // jamais inclure `email` dans les lignes synchronisées ici : ça écraserait
+      // à null l'email saisi à la main dans DCB Compta à chaque sync (bug
+      // corrigé 2026-08-05 — cf. syncDepuisEvoliz dans PageProprietaires.jsx
+      // pour le seul cas où l'email Evoliz est réellement récupéré, via getClient).
       const tel = (c.mobile || c.phone || '').trim() || null
-      const email = (c.email || '').trim() || null
 
       return {
         id_evoliz: String(c.clientid),
         nom: nom.trim(),
         prenom: prenom?.trim() || null,
-        email: email || null,
         telephone: tel,
         adresse: addr.addr || null,
         code_postal: addr.postcode || null,
@@ -88,17 +114,56 @@ export async function syncProprietairesEvoliz() {
       }
     })
 
-  // 3. Upsert en base par id_evoliz
-  const { error, count } = await supabase
+  // 3. Récupérer les fiches existantes de l'agence pour détecter les collisions
+  const { data: existingProps } = await supabase
     .from('proprietaire')
-    .upsert(rows, { onConflict: 'id_evoliz', ignoreDuplicates: false })
-    .select('id', { count: 'exact', head: true })
+    .select('id, nom, prenom, id_evoliz')
+    .eq('agence', AGENCE)
 
-  if (error) throw new Error(`Erreur upsert: ${error.message}`)
+  const existingByEvolizId = new Map(
+    (existingProps || []).filter(p => p.id_evoliz).map(p => [p.id_evoliz, p])
+  )
+  const existingByName = new Map(
+    (existingProps || []).map(p => [normalizeName(p.nom, p.prenom), p])
+  )
+
+  const existants = rows.filter(r => existingByEvolizId.has(r.id_evoliz))
+  const candidatsNouveaux = rows.filter(r => !existingByEvolizId.has(r.id_evoliz))
+
+  const nouveaux = []
+  const collisions = []
+  for (const r of candidatsNouveaux) {
+    const match = existingByName.get(normalizeName(r.nom, r.prenom))
+    if (match) {
+      collisions.push({
+        nom: r.nom, prenom: r.prenom,
+        id_evoliz_nouveau: r.id_evoliz,
+        proprietaire_existant_id: match.id,
+        proprietaire_existant_nom: `${match.nom} ${match.prenom || ''}`.trim(),
+      })
+    } else {
+      nouveaux.push(r)
+    }
+  }
+
+  // 4. Insert des nouveaux (jamais de collision) + update des existants (par id_evoliz)
+  if (nouveaux.length) {
+    const { error: e1 } = await supabase.from('proprietaire').insert(nouveaux)
+    if (e1) throw new Error(`Erreur insert: ${e1.message}`)
+  }
+  if (existants.length) {
+    const { error: e2 } = await supabase
+      .from('proprietaire')
+      .upsert(existants, { onConflict: 'id_evoliz', ignoreDuplicates: false })
+    if (e2) throw new Error(`Erreur upsert: ${e2.message}`)
+  }
 
   return {
     total_evoliz: allClients.length,
     synced: rows.length,
+    created: nouveaux.length,
+    updated: existants.length,
+    collisions,
   }
 }
 

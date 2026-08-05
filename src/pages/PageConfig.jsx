@@ -382,9 +382,23 @@ export default function PageConfig() {
         {syncProprioResult && (
           <div style={{padding:'12px 16px'}}>
             {syncProprioResult.ok ? (
-              <div className="alert alert-success">
-                ✓ {syncProprioResult.synced} propriétaires synchronisés depuis Evoliz ({syncProprioResult.total_evoliz} clients au total)
-              </div>
+              <>
+                <div className="alert alert-success">
+                  ✓ {syncProprioResult.created ?? 0} créé(s), {syncProprioResult.updated ?? 0} mis à jour ({syncProprioResult.total_evoliz} clients Evoliz au total)
+                </div>
+                {syncProprioResult.collisions?.length > 0 && (
+                  <div className="alert alert-warning" style={{ marginTop: 8 }}>
+                    ⚠ {syncProprioResult.collisions.length} collision(s) détectée(s) — nom ou email déjà présent sur une fiche existante, création évitée. À résoudre manuellement (lier l'id Evoliz à la fiche existante) :
+                    <ul style={{ margin: '6px 0 0', paddingLeft: 20 }}>
+                      {syncProprioResult.collisions.map((c, i) => (
+                        <li key={i}>
+                          {c.nom} {c.prenom} (Evoliz #{c.id_evoliz_nouveau}) ↔ fiche existante « {c.proprietaire_existant_nom} »
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
+                )}
+              </>
             ) : (
               <div className="alert alert-error">✗ {syncProprioResult.error}</div>
             )}
