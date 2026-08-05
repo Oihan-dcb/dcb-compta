@@ -543,7 +543,12 @@ async function genererFactureGroupe(proprio, biens, mois, ctx) {
     await supabase.from('facture_evoliz_ligne').delete().eq('facture_id', skipFactureId)
     return { created: !existingSkip, factureId: skipFactureId, totalHT: 0, totalTTC: 0, resteAPayer: 0 }
   }
-  const soldeNegatif = totalHT === 0 && div.ht > 0
+  // resteAPayer : créance résiduelle non couverte par le LOY (surplus AUTO, débours proprio,
+  // ET reliquat de frais deduire_loyer — bug corrigé 2026-08-05 : soldeNegatif ne regardait
+  // que div.ht et ignorait fraisReliquatTotal, faisant disparaître silencieusement tout
+  // reliquat de frais dès qu'il y avait du HON/FMEN normal ce mois-là, cf. cas Patxi Garat).
+  const resteAPayer = Math.max(0, (totalPrestations + haownerTTC) - loy.ht) + autoSurplusTotal + deboursPropSurplusTotal + fraisReliquatTotal
+  const soldeNegatif = (totalHT === 0 && div.ht > 0) || resteAPayer > 0
   // total_ht négatif (ajustement réservation "hébergement"/"ménage" très négatif, voir
   // migration 222-225) : une vraie facture ne peut pas avoir un total négatif — on la crée
   // quand même (transparence, lignes visibles) mais flaguée pour report manuel sur le mois
@@ -610,7 +615,7 @@ async function genererFactureGroupe(proprio, biens, mois, ctx) {
     montant_reversement: montantReversement,
     statut: totalHT === 0 && div.ht === 0 ? 'calcul_en_cours' : 'brouillon',
     solde_negatif: soldeNegatif,
-    montant_reclame: soldeNegatif ? div.ht : null,
+    montant_reclame: soldeNegatif ? div.ht + resteAPayer : null,
     a_reporter: aReporter,
     note: aReporter ? `Total négatif — à reporter sur ${moisSuivant}` : null,
   }
@@ -858,7 +863,6 @@ async function genererFactureGroupe(proprio, biens, mois, ctx) {
       .eq('id', frais.id)
   }
 
-  const resteAPayer = Math.max(0, (totalPrestations + haownerTTC) - loy.ht) + autoSurplusTotal + deboursPropSurplusTotal + fraisReliquatTotal
   return { created, factureId, totalHT, totalTTC, soldeNegatif, resteAPayer }
 }
 
