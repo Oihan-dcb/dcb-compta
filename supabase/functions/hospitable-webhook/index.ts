@@ -90,7 +90,7 @@ async function handleReservation(supabase: any, event: string, data: any): Promi
   if (event === 'reservation.cancelled') {
     const { data: resa } = await supabase
       .from('reservation')
-      .select('id, mois_comptable, bien(agence)')
+      .select('id, mois_comptable, ventilation_manuelle, bien(agence)')
       .eq('hospitable_id', hospId)
       .single()
 
@@ -112,16 +112,25 @@ async function handleReservation(supabase: any, event: string, data: any): Promi
       }
     }
 
+    // Verrou ajustement manuel (migration 226) : jamais écraser une ventilation saisie
+    // à la main — incident 06/08/2026, HOST-EIEADC effacée 3 fois malgré ventilation_manuelle=true
+    // car ce endpoint (distinct de api/ventiler.js et ventilation-auto) ne vérifiait pas le flag.
+    const manuelle = (resa as { ventilation_manuelle?: boolean } | null)?.ventilation_manuelle === true
+
     await supabase.from('reservation')
-      .update({ final_status: 'cancelled', ventilation_calculee: false })
+      .update(manuelle
+        ? { final_status: 'cancelled' }
+        : { final_status: 'cancelled', ventilation_calculee: false })
       .eq('hospitable_id', hospId)
 
-    if (resa?.id) {
+    if (resa?.id && !manuelle) {
       // Supprimer la ventilation existante
       await supabase.from('ventilation').delete().eq('reservation_id', resa.id)
       console.log('Ventilation supprimée (annulation):', hospId)
+    } else if (manuelle) {
+      console.log('Ventilation manuelle préservée (annulation ignorée pour la ventilation):', hospId)
     }
-    return 'cancelled + ventilation deleted'
+    return manuelle ? 'cancelled (ventilation manuelle préservée)' : 'cancelled + ventilation deleted'
   }
 
   if (!['reservation.created', 'reservation.modified', 'reservation.updated', 'reservation.changed'].includes(event)) {
@@ -223,7 +232,7 @@ async function handleReservation(supabase: any, event: string, data: any): Promi
   const { data: upserted, error } = await supabase
     .from('reservation')
     .upsert(resaRow, { onConflict: 'hospitable_id' })
-    .select('id')
+    .select('id, ventilation_manuelle')
     .single()
 
   if (error) throw new Error('Upsert error: ' + JSON.stringify(error))
@@ -242,10 +251,13 @@ async function handleReservation(supabase: any, event: string, data: any): Promi
   }
 
   // Ventilation supprimée si annulation (la reventilation se fait via Config > Ventilation + Matching)
+  // Sauf si ventilation_manuelle = true (edit manuel protégé, ex: COM sur annulation avec encaissement)
   if (moisComptable && upserted?.id) {
-    if (finalStatus === 'cancelled' || finalStatus === 'not accepted') {
+    if ((finalStatus === 'cancelled' || finalStatus === 'not accepted') && !(upserted as any).ventilation_manuelle) {
       await supabase.from('ventilation').delete().eq('reservation_id', upserted.id)
       console.log('Ventilation supprimée (annulation):', data.code)
+    } else if ((finalStatus === 'cancelled' || finalStatus === 'not accepted')) {
+      console.log('Ventilation manuelle protégée, suppression ignorée:', data.code)
     }
   }
 
