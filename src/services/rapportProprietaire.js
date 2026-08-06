@@ -163,6 +163,19 @@ export function genererRapportHTML(proprio, mois, data, colonnes = {}) {
     debours:       colonnes.debours       ?? false,
     menage:        colonnes.menage        ?? false,
   }
+  // Tuiles KPI — clés dédiées (partagent base_comm/hon/vir avec `cols` ci-dessus quand le
+  // concept est le même, pour que la même case cochée gouverne tableau ET tuiles).
+  const kt = {
+    nbresas:    colonnes.nbresas    ?? true,
+    taux_occ:   colonnes.taux_occ   ?? true,
+    occupation: colonnes.occupation ?? true,
+    prix_moyen: colonnes.prix_moyen ?? true,
+    duree_moy:  colonnes.duree_moy  ?? true,
+    avis_mois:  colonnes.avis_mois  ?? true,
+    fmen:       colonnes.fmen       ?? true,
+    auto:       colonnes.auto       ?? true,
+  }
+
   const optActives = Object.values(cols).filter(Boolean).length
   const optWidth = optActives > 0 ? Math.floor(54 / optActives) : 0
   const thStyle = 'padding:5px 4px;text-align:right;border-bottom:2px solid #CC9933;color:#2C2416;font-weight:600;'
@@ -381,22 +394,22 @@ export function genererRapportHTML(proprio, mois, data, colonnes = {}) {
     </div>
     <div style="position:absolute;bottom:0;left:0;right:0;background:linear-gradient(to top,rgba(20,14,8,0.88) 0%,transparent 100%);">
       <div style="display:flex;justify-content:space-around;padding:10px 24px 14px;">
-      <div style="text-align:center;">
+      ${cols.base_comm ? `<div style="text-align:center;">
         <div style="font-size:8px;letter-spacing:0.04em;text-transform:uppercase;color:rgba(212,196,176,0.8);margin-bottom:3px;">Base commissionable</div>
         <div style="font-size:18px;font-weight:400;color:#fff;">${fmt(kpis.baseCommTotal)}</div>
         ${deltaCA !== null ? `<div style="font-size:9px;color:${deltaCA >= 0 ? '#4ADE80' : '#F87171'};">${deltaCA >= 0 ? SVG.arrowUp('#4ADE80') : SVG.arrowDown('#F87171')} vs N-1</div>` : ''}
-      </div>
-      <div style="text-align:center;border-left:1px solid rgba(204,153,51,0.4);border-right:1px solid rgba(204,153,51,0.4);padding:0 20px;">
+      </div>` : ''}
+      ${cols.hon ? `<div style="text-align:center;border-left:1px solid rgba(204,153,51,0.4);border-right:1px solid rgba(204,153,51,0.4);padding:0 20px;">
         <div style="font-size:8px;letter-spacing:0.04em;text-transform:uppercase;color:#CC9933;margin-bottom:3px;">Honoraires ${AGENCE_BRAND.short}</div>
         <div style="font-size:18px;font-weight:400;color:#CC9933;">${fmt(kpis.honTotal)}</div>
         <div style="font-size:9px;color:rgba(204,153,51,0.7);">${tauxCommission ? tauxCommission + '% TTC' : 'gestion & services'}</div>
-      </div>
-      <div style="text-align:center;">
+      </div>` : ''}
+      ${cols.vir ? `<div style="text-align:center;">
         <div style="font-size:8px;letter-spacing:0.04em;text-transform:uppercase;color:rgba(212,196,176,0.8);margin-bottom:3px;">${modeEncaissement === 'proprio' && virTotalProprioEncaisse > 0 ? `Reversement ${AGENCE_BRAND.short}` : 'Virement propriétaire'}</div>
         <div style="font-size:18px;font-weight:400;color:#fff;">${fmt(virementNetCalc || kpis.loyTotal)}</div>
         ${modeEncaissement === 'proprio' && virTotalProprioEncaisse > 0 ? `<div style="font-size:9px;color:rgba(212,196,176,0.7);margin-top:2px;">+ ${fmt(virTotalProprioEncaisse)} perçu direct</div>` : ''}
         ${(data.virementResaTotal || 0) > 0 ? `<div style="font-size:9px;color:#F59E0B;margin-top:2px;">dont ${fmt(data.virementResaTotal)} déjà versé</div>` : ''}
-      </div>
+      </div>` : ''}
       </div>
     </div>
   </div>
@@ -405,41 +418,41 @@ export function genererRapportHTML(proprio, mois, data, colonnes = {}) {
   <div class="section section-kpis">
     <div class="section-title">Indicateurs du mois</div>
     <div class="kpi-grid">
-      <div class="kpi">
+      ${kt.nbresas ? `<div class="kpi">
         <div class="kpi-val">${kpis.nbResas}</div>
         <div class="kpi-lbl">Réservations</div>
         ${kpisN1?.nbResas != null ? `<div class="kpi-delta" style="color:${kpis.nbResas >= kpisN1.nbResas ? '#059669' : '#DC2626'};">${kpis.nbResas >= kpisN1.nbResas ? SVG.arrowUp('#059669') : SVG.arrowDown('#DC2626')} N-1 : ${kpisN1.nbResas}</div>` : ''}
-      </div>
-      <div class="kpi">
+      </div>` : ''}
+      ${kt.taux_occ ? `<div class="kpi">
         <div class="kpi-val">${kpis.tauxOcc}%</div>
         <div class="kpi-lbl">Taux d'occupation</div>
         ${deltaOcc !== null ? `<div class="kpi-delta" style="color:${deltaOcc >= 0 ? '#059669' : '#DC2626'};">${deltaOcc >= 0 ? SVG.arrowUp('#059669') : SVG.arrowDown('#DC2626')} ${Math.abs(deltaOcc)} pts</div>` : ''}
-      </div>
-      <div class="kpi">
+      </div>` : ''}
+      ${kt.occupation ? `<div class="kpi">
         <div class="kpi-val">${kpis.nuitsOccupees}/${kpis.nuitsDispos}</div>
         <div class="kpi-lbl">Nuits occ./dispo.</div>
-      </div>
-      <div class="kpi">
+      </div>` : ''}
+      ${kt.prix_moyen ? `<div class="kpi">
         <div class="kpi-val">${prixMoyenNuit > 0 ? prixMoyenNuit + ' €' : '—'}</div>
         <div class="kpi-lbl">Prix moy./nuit</div>
-      </div>
-      <div class="kpi">
+      </div>` : ''}
+      ${kt.duree_moy ? `<div class="kpi">
         <div class="kpi-val">${kpis.dureeMoy} nuits</div>
         <div class="kpi-lbl">Durée moyenne</div>
-      </div>
-      <div class="kpi">
+      </div>` : ''}
+      ${kt.avis_mois ? `<div class="kpi">
         <div class="kpi-val">${noteMoisMoy ? SVG.starFull(14) + ' ' + noteMoisMoy : '—'}</div>
         <div class="kpi-lbl">Note voyageurs</div>
         ${nbReviewsGlobal > 0 ? `<div class="kpi-delta" style="color:#9C8E7D;">${SVG.starFull(11,'#9C8E7D')} ${noteGlobaleMoy} global (${nbReviewsGlobal})</div>` : ''}
-      </div>
-      <div class="kpi">
+      </div>` : ''}
+      ${kt.fmen ? `<div class="kpi">
         <div class="kpi-val">${fmt(kpis.fmenTotal || 0)}</div>
         <div class="kpi-lbl">Total FMEN</div>
-      </div>
-      <div class="kpi">
+      </div>` : ''}
+      ${kt.auto ? `<div class="kpi">
         <div class="kpi-val">${fmt(kpis.autoTotal || 0)}</div>
         <div class="kpi-lbl">Main d'œuvre AE</div>
-      </div>
+      </div>` : ''}
     </div>
   </div>
 

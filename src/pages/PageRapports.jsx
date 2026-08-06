@@ -948,6 +948,7 @@ FORMAT :
   const _kpiHaowner      = !data ? 0 : (data.haownerList || []).reduce((s, p) => s + (p.montant_ttc || p.montant || 0), 0)
   const _kpiOwnerStay    = !data ? 0 : (data.ownerStayList || []).reduce((s, p) => s + (p.montant || 0), 0)
   const virementNetCalc  = Math.max(0, _kpiVirTotal - _kpiFreducLoy + _kpiRemb - _kpiDebours - _kpiHaowner - _kpiOwnerStay)
+  const _kpiPrixMoyen    = !data || !(data.kpis.nuitsOccupees > 0) ? 0 : Math.round((data.kpis.caHeb / data.kpis.nuitsOccupees) / 100)
 
   // Tuiles KPI — mêmes clés que "Colonnes rapport" quand le concept est partagé (hon, vir)
   // pour que la case cochée soit cohérente entre le tableau et les tuiles ; clés dédiées sinon.
@@ -961,6 +962,7 @@ FORMAT :
     { key: 'occupation',   val: `${data.kpis.nuitsOccupees}/${data.kpis.nuitsDispos}`, lbl: 'Nuits occ./dispo.', rawN: data.kpis.nuitsOccupees, rawN1: data.kpisN1.nuitsOccupees || 0, dispN1: data.kpisN1.nuitsOccupees > 0 ? data.kpisN1.nuitsOccupees : null },
     { key: 'taux_occ',     val: `${data.kpis.tauxOcc} %`,      lbl: "Taux d'occupation", rawN: data.kpis.tauxOcc,       rawN1: data.kpisN1.tauxOcc || 0, dispN1: data.kpisN1.tauxOcc > 0 ? `${data.kpisN1.tauxOcc} %` : null },
     { key: 'duree_moy',    val: `${data.kpis.dureeMoy} nuits`, lbl: 'Durée moyenne',     rawN: null,                    rawN1: null,                     dispN1: null },
+    { key: 'prix_moyen',   val: _kpiPrixMoyen > 0 ? `${_kpiPrixMoyen} €` : '—', lbl: 'Prix moy./nuit', rawN: null, rawN1: null, dispN1: null },
     { key: 'avis_mois',    val: data.noteMoisMoy ? `★ ${data.noteMoisMoy}` : '—', lbl: 'Avis du mois',  rawN: null, rawN1: null, dispN1: `${data.reviews?.length || 0} avis` },
     { key: 'note_globale', val: data.noteGlobaleMoy ? `★ ${data.noteGlobaleMoy}` : '—', lbl: 'Note globale', rawN: null, rawN1: null, dispN1: `${data.nbReviewsGlobal || 0} avis` },
     { key: 'revpar',       val: data.kpis.revpar != null ? fmt(data.kpis.revpar) : '—', lbl: 'RevPAR', rawN: null, rawN1: null, dispN1: null },
