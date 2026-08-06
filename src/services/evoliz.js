@@ -316,8 +316,11 @@ export async function creerFactureEvoliz(facture) {
         ...(CLASSIFICATION_CODE_MAP[l.code] && classifIdMap[CLASSIFICATION_CODE_MAP[l.code]]
           ? { classificationId: classifIdMap[CLASSIFICATION_CODE_MAP[l.code]] }
           : {}),
-        // Article d'exonération TVA pour débours (art. 267-II-2° CGI) — obligatoire août 2026
-        ...(l.code === 'DEB_AE' ? { vatExemption: 'AE267-2' } : {}),
+        // Article d'exonération TVA pour débours (art. 267-II-2° CGI) — obligatoire août 2026.
+        // Toute ligne à taux 0% ici est un débours/remboursement (DEB_AE, DEBP, FRAIS reliquat…),
+        // jamais une exonération d'un autre type — Evoliz rejette désormais un vatRate=0 sans motif
+        // (incident AIA BIARRITZ/Palmaria, ligne DEBP, 06/08/2026 : code initialement limité à DEB_AE).
+        ...((l.taux_tva ?? 20) === 0 ? { vatExemption: 'AE267-2' } : {}),
       }
     })
     .filter(Boolean)
