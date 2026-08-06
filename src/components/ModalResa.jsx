@@ -302,7 +302,7 @@ function VentilationEdit({ resa, ventil, onSaved, onCancel }) {
               <td style={{ padding: '4px 4px 4px 0' }}>
                 <select value={line.code} onChange={e => update(i, 'code', e.target.value)}
                   style={{ width: '100%', fontSize: '0.85em', padding: 3, border: '1px solid #ddd', borderRadius: 4 }}>
-                  {['HON','FMEN','AUTO','LOY','TAXE','VIR','DIV'].map(c => <option key={c}>{c}</option>)}
+                  {['HON','FMEN','AUTO','LOY','TAXE','VIR','COM','DIV'].map(c => <option key={c}>{c}</option>)}
                 </select>
               </td>
               <td style={{ padding: 4 }}>
