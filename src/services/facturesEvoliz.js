@@ -45,7 +45,7 @@ async function getAgencyBillingConfig() {
  * @param {string} mois - YYYY-MM
  */
 export async function genererFacturesMois(mois) {
-  const log = { created: 0, updated: 0, skipped: 0, errors: 0, resteAPayer: 0, deboursCreated: 0, deboursUpdated: 0, lauianFmenCreated: 0, lauianFmenUpdated: 0, bloquesAjustements: [], aReporter: [] }
+  const log = { created: 0, updated: 0, skipped: 0, errors: 0, resteAPayer: 0, deboursCreated: 0, deboursUpdated: 0, lauianFmenCreated: 0, lauianFmenUpdated: 0, bloquesAjustements: [], aReporter: [], biensNonListesFactures: [] }
 
   // RÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂ©cupÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂ©rer tous les propriÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂ©taires avec des biens actifs
   const { data: proprietaires, error: propErr } = await supabase
@@ -57,7 +57,6 @@ export async function genererFacturesMois(mois) {
         provision_ae_ref, forfait_dcb_ref, has_ae, mode_encaissement, groupe_facturation, skip_facturation
       )
     `)
-    .eq('bien.listed', true)
     .eq('bien.agence', AGENCE)
     .eq('actif', true)
 
@@ -96,6 +95,16 @@ export async function genererFacturesMois(mois) {
         if ((facture.resteAPayer || 0) > 0) log.resteAPayer += facture.resteAPayer
         if (facture.aReporter) log.aReporter.push({ proprio: proprio.nom, biens: biens.map(b => b.code), totalHT: facture.totalHT })
 
+        // Bien démasqué d'Airbnb (listed=false) mais avec une vraie facture générée :
+        // signalé pour vérification manuelle (cf. incident 408P "Ikuspegi" — masqué mais
+        // ~7 400€ de CA juillet, aurait dû être exclu silencieusement de la facturation).
+        if (!facture.skipped) {
+          const nonListes = biens.filter(b => !b.listed)
+          if (nonListes.length) {
+            log.biensNonListesFactures.push({ proprio: proprio.nom, biens: nonListes.map(b => b.code), totalHT: facture.totalHT })
+          }
+        }
+
         const debours = await genererFactureDebours(proprio, biens, mois, ctx)
         if (debours && !debours.skipped) {
           if (debours.created) log.deboursCreated++
@@ -114,7 +123,6 @@ export async function genererFacturesMois(mois) {
     const { data: proprietairesLauian } = await supabase
       .from('proprietaire')
       .select(`id, nom, prenom, id_evoliz, iban, bien!proprietaire_id(id, hospitable_name, code, listed, agence, provision_ae_ref, forfait_dcb_ref, has_ae, mode_encaissement, groupe_facturation, skip_facturation)`)
-      .eq('bien.listed', true)
       .eq('bien.agence', 'lauian')
       .eq('actif', true)
 
@@ -141,6 +149,10 @@ export async function genererFacturesMois(mois) {
             if (fmen && !fmen.skipped) {
               if (fmen.created) log.lauianFmenCreated++
               else log.lauianFmenUpdated++
+              const nonListes = biens.filter(b => !b.listed)
+              if (nonListes.length) {
+                log.biensNonListesFactures.push({ proprio: proprio.nom, biens: nonListes.map(b => b.code), totalHT: fmen.totalHT })
+              }
             }
           } catch (err) {
             console.error(`Erreur FMEN Lauian ${proprio.nom} [${key}]:`, err)
@@ -165,8 +177,8 @@ export async function genererFacturesMois(mois) {
 
   logOp({
     categorie: 'facture', action: 'generate', mois_comptable: mois,
-    statut: log.errors > 0 ? 'warning' : 'ok', source: 'app',
-    message: `Factures ${mois} : ${log.created} créée(s), ${log.updated} mise(s) à jour${log.skipped > 0 ? ', ' + log.skipped + ' ignorée(s) (déjà envoyée(s))' : ''}, ${log.deboursCreated + log.deboursUpdated} débours${log.lauianFmenCreated + log.lauianFmenUpdated > 0 ? ', ' + (log.lauianFmenCreated + log.lauianFmenUpdated) + ' FMEN Lauian' : ''}${log.errors > 0 ? ', ' + log.errors + ' erreur(s)' : ''}`,
+    statut: (log.errors > 0 || log.biensNonListesFactures.length > 0) ? 'warning' : 'ok', source: 'app',
+    message: `Factures ${mois} : ${log.created} créée(s), ${log.updated} mise(s) à jour${log.skipped > 0 ? ', ' + log.skipped + ' ignorée(s) (déjà envoyée(s))' : ''}, ${log.deboursCreated + log.deboursUpdated} débours${log.lauianFmenCreated + log.lauianFmenUpdated > 0 ? ', ' + (log.lauianFmenCreated + log.lauianFmenUpdated) + ' FMEN Lauian' : ''}${log.errors > 0 ? ', ' + log.errors + ' erreur(s)' : ''}${log.biensNonListesFactures.length > 0 ? ', ⚠️ ' + log.biensNonListesFactures.length + ' bien(s) démasqué(s) Airbnb facturé(s) — à vérifier' : ''}`,
     meta: log,
   }).catch(() => {})
   return log

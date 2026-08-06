@@ -550,6 +550,10 @@ const [pushing, setPushing] = useState(false)
         setWarning(`⚠ Reversement entierement absorbe sur certaines factures. Reste total a payer : ${(result.resteAPayer / 100).toFixed(2)} €`)
       }
       if (lld.erreurs?.length) setWarning(`⚠ LLD : ${lld.erreurs.length} erreur(s) — ${lld.erreurs[0].error}`)
+      if (result.biensNonListesFactures?.length) {
+        const detail = result.biensNonListesFactures.map(b => `${b.biens.join(',')} (${b.proprio})`).join(' · ')
+        setWarning(`⚠ ${result.biensNonListesFactures.length} bien(s) démasqué(s) d'Airbnb mais facturé(s) quand même (activité réelle) : ${detail} — à vérifier avant validation`)
+      }
       await charger()
     } catch (err) {
       setError(err.message)
