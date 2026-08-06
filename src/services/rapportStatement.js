@@ -39,7 +39,6 @@ export function genererStatementHTML(proprio, mois, data) {
   const showLoy          = data.colonnes?.loy            ?? true
   const showMenage       = data.colonnes?.menage         ?? false
   const showVir          = data.colonnes?.vir            ?? true
-  const showDebours      = data.colonnes?.debours        ?? false
 
   const fmt = (centimes) => {
     if (centimes === null || centimes === undefined) return '—'
@@ -324,7 +323,7 @@ export function genererStatementHTML(proprio, mois, data) {
     ${showLoy ? `<div style="display:flex;justify-content:space-between;padding:3px 0;border-bottom:1px solid #ece8e2;font-size:10px">
       <span style="color:#9c8c7a">Reversement net (LOY)</span><span>${fmt(loyTotal)}</span>
     </div>` : ''}
-    ${taxeTotal > 0 && showTaxe ? `<div style="display:flex;justify-content:space-between;padding:3px 0;border-bottom:1px solid #ece8e2;font-size:10px">
+    ${taxeTotal > 0 ? `<div style="display:flex;justify-content:space-between;padding:3px 0;border-bottom:1px solid #ece8e2;font-size:10px">
       <span style="color:#9c8c7a">Taxes de séjour</span><span>${fmt(taxeTotal)}</span>
     </div>` : ''}
     ${showVir ? `<div style="display:flex;justify-content:space-between;padding:3px 0;border-bottom:1px solid #ece8e2;font-size:10px">
@@ -342,7 +341,7 @@ export function genererStatementHTML(proprio, mois, data) {
     ${remboursementsTotal > 0 ? remboursementsList.map(f => `<div style="display:flex;justify-content:space-between;padding:3px 0;border-bottom:1px solid #ece8e2;font-size:10px">
       <span style="color:#059669">${escapeNonAscii(f.libelle || 'Remboursement')}</span><span style="color:#059669">+ ${fmt(f.montant_ttc)}</span>
     </div>`).join('') : ''}
-    ${deboursSeuls > 0 && showDebours ? `<div style="display:flex;justify-content:space-between;padding:3px 0;border-bottom:1px solid #ece8e2;font-size:10px">
+    ${deboursSeuls > 0 ? `<div style="display:flex;justify-content:space-between;padding:3px 0;border-bottom:1px solid #ece8e2;font-size:10px">
       <span style="color:#9c8c7a">Débours / prestations</span><span style="color:#DC2626">− ${fmt(deboursSeuls)}</span>
     </div>` : ''}
     ${sansGestionLoyer ? fraisFacturesDirectList.map(f => `<div style="display:flex;justify-content:space-between;padding:3px 0;border-bottom:1px solid #ece8e2;font-size:10px">
