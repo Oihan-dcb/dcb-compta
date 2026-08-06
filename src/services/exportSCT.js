@@ -22,8 +22,14 @@ function msgIdTimestamp(nom) {
   return `${ts} ${nom}`
 }
 
-function todayISO() {
+// Prochain jour ouvrable (lundi-vendredi, hors jours fériés) -- une date d'exécution le jour
+// même expose à un rejet/report si le dépôt intervient après le cutoff bancaire (17h chez
+// Caisse d'Epargne pour un virement SEPA standard, cf. doc "CE net formats et délais de
+// remise"). Viser systématiquement J+1 ouvré évite cette dépendance à l'heure de dépôt.
+function nextBusinessDayISO() {
   const d = new Date()
+  d.setDate(d.getDate() + 1)
+  while (d.getDay() === 0 || d.getDay() === 6) d.setDate(d.getDate() + 1)
   return `${d.getFullYear()}-${pad2(d.getMonth()+1)}-${pad2(d.getDate())}`
 }
 
@@ -116,7 +122,7 @@ function buildPmtInf({ pmtInfId, debtorNom, debtorIban, debtorBic, debtorAdrLine
           <Cd>SEPA</Cd>
         </SvcLvl>
       </PmtTpInf>
-      <ReqdExctnDt>${todayISO()}</ReqdExctnDt>
+      <ReqdExctnDt>${nextBusinessDayISO()}</ReqdExctnDt>
       <Dbtr>
         <Nm>${esc(debtorNom)}</Nm>
         <PstlAdr>
