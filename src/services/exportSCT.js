@@ -28,8 +28,20 @@ function todayISO() {
   return `${d.getFullYear()}-${pad2(d.getMonth()+1)}-${pad2(d.getDate())}`
 }
 
+// Le jeu de caractères SEPA (règlement EPC Credit Transfer) est restreint au Latin de base
+// (a-z A-Z 0-9 / - ? : ( ) . , ' + espace) -- PAS d'accents. Caisse d'Epargne (et la plupart
+// des banques) rejette silencieusement tout le fichier ("Transmission rejetée") dès qu'un Nm/
+// Ustrd contient un caractère accentué -- ex. "Rémi", "Béatrice". Sans ce fix, l'export SCT
+// était systématiquement rejeté par la banque dès qu'un propriétaire avait un prénom/nom accentué.
+function stripDiacritics(s) {
+  return (s || '')
+    .normalize('NFD').replace(/[̀-ͯ]/g, '')
+    .replace(/œ/gi, m => m === 'Œ' ? 'OE' : 'oe')
+    .replace(/æ/gi, m => m === 'Æ' ? 'AE' : 'ae')
+}
+
 function esc(s) {
-  return (s || '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;')
+  return stripDiacritics(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;')
 }
 
 function eur(centimes) {

@@ -1400,3 +1400,22 @@ visible comme non soldé, pas de fausse impression que l'argent a bougé.
 GAMBETTA/SPERADIO passé en `exclu` en base (juillet 2026 reste donc sans virement à exporter — il
 n'y avait que celui-là ce mois-ci — mais les mois suivants avec d'autres propriétaires ne seront
 plus bloqués par ce cas tant que l'IBAN n'est pas fourni).
+
+## Fix session 06 août 2026 — SEPA rejeté par Caisse d'Epargne (caractères accentués)
+
+Oïhan a généré `DCB_SCT_Proprios_LC_2026-07.xml` (19 virements, 83 795,93€, fichier structurellement
+valide — vérifié) mais Caisse d'Epargne a rejeté la transmission ("Transmission rejetée" dans
+l'historique des remises).
+
+**Cause** : le jeu de caractères SEPA (règlement EPC Credit Transfer) est restreint au Latin de base
+(`a-z A-Z 0-9 / - ? : ( ) . , ' +` espace) — **aucun accent autorisé**. Le fichier contenait
+`AGUERRE Rémi` et `PINONCELY Béatrice` (caractères é) dans les balises `<Nm>` — la plupart des
+banques (dont Caisse d'Epargne / groupe BPCE) rejettent silencieusement tout le fichier dès qu'un
+caractère hors de ce jeu apparaît dans `Nm`, `Ustrd`, `MsgId`, etc.
+
+**Fix** : `esc()` (`exportSCT.js`, utilisée par les 4 fonctions `genererSCT*`) passe désormais par un
+nouveau `stripDiacritics()` avant l'échappement XML — `normalize('NFD')` + suppression des marques
+diacritiques + gestion manuelle de `œ`/`æ` (non décomposables via NFD). "Rémi" → "Remi", "Béatrice"
+→ "Beatrice", "Côte" → "Cote". Aucun changement en base — uniquement au moment de la génération du
+fichier SEPA. S'applique à tous les exports SCT (Proprios LLD, Proprios LC, Honoraires DCB, Internes
+LC) sans modification des call sites.
