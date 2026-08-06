@@ -51,6 +51,7 @@ export async function buildComptaMensuelle(mois, bienIds = null) {
     { data: reversementFaitData },
     { data: reversementResaData },
     { data: missionsData },
+    { data: fraisReliquatData },
   ] = await Promise.all([
     biensQuery,
     supabase
@@ -121,6 +122,17 @@ export async function buildComptaMensuelle(mois, bienIds = null) {
       .select('reservation_id, bien_id, montant_cts, date_virement, note, reservation:reservation_id(code)')
       .eq('mois_comptable', mois),
     missionsQuery,
+    // Reliquat de frais deduire_loyer/facturer_et_deduire non couvert par le loyer — TOUS modes
+    // d'encaissement (contrairement à fraisData ci-dessus, restreint à 'dcb' pour le calcul du
+    // reversement). Sert uniquement à l'alerte de visibilité RELIQUAT_NON_FACTURE ci-dessous ;
+    // ne doit jamais entrer dans le calcul de reversement_calcule (cf. incident 408P "Ikuspegi").
+    supabase
+      .from('frais_proprietaire')
+      .select('bien_id, libelle, montant_reliquat')
+      .eq('mois_facturation', mois)
+      .eq('statut', 'facture')
+      .in('mode_traitement', ['deduire_loyer', 'facturer_et_deduire'])
+      .gt('montant_reliquat', 0),
   ])
 
   if (biensErr)  throw new Error(`buildComptaMensuelle — biens: ${biensErr.message}`)
@@ -218,6 +230,14 @@ export async function buildComptaMensuelle(mois, bienIds = null) {
     else if (f.statut === 'facture' && f.statut_deduction === 'en_attente') montant = f.montant_ttc || 0
     else if (f.statut === 'a_facturer') montant = f.montant_ttc || 0
     fraisLoyByBien[f.bien_id] = (fraisLoyByBien[f.bien_id] || 0) + montant
+  }
+
+  // Reliquat de frais non facturé (visibilité uniquement — cf. requête ci-dessus)
+  const reliquatByBien = {}
+  for (const f of (fraisReliquatData || [])) {
+    if (!reliquatByBien[f.bien_id]) reliquatByBien[f.bien_id] = { total: 0, items: [] }
+    reliquatByBien[f.bien_id].total += (f.montant_reliquat || 0)
+    reliquatByBien[f.bien_id].items.push({ libelle: f.libelle, montant: f.montant_reliquat })
   }
 
   // Frais facturés directement au proprio, agrégés par bien_id
@@ -476,6 +496,15 @@ export async function buildComptaMensuelle(mois, bienIds = null) {
 
     if (!b.listed && (nb_resas > 0 || hon.ttc > 0 || loy.ht > 0))
       rowAlerts.push({ level: 'warning', code: 'BIEN_INACTIF_AVEC_MOUVEMENTS', message: 'Bien non listé avec mouvements', bien_id: b.id })
+
+    const reliquatBien = reliquatByBien[b.id]
+    if (reliquatBien?.total > 0)
+      rowAlerts.push({
+        level: 'warning', code: 'RELIQUAT_NON_FACTURE',
+        message: `${(reliquatBien.total / 100).toFixed(2)} € de frais non couverts par le loyer — vérifier la facture débours`,
+        bien_id: b.id,
+        details: { items: reliquatBien.items },
+      })
 
     rows.push({
       bien_id:           b.id,
