@@ -1206,7 +1206,9 @@ FORMAT :
                                 <div style={{ display: 'flex', gap: 10, alignItems: 'center', flexWrap: 'wrap', fontSize: '0.95em' }}>
                                   <span>{adj.statut === 'traite' ? 'ℹ️ Ajustement réservation' : '⚠️ Ajustement réservation non qualifié'} :</span>
                                   <span style={{ fontStyle: 'italic', color: '#6B5E4E' }}>{adj.label}</span>
-                                  <span style={{ fontWeight: 700 }}>{fmt(adj.montant)}</span>
+                                  <span style={{ fontWeight: 700, color: (adj.montant || 0) < 0 ? '#DC2626' : '#059669' }}>
+                                    {(adj.montant || 0) < 0 ? fmt(adj.montant) : `+ ${fmt(adj.montant)}`}
+                                  </span>
                                   {adj.statut === 'traite' && (
                                     <span style={{ fontSize: '0.85em', color: '#9C8E7D', fontStyle: 'italic' }}>
                                       Qualifié {{ hebergement: 'hébergement', menage: 'ménage / extra', aucun: 'sans impact' }[adj.type] || adj.type}
