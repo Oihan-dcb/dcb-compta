@@ -1428,3 +1428,28 @@ référence est `AAAA-MM-JJThh:mm:ss` sans les deux. Les deux sont valides au se
 ISODateTime, mais le validateur bancaire est visiblement plus strict. Fix : XML déclaré
 `encoding="UTF-8"` explicitement, `nowISOWithTz()` simplifiée en horodatage local sans ms ni offset,
 suppression du namespace `xmlns:xsd` inutilisé (jamais référencé, absent de la doc de référence).
+
+**Suite (encore rejeté)** : après ce 2e fix, le fichier a été rejeté une 3e fois. Vérifications
+effectuées qui n'ont RIEN trouvé d'anormal : les 19 IBAN passent tous le calcul de clé mod-97
+(y compris `FR7630002021450000002497T32`, IBAN alphanumérique valide), les BIC ont un format
+correct (8 ou 11 caractères). Deux pistes supplémentaires traitées quand même, par prudence :
+1. `PstlAdr` du débiteur ne contenait que `<Ctry>FR</Ctry>` — ajout de `<AdrLine>` (depuis
+   `agency_config.adresse_ligne1/2`) et de `<Ccy>EUR</Ccy>` sur `DbtrAcct`, présents dans la doc
+   de référence mais absents chez nous (optionnels au sens XSD, mais rapprochent du format
+   attendu par un validateur strict).
+2. Oïhan a signalé un choix au dépôt entre **"Virement SEPA"** et **"Virement trésorerie XML"**
+   sur le portail Caisse d'Epargne — confirmé par la doc officielle CE (fichier
+   `file-formats-et-btf-xml-a-parametrer...pdf`) : notre fichier (bénéficiaires externes) relève
+   bien de la catégorie **SCT/GLB** ("Virement SEPA"), la catégorie **ICT/FR** ("Virement de
+   trésorerie") étant réservée aux mouvements internes entre comptes de la même entité (ce que
+   fait `genererSCTInternesLC`, pas le fichier Proprios). Si "trésorerie" avait été sélectionné
+   par erreur lors des tentatives précédentes, ça expliquerait un rejet indépendant de tout
+   contenu du XML.
+3. Doc "CE net formats et délais de remise" : un virement SEPA doit être déposé avant 17h00 le
+   jour même de `ReqdExctnDt`, sinon report. On fixait `ReqdExctnDt` à la date du jour de
+   génération — `nextBusinessDayISO()` vise désormais systématiquement le jour ouvré suivant,
+   sans dépendance à l'heure de dépôt.
+
+À date : cause exacte du rejet toujours non confirmée avec certitude (aucun code d'erreur
+bancaire précis obtenu) — plusieurs écarts réels corrigés en cascade, la sélection "Virement
+SEPA" (vs "trésorerie") est le suspect le plus probable pour un rejet systématique.
