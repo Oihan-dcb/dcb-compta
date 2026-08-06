@@ -222,6 +222,25 @@ export async function marquerVirementEffectue(id, date_virement) {
   if (error) throw error
 }
 
+// Exclut un virement du prochain export SEPA (ex. IBAN manquant) sans le marquer
+// faussement 'vire' -- genererSCTVirementsProprios (exportSCT.js) ne lit que
+// statut='a_virer', un virement 'exclu' est donc automatiquement écarté.
+export async function exclureVirement(id) {
+  const { error } = await supabase
+    .from('virement_proprio_suivi')
+    .update({ statut: 'exclu', date_virement: null })
+    .eq('id', id)
+  if (error) throw error
+}
+
+export async function reactiverVirement(id) {
+  const { error } = await supabase
+    .from('virement_proprio_suivi')
+    .update({ statut: 'a_virer', date_virement: null })
+    .eq('id', id)
+  if (error) throw error
+}
+
 // ── Caution ───────────────────────────────────────────────────────────────
 
 export async function getCautionEtudiant(etudiant_id) {

@@ -1378,3 +1378,25 @@ ouvre directement `admin.booking.com/.../payouts.html?hotel_id=10415482` dans un
 sans le token de session (`ses=`) de l'URL fournie par Oïhan : il expire vite et ce repo GitHub est
 public, le figer en dur aurait exposé une session active. Le navigateur réutilise la session déjà
 ouverte de l'utilisateur.
+
+## Feature session 06 août 2026 — statut `exclu` pour bloquer un virement LLD sans casser tout l'export
+
+Oïhan a voulu télécharger le virement propriétaire LLD de juillet 2026 : erreur "Aucun virement
+propriétaire à effectuer" (`exportSCT.js`, `genererSCTVirementsProprios`). Cause : le seul virement
+`a_virer` du mois (GAMBETTA/SPERADIO Francesco, 815€) n'a pas d'IBAN — filtré silencieusement, ce
+qui vide `valid[]` et fait échouer tout l'export, même s'il n'y avait qu'un seul virement en jeu ce
+mois-ci. Décocher le bien dans "Filtre biens" (PageExports.jsx) ne change rien : ce filtre ne
+s'applique qu'aux exports CSV (compta mensuelle, débours, factures Evoliz, réservations) — jamais
+aux boutons SCT (vérifié : `selectedBienIds` n'apparaît dans aucun appel `genererSCT*`).
+
+**Fix** : nouveau statut `exclu` sur `virement_proprio_suivi` (migration
+`240_virement_proprio_suivi_statut_exclu.sql`, contrainte CHECK étendue) — distinct de `vire` (qui
+implique un paiement réel). `genererSCTVirementsProprios` ne lit que `statut='a_virer'`, donc un
+virement `exclu` est automatiquement écarté sans toucher au code d'export. Boutons ajoutés dans
+`PageLocationsLongues.jsx` : "⊘ Exclure" (à côté de "✓ Viré", avec confirmation) et "↩ Remettre à
+virer" pour annuler. Le solde du mois ne compte que `vire` comme réglé — un virement exclu reste
+visible comme non soldé, pas de fausse impression que l'argent a bougé.
+
+GAMBETTA/SPERADIO passé en `exclu` en base (juillet 2026 reste donc sans virement à exporter — il
+n'y avait que celui-là ce mois-ci — mais les mois suivants avec d'autres propriétaires ne seront
+plus bloqués par ce cas tant que l'IBAN n'est pas fourni).

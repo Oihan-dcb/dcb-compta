@@ -21,6 +21,8 @@ import {
   marquerLoyerStatut,
   listerVirementsMois,
   marquerVirementEffectue,
+  exclureVirement,
+  reactiverVirement,
   getCautionEtudiant,
   mettreAJourCaution,
   listerDocuments,
@@ -62,8 +64,9 @@ const STATUT_LOYER = {
 }
 
 const STATUT_VIREMENT = {
-  a_virer: { label: 'À virer',  color: '#B45309', bg: '#FFF7ED' },
-  vire:    { label: 'Viré ✓',   color: '#059669', bg: '#D1FAE5' },
+  a_virer: { label: 'À virer',       color: '#B45309', bg: '#FFF7ED' },
+  vire:    { label: 'Viré ✓',        color: '#059669', bg: '#D1FAE5' },
+  exclu:   { label: 'Exclu (IBAN…)', color: '#6B7280', bg: '#F3F4F6' },
 }
 
 const STATUT_ETUDIANT = {
@@ -623,6 +626,29 @@ export default function PageLocationsLongues() {
     }
   }
 
+  async function handleExclureVirement(id) {
+    if (!confirm("Exclure ce virement du prochain export SEPA (ex. IBAN manquant) ? L'argent n'est pas considéré comme viré -- il restera visible comme non soldé.")) return
+    setError(null)
+    try {
+      await exclureVirement(id)
+      setSuccess('Virement exclu -- il ne bloquera plus le prochain export SEPA')
+      await chargerMensuel()
+    } catch (e) {
+      setError(e.message)
+    }
+  }
+
+  async function handleReactiverVirement(id) {
+    setError(null)
+    try {
+      await reactiverVirement(id)
+      setSuccess('Virement remis "à virer"')
+      await chargerMensuel()
+    } catch (e) {
+      setError(e.message)
+    }
+  }
+
   function ouvrirModalEtudiant(etudiant = null) {
     if (etudiant) {
       setFormEtudiant({
@@ -960,11 +986,24 @@ export default function PageLocationsLongues() {
                           <td style={{ fontSize: 13, color: 'var(--text-muted)' }}>
                             {fmtDate(v.date_virement)}
                           </td>
-                          <td>
+                          <td style={{ display: 'flex', gap: 6 }}>
                             {v.statut === 'a_virer' && (
-                              <button className="btn btn-secondary" style={{ fontSize: 12, padding: '3px 8px', color: '#059669' }}
-                                onClick={() => confirmerVirement(v.id)}>
-                                ✓ Viré
+                              <>
+                                <button className="btn btn-secondary" style={{ fontSize: 12, padding: '3px 8px', color: '#059669' }}
+                                  onClick={() => confirmerVirement(v.id)}>
+                                  ✓ Viré
+                                </button>
+                                <button className="btn btn-secondary" style={{ fontSize: 12, padding: '3px 8px', color: '#6B7280' }}
+                                  title="Exclure ce virement du prochain export SEPA (ex. IBAN manquant), sans le marquer viré"
+                                  onClick={() => handleExclureVirement(v.id)}>
+                                  ⊘ Exclure
+                                </button>
+                              </>
+                            )}
+                            {v.statut === 'exclu' && (
+                              <button className="btn btn-secondary" style={{ fontSize: 12, padding: '3px 8px', color: '#B45309' }}
+                                onClick={() => handleReactiverVirement(v.id)}>
+                                ↩ Remettre à virer
                               </button>
                             )}
                           </td>
