@@ -923,6 +923,19 @@ async function genererFactureDebours(proprio, biens, mois, ctx) {
     .eq('mode_encaissement', 'dcb')
     .eq('statut', 'a_facturer')
 
+  // fraisReliquatAll : part de frais deduire_loyer/facturer_et_deduire non couverte par le LOY
+  // (montant_reliquat déjà calculé et écrit en base par genererFactureGroupe, exécuté juste avant
+  // pour ce même proprio/mois — cf. dépendance d'ordre ci-dessus). Sans cette ligne, ce reliquat
+  // n'était jamais refacturé au propriétaire — cf. incident 408P "Ikuspegi" (100,01€ juillet 2026).
+  const { data: fraisReliquatAll } = await supabase
+    .from('frais_proprietaire')
+    .select('bien_id, id, montant_reliquat, libelle')
+    .in('bien_id', bienIds)
+    .eq('mois_facturation', mois)
+    .in('mode_traitement', ['deduire_loyer', 'facturer_et_deduire'])
+    .eq('statut', 'facture')
+    .gt('montant_reliquat', 0)
+
   const ventilByBien = new Map()
   const prestByBien  = new Map()
   ;(ventilAuto || []).forEach(function(l) {
@@ -938,6 +951,12 @@ async function genererFactureDebours(proprio, biens, mois, ctx) {
   ;(fraisDirectsAll || []).forEach(function(f) {
     if (!fraisDirectsByBien.has(f.bien_id)) fraisDirectsByBien.set(f.bien_id, [])
     fraisDirectsByBien.get(f.bien_id).push(f)
+  })
+
+  const fraisReliquatByBien = new Map()
+  ;(fraisReliquatAll || []).forEach(function(f) {
+    if (!fraisReliquatByBien.has(f.bien_id)) fraisReliquatByBien.set(f.bien_id, [])
+    fraisReliquatByBien.get(f.bien_id).push(f)
   })
 
   for (const bien of biens) {
@@ -961,7 +980,10 @@ async function genererFactureDebours(proprio, biens, mois, ctx) {
       })
       .reduce(function(s, p) { return s + (p.montant || 0) }, 0)
 
-    if (autoBien === 0 && osAutoHT === 0 && deboursPropTotal === 0) continue
+    const fraisReliquatBien = fraisReliquatByBien.get(bien.id) || []
+    const fraisReliquatBienTotal = fraisReliquatBien.reduce(function(s, f) { return s + (f.montant_reliquat || 0) }, 0)
+
+    if (autoBien === 0 && osAutoHT === 0 && deboursPropTotal === 0 && fraisReliquatBienTotal === 0) continue
 
     let montantAFacturer = 0
     let debPropSurplus   = 0
@@ -1023,7 +1045,7 @@ async function genererFactureDebours(proprio, biens, mois, ctx) {
       montantAFacturer += osAutoSurplus
     }
 
-    if (montantAFacturer === 0) continue
+    if (montantAFacturer === 0 && fraisReliquatBienTotal === 0) continue
 
     const autoSurplusBienDebours = Math.max(0, montantAFacturer - debPropSurplus - osAutoSurplus)
     if (autoSurplusBienDebours > 0) {
@@ -1078,6 +1100,22 @@ async function genererFactureDebours(proprio, biens, mois, ctx) {
         taux_tva:    0,
         montant_tva: 0,
         montant_ttc: frais.montant_ttc,
+        ordre:       ordre++,
+      })
+    }
+
+    // Frais deduire_loyer/facturer_et_deduire dont le reliquat n'a pas pu être absorbé par le
+    // LOY (bien mode_encaissement='proprio', ou LOY insuffisant ce mois-ci) -- refacturé ici,
+    // sinon perdu silencieusement (cf. incident 408P "Ikuspegi")
+    const fraisReliquatBienLignes = AGENCE === 'lauian' ? [] : fraisReliquatBien
+    for (const frais of fraisReliquatBienLignes) {
+      lignes.push({
+        code:        'FRAIS',
+        libelle:     (frais.libelle || 'Frais propriétaire') + ' (reliquat)',
+        montant_ht:  frais.montant_reliquat,
+        taux_tva:    0,
+        montant_tva: 0,
+        montant_ttc: frais.montant_reliquat,
         ordre:       ordre++,
       })
     }

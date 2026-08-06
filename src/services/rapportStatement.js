@@ -90,6 +90,16 @@ export function genererStatementHTML(proprio, mois, data) {
     if (f.statut === 'a_facturer')                                       return s + (f.montant_ttc || 0)
     return s
   }, 0)
+  // Part de frais deduire_loyer/facturer_et_deduire non couverte par le loyer (LOY insuffisant
+  // ou bien mode_encaissement='proprio' sans LOY DCB) — refacturée séparément (facture débours,
+  // cf. facturesEvoliz.js) mais toujours DUE à DCB. Sans cette ligne, ce reliquat disparaissait du
+  // total "Charges DCB" dès que rien n'était déduit ce mois-ci (cf. incident 408P "Ikuspegi").
+  const fraisReliquatTotal = fraisDeductionLoyList.reduce((s, f) => {
+    if (f.statut === 'facture' && ['partiellement_deduit', 'non_deduit'].includes(f.statut_deduction)) {
+      return s + (f.montant_reliquat || 0)
+    }
+    return s
+  }, 0)
   // Frais proprio facturés directement (mode facturer_direct) : pas déduits du reversement
   // (facture séparée) mais bien DUS à l'agence ce mois → affichés dans le bloc Charges
   // (ex. « Gestion comptable exceptionnelle » sur GASQ, bien sans collecte de loyer)
@@ -98,7 +108,7 @@ export function genererStatementHTML(proprio, mois, data) {
   const fraisFacturesDirectTotal = fraisFacturesDirectList.reduce((s, f) => s + (f.montant_ttc || 0), 0)
   // ownerStayMenageTotal a sa propre ligne d'affichage — ne pas l'inclure dans « Débours / Achats »
   const deboursTotal  = deboursSeuls + haownerTotal
-  const totalManager  = honTotal + (sansGestionLoyer ? fmenTotalK + autoReelTotalK : (showMenage ? menageTotal : 0)) + deboursTotal + ownerStayMenageTotal + fraisDeductionLoyTotal + fraisFacturesDirectTotal
+  const totalManager  = honTotal + (sansGestionLoyer ? fmenTotalK + autoReelTotalK : (showMenage ? menageTotal : 0)) + deboursTotal + ownerStayMenageTotal + fraisDeductionLoyTotal + fraisReliquatTotal + fraisFacturesDirectTotal
   // virementNet calculé depuis les totaux du tableau pour garantir la cohérence :
   // tout changement dans les règles de calcul des lignes se répercute automatiquement dans le bloc
   const virementNet   = Math.max(0, virTotal - fraisDeductionLoyTotal + remboursementsTotal - deboursSeuls - haownerTotal - ownerStayMenageTotal)
@@ -159,6 +169,7 @@ export function genererStatementHTML(proprio, mois, data) {
           <th style="padding:4px 8px;text-align:left;font-weight:400;color:#9c8c7a">Description</th>
           <th style="padding:4px 8px;text-align:left;font-weight:400;color:#9c8c7a">Type</th>
           <th style="padding:4px 8px;text-align:right;font-weight:400;color:#9c8c7a">Montant</th>
+          <th style="padding:4px 8px;text-align:left;font-weight:400;color:#9c8c7a">Statut</th>
         </tr>
       </thead>
       <tbody>
@@ -168,6 +179,7 @@ export function genererStatementHTML(proprio, mois, data) {
           <td style="padding:3px 8px">${p.libelle || p.description || '—'}</td>
           <td style="padding:3px 8px;color:#9c8c7a">${p.isStaff ? 'Débours (TVA 20%)' : 'Débours'}</td>
           <td style="padding:3px 8px;text-align:right">${p.isStaff ? `${fmt(p.montant_ht)} HT <span style="font-size:8px;color:#9c8c7a">→ ${fmt(p.montant_ttc)} TTC</span>` : fmt(p.montant_ttc ?? p.montant)}</td>
+          <td style="padding:3px 8px"></td>
         </tr>`).join('')}
         ${extrasParResa.map(p => `
         <tr style="border-bottom:1px solid #ece8e2">
@@ -175,6 +187,7 @@ export function genererStatementHTML(proprio, mois, data) {
           <td style="padding:3px 8px">${p.libelle || p.description || '—'}</td>
           <td style="padding:3px 8px;color:#9c8c7a">${p.isStaff ? 'Débours résa (TVA 20%)' : 'Débours (résa)'}</td>
           <td style="padding:3px 8px;text-align:right">${p.isStaff ? `${fmt(p.montant_ht)} HT <span style="font-size:8px;color:#9c8c7a">→ ${fmt(p.montant_ttc)} TTC</span>` : fmt(p.montant_ttc ?? p.montant)}</td>
+          <td style="padding:3px 8px"></td>
         </tr>`).join('')}
         ${haownerList.map(p => `
         <tr style="border-bottom:1px solid #ece8e2">
@@ -182,6 +195,7 @@ export function genererStatementHTML(proprio, mois, data) {
           <td style="padding:3px 8px">${p.libelle || p.description || '—'}</td>
           <td style="padding:3px 8px;color:#CC9933">Achat proprio</td>
           <td style="padding:3px 8px;text-align:right;color:#CC9933">${fmt(p.montant_ttc)} TTC</td>
+          <td style="padding:3px 8px"></td>
         </tr>`).join('')}
         ${assuranceList.map(p => `
         <tr style="border-bottom:1px solid #ece8e2">
@@ -189,6 +203,7 @@ export function genererStatementHTML(proprio, mois, data) {
           <td style="padding:3px 8px">${p.libelle || 'Aircover — remboursement assurance'}${p.guest_name ? ` — ${p.guest_name}` : ''}</td>
           <td style="padding:3px 8px;color:#2d7a50">Assurance</td>
           <td style="padding:3px 8px;text-align:right;color:#2d7a50">${fmt(p.montant_ttc)}</td>
+          <td style="padding:3px 8px"></td>
         </tr>`).join('')}
         ${ownerStayMenageList.map(p => `
         <tr style="border-bottom:1px solid #ece8e2">
@@ -196,14 +211,41 @@ export function genererStatementHTML(proprio, mois, data) {
           <td style="padding:3px 8px">${p.libelle || 'Ménage séjour propriétaire'}</td>
           <td style="padding:3px 8px;color:#4A3728">Ménage proprio</td>
           <td style="padding:3px 8px;text-align:right;color:#4A3728">${fmt(p.montant)}</td>
+          <td style="padding:3px 8px"></td>
         </tr>`).join('')}
-        ${fraisProprietaire.map(p => `
+        ${fraisProprietaire.map(p => {
+          const d = p.statut_deduction
+          const fraisFacture = p.statut === 'facture' && d && d !== 'en_attente'
+          const isRemboursement = p.mode_traitement === 'remboursement'
+          const STATUT_LABELS = {
+            totalement_deduit:    { label: 'Déduit', color: '#059669' },
+            partiellement_deduit: { label: 'Partiel', color: '#B45309' },
+            non_deduit:           { label: 'Reliquat', color: '#c2410c' },
+          }
+          const statutBadge = isRemboursement ? { label: 'Crédit', color: '#059669' }
+            : fraisFacture ? (STATUT_LABELS[d] || { label: p.statut, color: '#9c8c7a' })
+            : { label: p.statut === 'a_facturer' ? 'À facturer' : (p.statut || ''), color: '#9c8c7a' }
+          let montantCell
+          if (isRemboursement) {
+            montantCell = `<span style="color:#059669;font-weight:600">+${fmt(p.montant_ttc)}</span>`
+          } else if (fraisFacture && d === 'partiellement_deduit') {
+            montantCell = `<span style="display:block;color:#059669;font-size:9px">↓ ${fmt(p.montant_deduit_loy)} déduit</span><span style="display:block;color:#c2410c;font-size:9px">! ${fmt(p.montant_reliquat)} reliquat</span>`
+          } else if (fraisFacture && d === 'non_deduit') {
+            montantCell = `<span style="color:#c2410c">${fmt(p.montant_ttc)}</span>`
+          } else if (fraisFacture && d === 'totalement_deduit') {
+            montantCell = fmt(p.montant_deduit_loy)
+          } else {
+            montantCell = fmt(p.montant_ttc)
+          }
+          return `
         <tr style="border-bottom:1px solid #ece8e2">
           <td style="padding:3px 8px;color:#9c8c7a">${p.date ? p.date.substring(5).split('-').reverse().join('/') : '—'}</td>
           <td style="padding:3px 8px">${p.libelle || '—'}</td>
           <td style="padding:3px 8px;color:#9c8c7a">Frais proprio</td>
-          <td style="padding:3px 8px;text-align:right">${fmt(p.montant_ttc)}</td>
-        </tr>`).join('')}
+          <td style="padding:3px 8px;text-align:right">${montantCell}</td>
+          <td style="padding:3px 8px;color:${statutBadge.color};font-weight:600">${statutBadge.label}</td>
+        </tr>`
+        }).join('')}
       </tbody>
     </table>
   </div>` : ''
@@ -261,13 +303,26 @@ export function genererStatementHTML(proprio, mois, data) {
       <span style="color:#9c8c7a">${escapeNonAscii(f.libelle || 'Frais propriétaire')} <span style="font-size:8px;font-style:italic">(facturé)</span></span><span>${fmt(f.montant_ttc || 0)}</span>
     </div>`).join('')}
     ${fraisDeductionLoyList.map(f => {
-      const montant = (f.statut === 'facture' && f.statut_deduction !== 'en_attente') ? (f.montant_deduit_loy || 0)
-        : (f.statut === 'facture' && f.statut_deduction === 'en_attente') ? (f.montant_ttc || 0)
-        : (f.statut === 'a_facturer') ? (f.montant_ttc || 0) : 0
-      if (montant <= 0) return ''
-      return `<div style="display:flex;justify-content:space-between;padding:3px 0;border-bottom:1px solid #ece8e2;font-size:10px">
+      const enAttente = f.statut === 'a_facturer' || (f.statut === 'facture' && f.statut_deduction === 'en_attente')
+      if (enAttente) {
+        const montant = f.montant_ttc || 0
+        if (montant <= 0) return ''
+        return `<div style="display:flex;justify-content:space-between;padding:3px 0;border-bottom:1px solid #ece8e2;font-size:10px">
       <span style="color:#9c8c7a">${escapeNonAscii(f.libelle || 'Frais HA proprio.')}</span><span>${fmt(montant)}</span>
     </div>`
+      }
+      // statut_deduction connu (totalement_deduit / partiellement_deduit / non_deduit) : montrer
+      // séparément la part déduite du loyer et le reliquat non couvert (jamais fusionner — un
+      // reliquat=montant_ttc entier disparaissait silencieusement quand montant_deduit_loy=0).
+      const deduit    = f.montant_deduit_loy || 0
+      const reliquat   = f.montant_reliquat || 0
+      if (deduit <= 0 && reliquat <= 0) return ''
+      return `<div style="display:flex;justify-content:space-between;padding:3px 0;border-bottom:1px solid #ece8e2;font-size:10px">
+      <span style="color:#9c8c7a">${escapeNonAscii(f.libelle || 'Frais HA proprio.')}${deduit > 0 ? ' <span style="font-size:8px;font-style:italic">(déduit loyer)</span>' : ''}</span><span>${deduit > 0 ? fmt(deduit) : '—'}</span>
+    </div>
+    ${reliquat > 0 ? `<div style="display:flex;justify-content:space-between;padding:3px 0;border-bottom:1px solid #ece8e2;font-size:10px">
+      <span style="color:#c2410c">! ${escapeNonAscii(f.libelle || 'Frais HA proprio.')} — reliquat non couvert</span><span style="color:#c2410c;font-weight:600">${fmt(reliquat)}</span>
+    </div>` : ''}`
     }).join('')}
     <div style="display:flex;justify-content:space-between;padding:6px 0 0;font-weight:700;font-size:10.5px;margin-top:auto">
       <span>Total dû à ${AGENCE_BRAND.short}</span><span style="color:#CC9933">${fmt(totalManager)}</span>
