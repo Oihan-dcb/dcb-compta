@@ -1122,16 +1122,22 @@ const [pushing, setPushing] = useState(false)
                       </button>
                     )}
 
-                    {/* Envoyer au proprio — toute facture débours validée (l'existence même de la facture
-                        signale un surplus non absorbé par le LOY, gestion_loyer true ou false) */}
-                    {f.type_facture === 'debours' && f.statut === 'valide' && (
+                    {/* Envoyer au proprio — toute facture débours validée OU déjà poussée à Evoliz
+                        (l'existence même de la facture signale un surplus non absorbé par le LOY,
+                        gestion_loyer true ou false). Le push Evoliz et la notification au proprio
+                        sont deux actions indépendantes — le push ne doit jamais faire disparaître
+                        le bouton, sinon impossible de notifier après coup (cf. incident Villa
+                        Palmaria/AIA BIARRITZ, 06/08/2026 : facture envoye_evoliz sans jamais avoir
+                        été notifiée au proprio, IBAN séquestre jamais transmis). */}
+                    {f.type_facture === 'debours' && ['valide', 'envoye_evoliz'].includes(f.statut) && (
                       <button
                         className="btn btn-sm"
                         style={{ background: '#9EB39A', color: '#fff', border: 'none' }}
                         disabled={sendingDebours === f.id}
                         onClick={e => { e.stopPropagation(); envoyerDebours(f) }}
+                        title={f.envoye_proprio_at ? `Déjà envoyé le ${new Date(f.envoye_proprio_at).toLocaleDateString('fr-FR')} — cliquer pour renvoyer` : undefined}
                       >
-                        {sendingDebours === f.id ? <><span className="spinner" /> Envoi…</> : '📧 Envoyer au proprio'}
+                        {sendingDebours === f.id ? <><span className="spinner" /> Envoi…</> : f.envoye_proprio_at ? '📧 Renvoyer au proprio' : '📧 Envoyer au proprio'}
                       </button>
                     )}
 
