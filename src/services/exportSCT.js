@@ -22,6 +22,19 @@ function msgIdTimestamp(nom) {
   return `${ts} ${nom}`
 }
 
+// Suffixe court unique par génération (hh:mm:ss), ajouté à chaque EndToEndId. Sans lui, deux
+// générations successives du même mois produisent des EndToEndId strictement identiques
+// (ex. "HON-LLD-2026-07" à chaque fois) -- or le contrôle anti-doublon bancaire sur remise
+// SEPA de masse compare notamment compte à débiter + nb transactions + montant total + date
+// d'échéance + 1re référence E2E : un renvoi du même fichier (ou d'un fichier régénéré avec les
+// mêmes données) peut être rejeté comme doublon d'une remise précédente, même déjà rejetée,
+// sans qu'aucune anomalie de contenu ne soit levée ("Nb d'anomalie(s): 0" mais "Transmission
+// rejetée" quand même -- symptôme constaté sur ce dossier).
+function runSuffix() {
+  const d = new Date()
+  return `${pad2(d.getHours())}${pad2(d.getMinutes())}${pad2(d.getSeconds())}`
+}
+
 // Prochain jour ouvrable (lundi-vendredi, hors jours fériés) -- une date d'exécution le jour
 // même expose à un rejet/report si le dépôt intervient après le cutoff bancaire (17h chez
 // Caisse d'Epargne pour un virement SEPA standard, cf. doc "CE net formats et délais de
@@ -216,7 +229,7 @@ export async function genererSCTVirementsProprios(mois, agence = AGENCE) {
     const prop = v.etudiant.proprietaire
     const etud = v.etudiant
     return {
-      endToEndId:   `PROP-${String(v.id).slice(0, 8).toUpperCase()}-${i+1}`,
+      endToEndId:   `PROP-${String(v.id).slice(0, 8).toUpperCase()}-${i+1}-${runSuffix()}`,
       montant:       v.montant,
       creditorIban:  prop.iban,
       creditorBic:   prop.bic || '',
@@ -229,7 +242,7 @@ export async function genererSCTVirementsProprios(mois, agence = AGENCE) {
 
   return buildSCT({
     msgId:       msgIdTimestamp(debtorNom),
-    pmtInfId:    `PMT-PROP-LLD-${mois}`,
+    pmtInfId:    `PMT-PROP-LLD-${mois}-${runSuffix()}`,
     debtorNom,
     debtorIban:  config.seq_lld_loyers_iban,
     debtorBic:   config.seq_lld_loyers_bic || '',
@@ -277,14 +290,14 @@ export async function genererSCTHonorairesDCB(mois, agence = AGENCE) {
 
   return buildSCT({
     msgId:       msgIdTimestamp(debtorNom),
-    pmtInfId:    `PMT-HON-LLD-${mois}`,
+    pmtInfId:    `PMT-HON-LLD-${mois}-${runSuffix()}`,
     debtorNom,
     debtorIban:  config.seq_lld_loyers_iban,
     debtorBic:   config.seq_lld_loyers_bic || '',
     debtorAdrLine1: config.adresse_ligne1,
     debtorAdrLine2: config.adresse_ligne2,
     transactions: [{
-      endToEndId:   `HON-LLD-${mois}`,
+      endToEndId:   `HON-LLD-${mois}-${runSuffix()}`,
       montant:       totalHon,
       creditorIban:  config.agence_iban,
       creditorBic:   config.agence_bic || '',
@@ -336,7 +349,7 @@ export async function genererSCTVirementsPropriosLC(mois, agence = AGENCE) {
   }
 
   const transactions = Array.from(groups.entries()).map(([key, g], i) => ({
-    endToEndId:   `VIR-LC-${String(key).slice(0, 8).toUpperCase()}-${i+1}`,
+    endToEndId:   `VIR-LC-${String(key).slice(0, 8).toUpperCase()}-${i+1}-${runSuffix()}`,
     montant:       g.montant,
     creditorIban:  g.prop.iban,
     creditorBic:   g.prop.bic || '',
@@ -348,7 +361,7 @@ export async function genererSCTVirementsPropriosLC(mois, agence = AGENCE) {
 
   return buildSCT({
     msgId:       msgIdTimestamp(debtorNom),
-    pmtInfId:    `PMT-VIR-LC-${mois}`,
+    pmtInfId:    `PMT-VIR-LC-${mois}-${runSuffix()}`,
     debtorNom,
     debtorIban:  config.seq_lc_iban,
     debtorBic:   config.seq_lc_bic || '',
@@ -410,15 +423,16 @@ export async function genererSCTInternesLC(mois, agence = AGENCE) {
 
   // PmtInf 1 : séquestre LC → compte agence (commissions)
   const txComm = []
-  if (totHON  > 0) txComm.push({ endToEndId: `HON-LC-${mois}`,  montant: totHON,  creditorIban: config.agence_iban, creditorBic: config.agence_bic || '', creditorNom: debtorNom, remittance: `HONORAIRES LC ${mois}` })
-  if (totCOM  > 0) txComm.push({ endToEndId: `COM-LC-${mois}`,  montant: totCOM,  creditorIban: config.agence_iban, creditorBic: config.agence_bic || '', creditorNom: debtorNom, remittance: `COMMISSIONS LC ${mois}` })
-  if (totFMEN > 0) txComm.push({ endToEndId: `FMEN-LC-${mois}`, montant: totFMEN, creditorIban: config.agence_iban, creditorBic: config.agence_bic || '', creditorNom: debtorNom, remittance: `FORFAIT MENAGE LC ${mois}` })
+  const suffix = runSuffix()
+  if (totHON  > 0) txComm.push({ endToEndId: `HON-LC-${mois}-${suffix}`,  montant: totHON,  creditorIban: config.agence_iban, creditorBic: config.agence_bic || '', creditorNom: debtorNom, remittance: `HONORAIRES LC ${mois}` })
+  if (totCOM  > 0) txComm.push({ endToEndId: `COM-LC-${mois}-${suffix}`,  montant: totCOM,  creditorIban: config.agence_iban, creditorBic: config.agence_bic || '', creditorNom: debtorNom, remittance: `COMMISSIONS LC ${mois}` })
+  if (totFMEN > 0) txComm.push({ endToEndId: `FMEN-LC-${mois}-${suffix}`, montant: totFMEN, creditorIban: config.agence_iban, creditorBic: config.agence_bic || '', creditorNom: debtorNom, remittance: `FORFAIT MENAGE LC ${mois}` })
 
   if (!txComm.length && !fraisStripe) throw new Error(`Aucun mouvement interne LC à générer pour ${mois}`)
 
   if (txComm.length) {
     pmtGroups.push({
-      pmtInfId:    `PMT-COMM-LC-${mois}`,
+      pmtInfId:    `PMT-COMM-LC-${mois}-${runSuffix()}`,
       debtorNom,
       debtorIban:  config.seq_lc_iban,
       debtorBic:   config.seq_lc_bic || '',
@@ -431,14 +445,14 @@ export async function genererSCTInternesLC(mois, agence = AGENCE) {
   // PmtInf 2 : compte agence → séquestre LC (remboursement frais Stripe)
   if (fraisStripe > 0) {
     pmtGroups.push({
-      pmtInfId:    `PMT-STRIPE-LC-${mois}`,
+      pmtInfId:    `PMT-STRIPE-LC-${mois}-${runSuffix()}`,
       debtorNom,
       debtorIban:  config.agence_iban,
       debtorBic:   config.agence_bic || '',
       debtorAdrLine1: config.adresse_ligne1,
       debtorAdrLine2: config.adresse_ligne2,
       transactions: [{
-        endToEndId:   `FRAIS-STRIPE-LC-${mois}`,
+        endToEndId:   `FRAIS-STRIPE-LC-${mois}-${runSuffix()}`,
         montant:       fraisStripe,
         creditorIban:  config.seq_lc_iban,
         creditorBic:   config.seq_lc_bic || '',

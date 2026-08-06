@@ -1453,3 +1453,23 @@ correct (8 ou 11 caractères). Deux pistes supplémentaires traitées quand mêm
 À date : cause exacte du rejet toujours non confirmée avec certitude (aucun code d'erreur
 bancaire précis obtenu) — plusieurs écarts réels corrigés en cascade, la sélection "Virement
 SEPA" (vs "trésorerie") est le suspect le plus probable pour un rejet systématique.
+
+**Suite (indice décisif)** : Oïhan a fourni le détail de la remise rejetée depuis le portail —
+"Type de remise : Virement SEPA" (donc la bonne catégorie était sélectionnée), **"Nb
+d'anomalie(s) : 0"**, "Vérification des bénéficiaires : Non Applicable". Zéro anomalie de
+contenu/schéma mais rejet quand même = le rejet se joue à un niveau différent du contenu XML.
+
+Guide Natixis (BPCE, référence générale) §2.2.2 "Contrôle de doublons sur offre SEPA de masse" :
+la banque compare, sur une remise, compte à débiter + nombre de transactions + montant total +
+date d'échéance + nature d'opération + 1er IBAN + **1re référence End-to-End**, sur une
+profondeur de 3 mois, et rejette toute remise identique à une remise déjà reçue (y compris
+rejetée). Or `PmtInfId` et `EndToEndId` étaient **entièrement statiques par mois**
+(`PMT-VIR-LC-2026-07`, `VIR-LC-MAITE-1`, `HON-LLD-2026-07`, etc.) — chaque régénération du même
+mois produisait des références strictement identiques à la tentative précédente. Plusieurs
+tentatives rejetées d'affilée sur le même mois auraient donc pu se re-rejeter mutuellement comme
+doublons, indépendamment de tous les fixes de contenu déjà appliqués.
+
+Fix : nouveau `runSuffix()` (hhmmss du moment de génération) ajouté à tous les `PmtInfId` et
+`EndToEndId` des 4 fonctions `genererSCT*` — chaque génération produit désormais des références
+uniques, même pour le même mois régénéré plusieurs fois. Le libellé `RmtInf`/`Ustrd` (ex. "LOYER
+LC 2026-07 MAITE") reste inchangé et continue de porter l'information de rapprochement lisible.
