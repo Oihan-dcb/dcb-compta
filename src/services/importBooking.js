@@ -41,7 +41,17 @@ function parseFloat2(s) {
   return parseFloat(String(s).replace(',', '.').replace(' ', '')) || 0
 }
 
-const MONTHS = { jan:'01',feb:'02',mar:'03',apr:'04',may:'05',jun:'06',jul:'07',aug:'08',sep:'09',oct:'10',nov:'11',dec:'12' }
+// Ex. "Réservation" → "reservation" -- nécessaire car les exports Booking en locale FR
+// utilisent des libellés accentués que .includes('reservation') ne matche jamais tel quel.
+function stripAccents(s) {
+  return String(s || '').normalize('NFD').replace(/[̀-ͯ]/g, '')
+}
+
+const MONTHS = {
+  jan:'01', feb:'02', mar:'03', apr:'04', may:'05', jun:'06', jul:'07', aug:'08', sep:'09', oct:'10', nov:'11', dec:'12',
+  // Abréviations françaises (export CSV Booking en locale FR, ex. "24 juil. 2026", "1 août 2026")
+  janv:'01', fevr:'02', mars:'03', avr:'04', mai:'05', juin:'06', juil:'07', aout:'08', sept:'09',
+}
 
 function parseDate(s) {
   if (!s || s === '-') return null
@@ -51,10 +61,12 @@ function parseDate(s) {
   if (m2) return m2[3] + '-' + m2[2] + '-' + m2[1]
   const m3 = t.match(/^(\d{2})\/(\d{2})\/(\d{2})$/)
   if (m3) return '20' + m3[3] + '-' + m3[2] + '-' + m3[1]
-  // Format Booking nouveau : "1 Jun 2026" ou "27 May 2026"
-  const m4 = t.match(/^(\d{1,2})\s+([A-Za-z]{3})\s+(\d{4})$/)
+  // Format Booking nouveau : "1 Jun 2026" (EN) ou "24 juil. 2026" / "1 août 2026" (FR, point
+  // d'abréviation optionnel + accents) -- longueur de mois variable, pas seulement 3 lettres
+  const m4 = t.match(/^(\d{1,2})\s+([A-Za-zÀ-ÿ]+)\.?\s+(\d{4})$/)
   if (m4) {
-    const mo = MONTHS[m4[2].toLowerCase()]
+    const key = stripAccents(m4[2]).toLowerCase()
+    const mo = MONTHS[key]
     if (mo) return m4[3] + '-' + mo + '-' + m4[1].padStart(2, '0')
   }
   return null
@@ -62,37 +74,46 @@ function parseDate(s) {
 
 /**
  * Détecte si le CSV est le nouveau format "par payout" (Finance > Payouts > détail).
- * Critère : présence d'une colonne "Payout ID" dans les en-têtes.
- * Ce format contient guest_name, tourism_tax, service_fee et payout_id.
+ * Critère : présence d'une colonne "Payout ID" (EN) ou "Identifiant du paiement" (FR export
+ * en locale française, ex. téléchargé depuis l'extranet en français -- mêmes colonnes, mêmes
+ * noms traduits, + une colonne "Prestataire de paiement" en plus, ignorée ci-dessous).
  */
 function isNewPayoutFormat(headers) {
-  return headers.some(h => h.toLowerCase().replace(/\s/g, '') === 'payoutid')
+  return headers.some(h => {
+    const norm = stripAccents(h).toLowerCase().replace(/\s/g, '')
+    return norm === 'payoutid' || norm === 'identifiantdupaiement'
+  })
 }
 
 /**
- * Parse le nouveau format CSV Booking.com (Finance > Payouts > détail par payout).
- * En-têtes : Type, Booking number, Check-in, Checkout, Guest name, Reservation status,
- *            Currency, Payment status, Tourism tax, Amount, Commission,
- *            Payments Service Fee, Net, Payout date, Payout ID
- * Toutes les lignes sont de type "Reservation" (pas de ligne "Payout" résumé).
+ * Parse le nouveau format CSV Booking.com (Finance > Payouts > détail par payout), EN ou FR.
+ * En-têtes EN : Type, Booking number, Check-in, Checkout, Guest name, Reservation status,
+ *               Currency, Payment status, Tourism tax, Amount, Commission,
+ *               Payments Service Fee, Net, Payout date, Payout ID
+ * En-têtes FR : Type, Numéro de réservation, Arrivée, Checkout, Nom du client,
+ *               Prestataire de paiement, Statut de la réservation, Devise, Taxe de séjour,
+ *               Statut du paiement, Montant, Commission, Frais de service de paiement, Net,
+ *               Date du paiement, Identifiant du paiement
+ * Toutes les lignes sont de type "Reservation"/"Réservation" (pas de ligne "Payout" résumé).
  * Retourne rowsByPayoutDate avec payout_id, guest_name, tourism_tax_cents, service_fee_cents.
  */
 function parseBookingPayoutDetailCSV(lines, sep, headers) {
-  const colIdx = (name) => headers.findIndex(h => h.toLowerCase().includes(name.toLowerCase()))
+  const colIdx = (name) => headers.findIndex(h => stripAccents(h).toLowerCase().includes(stripAccents(name).toLowerCase()))
+  const col = (fr, en) => { const i = colIdx(fr); return i >= 0 ? i : colIdx(en) }
 
-  const iType        = colIdx('Type')
-  const iBookingNum  = colIdx('Booking number')
-  const iCheckin     = colIdx('Check-in')
-  const iCheckout    = colIdx('Checkout')
-  const iGuestName   = colIdx('Guest name')
-  const iStatus      = colIdx('Reservation status')
-  const iTourismTax  = colIdx('Tourism tax')
-  const iAmount      = colIdx('Amount')       // montant brut
-  const iComm        = colIdx('Commission')
-  const iServiceFee  = colIdx('Payments Service Fee')
-  const iNet         = colIdx('Net')          // montant net = amount_cents
-  const iPayoutDate  = colIdx('Payout date')
-  const iPayoutId    = colIdx('Payout ID')
+  const iType        = col('Type', 'Type')
+  const iBookingNum  = col('Numéro de réservation', 'Booking number')
+  const iCheckin     = col('Arrivée', 'Check-in')
+  const iCheckout    = col('Checkout', 'Checkout')
+  const iGuestName   = col('Nom du client', 'Guest name')
+  const iStatus      = col('Statut de la réservation', 'Reservation status')
+  const iTourismTax  = col('Taxe de séjour', 'Tourism tax')
+  const iAmount      = col('Montant', 'Amount')       // montant brut
+  const iComm        = col('Commission', 'Commission')
+  const iServiceFee  = col('Frais de service de paiement', 'Payments Service Fee')
+  const iNet         = col('Net', 'Net')              // montant net = amount_cents
+  const iPayoutDate  = col('Date du paiement', 'Payout date')
+  const iPayoutId    = col('Identifiant du paiement', 'Payout ID')
 
   if (iPayoutDate < 0) throw new Error('Colonne "Payout date" introuvable')
   if (iNet < 0)        throw new Error('Colonne "Net" introuvable')
@@ -101,7 +122,7 @@ function parseBookingPayoutDetailCSV(lines, sep, headers) {
   const rowsByPayoutDate = {}
   for (let i = 1; i < lines.length; i++) {
     const cols = parseCSVLine(lines[i], sep)
-    const rowType = iType >= 0 ? (cols[iType] || '').toLowerCase() : 'reservation'
+    const rowType = iType >= 0 ? stripAccents(cols[iType] || '').toLowerCase() : 'reservation'
     if (!rowType.includes('reservation')) continue
 
     const pdate    = parseDate(cols[iPayoutDate] || '')

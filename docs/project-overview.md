@@ -1346,3 +1346,35 @@ reversement groupe (`totalPrestations`, calculé group-wide) → double décompt
 Vérifié par simulation sur les données réelles juillet 2026 : reliquat M-MAITE passe de 150€ à 0€.
 
 Voir §13.4 dans `domain-rules.md`.
+
+## Fix session 06 août 2026 — CSV Booking en locale française non importable
+
+Oïhan a découvert un CSV Booking.com téléchargé depuis l'extranet (`payouts.html`, compte en
+français) qui correspondait à un virement réel non rapproché (10 383,68€, 04/08/2026, en_attente
+en base, `libelle` contenant `NO.2cn75JQ7eqduUbUo` — même identifiant que le fichier).
+
+**Cause : 3 bugs cumulés dans `importBooking.js`, tous liés à la locale française de l'export** —
+même structure que le "nouveau format par payout" déjà géré (une ligne par réservation, colonne
+Payout ID), mais entièrement traduit :
+1. `isNewPayoutFormat` ne cherchait que le header anglais `Payout ID` → non détecté, tombait sur
+   l'ancien parser (`Numéro de référence`/`Montant payable`) qui ne trouve pas non plus ses colonnes
+   → `throw` immédiat ("Colonne Payout date introuvable"), 0 ligne importée.
+2. Même en corrigeant la détection, `parseDate` ne reconnaissait que les mois anglais 3 lettres
+   sans point (`Jun`, `May`) — pas les abréviations françaises avec point et accents (`juil.`,
+   `août`, `juin`) → toutes les dates auraient été `null`, toutes les lignes silencieusement ignorées.
+3. Le filtre de type de ligne comparait `"réservation".includes("reservation")` — faux en JS car
+   les caractères accentués ne matchent jamais leur équivalent ASCII (`é` ≠ `e`) → même corrigé,
+   aucune ligne n'aurait passé le filtre.
+
+**Fix** : `isNewPayoutFormat` + toutes les colonnes de `parseBookingPayoutDetailCSV` acceptent
+désormais les en-têtes FR ET EN (`col(fr, en)`, même pattern que l'ancien parser) ; nouveau helper
+`stripAccents()` réutilisé pour la comparaison des mois ET du type de ligne ; `MONTHS` étendu aux
+abréviations françaises. Testé sur le fichier réel d'Oïhan : les 14 réservations + le bon
+`payout_id` + les bonnes dates se parsent, total net = 10 383,68€ = exactement le crédit du
+mouvement bancaire en attente.
+
+**Bonus** : bouton "🔗 Extranet Booking" ajouté dans `PageBanque.jsx` (agence DCB uniquement) qui
+ouvre directement `admin.booking.com/.../payouts.html?hotel_id=10415482` dans un nouvel onglet —
+sans le token de session (`ses=`) de l'URL fournie par Oïhan : il expire vite et ce repo GitHub est
+public, le figer en dur aurait exposé une session active. Le navigateur réutilise la session déjà
+ouverte de l'utilisateur.

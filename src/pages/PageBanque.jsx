@@ -18,6 +18,12 @@ import { fr } from 'date-fns/locale'
 
 const moisCourant = new Date().toISOString().substring(0, 7)
 
+// hotel_id de l'extranet Booking.com DCB -- confirmé via le libellé bancaire des virements
+// Booking DCB ("...ID.10415482"). Pas de token de session (`ses=`) dans ce lien : il expire
+// vite et ce repo est public sur GitHub -- le figer en dur exposerait une session active.
+// Le navigateur réutilise la session déjà ouverte de l'utilisateur.
+const BOOKING_EXTRANET_URL = 'https://admin.booking.com/hotel/hoteladmin/extranet_ng/manage/payouts.html?hotel_id=10415482&lang=fr'
+
 const CANAUX = {
   airbnb:            { label: 'Airbnb',      cls: 'badge-airbnb' },
   booking:           { label: 'Booking',     cls: 'badge-booking' },
@@ -276,6 +282,13 @@ export default function PageBanque() {
               {String.fromCodePoint(0x2191)} Import CSV
               <input ref={fileRef} type='file' accept='.csv' style={{ display: 'none' }} onChange={handleFile} />
             </label>
+          )}
+          {AGENCE === 'dcb' && (
+            <a href={BOOKING_EXTRANET_URL} target='_blank' rel='noopener noreferrer'
+               style={{ textDecoration:'none', cursor:'pointer', background:'#fff', color:'#0071C2', border:'1.5px solid #0071C2', borderRadius:8, padding:'8px 14px', fontWeight:600, fontSize:14, display:'inline-flex', alignItems:'center', gap:6 }}
+               title='Ouvrir Booking.com Extranet — Paiements'>
+              🔗 Extranet Booking
+            </a>
           )}
           <label style={{ cursor:'pointer', background:'#0071C2', color:'#fff', border:'none', borderRadius:8, padding:'8px 14px', fontWeight:600, fontSize:14, display:'inline-flex', alignItems:'center', gap:6 }}>
             {importingBooking ? '⏳' : '📋'} CSV Booking
