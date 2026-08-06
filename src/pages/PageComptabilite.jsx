@@ -765,7 +765,7 @@ export default function PageComptabilite() {
                   <td style={td} />
                 </tr>
                 {/* Ligne "dont hors séquestre" — à soustraire de TOTAL DCB pour obtenir le montant
-                    réellement virable du compte séquestre vers le compte courant (I-128) */}
+                    réellement virable du compte séquestre vers le compte courant (I-129) */}
                 {(() => {
                   const actifsHorsSeq = actifsDCB.filter(r => r.hors_sequestre)
                   const horsSeqSomme  = tsum(actifsHorsSeq, 'hon_ttc') + tsum(actifsHorsSeq, 'fmen_ttc') + tsum(actifsHorsSeq, 'com_ttc')

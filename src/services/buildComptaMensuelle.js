@@ -599,7 +599,7 @@ export async function buildComptaMensuelle(mois, bienIds = null) {
 
   // Sous-total "hors séquestre" (mode_encaissement='proprio') — jamais d'argent physique en
   // séquestre pour ces biens ; à soustraire de totals.*_ttc pour obtenir le montant réellement
-  // virable du compte séquestre vers le compte courant. Voir I-128.
+  // virable du compte séquestre vers le compte courant. Voir I-129.
   const rowsHorsSequestre = rows.filter(r => r.hors_sequestre)
   totals.hors_sequestre = {
     hon_ht:   rowsHorsSequestre.reduce((s, r) => s + r.hon_ht,   0),
@@ -899,7 +899,7 @@ export function exportComptaCSV(data, bienActif = {}) {
     '', '', '', '', '',
   ])
   // Dont hors séquestre (mode_encaissement='proprio') — à soustraire de TOTAL DCB pour obtenir le
-  // montant réellement virable du compte séquestre vers le compte courant. Voir I-128.
+  // montant réellement virable du compte séquestre vers le compte courant. Voir I-129.
   {
     const actifHorsSeq = actifDCB.filter(r => r.hors_sequestre)
     if (actifHorsSeq.length > 0) {
