@@ -54,6 +54,7 @@ export async function getProprietairesComplets() {
     .select(`
       *,
       bien!proprietaire_id(id, code, hospitable_name, listed, agence),
+      bien_co:bien!co_proprietaire_id(id, code, hospitable_name, listed, agence),
       mandat_gestion(*),
       owner_profile_config(profil),
       owner_requests(id, statut)
@@ -63,9 +64,11 @@ export async function getProprietairesComplets() {
   if (error) throw error
 
   // Filtre côté client : bien et mandat_gestion par agence courante
+  // bien_co = biens où ce proprio est co_proprietaire_id (second propriétaire) — fusionnés
+  // dans `bien` pour que la fiche affiche aussi les biens co-détenus (ex. Cérès Albin+Vivien).
   return (data || []).map(p => ({
     ...p,
-    bien:           (p.bien           || []).filter(b => b.agence === AGENCE),
+    bien:           [...(p.bien || []), ...(p.bien_co || [])].filter(b => b.agence === AGENCE),
     mandat_gestion: (p.mandat_gestion || []).filter(m => m.agence === AGENCE),
   }))
 }
