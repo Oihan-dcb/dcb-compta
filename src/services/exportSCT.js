@@ -77,7 +77,7 @@ function debtorBicBlock(b) {
 
 // ── Bloc PmtInf unique ─────────────────────────────────────────────────────────
 
-function buildPmtInf({ pmtInfId, debtorNom, debtorIban, debtorBic, transactions }) {
+function buildPmtInf({ pmtInfId, debtorNom, debtorIban, debtorBic, debtorAdrLine1, debtorAdrLine2, transactions }) {
   const nbTx = transactions.length
   const total = transactions.reduce((s, t) => s + t.montant, 0)
 
@@ -120,13 +120,16 @@ function buildPmtInf({ pmtInfId, debtorNom, debtorIban, debtorBic, transactions 
       <Dbtr>
         <Nm>${esc(debtorNom)}</Nm>
         <PstlAdr>
-          <Ctry>FR</Ctry>
+          <Ctry>FR</Ctry>${debtorAdrLine1 ? `
+          <AdrLine>${esc(debtorAdrLine1.trim()).slice(0, 70)}</AdrLine>` : ''}${debtorAdrLine2 ? `
+          <AdrLine>${esc(debtorAdrLine2.trim()).slice(0, 70)}</AdrLine>` : ''}
         </PstlAdr>
       </Dbtr>
       <DbtrAcct>
         <Id>
           <IBAN>${iban(debtorIban)}</IBAN>
         </Id>
+        <Ccy>EUR</Ccy>
       </DbtrAcct>${debtorBicBlock(debtorBic)}
       <ChrgBr>SLEV</ChrgBr>${txsXml}
     </PmtInf>`,
@@ -135,8 +138,8 @@ function buildPmtInf({ pmtInfId, debtorNom, debtorIban, debtorBic, transactions 
 
 // ── Génération XML pain.001.001.03 (1 PmtInf) ─────────────────────────────────
 
-function buildSCT({ msgId, pmtInfId, debtorNom, debtorIban, debtorBic, transactions }) {
-  const pmtInf = buildPmtInf({ pmtInfId, debtorNom, debtorIban, debtorBic, transactions })
+function buildSCT({ msgId, pmtInfId, debtorNom, debtorIban, debtorBic, debtorAdrLine1, debtorAdrLine2, transactions }) {
+  const pmtInf = buildPmtInf({ pmtInfId, debtorNom, debtorIban, debtorBic, debtorAdrLine1, debtorAdrLine2, transactions })
   const resolvedMsgId = msgId || msgIdTimestamp(debtorNom)
 
   return `<?xml version="1.0" encoding="UTF-8"?>
@@ -186,7 +189,7 @@ function buildSCTMulti({ msgId, initiatorNom, pmtGroups }) {
 export async function genererSCTVirementsProprios(mois, agence = AGENCE) {
   const { data: config, error: errCfg } = await supabase
     .from('agency_config')
-    .select('seq_lld_loyers_iban, seq_lld_loyers_bic, agence_titulaire')
+    .select('seq_lld_loyers_iban, seq_lld_loyers_bic, agence_titulaire, adresse_ligne1, adresse_ligne2')
     .eq('agence', agence)
     .single()
   if (errCfg) throw errCfg
@@ -224,6 +227,8 @@ export async function genererSCTVirementsProprios(mois, agence = AGENCE) {
     debtorNom,
     debtorIban:  config.seq_lld_loyers_iban,
     debtorBic:   config.seq_lld_loyers_bic || '',
+    debtorAdrLine1: config.adresse_ligne1,
+    debtorAdrLine2: config.adresse_ligne2,
     transactions,
   })
 }
@@ -236,7 +241,7 @@ export async function genererSCTVirementsProprios(mois, agence = AGENCE) {
 export async function genererSCTHonorairesDCB(mois, agence = AGENCE) {
   const { data: config, error: errCfg } = await supabase
     .from('agency_config')
-    .select('seq_lld_loyers_iban, seq_lld_loyers_bic, agence_iban, agence_bic, agence_titulaire')
+    .select('seq_lld_loyers_iban, seq_lld_loyers_bic, agence_iban, agence_bic, agence_titulaire, adresse_ligne1, adresse_ligne2')
     .eq('agence', agence)
     .single()
   if (errCfg) throw errCfg
@@ -270,6 +275,8 @@ export async function genererSCTHonorairesDCB(mois, agence = AGENCE) {
     debtorNom,
     debtorIban:  config.seq_lld_loyers_iban,
     debtorBic:   config.seq_lld_loyers_bic || '',
+    debtorAdrLine1: config.adresse_ligne1,
+    debtorAdrLine2: config.adresse_ligne2,
     transactions: [{
       endToEndId:   `HON-LLD-${mois}`,
       montant:       totalHon,
@@ -289,7 +296,7 @@ export async function genererSCTHonorairesDCB(mois, agence = AGENCE) {
 export async function genererSCTVirementsPropriosLC(mois, agence = AGENCE) {
   const { data: config, error: errCfg } = await supabase
     .from('agency_config')
-    .select('seq_lc_iban, seq_lc_bic, agence_titulaire')
+    .select('seq_lc_iban, seq_lc_bic, agence_titulaire, adresse_ligne1, adresse_ligne2')
     .eq('agence', agence)
     .single()
   if (errCfg) throw errCfg
@@ -339,6 +346,8 @@ export async function genererSCTVirementsPropriosLC(mois, agence = AGENCE) {
     debtorNom,
     debtorIban:  config.seq_lc_iban,
     debtorBic:   config.seq_lc_bic || '',
+    debtorAdrLine1: config.adresse_ligne1,
+    debtorAdrLine2: config.adresse_ligne2,
     transactions,
   })
 }
@@ -350,7 +359,7 @@ export async function genererSCTVirementsPropriosLC(mois, agence = AGENCE) {
 export async function genererSCTInternesLC(mois, agence = AGENCE) {
   const { data: config, error: errCfg } = await supabase
     .from('agency_config')
-    .select('seq_lc_iban, seq_lc_bic, agence_iban, agence_bic, agence_titulaire')
+    .select('seq_lc_iban, seq_lc_bic, agence_iban, agence_bic, agence_titulaire, adresse_ligne1, adresse_ligne2')
     .eq('agence', agence)
     .single()
   if (errCfg) throw errCfg
@@ -407,6 +416,8 @@ export async function genererSCTInternesLC(mois, agence = AGENCE) {
       debtorNom,
       debtorIban:  config.seq_lc_iban,
       debtorBic:   config.seq_lc_bic || '',
+      debtorAdrLine1: config.adresse_ligne1,
+      debtorAdrLine2: config.adresse_ligne2,
       transactions: txComm,
     })
   }
@@ -418,6 +429,8 @@ export async function genererSCTInternesLC(mois, agence = AGENCE) {
       debtorNom,
       debtorIban:  config.agence_iban,
       debtorBic:   config.agence_bic || '',
+      debtorAdrLine1: config.adresse_ligne1,
+      debtorAdrLine2: config.adresse_ligne2,
       transactions: [{
         endToEndId:   `FRAIS-STRIPE-LC-${mois}`,
         montant:       fraisStripe,
