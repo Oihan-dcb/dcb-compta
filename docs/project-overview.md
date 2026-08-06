@@ -1265,3 +1265,30 @@ Les 5 factures débours juillet concernées étaient encore `brouillon` (rien en
 se régénèrent automatiquement au prochain clic "Générer les factures" pour juillet.
 
 Voir I-66 dans `invariants.md`.
+
+## Vérification session 06 août 2026 — vue mensuelle Comptabilité + exports (juillet 2026)
+
+Suite au fix des reliquats (voir section précédente), Oïhan a demandé de vérifier que la vue
+mensuelle Comptabilité (`buildComptaMensuelle.js` / `PageComptabilite.jsx`) et les exports associés
+sont justes pour juillet 2026.
+
+**Résultat** :
+- `biensQuery` de `buildComptaMensuelle.js` n'a jamais eu de filtre `listed` (contrairement à
+  `PageRapports.jsx`/`facturesEvoliz.js` avant leur fix) — pas de régression I-65 ici.
+- **Gap trouvé** : la requête `frais_proprietaire` (deduire_loyer/facturer_et_deduire) était
+  filtrée `mode_encaissement='dcb'` — identique au filtre historique de `facturesEvoliz.js`. Les 5
+  biens `mode_encaissement='proprio'` concernés par le reliquat (I-66) étaient donc invisibles dans
+  la vue Comptabilité et son export CSV, sans alerte. Corrigé : nouvelle requête dédiée (tous modes
+  d'encaissement) + alerte `RELIQUAT_NON_FACTURE` par bien, sans toucher au calcul de
+  `reversement_calcule` (qui doit rester `dcb`-only — le reliquat n'est jamais déduit du LOY par
+  définition). L'alerte remonte automatiquement dans la colonne "Alertes" du CSV export
+  (`row.alert_codes`, déjà câblée).
+- `exportFacturesEvoliz.js` : vérifié sain — exporte toutes les lignes `facture_evoliz_ligne` sans
+  filtre par code, donc les nouvelles lignes FRAIS (reliquat) apparaîtront automatiquement une fois
+  les factures débours régénérées. Le fix du bug juin #1 (`bien_id IS NULL` / `.or(...is.null)`) est
+  toujours en place, pas de régression.
+- `exportAutoDebours.js` : fixes juin (missions/prestations annulées filtrées, `impute_salaire`
+  respecté) toujours en place, pas de régression. Sans lien avec les reliquats de frais
+  (mission_menage/AE, pas frais_proprietaire).
+
+Voir I-67 dans `invariants.md`.
