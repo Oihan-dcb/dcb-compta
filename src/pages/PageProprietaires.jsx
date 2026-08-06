@@ -1762,7 +1762,9 @@ function ModalPrevisionnel({ proprio, onClose }) {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${SUPABASE_ANON_KEY}` },
         body: JSON.stringify({
-          to: [proprio.email],
+          // proprio.email peut contenir plusieurs adresses séparées par virgule — Resend rejette
+          // un seul élément "a@x.com,b@x.com" (422 Invalid `to` field)
+          to: proprio.email.split(',').map(e => e.trim()).filter(Boolean),
           ...(proprio.email_cc ? { cc: [proprio.email_cc] } : {}),
           subject: `Estimation de vos revenus ${periode} — Destination Côte Basque`,
           html,

@@ -1643,7 +1643,9 @@ export async function envoyerEmailDeboursProprio(facture) {
       'Authorization': `Bearer ${import.meta.env.VITE_SUPABASE_ANON_KEY}`,
     },
     body: JSON.stringify({
-      to: [proprio.email],
+      // proprio.email peut contenir plusieurs adresses séparées par virgule — Resend rejette
+      // un seul élément "a@x.com,b@x.com" (422 Invalid `to` field)
+      to: proprio.email.split(',').map(e => e.trim()).filter(Boolean),
       ...(AGENCE === 'lauian' ? { cc: ['laura@destinationcotebasque.com'] } : {}),
       subject: `Remboursement débours auto-entrepreneur — ${moisLabel} — ${bienNom}`,
       html,
@@ -1759,7 +1761,9 @@ export async function envoyerEmailChargesProprio(facture) {
       'Authorization': `Bearer ${import.meta.env.VITE_SUPABASE_ANON_KEY}`,
     },
     body: JSON.stringify({
-      to: [proprio.email],
+      // proprio.email peut contenir plusieurs adresses séparées par virgule (ex. AIA BIARRITZ) —
+      // Resend rejette un seul élément "a@x.com,b@x.com" (422 Invalid `to` field)
+      to: proprio.email.split(',').map(e => e.trim()).filter(Boolean),
       subject: `Récapitulatif de charges — ${moisLabel} — ${bienNom}`,
       html,
     }),
