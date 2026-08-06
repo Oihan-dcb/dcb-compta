@@ -39,6 +39,7 @@ export function genererStatementHTML(proprio, mois, data) {
   const showLoy          = data.colonnes?.loy            ?? true
   const showMenage       = data.colonnes?.menage         ?? false
   const showVir          = data.colonnes?.vir            ?? true
+  const showDebours      = data.colonnes?.debours        ?? false
 
   const fmt = (centimes) => {
     if (centimes === null || centimes === undefined) return '—'
@@ -282,9 +283,9 @@ export function genererStatementHTML(proprio, mois, data) {
 <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:16px;align-items:stretch">
   <div style="background:#F7F4EC;border-radius:7px;padding:12px 14px;box-sizing:border-box;display:flex;flex-direction:column">
     <div style="font-size:8.5px;letter-spacing:0.08em;text-transform:uppercase;color:#9c8c7a;margin-bottom:8px">Charges ${AGENCE_BRAND.short}</div>
-    <div style="display:flex;justify-content:space-between;padding:3px 0;border-bottom:1px solid #ece8e2;font-size:10px">
+    ${showHon ? `<div style="display:flex;justify-content:space-between;padding:3px 0;border-bottom:1px solid #ece8e2;font-size:10px">
       <span style="color:#9c8c7a">Commissions ${AGENCE_BRAND.short} (HON)</span><span style="font-weight:500">${fmt(honTotal)}</span>
-    </div>
+    </div>` : ''}
     ${sansGestionLoyer ? `<div style="display:flex;justify-content:space-between;padding:3px 0;border-bottom:1px solid #ece8e2;font-size:10px">
       <span style="color:#9c8c7a">Forfait ménage (FMEN)</span><span style="font-weight:500">${fmt(fmenTotalK)}</span>
     </div>
@@ -314,21 +315,21 @@ export function genererStatementHTML(proprio, mois, data) {
   </div>
   <div style="background:#F7F4EC;border-radius:7px;padding:12px 14px;box-sizing:border-box;display:flex;flex-direction:column">
     <div style="font-size:8.5px;letter-spacing:0.08em;text-transform:uppercase;color:#9c8c7a;margin-bottom:8px">Reversement propriétaire</div>
-    <div style="display:flex;justify-content:space-between;padding:3px 0;border-bottom:1px solid #ece8e2;font-size:10px">
+    ${showBrut ? `<div style="display:flex;justify-content:space-between;padding:3px 0;border-bottom:1px solid #ece8e2;font-size:10px">
       <span style="color:#9c8c7a">Total revenus voyageurs (brut)</span><span>${fmt(grossTotal)}</span>
-    </div>
-    <div style="display:flex;justify-content:space-between;padding:3px 0;border-bottom:1px solid #ece8e2;font-size:10px">
+    </div>` : ''}
+    ${showNetPlat ? `<div style="display:flex;justify-content:space-between;padding:3px 0;border-bottom:1px solid #ece8e2;font-size:10px">
       <span style="color:#9c8c7a">Net reçu plateforme</span><span>${fmt(caHeb)}</span>
-    </div>
-    <div style="display:flex;justify-content:space-between;padding:3px 0;border-bottom:1px solid #ece8e2;font-size:10px">
+    </div>` : ''}
+    ${showLoy ? `<div style="display:flex;justify-content:space-between;padding:3px 0;border-bottom:1px solid #ece8e2;font-size:10px">
       <span style="color:#9c8c7a">Reversement net (LOY)</span><span>${fmt(loyTotal)}</span>
-    </div>
-    ${taxeTotal > 0 ? `<div style="display:flex;justify-content:space-between;padding:3px 0;border-bottom:1px solid #ece8e2;font-size:10px">
+    </div>` : ''}
+    ${taxeTotal > 0 && showTaxe ? `<div style="display:flex;justify-content:space-between;padding:3px 0;border-bottom:1px solid #ece8e2;font-size:10px">
       <span style="color:#9c8c7a">Taxes de séjour</span><span>${fmt(taxeTotal)}</span>
     </div>` : ''}
-    <div style="display:flex;justify-content:space-between;padding:3px 0;border-bottom:1px solid #ece8e2;font-size:10px">
+    ${showVir ? `<div style="display:flex;justify-content:space-between;padding:3px 0;border-bottom:1px solid #ece8e2;font-size:10px">
       <span style="color:#9c8c7a">VIR (LOY + taxes)</span><span>${fmt(virTotal)}</span>
-    </div>
+    </div>` : ''}
     ${fraisDeductionLoyList.map(f => {
       const montant = (f.statut === 'facture' && f.statut_deduction !== 'en_attente') ? (f.montant_deduit_loy || 0)
         : (f.statut === 'facture' && f.statut_deduction === 'en_attente') ? (f.montant_ttc || 0)
@@ -341,7 +342,7 @@ export function genererStatementHTML(proprio, mois, data) {
     ${remboursementsTotal > 0 ? remboursementsList.map(f => `<div style="display:flex;justify-content:space-between;padding:3px 0;border-bottom:1px solid #ece8e2;font-size:10px">
       <span style="color:#059669">${escapeNonAscii(f.libelle || 'Remboursement')}</span><span style="color:#059669">+ ${fmt(f.montant_ttc)}</span>
     </div>`).join('') : ''}
-    ${deboursSeuls > 0 ? `<div style="display:flex;justify-content:space-between;padding:3px 0;border-bottom:1px solid #ece8e2;font-size:10px">
+    ${deboursSeuls > 0 && showDebours ? `<div style="display:flex;justify-content:space-between;padding:3px 0;border-bottom:1px solid #ece8e2;font-size:10px">
       <span style="color:#9c8c7a">Débours / prestations</span><span style="color:#DC2626">− ${fmt(deboursSeuls)}</span>
     </div>` : ''}
     ${sansGestionLoyer ? fraisFacturesDirectList.map(f => `<div style="display:flex;justify-content:space-between;padding:3px 0;border-bottom:1px solid #ece8e2;font-size:10px">

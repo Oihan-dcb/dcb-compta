@@ -949,21 +949,24 @@ FORMAT :
   const _kpiOwnerStay    = !data ? 0 : (data.ownerStayList || []).reduce((s, p) => s + (p.montant || 0), 0)
   const virementNetCalc  = Math.max(0, _kpiVirTotal - _kpiFreducLoy + _kpiRemb - _kpiDebours - _kpiHaowner - _kpiOwnerStay)
 
-  const kpiCards = !data ? [] : [
-    { val: data.kpis.nbResas,             lbl: 'Réservations',      rawN: data.kpis.nbResas,       rawN1: data.kpisN1.nbResas || 0, dispN1: data.kpisN1.nbResas > 0 ? data.kpisN1.nbResas : null },
-    { val: fmt(data.kpis.caHeb),          lbl: 'CA Hébergement',    rawN: data.kpis.caHeb,         rawN1: data.kpisN1.caHeb || 0,   dispN1: data.kpisN1.caHeb > 0 ? fmt(data.kpisN1.caHeb) : null },
-    { val: fmt(data.kpis.honTotal),        lbl: 'Total HON',          rawN: null, rawN1: null, dispN1: null },
-    { val: fmt(data.kpis.fmenTotal),      lbl: 'Total FMEN',         rawN: null, rawN1: null, dispN1: null },
-    { val: fmt(data.kpis.autoTotal),      lbl: "Main d'œuvre",       rawN: null, rawN1: null, dispN1: null },
-    { val: fmt(virementNetCalc),           lbl: 'Virement proprio',   rawN: null, rawN1: null, dispN1: null },
-    { val: `${data.kpis.nuitsOccupees}/${data.kpis.nuitsDispos}`, lbl: 'Nuits occ./dispo.', rawN: data.kpis.nuitsOccupees, rawN1: data.kpisN1.nuitsOccupees || 0, dispN1: data.kpisN1.nuitsOccupees > 0 ? data.kpisN1.nuitsOccupees : null },
-    { val: `${data.kpis.tauxOcc} %`,      lbl: "Taux d'occupation", rawN: data.kpis.tauxOcc,       rawN1: data.kpisN1.tauxOcc || 0, dispN1: data.kpisN1.tauxOcc > 0 ? `${data.kpisN1.tauxOcc} %` : null },
-    { val: `${data.kpis.dureeMoy} nuits`, lbl: 'Durée moyenne',     rawN: null,                    rawN1: null,                     dispN1: null },
-    { val: data.noteMoisMoy ? `★ ${data.noteMoisMoy}` : '—', lbl: 'Avis du mois',  rawN: null, rawN1: null, dispN1: `${data.reviews?.length || 0} avis` },
-    { val: data.noteGlobaleMoy ? `★ ${data.noteGlobaleMoy}` : '—', lbl: 'Note globale', rawN: null, rawN1: null, dispN1: `${data.nbReviewsGlobal || 0} avis` },
-    { val: data.kpis.revpar != null ? fmt(data.kpis.revpar) : '—', lbl: 'RevPAR', rawN: null, rawN1: null, dispN1: null },
-    { val: data.kpis.projection_revenus != null ? fmt(data.kpis.projection_revenus) : '—', lbl: 'Projection moy. 3 mois', rawN: null, rawN1: null, dispN1: null },
+  // Tuiles KPI — mêmes clés que "Colonnes rapport" quand le concept est partagé (hon, vir)
+  // pour que la case cochée soit cohérente entre le tableau et les tuiles ; clés dédiées sinon.
+  const kpiCardsAll = !data ? [] : [
+    { key: 'nbresas',      val: data.kpis.nbResas,             lbl: 'Réservations',      rawN: data.kpis.nbResas,       rawN1: data.kpisN1.nbResas || 0, dispN1: data.kpisN1.nbResas > 0 ? data.kpisN1.nbResas : null },
+    { key: 'ca_heb',       val: fmt(data.kpis.caHeb),          lbl: 'CA Hébergement',    rawN: data.kpis.caHeb,         rawN1: data.kpisN1.caHeb || 0,   dispN1: data.kpisN1.caHeb > 0 ? fmt(data.kpisN1.caHeb) : null },
+    { key: 'hon',          val: fmt(data.kpis.honTotal),        lbl: 'Total HON',          rawN: null, rawN1: null, dispN1: null },
+    { key: 'fmen',         val: fmt(data.kpis.fmenTotal),      lbl: 'Total FMEN',         rawN: null, rawN1: null, dispN1: null },
+    { key: 'auto',         val: fmt(data.kpis.autoTotal),      lbl: "Main d'œuvre",       rawN: null, rawN1: null, dispN1: null },
+    { key: 'vir',          val: fmt(virementNetCalc),           lbl: 'Virement proprio',   rawN: null, rawN1: null, dispN1: null },
+    { key: 'occupation',   val: `${data.kpis.nuitsOccupees}/${data.kpis.nuitsDispos}`, lbl: 'Nuits occ./dispo.', rawN: data.kpis.nuitsOccupees, rawN1: data.kpisN1.nuitsOccupees || 0, dispN1: data.kpisN1.nuitsOccupees > 0 ? data.kpisN1.nuitsOccupees : null },
+    { key: 'taux_occ',     val: `${data.kpis.tauxOcc} %`,      lbl: "Taux d'occupation", rawN: data.kpis.tauxOcc,       rawN1: data.kpisN1.tauxOcc || 0, dispN1: data.kpisN1.tauxOcc > 0 ? `${data.kpisN1.tauxOcc} %` : null },
+    { key: 'duree_moy',    val: `${data.kpis.dureeMoy} nuits`, lbl: 'Durée moyenne',     rawN: null,                    rawN1: null,                     dispN1: null },
+    { key: 'avis_mois',    val: data.noteMoisMoy ? `★ ${data.noteMoisMoy}` : '—', lbl: 'Avis du mois',  rawN: null, rawN1: null, dispN1: `${data.reviews?.length || 0} avis` },
+    { key: 'note_globale', val: data.noteGlobaleMoy ? `★ ${data.noteGlobaleMoy}` : '—', lbl: 'Note globale', rawN: null, rawN1: null, dispN1: `${data.nbReviewsGlobal || 0} avis` },
+    { key: 'revpar',       val: data.kpis.revpar != null ? fmt(data.kpis.revpar) : '—', lbl: 'RevPAR', rawN: null, rawN1: null, dispN1: null },
+    { key: 'projection',   val: data.kpis.projection_revenus != null ? fmt(data.kpis.projection_revenus) : '—', lbl: 'Projection moy. 3 mois', rawN: null, rawN1: null, dispN1: null },
   ]
+  const kpiCards = kpiCardsAll.filter(c => colsConfig[c.key] ?? true)
 
   return (
     <div style={{ padding: '24px 32px', maxWidth: 1000 }}>
@@ -1073,6 +1076,23 @@ FORMAT :
             )}
 
             {/* BLOC 2 — KPIs + delta N-1 */}
+            <div style={{ marginBottom: 10, padding: '8px 12px', background: 'var(--bg)', border: '1px solid var(--border)', borderRadius: 8, fontSize: '0.8em', display: 'flex', alignItems: 'center', flexWrap: 'wrap', gap: 4 }}>
+              <span style={{ fontWeight: 600, marginRight: 6, color: 'var(--text)' }}>Tuiles rapport :</span>
+              {kpiCardsAll.map(({ key, lbl }) => (
+                <label key={key} style={{ marginRight: 8, cursor: 'pointer', display: 'inline-flex', alignItems: 'center', gap: 4 }}>
+                  <input type="checkbox"
+                    checked={colsConfig[key] ?? true}
+                    onChange={async (e) => {
+                      const newCols = { ...colsConfig, [key]: e.target.checked }
+                      setColsConfig(newCols)
+                      if (data?.bien?.id) {
+                        await supabase.from('bien').update({ rapport_config: { colonnes: newCols } }).eq('id', data.bien.id)
+                      }
+                    }} />
+                  {lbl}
+                </label>
+              ))}
+            </div>
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(130px, 1fr))', gap: 12, marginBottom: 24 }}>
               {kpiCards.map(({ val, lbl, rawN, rawN1, dispN1 }) => (
                 <div key={lbl} style={{ background: 'var(--bg)', border: '1px solid var(--border)', borderRadius: 8, padding: '12px 14px', textAlign: 'center' }}>
