@@ -24,7 +24,7 @@ export async function buildComptaMensuelle(mois, bienIds = null) {
   // ── Phase 1 : chargement parallèle ──────────────────────────────────────
   let biensQuery = supabase
     .from('bien')
-    .select('id, code, hospitable_name, listed, proprietaire_id, groupe_facturation, gestion_loyer, skip_facturation, proprietaire:proprietaire_id(id, nom, prenom)')
+    .select('id, code, hospitable_name, listed, proprietaire_id, groupe_facturation, gestion_loyer, mode_encaissement, skip_facturation, proprietaire:proprietaire_id(id, nom, prenom)')
     .eq('agence', AGENCE)
   if (bienIds) biensQuery = biensQuery.in('id', bienIds)
 
@@ -513,6 +513,11 @@ export async function buildComptaMensuelle(mois, bienIds = null) {
       proprietaire_id:   propId         || null,
       proprietaire_nom:  propNom        || null,
       skip_facturation:  b.skip_facturation || false,
+      mode_encaissement: b.mode_encaissement || 'dcb',
+      // proprio encaisse directement (Airbnb/Booking/voyageur → propriétaire) : HON/FMEN/COM de ce
+      // bien ne transitent JAMAIS par le compte séquestre DCB — ce sont des créances à facturer/
+      // recevoir du propriétaire, pas de l'argent déjà en séquestre prêt à virer vers le courant.
+      hors_sequestre:    b.mode_encaissement === 'proprio',
 
       nb_resas,
       nb_rapprochees,
@@ -590,6 +595,22 @@ export async function buildComptaMensuelle(mois, bienIds = null) {
     com_ht:   rows.reduce((s, r) => s + r.com_ht,   0),
     com_tva:  rows.reduce((s, r) => s + r.com_tva,  0),
     com_ttc:  rows.reduce((s, r) => s + r.com_ttc,  0),
+  }
+
+  // Sous-total "hors séquestre" (mode_encaissement='proprio') — jamais d'argent physique en
+  // séquestre pour ces biens ; à soustraire de totals.*_ttc pour obtenir le montant réellement
+  // virable du compte séquestre vers le compte courant. Voir I-128.
+  const rowsHorsSequestre = rows.filter(r => r.hors_sequestre)
+  totals.hors_sequestre = {
+    hon_ht:   rowsHorsSequestre.reduce((s, r) => s + r.hon_ht,   0),
+    hon_tva:  rowsHorsSequestre.reduce((s, r) => s + r.hon_tva,  0),
+    hon_ttc:  rowsHorsSequestre.reduce((s, r) => s + r.hon_ttc,  0),
+    fmen_ht:  rowsHorsSequestre.reduce((s, r) => s + r.fmen_ht,  0),
+    fmen_tva: rowsHorsSequestre.reduce((s, r) => s + r.fmen_tva, 0),
+    fmen_ttc: rowsHorsSequestre.reduce((s, r) => s + r.fmen_ttc, 0),
+    com_ht:   rowsHorsSequestre.reduce((s, r) => s + r.com_ht,   0),
+    com_tva:  rowsHorsSequestre.reduce((s, r) => s + r.com_tva,  0),
+    com_ttc:  rowsHorsSequestre.reduce((s, r) => s + r.com_ttc,  0),
   }
 
   // ── Phase 6 : alertes globales (dédupliquées au niveau proprio) ───────────
@@ -680,6 +701,7 @@ export async function buildComptaMensuelle(mois, bienIds = null) {
         bien_id: f.bien_id, bien_code: f.bien?.code || null, bien_nom: f.bien?.hospitable_name || null,
         proprietaire_id: f.proprietaire_id, proprietaire_nom: pNom,
         is_lauian_client: true,
+        mode_encaissement: null, hors_sequestre: false,
         nb_resas: 0, nb_rapprochees: 0, nb_non_rapprochees: 0, nb_non_ventilees: 0,
         hon_ht: 0, hon_tva: 0, hon_ttc: 0,
         fmen_ht: f.total_ht || 0, fmen_tva: f.total_tva || 0, fmen_ttc: f.total_ttc || 0,
@@ -716,6 +738,7 @@ export async function buildComptaMensuelle(mois, bienIds = null) {
         bien_id: f.bien_id, bien_code: f.bien?.code || null, bien_nom: f.bien?.hospitable_name || null,
         proprietaire_id: f.proprietaire_id, proprietaire_nom: pNom,
         is_lld: true,
+        mode_encaissement: null, hors_sequestre: false,
         nb_resas: 0, nb_rapprochees: 0, nb_non_rapprochees: 0, nb_non_ventilees: 0,
         hon_ht: f.total_ht || 0, hon_tva: f.total_tva || 0, hon_ttc: f.total_ttc || 0,
         fmen_ht: 0, fmen_tva: 0, fmen_ttc: 0,
@@ -763,7 +786,7 @@ export function exportComptaCSV(data, bienActif = {}) {
     'HON HT', 'HON TVA', 'HON TTC',
     'FMEN HT', 'FMEN TVA', 'FMEN TTC',
     'AUTO HT', 'Prest. déduit', 'Total AUTO HT', 'LOY HT', 'Frais HA proprio.', 'Frais facturés direct', 'TAXE HT', 'Réversement calculé', 'Virement fait', 'Virements anticipés (résa)',
-    'Statut facture', 'Réversement facturé', 'Écart facture', 'Alertes',
+    'Statut facture', 'Réversement facturé', 'Écart facture', 'Alertes', 'Hors séquestre',
   ]
   const fmtVirResa = (r) => r.virement_resa_count > 0
     ? `${r.virement_resa_count} — ${fmt(r.virement_resa_total_cts)} (${r.virement_resa_items.map(it => `${it.resa_code || '?'} ${it.date_virement}`).join(' ; ')})`
@@ -820,6 +843,7 @@ export function exportComptaCSV(data, bienActif = {}) {
           masked(fmt(reversementFactureGroupe), groupeActif),
           masked(first.ecart_reversement_proprio != null ? fmt(first.ecart_reversement_proprio) : '', groupeActif),
           [...new Set(children.flatMap(c => c.alert_codes))].join(' | '),
+          children.some(c => c.hors_sequestre) ? 'OUI' : '',
         ])
       }
       // Ligne enfant indentée
@@ -834,6 +858,7 @@ export function exportComptaCSV(data, bienActif = {}) {
         masked(fmt(r.fmen_ht), enfantActif), masked(fmt(r.fmen_tva), enfantActif), masked(fmt(r.fmen_ttc), enfantActif),
         fmt(r.auto_ht), masked(fmt(r.prest_deduct), enfantActif), fmt((r.auto_ht || 0) + (r.prest_deduct || 0)), masked(fmt(r.loy_ht), enfantActif), masked(fmt(r.frais_loy), enfantActif), masked(fmt(r.frais_direct), enfantActif), masked(fmt(r.taxe_ht), enfantActif), masked(fmt(r.reversement_calcule), enfantActif), masked(faitEnfant, enfantActif), masked(fmtVirResa(r), enfantActif),
         '', '', '', r.alert_codes.join(' | '),
+        r.hors_sequestre ? 'OUI' : '',
       ])
     } else {
       const rowActif = isActif(r.bien_id)
@@ -850,6 +875,7 @@ export function exportComptaCSV(data, bienActif = {}) {
         masked(fmt(r.facture_montant_reversement), rowActif),
         masked(r.ecart_reversement_proprio != null ? fmt(r.ecart_reversement_proprio) : '', rowActif),
         r.alert_codes.join(' | '),
+        r.hors_sequestre ? 'OUI' : '',
       ])
     }
   }
@@ -870,8 +896,23 @@ export function exportComptaCSV(data, bienActif = {}) {
     fmt(asum(actifDCB, 'fmen_ht')), fmt(asum(actifDCB, 'fmen_tva')), fmt(asum(actifDCB, 'fmen_ttc')),
     fmt(asum(actifDCB, 'auto_ht')), fmt(asum(actifDCB, 'prest_deduct')), fmt(asum(actifDCB, 'auto_ht') + asum(actifDCB, 'prest_deduct')),
     fmt(asum(actifDCB, 'loy_ht')), fmt(asum(actifDCB, 'frais_loy')), fmt(asum(actifDCB, 'frais_direct')), fmt(asum(actifDCB, 'taxe_ht')), fmt(asum(actifDCB, 'reversement_calcule')), '', fmtVirResaTotal(actifDCB),
-    '', '', '', '',
+    '', '', '', '', '',
   ])
+  // Dont hors séquestre (mode_encaissement='proprio') — à soustraire de TOTAL DCB pour obtenir le
+  // montant réellement virable du compte séquestre vers le compte courant. Voir I-128.
+  {
+    const actifHorsSeq = actifDCB.filter(r => r.hors_sequestre)
+    if (actifHorsSeq.length > 0) {
+      rows.push([
+        'DONT HORS SÉQUESTRE (proprio, à facturer)', '', '',
+        '', '', '', '',
+        fmt(asum(actifHorsSeq, 'hon_ht')), fmt(asum(actifHorsSeq, 'hon_tva')), fmt(asum(actifHorsSeq, 'hon_ttc')),
+        fmt(asum(actifHorsSeq, 'fmen_ht')), fmt(asum(actifHorsSeq, 'fmen_tva')), fmt(asum(actifHorsSeq, 'fmen_ttc')),
+        '', '', '', '', '', '', '', '', '', '',
+        '', '', '', '', '',
+      ])
+    }
+  }
   // Total Honoraires LLD (uniquement si des lignes LLD existent)
   if (actifLld.length > 0) {
     rows.push([
@@ -880,7 +921,7 @@ export function exportComptaCSV(data, bienActif = {}) {
       fmt(asum(actifLld, 'hon_ht')), fmt(asum(actifLld, 'hon_tva')), fmt(asum(actifLld, 'hon_ttc')),
       '', '', '',
       '', '', '', '', '', '', '', fmt(asum(actifLld, 'reversement_calcule')), '', fmtVirResaTotal(actifLld),
-      '', '', '', '',
+      '', '', '', '', '',
     ])
   }
   // Total FMEN Lauian (uniquement si des lignes Lauian existent)
@@ -891,7 +932,7 @@ export function exportComptaCSV(data, bienActif = {}) {
       '', '', '',
       fmt(asum(actifLau, 'fmen_ht')), fmt(asum(actifLau, 'fmen_tva')), fmt(asum(actifLau, 'fmen_ttc')),
       '', '', '', '', '', '', '', '', '', '',
-      '', '', '', '',
+      '', '', '', '', '',
     ])
   }
   // Total Global (dès qu'il y a du Lauian ou du LLD en plus du DCB)
@@ -903,7 +944,7 @@ export function exportComptaCSV(data, bienActif = {}) {
       fmt(asum(actifRows, 'fmen_ht')), fmt(asum(actifRows, 'fmen_tva')), fmt(asum(actifRows, 'fmen_ttc')),
       fmt(asum(actifRows, 'auto_ht')), fmt(asum(actifRows, 'prest_deduct')), fmt(asum(actifRows, 'auto_ht') + asum(actifRows, 'prest_deduct')),
       fmt(asum(actifRows, 'loy_ht')), fmt(asum(actifRows, 'frais_loy')), fmt(asum(actifRows, 'frais_direct')), fmt(asum(actifRows, 'taxe_ht')), fmt(asum(actifRows, 'reversement_calcule')), '', fmtVirResaTotal(actifRows),
-      '', '', '', '',
+      '', '', '', '', '',
     ])
   }
 

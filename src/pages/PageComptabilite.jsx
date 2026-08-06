@@ -79,6 +79,9 @@ export default function PageComptabilite() {
   const [filterProprio, setFilterProprio] = useState('')
   const [filterStatutFacture, setFilterStatutFacture] = useState('')
   const [filterAlertsOnly, setFilterAlertsOnly] = useState(false)
+  // Masque les biens mode_encaissement='proprio' — leur HON/FMEN/COM ne sont jamais en séquestre
+  // (le propriétaire encaisse directement), donc ne doivent pas compter dans un virement séquestre→courant
+  const [filterHideHorsSequestre, setFilterHideHorsSequestre] = useState(false)
 
   // Visibilité colonnes
   const COLS_DEFS = [
@@ -212,6 +215,7 @@ export default function PageComptabilite() {
       if (filterStatutFacture !== '__none__' && r.facture_statut !== filterStatutFacture) return false
     }
     if (filterAlertsOnly && r.alert_count === 0) return false
+    if (filterHideHorsSequestre && r.hors_sequestre) return false
     return true
   }) : []
 
@@ -437,8 +441,13 @@ export default function PageComptabilite() {
           <input type="checkbox" checked={filterAlertsOnly} onChange={e => setFilterAlertsOnly(e.target.checked)} />
           Alertes seulement
         </label>
-        {(filterProprio || filterStatutFacture || filterAlertsOnly) && (
-          <button className="btn btn-secondary" onClick={() => { setFilterProprio(''); setFilterStatutFacture(''); setFilterAlertsOnly(false) }}
+        <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: '0.85em', cursor: 'pointer', color: 'var(--text)' }}
+          title="Masque les biens où le propriétaire encaisse directement (mode_encaissement='proprio') — leur HON/FMEN/COM ne sont jamais en séquestre, ce sont des créances à facturer au propriétaire.">
+          <input type="checkbox" checked={filterHideHorsSequestre} onChange={e => setFilterHideHorsSequestre(e.target.checked)} />
+          Masquer hors séquestre (proprio)
+        </label>
+        {(filterProprio || filterStatutFacture || filterAlertsOnly || filterHideHorsSequestre) && (
+          <button className="btn btn-secondary" onClick={() => { setFilterProprio(''); setFilterStatutFacture(''); setFilterAlertsOnly(false); setFilterHideHorsSequestre(false) }}
             style={{ fontSize: '0.8em', padding: '4px 10px' }}>
             ✕ Réinitialiser
           </button>
@@ -668,6 +677,7 @@ export default function PageComptabilite() {
                         <span style={{ fontWeight: 600 }}>{r.bien_code || '—'}</span>
                         {r.is_lauian_client && <span style={{ fontSize: '0.7em', fontWeight: 700, padding: '1px 5px', borderRadius: 4, background: '#fef3c7', color: '#92400e', marginLeft: 5, verticalAlign: 'middle' }}>client Lauian</span>}
                         {r.is_lld && <span style={{ fontSize: '0.7em', fontWeight: 700, padding: '1px 5px', borderRadius: 4, background: '#dcfce7', color: '#166534', marginLeft: 5, verticalAlign: 'middle' }}>LLD</span>}
+                        {r.hors_sequestre && <span title="Propriétaire encaisse directement — HON/FMEN/COM à facturer, jamais en séquestre" style={{ fontSize: '0.7em', fontWeight: 700, padding: '1px 5px', borderRadius: 4, background: '#EDE9FE', color: '#5B21B6', marginLeft: 5, verticalAlign: 'middle' }}>hors séquestre</span>}
                         {r.bien_nom && <div style={{ fontSize: '0.85em', color: '#9C8E7D', maxWidth: 140, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{r.bien_nom}</div>}
                       </td>
                       <td style={td}>{r.proprietaire_nom || <span style={{ color: '#9C8E7D', fontStyle: 'italic' }}>—</span>}</td>
@@ -754,6 +764,43 @@ export default function PageComptabilite() {
                   {col('ecart_facture')       && <td style={td} />}
                   <td style={td} />
                 </tr>
+                {/* Ligne "dont hors séquestre" — à soustraire de TOTAL DCB pour obtenir le montant
+                    réellement virable du compte séquestre vers le compte courant (I-128) */}
+                {(() => {
+                  const actifsHorsSeq = actifsDCB.filter(r => r.hors_sequestre)
+                  const horsSeqSomme  = tsum(actifsHorsSeq, 'hon_ttc') + tsum(actifsHorsSeq, 'fmen_ttc') + tsum(actifsHorsSeq, 'com_ttc')
+                  if (horsSeqSomme === 0) return null
+                  return (
+                    <tr style={{ background: '#F5F3FF', fontStyle: 'italic', color: '#5B21B6' }}>
+                      <td style={td} />
+                      <td style={{ ...td, whiteSpace: 'nowrap' }}>dont hors séquestre (proprio, à facturer)</td>
+                      <td style={td} />
+                      {col('resas')       && <td style={td} />}
+                      {col('rappr')       && <td style={td} />}
+                      {col('non_vent')    && <td style={td} />}
+                      {col('hon_ht')      && <td style={{ ...td, textAlign: 'right' }}>{fmtN(tsum(actifsHorsSeq, 'hon_ht'))}</td>}
+                      {col('hon_tva')     && <td style={{ ...td, textAlign: 'right' }}>{fmtN(tsum(actifsHorsSeq, 'hon_tva'))}</td>}
+                      {col('hon_ttc')     && <td style={{ ...td, textAlign: 'right' }}>{fmtN(tsum(actifsHorsSeq, 'hon_ttc'))}</td>}
+                      {col('com_ttc')     && <td style={{ ...td, textAlign: 'right' }}>{fmtN(tsum(actifsHorsSeq, 'com_ttc'))}</td>}
+                      {col('fmen_ht')     && <td style={{ ...td, textAlign: 'right' }}>{fmtN(tsum(actifsHorsSeq, 'fmen_ht'))}</td>}
+                      {col('fmen_tva')    && <td style={{ ...td, textAlign: 'right' }}>{fmtN(tsum(actifsHorsSeq, 'fmen_tva'))}</td>}
+                      {col('fmen_ttc')    && <td style={{ ...td, textAlign: 'right' }}>{fmtN(tsum(actifsHorsSeq, 'fmen_ttc'))}</td>}
+                      {col('auto_ht')     && <td style={td} />}
+                      {col('loy_ht')              && <td style={td} />}
+                      {col('frais_loy')           && <td style={td} />}
+                      {col('prest_deduct')        && <td style={td} />}
+                      {col('total_auto_ht')       && <td style={td} />}
+                      {col('taxe')                && <td style={td} />}
+                      {col('reversement_calcule') && <td style={td} />}
+                      {col('fait')               && <td style={td} />}
+                      {col('virement_resa')      && <td style={td} />}
+                      {col('facture')             && <td style={td} />}
+                      {col('reversement_facture') && <td style={td} />}
+                      {col('ecart_facture')       && <td style={td} />}
+                      <td style={td} />
+                    </tr>
+                  )
+                })()}
                 {/* Ligne Total LLD (uniquement si des lignes LLD existent) */}
                 {actifsLld.length > 0 && (
                   <tr style={{ background: '#F0FDF4', borderTop: '1px solid #16a34a', fontWeight: 700 }}>
