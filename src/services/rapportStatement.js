@@ -302,31 +302,12 @@ export function genererStatementHTML(proprio, mois, data) {
     ${fraisFacturesDirectList.map(f => `<div style="display:flex;justify-content:space-between;padding:3px 0;border-bottom:1px solid #ece8e2;font-size:10px">
       <span style="color:#9c8c7a">${escapeNonAscii(f.libelle || 'Frais propriétaire')} <span style="font-size:8px;font-style:italic">(facturé)</span></span><span>${fmt(f.montant_ttc || 0)}</span>
     </div>`).join('')}
-    ${fraisDeductionLoyList.map(f => {
-      const enAttente = f.statut === 'a_facturer' || (f.statut === 'facture' && f.statut_deduction === 'en_attente')
-      if (enAttente) {
-        const montant = f.montant_ttc || 0
-        if (montant <= 0) return ''
-        return `<div style="display:flex;justify-content:space-between;padding:3px 0;border-bottom:1px solid #ece8e2;font-size:10px">
-      <span style="color:#9c8c7a">${escapeNonAscii(f.libelle || 'Frais HA proprio.')}</span><span>${fmt(montant)}</span>
-    </div>`
-      }
-      // statut_deduction connu (totalement_deduit / partiellement_deduit / non_deduit) : une seule
-      // ligne par frais, montant à droite décomposé déduit/reliquat si besoin (jamais fusionner en
-      // un seul chiffre — un reliquat=montant_ttc entier disparaissait silencieusement quand
-      // montant_deduit_loy=0 ; jamais dupliquer le libellé sur 2 lignes non plus).
-      const deduit   = f.montant_deduit_loy || 0
-      const reliquat = f.montant_reliquat || 0
-      if (deduit <= 0 && reliquat <= 0) return ''
-      const montantCell = reliquat > 0 && deduit > 0
-        ? `<span style="display:block">${fmt(deduit)}</span><span style="display:block;color:#c2410c;font-size:9px">! ${fmt(reliquat)} reliquat</span>`
-        : reliquat > 0
-        ? `<span style="color:#c2410c;font-weight:600">${fmt(reliquat)}</span>`
-        : fmt(deduit)
-      return `<div style="display:flex;justify-content:space-between;padding:3px 0;border-bottom:1px solid #ece8e2;font-size:10px">
-      <span style="color:${reliquat > 0 && deduit <= 0 ? '#c2410c' : '#9c8c7a'}">${reliquat > 0 && deduit <= 0 ? '! ' : ''}${escapeNonAscii(f.libelle || 'Frais HA proprio.')}</span><span style="text-align:right">${montantCell}</span>
-    </div>`
-    }).join('')}
+    ${fraisDeductionLoyTotal > 0 ? `<div style="display:flex;justify-content:space-between;padding:3px 0;border-bottom:1px solid #ece8e2;font-size:10px">
+      <span style="color:#9c8c7a">Frais propriétaire (déduits du loyer)</span><span>${fmt(fraisDeductionLoyTotal)}</span>
+    </div>` : ''}
+    ${fraisReliquatTotal > 0 ? `<div style="display:flex;justify-content:space-between;padding:3px 0;border-bottom:1px solid #ece8e2;font-size:10px">
+      <span style="color:#c2410c">! Frais non couverts par le loyer (reliquat)</span><span style="color:#c2410c;font-weight:600">${fmt(fraisReliquatTotal)}</span>
+    </div>` : ''}
     <div style="display:flex;justify-content:space-between;padding:6px 0 0;font-weight:700;font-size:10.5px;margin-top:auto">
       <span>Total dû à ${AGENCE_BRAND.short}</span><span style="color:#CC9933">${fmt(totalManager)}</span>
     </div>
