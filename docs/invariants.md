@@ -263,6 +263,12 @@ Aucun invariant actif violé à l'issue de la session du 12 avril 2026.
 
 **Total actuel** : 0 invariants violés actifs (⚠ I-60 partiellement couvert), 22 corrigés, 36 nouveaux, sur 77 documentés.
 
+### Invariant repéré (6 août 2026 — non corrigé, mis de côté volontairement)
+
+| ID | Description | Statut |
+|---|---|---|
+| I-128 | **`saveMenageProprio` (`PageRapports.jsx`, saisie "ménage séjour propriétaire" sur les résas `owner_stay`) pose `calcul_source='manual'` sur la ligne `MEN` mais ne pose jamais `reservation.ventilation_manuelle=true`.** Contrairement aux deux autres chemins de saisie manuelle (`VentilationEdit` dans `ModalResa.jsx` et `ajusterVentilationManuelle` dans `ventilation.js`, qui posent bien le verrou), cette ligne MEN reste exposée : toute reventilation future de cette résa (cron nightly, bouton Global Update, etc.) la supprimerait silencieusement puisque `_writeResa` ne recrée pas de ligne MEN dans la branche `owner_stay`. Constaté sur `VLGM3O` (Jeremy Chevalier, bien BGH/DCB, juin 2026, MEN=108,00€, `ventilation_manuelle=false`) — seul cas trouvé sur l'ensemble des lignes `calcul_source='manual'` du système (tous les HON manuels modifiés avec Laura sur juillet Lauian sont eux correctement verrouillés, vérifié). | ❌ **Bug actif, non corrigé** — mis de côté à la demande d'Oïhan (06/08/2026). Fix identifié mais pas appliqué : ajouter `ventilation_manuelle: true` dans le `.update()` de `saveMenageProprio`. À rapprocher de I-127 (même famille de risque : écriture manuelle non protégée contre un recalcul auto). |
+
 ### Invariants ajoutés (6 août 2026 — Fix double-décompte DEB_AE sur groupe_facturation)
 
 | ID | Description | Statut |
