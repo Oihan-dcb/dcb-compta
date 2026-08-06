@@ -110,12 +110,21 @@ export default async function handler(req, res) {
     for (const po of matches) {
       try {
         const txns = await stripeGet(`/v1/balance/history?payout=${po.payout_id}&limit=100`)
-        const payTxns = txns.data.filter(t => t.type === 'payment' || t.type === 'charge')
+        // Remboursements inclus (type='refund'/'payment_refund') — sinon un remboursement Stripe
+        // après annulation reste invisible : le payout net baisse mais aucune ligne ne l'explique
+        // (cf. incident HOST-EIEADC, remboursement de 1864,65€ jamais synchronisé).
+        const payTxns = txns.data.filter(t => ['payment', 'charge', 'refund', 'payment_refund'].includes(t.type))
         if (!payTxns.length) continue
 
         const charges = await Promise.all(
           payTxns.map(t => {
             if (!t.source) return Promise.resolve({})
+            if (t.source.startsWith('re_')) {
+              // Remboursement : re_xxx -> charge d'origine, pour récupérer metadata/reservation_code
+              return stripeGet(`/v1/refunds/${t.source}`)
+                .then(rf => rf.charge ? stripeGet(`/v1/charges/${rf.charge}`) : {})
+                .catch(() => ({}))
+            }
             if (t.source.startsWith('pi_')) {
               return stripeGet(`/v1/charges?payment_intent=${t.source}&limit=1`).then(r => r.data?.[0] || {})
             }
@@ -125,6 +134,7 @@ export default async function handler(req, res) {
 
         const lines = payTxns.map((tx, i) => {
           const ch = charges[i]
+          const isRefund = tx.type === 'refund' || tx.type === 'payment_refund'
           let code = ch.metadata?.reservation_code || null
           let terme = null
           if (!code && tx.description) {
@@ -136,9 +146,11 @@ export default async function handler(req, res) {
           return {
             stripe_payout_id: po.payout_id,
             mouvement_id: po.mouvement_id,
-            stripe_charge_id: ch.id || null,
+            // Remboursement : id du remboursement (re_xxx), jamais l'id de la charge d'origine —
+            // sinon collision avec la ligne 'reservation' déjà existante (UNIQUE sur stripe_charge_id)
+            stripe_charge_id: isRefund ? (tx.source || tx.id) : (ch.id || null),
             reservation_code: code,
-            type_ligne: !code ? 'extra' : (terme ? 'paiement_partiel' : 'reservation'),
+            type_ligne: isRefund ? 'remboursement' : (!code ? 'extra' : (terme ? 'paiement_partiel' : 'reservation')),
             terme: terme || null,
             montant_brut: tx.amount,
             montant_net: tx.net,
