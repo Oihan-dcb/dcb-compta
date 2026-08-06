@@ -1205,3 +1205,32 @@ manuellement avant tout virement rétroactif réel.
 unitaires, cf. règle d'architecture 3 fichiers en tête de ce document) n'implémente **même pas** le
 zeroing `skip_facturation` existant (HON/FMEN) — déjà désynchronisée avant ce fix, non corrigée ici
 (hors périmètre demandé, aucun test ne couvre `skip_facturation`).
+
+## Fix session 06 août 2026 — bien démasqué d'Airbnb (`listed=false`) disparaissait des rapports et de la facturation
+
+Signalé par Oïhan : le bien 408P "Ikuspegi" (masqué sur Airbnb par le propriétaire, `listed=false`
+côté sync Hospitable) n'apparaissait plus dans les rapports propriétaires — remplacé par le nom de
+famille du propriétaire ("Belair") — et son rapport ne chargeait aucune donnée.
+
+**Cause racine** : `listed` reflète uniquement la visibilité publique Airbnb, pas "ce bien doit être
+géré/facturé par DCB". Or 408P avait ~6 résas Airbnb réelles en juillet (~7 400€ de CA hébergement) et
+des résas confirmées jusqu'en octobre — toujours activement géré, juste temporairement masqué. Deux
+endroits traitaient `listed=false` comme "à ignorer" au lieu d'alerter :
+
+1. `PageRapports.jsx` (3 filtres identiques `b.listed && b.agence === AGENCE`) → bien absent du
+   sélecteur, propriétaire affiché sans code bien, rapport bloqué (`selectedBienId` vide).
+2. `facturesEvoliz.js` `.eq('bien.listed', true)` sur la requête proprietaires (DCB + FMEN Lauian) →
+   le bien était **totalement exclu de `genererFacturesMois`**, silencieusement. La facture d'honoraires
+   de juillet n'aurait jamais été générée pour ce propriétaire.
+
+`buildComptaMensuelle.js` gérait déjà correctement ce cas (aucun filtre `listed`, juste une alerte
+`BIEN_INACTIF_AVEC_MOUVEMENTS`) — pattern non répercuté ailleurs (même dette que l'audit exports juin
+2026 : une règle métier réimplémentée différemment par fichier).
+
+**Fix** : `PageRapports.jsx` inclut désormais un bien non-listé s'il a une activité réelle ce mois
+(réutilise `bienIdsActifs`, déjà calculé). `facturesEvoliz.js` ne filtre plus sur `listed` du tout —
+facture normalement, et remonte un avertissement (`log.biensNonListesFactures`, affiché dans
+PageFactures) pour vérification manuelle avant validation Evoliz. Voir I-65 dans `invariants.md`.
+
+**Non résolu** : pourquoi 408P est masqué sur Airbnb n'a pas été investigué (hors périmètre — sujet
+Hospitable/Airbnb, pas un bug dcb-compta).
