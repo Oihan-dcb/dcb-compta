@@ -206,7 +206,10 @@ export default function PageRapports() {
   useEffect(() => {
     if (!selectedPropId) return
     const proprio = proprietaires.find(p => p.id === selectedPropId)
-    const biens = (proprio?.bien || []).filter(b => b.listed && b.agence === AGENCE)
+    // Un bien démasqué d'Airbnb (listed=false) doit rester sélectionnable tant qu'il
+    // a une activité réelle ce mois-ci (résa/prestation) — sinon son rapport disparaît
+    // silencieusement (cf. incident 408P "Ikuspegi", masqué mais ~10k€ de résas en cours).
+    const biens = (proprio?.bien || []).filter(b => (b.listed || bienIdsActifs?.has(b.id)) && b.agence === AGENCE)
     const maiteFirst = biens.find(b => b.groupe_facturation === 'MAITE')
     setSelectedBienId((maiteFirst || biens[0])?.id || '')
     setData(null)
@@ -222,7 +225,7 @@ export default function PageRapports() {
     setStatut('idle')
     setPreviewOpen(false)
     setModeMaite('chambre')
-  }, [selectedPropId, proprietaires])
+  }, [selectedPropId, proprietaires, bienIdsActifs])
 
   useEffect(() => {
     setData(null)
@@ -887,7 +890,7 @@ FORMAT :
   }
 
   const proprio = proprietaires.find(p => p.id === selectedPropId)
-  const biensActifs = (proprio?.bien || []).filter(b => b.listed && b.agence === AGENCE)
+  const biensActifs = (proprio?.bien || []).filter(b => (b.listed || bienIdsActifs?.has(b.id)) && b.agence === AGENCE)
   const isMaite = (proprio?.bien || []).some(b => b.groupe_facturation === 'MAITE')
   const maiteIds = (proprio?.bien || []).filter(b => b.groupe_facturation === 'MAITE').map(b => b.id)
   // En mode global, on ancre toutes les notes sur le bien MAISON (code='MAISON') — stable entre sessions
@@ -990,7 +993,7 @@ FORMAT :
             const isMaiteP = (p.bien || []).some(b => b.groupe_facturation === 'MAITE')
             const codes = isMaiteP
               ? 'Maison Maïté'
-              : (p.bien || []).filter(b => b.listed && b.agence === AGENCE).map(b => b.code).filter(Boolean).join(', ')
+              : (p.bien || []).filter(b => (b.listed || bienIdsActifs?.has(b.id)) && b.agence === AGENCE).map(b => b.code).filter(Boolean).join(', ')
             return (
               <option key={p.id} value={p.id} style={{ color: bienEnvoye ? '#9C8E7D' : 'inherit' }}>
                 {bienEnvoye ? '✓ ' : ''}{codes ? `${codes} — ` : ''}{p.nom}
