@@ -1292,3 +1292,34 @@ sont justes pour juillet 2026.
   (mission_menage/AE, pas frais_proprietaire).
 
 Voir I-67 dans `invariants.md`.
+
+## Fix session 06 août 2026 — Rapprochement Airbnb : virement groupé ne matchait qu'une seule résa
+
+Pendant la vérification de la clôture juillet 2026 Lauian, 2 réservations Airbnb (Aline Greffier
+`HM2D4W4YZK`, Corinne Niedermann `HMJC4C2F9A`) apparaissaient sans virement alors que l'argent était
+déjà en banque depuis le 03/07 : Airbnb avait regroupé leur payout avec celui d'une 3ᵉ résa (Val
+Rondeau `HMA45ECZCY`) dans un seul virement de 2 150,52€.
+
+**Cause** : `rapprochement.js`, Étape 0 du matching (`lancerMatchingAuto`) — la référence de payout
+extraite du libellé bancaire (`platform_id`, ex. `G-GJXAS6G37...`) est censée identifier un payout
+sans ambiguïté. Mais quand Airbnb regroupe plusieurs résas dans un même virement, les payouts
+synthétiques par-résa (`hospitable_id` finissant par `_airbnb_payout`) partagent tous le même
+`platform_id`. Le `.find()` ne récupérait que le premier de la liste, rapprochait le virement avec
+cette seule résa, et le retirait de `libres` — empêchant l'Étape 2 (subset-sum, qui aurait
+correctement retrouvé le trio par montant+date) de s'exécuter pour ce virement.
+
+**Fix** : `payoutsCanal.find(...)` → `payoutsCanal.filter(...)` + n'utiliser le résultat que si
+`length === 1`. En cas d'ambiguïté, `payoutExact` reste `null` et le code retombe naturellement sur
+l'Étape 1 (montant exact) puis l'Étape 2 (subset-sum), qui gèrent déjà ce cas correctement.
+Aucune autre modification nécessaire : `_lierViaPayout` plafonne déjà le montant par résa à
+`min(fin_revenue, mvt.credit)`, donc pas de risque de sur-crédit une fois le groupe reconstitué.
+
+**Vérifié** sur Lauian juillet 2026 (`resetEtRematcher` ciblé sur le seul virement concerné +
+relance du matching) : les 3 résas sont rapprochées avec leur propre montant (735,99€ / 723,32€ /
+691,21€, pas 3× 2 150,52€), rapprochement Lauian juillet passé de 26/41 à 28/41, aucune régression
+sur les 24 autres résas déjà rapprochées du mois.
+
+`api/matching-auto.js` (cron nightly) importe directement `rapprochement.js` — zéro duplication,
+le fix s'applique aussi au cron sans modification supplémentaire.
+
+Voir I-125 dans `invariants.md`.

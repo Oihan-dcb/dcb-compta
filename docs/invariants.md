@@ -259,6 +259,12 @@ Aucun invariant actif violé à l'issue de la session du 12 avril 2026.
 
 **Total actuel** : 0 invariants violés actifs (⚠ I-60 partiellement couvert), 22 corrigés, 36 nouveaux, sur 77 documentés.
 
+### Invariants ajoutés (6 août 2026 — Fix rapprochement Airbnb groupé)
+
+| ID | Description | Statut |
+|---|---|---|
+| I-125 | **Rapprochement Airbnb par référence (`platform_id`) : ne matcher qu'un seul payout par référence que si elle est non-ambiguë.** Quand Airbnb regroupe plusieurs réservations dans un seul virement bancaire, les payouts synthétiques par-résa partagent le même `platform_id`. L'ancien code (`rapprochement.js`, Étape 0 du matching, `.find()`) ne récupérait que le premier payout trouvé et marquait le virement `rapproche`, laissant les autres réservations du groupe orphelines (`en_attente`) alors que leur argent était déjà en banque — le filet de sécurité (subset-sum, Étape 2) ne se déclenchait jamais car le virement était déjà consommé avant d'y arriver. Incident constaté Lauian 03/07/2026 : virement 2 150,52€ regroupant 3 résas (Rondeau+Greffier+Niedermann), seule Rondeau rapprochée. | ✅ Corrigé (session 06/08/2026) — `.find()` remplacé par `.filter()` + condition `length === 1` ; en cas d'ambiguïté (plusieurs payouts partagent la référence), l'Étape 1/2 retrouve le groupe par montant+date (mécanisme déjà éprouvé, inchangé). Vérifié sur Lauian juillet 2026 : reset ciblé + rematch → 3/3 résas rapprochées avec le bon montant chacune (aucun sur-crédit), aucune régression sur les 24 autres résas déjà rapprochées du mois. |
+
 ### Invariants ajoutés (3 août 2026 — Fix LOY skip_facturation LAGREOU/ASKIDA)
 
 | ID | Description | Statut |

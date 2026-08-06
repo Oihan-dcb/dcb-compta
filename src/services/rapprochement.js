@@ -653,7 +653,16 @@ export async function lancerMatchingAuto(mois, source = 'manuel') {
         // payouts à 327,23 €, celui d'avril pris pour le virement de juin).
         const dateMvt1 = new Date(mouv.date_operation)
         const refPayout = ((mouv.libelle || '') + ' ' + (mouv.detail || '')).toUpperCase().match(/\b[GM]-[A-Z0-9]{15,}\b/)
-        let payoutExact = refPayout ? payoutsCanal.find(p => p.platform_id === refPayout[0]) : null
+        // Plusieurs payouts (synthétiques par-résa) peuvent partager le même platform_id
+        // quand Airbnb regroupe plusieurs résas dans un seul virement bancaire. Un .find()
+        // n'en récupérait qu'UN seul et rapprochait le mouvement en le retirant de `libres`
+        // avant que l'Étape 2 (subset-sum) ait pu grouper correctement les autres — elles
+        // restaient à tort en_attente alors que leur argent était déjà en banque (incident
+        // Lauian 03/07/2026 : Rondeau matché seul, Greffier + Niedermann orphelines sur le
+        // même virement 2150,52€). On ne prend ce raccourci que si la référence désigne un
+        // SEUL payout sans ambiguïté — sinon Etape 1/2 retrouvent le groupe par montant+date.
+        const payoutsParRef = refPayout ? payoutsCanal.filter(p => p.platform_id === refPayout[0]) : []
+        let payoutExact = payoutsParRef.length === 1 ? payoutsParRef[0] : null
 
         // Etape 1 : payout exact — fenetres de date croissantes J+0 a J+10 puis fallback
         if (!payoutExact) for (let j = 0; j <= 10; j++) {
