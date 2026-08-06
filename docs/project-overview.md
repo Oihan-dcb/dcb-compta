@@ -1234,3 +1234,34 @@ PageFactures) pour vérification manuelle avant validation Evoliz. Voir I-65 dan
 
 **Non résolu** : pourquoi 408P est masqué sur Airbnb n'a pas été investigué (hors périmètre — sujet
 Hospitable/Airbnb, pas un bug dcb-compta).
+
+## Fix session 06 août 2026 — reliquats de frais `deduire_loyer` jamais refacturés
+
+Oïhan a demandé de vérifier que les reliquats (frais non couverts par le loyer, affichés "!
+reliquat" dans l'app) sont bien refacturés aux propriétaires, en pointant l'écart entre le détail
+des frais 408P "Ikuspegi" (4 frais, 100,01€ de reliquat) et le "Total dû à DCB" du statement
+(1 986,32€, qui n'incluait pas ce reliquat).
+
+**Confirmé : ils ne l'étaient pas.** `genererFactureDebours` (facturesEvoliz.js) ne lisait que
+`prestation_hors_forfait` (deduction_loy/debours_proprio) pour construire la facture débours —
+jamais `frais_proprietaire`. Quand un frais `mode_traitement='deduire_loyer'` ne peut pas être
+absorbé (bien `mode_encaissement='proprio'`, ou LOY insuffisant ce mois), `montant_reliquat` est
+calculé et écrit en base par `genererFactureGroupe`, mais rien ne le transformait en ligne de
+facture réelle — silencieusement perdu. Audit sur juillet 2026 : 5 biens touchés, 623,58€ au total
+(PATXI 323,54€, 408P 100,01€, B16 75,01€, B24 75,01€, DUL 50,00€), toutes sur des biens
+`mode_encaissement='proprio'`.
+
+**Double fix** :
+1. `facturesEvoliz.js` — `genererFactureDebours` ajoute une ligne `FRAIS` par frais reliquat
+   (query `frais_proprietaire` où `montant_reliquat > 0`), garde-fous `continue` ajustés pour ne
+   pas sauter un bien qui n'a QUE ce reliquat à facturer.
+2. `rapportStatement.js` — le bloc "Charges DCB" affichait `montant_deduit_loy` uniquement (0 la
+   plupart du temps ici) et filtrait la ligne si ce montant était nul → le reliquat disparaissait
+   du total ET du détail. Ajout de `fraisReliquatTotal` dans `totalManager`, affichage séparé
+   déduit/reliquat par frais, colonne Statut dans le tableau Transactions (aligné sur
+   `PageRapports.jsx` qui affichait déjà correctement ce détail à l'écran).
+
+Les 5 factures débours juillet concernées étaient encore `brouillon` (rien envoyé à Evoliz) —
+se régénèrent automatiquement au prochain clic "Générer les factures" pour juillet.
+
+Voir I-66 dans `invariants.md`.
