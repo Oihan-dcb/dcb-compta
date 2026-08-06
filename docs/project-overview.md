@@ -1419,3 +1419,12 @@ diacritiques + gestion manuelle de `œ`/`æ` (non décomposables via NFD). "Rém
 → "Beatrice", "Côte" → "Cote". Aucun changement en base — uniquement au moment de la génération du
 fichier SEPA. S'applique à tous les exports SCT (Proprios LLD, Proprios LC, Honoraires DCB, Internes
 LC) sans modification des call sites.
+
+**Suite (même session)** : le fichier régénéré sans accents a quand même été rejeté par la banque.
+Oïhan a fourni la doc de référence pain.001.001.03 (Oracle JDE) : deux écarts avec notre génération —
+(1) déclaration XML sans `encoding="utf-8"` (on avait juste `<?xml version="1.0"?>`), (2) `<CreDtTm>`
+avec millisecondes + offset timezone (`2026-08-06T18:57:27.525+02:00`) alors que le format de
+référence est `AAAA-MM-JJThh:mm:ss` sans les deux. Les deux sont valides au sens du schéma XSD
+ISODateTime, mais le validateur bancaire est visiblement plus strict. Fix : XML déclaré
+`encoding="UTF-8"` explicitement, `nowISOWithTz()` simplifiée en horodatage local sans ms ni offset,
+suppression du namespace `xmlns:xsd` inutilisé (jamais référencé, absent de la doc de référence).

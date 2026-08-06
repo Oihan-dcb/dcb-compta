@@ -5,14 +5,13 @@ import { AGENCE } from '../lib/agence'
 
 function pad2(n) { return String(n).padStart(2, '0') }
 
+// Format AAAA-MM-JJThh:mm:ss (sans millisecondes ni offset timezone) -- format attendu
+// par la doc pain.001.001.03 de référence (ex. Caisse d'Epargne/JDE) ; les millisecondes
+// et l'offset +02:00 qu'on ajoutait avant sont acceptés par le schéma XSD ISODateTime mais
+// pas forcément par le validateur bancaire, plus strict.
 function nowISOWithTz() {
   const d = new Date()
-  const off = -d.getTimezoneOffset()
-  const sign = off >= 0 ? '+' : '-'
-  const hh = pad2(Math.floor(Math.abs(off) / 60))
-  const mm = pad2(Math.abs(off) % 60)
-  const ms = String(d.getMilliseconds()).padStart(3, '0')
-  return `${d.getFullYear()}-${pad2(d.getMonth()+1)}-${pad2(d.getDate())}T${pad2(d.getHours())}:${pad2(d.getMinutes())}:${pad2(d.getSeconds())}.${ms}${sign}${hh}:${mm}`
+  return `${d.getFullYear()}-${pad2(d.getMonth()+1)}-${pad2(d.getDate())}T${pad2(d.getHours())}:${pad2(d.getMinutes())}:${pad2(d.getSeconds())}`
 }
 
 function msgIdTimestamp(nom) {
@@ -140,8 +139,8 @@ function buildSCT({ msgId, pmtInfId, debtorNom, debtorIban, debtorBic, transacti
   const pmtInf = buildPmtInf({ pmtInfId, debtorNom, debtorIban, debtorBic, transactions })
   const resolvedMsgId = msgId || msgIdTimestamp(debtorNom)
 
-  return `<?xml version="1.0"?>
-<Document xmlns:xsd="http://www.w3.org/2001/XMLSchema" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xmlns="urn:iso:std:iso:20022:tech:xsd:pain.001.001.03">
+  return `<?xml version="1.0" encoding="UTF-8"?>
+<Document xmlns="urn:iso:std:iso:20022:tech:xsd:pain.001.001.03" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance">
   <CstmrCdtTrfInitn>
     <GrpHdr>
       <MsgId>${esc(resolvedMsgId)}</MsgId>
@@ -164,8 +163,8 @@ function buildSCTMulti({ msgId, initiatorNom, pmtGroups }) {
   const totalCtrl = pmtInfs.reduce((s, p) => s + p.total, 0)
   const resolvedMsgId = msgId || msgIdTimestamp(initiatorNom)
 
-  return `<?xml version="1.0"?>
-<Document xmlns:xsd="http://www.w3.org/2001/XMLSchema" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xmlns="urn:iso:std:iso:20022:tech:xsd:pain.001.001.03">
+  return `<?xml version="1.0" encoding="UTF-8"?>
+<Document xmlns="urn:iso:std:iso:20022:tech:xsd:pain.001.001.03" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance">
   <CstmrCdtTrfInitn>
     <GrpHdr>
       <MsgId>${esc(resolvedMsgId)}</MsgId>
