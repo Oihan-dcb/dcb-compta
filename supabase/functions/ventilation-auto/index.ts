@@ -349,12 +349,26 @@ async function calculerVentilationResa(resa: Resa, supa: ReturnType<typeof creat
   if (dryRun) return
 
   // Sauvegarder montant_reel + mouvement_id avant suppression
-  const { data: existingLines } = await supa.from('ventilation').select('id, code, montant_reel, mouvement_id').eq('reservation_id', resa.id)
+  const { data: existingLines } = await supa.from('ventilation').select('id, code, montant_ht, montant_tva, montant_ttc, montant_reel, mouvement_id').eq('reservation_id', resa.id)
   const existingReels: Record<string, number> = {}
   const existingMouvements: Record<string, string> = {}
   for (const l of existingLines || []) {
     if (l.montant_reel != null) existingReels[l.code] = l.montant_reel
     if (l.mouvement_id != null) existingMouvements[l.code] = l.mouvement_id
+  }
+
+  // Idempotence : si le recalcul produit exactement les mêmes lignes (codes + montants)
+  // que ce qui existe déjà, ne rien toucher — évite un DELETE+INSERT inutile à chaque
+  // webhook/cron. Incident 06/08/2026 : ~115k écritures ventilation/semaine pour des
+  // valeurs identiques, avec au passage des mission_menage.ventilation_auto_id cassés
+  // (FK ON DELETE SET NULL, migration 002) à chaque cycle.
+  const ligneKey = (c: string, ht: number, tva: number, ttc: number) => `${c}|${ht}|${tva}|${ttc}`
+  const existingKeySet = new Set((existingLines || []).map(l => ligneKey(l.code, l.montant_ht, l.montant_tva, l.montant_ttc)))
+  const sameLignes = (existingLines || []).length === lignes.length
+    && lignes.every(l => existingKeySet.has(ligneKey(l.code, l.montant_ht, l.montant_tva, l.montant_ttc)))
+  if (sameLignes) {
+    await supa.from('reservation').update({ ventilation_calculee: true }).eq('id', resa.id)
+    return
   }
 
   // Migration mission_menage si prolongation
