@@ -1323,3 +1323,26 @@ sur les 24 autres résas déjà rapprochées du mois.
 le fix s'applique aussi au cron sans modification supplémentaire.
 
 Voir I-125 dans `invariants.md`.
+
+## Fix session 06 août 2026 — DEB_AE facturé en double sur `groupe_facturation` (Maison Maïté)
+
+Oïhan a remarqué une facture "Débours AE" de 150€ pour Maison Maïté alors que le groupe dégage
+largement de quoi absorber (14 686,37€ de reversement le même mois).
+
+**Cause** : `groupe_facturation='MAITE'` regroupe 6 biens (le bien parent `M-MAITE` + 5 chambres
+`TXOMIN`/`IBANETA`/`BIXINTXO`/`GAXUXA`/`PANTXIKA`) en une seule facture consolidée. Le bien parent
+n'a aucune réservation directe — tout le loyer transite par les chambres — mais portait 150€ de
+prestations `deduction_loy` (ménage des parties communes) en juillet 2026. `genererFactureGroupe`
+et `genererFactureDebours` calculaient l'absorption LOY **bien par bien** : le LOY propre de
+`M-MAITE` étant structurellement nul, ses 150€ ne pouvaient jamais être absorbés localement, même
+si les 5 chambres sœurs du même groupe avaient largement de quoi couvrir. Le reliquat partait en
+facture `DEBP` séparée — alors que `genererFactureGroupe` avait déjà déduit ce même montant du
+reversement groupe (`totalPrestations`, calculé group-wide) → double décompte.
+
+**Fix** : dans les deux fonctions, l'absorption LOY (HAOWNER → `deduction_loy` → AUTO net MEN →
+`debours_proprio` → owner-stay) puise désormais dans un pool LOY partagé au niveau du
+`groupe_facturation` plutôt que dans le LOY propre à chaque bien. Pour un bien seul (cas général,
+`groupe_facturation` null), le pool démarre à son propre LOY — comportement strictement inchangé.
+Vérifié par simulation sur les données réelles juillet 2026 : reliquat M-MAITE passe de 150€ à 0€.
+
+Voir §13.4 dans `domain-rules.md`.

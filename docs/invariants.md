@@ -262,6 +262,12 @@ Aucun invariant actif violé à l'issue de la session du 12 avril 2026.
 
 **Total actuel** : 0 invariants violés actifs (⚠ I-60 partiellement couvert), 22 corrigés, 36 nouveaux, sur 77 documentés.
 
+### Invariants ajoutés (6 août 2026 — Fix double-décompte DEB_AE sur groupe_facturation)
+
+| ID | Description | Statut |
+|---|---|---|
+| I-126 | **L'absorption LOY (`deduction_loy`/HAOWNER/AUTO/`debours_proprio`/owner-stay) doit être poolée au niveau du `groupe_facturation`, pas calculée bien par bien.** Quand plusieurs biens partagent un `groupe_facturation` (ex. `MAITE` : bien parent `M-MAITE` + 5 chambres), le bien parent porte souvent 0 LOY propre (aucune résa directe, tout le loyer transite par les chambres) tout en recevant des prestations `deduction_loy` imputées directement sur lui. Calculée bien par bien, cette absorption ne pouvait jamais couvrir le parent — le reliquat partait en facture `DEB_AE`/`DEBP` séparée alors que `genererFactureGroupe` avait déjà déduit ce même montant du reversement groupe (`totalPrestations`, group-wide) → double décompte. Incident constaté Maison Maïté juillet 2026 : 150€ de ménage communs facturés en `DEB_AE` en plus du reversement déjà net de ce montant. | ✅ Corrigé (session 06/08/2026) — `genererFactureGroupe` et `genererFactureDebours` (`facturesEvoliz.js`) puisent désormais dans un pool LOY partagé par groupe pour les biens `mode_encaissement='dcb'`, consommé séquentiellement (même priorité qu'avant). Pour un bien seul (cas général), comportement strictement inchangé. Vérifié par simulation sur données réelles juillet 2026 : reliquat M-MAITE 150€ → 0€. |
+
 ### Invariants ajoutés (6 août 2026 — Fix rapprochement Airbnb groupé)
 
 | ID | Description | Statut |

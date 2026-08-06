@@ -411,49 +411,57 @@ async function genererFactureGroupe(proprio, biens, mois, ctx) {
   let ownerStayAbsorbTotal = 0
   const ownerStaySurplusByBien = new Map()
 
+  // Pool LOY partagé entre les biens mode_encaissement='dcb' d'un même groupe_facturation
+  // (ex. Maison Maïté : le bien "parent" M-MAITE ne porte quasiment jamais de réservation directe
+  // -- tout le loyer transite par ses biens-chambres -- alors que des prestations deduction_loy
+  // (ménage des parties communes) lui sont imputées directement. Sans pooling, ce reliquat était
+  // facturé séparément par genererFactureDebours (DEBP) même quand le groupe dégageait largement
+  // de quoi l'absorber -- double décompte, puisque totalPrestations/haownerTTC sont déjà déduits
+  // du reversement groupe plus bas, group-wide. cf. cas M-MAITE juillet 2026, 150€ de ménage
+  // communs jamais couverts par le LOY propre de M-MAITE, nul par construction. Les biens
+  // mode_encaissement='proprio' restent hors pool (flux d'argent distinct, LOY non centralisé par DCB).
+  const biensDcb = biens.filter(b => b.mode_encaissement === 'dcb')
+  const loyDcbTotal = biensDcb.reduce((s, b) => s + ventilation
+    .filter(l => l.bien_id === b.id && l.code === 'LOY')
+    .reduce((s2, l) => s2 + l.montant_ht, 0), 0)
+  const prestDcbTotal = biensDcb.reduce((s, b) => s + (prestationsDeduction || [])
+    .filter(p => p.bien_id === b.id)
+    .reduce((s2, p) => {
+      const isStaff = p.ae?.type === 'staff'
+      return s2 + (isStaff ? Math.round((p.montant || 0) * 1.20) : (p.montant || 0))
+    }, 0), 0)
+  const haownerDcbTotal = biensDcb.reduce((s, b) => {
+    const ht = (prestationsHaowner || []).filter(p => p.bien_id === b.id).reduce((s2, p) => s2 + (p.montant || 0), 0)
+    return s + ht + Math.round(ht * 0.20)
+  }, 0)
+  let loyPoolGroupe = Math.max(0, loyDcbTotal - prestDcbTotal - haownerDcbTotal)
+
   for (const bien of biens) {
-    // LOY de ce bien depuis ventilation
-    const loyBien = ventilation
-      .filter(l => l.bien_id === bien.id && l.code === 'LOY')
-      .reduce((s, l) => s + l.montant_ht, 0)
-
-    // Pour les biens proprio : seul le LOY des resas direct/manual est encaisse par DCB
-    const loyAbsorbable = bien.mode_encaissement === 'proprio'
-      ? ventilation
-          .filter(l => l.bien_id === bien.id && l.code === 'LOY' &&
-            PLATFORMS_DCB_FACT.includes(resaPlatMapFact.get(l.reservation_id) || ''))
-          .reduce((s, l) => s + l.montant_ht, 0)
-      : loyBien
-
-    // Deductions deduction_loy de ce bien
-    const prestBien = (prestationsDeduction || [])
-      .filter(p => p.bien_id === bien.id)
-      .reduce((s, p) => {
-        const isStaff = p.ae?.type === 'staff'
-        return s + (isStaff ? Math.round((p.montant || 0) * 1.20) : (p.montant || 0))
-      }, 0)
-
-    // HAOWNER TTC de ce bien
-    const haownerBienHT  = (prestationsHaowner || [])
-      .filter(p => p.bien_id === bien.id)
-      .reduce((s, p) => s + (p.montant || 0), 0)
-    const haownerBienTTC = haownerBienHT + Math.round(haownerBienHT * 0.20)
-
-    // Frais proprietaire : traites frais par frais pour calculer deduit vs reliquat
-    // DCB : LOY disponible apres prestations et HAOWNER
-    // Proprio : seulement le LOY direct/manual, pas de deduction prestBien/haowner
-    let loyDispoPrealable = bien.mode_encaissement === 'proprio'
-      ? loyAbsorbable
-      : Math.max(0, loyBien - prestBien - haownerBienTTC)
-    for (const frais of (fraisDeduire || []).filter(f => f.bien_id === bien.id)) {
-      const deduit   = Math.min(frais.montant_ttc, loyDispoPrealable)
-      const reliquat = frais.montant_ttc - deduit
-      fraisDeductionMap.set(frais.id, { deduit, reliquat })
-      loyDispoPrealable = Math.max(0, loyDispoPrealable - deduit)
+    if (bien.mode_encaissement === 'proprio') {
+      // Proprio : seul le LOY des resas direct/manual est encaisse par DCB -- pas de pooling,
+      // pas de deduction prestBien/haowner (flux distinct du pool dcb ci-dessus)
+      let loyDispoPrealable = ventilation
+        .filter(l => l.bien_id === bien.id && l.code === 'LOY' &&
+          PLATFORMS_DCB_FACT.includes(resaPlatMapFact.get(l.reservation_id) || ''))
+        .reduce((s, l) => s + l.montant_ht, 0)
+      for (const frais of (fraisDeduire || []).filter(f => f.bien_id === bien.id)) {
+        const deduit   = Math.min(frais.montant_ttc, loyDispoPrealable)
+        const reliquat = frais.montant_ttc - deduit
+        fraisDeductionMap.set(frais.id, { deduit, reliquat })
+        loyDispoPrealable = Math.max(0, loyDispoPrealable - deduit)
+      }
+      // Pour les biens proprio : pas d'absorption AUTO/deboursProp/ownerStay (tout en DEB_AE)
+      continue
     }
 
-    // Pour les biens proprio : pas d'absorption AUTO/deboursProp/ownerStay (tout en DEB_AE)
-    if (bien.mode_encaissement !== 'dcb') continue
+    // Frais proprietaire : traites frais par frais pour calculer deduit vs reliquat, puisés
+    // dans le pool LOY partagé du groupe (prestations/HAOWNER déjà déduits du pool ci-dessus)
+    for (const frais of (fraisDeduire || []).filter(f => f.bien_id === bien.id)) {
+      const deduit   = Math.min(frais.montant_ttc, loyPoolGroupe)
+      const reliquat = frais.montant_ttc - deduit
+      fraisDeductionMap.set(frais.id, { deduit, reliquat })
+      loyPoolGroupe = Math.max(0, loyPoolGroupe - deduit)
+    }
 
     // AUTO depuis ventilation deja chargee en memoire
     const autoBien = ventilation
@@ -469,19 +477,19 @@ async function genererFactureGroupe(proprio, biens, mois, ctx) {
     const autoCouvertMen = Math.min(autoBien, menBien)
     const autoNetMen     = Math.max(0, autoBien - autoCouvertMen)
 
-    const loyBienDisponible = loyDispoPrealable
-    // Absorption et surplus bien par bien
+    // Absorption et surplus, puisés dans le pool partagé du groupe
     // Seul le surplus AUTO au-dela du MEN absorbe du LOY
-    const autoAbsorbableBien = Math.min(autoNetMen, loyBienDisponible)
+    const autoAbsorbableBien = Math.min(autoNetMen, loyPoolGroupe)
     const autoSurplusBien    = Math.max(0, autoNetMen - autoAbsorbableBien)
+    loyPoolGroupe = Math.max(0, loyPoolGroupe - autoAbsorbableBien)
 
     // debours_proprio : absorbe le LOY résiduel après AUTO
     const deboursPropBien = (prestationsDeboursProprio || [])
       .filter(function(p){ return p.bien_id === bien.id })
       .reduce(function(s,p){ return s + (p.montant || 0) }, 0)
-    const loyApresAuto       = Math.max(0, loyBienDisponible - autoAbsorbableBien)
-    const deboursPropAbsorb  = Math.min(deboursPropBien, loyApresAuto)
+    const deboursPropAbsorb  = Math.min(deboursPropBien, loyPoolGroupe)
     const deboursPropSurplus = Math.max(0, deboursPropBien - deboursPropAbsorb)
+    loyPoolGroupe = Math.max(0, loyPoolGroupe - deboursPropAbsorb)
 
     autoAbsorbableTotal += autoAbsorbableBien
     autoSurplusTotal    += autoSurplusBien
@@ -490,13 +498,13 @@ async function genererFactureGroupe(proprio, biens, mois, ctx) {
 
     // Owner stay ménage : absorbe le LOY résiduel après deboursProp
     // AUTO absorbé en priorité (hors TVA), puis FMEN (TTC, TVA 20%)
-    const loyApresDeboursProp = Math.max(0, loyApresAuto - deboursPropAbsorb)
     const osData = osVentByBien.get(bien.id) || { fmenTTC: 0, autoHT: 0 }
-    const osAutoAbsorb   = Math.min(osData.autoHT, loyApresDeboursProp)
+    const osAutoAbsorb   = Math.min(osData.autoHT, loyPoolGroupe)
     const osAutoSurplus  = Math.max(0, osData.autoHT - osAutoAbsorb)
-    const loyApresOsAuto = Math.max(0, loyApresDeboursProp - osAutoAbsorb)
-    const osFmenAbsorb   = Math.min(osData.fmenTTC, loyApresOsAuto)
+    loyPoolGroupe = Math.max(0, loyPoolGroupe - osAutoAbsorb)
+    const osFmenAbsorb   = Math.min(osData.fmenTTC, loyPoolGroupe)
     const osFmenSurplus  = Math.max(0, osData.fmenTTC - osFmenAbsorb)
+    loyPoolGroupe = Math.max(0, loyPoolGroupe - osFmenAbsorb)
     ownerStayAbsorbTotal += osAutoAbsorb + osFmenAbsorb
     if (osFmenSurplus > 0 || osAutoSurplus > 0) {
       ownerStaySurplusByBien.set(bien.id, { osFmenSurplus, osAutoSurplus, bienName: bien.hospitable_name })
@@ -959,6 +967,23 @@ async function genererFactureDebours(proprio, biens, mois, ctx) {
     fraisReliquatByBien.get(f.bien_id).push(f)
   })
 
+  // Pool LOY partagé entre les biens mode_encaissement='dcb' d'un même groupe_facturation --
+  // même pooling que genererFactureGroupe (cf. cas M-MAITE : le bien "parent" ne porte quasiment
+  // jamais de réservation directe, tout le loyer transite par ses biens-chambres, alors que des
+  // prestations deduction_loy lui sont imputées directement). Sans pooling, ce reliquat était
+  // toujours facturé en DEB_AE/DEBP séparé même quand le groupe dégageait largement de quoi
+  // l'absorber -- double décompte avec le reversement groupe, qui déduit déjà ce même montant
+  // group-wide (totalPrestations/haownerTTC, cf. genererFactureGroupe). cf. cas M-MAITE juillet
+  // 2026, 150€ de ménage communs jamais couverts par le LOY propre de M-MAITE, nul par construction.
+  // Consommé bien par bien dans l'ordre de `biens`, même priorité que l'ancien calcul local
+  // (haowner puis deduction_loy puis AUTO puis debours_proprio puis owner-stay).
+  let loyPoolGroupeDebours = biens
+    .filter(function(b) { return b.mode_encaissement !== 'proprio' })
+    .reduce(function(s, b) {
+      const v = ventilByBien.get(b.id) || []
+      return s + v.filter(function(l) { return l.code === 'LOY' }).reduce(function(s2, l) { return s2 + l.montant_ht }, 0)
+    }, 0)
+
   for (const bien of biens) {
     const bienVentil = ventilByBien.get(bien.id) || []
     const autoBien = bienVentil
@@ -1006,10 +1031,6 @@ async function genererFactureDebours(proprio, biens, mois, ctx) {
       debPropSurplus = debPropItems.reduce(function(s, p) { return s + (p.montant || 0) }, 0)
       montantAFacturer = autoBien + osAutoHT + debPropSurplus
     } else {
-      const loyBien = bienVentil
-        .filter(function(l) { return l.code === 'LOY' })
-        .reduce(function(s, l) { return s + l.montant_ht }, 0)
-
       const bienPrest     = prestByBien.get(bien.id) || []
       const prestBien     = bienPrest
         .filter(function(p) { return p.type_imputation === 'deduction_loy' })
@@ -1018,31 +1039,38 @@ async function genererFactureDebours(proprio, biens, mois, ctx) {
         .filter(function(p) { return p.type_imputation === 'haowner' })
         .reduce(function(s, p) { return s + (p.montant || 0) }, 0)
       const haownerBienTTC = haownerBienHT + Math.round(haownerBienHT * 0.20)
-      const loyBienDisponible = Math.max(0, loyBien - prestBien - haownerBienTTC)
-      const autoAbsorbable    = Math.min(autoNetMenDeb, loyBienDisponible)
-      montantAFacturer        = Math.max(0, autoNetMenDeb - autoAbsorbable)
 
-      // deduction_loy (main d'oeuvre, ex. menage de fond) non couvert par le LOY dispo
+      // haowner : toujours facturé indépendamment (jamais de reliquat), mais a priorité sur le
+      // pool partagé du groupe avant deduction_loy/AUTO -- même ordre que l'ancien calcul local
+      const haownerCouvert = Math.min(haownerBienTTC, loyPoolGroupeDebours)
+      loyPoolGroupeDebours = Math.max(0, loyPoolGroupeDebours - haownerCouvert)
+
+      // deduction_loy (main d'oeuvre, ex. menage de fond) non couvert par le pool LOY du groupe
       // (haowner deja toujours facture independamment, cf. ligne HAOWNER honoraires) -> créance
       // a facturer en DEBP, symetrique du cas bien.mode_encaissement === 'proprio'
       const prestBienItems   = bienPrest.filter(function(p){ return p.type_imputation === 'deduction_loy' })
-      const prestBienCouvert = Math.min(prestBien, Math.max(0, loyBien - haownerBienTTC))
+      const prestBienCouvert = Math.min(prestBien, loyPoolGroupeDebours)
       const prestBienReliquat = prestBien - prestBienCouvert
+      loyPoolGroupeDebours = Math.max(0, loyPoolGroupeDebours - prestBienCouvert)
 
-      // debours_proprio : absorbe le LOY résiduel après AUTO
+      const autoAbsorbable = Math.min(autoNetMenDeb, loyPoolGroupeDebours)
+      montantAFacturer     = Math.max(0, autoNetMenDeb - autoAbsorbable)
+      loyPoolGroupeDebours = Math.max(0, loyPoolGroupeDebours - autoAbsorbable)
+
+      // debours_proprio : absorbe le reliquat du pool résiduel après AUTO
       const debProprioItems = bienPrest.filter(function(p){ return p.type_imputation === 'debours_proprio' })
       debPropItems = prestBienReliquat > 0 ? debProprioItems.concat(prestBienItems) : debProprioItems
       const deboursPropBien = debProprioItems.reduce(function(s,p){ return s + (p.montant || 0) }, 0)
-      const loyApresAuto    = Math.max(0, loyBienDisponible - autoAbsorbable)
-      const debPropAbsorb   = Math.min(deboursPropBien, loyApresAuto)
+      const debPropAbsorb   = Math.min(deboursPropBien, loyPoolGroupeDebours)
       debPropSurplus        = Math.max(0, deboursPropBien - debPropAbsorb) + prestBienReliquat
       montantAFacturer     += debPropSurplus
+      loyPoolGroupeDebours  = Math.max(0, loyPoolGroupeDebours - debPropAbsorb)
 
-      // Owner stay AUTO : absorbe le LOY résiduel après deboursProp
-      const loyApresAll = Math.max(0, loyApresAuto - debPropAbsorb)
-      const osAutoAbsorb = Math.min(osAutoHT, loyApresAll)
+      // Owner stay AUTO : absorbe le pool résiduel après deboursProp
+      const osAutoAbsorb = Math.min(osAutoHT, loyPoolGroupeDebours)
       osAutoSurplus = Math.max(0, osAutoHT - osAutoAbsorb)
       montantAFacturer += osAutoSurplus
+      loyPoolGroupeDebours = Math.max(0, loyPoolGroupeDebours - osAutoAbsorb)
     }
 
     if (montantAFacturer === 0 && fraisReliquatBienTotal === 0) continue

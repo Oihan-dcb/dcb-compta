@@ -557,6 +557,14 @@ loyBienDisponible = max(0, LOY_bien − prest_bien − haownerBienTTC − fraisD
 
 Si `haownerTTC > LOY_bien_disponible` : `montantReversement = 0`. La ligne HAOWNER reste dans la facture — le propriétaire règle le solde directement. Comportement non bloquant.
 
+### 13.4 Pool LOY partagé pour `groupe_facturation` (fix 06/08/2026)
+
+Quand plusieurs biens partagent un `groupe_facturation` (ex. `MAITE` : 1 bien parent `M-MAITE` + 5 chambres `TXOMIN`/`IBANETA`/`BIXINTXO`/`GAXUXA`/`PANTXIKA`), une seule facture consolidée est générée pour le groupe. Le bien parent ne porte souvent aucune réservation directe — tout le loyer transite par les chambres — mais peut recevoir des prestations `deduction_loy` (ex. ménage des parties communes) imputées directement sur lui.
+
+Avant le fix, l'absorption LOY (`deduction_loy`/HAOWNER/AUTO/`debours_proprio`/owner-stay) était calculée **bien par bien** dans `genererFactureGroupe` et `genererFactureDebours` : le bien parent, dont le LOY propre est structurellement nul, ne pouvait jamais absorber ses propres `deduction_loy`, même quand les chambres sœurs du même groupe dégageaient largement de quoi couvrir — le reliquat partait en facture `DEB_AE`/`DEBP` séparée alors que `genererFactureGroupe` avait déjà déduit ce même montant du reversement groupe (`totalPrestations`/`haownerTTC`, group-wide) → double décompte (cas M-MAITE juillet 2026, 150€).
+
+Fix : dans les deux fonctions, l'absorption pour les biens `mode_encaissement='dcb'` puise désormais dans un **pool LOY partagé au niveau du groupe** (somme des LOY de tous les biens `dcb` du groupe), consommé séquentiellement dans l'ordre `biens` avec la même priorité qu'avant (HAOWNER → `deduction_loy` → AUTO net MEN → `debours_proprio` → owner-stay). Pour un bien seul (`groupe_facturation` null, cas général), le pool démarre à son propre LOY — comportement strictement identique à avant. Les biens `mode_encaissement='proprio'` restent hors pool (flux d'argent distinct, LOY non centralisé par DCB).
+
 ---
 
 ## 14. Règles des frais propriétaire (implémentées mars 2026)
