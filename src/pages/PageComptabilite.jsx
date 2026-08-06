@@ -75,6 +75,23 @@ export default function PageComptabilite() {
     }
   }
 
+  // Biens masqués de la vue mensuelle — persistant (pas par mois), pour des biens qu'on ne veut
+  // plus jamais voir apparaître (ex. LLD en doublon, bien obsolète). Distinct de bienActif
+  // (qui exclut juste des totaux le temps d'un mois mais garde la ligne visible en grisé).
+  const [biensMasques, setBiensMasques] = useState(() => {
+    try { return new Set(JSON.parse(localStorage.getItem('compta_biens_masques') || '[]')) }
+    catch { return new Set() }
+  })
+  useEffect(() => {
+    try { localStorage.setItem('compta_biens_masques', JSON.stringify([...biensMasques])) } catch {}
+  }, [biensMasques])
+  const [afficherMasques, setAfficherMasques] = useState(false)
+  const toggleMasque = (bienId) => setBiensMasques(prev => {
+    const n = new Set(prev)
+    n.has(bienId) ? n.delete(bienId) : n.add(bienId)
+    return n
+  })
+
   // Filtres
   const [filterProprio, setFilterProprio] = useState('')
   const [filterStatutFacture, setFilterStatutFacture] = useState('')
@@ -216,6 +233,7 @@ export default function PageComptabilite() {
     }
     if (filterAlertsOnly && r.alert_count === 0) return false
     if (filterHideHorsSequestre && r.hors_sequestre) return false
+    if (!afficherMasques && biensMasques.has(r.bien_id)) return false
     return true
   }) : []
 
@@ -446,6 +464,13 @@ export default function PageComptabilite() {
           <input type="checkbox" checked={filterHideHorsSequestre} onChange={e => setFilterHideHorsSequestre(e.target.checked)} />
           Masquer hors séquestre (proprio)
         </label>
+        {biensMasques.size > 0 && (
+          <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: '0.85em', cursor: 'pointer', color: 'var(--text)' }}
+            title="Biens masqués définitivement (cliquer ✕ sur une ligne pour en masquer un, 👁️ pour le réafficher)">
+            <input type="checkbox" checked={afficherMasques} onChange={e => setAfficherMasques(e.target.checked)} />
+            Afficher biens masqués ({biensMasques.size})
+          </label>
+        )}
         {(filterProprio || filterStatutFacture || filterAlertsOnly || filterHideHorsSequestre) && (
           <button className="btn btn-secondary" onClick={() => { setFilterProprio(''); setFilterStatutFacture(''); setFilterAlertsOnly(false); setFilterHideHorsSequestre(false) }}
             style={{ fontSize: '0.8em', padding: '4px 10px' }}>
@@ -678,6 +703,14 @@ export default function PageComptabilite() {
                         {r.is_lauian_client && <span style={{ fontSize: '0.7em', fontWeight: 700, padding: '1px 5px', borderRadius: 4, background: '#fef3c7', color: '#92400e', marginLeft: 5, verticalAlign: 'middle' }}>client Lauian</span>}
                         {r.is_lld && <span style={{ fontSize: '0.7em', fontWeight: 700, padding: '1px 5px', borderRadius: 4, background: '#dcfce7', color: '#166534', marginLeft: 5, verticalAlign: 'middle' }}>LLD</span>}
                         {r.hors_sequestre && <span title="Propriétaire encaisse directement — HON/FMEN/COM à facturer, jamais en séquestre" style={{ fontSize: '0.7em', fontWeight: 700, padding: '1px 5px', borderRadius: 4, background: '#EDE9FE', color: '#5B21B6', marginLeft: 5, verticalAlign: 'middle' }}>hors séquestre</span>}
+                        {biensMasques.has(r.bien_id) && <span style={{ fontSize: '0.7em', fontWeight: 700, padding: '1px 5px', borderRadius: 4, background: '#F3F4F6', color: '#6B7280', marginLeft: 5, verticalAlign: 'middle' }}>masqué</span>}
+                        <button
+                          onClick={e => { e.stopPropagation(); toggleMasque(r.bien_id) }}
+                          title={biensMasques.has(r.bien_id) ? 'Réafficher ce bien dans la vue mensuelle' : 'Masquer définitivement ce bien de la vue mensuelle'}
+                          style={{ marginLeft: 6, background: 'none', border: 'none', cursor: 'pointer', color: '#C5BAB0', fontSize: '0.85em', verticalAlign: 'middle' }}
+                        >
+                          {biensMasques.has(r.bien_id) ? '👁️' : '✕'}
+                        </button>
                         {r.bien_nom && <div style={{ fontSize: '0.85em', color: '#9C8E7D', maxWidth: 140, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{r.bien_nom}</div>}
                       </td>
                       <td style={td}>{r.proprietaire_nom || <span style={{ color: '#9C8E7D', fontStyle: 'italic' }}>—</span>}</td>
