@@ -1473,3 +1473,37 @@ Fix : nouveau `runSuffix()` (hhmmss du moment de génération) ajouté à tous l
 `EndToEndId` des 4 fonctions `genererSCT*` — chaque génération produit désormais des références
 uniques, même pour le même mois régénéré plusieurs fois. Le libellé `RmtInf`/`Ustrd` (ex. "LOYER
 LC 2026-07 MAITE") reste inchangé et continue de porter l'information de rapprochement lisible.
+
+## Fix session 17 août 2026 — `bien_toolbox` (Portail AE) jamais synchronisée avec `bien`
+
+Signalé par Oïhan : deux nouveaux biens créés côté Hospitable ("Ongi etorri" et "01 MFC", sync
+biens du jour → 2 créés / 68 mis à jour) n'apparaissaient pas dans la "Boîte à outils" du Portail AE
+(`bien_toolbox`, lue par `dcb-portail-ae` — `PageToolbox.jsx`, `PageInventaire.jsx`, `Messagerie.jsx`,
+`Portail.jsx`).
+
+**Cause racine** : `bien_toolbox` a été créée par import CSV unique (migration 098/099) et n'a
+**jamais été reliée automatiquement à `bien`** — ni trigger, ni cron, ni formulaire d'ajout dans le
+repo. 33 biens sur l'ensemble de la base n'avaient aucune ligne toolbox correspondante. Le matching
+existant côté portail AE (`Messagerie.jsx`) se fait par égalité textuelle `bien.code = bien_toolbox.nom_csv`
+(exacte puis préfixe `ILIKE`), donc un bien sans ligne toolbox ne résout jamais son nom dans cet écran.
+
+À noter, cas distinct : "01 MFC" a aussi `bien.listed = false` — confirmé réel côté Hospitable
+(`get-property` : `listed: false`), pas un bug de sync. C'est donc normal qu'il reste masqué partout
+où le portail AE filtre `eq('listed', true)` (missions, planning, etc.) jusqu'à publication effective
+sur les canaux — comportement volontaire, pas corrigé ici.
+
+**Fix** : trigger Postgres `sync_bien_toolbox()` sur `bien` (AFTER INSERT/UPDATE de `code`/`ville`,
+migration `242_sync_bien_toolbox_trigger.sql`) qui upsert automatiquement la ligne `bien_toolbox`
+correspondante (match par `bien_id` en priorité, fallback `nom_csv`). Backfill exécuté pour les 33
+biens orphelins. Voir I-130 dans `invariants.md`.
+
+**Fix complémentaire (même session)** : 4 biens restaient sans ligne toolbox car leur `bien.code`
+n'était pas unique — `extractCode()` (dupliqué dans `api/sync-biens.js` et `src/services/syncBiens.js`)
+prenait le premier mot de plus de 2 caractères sans filtrer les mots génériques d'annonce, donc
+"Villa Ederra"/"Villa Lorea"/"Villa Kostaldea" produisaient tous le code `VILLA`, et "Villa Maritxu"
+avait hérité du code `UNNAMED` d'une ancienne annonce Hospitable jamais renommée depuis (le sync ne
+met à jour `code` qu'à la création, jamais lors des updates suivants). Codes corrigés manuellement
+(`EDERRA`, `LOREA`, `KOSTALDEA`, `MARITXU`) → toolbox peuplée automatiquement par le trigger. Cause
+racine corrigée dans `extractCode()` (les deux fichiers) : ajout d'un `MOTS_GENERIQUES` (VILLA, MAISON,
+APPARTEMENT, STUDIO, CHALET, GITE, CHAMBRE — ce dernier documenté dans le docstring d'origine de
+`syncBiens.js` mais jamais implémenté) ignoré avant de choisir le premier mot significatif.

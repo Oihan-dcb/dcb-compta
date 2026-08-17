@@ -296,6 +296,13 @@ Aucun invariant actif violé à l'issue de la session du 12 avril 2026.
 
 | I-122 | **L'import Powens crée des doublons de mouvement_bancaire.** Powens (`Powens_seq_lc`) importe les mêmes transactions que le relevé CSV (`CaisseEpargne`) mais sans libellé (libellé vide). Résultat : pour chaque transaction réelle, deux entrées en base — une avec label (`CaisseEpargne`, rapprochée), une vide (`Powens_seq_lc`, en attente). **Constaté le 10/05/2026** : 63 doublons Powens identifiés (avril–mai 2026), supprimés manuellement. **Fix à implémenter dans l'import Powens** : avant insertion, vérifier qu'aucun MB de même `date_operation` et même `credit` n'existe déjà — si oui, ignorer l'entrée Powens. Contrainte de déduplication à ajouter : `UNIQUE (date_operation, credit, debit, canal)` ou dédoublonnage applicatif. | ❌ **Bug actif** — import Powens en cours de développement. Dédoublonnage absent. |
 
+### Invariants ajoutés (17 août 2026 — Fix sync bien_toolbox)
+
+| ID | Description | Statut |
+|---|---|---|
+| I-130 | **Toute création/modification de `bien.code` doit propager vers `bien_toolbox` (Portail AE).** `bien_toolbox` (créée par import CSV unique, migration 098/099) n'était reliée à `bien` par aucun mécanisme automatique — 33 biens sur l'ensemble de la base n'avaient aucune ligne toolbox, invisibles dans le Portail AE (`PageToolbox.jsx`, `Messagerie.jsx` qui matche par `bien.code = bien_toolbox.nom_csv`). Repéré via "Ongi etorri" et "01 MFC" créés le 17/08/2026, absents de la Boîte à outils. | ✅ Corrigé (session 17/08/2026) — trigger `sync_bien_toolbox()` sur `bien` (AFTER INSERT/UPDATE de `code`/`ville`), upsert par `bien_id` avec fallback `nom_csv`. Backfill des 33 biens orphelins. Migration `242_sync_bien_toolbox_trigger.sql`. |
+| I-131 | **`extractCode()` (sync Hospitable → `bien.code`) ne filtrait pas les mots génériques d'annonce, causant des collisions de code entre biens.** "Villa Ederra"/"Villa Lorea"/"Villa Kostaldea" produisaient tous le code `VILLA` (premier mot >2 caractères, sans filtre). "Villa Maritxu" avait le code `UNNAMED` hérité d'une ancienne annonce jamais renommée (le sync ne met à jour `code` qu'à la création). `bien_toolbox.nom_csv` étant `UNIQUE`, seul un bien par code peut avoir sa ligne toolbox — les 3 autres restaient invisibles dans le Portail AE. | ✅ Corrigé (session 17/08/2026) — codes réassignés manuellement (`EDERRA`, `LOREA`, `KOSTALDEA`, `MARITXU`). `extractCode()` corrigée dans `api/sync-biens.js` ET `src/services/syncBiens.js` (dupliquées) : nouveau filtre `MOTS_GENERIQUES` (VILLA, MAISON, APPARTEMENT, APPART, STUDIO, CHALET, GITE, CHAMBRE) avant de choisir le premier mot significatif. |
+
 ---
 
 *Fichier généré dans le cadre de l'audit structurel DCB Compta — mars 2026.*

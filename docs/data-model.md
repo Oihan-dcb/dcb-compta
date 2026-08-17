@@ -59,9 +59,11 @@ Référentiel central. Chaque ligne représente un logement géré par DCB ou La
 | `derniere_sync` | timestamptz | Date dernière synchronisation | |
 | `created_at` | timestamptz | | |
 
-**Relations** : `bien` → `proprietaire` (FK), `bien` ← `reservation` (FK), `bien` ← `ventilation` (FK)
+**Relations** : `bien` → `proprietaire` (FK), `bien` ← `reservation` (FK), `bien` ← `ventilation` (FK), `bien` ← `bien_toolbox` (FK `bien_id`, sync auto)
 
 **Champ critique** : `taux_commission_override` — priorité absolue sur `proprietaire.taux_commission`. Toute modification impacte immédiatement les prochaines ventilations de ce bien.
+
+**Trigger `sync_bien_toolbox()`** (migration 242, 17/08/2026) : à chaque INSERT/UPDATE de `code`/`ville`, upsert automatique de la ligne `bien_toolbox` correspondante (match par `bien_id`, fallback `nom_csv`). `bien_toolbox` (créée par import CSV, migrations 098/099) alimente la "Boîte à outils" du Portail AE (`dcb-portail-ae` — accès, codes, linge). Voir I-130 dans `invariants.md`.
 
 ---
 

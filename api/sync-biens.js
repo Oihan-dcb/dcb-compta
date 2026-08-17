@@ -69,12 +69,18 @@ function normalizeName(s) {
     .trim();
 }
 
+// Mots génériques d'annonce à ignorer : sinon "Villa Ederra", "Villa Lorea", "Villa
+// Kostaldea" produisent tous le même code "VILLA" (collision constatée 17/08/2026).
+const MOTS_GENERIQUES = new Set(['VILLA', 'MAISON', 'APPARTEMENT', 'APPART', 'STUDIO', 'CHALET', 'GITE', 'CHAMBRE']);
+
+
 function extractCode(name) {
   if (!name) return null;
   const numMatch = name.match(/^(\d+)/);
   if (numMatch) return numMatch[1];
   const words = name.split(/[\s\-–_"«»]+/);
-  const firstMeaningful = words.find(w => w.length > 2) || words[0];
+  const candidats = words.filter(w => w.length > 2 && !MOTS_GENERIQUES.has(w.toUpperCase()));
+  const firstMeaningful = candidats[0] || words.find(w => w.length > 2) || words[0];
   return firstMeaningful?.toUpperCase() || null;
 }
 

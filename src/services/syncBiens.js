@@ -159,6 +159,11 @@ export async function syncBiens() {
  * ex: 'CERES' → 'CERES'
  * ex: 'Chambre Pantxika - Maison Maïté' → 'PANTXIKA'
  */
+// Mots génériques d'annonce à ignorer : sinon "Villa Ederra", "Villa Lorea", "Villa
+// Kostaldea" produisent tous le même code "VILLA" (collision constatée 17/08/2026).
+// Documente aussi l'intention d'origine de ce docstring (skip "Chambre"), jamais implémentée.
+const MOTS_GENERIQUES = new Set(['VILLA', 'MAISON', 'APPARTEMENT', 'APPART', 'STUDIO', 'CHALET', 'GITE', 'CHAMBRE'])
+
 function extractCode(name) {
   if (!name) return null
 
@@ -166,9 +171,10 @@ function extractCode(name) {
   const numMatch = name.match(/^(\d+)/)
   if (numMatch) return numMatch[1]
 
-  // Prendre le premier mot en majuscules
+  // Prendre le premier mot significatif en majuscules, en ignorant les mots génériques
   const words = name.split(/[\s\-–_"«»]+/)
-  const firstMeaningful = words.find(w => w.length > 2) || words[0]
+  const candidats = words.filter(w => w.length > 2 && !MOTS_GENERIQUES.has(w.toUpperCase()))
+  const firstMeaningful = candidats[0] || words.find(w => w.length > 2) || words[0]
   return firstMeaningful?.toUpperCase() || null
 }
 
