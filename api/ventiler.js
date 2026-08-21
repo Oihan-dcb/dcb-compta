@@ -288,13 +288,17 @@ async function _detecterAjustements(resa, supa) {
 
 // ── Ecriture DB d'une réservation (port de calculerVentilationResa) ───────────
 
-async function _writeResa(resa, agence, supa) {
+// Harnais de non-régression (Étape 3, audit fusion des moteurs 21/08/2026) : shape minimale
+// retournée en dry_run pour comparaison avec ventilation-auto/index.ts et avec la base.
+const toComparable = (l) => ({ code: l.code, montant_ht: l.montant_ht, montant_tva: l.montant_tva, montant_ttc: l.montant_ttc })
+
+async function _writeResa(resa, agence, supa, dryRun = false) {
   // Verrou ajustement manuel : la ventilation de cette résa a été saisie à la main
   // (modal Réservations, migration 226) — ne JAMAIS l'écraser par un recalcul auto.
-  if (resa.ventilation_manuelle) return
+  if (resa.ventilation_manuelle) return null
   const bien = resa.bien
   if (!bien) throw new Error(`Bien manquant pour résa ${resa.code}`)
-  if ((bien.agence || agence) !== agence) return
+  if ((bien.agence || agence) !== agence) return null
 
   // Séjour propriétaire
   if (resa.owner_stay) {
@@ -303,17 +307,20 @@ async function _writeResa(resa, agence, supa) {
     const fmenTTC = Math.max(0, men - autoHT)
     const fmenHT  = Math.round(fmenTTC / (1 + TVA_RATE))
 
+    const lignesOwnerStay = []
+    if (fmenTTC > 0) lignesOwnerStay.push(ligneTVA('FMEN', 'Forfait ménage séjour propriétaire', fmenHT, bien, resa, null, fmenTTC))
+    // Ligne AUTO même à 0 (cf. règle provision_ae_ref absent = info manquante, pas coût nul)
+    if (men > 0) lignesOwnerStay.push(ligneHorsTVA('AUTO', 'Débours auto-entrepreneur', autoHT, bien, resa))
+
+    if (dryRun) return lignesOwnerStay.map(toComparable)
+
     const { data: existingAutoReel } = await supa.from('ventilation')
       .select('montant_reel').eq('reservation_id', resa.id).eq('code', 'AUTO').maybeSingle()
     const autoReel = existingAutoReel?.montant_reel ?? null
 
     await supa.from('ventilation').delete().eq('reservation_id', resa.id)
-    const lignes = []
-    if (fmenTTC > 0) lignes.push(ligneTVA('FMEN', 'Forfait ménage séjour propriétaire', fmenHT, bien, resa, null, fmenTTC))
-    // Ligne AUTO même à 0 (cf. règle provision_ae_ref absent = info manquante, pas coût nul)
-    if (men > 0) lignes.push(ligneHorsTVA('AUTO', 'Débours auto-entrepreneur', autoHT, bien, resa))
-    if (lignes.length > 0) {
-      const { error } = await supa.from('ventilation').insert(lignes)
+    if (lignesOwnerStay.length > 0) {
+      const { error } = await supa.from('ventilation').insert(lignesOwnerStay)
       if (error) throw error
     }
     if (autoReel !== null && men > 0)
@@ -324,26 +331,30 @@ async function _writeResa(resa, agence, supa) {
     if (ligneAuto?.id) {
       try { await supa.rpc('lier_ventilation_auto_mission', { p_reservation_id: resa.id, p_ventilation_id: ligneAuto.id }) } catch {}
     }
-    return
+    return lignesOwnerStay.map(toComparable)
   }
 
   // Annulée sans payout
   const isCancelled = STATUTS_NON_VENTILABLES.includes(resa.final_status)
   if (isCancelled && parseFloat(resa.fin_revenue || 0) === 0) {
-    await supa.from('ventilation').delete().eq('reservation_id', resa.id)
-    await supa.from('reservation').update({ ventilation_calculee: true }).eq('id', resa.id)
-    return
+    if (!dryRun) {
+      await supa.from('ventilation').delete().eq('reservation_id', resa.id)
+      await supa.from('reservation').update({ ventilation_calculee: true }).eq('id', resa.id)
+    }
+    return []
   }
 
   const revenue = resa.fin_revenue || 0
   if (revenue === 0) {
-    await supa.from('reservation').update({ ventilation_calculee: true }).eq('id', resa.id)
-    return
+    if (!dryRun) await supa.from('reservation').update({ ventilation_calculee: true }).eq('id', resa.id)
+    return null
   }
 
-  await _detecterAjustements(resa, supa)
+  if (!dryRun) await _detecterAjustements(resa, supa)
 
   const { lignes, fallbackAirbnb, isProlongation } = _calculerLignes(resa, agence)
+
+  if (dryRun) return lignes.map(toComparable)
 
   // Logs journal
   if (isProlongation) {
@@ -388,7 +399,7 @@ async function _writeResa(resa, agence, supa) {
     && lignes.every(l => existingKeySet.has(ligneKey(l.code, l.montant_ht, l.montant_tva, l.montant_ttc)))
   if (sameLignes) {
     await supa.from('reservation').update({ ventilation_calculee: true }).eq('id', resa.id)
-    return
+    return lignes.map(toComparable)
   }
 
   // Mission ménage sur prolongation
@@ -452,11 +463,13 @@ async function _writeResa(resa, agence, supa) {
   if (ligneAuto?.id) {
     try { await supa.rpc('lier_ventilation_auto_mission', { p_reservation_id: resa.id, p_ventilation_id: ligneAuto.id }) } catch {}
   }
+
+  return lignes.map(toComparable)
 }
 
 // ── Traitement mois complet (port de calculerVentilationMois) ─────────────────
 
-async function processMois(mois, agence, supa) {
+async function processMois(mois, agence, supa, dryRun = false) {
   // Verrou factures
   const { data: facturesVerrouillees } = await supa.from('facture_evoliz')
     .select('proprietaire_id').eq('mois', mois).eq('type_facture', 'honoraires')
@@ -474,7 +487,7 @@ async function processMois(mois, agence, supa) {
     .eq('ventilation_manuelle', false)
     .in('final_status', ['cancelled', 'not_accepted', 'not accepted', 'declined', 'expired'])
     .or('fin_revenue.is.null,fin_revenue.eq.0')
-  if (resasCancelleesIds?.length) {
+  if (resasCancelleesIds?.length && !dryRun) {
     await supa.from('ventilation').delete()
       .in('reservation_id', resasCancelleesIds.map(r => r.id))
   }
@@ -520,6 +533,10 @@ async function processMois(mois, agence, supa) {
 
   let total = 0, errors = 0, skipped = 0
   const errorDetails = []
+  // Harnais de non-régression (Étape 3, audit fusion des moteurs 21/08/2026) : en dry_run,
+  // collecte les lignes calculées par résa pour comparaison avec ventilation-auto/index.ts
+  // et avec ce qui est réellement en base — jamais peuplé hors dry_run.
+  const lignesParResa = []
 
   const resasFiltrees = (reservations || [])
     .filter(r => r.bien != null && (r.bien.agence || agence) === agence)
@@ -527,7 +544,8 @@ async function processMois(mois, agence, supa) {
   for (const resa of resasFiltrees) {
     if (proprietairesVerrouilles.has(resa.bien?.proprietaire_id)) { skipped++; continue }
     try {
-      await _writeResa(resa, agence, supa)
+      const lignesResa = await _writeResa(resa, agence, supa, dryRun)
+      if (dryRun) lignesParResa.push({ code: resa.code, lignes: lignesResa })
       total++
     } catch (err) {
       errorDetails.push({ code: resa.code, msg: err.message })
@@ -543,14 +561,16 @@ async function processMois(mois, agence, supa) {
       originalResaCode: (reservations || []).find(o => o.id === r.originalResaId)?.code || null,
     }))
 
-  supa.from('journal_ops').insert({
-    categorie: 'ventilation', action: 'compute', mois_comptable: mois,
-    statut: errors > 0 ? 'warning' : 'ok', source: 'app',
-    message: `Ventilation ${mois} : ${total} résa(s) calculée(s)${skipped > 0 ? ', ' + skipped + ' verrouillée(s)' : ''}${errors > 0 ? ', ' + errors + ' erreur(s)' : ''}${prolongations.length > 0 ? ', ' + prolongations.length + ' prolongation(s)' : ''}`,
-    meta: { total, skipped, errors, errorDetails, prolongations },
-  }).then(null, () => {})
+  if (!dryRun) {
+    supa.from('journal_ops').insert({
+      categorie: 'ventilation', action: 'compute', mois_comptable: mois,
+      statut: errors > 0 ? 'warning' : 'ok', source: 'app',
+      message: `Ventilation ${mois} : ${total} résa(s) calculée(s)${skipped > 0 ? ', ' + skipped + ' verrouillée(s)' : ''}${errors > 0 ? ', ' + errors + ' erreur(s)' : ''}${prolongations.length > 0 ? ', ' + prolongations.length + ' prolongation(s)' : ''}`,
+      meta: { total, skipped, errors, errorDetails, prolongations },
+    }).then(null, () => {})
+  }
 
-  return { total, skipped, errors, errorDetails, prolongations }
+  return { total, skipped, errors, errorDetails, prolongations, ...(dryRun ? { lignesParResa } : {}) }
 }
 
 // ── Handler ───────────────────────────────────────────────────────────────────
@@ -570,14 +590,15 @@ export default async function handler(req, res) {
   if (!token) return res.status(401).json({ error: 'Token manquant' })
   if (!(await verifyToken(token))) return res.status(401).json({ error: 'Non authentifié' })
 
-  const { mois, reservation_id, agence = 'dcb' } = req.body || {}
+  const { mois, reservation_id, agence = 'dcb', dry_run } = req.body || {}
+  const dryRun = dry_run === true
   const supa = createClient(SUPABASE_URL, SUPABASE_SRK)
 
   try {
     // ── Mode mois complet ──────────────────────────────────────────────────────
     if (mois) {
-      const result = await processMois(mois, agence, supa)
-      return res.json({ ok: true, ...result })
+      const result = await processMois(mois, agence, supa, dryRun)
+      return res.json({ ok: true, dry_run: dryRun, ...result })
     }
 
     // ── Mode réservation individuelle ─────────────────────────────────────────
@@ -596,8 +617,8 @@ export default async function handler(req, res) {
       if (fetchErr) throw fetchErr
       if (!resa) return res.status(404).json({ error: 'Réservation introuvable' })
 
-      await _writeResa(resa, agence, supa)
-      return res.json({ ok: true })
+      const lignesResa = await _writeResa(resa, agence, supa, dryRun)
+      return res.json({ ok: true, dry_run: dryRun, ...(dryRun ? { lignes: lignesResa } : {}) })
     }
 
     return res.status(400).json({ error: 'Paramètre manquant : mois ou reservation_id requis' })

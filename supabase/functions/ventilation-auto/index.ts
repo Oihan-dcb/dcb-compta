@@ -294,10 +294,19 @@ async function _detecterAjustements(resa: Resa, supa: ReturnType<typeof createCl
 
 // ── calculerVentilationResa (port avec supabase admin) ────────────────────────
 
-async function calculerVentilationResa(resa: Resa, supa: ReturnType<typeof createClient>, dryRun: boolean): Promise<void> {
+// Résultat de comparaison retourné par calculerVentilationResa — shape minimale (pas de
+// reservation_id/bien_id/libelle/mois_comptable) pour le harnais de non-régression (Étape 3,
+// audit fusion des moteurs 21/08/2026). `null` = aucune décision de ventilation prise pour
+// cette résa (cas revenue=0, ni owner_stay ni annulée) ; sinon tableau des lignes attendues,
+// éventuellement vide (ex. annulée sans payout).
+type LigneComparable = { code: string; montant_ht: number; montant_tva: number; montant_ttc: number }
+const toComparable = (l: LigneVentilation): LigneComparable =>
+  ({ code: l.code, montant_ht: l.montant_ht, montant_tva: l.montant_tva, montant_ttc: l.montant_ttc })
+
+async function calculerVentilationResa(resa: Resa, supa: ReturnType<typeof createClient>, dryRun: boolean): Promise<LigneComparable[] | null> {
   // Verrou ajustement manuel (migration 226) : ventilation saisie à la main dans le
   // modal Réservations — ne JAMAIS l'écraser par le recalcul nightly.
-  if ((resa as { ventilation_manuelle?: boolean }).ventilation_manuelle) return
+  if ((resa as { ventilation_manuelle?: boolean }).ventilation_manuelle) return null
 
   const bien = resa.bien!
 
@@ -309,21 +318,22 @@ async function calculerVentilationResa(resa: Resa, supa: ReturnType<typeof creat
     const fmenHT = Math.round(fmenTTC / (1 + TVA_RATE))
     const fmenTVA = fmenTTC - fmenHT
 
+    const lignesOwnerStay: LigneVentilation[] = []
+    if (fmenTTC > 0) lignesOwnerStay.push(ligneTVA('FMEN', 'Forfait ménage séjour propriétaire', fmenHT, bien, resa, null, fmenTTC))
+    // Ligne AUTO même à 0 (provision_ae_ref absent = info manquante, pas coût nul)
+    if (men > 0) lignesOwnerStay.push(ligneHorsTVA('AUTO', 'Débours auto-entrepreneur', autoHT, bien, resa))
+
     if (!dryRun) {
       const { data: existingAutoReel } = await supa.from('ventilation').select('montant_reel').eq('reservation_id', resa.id).eq('code', 'AUTO').maybeSingle()
       const autoReel = existingAutoReel?.montant_reel ?? null
       await supa.from('ventilation').delete().eq('reservation_id', resa.id)
-      const lignes: LigneVentilation[] = []
-      if (fmenTTC > 0) lignes.push(ligneTVA('FMEN', 'Forfait ménage séjour propriétaire', fmenHT, bien, resa, null, fmenTTC))
-      // Ligne AUTO même à 0 (provision_ae_ref absent = info manquante, pas coût nul)
-      if (men > 0) lignes.push(ligneHorsTVA('AUTO', 'Débours auto-entrepreneur', autoHT, bien, resa))
-      if (lignes.length > 0) { const { error } = await supa.from('ventilation').insert(lignes); if (error) throw error }
+      if (lignesOwnerStay.length > 0) { const { error } = await supa.from('ventilation').insert(lignesOwnerStay); if (error) throw error }
       if (autoReel !== null && men > 0) await supa.from('ventilation').update({ montant_reel: autoReel }).eq('reservation_id', resa.id).eq('code', 'AUTO')
       await supa.from('reservation').update({ ventilation_calculee: true }).eq('id', resa.id)
       const { data: ligneAuto } = await supa.from('ventilation').select('id').eq('reservation_id', resa.id).eq('code', 'AUTO').single()
       if (ligneAuto?.id) { try { await supa.rpc('lier_ventilation_auto_mission', { p_reservation_id: resa.id, p_ventilation_id: ligneAuto.id }) } catch {} }
     }
-    return
+    return lignesOwnerStay.map(toComparable)
   }
 
   // Annulée sans payout
@@ -333,20 +343,20 @@ async function calculerVentilationResa(resa: Resa, supa: ReturnType<typeof creat
       await supa.from('ventilation').delete().eq('reservation_id', resa.id)
       await supa.from('reservation').update({ ventilation_calculee: true }).eq('id', resa.id)
     }
-    return
+    return []
   }
 
   const revenue = resa.fin_revenue || 0
   if (revenue === 0) {
     if (!dryRun) await supa.from('reservation').update({ ventilation_calculee: true }).eq('id', resa.id)
-    return
+    return null
   }
 
   if (!dryRun) await _detecterAjustements(resa, supa)
 
   const { lignes, isProlongation } = _calculerLignes(resa)
 
-  if (dryRun) return
+  if (dryRun) return lignes.map(toComparable)
 
   // Sauvegarder montant_reel + mouvement_id avant suppression
   const { data: existingLines } = await supa.from('ventilation').select('id, code, montant_ht, montant_tva, montant_ttc, montant_reel, mouvement_id').eq('reservation_id', resa.id)
@@ -368,7 +378,7 @@ async function calculerVentilationResa(resa: Resa, supa: ReturnType<typeof creat
     && lignes.every(l => existingKeySet.has(ligneKey(l.code, l.montant_ht, l.montant_tva, l.montant_ttc)))
   if (sameLignes) {
     await supa.from('reservation').update({ ventilation_calculee: true }).eq('id', resa.id)
-    return
+    return lignes.map(toComparable)
   }
 
   // Migration mission_menage si prolongation
@@ -420,6 +430,8 @@ async function calculerVentilationResa(resa: Resa, supa: ReturnType<typeof creat
   // Lier mission_menage AUTO
   const { data: ligneAuto } = await supa.from('ventilation').select('id').eq('reservation_id', resa.id).eq('code', 'AUTO').single()
   if (ligneAuto?.id) { try { await supa.rpc('lier_ventilation_auto_mission', { p_reservation_id: resa.id, p_ventilation_id: ligneAuto.id }) } catch {} }
+
+  return lignes.map(toComparable)
 }
 
 // ── calculerVentilationMois ────────────────────────────────────────────────────
@@ -486,13 +498,18 @@ async function calculerVentilationMois(mois: string, agence: string, supa: Retur
 
   let total = 0, errors = 0, skipped = 0
   const errorDetails: { code: string; msg: string }[] = []
+  // Harnais de non-régression (Étape 3, audit fusion des moteurs 21/08/2026) : en dry_run,
+  // collecte les lignes calculées par résa pour comparaison avec api/ventiler.js et avec
+  // ce qui est réellement en base — jamais peuplé hors dry_run (poids inutile en prod).
+  const lignesParResa: { code: string; lignes: LigneComparable[] | null }[] = []
 
   for (const resa of resasFiltrees) {
     if (proprietairesVerrouilles.has(resa.bien?.proprietaire_id || '')) { skipped++; continue }
     // Injecter agence pour _calculerLignes
     ;(resa as unknown as { _agence: string })._agence = agence
     try {
-      await calculerVentilationResa(resa, supa, dryRun)
+      const lignesResa = await calculerVentilationResa(resa, supa, dryRun)
+      if (dryRun) lignesParResa.push({ code: resa.code, lignes: lignesResa })
       total++
     } catch (err) {
       errorDetails.push({ code: resa.code, msg: (err as Error).message })
@@ -513,7 +530,7 @@ async function calculerVentilationMois(mois: string, agence: string, supa: Retur
     } catch { /* logging ne doit jamais faire échouer le recalcul */ }
   }
 
-  return { mois, total, skipped, errors, errorDetails }
+  return { mois, total, skipped, errors, errorDetails, ...(dryRun ? { lignesParResa } : {}) }
 }
 
 // ── Handler principal ─────────────────────────────────────────────────────────
