@@ -550,10 +550,9 @@ export default function PageConfig() {
             )}
             <button onClick={lancerGlobalUpdate}
               disabled={true}
-              title="⛔ Désactivé — CF-C8 : logique dupliquée abandonnée. Utiliser Ventilation + Matching."
-              style={{ opacity: 0.4, cursor: 'not-allowed' }} disabled={globalRunning}
-              style={{ padding: '10px 20px', borderRadius: 8, border: 'none', background: globalRunning ? '#aaa' : 'var(--brand)', color: 'white', fontWeight: 700, fontSize: 14, cursor: globalRunning ? 'not-allowed' : 'pointer', display: 'flex', alignItems: 'center', gap: 8, minWidth: 120 }}>
-              {globalRunning ? <>⏳ En cours...</> : '⚡ Lancer'}
+              title="⛔ Désactivé — CF-C8 : logique dupliquée abandonnée (moteur V2 divergent, sans filtre agence). Utiliser Ventilation + Matching."
+              style={{ padding: '10px 20px', borderRadius: 8, border: 'none', background: '#aaa', color: 'white', fontWeight: 700, fontSize: 14, cursor: 'not-allowed', display: 'flex', alignItems: 'center', gap: 8, minWidth: 120, opacity: 0.4 }}>
+              ⛔ Désactivé
             </button>
           </div>
         </div>
