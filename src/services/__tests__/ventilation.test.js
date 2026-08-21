@@ -400,6 +400,65 @@ describe('HOST-X1IK1H — Direct LVH avec TAXE', () => {
 })
 
 // ─────────────────────────────────────────────────────────────────────────
+// DIRECT — skip_facturation (I-124) — bien perso du gérant (ex. LAGREOU/ASKIDA)
+// Mêmes données que HOST-X1IK1H mais bien.skip_facturation=true : HON=0, FMEN=0,
+// LOY = revenue - taxesTotal (100% reversé, taxe de séjour incluse).
+// Régression réelle du 03/08/2026 : ce fix n'existait que dans api/ventiler.js et
+// ventilation-auto/index.ts — absent de cette copie testée (donc invisible en CI),
+// et absent du SELECT mode résa unique de api/ventiler.js (corrigé le 21/08/2026).
+// ─────────────────────────────────────────────────────────────────────────
+describe('skip_facturation (I-124) — Direct, bien perso du gérant', () => {
+  const resa = {
+    id: 'test-skip-facturation',
+    code: 'HOST-SKIPFACT',
+    platform: 'direct',
+    fin_revenue: 28450,
+    fin_accommodation: 25000,
+    final_status: 'accepted',
+    owner_stay: false,
+    mois_comptable: '2026-03',
+    reservation_fee: [
+      { label: 'Host Service Fee', amount: -400, fee_type: 'host_fee' },
+      { label: 'Community Fee',    amount: 3500, fee_type: 'guest_fee' },
+      { label: 'City Tax',         amount:  350, fee_type: 'tax' },
+    ],
+    bien: makeBien({ skip_facturation: true }),
+  }
+
+  it('HON absente ou à 0 (skip_facturation)', () => {
+    const { lignes } = _calculerLignes(resa)
+    const hon = ligne(lignes, 'HON')
+    expect(hon === undefined || hon.montant_ttc === 0).toBe(true)
+  })
+
+  it('FMEN absente ou à 0 (skip_facturation)', () => {
+    const { lignes } = _calculerLignes(resa)
+    const fmen = ligne(lignes, 'FMEN')
+    expect(fmen === undefined || fmen.montant_ttc === 0).toBe(true)
+  })
+
+  it('LOY = 28100 (revenue - taxesTotal, 100% reversé)', () => {
+    const { lignes } = _calculerLignes(resa)
+    expect(ligne(lignes, 'LOY').montant_ttc).toBe(28100)
+  })
+
+  it('VIR = 28450 (LOY + TAXE = fin_revenue intégral)', () => {
+    const { lignes } = _calculerLignes(resa)
+    expect(ligne(lignes, 'VIR').montant_ttc).toBe(28450)
+  })
+
+  it('TAXE = 350 (inchangée par skip_facturation)', () => {
+    const { lignes } = _calculerLignes(resa)
+    expect(ligne(lignes, 'TAXE').montant_ttc).toBe(350)
+  })
+
+  it('MEN = 3500 (ménage brut voyageur toujours affiché, skip_facturation n\'affecte que HON/FMEN/LOY)', () => {
+    const { lignes } = _calculerLignes(resa)
+    expect(ligne(lignes, 'MEN').montant_ttc).toBe(3500)
+  })
+})
+
+// ─────────────────────────────────────────────────────────────────────────
 // BOOKING — 6027435808 (Abadie)
 // taxes remitted + non-remitted, LOY recalculé depuis fin_revenue net
 // ─────────────────────────────────────────────────────────────────────────

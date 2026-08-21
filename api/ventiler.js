@@ -587,7 +587,7 @@ export default async function handler(req, res) {
         bien (
           id, proprietaire_id,
           provision_ae_ref, forfait_dcb_ref, has_ae,
-          taux_commission_override, gestion_loyer, agence,
+          taux_commission_override, gestion_loyer, agence, skip_facturation,
           proprietaire!proprietaire_id (id, taux_commission)
         ),
         reservation_fee (*),
