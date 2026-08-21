@@ -627,3 +627,8 @@ export default async function handler(req, res) {
     return res.status(500).json({ error: err.message })
   }
 }
+
+// Exports nommés pour le harnais de non-régression (Étape 3, audit fusion des moteurs
+// 21/08/2026) — comparaison hors-serveur avec ventilation-auto/index.ts, jamais utilisés
+// par le handler Vercel lui-même (export default inchangé).
+export { processMois, _writeResa, _calculerLignes }
