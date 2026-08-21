@@ -70,10 +70,10 @@ export function agregerSejoursProrio(reservations) {
  * @param {object} resa — réservation avec bien, reservation_fee chargés
  * @returns {{ lignes: Array }} lignes de ventilation calculées
  */
-export function _calculerLignes(resa) {
+export function _calculerLignes(resa, agence = AGENCE) {
   const bien = resa.bien
   if (!bien) throw new Error(`Bien manquant pour résa ${resa.code}`)
-  if ((bien.agence || AGENCE) !== AGENCE) return { lignes: [] }
+  if ((bien.agence || agence) !== agence) return { lignes: [] }
 
   const revenue = resa.fin_revenue || 0
 

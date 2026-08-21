@@ -112,9 +112,9 @@ function ligneHorsTVA(code: string, libelle: string, montant: number, bien: Bien
 
 // ── Calcul pur (port de _calculerLignes) ─────────────────────────────────────
 
-function _calculerLignes(resa: Resa): { lignes: LigneVentilation[]; isProlongation: boolean; fallbackAirbnb: unknown } {
+function _calculerLignes(resa: Resa, agence: string): { lignes: LigneVentilation[]; isProlongation: boolean; fallbackAirbnb: unknown } {
   const bien = resa.bien!
-  if ((bien.agence || 'dcb') !== (resa as unknown as { _agence: string })._agence) return { lignes: [], isProlongation: false, fallbackAirbnb: null }
+  if ((bien.agence || agence) !== agence) return { lignes: [], isProlongation: false, fallbackAirbnb: null }
 
   const revenue = resa.fin_revenue || 0
   let fees: Fee[] = resa.reservation_fee || []
@@ -303,7 +303,7 @@ type LigneComparable = { code: string; montant_ht: number; montant_tva: number; 
 const toComparable = (l: LigneVentilation): LigneComparable =>
   ({ code: l.code, montant_ht: l.montant_ht, montant_tva: l.montant_tva, montant_ttc: l.montant_ttc })
 
-async function calculerVentilationResa(resa: Resa, supa: ReturnType<typeof createClient>, dryRun: boolean): Promise<LigneComparable[] | null> {
+async function calculerVentilationResa(resa: Resa, agence: string, supa: ReturnType<typeof createClient>, dryRun: boolean): Promise<LigneComparable[] | null> {
   // Verrou ajustement manuel (migration 226) : ventilation saisie à la main dans le
   // modal Réservations — ne JAMAIS l'écraser par le recalcul nightly.
   if ((resa as { ventilation_manuelle?: boolean }).ventilation_manuelle) return null
@@ -354,7 +354,7 @@ async function calculerVentilationResa(resa: Resa, supa: ReturnType<typeof creat
 
   if (!dryRun) await _detecterAjustements(resa, supa)
 
-  const { lignes, isProlongation } = _calculerLignes(resa)
+  const { lignes, isProlongation } = _calculerLignes(resa, agence)
 
   if (dryRun) return lignes.map(toComparable)
 
@@ -505,10 +505,8 @@ async function calculerVentilationMois(mois: string, agence: string, supa: Retur
 
   for (const resa of resasFiltrees) {
     if (proprietairesVerrouilles.has(resa.bien?.proprietaire_id || '')) { skipped++; continue }
-    // Injecter agence pour _calculerLignes
-    ;(resa as unknown as { _agence: string })._agence = agence
     try {
-      const lignesResa = await calculerVentilationResa(resa, supa, dryRun)
+      const lignesResa = await calculerVentilationResa(resa, agence, supa, dryRun)
       if (dryRun) lignesParResa.push({ code: resa.code, lignes: lignesResa })
       total++
     } catch (err) {
