@@ -517,8 +517,8 @@ Module validé dans l'UI mais sans effet comptable. Les prestations validées di
 
 | Logique dupliquée | Nombre de copies | Copies et localisation | État de synchronisation |
 |---|---|---|---|
-| `calculerVentilationResa` | 3 | ventilation.js (V1) / global-sync (V2) / hospitable-webhook (V3) | ❌ Non synchronisées — V2 cassée (NaN), V3 probablement inopérante |
-| Moteur de matching bancaire | 1 vivant + 1 inline mort | rapprochement.js (seul moteur atteignable côté client) / global-sync (copie inline, atteignable via le bouton Global Update non désactivé) | `matching.js` supprimé le 21/08/2026 (0 appelant confirmé par trace de build) — reste `global-sync` à neutraliser/supprimer |
+| `_calculerLignes` (calcul pur) | 1 (fusionné 21/08/2026) | `src/services/ventilationCore.js`, importé par `api/ventiler.js`, `ventilation-auto/index.ts` et `src/services/ventilation.js` | ✅ Fusionné — plus qu'un seul endroit où corriger une formule. Reste `global-sync` (copie inline V2, morte/divergente, code non supprimé) et `hospitable-webhook` (DELETE seulement, pas de calcul, protégé par `ventilation_manuelle` mais en 401 depuis 21/07) |
+| Moteur de matching bancaire | 1 vivant + 1 inline mort | rapprochement.js (seul moteur atteignable côté client) / global-sync (copie inline, atteignable via le bouton Global Update — réellement désactivé depuis le 21/08/2026, code pas supprimé) | `matching.js` supprimé le 21/08/2026 (0 appelant confirmé par trace de build) — reste `global-sync` à neutraliser/supprimer |
 | Génération liste mois all-time | 2 | PageConfig (lancerVentMatcher) / PageConfig (lancerGlobalUpdate) | ⚠ Identiques actuellement — risque si l'une évolue sans l'autre |
 
 **Règle à respecter avant toute modification d'une logique dupliquée** : identifier toutes les copies, évaluer l'impact de la correction sur chacune, et appliquer la correction dans toutes les copies concernées.

@@ -16,24 +16,32 @@ Les fichiers dans `docs/` sont la source de verite du projet. Lis-les avec `/ini
 | `docs/invariants.md` | Invariants systeme avec statut ✅/⚠/❌ |
 | `docs/source-of-truth.md` | Sources de donnees, priorites, comportements |
 
-## Regle critique — Ventilation : architecture 3 fichiers
+## Regle critique — Ventilation : noyau partage (depuis le 21/08/2026)
 
-La logique de ventilation est repartie ainsi :
+Le calcul pur (`_calculerLignes`, `ligneTVA`, `ligneHorsTVA`, `TVA_RATE`,
+`STATUTS_NON_VENTILABLES`) vit dans **un seul fichier** : `src/services/ventilationCore.js`
+— zero import (ni supabase, ni AGENCE), fonction pure, importee par les 3 points d'entree :
 
-- `api/ventiler.js` — Vercel API route (Node.js, service_role). Appelee par l'UI via POST.
-  Contient la logique complete : `_calculerLignes`, `_writeResa`, `processMois`.
+- `api/ventiler.js` — Vercel API route (Node.js, service_role). `import ... from
+  '../src/services/ventilationCore.js'` (meme pattern que `api/matching-auto.js` →
+  `src/services/rapprochement.js`). Contient le reste de la logique d'ecriture :
+  `_writeResa`, `processMois`.
 - `supabase/functions/ventilation-auto/index.ts` — Edge Function Deno (cron nightly 3h UTC).
-  Port independant avec les memes formules.
-- `src/services/ventilation.js` — Proxy client vers `/api/ventiler` + fonctions de lecture.
-  `_calculerLignes` reste presente pour les tests unitaires (fonction pure).
+  `import ... from '../../../src/services/ventilationCore.js'` — Deno importe le `.js` ESM
+  nativement, confirme par deploiement reel.
+- `src/services/ventilation.js` — `_calculerLignes` reexporte le noyau (avec
+  `agence = AGENCE` par defaut, pour les tests qui ne la passent jamais explicitement).
 
-**Toute modification de la logique metier dans `api/ventiler.js` DOIT etre repercutee
-dans `ventilation-auto/index.ts`** (memes formules, memes cas speciaux, meme ordre).
-Et vice-versa.
+**Avant ce commit, ces 3 fichiers etaient 3 copies manuelles a synchroniser a la main —
+cause racine des incidents I-123 (CITY_TAX corrige dans un seul des deux) et I-124
+(skip_facturation oublie dans une des 3 copies).** Desormais, modifier une formule dans
+`ventilationCore.js` la modifie pour les 3 moteurs a la fois — plus besoin (et plus
+possible) de synchroniser manuellement. Ne recree JAMAIS de copie locale de ces fonctions
+dans `api/ventiler.js` ou `ventilation-auto/index.ts`.
 
-Fonctions a synchroniser : `_calculerLignes`, `_writeResa`/`calculerVentilationResa`,
-`processMois`/`calculerVentilationMois`, helpers `ligneTVA` / `ligneHorsTVA`,
-constantes `STATUTS_NON_VENTILABLES` / `TVA_RATE`.
+Toute modification de `_calculerLignes` doit etre validee par un dry-run reel sur un mois
+deja cloture (voir `processMois`/`calculerVentilationMois` avec `dry_run: true`, qui
+retournent les lignes calculees par resa sans rien ecrire) avant deploiement.
 
 ## Regle obligatoire — Mise a jour docs/
 Apres chaque fix ou feature significatif, mets a jour le(s) fichier(s) docs/ concerne(s) :

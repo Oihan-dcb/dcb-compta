@@ -350,11 +350,25 @@ Certaines opérations **ne peuvent pas être relancées en toute sécurité** sa
 
 Ces trois points sont des incohérences structurelles qui affectent la fiabilité globale du système.
 
-### [CRITIQUE 1] ✅ Ventilation dupliquée — V2 alignée (session 07/04/2026)
-La logique de ventilation existe dans trois fichiers distincts. V2 est maintenant alignée avec V1.
-- V1 `src/services/ventilation.js` — référence
-- V2 `supabase/functions/global-sync/index.ts` — ✅ alignée avec V1 : commissionableBase unifiée, ownerFees Direct, LOY Direct, menLabelsToExclude + resort fee, FK ON DELETE SET NULL
-- V3 `supabase/functions/hospitable-webhook/index.ts` — toujours non auditée (appelle probablement RPC inexistante)
+### [CRITIQUE 1] ✅ Ventilation fusionnée en un noyau partagé (21/08/2026)
+Le calcul (`_calculerLignes`, `ligneTVA`, `ligneHorsTVA`, `TVA_RATE`, `STATUTS_NON_VENTILABLES`)
+vit désormais dans un seul fichier, `src/services/ventilationCore.js` (fonction pure, zéro
+import), importé par les 3 points d'entrée réels :
+- `api/ventiler.js` (Vercel, appelé par l'UI) et `supabase/functions/ventilation-auto/index.ts`
+  (Deno, cron nightly) — avant ce commit, 2 copies manuelles synchronisées à la main, cause
+  racine de I-123 (CITY_TAX corrigé dans un seul des deux) et I-124 (skip_facturation oublié
+  dans une des copies). Validé identique au centime par dry-run réel sur juin 2026 (mois
+  clôturé) avant et après extraction.
+- `src/services/ventilation.js` — réexporte le noyau, ne fait plus de proxy vers `/api/ventiler`
+  que pour les fonctions d'écriture (`calculerVentilationMois`/`calculerVentilationResa`).
+
+**Reste hors périmètre de cette fusion, encore dupliqué/mort** :
+- `supabase/functions/global-sync/index.ts` — copie inline V2 de la ventilation, divergente
+  (voir architecture-map.md), atteignable via le bouton "Mise à jour globale" de PageConfig —
+  désormais réellement désactivé (fix bug JSX 21/08/2026) mais le code n'est pas supprimé.
+- `supabase/functions/hospitable-webhook/index.ts` — ne recalcule pas la ventilation (2 sites de
+  DELETE seulement, protégés par `ventilation_manuelle` depuis I-127), en 401 depuis le 21/07/2026
+  (`verify_jwt` sans `config.toml` versionné) — non résolu.
 
 ### [CRITIQUE 2] ✅ Matching unifié (CF-C3)
 - `src/services/matching.js` — supprimé le 21/08/2026 : 0 appelant confirmé (statique, dynamique, tests, CI,
