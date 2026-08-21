@@ -357,9 +357,14 @@ La logique de ventilation existe dans trois fichiers distincts. V2 est maintenan
 - V3 `supabase/functions/hospitable-webhook/index.ts` — toujours non auditée (appelle probablement RPC inexistante)
 
 ### [CRITIQUE 2] ✅ Matching unifié (CF-C3)
-- `src/services/matching.js` — conservé pour les exports non-matching (`marquerNonRapprochable`, etc.)
+- `src/services/matching.js` — supprimé le 21/08/2026 : 0 appelant confirmé (statique, dynamique, tests, CI,
+  autres repos DCB) par grep exhaustif + trace de build (absent du bundle Vite et du bundle Vercel).
+  Les exports censés être encore utiles (`marquerNonRapprochable`, `getPayoutsMois`, `getMatchingStats`,
+  `validerMatchManuelResas`, `validerMatchManuellement`) avaient en réalité 0 importeur — `PageRapprochement.jsx`
+  utilise `marquerNonIdentifie` de `rapprochement.js` (nom voisin, fonction différente), pas celui de `matching.js`.
 - `src/services/rapprochement.js` — moteur de référence, utilisé par PageConfig et PageMatching depuis CF-C3
-- `global-sync` — contient toujours sa copie inline (non corrigée)
+- `global-sync` — contient toujours sa copie inline (non corrigée), atteignable via le bouton Global Update
+  de PageConfig (jamais réellement désactivé malgré CF-C8, cf. invariants.md I-01)
 
 ### [CRITIQUE 3] Prestations hors forfait — partiellement intégrées
 `deduction_loy`, `haowner`, `debours_proprio` : intégrés dans la facturation ✅. `dcb_direct` : log interne par conception ✅. **Reste** : code EXTRA dans `ventilation.js` non implémenté — les prestations validées ne produisent pas d'écriture dans la ventilation.

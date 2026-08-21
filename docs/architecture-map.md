@@ -266,8 +266,9 @@ Nav "Config" → dropdown avec 4 entrées : Import CSV, Journal, AEs, Paramètre
 
 PageConfig.jsx
   → ventilation.js (V1)   calculerVentilationMois — all-time depuis 2022
-  → matching.js (ANCIEN)  lancerMatching — [⚠ moteur différent de PageRapprochement]
-  → rapprochement.js      resetEtRematcher — depuis 2025 seulement
+  → rapprochement.js      lancerMatchingAuto (bouton Matching) + resetEtRematcher — depuis 2025
+    (matching.js supprimé le 21/08/2026 — code mort depuis CF-C3 le 18/03/2026, PageConfig
+    utilise déjà rapprochement.js pour les deux boutons)
   → syncProprietaires.js  → evoliz-proxy
   → evoliz.js             → evoliz-proxy (pingEvoliz, getPaytermsEvoliz)
   → global-sync (Edge Function) :
@@ -314,13 +315,13 @@ dcb-portail-ae (React, repo privé)
 
 | Table | Créée par | Modifiée par | Lue par |
 |---|---|---|---|
-| `bien` | syncBiens / hospitable-webhook | PageBiens (inline) | ventilation.js, syncReservations, rapprochement.js, matching.js, importCSV.js |
+| `bien` | syncBiens / hospitable-webhook | PageBiens (inline) | ventilation.js, syncReservations, rapprochement.js, importCSV.js |
 | `proprietaire` | syncProprietaires (Evoliz) | evoliz.js (id_evoliz) | facturesEvoliz.js, getProprietaires |
 | `reservation` | syncReservations / importCSV / webhook | ventilation.js, useOwnerStay, matching | getReservationsMois, facturesEvoliz, rapprochement |
 | `reservation_fee` | syncReservations / importCSV / webhook | (DELETE+INSERT à chaque sync) | ventilation.js (calculs fees) |
 | `ventilation` | ventilation.js V1 / global-sync V2 / webhook V3 | Portail AE (montant_reel), rapprochement (mouvement_id) | facturesEvoliz (codes), getRecapVentilation, rapprochement |
 | `mouvement_bancaire` | importBanque / importBooking | rapprochement (statut), importBooking (statut+detail) | PageBanque, PageRapprochement, matching |
-| `payout_hospitable` | syncReservations (Airbnb synthétique) / global-sync (schéma divergent) | rapprochement (mouvement_id) | matching.js, rapprochement.js, lancerMatchingAuto |
+| `payout_hospitable` | syncReservations (Airbnb synthétique) / global-sync (schéma divergent) | rapprochement (mouvement_id) | rapprochement.js, lancerMatchingAuto |
 | `payout_reservation` | syncReservations / global-sync | fusionnerDoublons (❌ non migré) | rapprochement.js (liens payout↔résa) |
 | `reservation_paiement` | rapprochement._lier / importBooking / importStripe | annulerRapprochement (DELETE) | getMouvementsMois (enrichissement), exportCSV |
 | `booking_payout_line` | importBooking.js | (aucune mise à jour après insertion) | rapprochement.js (enrichissement passe 3) |
@@ -440,7 +441,7 @@ Chaque action utilisateur déclenche une chaîne précise de fonctions et d'effe
 | ✓ Valider facture | PageFactures | `facturesEvoliz.js` → `validerFacture` | `facture_evoliz` (statut=valide) | Silencieux si statut ≠ brouillon (CF-F6) |
 | → Pousser vers Evoliz | PageFactures | `evoliz.js` → `pousserFacturesMoisVersEvoliz` | `facture_evoliz` (id_evoliz, statut=envoyee), `proprietaire` (id_evoliz) | ⚠ IRRÉVERSIBLE côté Evoliz — doublon si Supabase update échoue (CF-F2) |
 | ⚡ Global Update | PageConfig | `global-sync` Edge Function (chunks 3 mois) | `bien`, `reservation`, `reservation_fee`, `payout_hospitable`, `ventilation` | ⚠ Produit des NaN (CF-C2) — schéma payout divergent (CF-C4) — non idempotent |
-| ⚡ Ventilation+Matching all-time | PageConfig | `ventilation.js` V1 + `matching.js` (ANCIEN) | `ventilation`, `mouvement_bancaire`, `reservation` | Moteur matching différent de PageRapprochement (⚠ CF-C3) |
+| ⚡ Ventilation+Matching all-time | PageConfig | `ventilation.js` V1 (proxy `/api/ventiler`) + `rapprochement.js` → `lancerMatchingAuto` | `ventilation`, `mouvement_bancaire`, `reservation` | Depuis `66c0869` (CF-C3, 18/03/2026) le matching de ce bouton est déjà le même moteur que PageRapprochement — `matching.js` (ANCIEN) était du code mort, supprimé le 21/08/2026 |
 | ⚡ Re-matching complet | PageConfig | `rapprochement.js` → `resetEtRematcher` | `ventilation`, `reservation`, `payout_hospitable`, `mouvement_bancaire` | Depuis 2025 seulement — écrase les rapprochements manuels |
 | + Créer accès AE | PageAEs | `create-ae-user` Edge Function | `auto_entrepreneur` (ae_user_id, mdp_temporaire) | ✅ mdp_temporaire sauvegardé (code path ✅, audit 30 mars) |
 | 🔑 Reset mdp | PageAEs | `reset-ae-password` Edge Function | `auto_entrepreneur` (mdp_temporaire) | ✅ Edge Function existe — sauvegarde mdp_temporaire (code path ✅, audit 30 mars) |
@@ -517,7 +518,7 @@ Module validé dans l'UI mais sans effet comptable. Les prestations validées di
 | Logique dupliquée | Nombre de copies | Copies et localisation | État de synchronisation |
 |---|---|---|---|
 | `calculerVentilationResa` | 3 | ventilation.js (V1) / global-sync (V2) / hospitable-webhook (V3) | ❌ Non synchronisées — V2 cassée (NaN), V3 probablement inopérante |
-| Moteur de matching bancaire | 2 + 1 inline | matching.js / rapprochement.js / global-sync | ❌ Non synchronisées — logiques différentes, résultats divergents |
+| Moteur de matching bancaire | 1 vivant + 1 inline mort | rapprochement.js (seul moteur atteignable côté client) / global-sync (copie inline, atteignable via le bouton Global Update non désactivé) | `matching.js` supprimé le 21/08/2026 (0 appelant confirmé par trace de build) — reste `global-sync` à neutraliser/supprimer |
 | Génération liste mois all-time | 2 | PageConfig (lancerVentMatcher) / PageConfig (lancerGlobalUpdate) | ⚠ Identiques actuellement — risque si l'une évolue sans l'autre |
 
 **Règle à respecter avant toute modification d'une logique dupliquée** : identifier toutes les copies, évaluer l'impact de la correction sur chacune, et appliquer la correction dans toutes les copies concernées.

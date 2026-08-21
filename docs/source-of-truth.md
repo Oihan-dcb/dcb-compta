@@ -162,13 +162,12 @@ GROUP BY bien_id;
 |---|---|---|
 | Matching automatique | `rapprochement.js` → `lancerMatchingAuto` | Via `payout_hospitable` → `payout_reservation` → `reservation` |
 | Matching manuel | `rapprochement.js` → `matcherManuellement` | Sélection directe par l'utilisateur |
-| Matching all-time (Config) | `matching.js` (ANCIEN moteur) | Logique différente — résultats inconsistants |
+| Matching all-time (Config) | `rapprochement.js` → `lancerMatchingAuto` | Depuis CF-C3 (18/03/2026), même moteur que PageRapprochement — `matching.js` était du code mort, supprimé le 21/08/2026 |
 | Annulation | `rapprochement.js` → `annulerRapprochement` | Nettoyage partiel (stripe/booking_payout_line non nettoyés) |
 
 **Source de vérité finale** : `ventilation.mouvement_id` — champ primaire. `reservation.rapprochee` et `payout_hospitable.mouvement_id` sont des dérivés mis à jour en même temps.
 
 **Conflits actifs** :
-- ⚠ `matching.js` (Config) et `rapprochement.js` (PageRapprochement) produisent des résultats différents pour le même mois (CF-C3).
 - ⚠ `ventilation.mouvement_id` reste renseigné si le mouvement est supprimé sans passer par `annulerRapprochement` — orphelin définitif (CF-BQ1).
 - ⚠ `reservation.rapprochee` reste `true` si le mouvement est supprimé brutalement — la réservation disparaît des alertes de rapprochement.
 
