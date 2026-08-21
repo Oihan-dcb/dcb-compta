@@ -431,8 +431,12 @@ async function calculerVentilationMois(mois: string, agence: string, supa: Retur
   const proprietairesVerrouilles = new Set((facturesVerrouillees || []).map((f: { proprietaire_id: string }) => f.proprietaire_id).filter(Boolean))
 
   // Supprimer ventilations orphelines
+  // ventilation_manuelle=false obligatoire : une ligne verrouillée manuellement (saisie humaine,
+  // ex. COM sur annulation avec paiement partiellement conservé) ne doit jamais être effacée par
+  // ce nettoyage automatique (cf. incident HOST-EIEADC/408P, 06/08/2026, I-127).
   const { data: resasCancelleesIds } = await supa.from('reservation').select('id')
     .eq('mois_comptable', mois)
+    .eq('ventilation_manuelle', false)
     .in('final_status', ['cancelled', 'not_accepted', 'not accepted', 'declined', 'expired'])
     .or('fin_revenue.is.null,fin_revenue.eq.0')
   if (resasCancelleesIds?.length && !dryRun) {
