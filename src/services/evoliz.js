@@ -210,6 +210,23 @@ async function cloturerBiensFacture(facture) {
   }
 }
 
+// Clôture de la commission (COM) d'un mois — verrou global (cloture_comptable, pas cloture_bien
+// puisque la facture COM n'est rattachée à aucun bien). Posé dès l'envoi à Evoliz, avant même la
+// validation manuelle du brouillon côté Evoliz : au-delà de ce point, toute ligne COM du mois
+// doit rester identique à ce qui a été facturé (trg_fige_cloture_com, migration
+// cloture_com_globale_trigger). Best-effort, comme cloturerBiensFacture : n'interrompt jamais le
+// push si l'écriture du verrou échoue.
+async function cloturerCOM(mois, agence) {
+  try {
+    const { error } = await supabase.from('cloture_comptable')
+      .upsert({ mois, agence, cloture_facturat: new Date().toISOString(), cloture_by: 'evoliz_push' },
+              { onConflict: 'mois,agence' })
+    if (error) console.error('[cloturerCOM] upsert', error.message)
+  } catch (e) {
+    console.error('[cloturerCOM]', e?.message || e)
+  }
+}
+
 export async function creerFactureEvoliz(facture) {
   // CF-F2 niveau 1 - guard idempotence : ne pas recreer si deja envoye vers Evoliz
   if (facture.id_evoliz) {
@@ -601,6 +618,10 @@ export async function pousserFactureCOMVersEvoliz(factureId, totals, mois) {
       id_evoliz: String(invoiceId),
       date_emission: dateEmission,
     }).eq('id', factureId)
+
+    // Verrou COM : au-delà de cet envoi, les lignes ventilation code=COM de ce mois sont figées
+    // (trg_fige_cloture_com) — la facture COM est désormais la source de vérité.
+    await cloturerCOM(mois, AGENCE)
 
     return { invoiceId }
   } catch (err) {
