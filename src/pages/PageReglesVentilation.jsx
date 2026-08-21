@@ -476,9 +476,9 @@ Par mois :
               </thead>
               <tbody>
                 {[
-                  ['V1 — Référence', 'src/services/ventilation.js', 'Bouton UI ⚡ (PageRapports, ModalResa)', '✅ Source de vérité'],
-                  ['V2 — Cron serveur', 'supabase/functions/ventilation-auto/index.ts', 'pg_cron 3h UTC + webhook reservation.created', '✅ Alignée V1 (07/04/2026)'],
-                  ['V3 — Webhook legacy', 'supabase/functions/global-sync/index.ts', 'Bouton "Global Update" (désactivé)', '❌ Abandonné — CF-C8'],
+                  ['Noyau partagé', 'src/services/ventilationCore.js', '—', '✅ Source de vérité unique (fusionné 21/08/2026)'],
+                  ['Point d\'entrée UI', 'api/ventiler.js (Vercel)', 'Bouton UI ⚡ (PageRapports, ModalResa) via /api/ventiler', '✅ Importe le noyau'],
+                  ['Point d\'entrée cron', 'supabase/functions/ventilation-auto/index.ts', 'pg_cron 3h UTC + webhook reservation.created', '✅ Importe le noyau'],
                 ].map(([v, f, d, s]) => (
                   <tr key={v}>
                     <td style={{ ...S.td, fontWeight: 600 }}>{v}</td>
