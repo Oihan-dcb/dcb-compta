@@ -1,5 +1,5 @@
 import { AGENCE } from '../lib/agence'
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { getAutoEntrepreneurs, saveAutoEntrepreneur, deleteAutoEntrepreneur, createAEWithAuth, createAEAccess, resetAEPassword } from '../services/autoEntrepreneurs'
 import { supabase } from '../lib/supabase'
 import { authPost } from '../lib/authFetch'
@@ -63,6 +63,18 @@ export default function PageAutoEntrepreneurs() {
   const [savingGroup, setSavingGroup] = useState(false)
   // Multi-groupes : Set de group_id sélectionnés pour l'AE en cours d'édition
   const [selectedGroups, setSelectedGroups] = useState(new Set())
+
+  // Deep-link ?ae=<id> (ouvert depuis PowerHouse, panneau lecture seule → "modifier la fiche
+  // complète") : ouvre directement la fiche une fois les AE chargés, une seule fois.
+  const deepLinkDoneRef = useRef(false)
+  useEffect(() => {
+    if (deepLinkDoneRef.current || !aes.length) return
+    const targetId = new URLSearchParams(window.location.search).get('ae')
+    if (!targetId) return
+    deepLinkDoneRef.current = true
+    const target = aes.find(a => a.id === targetId)
+    if (target) { setTab('aes'); ouvrir(target) }
+  }, [aes])
 
   useEffect(() => {
     charger(true)  // autoSync au chargement
