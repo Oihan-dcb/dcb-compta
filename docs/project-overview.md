@@ -1551,3 +1551,16 @@ physique disponible — la vidéo « après ménage » que l'AE envoie dans la m
   faisabilité » à un voyageur alors que le logement était prêt.
 - **`dcb-planning/src/app.jsx`** — badge « 🟢 Prêt » sur le dashboard manager (cartes « 🕐
   Aujourd'hui » et « 🔄 Rotations aujourd'hui ») et dans la grille hebdomadaire par bien.
+
+## Fix session 22 août 2026 — archiver l'alerte "solde par virement en attente" sans la confondre avec le rapprochement
+
+Demande d'Oïhan sur le bloc "💸 Soldes par virement — en attente" de PowerHouse (`app.jsx`,
+onglet Contrats) : pouvoir masquer une alerte relance sans avoir à cocher "le client a payé".
+
+Ajout de `rental_contracts.solde_alerte_masquee_at` (timestamptz, nullable), volontairement
+**distinct** de `solde_confirme_at` — ce dernier reste réservé au signal "le client a confirmé
+le virement", utilisé pour le rapprochement comptable (bucket "✓ confirmé(s) à rapprocher" du
+même bloc). Confondre les deux aurait fait disparaître un solde réellement dû du radar
+comptable sur un simple clic "j'ai vu l'alerte" — cf. doctrine [[feedback_fix_root_not_patch]]
+et le glossaire VIR (§17 domain-rules.md) : ne jamais réutiliser un champ financier pour un
+usage UI qui n'a rien à voir.
