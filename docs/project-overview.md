@@ -1578,3 +1578,20 @@ Au passage, vérification en base des valeurs réelles de `auto_entrepreneur.typ
 des staff DCB s'affichait dans l'export de débours, alors que l'intention (masquer, comme pour les
 AE) n'a jamais été respectée depuis l'écriture de ce fichier. Corrigé en `=== 'staff'`. Voir I-136
 (`invariants.md`).
+
+## Fix session 22 août 2026 — trigger d'audit sur les champs classe C de `auto_entrepreneur`
+
+Phase 3 de la centralisation staff (suite du fix ci-dessus). Migration
+`20260822173305_auto_entrepreneur_classe_c_audit_log.sql` : trigger `BEFORE UPDATE`
+(`trg_log_auto_entrepreneur_classe_c_change`) qui journalise dans `journal_ops` toute
+modification d'un champ classe C (`taux_horaire`, `iban`, `type`, `actif`, etc.) par un compte
+bureau — utile pour vérifier après coup qui a changé quoi.
+
+Découverte importante en creusant le sujet : un trigger de BLOCAGE existe déjà sur cette table
+(`trg_check_ae_self_update_scope`, migration `fix_ae_privilege_escalation_and_bureau_bucket` du
+21/08/2026, chantier RLS indépendant) — il empêche un AE de modifier ses propres champs
+sensibles via son compte self-service. Mais il n'y a **aucun moyen** de bloquer par colonne
+spécifiquement pour un compte bureau selon l'app cliente (dcb-compta vs PowerHouse) : les deux
+apps authentifient le même compte avec le même rôle, la base ne voit qu'un rôle. D'où le choix
+délibéré d'un trigger d'audit (traçabilité) plutôt qu'un blocage qui casserait l'écran d'admin
+de dcb-compta lui-même. Voir I-137 (`invariants.md`) et `docs/staff-data-ownership.md`.

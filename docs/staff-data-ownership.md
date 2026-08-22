@@ -50,6 +50,22 @@ Création d'un staff, désactivation, création d'un accès auth, reset de mot d
 (`src/services/autoEntrepreneurs.js`, `src/pages/PageAutoEntrepreneurs.jsx`). Actes rares,
 sensibles, jamais dupliqués ailleurs.
 
+## Garde-fou en base — ce qu'il peut et ne peut pas faire
+
+Un trigger `BEFORE UPDATE` (`trg_log_auto_entrepreneur_classe_c_change`) journalise dans
+`journal_ops` toute modification d'un champ classe C par un compte **bureau** (staff_users,
+gérant/assistante/acces_admin) — traçabilité, pas blocage. Il ne peut **pas** distinguer une
+écriture légitime (dcb-compta) d'une écriture depuis PowerHouse : les deux apps authentifient le
+même compte avec le même rôle, la base ne voit qu'un rôle, jamais une app cliente. Bloquer par
+colonne pour tout compte bureau casserait l'écran d'admin complet de dcb-compta lui-même — voir
+I-137 (`invariants.md`). La vraie protection contre une future extension malencontreuse de
+PowerHouse reste donc **le code** (`STAFF_EDITABLE_FIELDS` dans `dcb-planning/src/app.jsx`).
+
+Le risque inverse (un AE qui élève ses propres privilèges via son compte self-service) est lui
+bloqué en dur — voir `trg_check_ae_self_update_scope` (migration
+`fix_ae_privilege_escalation_and_bureau_bucket`, 21/08/2026, indépendante de ce chantier) :
+seuls `memo_perso`/`notification_prefs`/`ical_perso` sont éditables par un AE sur sa propre fiche.
+
 ## Historique
 
 - 22/08/2026 — Document créé suite à une demande d'Oïhan de centraliser la gestion staff
@@ -57,3 +73,7 @@ sensibles, jamais dupliqués ailleurs.
   role-based), ce qui manquait était cette carte de propriété. Plan en phases dans la mémoire de
   session `project_powerhouse_audit_ux_2026-08` (PowerHouse). Fix associé : `exportAutoDebours.js`
   testait `type === 'staff_dcb'` (valeur inexistante en base) au lieu de `'staff'` — voir I-136.
+- 22/08/2026 — Phase 1 (panneau lecture seule PowerHouse) et Phase 2 (édition
+  téléphone/note/agences/navette depuis PowerHouse, liste blanche `STAFF_EDITABLE_FIELDS`)
+  déployées. Phase 3 (trigger d'audit `trg_log_auto_entrepreneur_classe_c_change`) appliquée —
+  voir I-137 pour la limite structurelle découverte (pas de blocage possible par app).
