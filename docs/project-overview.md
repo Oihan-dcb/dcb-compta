@@ -1564,3 +1564,17 @@ même bloc). Confondre les deux aurait fait disparaître un solde réellement d�
 comptable sur un simple clic "j'ai vu l'alerte" — cf. doctrine [[feedback_fix_root_not_patch]]
 et le glossaire VIR (§17 domain-rules.md) : ne jamais réutiliser un champ financier pour un
 usage UI qui n'a rien à voir.
+
+## Fix session 22 août 2026 — `exportAutoDebours.js` masquait mal le taux horaire des staff DCB
+
+Suite à une demande d'Oïhan de centraliser la gestion staff cross-app (dcb-compta/PowerHouse),
+consultation d'architecture (Opus) : la centralisation DB existe déjà (RLS role-based sur
+`auto_entrepreneur`, 3 apps consommatrices), ce qui manquait était une carte de propriété des
+champs — voir `docs/staff-data-ownership.md` (nouveau) et §18 de `domain-rules.md`.
+
+Au passage, vérification en base des valeurs réelles de `auto_entrepreneur.type` (`ae`, `staff`,
+`gerant`, `assistante`) a révélé que `exportAutoDebours.js` testait `ae?.type === 'staff_dcb'`
+(lignes 76 et 228) — valeur inexistante, condition toujours fausse. Conséquence : le taux horaire
+des staff DCB s'affichait dans l'export de débours, alors que l'intention (masquer, comme pour les
+AE) n'a jamais été respectée depuis l'écriture de ce fichier. Corrigé en `=== 'staff'`. Voir I-136
+(`invariants.md`).

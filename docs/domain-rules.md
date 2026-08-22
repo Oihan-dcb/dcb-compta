@@ -834,5 +834,21 @@ sans breakdown standard Hospitable, cf. invariant I-124).
 
 *Ajout session 10 mai 2026 — suite à ambiguïté constatée dans SequestreCloture. Noms officiels validés par Oïhan.*
 
+---
+
+## 18. Propriété des champs `auto_entrepreneur` (staff/AE) cross-app
+
+Voir `docs/staff-data-ownership.md` pour la carte complète. Résumé : la table `auto_entrepreneur`
+est déjà partagée par 3 apps (dcb-compta, PowerHouse, dcb-portail-ae) avec RLS role-based — ce
+document ne porte pas sur l'accès mais sur **qui a le droit d'écrire quel champ**. Règle : un champ
+= un propriétaire d'écriture. `type` et `actif` pilotent directement facturation/débours/rapports
+propriétaires (`buildComptaMensuelle.js`, `facturesEvoliz.js`, `buildRapportData.js`,
+`exportAutoDebours.js`) — jamais éditables hors dcb-compta, même depuis une future extension
+PowerHouse. Cf. incident `staff_dcb` (I-136, `invariants.md`) qui a motivé ce document.
+
+*Ajout session 22 août 2026 — suite à une demande de centralisation cross-app de la gestion staff.*
+
+---
+
 *Fichier généré dans le cadre de l'audit structurel DCB Compta — mars 2026.*
 *Mis à jour avril 2026 — ne pas modifier sans relecture de `src/services/ventilation.js` V1, `src/services/facturesEvoliz.js`, `src/services/buildRapportData.js` et `src/pages/PageFactures.jsx`.*

@@ -317,6 +317,12 @@ Aucun invariant actif violé à l'issue de la session du 12 avril 2026.
 | I-134 | **Absence de ligne `bien_pret_jour` = « pas prêt », jamais « inconnu / probablement OK ».** Tout consommateur du statut (bot IA voyageurs, badge PowerHouse, réception) doit rester prudent par défaut : on ne promet une arrivée anticipée, ni n'affiche « 🟢 Prêt », que sur présence explicite d'une ligne `pret = true`. Corollaire : le badge PowerHouse n'affiche **rien** (et non « 🔴 pas prêt ») en l'absence de ligne — un ménage peut simplement ne pas être encore planifié. | ✅ Respecté par construction — `pret = !!pretRow` dans `ga-process-message.js`, `<PretBadge row={...}/>` retourne `null` si `row` est absent. |
 | I-135 | **La confirmation « bien prêt » est idempotente : N médias `apres_menage` sur le même bien le même jour = 1 ligne et 1 seule notification manager.** Un AE envoie couramment plusieurs photos/vidéos pour un même ménage. Garanti par `UNIQUE (bien_id, date)` + la RPC `confirmer_bien_pret`, dont le `ON CONFLICT DO UPDATE ... WHERE pret = false` ne retourne une ligne (donc `true`) que sur la **transition** vers prêt. | ✅ **Implémenté** (migration 243) — testé en base : appel 1 → `true`, appels 2 et 3 → `false`, 1 seule ligne ; après remise manuelle à `pret=false`, l'appel suivant renvoie `true` (re-confirmation possible). |
 
+### Invariant ajouté (22 août 2026 — Fix `staff_dcb` / carte de propriété des champs staff)
+
+| ID | Description | Statut |
+|---|---|---|
+| I-136 | **`auto_entrepreneur.type` ne prend jamais la valeur `'staff_dcb'`** (valeurs réelles : `ae`/`staff`/`gerant`/`assistante`). `exportAutoDebours.js` testait `ae?.type === 'staff_dcb'` (2 occurrences, lignes 76 et 228) — condition toujours fausse, donc le taux horaire des staff DCB s'affichait dans l'export de débours alors qu'il devait être masqué (comme pour les AE). Découvert lors d'une consultation d'architecture (Oïhan a demandé de centraliser la gestion staff cross-app dcb-compta/PowerHouse) — voir `docs/staff-data-ownership.md` pour la carte complète de qui a le droit d'écrire quel champ et pourquoi (`type` et `actif` sont désormais explicitement réservés à dcb-compta, jamais éditables depuis PowerHouse). | ✅ **Corrigé** (22/08/2026) — `ae?.type === 'staff'` dans les 2 occurrences. |
+
 ---
 
 *Fichier généré dans le cadre de l'audit structurel DCB Compta — mars 2026.*
