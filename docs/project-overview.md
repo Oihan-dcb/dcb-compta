@@ -1526,3 +1526,28 @@ met à jour `code` qu'à la création, jamais lors des updates suivants). Codes 
 racine corrigée dans `extractCode()` (les deux fichiers) : ajout d'un `MOTS_GENERIQUES` (VILLA, MAISON,
 APPARTEMENT, STUDIO, CHALET, GITE, CHAMBRE — ce dernier documenté dans le docstring d'origine de
 `syncBiens.js` mais jamais implémenté) ignoré avant de choisir le premier mot significatif.
+
+## Fixes session 22 août 2026 — Statut « bien prêt » : signal physique de fin de ménage
+
+**Manque structurel comblé** : aucun statut ne disait « ce logement est prêt », et aucune notification
+ne remontait du terrain vers un manager (toutes les push existantes vont DCB → AE). Le seul signal
+physique disponible — la vidéo « après ménage » que l'AE envoie dans la messagerie interne
+(`media_library.subject='apres_menage'`) — n'était exploité que comme galerie photo.
+
+- **Migration 243** — table `bien_pret_jour` (`UNIQUE (bien_id, date)`) + RPC idempotente
+  `confirmer_bien_pret()` qui ne renvoie `true` que sur la **transition** vers « prêt ». Voir
+  `data-model.md` et I-133/I-134/I-135. Backfill de 82 lignes depuis l'historique `media_library`.
+- **`dcb-planning/api/bien-pret.js`** (nouveau) — appelé par le Portail AE à l'envoi du média :
+  upsert du statut, puis message + push vers le salon `manager_group` de la zone du bien
+  (Côte Basque / Bordeaux / Arcachon, routé par `bien.ville` puis `bien.zone`). Best-effort :
+  une notification en échec n'interrompt jamais l'envoi de la vidéo côté AE.
+- **`dcb-portail-ae/src/pages/Messagerie.jsx`** — `confirmUpload` récupère l'`id` du média inséré
+  et appelle l'endpoint quand `subject='apres_menage'` + `bien_id` renseigné (fire-and-forget).
+- **`dcb-planning/api/ga-process-message.js`** — correction du bot IA voyageurs (aide « arrivée
+  anticipée ») : `menageConfirme` dérive désormais de `bien_pret_jour` et non plus de
+  `mission_menage.statut === 'valide'`, qui est un statut de **paie** validé souvent plusieurs
+  jours après le ménage réel (I-133). Exemple réel : ENEKO et MIRAMARVEL le 21/08/2026 — vidéo
+  « après ménage » reçue, mission encore `planifie` → le bot répondait « je vérifie la
+  faisabilité » à un voyageur alors que le logement était prêt.
+- **`dcb-planning/src/app.jsx`** — badge « 🟢 Prêt » sur le dashboard manager (cartes « 🕐
+  Aujourd'hui » et « 🔄 Rotations aujourd'hui ») et dans la grille hebdomadaire par bien.

@@ -435,7 +435,7 @@ Missions de ménage créées depuis le calendrier iCal Hospitable de chaque AE.
 | `titre_ical` | text | Titre de l'événement iCal (ex: "Cleaning (CERES0394)") | |
 | `ical_uid` | text UNIQUE | UID de l'événement iCal | Clé de conflit pour l'upsert |
 | `mois` | text | Format YYYY-MM | |
-| `statut` | text | 'planifie' | ❓ Autres valeurs possibles ? |
+| `statut` | text | `planifie` / `prevu` / `en_cours` / `valide` / `refuse` / `cancelled` | ⚠ **Statut de VALIDATION ADMINISTRATIVE pour la paie AE, PAS un signal de ménage terminé.** `valide` = l'admin a coché la mission pour déclencher la facturation, souvent plusieurs jours après le ménage réel. Pour savoir si un logement est physiquement prêt, lire `bien_pret_jour` (migration 243) — voir invariant I-133. |
 | `type_mission` | text | 'cleaning', 'checkin' | Déduit du titre iCal |
 | `ventilation_auto_id` | uuid FK → ventilation | Lien vers la ligne ventilation AUTO de la réservation correspondante | ON DELETE SET NULL (migration 002 — session 07/04/2026). Null si non lié. RPC `lier_ventilation_auto_mission` crée ce lien après chaque ventilation. |
 | `reservation_id` | uuid FK → reservation | Réservation associée (déduit du iCal) | Peut être null si ical_code non trouvé |
@@ -861,3 +861,53 @@ Virement propriétaire anticipé enregistré au niveau d'**une réservation pré
 **Agrégation** : `buildComptaMensuelle.js` indexe par `bien_id` (`virement_resa_total_cts`, `virement_resa_count`, `virement_resa_items`), exposé dans la Vue mensuelle (colonne "Viré (résa)", distincte de "Fait") et dans `exportComptaCSV`. `buildRapportData.js` l'expose aussi (`virementResaList`, `virementResaTotal`) pour le rapport propriétaire (`rapportStatement.js`, `rapportProprietaire.js` — ligne "Déjà versé" / "Reste à verser").
 
 Purement déclaratif comme `reversement_fait` — voir `domain-rules.md` §17.
+
+## Ajout 2026-08-22 — table `bien_pret_jour` (migration 243)
+
+```sql
+create table bien_pret_jour (
+  id            uuid        primary key default gen_random_uuid(),
+  bien_id       uuid        not null references bien(id) on delete cascade,
+  date          date        not null default current_date,
+  pret          boolean     not null default true,
+  source        text        not null default 'media_apres_menage',
+  media_id      uuid        references media_library(id) on delete set null,
+  confirme_par  uuid,                                   -- auth.users.id (pas de FK, cf. chat_messages.sender_id)
+  confirme_at   timestamptz not null default now(),
+  note          text,
+  created_at    timestamptz not null default now(),
+  updated_at    timestamptz not null default now(),
+  unique (bien_id, date)
+);
+```
+
+Statut **« bien physiquement prêt »** par bien et par jour — la seule réponse fiable à « ce logement est-il prêt aujourd'hui ? ». Répond en O(1) via l'index unique `(bien_id, date)`.
+
+**Pourquoi cette table existe** : aucun statut existant ne disait « le ménage est terminé ». En particulier `mission_menage.statut='valide'` est un statut de **validation administrative pour la paie AE** (l'admin le coche pour déclencher la facturation, souvent des jours après le ménage réel) — voir §`mission_menage` et l'invariant **I-133**. Le seul signal **physique** est l'envoi par l'AE d'un média `media_library.subject='apres_menage'` + `bien_id` depuis la messagerie interne du Portail AE.
+
+| Champ | Rôle |
+|---|---|
+| `pret` | `true` = prêt. `false` = remis en « pas prêt » à la main par un manager (re-souillure, contrôle qualité KO) sans perdre la traçabilité. **Toute lecture doit filtrer `pret = true`.** |
+| `source` | `'media_apres_menage'` (cas nominal) \| `'manuel'` (manager PowerHouse). |
+| `media_id` | Ligne `media_library` déclencheuse — permet de rouvrir la vidéo du ménage depuis le statut. |
+| `confirme_par` | `auth.users.id` de l'AE (ou du manager) qui a confirmé. |
+| `confirme_at` | Heure de la confirmation effective, distincte de `created_at`. |
+
+**RPC `confirmer_bien_pret(p_bien_id, p_date, p_media_id, p_confirme_par, p_source)` → boolean**
+Upsert idempotent. Retourne `true` **uniquement sur la transition** vers « prêt » (`ON CONFLICT DO UPDATE ... WHERE pret = false`), `false` si le bien était déjà prêt. C'est ce booléen qui conditionne la notification manager : 3 vidéos du même ménage = 1 ligne, 1 seule notification (invariant **I-135**). `p_date` par défaut = date du jour à Paris.
+
+**RLS** : `SELECT` pour tout interne (`auth_user_is_internal()`, même périmètre que `media_library`, la source) ; écriture directe réservée à `auth_user_is_staff()` (remise manuelle à « pas prêt » depuis PowerHouse). Le cas nominal passe par l'endpoint serveur en `service_role`.
+
+**Producteur** : `dcb-planning/api/bien-pret.js`, appelé par `dcb-portail-ae/src/pages/Messagerie.jsx` (`confirmUpload`) juste après l'insert `media_library` quand `subject='apres_menage'` et `bien_id` renseigné. L'endpoint upsert le statut puis poste un message dans le salon `chat_rooms.type='manager_group'` correspondant à la zone du bien + envoie un push via `_notify.js` → `dcb-portail-ae/api/push-ga`.
+
+**Consommateurs** :
+- `dcb-planning/api/ga-process-message.js` (`fetchEarlyCheckin` / bloc « arrivée anticipée » du bot IA voyageurs) — remplace `mission_menage.statut === 'valide'`.
+- `dcb-planning/src/app.jsx` — badge « 🟢 Prêt » sur le dashboard (carte « 🕐 Aujourd'hui », carte « 🔄 Rotations aujourd'hui ») et dans la grille hebdo par bien.
+
+**Absence de ligne = PAS prêt**, jamais « inconnu » (invariant **I-134**).
+
+**Backfill initial (22/08/2026)** : 82 lignes reconstituées depuis l'historique `media_library` (`subject='apres_menage'`, premier média de chaque `(bien_id, date)`), du 03/05/2026 au 21/08/2026 — le statut est donc exploitable immédiatement, sans attendre les prochains ménages.
+
+**Trou fermé (22/08/2026)** : ~2,7 % des médias `apres_menage` (3/112) étaient envoyés sans `bien_id` (champ facultatif dans la modale de contexte du Portail AE) — ces ménages ne produisaient aucune ligne « prêt ». Le bien est désormais **obligatoire pour `apres_menage`** (`MEDIA_SUBJECTS_BIEN_REQUIRED` dans `Messagerie.jsx`) : bouton d'envoi désactivé + message explicite tant qu'aucun bien n'est choisi, plus un garde-fou dans `confirmUpload` (seul écrivain de `media_library`).
+
+L'obligation n'a **pas** été étendue à `avant_menage` : c'est le sujet **par défaut** de la modale, donc le fourre-tout des envois non catégorisés (69,8 % sans bien, 88/126, contre 2,7 % pour `apres_menage`). L'y exiger bloquerait la majorité des envois pour un sujet qu'aucune automatisation ne consomme. Le correctif pertinent de ce côté serait de revoir le **sujet par défaut** de la modale — non fait, décision produit.
