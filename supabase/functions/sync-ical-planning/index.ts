@@ -97,13 +97,25 @@ async function syncBienCalendar(
   // 3. Grouper les jours indisponibles en spans
   const spans = groupUnavailableDays(days)
 
-  // 4. Supprimer les anciennes entrées dans la fenêtre (remplacer proprement)
+  // 4. Supprimer les anciennes entrées qui RECOUVRENT la fenêtre (remplacer proprement)
+  //
+  // Bug corrigé le 23/08/2026 : le filtre précédent (date_debut BETWEEN startDate ET endDate)
+  // ne supprimait que les spans dont le DÉBUT tombe dans la fenêtre courante. `startDate` avance
+  // de 1 jour à chaque run (J-14 glissant) : un span ancien dont `date_debut` est passé sous
+  // `startDate` — mais dont `date_fin` s'étend encore dans le futur (ex. un blocage inséré il y a
+  // 2 mois avec `date_fin` en novembre) — sortait alors du filtre et n'était PLUS JAMAIS supprimé,
+  // pendant que de nouveaux spans à jour continuaient d'être insérés à côté. Les deux
+  // coexistaient indéfiniment : 830 lignes fantômes sur 35 biens constatées en prod.
+  // Le bon test est un recouvrement d'intervalles : [date_debut, date_fin) recouvre
+  // [startDate, endDate) ⟺ date_debut < endDate ET date_fin > startDate — qui supprime tout span
+  // encore pertinent pour la fenêtre affichée, quel que soit son âge, et laisse intact ce qui est
+  // authentiquement du passé (date_fin <= startDate, hors de toute fenêtre affichable).
   const { count: deleted } = await sb
     .from('property_calendar')
     .delete({ count: 'exact' })
     .eq('bien_id', bien.id)
-    .gte('date_debut', startDate)
-    .lte('date_debut', endDate)
+    .lt('date_debut', endDate)
+    .gt('date_fin', startDate)
 
   // 5. Insérer les nouveaux spans
   if (spans.length === 0) return { upserted: 0, deleted: deleted ?? 0 }
