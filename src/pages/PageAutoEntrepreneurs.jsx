@@ -603,11 +603,14 @@ export default function PageAutoEntrepreneurs() {
   }
 
   async function supprimer(id) {
+    // Archive (actif=false), jamais de suppression définitive — on doit tout conserver comme
+    // historique (décision Oïhan 23/08/2026). deleteAutoEntrepreneur() reste dans le service
+    // pour un usage exceptionnel en console/SQL, mais plus jamais appelé depuis l'UI.
     setConfirmModal({
-      message: 'Supprimer cet auto-entrepreneur ?\nCette action est irréversible.',
+      message: 'Archiver cet auto-entrepreneur ?\nIl disparaît du planning et des écrans actifs, mais sa fiche et son historique restent conservés (récupérable en le réactivant).',
       onConfirm: async () => {
         setConfirmModal(null)
-        try { await deleteAutoEntrepreneur(id); await charger() }
+        try { await saveAutoEntrepreneur({ id, actif: false }); await charger() }
         catch (err) { setError(err.message) }
       }
     })
@@ -866,7 +869,7 @@ export default function PageAutoEntrepreneurs() {
                       <button onClick={() => resetMdp(ae)} title={ae.ae_user_id ? 'Générer un lien de réinitialisation' : 'Créer l\'accès portail'} style={{ background: '#fff7ed', color: '#c2410c', border: '1px solid #fed7aa', borderRadius: 6, padding: '6px 10px', fontSize: 12, cursor: 'pointer' }}>🔑 {ae.ae_user_id ? 'Renvoi lien' : 'Créer accès'}</button>
                     )}
                     <button onClick={() => ouvrir(ae)} style={{ background: '#f3f4f6', border: 'none', borderRadius: 6, padding: '6px 12px', fontSize: 12, cursor: 'pointer', fontWeight: 600 }}>Modifier</button>
-                    <button onClick={() => supprimer(ae.id)} style={{ background: '#fee2e2', color: '#dc2626', border: 'none', borderRadius: 6, padding: '6px 10px', fontSize: 12, cursor: 'pointer' }}>✕</button>
+                    <button onClick={() => supprimer(ae.id)} title="Archiver (jamais supprimé, réactivable)" style={{ background: '#fee2e2', color: '#dc2626', border: 'none', borderRadius: 6, padding: '6px 10px', fontSize: 12, cursor: 'pointer' }}>🗄️</button>
                   </div>
                 </div>
               ))}
