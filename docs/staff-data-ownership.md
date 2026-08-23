@@ -23,39 +23,50 @@ test toujours faux.
 
 Liste blanche technique côté PowerHouse : `STAFF_EDITABLE_FIELDS` dans
 `dcb-planning/src/parts/00-prelude.jsx`. Comprend tout ce qui suit (anciennes classes A/B/C
-fusionnées) : `contrat_agences`, `ical_pro`, `auto_send_navette`, `note`, `telephone`,
-`taux_horaire`, `heures_contrat`, `forfait_menage`, `is_assujetti_tva`, `siret`, `iban`,
-`adresse`, `code_postal`, `ville`, `date_debut`, `date_fin`, `type`, `agence`,
-`voit_toutes_agences`, `acces_admin`, `acces_calendrier`, `saisie_heures`, `actif`.
+fusionnées, complétée le 23/08/2026 avec identité + iCal + messagerie) : `contrat_agences`,
+`ical_pro`, `auto_send_navette`, `note`, `telephone`, `taux_horaire`, `heures_contrat`,
+`forfait_menage`, `is_assujetti_tva`, `siret`, `iban`, `adresse`, `code_postal`, `ville`,
+`date_debut`, `date_fin`, `type`, `agence`, `voit_toutes_agences`, `acces_admin`,
+`acces_calendrier`, `saisie_heures`, `actif`, `nom`, `prenom`, `email`, `ical_url`, `ical_perso`,
+`is_chat_hidden`.
 
 - **`type`** (`ae`/`staff`/`gerant`/`assistante`) reste le champ le plus sensible : lu directement
   par `buildComptaMensuelle.js`, `facturesEvoliz.js`, `buildRapportData.js`,
   `exportAutoDebours.js` pour décider facturation/débours/rapports propriétaires. Le changer
   reclasse rétroactivement la production de la personne dans les factures. **PowerHouse demande
   une confirmation explicite avant d'écrire ce champ** (`StaffFicheDrawer`, `showConfirm`).
-- **`actif`** n'est pas un simple interrupteur d'affichage : désactiver un staff le retire du
-  planning ET modifie les exports mensuels — c'est un acte RH, pas un nettoyage d'écran. Même
-  garde-fou de confirmation côté PowerHouse.
+- **`actif`** n'est plus un simple interrupteur d'affichage : archiver un staff (bouton "🗄️
+  Archiver" dans `StaffFicheDrawer` ET dans `PageAutoEntrepreneurs.jsx`, jamais de suppression
+  définitive) le retire du planning/missions/hub actif (déjà filtré `actif=eq.true` en amont dans
+  PowerHouse), modifie les exports mensuels, **ET coupe réellement son accès de connexion** :
+  l'Edge Function `toggle-ae-access` (nouvelle, 23/08/2026) bannit (`ban_duration`, réversible)
+  le compte `auth.users` lié via `ae_user_id` — appelée automatiquement des deux côtés à chaque
+  bascule du champ. Un staff archivé reste consultable/réactivable UNIQUEMENT dans la section
+  "🗄️ Historique" du Hub Staff PowerHouse (ou la liste grisée dans dcb-compta) — invisible
+  partout ailleurs. Même garde-fou de confirmation côté PowerHouse pour `type`/`actif`.
 
-**Restent volontairement HORS de la liste éditable côté PowerHouse** (pas des champs "métier
-staff", des mécanismes système/auth distincts, à traiter séparément si besoin un jour) :
-`email`/`prenom`/`nom` (identifiant de connexion + slug utilisé ailleurs dans l'app, lien avec
-`ae_user_id`), `ae_user_id`/`linked_ae_user_id`/`token_acces` (liaison compte auth),
-`is_chat_manager`/`chat_group_slug`/`is_chat_hidden` (messagerie interne, écran dédié),
-`memo_perso`/`notification_prefs`/`ical_perso` (self-service AE sur sa propre fiche).
+**Restent volontairement HORS de la liste éditable côté PowerHouse** (mécanismes système/auth
+distincts, à traiter séparément si besoin un jour) : `ae_user_id`/`linked_ae_user_id`/
+`token_acces` (liaison compte auth, gérée exclusivement par les Edge Functions), `is_chat_manager`/
+`chat_group_slug` (rôle messagerie, écran dédié), `memo_perso`/`notification_prefs`
+(self-service AE sur sa propre fiche).
 
 **PowerHouse ne doit toujours pas recalculer localement une valeur déjà calculée par dcb-compta**
 (pas de 4ᵉ implémentation de la logique paie — 3 existent déjà et doivent rester synchronisées à
 la main, voir mémoire `project_manon_hybride`) — écrire `taux_horaire` depuis PowerHouse est
 maintenant permis, mais le CALCUL de paie reste dans dcb-compta.
 
-## Ce qui reste exclusivement dans dcb-compta
+## Ce qui reste une SEULE implémentation (pas exclusif à une app, mais pas dupliqué)
 
-Création d'un nouveau staff, désactivation *via le flux d'onboarding/offboarding complet* (le
-champ `actif` seul est désormais éditable depuis PowerHouse, voir ci-dessus), création d'un accès
-auth, reset de mot de passe (`src/services/autoEntrepreneurs.js`,
-`src/pages/PageAutoEntrepreneurs.jsx`). Ce sont des actes rares impliquant plus qu'une simple
-mise à jour de champ (création de ligne, appel Supabase Auth Admin) — jamais dupliqués ailleurs.
+Mise à jour 23/08/2026 : création de fiche, création d'accès auth, reset mot de passe et
+bascule d'accès (ban/unban) sont désormais **possibles depuis PowerHouse aussi** (parité
+produit), mais la logique sensible elle-même (appels Supabase Auth Admin) reste **une seule
+implémentation, chez dcb-compta** — PowerHouse ne fait que proxier :
+- `dcb-planning/api/staff-action.js` → `dcb-compta/api/ae-action.js` (JWT + `ALLOWED_ADMIN_EMAILS`
+  vérifiés là-bas) → Edge Functions `create-ae-user`/`reset-ae-password`/`toggle-ae-access`.
+- Création de fiche : `NewStaffModal` (PowerHouse, `33-staff-hub-view.jsx`) fait un simple
+  `insert` dans `auto_entrepreneur` — identique à ce que fait dcb-compta côté DB, aucune
+  duplication de logique côté création de ligne (ce n'est qu'un INSERT).
 
 ## Doctrine historique du 22/08/2026 (annulée pour les champs listés ci-dessus, gardée pour mémoire)
 
@@ -110,9 +121,16 @@ seuls `memo_perso`/`notification_prefs`/`ical_perso` sont éditables par un AE s
   voir I-137 pour la limite structurelle découverte (pas de blocage possible par app).
 - 23/08/2026 — Décision Oïhan : parité complète PowerHouse/dcb-compta sur tous les champs
   "métier staff" (annule la doctrine A/B/C ci-dessus, gardée en historique). `StaffFicheDrawer`
-  (PowerHouse) étendu avec tous les champs paie/légal/accès, confirmation explicite ajoutée pour
-  `type`/`actif`. Restent exclusifs à dcb-compta : création/désactivation-onboarding, accès auth,
-  reset mot de passe. Champs volontairement toujours non éditables depuis PowerHouse :
-  email/prénom/nom, ae_user_id/linked_ae_user_id/token_acces, champs messagerie interne,
-  memo_perso/notification_prefs/ical_perso (self-service AE).
-  voir I-137 pour la limite structurelle découverte (pas de blocage possible par app).
+  (PowerHouse) étendu avec tous les champs paie/légal/accès + identité/iCal/messagerie,
+  confirmation explicite ajoutée pour `type`/`actif`. Création de fiche + accès auth complet
+  (lien+email+groupes+room) désormais possibles depuis PowerHouse (`NewStaffModal`,
+  `api/staff-action.js`), en proxy vers la logique auth unique de dcb-compta. Archivage devenu
+  bidirectionnel et réellement effectif : jamais de suppression (`actif=false` partout, y compris
+  le vieux bouton "✕" de dcb-compta qui faisait un DELETE dur), et nouvelle Edge Function
+  `toggle-ae-access` qui bannit/débannit le compte auth lié — un staff archivé n'a plus aucun
+  accès de connexion et disparaît de tout PowerHouse sauf la section "🗄️ Historique" du Hub Staff.
+  Reste une seule implémentation (pas exclusif à une app, jamais dupliquée) : les appels Supabase
+  Auth Admin eux-mêmes, chez dcb-compta (`api/ae-action.js` + Edge Functions), proxiés par
+  PowerHouse (`api/staff-action.js`). Champs volontairement toujours non éditables depuis
+  PowerHouse : `ae_user_id`/`linked_ae_user_id`/`token_acces`, `is_chat_manager`/
+  `chat_group_slug`, `memo_perso`/`notification_prefs` (self-service AE).
