@@ -1,6 +1,6 @@
 import { AGENCE } from '../lib/agence'
 import { useState, useEffect, useRef } from 'react'
-import { getAutoEntrepreneurs, saveAutoEntrepreneur, deleteAutoEntrepreneur, createAEWithAuth, createAEAccess, resetAEPassword } from '../services/autoEntrepreneurs'
+import { getAutoEntrepreneurs, saveAutoEntrepreneur, deleteAutoEntrepreneur, createAEWithAuth, createAEAccess, resetAEPassword, setAEAccessActif } from '../services/autoEntrepreneurs'
 import { supabase } from '../lib/supabase'
 import { authPost } from '../lib/authFetch'
 import RepartitionManon from '../components/RepartitionManon'
@@ -610,7 +610,11 @@ export default function PageAutoEntrepreneurs() {
       message: 'Archiver cet auto-entrepreneur ?\nIl disparaît du planning et des écrans actifs, mais sa fiche et son historique restent conservés (récupérable en le réactivant).',
       onConfirm: async () => {
         setConfirmModal(null)
-        try { await saveAutoEntrepreneur({ id, actif: false }); await charger() }
+        try {
+          await saveAutoEntrepreneur({ id, actif: false })
+          await setAEAccessActif(id, false).catch(() => {}) // best-effort : coupe l'accès de connexion
+          await charger()
+        }
         catch (err) { setError(err.message) }
       }
     })

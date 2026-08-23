@@ -31,13 +31,14 @@ export default async function handler(req, res) {
   }
 
   try {
-    const { action, ae_id, email: aeEmail, mois } = req.body
+    const { action, ae_id, email: aeEmail, mois, actif } = req.body
     if (!action || !ae_id) return res.status(400).json({ error: 'action et ae_id requis' })
 
     let slug, payload
     if (action === 'create') { slug = 'create-ae-user'; payload = { ae_id, email: aeEmail } }
     else if (action === 'reset') { slug = 'reset-ae-password'; payload = { ae_id } }
     else if (action === 'sync') { slug = 'sync-ical-ae'; payload = { ae_id, mois } }
+    else if (action === 'toggleAccess') { slug = 'toggle-ae-access'; payload = { ae_id, actif: !!actif } }
     else return res.status(400).json({ error: 'action invalide' })
 
     // Appel Edge Function avec service role (jamais exposé au navigateur)

@@ -71,3 +71,11 @@ export async function resetAEPassword(ae_id) {
   if (data?.error) throw new Error(data.error)
   return { link: data.link, email: data.email }
 }
+
+// Coupe (actif=false) ou restaure (actif=true) l'accès de connexion — best-effort, ne bloque
+// pas l'archivage si l'AE n'a jamais eu de compte auth.
+export async function setAEAccessActif(ae_id, actif) {
+  const { ok, data } = await authPost('/api/ae-action', { action: 'toggleAccess', ae_id, actif })
+  if (!ok || data?.error) throw new Error(data?.error || 'Erreur serveur')
+  return data
+}
