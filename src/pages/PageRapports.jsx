@@ -11,6 +11,7 @@ import { buildRapportData as buildRapportDataService } from '../services/buildRa
 import { qualifierAjustement } from '../services/ventilation'
 import { STATUTS_NON_VENTILABLES } from '../lib/constants'
 import { AGENCE, AGENCE_BRAND } from '../lib/agence'
+import ModalRapportsGroupes from '../components/ModalRapportsGroupes'
 
 const moisCourant = new Date().toISOString().substring(0, 7)
 const fmt = c => ((c || 0) / 100).toFixed(2).replace('.', ',') + ' €'
@@ -111,6 +112,7 @@ export default function PageRapports() {
   const [statutPortail, setStatutPortail] = useState('idle') // idle | sending | sent | stored_no_push | no_push | error
   const [portailErrDetail, setPortailErrDetail] = useState('')
   const [sendingMailPortail, setSendingMailPortail] = useState(false)
+  const [modeGroupe, setModeGroupe] = useState(null) // null | 'download' | 'send' — ouvre ModalRapportsGroupes
   const reqRef = useRef(0)
 
   const PORTAIL_OWNER_API = import.meta.env.VITE_PORTAIL_OWNER_URL || 'https://portail-owner.destinationcotebasque.com'
@@ -977,6 +979,15 @@ FORMAT :
         <h1 style={{ fontSize: '1.4em', fontWeight: 700, color: 'var(--text)', flex: 1 }}>
           Rapports propriétaires
         </h1>
+        {/* Traitement groupé (30/08/2026) : tous les rapports "en attente" du mois (hors Maison
+            Maïté, cf. ModalRapportsGroupes) — génération PDF en zip, ou envoi email en masse.
+            Bloqué report par report tant qu'un ajustement reste à qualifier. */}
+        <button onClick={() => setModeGroupe('download')} className="btn btn-secondary" style={{ padding: '6px 14px', fontSize: '0.82em', fontWeight: 600 }}>
+          📦 Télécharger tout
+        </button>
+        <button onClick={() => setModeGroupe('send')} className="btn btn-secondary" style={{ padding: '6px 14px', fontSize: '0.82em', fontWeight: 600 }}>
+          ✉️ Envoi groupé
+        </button>
         {data && (
           <button onClick={() => setVueSynthese(v => !v)} style={{
             padding: '6px 14px', border: '1px solid var(--border)', borderRadius: 20,
@@ -1706,6 +1717,21 @@ FORMAT :
           </div>
         )
       })()}
+
+      {modeGroupe && (
+        <ModalRapportsGroupes
+          mode={modeGroupe}
+          mois={mois}
+          moisLabel={moisLabel}
+          propsFiltres={propsFiltres}
+          biensEnvoyes={biensEnvoyes}
+          bienIdsActifs={bienIdsActifs}
+          useStatement={useStatement}
+          joindrePDF={joindrePDF}
+          onClose={() => setModeGroupe(null)}
+          onEnvoye={bienId => setBiensEnvoyes(prev => new Set([...prev, bienId]))}
+        />
+      )}
     </div>
   )
 }
