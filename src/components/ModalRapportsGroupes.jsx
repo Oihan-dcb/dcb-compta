@@ -10,9 +10,9 @@
 // simple : impossible de générer/envoyer tant qu'il en reste, pour ne jamais publier un rapport
 // dont un montant reste à trancher.
 //
-// Hors périmètre (volontaire) : Maison Maïté et tout bien en groupe_facturation='MAITE'. Le choix
-// chambre/global y est un arbitrage manuel qui doit rester sur la vue simple — cf.
-// src/services/rapportBatch.js.
+// Maison Maïté (groupe_facturation='MAITE') : envoie CHAQUE chambre ET le global consolidé —
+// ce n'est pas le choix exclusif chambre/global de la vue simple (confirmé Oïhan 30/08/2026).
+// Détail de la liste et de l'ancrage du global : cf. src/services/rapportBatch.js.
 import { useState, useEffect, useCallback, useRef } from 'react'
 import JSZip from 'jszip'
 import { authPostRaw } from '../lib/authFetch'
@@ -54,8 +54,8 @@ export default function ModalRapportsGroupes({ mode, mois, moisLabel, propsFiltr
   }, [])
 
   // Recharge un item et renvoie son nombre d'ajustements restant à qualifier.
-  async function rechargerEtEvaluer(idx, proprio, bienId) {
-    const loaded = await chargerRapportPourItem(proprio, bienId, mois)
+  async function rechargerEtEvaluer(idx, proprio, bienId, isGlobal, maiteIds) {
+    const loaded = await chargerRapportPourItem(proprio, bienId, mois, { isGlobal, maiteIds })
     patchItem(idx, { ...loaded, statut: loaded.nbAQualifier > 0 ? 'a_qualifier' : 'pret' })
     return loaded
   }
@@ -71,7 +71,7 @@ export default function ModalRapportsGroupes({ mode, mois, moisLabel, propsFiltr
         : {}
       await qualifierAjustement(ajustementId, type, extra)
       const it = items[idx]
-      const loaded = await rechargerEtEvaluer(idx, it.proprio, it.bienId)
+      const loaded = await rechargerEtEvaluer(idx, it.proprio, it.bienId, it.isGlobal, it.maiteIds)
       if (loaded.nbAQualifier === 0 && waitResolveRef.current) {
         const r = waitResolveRef.current
         waitResolveRef.current = null
@@ -140,7 +140,7 @@ export default function ModalRapportsGroupes({ mode, mois, moisLabel, propsFiltr
       patchItem(idx, { statut: 'chargement' })
       let loaded
       try {
-        loaded = await rechargerEtEvaluer(idx, items[idx].proprio, items[idx].bienId)
+        loaded = await rechargerEtEvaluer(idx, items[idx].proprio, items[idx].bienId, items[idx].isGlobal, items[idx].maiteIds)
       } catch (e) {
         patchItem(idx, { statut: 'erreur', error: e.message })
         continue
@@ -203,13 +203,13 @@ export default function ModalRapportsGroupes({ mode, mois, moisLabel, propsFiltr
         <div style={{ padding: '14px 20px', overflowY: 'auto', flex: 1 }}>
           {items.length === 0 && (
             <p style={{ color: '#9C8E7D', fontSize: '0.9em' }}>
-              Aucun rapport en attente ce mois-ci (tous déjà envoyés, ou uniquement Maison Maïté — traitée à part depuis la vue simple).
+              Aucun rapport en attente ce mois-ci (tous déjà envoyés).
             </p>
           )}
 
           {items.length > 0 && (
             <p style={{ fontSize: '0.85em', color: '#6B5E4E', marginBottom: 12 }}>
-              {items.length} rapport(s) en attente. Maison Maïté (mode chambre/global) n'est pas incluse ici — à traiter depuis la vue simple.
+              {items.length} rapport(s) en attente{items.some(it => it.isGlobal) ? ' — Maison Maïté compte une entrée par chambre plus le global consolidé' : ''}.
             </p>
           )}
 
@@ -218,8 +218,8 @@ export default function ModalRapportsGroupes({ mode, mois, moisLabel, propsFiltr
               const st = STATUT_LABEL[it.statut === 'fait_pdf' ? 'fait' : it.statut === 'fait_envoye' ? 'fait' : it.statut] || STATUT_LABEL.attente
               const label = it.statut === 'fait_pdf' ? '✓ PDF généré' : it.statut === 'fait_envoye' ? '✓ Envoyé' : st.label
               return (
-                <div key={it.proprio.id} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '6px 10px', borderRadius: 8, background: idx === currentIdx ? '#FDF5E8' : 'transparent', border: idx === currentIdx ? '1px solid var(--brand)' : '1px solid transparent' }}>
-                  <span style={{ flex: 1, fontSize: '0.9em', color: 'var(--text)' }}>{it.bien?.hospitable_name || it.bien?.code || it.proprio.nom} <span style={{ color: '#9C8E7D' }}>— {it.proprio.nom}</span></span>
+                <div key={it.bienId} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '6px 10px', borderRadius: 8, background: idx === currentIdx ? '#FDF5E8' : 'transparent', border: idx === currentIdx ? '1px solid var(--brand)' : '1px solid transparent' }}>
+                  <span style={{ flex: 1, fontSize: '0.9em', color: 'var(--text)' }}>{it.bien?.hospitable_name || it.label} <span style={{ color: '#9C8E7D' }}>— {it.proprio.nom}</span></span>
                   <span style={{ fontSize: '0.75em', fontWeight: 700, color: st.color, background: st.bg, padding: '2px 8px', borderRadius: 10 }}>{label}</span>
                 </div>
               )

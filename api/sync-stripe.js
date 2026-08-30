@@ -116,6 +116,16 @@ export default async function handler(req, res) {
         const payTxns = txns.data.filter(t => ['payment', 'charge', 'refund', 'payment_refund'].includes(t.type))
         if (!payTxns.length) continue
 
+        // Chaque ligne est isolée par son propre .catch() — un type de balance transaction
+        // imprévu (ex. source préfixé "pyr_", ni charge/refund/payment_intent) ne doit JAMAIS
+        // faire échouer le Promise.all entier : avant ce fix, une seule ligne en erreur (404
+        // sur /v1/charges/pyr_...) annulait l'insertion de TOUTES les lignes du payout,
+        // laissant des résas payées (CB via Hospitable) invisibles indéfiniment tant que ce
+        // payout précis restait bloqué au cron quotidien (cas HOST-AX90XD/HOST-TJNPFC/
+        // HOST-VLNFKE, découvert le 30/08/2026 — voir import_log 'partial' avec 1-2 erreurs
+        // chaque jour depuis le 16/08 sans que rien ne remonte). Le fallback regex sur
+        // tx.description (HOST-XXXX) plus bas récupère quand même le code réservation même
+        // si ch={} faute de charge résolue.
         const charges = await Promise.all(
           payTxns.map(t => {
             if (!t.source) return Promise.resolve({})
@@ -126,9 +136,14 @@ export default async function handler(req, res) {
                 .catch(() => ({}))
             }
             if (t.source.startsWith('pi_')) {
-              return stripeGet(`/v1/charges?payment_intent=${t.source}&limit=1`).then(r => r.data?.[0] || {})
+              return stripeGet(`/v1/charges?payment_intent=${t.source}&limit=1`).then(r => r.data?.[0] || {}).catch(() => ({}))
             }
-            return stripeGet(`/v1/charges/${t.source}`)
+            if (t.source.startsWith('ch_')) {
+              return stripeGet(`/v1/charges/${t.source}`).catch(() => ({}))
+            }
+            // Source de type inconnu (ex. pyr_...) — pas une charge, ne pas tenter de la
+            // résoudre en 404 systématique. Le fallback description gère le reste.
+            return Promise.resolve({})
           })
         )
 

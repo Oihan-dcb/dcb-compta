@@ -979,9 +979,10 @@ FORMAT :
         <h1 style={{ fontSize: '1.4em', fontWeight: 700, color: 'var(--text)', flex: 1 }}>
           Rapports propriétaires
         </h1>
-        {/* Traitement groupé (30/08/2026) : tous les rapports "en attente" du mois (hors Maison
-            Maïté, cf. ModalRapportsGroupes) — génération PDF en zip, ou envoi email en masse.
-            Bloqué report par report tant qu'un ajustement reste à qualifier. */}
+        {/* Traitement groupé (30/08/2026) : tous les rapports "en attente" du mois — génération PDF
+            en zip, ou envoi email en masse. Maison Maïté : une entrée par chambre + le global
+            consolidé (cf. ModalRapportsGroupes/rapportBatch.js). Bloqué report par report tant
+            qu'un ajustement réservation reste à qualifier. */}
         <button onClick={() => setModeGroupe('download')} className="btn btn-secondary" style={{ padding: '6px 14px', fontSize: '0.82em', fontWeight: 600 }}>
           📦 Télécharger tout
         </button>
