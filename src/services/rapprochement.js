@@ -792,20 +792,45 @@ export async function lancerMatchingAuto(mois, source = 'manuel') {
         }
 
         // Etape 2 : regroupement N payouts -> 1 mouvement (Airbnb groupe par compte)
-        // Fenetres de date croissantes : +/-2j, +/-7j, +/-14j, tout
         const dateMvt2 = new Date(mouv.date_operation)
-        const FENETRES_AIRBNB = [2, 7, 14, 999]
+        // Les payouts réels (reference non-null) correspondent 1:1 à un virement bancaire :
+        // ils ne participent pas aux regroupements (et feraient doublon avec leurs
+        // jumeaux synthétiques par-résa dans les combinaisons)
+        const poolGroupe = payoutsCanal.filter(p => !(canal === 'airbnb' && p.reference != null))
         let subsetPay = null
-        for (const fenetre of FENETRES_AIRBNB) {
-          // Les payouts réels (reference non-null) correspondent 1:1 à un virement bancaire :
-          // ils ne participent pas aux regroupements (et feraient doublon avec leurs
-          // jumeaux synthétiques par-résa dans les combinaisons)
-          const poolGroupe = payoutsCanal.filter(p => !(canal === 'airbnb' && p.reference != null))
-          const paysFiltres = fenetre >= 999
-            ? poolGroupe
-            : poolGroupe.filter(p => Math.abs((new Date(p.date_payout) - dateMvt2) / 86400000) <= fenetre)
-          subsetPay = _subsetSum(paysFiltres, mouv.credit, 2)
-          if (subsetPay) break
+
+        // Etape 2a : cohésion par platform_id — quand Airbnb regroupe plusieurs résas dans
+        // un même virement, leurs lignes synthétiques partagent le MÊME platform_id (posé par
+        // le sync Airbnb). C'est une info Airbnb elle-même, déterministe — prioritaire sur le
+        // subset-sum aveugle par montant qui suit. Sans ça, deux résas au même montant peuvent
+        // être interverties : incident Emily Wray/Tiffany Vanderwegen du 17/08/2026 — la bonne
+        // ligne (platform_id du lot réel) a été laissée de côté au profit d'une autre au même
+        // montant (595,72 €) mais appartenant à un virement différent pas encore arrivé,
+        // marquant Tiffany rapprochée à tort (son vrai payout ne pourra plus jamais s'expliquer)
+        // et laissant Emily orpheline indéfiniment alors que son argent était déjà en banque.
+        if (canal === 'airbnb') {
+          const parPlatformId = {}
+          for (const p of poolGroupe) {
+            if (!p.platform_id) continue
+            ;(parPlatformId[p.platform_id] ??= []).push(p)
+          }
+          for (const groupe of Object.values(parPlatformId)) {
+            if (groupe.length < 2) continue
+            const somme = groupe.reduce((s, p) => s + p.amount, 0)
+            if (Math.abs(somme - mouv.credit) <= 2) { subsetPay = groupe; break }
+          }
+        }
+
+        // Etape 2b : repli — subset-sum aveugle par montant, fenetres de date croissantes
+        if (!subsetPay) {
+          const FENETRES_AIRBNB = [2, 7, 14, 999]
+          for (const fenetre of FENETRES_AIRBNB) {
+            const paysFiltres = fenetre >= 999
+              ? poolGroupe
+              : poolGroupe.filter(p => Math.abs((new Date(p.date_payout) - dateMvt2) / 86400000) <= fenetre)
+            subsetPay = _subsetSum(paysFiltres, mouv.credit, 2)
+            if (subsetPay) break
+          }
         }
         if (subsetPay) {
           // Récupérer les resaIds EN PREMIER
@@ -1240,7 +1265,15 @@ function _subsetSum(virs, cible, tol = 2) {
   for (let taille = 2; taille <= 6; taille++) {
     if (s.length < taille) break
     const res = combiner(0, taille, cibleArrondie, [])
-    if (res) return res
+    if (!res) continue
+    // Garde-fou anti-ambiguïté : si un candidat écarté a exactement le même montant qu'un
+    // candidat retenu, on ne peut pas savoir lequel des deux appartient réellement à ce
+    // virement — mieux vaut ignorer (log.skipped en amont) qu'un faux match qui marque la
+    // mauvaise résa comme payée (cf. incident Emily Wray/Tiffany Vanderwegen, 17/08/2026).
+    const montantsRetenus = res.map(getMontant)
+    const ambigu = s.some(v => !res.includes(v) && montantsRetenus.includes(getMontant(v)))
+    if (ambigu) continue
+    return res
   }
   return null
 }
