@@ -1595,3 +1595,30 @@ spécifiquement pour un compte bureau selon l'app cliente (dcb-compta vs PowerHo
 apps authentifient le même compte avec le même rôle, la base ne voit qu'un rôle. D'où le choix
 délibéré d'un trigger d'audit (traçabilité) plutôt qu'un blocage qui casserait l'écran d'admin
 de dcb-compta lui-même. Voir I-137 (`invariants.md`) et `docs/staff-data-ownership.md`.
+
+## Feature session 30 août 2026 — `alerte-solde-booking-platform` : deux trous de surveillance sur les résas Direct/Manual
+
+En enquêtant sur les réservations "sans virement" de la clôture d'août, deux trous
+structurels trouvés sur les résas `platform IN ('direct','manual')` (contrat géré par
+dcb-contrats/PowerHouse `cron-auto-contracts.js`) :
+
+1. `mode_paiement='booking_platform'` (choix volontaire : "Hospitable encaisse", le contrat
+   ne fait que sécuriser une carte de garantie) n'a **aucun filet post-séjour** — si l'argent
+   n'arrive jamais après `date_solde`, rien ne le signale. [[project_alerte_solde_manuel]] ne
+   couvre que les modes virement à venir, pas ce cas. Cas trouvés : `HOST-AX90XD` (3447,09€,
+   24j de retard), `HOST-WSW44G` (862€, 30j de retard), 13 au total au moment du fix.
+2. `rental_contracts.statut='cancelled'` ne propage **jamais** vers
+   `reservation.final_status` — la réservation reste active et continue d'être ventilée
+   indéfiniment (revenu fantôme). `api/cancel-contract.js` (dcb-contrats) ne touche jamais la
+   table `reservation`. 19 cas actifs trouvés au moment du fix (`YGWYZL`, `HOST-TJNPFC`,
+   3 résas Diane de Vasselot en doublon, etc.).
+
+Nouvelle Edge Function `alerte-solde-booking-platform` (migration
+`245_alerte_solde_booking_platform_cron.sql`, cron quotidien 8h09 dcb / 8h11 lauian) —
+même architecture que `alerte-solde-manuel` (un seul Edge Function partagé, agence dans le
+body du cron, mail récap qui s'arrête de lui-même dès résolution). **Volontairement pas
+d'auto-annulation** pour le cas 2 : un contrat peut être annulé APRÈS un séjour déjà eu lieu
+(cas `HOST-TJNPFC` — cliente restée sans jamais payer, contrat annulé a posteriori) —
+auto-annuler la réservation effacerait un vrai séjour. Alerte uniquement, décision humaine.
+
+Voir mémoire `project_contrat_annule_ne_maj_pas_reservation` pour le détail des cas trouvés.
