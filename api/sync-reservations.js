@@ -362,16 +362,34 @@ export default async function handler(req, res) {
 
   const agence = req.query?.agence || req.body?.agence || 'dcb';
   const today  = new Date();
-  // Par défaut : mois courant. Accepte aussi ?mois=2026-06
-  const mois   = req.query?.mois || req.body?.mois
-    || `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}`;
+  const moisExplicite = req.query?.mois || req.body?.mois;
+  const currentMois = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}`;
+  // Sans ?mois= explicite (cron quotidien) : resynchroniser aussi le mois précédent, pas
+  // seulement le mois courant. Sans ça, un statut qui change après la clôture du mois
+  // comptable (ex. Airbnb annule tardivement une résa 'checkpoint' faute de vérification
+  // d'identité voyageur) n'est plus jamais revu dès que le calendrier bascule sur le mois
+  // suivant — le webhook Hospitable est censé rattraper ces changements en temps réel, mais
+  // reste actuellement en panne (401, voir project-overview.md). Bug trouvé le 06/09/2026 :
+  // résa Maya/HMZATQK95E restée 'checkpoint' en base 6 jours après son annulation réelle,
+  // updated_at figé au dernier jour où août était encore le mois courant (31/08 03h00).
+  const moisPrecedent = (() => {
+    const d = new Date(today.getFullYear(), today.getMonth() - 1, 1)
+    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`
+  })();
+  const moisAtraiter = moisExplicite ? [moisExplicite] : [moisPrecedent, currentMois];
 
-  console.log(`[sync-reservations] mois=${mois} agence=${agence}`);
+  console.log(`[sync-reservations] mois=${moisAtraiter.join(',')} agence=${agence}`);
 
   try {
-    const log = await syncMois(mois, agence);
+    const logs = [];
+    for (const m of moisAtraiter) logs.push({ mois: m, ...(await syncMois(m, agence)) });
+    const log = logs.reduce((acc, l) => ({
+      created: acc.created + l.created, updated: acc.updated + l.updated,
+      errors: acc.errors + l.errors, total: acc.total + l.total,
+      errorDetails: [...acc.errorDetails, ...l.errorDetails],
+    }), { created: 0, updated: 0, errors: 0, total: 0, errorDetails: [] });
     console.log(`[sync-reservations] ✓ créées:${log.created} mises à jour:${log.updated} erreurs:${log.errors}`);
-    return res.json({ ok: true, mois, agence, ...log });
+    return res.json({ ok: true, mois: moisAtraiter, agence, ...log, details: logs });
   } catch (err) {
     console.error('[sync-reservations] erreur:', err.message);
     return res.status(500).json({ error: err.message });
