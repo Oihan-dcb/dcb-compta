@@ -71,13 +71,20 @@ export function listeProprioEnAttente(propsFiltres, biensEnvoyes, bienIdsActifs,
     const biens = p.bien || []
     const maiteBiens = biens.filter(b => b.groupe_facturation === 'MAITE')
     if (maiteBiens.length > 0) {
+      // M-MAITE (la maison entière — buyout/direct) NE doit PAS être traitée comme une chambre de
+      // plus dans cette boucle : c'est l'ancre du rapport global juste en dessous, pas une 6e
+      // chambre. Bug réel trouvé le 06/09/2026 (Oïhan, comparaison des PDF générés) : avant ce
+      // correctif, M-MAITE produisait AUSSI un rapport "chambre" (isGlobal:false) ne contenant que
+      // ses propres réservations directes/buyout — doublon incomplet du global, qui serait parti
+      // par erreur à l'envoi groupé sous le nom brut "Maison MAÏTÉ" (pas la présentation voulue).
+      const maison = maiteBiens.find(b => b.code === 'M-MAITE') || maiteBiens[0]
       for (const chambre of maiteBiens) {
+        if (chambre.id === maison.id) continue
         const active = (chambre.listed || bienIdsActifs?.has(chambre.id)) && chambre.agence === agence
         if (active && !biensEnvoyes.has(chambre.id)) {
           items.push({ proprio: p, bienId: chambre.id, isGlobal: false, maiteIds: [], label: chambre.hospitable_name || chambre.code })
         }
       }
-      const maison = maiteBiens.find(b => b.code === 'M-MAITE') || maiteBiens[0]
       if (!biensEnvoyes.has(maison.id)) {
         items.push({ proprio: p, bienId: maison.id, isGlobal: true, maiteIds: maiteBiens.map(b => b.id), label: 'Maison Maïté (global)' })
       }
