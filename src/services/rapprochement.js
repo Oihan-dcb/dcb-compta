@@ -620,18 +620,32 @@ export async function lancerMatchingAuto(mois, source = 'manuel') {
       .filter(p => p.hospitable_id?.endsWith('_airbnb_payout'))
       .map(p => p.hospitable_id.replace('_airbnb_payout', ''))
     const agenceByResa = {}
+    const accountByResa = {}
     for (let i = 0; i < synthResaIds.length; i += 300) {
       const { data: rs } = await supabase
         .from('reservation')
-        .select('id, bien!inner(agence)')
+        .select('id, bien!inner(agence, airbnb_account)')
         .in('id', synthResaIds.slice(i, i + 300))
-      for (const r of (rs || [])) agenceByResa[r.id] = r.bien?.agence
+      for (const r of (rs || [])) {
+        agenceByResa[r.id] = r.bien?.agence
+        accountByResa[r.id] = r.bien?.airbnb_account || null
+      }
     }
     payoutsAll = payoutsAll.filter(p => {
       if (!p.hospitable_id?.endsWith('_airbnb_payout')) return true
       const ag = agenceByResa[p.hospitable_id.replace('_airbnb_payout', '')]
       return !ag || ag === AGENCE
     })
+    // Annote chaque payout synthétique de son compte Airbnb (bien.airbnb_account) — sert au
+    // garde-fou d'Étape 2b : deux biens sur des comptes Airbnb DIFFÉRENTS ne peuvent physiquement
+    // jamais être regroupés dans le même virement (Airbnb paie par compte, jamais en mélangeant).
+    // Découvert le 06/09/2026 : Ibañeta (compte MAITE) et Aïta (compte différent) au même montant
+    // auraient pu être confondus par le subset-sum aveugle malgré le fix platform_id du 30/08.
+    for (const p of payoutsAll) {
+      if (p.hospitable_id?.endsWith('_airbnb_payout')) {
+        p._account = accountByResa[p.hospitable_id.replace('_airbnb_payout', '')] || null
+      }
+    }
 
     // ── AIRBNB + BOOKING ───────────────────────────────────────────
     for (const canal of ['airbnb', 'booking']) {
@@ -828,7 +842,24 @@ export async function lancerMatchingAuto(mois, source = 'manuel') {
             const paysFiltres = fenetre >= 999
               ? poolGroupe
               : poolGroupe.filter(p => Math.abs((new Date(p.date_payout) - dateMvt2) / 86400000) <= fenetre)
-            subsetPay = _subsetSum(paysFiltres, mouv.credit, 2)
+            // Garde-fou compte Airbnb (Airbnb ne mélange jamais deux comptes dans un virement) :
+            // si plusieurs comptes connus coexistent dans le pool, tester chaque compte séparément
+            // (+ les candidats de compte inconnu, faute de mieux) plutôt que de laisser _subsetSum
+            // piocher librement entre comptes incompatibles.
+            if (canal === 'airbnb') {
+              const comptesConnus = [...new Set(paysFiltres.map(p => p._account).filter(Boolean))]
+              if (comptesConnus.length > 1) {
+                for (const compte of comptesConnus) {
+                  const sousPool = paysFiltres.filter(p => !p._account || p._account === compte)
+                  subsetPay = _subsetSum(sousPool, mouv.credit, 2)
+                  if (subsetPay) break
+                }
+              } else {
+                subsetPay = _subsetSum(paysFiltres, mouv.credit, 2)
+              }
+            } else {
+              subsetPay = _subsetSum(paysFiltres, mouv.credit, 2)
+            }
             if (subsetPay) break
           }
         }
