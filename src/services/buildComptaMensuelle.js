@@ -319,6 +319,10 @@ export async function buildComptaMensuelle(mois, bienIds = null) {
   // Formule alignée sur facturesEvoliz.js :
   // reversement = max(0, VIR - fraisLoy - fraisDirect - prestDeduct - haowner - deboursProp - ownerStayAbsorb) + remboursements
   const loyParProprio = {}
+  // Variante TOUJOURS recalculée depuis la ventilation, jamais court-circuitée par la facture —
+  // sert uniquement à l'alerte ECART_REVERSEMENT (cf. commentaire détaillé Phase 4). loyParProprio
+  // reste inchangé pour tout le reste (CSV, affichage "reversement_calcule").
+  const loyParProprioLive = {}
   const ownerStayAbsorbByBien = {}
   const composantesParProprio = {}
   for (const b of biensActifs) {
@@ -346,10 +350,12 @@ export async function buildComptaMensuelle(mois, bienIds = null) {
     const autoAbsorbable = Math.max(0, autoHt - menHt)
     // Source de vérité : facture per-bien si validée, sinon calcul ventilation
     const factureBienP3   = honByBien[b.id]
+    const virNetLive = Math.max(0, virHt2 - fraisLoy - fraisDirect - prestDeduct - deboursProp - ownerStayAbsorbByBien[b.id] - autoAbsorbable) + rembours
     const virNet = (factureBienP3?.montant_reversement != null)
       ? factureBienP3.montant_reversement
-      : Math.max(0, virHt2 - fraisLoy - fraisDirect - prestDeduct - deboursProp - ownerStayAbsorbByBien[b.id] - autoAbsorbable) + rembours
+      : virNetLive
     loyParProprio[b.proprietaire_id] = (loyParProprio[b.proprietaire_id] || 0) + virNet
+    loyParProprioLive[b.proprietaire_id] = (loyParProprioLive[b.proprietaire_id] || 0) + virNetLive
 
     // Accumuler les composantes par proprio pour le détail de l'alerte ECART_REVERSEMENT
     const pid = b.proprietaire_id
@@ -411,14 +417,26 @@ export async function buildComptaMensuelle(mois, bienIds = null) {
     // Source de vérité : facture per-bien si validée (même source que le rapport PDF)
     // Sinon : calcul depuis ventilation VIR
     const factureBien4   = honByBien[b.id]
+    // reversement_calcule_live : TOUJOURS recalculé depuis la ventilation à date, jamais
+    // court-circuité par la facture. reversement_calcule (facture si présente, sinon la même
+    // formule) reste la valeur affichée partout ailleurs (CSV, page Comptabilité) — c'est la
+    // "meilleure vérité connue" une fois la facture émise. Mais AVANT ce fix, ECART_REVERSEMENT
+    // comparait la facture contre reversement_calcule, qui VAUT DÉJÀ la facture dès qu'elle
+    // existe → écart toujours nul, donc l'alerte ne se déclenchait plus jamais après émission
+    // de la facture, même si un débours (deduction_loy) validé après coup rendait le virement
+    // réel (basé sur le total VIR brut de la ventilation) différent du montant facturé. C'est
+    // exactement ce qui est arrivé à Cécile Alaux / Le Panorama - BDX en juin 2026 : 15€ de
+    // parure validés après la facture, jamais répercutés, jamais alertés (signalé par la
+    // propriétaire elle-même début septembre).
+    const reversement_calcule_live = Math.max(0, vir.ht - frais_loy - frais_direct - prest_deduct - debours_prop - owner_stay_absorb - auto_absorbable) + remboursements
     const reversement_calcule = (factureBien4?.montant_reversement != null)
       ? factureBien4.montant_reversement
-      : Math.max(0, vir.ht - frais_loy - frais_direct - prest_deduct - debours_prop - owner_stay_absorb - auto_absorbable) + remboursements
+      : reversement_calcule_live
 
-    // Écart reversement au niveau proprio : Σ factures vs Σ reversement_calcule tous biens
+    // Écart reversement au niveau proprio : Σ factures vs Σ reversement_calcule_live tous biens
     let ecart_reversement_proprio = null
     if (propId && reversementFactureParProprio[propId] != null) {
-      ecart_reversement_proprio = reversementFactureParProprio[propId] - (loyParProprio[propId] || 0)
+      ecart_reversement_proprio = reversementFactureParProprio[propId] - (loyParProprioLive[propId] || 0)
     }
 
     // Alertes de la ligne
@@ -435,20 +453,22 @@ export async function buildComptaMensuelle(mois, bienIds = null) {
     // Écart reversement : per-bien si facture per-bien, sinon per-proprio
     const factureBien = honByBien[b.id]
     if (factureBien?.montant_reversement != null) {
-      // Facture individuelle pour ce bien → comparaison per-bien
-      const ecartBien = factureBien.montant_reversement - reversement_calcule
+      // Facture individuelle pour ce bien → comparaison per-bien contre la valeur LIVE
+      // (jamais contre reversement_calcule, qui vaut déjà factureBien.montant_reversement ici —
+      // cf. commentaire au-dessus de reversement_calcule_live)
+      const ecartBien = factureBien.montant_reversement - reversement_calcule_live
       const ecartAbs  = Math.abs(ecartBien)
       if (ecartAbs > 100) {
         const sens = ecartBien > 0 ? '+' : ''
         rowAlerts.push({
           level: 'warning',
           code: 'ECART_REVERSEMENT',
-          message: `Écart reversement : ${sens}${(ecartBien / 100).toFixed(2)} € (facturé ${(factureBien.montant_reversement / 100).toFixed(2)} € vs calculé ${(reversement_calcule / 100).toFixed(2)} €)`,
+          message: `Écart reversement : ${sens}${(ecartBien / 100).toFixed(2)} € (facturé ${(factureBien.montant_reversement / 100).toFixed(2)} € vs recalculé aujourd'hui ${(reversement_calcule_live / 100).toFixed(2)} €)`,
           bien_id: b.id,
           details: {
             loy_ht: loy.ht, frais_loy, frais_direct, prest_deduct,
             debours_prop, owner_stay_absorb, auto_absorbable, remboursements,
-            reversement_calcule,
+            reversement_calcule: reversement_calcule_live,
             reversement_facture: factureBien.montant_reversement,
           },
         })
@@ -459,15 +479,15 @@ export async function buildComptaMensuelle(mois, bienIds = null) {
       if (ecartAbs > 100) {
         const sens = ecart_reversement_proprio > 0 ? '+' : ''
         const rev_facture_eur = (reversementFactureParProprio[propId] / 100).toFixed(2)
-        const rev_calcule_eur = ((loyParProprio[propId] || 0) / 100).toFixed(2)
+        const rev_calcule_eur = ((loyParProprioLive[propId] || 0) / 100).toFixed(2)
         rowAlerts.push({
           level: 'warning',
           code: 'ECART_REVERSEMENT',
-          message: `Écart reversement : ${sens}${(ecart_reversement_proprio / 100).toFixed(2)} € (facturé ${rev_facture_eur} € vs calculé ${rev_calcule_eur} €)`,
+          message: `Écart reversement : ${sens}${(ecart_reversement_proprio / 100).toFixed(2)} € (facturé ${rev_facture_eur} € vs recalculé aujourd'hui ${rev_calcule_eur} €)`,
           bien_id: b.id,
           details: {
             ...(composantesParProprio[propId] || {}),
-            reversement_calcule: loyParProprio[propId] || 0,
+            reversement_calcule: loyParProprioLive[propId] || 0,
             reversement_facture: reversementFactureParProprio[propId] || 0,
           },
         })
