@@ -338,24 +338,66 @@ export async function genererSCTVirementsPropriosLC(mois, agence = AGENCE) {
   )
   if (!valid.length) throw new Error(`Aucun virement LC à effectuer pour ${mois} (avec IBAN configuré)`)
 
+  // Montant réellement dû = facture_evoliz.montant_reversement (net des débours/retenues),
+  // jamais la somme brute de ventilation.VIR — voir incident Cécile Alaux 2026-06 (+15€ à
+  // chaque virement basé sur le brut au lieu du facturé). Une facture 'honoraires' par bien
+  // (bien_id renseigné), ou une seule par groupe_facturation (bien_id NULL, indexée par
+  // proprietaire_id) — même logique de correspondance que buildComptaMensuelle.js.
+  const { data: factures, error: errFact } = await supabase
+    .from('facture_evoliz')
+    .select('bien_id, proprietaire_id, montant_reversement')
+    .eq('mois', mois)
+    .eq('agence', agence)
+    .eq('type_facture', 'honoraires')
+  if (errFact) throw errFact
+
+  const factureByBien = {}
+  const factureByProprio = {}
+  for (const f of (factures || [])) {
+    if (f.bien_id) factureByBien[f.bien_id] = f
+    else factureByProprio[f.proprietaire_id] = f
+  }
+
   // Grouper : groupe_facturation non-null → agréger, sinon 1 ligne par bien
   const groups = new Map()
   for (const l of valid) {
     const key = l.bien?.groupe_facturation || l.bien_id
     if (!groups.has(key)) {
-      groups.set(key, { montant: 0, prop: l.proprietaire, label: l.bien?.groupe_facturation || l.bien?.code || key, isGroupe: !!l.bien?.groupe_facturation })
+      groups.set(key, { montant: 0, prop: l.proprietaire, label: l.bien?.groupe_facturation || l.bien?.code || key, isGroupe: !!l.bien?.groupe_facturation, biens: new Set() })
     }
-    groups.get(key).montant += l.montant_ttc
+    const g = groups.get(key)
+    g.montant += l.montant_ttc
+    g.biens.add(l.bien?.code || l.bien_id)
   }
 
-  const transactions = Array.from(groups.entries()).map(([key, g], i) => ({
-    endToEndId:   `VIR-LC-${String(key).slice(0, 8).toUpperCase()}-${i+1}-${runSuffix()}`,
-    montant:       g.montant,
-    creditorIban:  g.prop.iban,
-    creditorBic:   g.prop.bic || '',
-    creditorNom:   [g.prop.nom, g.prop.prenom].filter(Boolean).join(' '),
-    remittance:    `LOYER LC ${mois} ${g.label}`,
-  }))
+  const sansFacture = []
+  const transactions = []
+  let i = 0
+  for (const [key, g] of groups.entries()) {
+    const facture = g.isGroupe ? factureByProprio[g.prop.id] : factureByBien[key]
+    if (facture?.montant_reversement == null) {
+      sansFacture.push(`${g.label} (${[...g.biens].join(', ')}) — ${[g.prop.nom, g.prop.prenom].filter(Boolean).join(' ')}`)
+      continue
+    }
+    i++
+    transactions.push({
+      endToEndId:   `VIR-LC-${String(key).slice(0, 8).toUpperCase()}-${i}-${runSuffix()}`,
+      montant:       facture.montant_reversement,
+      creditorIban:  g.prop.iban,
+      creditorBic:   g.prop.bic || '',
+      creditorNom:   [g.prop.nom, g.prop.prenom].filter(Boolean).join(' '),
+      remittance:    `LOYER LC ${mois} ${g.label}`,
+    })
+  }
+
+  if (sansFacture.length) {
+    throw new Error(
+      `Facture 'honoraires' manquante ou incomplète (montant_reversement) pour ${mois} — ` +
+      `impossible de calculer le virement net pour : ${sansFacture.join(' ; ')}. ` +
+      `Générer/finaliser ces factures avant de relancer cet export.`
+    )
+  }
+  if (!transactions.length) throw new Error(`Aucun virement LC à effectuer pour ${mois} (avec IBAN configuré)`)
 
   const debtorNom = config.agence_titulaire || 'DESTINATION COTE BASQUE'
 
