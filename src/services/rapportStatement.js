@@ -67,14 +67,19 @@ export function genererStatementHTML(proprio, mois, data) {
   const sansGestionLoyer  = data.kpis?.gestionLoyer === false
   const fmenTotalK        = data.kpis?.fmenTotal || 0
   const autoReelTotalK    = data.kpis?.autoReelTotal ?? data.kpis?.autoTotal ?? 0
-  const grossTotal        = resas.reduce((s, r) => s + ((r.gross_revenue ?? r.fin_revenue) || 0), 0)
+  // owner_stay affiche "—" (0) en colonne pour brut/encaissement/frais_dist/base_comm (cf. le
+  // rendu ligne par ligne plus bas) — ces 4 totaux doivent exclure ces séjours propriétaire de la
+  // même façon, sinon ils comptent un montant "fantôme" jamais montré nulle part dans le tableau.
+  // Même bug que rapportProprietaire.js, trouvé le 06/09/2026 (comparaison rapport batch vs
+  // statements Hospitable) : Maison Maïté écart de 800€, 506P Edertasun écart de 80€ sur Base comm.
+  const grossTotal        = resas.reduce((s, r) => r.owner_stay ? s : s + ((r.gross_revenue ?? r.fin_revenue) || 0), 0)
   const caHeb             = resas.filter(r => !r.owner_stay).reduce((s, r) => s + (r.fin_revenue || 0) - getMgmtFee(r), 0)
   const virTotal          = resas.reduce((s, r) => r.proprio_encaisse ? s : s + (r.vir  || 0), 0)
   const loyTotal          = resas.reduce((s, r) => s + (r.loy  || 0), 0)
   const taxeTotal         = resas.reduce((s, r) => s + (r.taxe || 0), 0)
-  const baseCommTotal     = resas.reduce((s, r) => s + (r.base_comm || 0), 0)
-  const encaissementTotal = resas.reduce((s, r) => s + (r.encaissement || 0), 0)
-  const fraisDistTotal    = resas.reduce((s, r) => s + (r.frais_plateforme || 0), 0)
+  const baseCommTotal     = resas.reduce((s, r) => r.owner_stay ? s : s + (r.base_comm || 0), 0)
+  const encaissementTotal = resas.reduce((s, r) => r.owner_stay ? s : s + (r.encaissement || 0), 0)
+  const fraisDistTotal    = resas.reduce((s, r) => r.owner_stay ? s : s + (r.frais_plateforme || 0), 0)
   const netPlatTotal      = resas.reduce((s, r) => r.owner_stay ? s : s + (r.net_plateforme ?? (r.fin_revenue || 0)), 0)
   const ownerStayMenageTotal = ownerStayMenageList.reduce((s, p) => s + (p.montant || 0), 0)
   const haownerTotal  = haownerList.reduce((s, p) => s + (p.montant_ttc || p.montant || 0), 0)

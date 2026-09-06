@@ -247,12 +247,19 @@ export function genererRapportHTML(proprio, mois, data, colonnes = {}) {
           ${(() => {
             const tot = (resas || []).reduce((acc, r) => {
               const v = r.vent || {}
-              acc.brut         += r.gross_revenue || 0
-              acc.encaissement += r.encaissement || 0
-              acc.frais_dist   += r.frais_plateforme || 0
+              // owner_stay affiche "—" (0) en colonne pour brut/encaissement/frais_dist/base_comm
+              // (cf. le rendu ligne par ligne juste au-dessus) — la ligne TOTAL doit exclure ces
+              // séjours propriétaire de la même façon, sinon elle compte un base_comm/brut "fantôme"
+              // jamais montré nulle part dans le tableau. Bug réel trouvé le 06/09/2026 (Oïhan,
+              // comparaison rapport batch vs statements Hospitable) : Maison Maïté (2 séjours
+              // propriétaire) affichait un TOTAL Base comm. supérieur de 800€ à la somme des lignes
+              // visibles et à la tuile d'en-tête ; 506P Edertasun, écart de 80€ pour 1 séjour.
+              acc.brut         += r.owner_stay ? 0 : (r.gross_revenue || 0)
+              acc.encaissement += r.owner_stay ? 0 : (r.encaissement || 0)
+              acc.frais_dist   += r.owner_stay ? 0 : (r.frais_plateforme || 0)
               acc.taxe         += r.taxe || 0
               acc.net_plat     += r.owner_stay ? 0 : (r.net_plateforme ?? (r.fin_revenue || 0))
-              acc.base_comm    += r.base_comm || 0
+              acc.base_comm    += r.owner_stay ? 0 : (r.base_comm || 0)
               acc.hon          += r.hon || 0
               acc.loy          += r.proprio_encaisse ? 0 : (r.loy || 0)
               acc.vir          += r.proprio_encaisse ? 0 : (r.vir || 0)
