@@ -8,8 +8,7 @@
 // commission DCB). Le net proprio se dérive de LOY. Voir docs/domain-rules.md §17.
 
 import { buildRapportData } from './buildRapportData'
-
-const STATUTS_NON_VENTILABLES = ['cancelled', 'not_accepted', 'not accepted', 'declined', 'expired']
+import { STATUTS_NON_VENTILABLES } from '../lib/constants'
 
 // Net réellement reversable au proprio pour un (bien, mois) — même règle que PageProprietaires.
 function netDuMois(data) {

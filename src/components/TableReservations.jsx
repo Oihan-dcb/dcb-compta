@@ -3,6 +3,7 @@ import { format } from 'date-fns'
 import { fr } from 'date-fns/locale'
 import { formatMontant } from '../lib/hospitable'
 import { toggleOwnerStay } from '../hooks/useOwnerStay'
+import { STATUTS_NON_VENTILABLES } from '../lib/constants'
 
 // ── Badge paiement contrat ────────────────────────────────────────────────────
 const PAIEMENT_CFG = {
@@ -79,7 +80,6 @@ function BadgeStatut({ r, onToggle }) {
     )
   }
   // Ventilée mais pas encore rapprochée
-  const STATUTS_NON_VENTILABLES = ['cancelled', 'not_accepted', 'not accepted', 'declined', 'expired']
   if (r.ventilation_calculee && !STATUTS_NON_VENTILABLES.includes(r.final_status)) return (
     <span className="badge badge-warning"
       onClick={r.platform === 'manual' ? (e) => { e.stopPropagation(); onToggle(r) } : undefined}

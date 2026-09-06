@@ -377,8 +377,13 @@ export async function buildRapportData(bienId, propId, mois, opts = {}) {
           (r.hospitable_raw?.financials?.host?.discounts || []).reduce((s, d) => s + (d.amount || 0), 0)
           || -(r.fin_discount || 0)
         )
+        // Même bug que ventilationCore.js (corrigé le 06/09/2026) : Hospitable/l'import CSV
+        // écrivent ce label sous 3 formes ("Extra guest fee", "EXTRA_GUEST_FEE", "Additional
+        // guest fee") — un match strict sur une seule ratait les 2 autres. Copie non détectée
+        // par le refactor du noyau partagé car ce calcul est dupliqué ici, hors ventilationCore.js.
+        const EXTRA_GUEST_FEE_LABELS = ['extra guest fee', 'additional guest fee']
         return (r.fin_accommodation || 0) + (r.fin_host_service_fee || 0) - remise
-          + guestFees.filter(f => (f.label || '').toLowerCase() === 'extra_guest_fee').reduce((s, f) => s + (f.amount || 0), 0)
+          + guestFees.filter(f => EXTRA_GUEST_FEE_LABELS.includes((f.label || '').toLowerCase().replace(/_/g, ' '))).reduce((s, f) => s + (f.amount || 0), 0)
           + ajustementHebergement
       })(),
       proprio_encaisse: isProprioEncaisse(r.id),

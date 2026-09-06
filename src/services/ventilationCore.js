@@ -4,23 +4,31 @@
  * étaient arithmétiquement identiques, validé par diff mécanique + comparaison dry-run
  * réelle sur juin 2026, mois clôturé).
  *
- * AUCUN import — ni supabase, ni AGENCE, ni journal_ops. Fonction pure : mêmes entrées,
- * mêmes sorties, aucun effet de bord, aucun accès réseau/DB. C'est ce qui permet de la
- * partager entre 3 runtimes différents (Vercel/Node pour api/ventiler.js, Deno pour
- * supabase/functions/ventilation-auto, navigateur/Vite pour src/services/ventilation.js)
- * sans rien dupliquer ni rien casser côté environnement d'exécution.
+ * AUCUN import de code avec effet de bord — ni supabase, ni AGENCE, ni journal_ops. Fonction
+ * pure : mêmes entrées, mêmes sorties, aucun effet de bord, aucun accès réseau/DB. C'est ce
+ * qui permet de la partager entre 3 runtimes différents (Vercel/Node pour api/ventiler.js,
+ * Deno pour supabase/functions/ventilation-auto, navigateur/Vite pour
+ * src/services/ventilation.js) sans rien dupliquer ni rien casser côté environnement
+ * d'exécution. Exception (06/09/2026) : import de ../lib/constants.js ci-dessous — fichier de
+ * pure donnée, zéro dépendance, même mécanisme d'import relatif déjà éprouvé dans les 3
+ * runtimes, donc compatible avec cette contrainte de portabilité.
  *
  * Toute modification ici s'applique aux 3 moteurs à la fois — c'est le but : la classe de
  * bug I-123 (CITY_TAX corrigé dans un seul des deux fichiers) et I-124 (skip_facturation
  * oublié dans une des 3 copies) devient structurellement impossible.
  */
 
+// Source unique de STATUTS_NON_VENTILABLES : src/lib/constants.js — importée puis
+// ré-exportée ici pour ne rien casser côté 3 moteurs qui l'importent depuis ce fichier.
+// Avant le 06/09/2026, cette constante était redéfinie ici en dur et avait divergé (liste
+// périmée, sans 'checkpoint'/'request', pendant que 4 autres fichiers du repo avaient chacun
+// leur propre copie, certaines encore plus périmées) — même classe de bug que I-123/I-124
+// que le noyau partagé devait justement rendre impossible. Ne JAMAIS la redéfinir localement
+// ailleurs : importer depuis lib/constants.js.
+import { STATUTS_NON_VENTILABLES } from '../lib/constants.js'
+export { STATUTS_NON_VENTILABLES }
+
 export const TVA_RATE = 0.20
-// 'checkpoint voided' : Airbnb annule la résa faute de vérification d'identité voyageur dans les
-// délais (sub_category='voided' sur un statut 'checkpoint') — trouvé le 06/09/2026 (Maya/HMZATQK95E,
-// 539,68€ toujours ventilée 6 jours après l'annulation Airbnb). Fonctionnellement équivalent à
-// 'cancelled' : aucun séjour n'a eu lieu, aucun argent ne viendra.
-export const STATUTS_NON_VENTILABLES = ['cancelled', 'not_accepted', 'not accepted', 'declined', 'expired', 'checkpoint voided']
 
 export function ligneTVA(code, libelle, montantHT, bien, resa, tauxCalcule, montantTTC) {
   const ttc = montantTTC || Math.round(montantHT * (1 + TVA_RATE))
@@ -116,8 +124,15 @@ export function _calculerLignes(resa, agence) {
   const cleaningFeeAirbnb = guestFeesAll.find(f => f.label?.toLowerCase() === 'cleaning fee')?.amount || 0
   const communityFeeRaw   = guestFeesAll.find(f => f.label?.toLowerCase() === 'community fee')?.amount || 0
   const menageBrut        = resa.platform === 'airbnb' ? cleaningFeeAirbnb : communityFeeRaw
+  // Ce label existe en base sous 3 formes : "Extra guest fee" (import CSV maison, cf.
+  // importCSV.js:242), "EXTRA_GUEST_FEE" (écrit par un sync Hospitable plus ancien),
+  // "Additional guest fee" (libellé alternatif Hospitable). Bug trouvé le 06/09/2026 : le
+  // match strict sur 'extra_guest_fee' ne captait que la forme underscore et ratait
+  // silencieusement les 2 autres (161 lignes reservation_fee concernées, 84 résas). Même bug
+  // dupliqué (non couvert par ce fix) dans buildRapportData.js:base_comm — voir ce fichier.
+  const EXTRA_GUEST_FEE_LABELS = ['extra guest fee', 'additional guest fee']
   const extraGuestFee     = guestFeesAll
-    .filter(f => f.label?.toLowerCase() === 'extra_guest_fee')
+    .filter(f => EXTRA_GUEST_FEE_LABELS.includes(f.label?.toLowerCase().replace(/_/g, ' ')))
     .reduce((s, f) => s + (f.amount || 0), 0)
 
   const aeAmount = (isCancelled || isProlongation || (isDirect && menageBrut === 0))
