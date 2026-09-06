@@ -16,7 +16,11 @@
  */
 
 export const TVA_RATE = 0.20
-export const STATUTS_NON_VENTILABLES = ['cancelled', 'not_accepted', 'not accepted', 'declined', 'expired']
+// 'checkpoint voided' : Airbnb annule la résa faute de vérification d'identité voyageur dans les
+// délais (sub_category='voided' sur un statut 'checkpoint') — trouvé le 06/09/2026 (Maya/HMZATQK95E,
+// 539,68€ toujours ventilée 6 jours après l'annulation Airbnb). Fonctionnellement équivalent à
+// 'cancelled' : aucun séjour n'a eu lieu, aucun argent ne viendra.
+export const STATUTS_NON_VENTILABLES = ['cancelled', 'not_accepted', 'not accepted', 'declined', 'expired', 'checkpoint voided']
 
 export function ligneTVA(code, libelle, montantHT, bien, resa, tauxCalcule, montantTTC) {
   const ttc = montantTTC || Math.round(montantHT * (1 + TVA_RATE))

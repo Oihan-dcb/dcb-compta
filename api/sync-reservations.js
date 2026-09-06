@@ -81,10 +81,19 @@ function parseReservation(resa, bien, mois) {
   );
   const taxesTotal = (fin.taxes || []).reduce((s, t) => s + (t.amount || 0), 0);
   const moisComptable = resa.arrival_date ? resa.arrival_date.substring(0, 7) : mois;
-  const notAccepted = ['not_accepted', 'not accepted', 'declined', 'expired'].includes(
-    resa.reservation_status?.current?.category || resa.status
-  );
-  const isCancelled = (resa.reservation_status?.current?.category || resa.status) === 'cancelled';
+  // reservation_status.current ne se résume pas à `category` : un statut 'checkpoint' peut
+  // porter un sub_category ('voided') qui change tout — Hospitable annule la résa faute de
+  // vérification d'identité voyageur dans les délais. Ne garder que `category` seul jetait
+  // cette information (bug trouvé le 06/09/2026, résa Maya/HMZATQK95E restée 'checkpoint'
+  // en base 6 jours après son annulation réelle, toujours ventilée comme un vrai revenu).
+  const statutCourant = resa.reservation_status?.current;
+  const statutCombine = statutCourant
+    ? (statutCourant.sub_category && statutCourant.sub_category !== statutCourant.category
+        ? `${statutCourant.category} ${statutCourant.sub_category}`
+        : statutCourant.category)
+    : resa.status;
+  const notAccepted = ['not_accepted', 'not accepted', 'declined', 'expired', 'checkpoint voided'].includes(statutCombine);
+  const isCancelled = statutCombine === 'cancelled';
 
   // Annulation directe remboursement total : Hospitable renvoie revenue = sum(host_fees)
   // (la "commission Hospitable" remboursée virtuellement) → DCB n'a rien perçu → fin_revenue = 0
@@ -135,7 +144,7 @@ function parseReservation(resa, bien, mois) {
     stay_type:           resa.stay_type || 'guest',
     owner_stay:          isOwnerStay,
     reservation_status:  resa.reservation_status,
-    final_status:        resa.reservation_status?.current?.category || resa.status || 'accepted',
+    final_status:        statutCombine || 'accepted',
     fin_accommodation:   isOwnerStay ? ownerCleaningFee : (fin.accommodation?.amount ?? null),
     fin_revenue:         isOwnerStay ? ownerCleaningFee : (notAccepted || isFullRefundDirect ? 0 : revenueFiable),
     fin_host_service_fee: hostServiceFee?.amount ?? null,
