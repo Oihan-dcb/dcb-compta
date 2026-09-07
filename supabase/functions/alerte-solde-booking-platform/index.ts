@@ -27,6 +27,14 @@
  * auto-généré puis annulé (pas un vrai locataire), ou un guest_name = nom du propriétaire —
  * sans ce filtre, 3 des 19 lignes "Contrat annulé" de la section 2 étaient les propriétaires
  * eux-mêmes (Andrea/SCI du Tourmalet-MUNDUZ, Dominique belair/408P, Vincent Balhadere×2).
+ *
+ * Section 1 restreinte à platform='manual' (ajouté le 07/09/2026, demande Oïhan) : des
+ * réservations mode_paiement='booking_platform' existent aussi pour platform='booking' et
+ * 'direct' — encaissées via leur propre circuit (Booking.com/Airbnb rapprochés en banque,
+ * 'direct' via Stripe Hospitable), jamais un vrai solde en souffrance côté DCB. 13 des 14
+ * lignes affichées avant ce fix étaient platform='booking'. La section 2 (contrats annulés)
+ * n'a pas cette restriction — la question posée là est différente (cohérence contrat/résa,
+ * pas qui encaisse), et les cas restants après le fix owner_stay sont tous vérifiés réels.
  */
 import { serve } from 'https://deno.land/std@0.168.0/http/server.ts'
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
@@ -141,7 +149,7 @@ serve(async (req) => {
 
   const { data: resas } = await supabase
     .from('reservation')
-    .select('code, guest_name, arrival_date, fin_revenue, rapprochee, final_status, owner_stay, bien!inner(code, agence)')
+    .select('code, guest_name, arrival_date, fin_revenue, rapprochee, final_status, owner_stay, platform, bien!inner(code, agence)')
     .in('code', codesAVerifier)
     .eq('bien.agence', AGENCE)
   const resaByCode = Object.fromEntries((resas || []).map(r => [r.code, r]))
@@ -150,6 +158,12 @@ serve(async (req) => {
     .map(c => {
       const r = resaByCode[c.reservation_id]
       if (!r) return null
+      // Uniquement platform='manual' : booking.com/airbnb/direct encaissent via leur propre
+      // circuit (Hospitable Stripe pour 'direct', virement OTA rapproché en banque pour les
+      // autres) — pas besoin de ce suivi manuel. Demande d'Oïhan le 07/09/2026 : 13 des 14
+      // lignes affichées avant ce fix étaient platform='booking' (Booking.com), déjà géré par
+      // le rapprochement bancaire habituel, jamais un vrai solde en souffrance.
+      if (r.platform !== 'manual') return null
       if (r.owner_stay) return null // séjour propriétaire, pas un solde voyageur
       if (r.rapprochee) return null // encaissé entre-temps, plus à risque
       if (['cancelled', 'not accepted'].includes(r.final_status)) return null
