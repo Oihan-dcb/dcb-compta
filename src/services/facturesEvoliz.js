@@ -450,6 +450,17 @@ async function genererFactureGroupe(proprio, biens, mois, ctx) {
         fraisDeductionMap.set(frais.id, { deduit, reliquat })
         loyDispoPrealable = Math.max(0, loyDispoPrealable - deduit)
       }
+      // Séjour propriétaire (part FMEN) : aucun pool LOY DCB en mode proprio, donc jamais
+      // absorbé — la totalité doit être facturée comme prestation de service TVA 20% (même
+      // ligne que le "surplus" des biens dcb, cf. boucle non-proprio ci-dessous). Bug trouvé
+      // le 07/09/2026 (audit Opus, cas 506P/Sylvie Delawe) : sans ce bloc, les 42,50€ FMEN
+      // n'étaient facturés nulle part — ni en honoraires (skip via ce `continue`), ni en
+      // débours (genererFactureDebours ne traite que l'AUTO, jamais le FMEN). La part AUTO,
+      // elle, reste dans "tout en DEB_AE" ci-dessous — traitée par genererFactureDebours.
+      const osDataProprio = osVentByBien.get(bien.id)
+      if (osDataProprio && osDataProprio.fmenTTC > 0) {
+        ownerStaySurplusByBien.set(bien.id, { osFmenSurplus: osDataProprio.fmenTTC, osAutoSurplus: 0, bienName: bien.hospitable_name })
+      }
       // Pour les biens proprio : pas d'absorption AUTO/deboursProp/ownerStay (tout en DEB_AE)
       continue
     }
@@ -905,9 +916,11 @@ async function genererFactureDebours(proprio, biens, mois, ctx) {
   )
 
   const osResasDebours = ctx.ownerStayGlobal.filter(r => bienIds.includes(r.bien_id))
+  // Hors du if : réutilisé plus bas pour exclure ces lignes AUTO de autoBien (elles sont
+  // déjà comptées séparément via osAutoByBien — cf. fix double-compte 07/09/2026).
+  const osIdsSet = new Set((osResasDebours || []).map(function(r) { return r.id }))
   const osAutoByBien = new Map()
   if ((osResasDebours || []).length > 0) {
-    const osIdsSet = new Set(osResasDebours.map(function(r) { return r.id }))
     const osAutoVent = ctx.ventilationGlobale.filter(
       v => osIdsSet.has(v.reservation_id) && v.code === 'AUTO'
     )
@@ -986,8 +999,12 @@ async function genererFactureDebours(proprio, biens, mois, ctx) {
 
   for (const bien of biens) {
     const bienVentil = ventilByBien.get(bien.id) || []
+    // Exclut les lignes AUTO d'un séjour propriétaire : déjà comptées séparément via osAutoHT
+    // ci-dessous (osAutoByBien) — sans cette exclusion, un même montant AUTO de séjour
+    // propriétaire était additionné deux fois dans montantAFacturer (bug trouvé le 07/09/2026,
+    // audit Opus, cas 506P/Sylvie Delawe : 37,50€ facturés en double).
     const autoBien = bienVentil
-      .filter(function(l) { return l.code === 'AUTO' })
+      .filter(function(l) { return l.code === 'AUTO' && !osIdsSet.has(l.reservation_id) })
       .reduce(function(s, l) { return s + (l.montant_reel !== null ? l.montant_reel : (l.montant_ht || 0)) }, 0)
     // MEN de ce bien : AUTO couvert par MEN ne genere pas de DEB_AE (CAS DCB)
     const menBienDeb = bienVentil
