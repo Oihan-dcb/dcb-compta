@@ -14,6 +14,13 @@
  * cron, PAS d'un secret Deno.env (ce projet Supabase est unique et partagé DCB/Lauian,
  * il n'y a pas de secret AGENCE qui varie par déploiement ici). Deux jobs pg_cron
  * distincts appellent cette même fonction avec {"agence":"dcb"} et {"agence":"lauian"}.
+ *
+ * owner_stay=false obligatoire (ajouté le 07/09/2026) : un séjour propriétaire manuel a
+ * guest_name = nom du propriétaire lui-même et un fin_revenue qui ne représente pas un
+ * loyer voyageur dû, mais un coût ménage à sa charge — sans ce filtre, le mail listait les
+ * propriétaires comme des locataires en défaut de paiement (confusion signalée par Oïhan :
+ * "Peio Abeberry" / AUREAN, "Cecile Alaux" / PANORAMA, etc. — tous des séjours du
+ * propriétaire dans son propre bien, jamais des voyageurs).
  */
 import { serve } from 'https://deno.land/std@0.168.0/http/server.ts'
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
@@ -83,6 +90,7 @@ serve(async (req) => {
     .from('reservation')
     .select('id, guest_name, guest_email, guest_phone, arrival_date, fin_revenue, bien!inner(code, agence)')
     .eq('platform', 'manual')
+    .eq('owner_stay', false)
     .not('final_status', 'in', '("not accepted","cancelled")')
     .gt('fin_revenue', 0)
     .gte('arrival_date', today)
