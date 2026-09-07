@@ -92,7 +92,15 @@ function parseReservation(resa, bien, mois) {
         ? `${statutCourant.category} ${statutCourant.sub_category}`
         : statutCourant.category)
     : resa.status;
-  const notAccepted = ['not_accepted', 'not accepted', 'declined', 'expired', 'checkpoint voided'].includes(statutCombine);
+  // Liste locale à ce fichier (pas lib/constants.js — sémantique différente : ici on force
+  // fin_revenue=0, alors que STATUTS_NON_VENTILABLES inclut aussi 'cancelled' (traité à part
+  // via isCancelled) et 'checkpoint'/'request' (statuts EN ATTENTE, pas encore refusés — ne
+  // pas mettre fin_revenue à 0 tant que ce n'est pas tranché). Mêmes statuts composés
+  // category+sub_category que STATUTS_NON_VENTILABLES (cf. commentaire ligne 84-88) — trouvé
+  // le 07/09/2026 : 4 résas Egin déclinées ('not accepted declined') gardaient un fin_revenue
+  // non nul, donc apparaissaient indéfiniment comme "virement non rapproché" (rien n'arrivera
+  // jamais en banque pour une demande jamais acceptée).
+  const notAccepted = ['not_accepted', 'not accepted', 'not accepted declined', 'not accepted expired', 'declined', 'expired', 'checkpoint voided'].includes(statutCombine);
   const isCancelled = statutCombine === 'cancelled';
 
   // Annulation directe remboursement total : Hospitable renvoie revenue = sum(host_fees)

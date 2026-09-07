@@ -264,7 +264,7 @@ async function calculerVentilationMois(mois: string, agence: string, supa: Retur
   const { data: resasCancelleesIds } = await supa.from('reservation').select('id')
     .eq('mois_comptable', mois)
     .eq('ventilation_manuelle', false)
-    .in('final_status', ['cancelled', 'not_accepted', 'not accepted', 'declined', 'expired'])
+    .in('final_status', STATUTS_NON_VENTILABLES)
     .or('fin_revenue.is.null,fin_revenue.eq.0')
   if (resasCancelleesIds?.length && !dryRun) {
     await supa.from('ventilation').delete().in('reservation_id', resasCancelleesIds.map((r: { id: string }) => r.id))
@@ -283,7 +283,7 @@ async function calculerVentilationMois(mois: string, agence: string, supa: Retur
     reservation_ajustement (*)
   `)
     .eq('mois_comptable', mois)
-    .or('fin_revenue.gt.0,final_status.not.in.("cancelled","not_accepted","not accepted","declined","expired")')
+    .or(`fin_revenue.gt.0,final_status.not.in.(${STATUTS_NON_VENTILABLES.map(s => `"${s}"`).join(',')})`)
 
   if (error) throw error
 

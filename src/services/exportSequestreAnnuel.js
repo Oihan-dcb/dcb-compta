@@ -5,6 +5,7 @@
 
 import { supabase } from '../lib/supabase'
 import { AGENCE } from '../lib/agence'
+import { STATUTS_NON_VENTILABLES } from '../lib/constants'
 
 const STATUT_LABEL = {
   certain:            'Certain',
@@ -55,7 +56,6 @@ export async function exportSequestreAnnuel(annee) {
   }
 
   // 3. Réservations arrivant en N+1
-  const CANCELLED = ['not_accepted', 'not accepted', 'declined', 'expired', 'cancelled']
   let resasAll = []
   for (let i = 0; i < bienIds.length; i += 400) {
     const { data } = await supabase
@@ -64,7 +64,7 @@ export async function exportSequestreAnnuel(annee) {
       .in('bien_id', bienIds.slice(i, i + 400))
       .gte('arrival_date', dateDebutSuivant)
     resasAll = resasAll.concat((data || []).filter(r =>
-      !CANCELLED.includes(r.final_status) &&
+      !STATUTS_NON_VENTILABLES.includes(r.final_status) &&
       !r.owner_stay &&
       !/^[eé]tudiante?/i.test(r.guest_name || '')
     ))

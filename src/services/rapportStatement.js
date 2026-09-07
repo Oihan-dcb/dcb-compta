@@ -1,4 +1,5 @@
 import { AGENCE_BRAND } from '../lib/agence'
+import { STATUTS_NON_VENTILABLES } from '../lib/constants'
 
 function escapeNonAscii(s) {
   return s.replace(/[^\x00-\x7F]/g, c => `&#${c.codePointAt(0)};`)
@@ -129,15 +130,13 @@ export function genererStatementHTML(proprio, mois, data) {
   const moisLabel = `${MOIS_FR[parseInt(moisNum) - 1]} ${annee}`
   const bienNom = data.bien?.hospitable_name || ''
 
-  const STATUTS_ANNULES = ['cancelled', 'not_accepted', 'not accepted', 'declined', 'expired']
-
   const lignesResas = resas.map(r => {
     const honR  = r.hon  || 0
     const loyR  = r.loy  || 0
     const virR  = r.vir  || 0
     const taxeR = r.taxe || 0
     const menR  = r.menage_voyageur || 0
-    const isCancelled = STATUTS_ANNULES.includes(r.final_status)
+    const isCancelled = STATUTS_NON_VENTILABLES.includes(r.final_status)
 
     return `
     <tr style="border-bottom:1px solid #ece8e2;${isCancelled ? 'opacity:0.65;' : ''}">
