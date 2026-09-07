@@ -413,9 +413,14 @@ export async function buildComptaMensuelle(mois, bienIds = null) {
       : null
 
     // Métriques réservations
+    // Étudiants (LLD manuelle, ex. DUL "Illargia"/SB7Q4T, 31/08/2026→30/06/2027) exclus des
+    // stats de rapprochement — même convention que exportSequestreAnnuel.js : loyer encaissé
+    // par prélèvement/virement mensuel étudiant, pas par un payout OTA à rapprocher en banque
+    // (demande Oïhan 07/09/2026, "normal car étudiant").
     const bienResas   = resasByBien[b.id] || []
     const resasGuest  = bienResas.filter(r =>
       !r.owner_stay &&
+      !/^[eé]tudiante?/i.test(r.guest_name || '') &&
       (!STATUTS_NON_VENTILABLES.includes(r.final_status) || (r.fin_revenue || 0) > 0) &&
       (b.gestion_loyer !== false || !['airbnb', 'booking'].includes(r.platform))
     )
