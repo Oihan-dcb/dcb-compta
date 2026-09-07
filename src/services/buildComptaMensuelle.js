@@ -20,6 +20,27 @@ import { supabase } from '../lib/supabase'
 import { AGENCE } from '../lib/agence'
 import { STATUTS_NON_VENTILABLES } from '../lib/constants'
 
+// PostgREST plafonne une réponse à 1000 lignes par défaut sans pagination explicite — au-delà,
+// le surplus est coupé SANS erreur ni avertissement (pas de throw, pas de warning réseau). Trouvé
+// le 07/09/2026 : ventilation d'août 2026 = 1104 lignes → les 104 dernières (dont toutes celles
+// de PATXI/Philippe Richet) invisibles pour buildComptaMensuelle, faisant croire à un reversement
+// de 0€ au lieu de 2554,10€ réels — 1 des 23 alertes ECART_REVERSEMENT affichées était un faux
+// positif dû à ce bug technique, pas un vrai écart comptable. `queryFactory` doit être une
+// fonction qui reconstruit la requête à chaque appel (un query builder Supabase déjà résolu ne se
+// réutilise pas pour un nouveau `.range()`).
+async function fetchAllPages(queryFactory, pageSize = 1000) {
+  let allData = []
+  let from = 0
+  while (true) {
+    const { data, error } = await queryFactory().range(from, from + pageSize - 1)
+    if (error) return { data: allData, error }
+    allData = allData.concat(data || [])
+    if (!data || data.length < pageSize) break
+    from += pageSize
+  }
+  return { data: allData, error: null }
+}
+
 export async function buildComptaMensuelle(mois, bienIds = null) {
   // ── Phase 1 : chargement parallèle ──────────────────────────────────────
   let biensQuery = supabase
@@ -58,11 +79,11 @@ export async function buildComptaMensuelle(mois, bienIds = null) {
       .from('reservation')
       .select('id, bien_id, final_status, ventilation_calculee, rapprochee, owner_stay, fin_revenue, code, arrival_date, departure_date, guest_name, platform')
       .eq('mois_comptable', mois),
-    supabase
+    fetchAllPages(() => supabase
       .from('ventilation')
       .select('bien_id, code, montant_ht, montant_tva, montant_ttc, montant_reel, reservation_id')
       .eq('mois_comptable', mois)
-      .in('code', ['HON', 'FMEN', 'MEN', 'AUTO', 'LOY', 'VIR', 'TAXE', 'COM']),
+      .in('code', ['HON', 'FMEN', 'MEN', 'AUTO', 'LOY', 'VIR', 'TAXE', 'COM'])),
     supabase
       .from('facture_evoliz')
       .select('id, proprietaire_id, bien_id, statut, total_ht, total_ttc, montant_reversement')
