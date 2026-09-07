@@ -323,7 +323,12 @@ export async function buildComptaMensuelle(mois, bienIds = null) {
       if (v.code !== 'FMEN' && v.code !== 'AUTO' && v.code !== 'MEN') continue
       if (!osVentByBien[v.bien_id]) osVentByBien[v.bien_id] = { fmenTTC: 0, autoHT: 0 }
       if (v.code === 'FMEN') osVentByBien[v.bien_id].fmenTTC += (v.montant_ttc || 0)
-      if (v.code === 'AUTO') osVentByBien[v.bien_id].autoHT += (v.montant_reel != null ? v.montant_reel : (v.montant_ht || 0))
+      // montant_ht (jamais montant_reel) : FMEN_ttc + AUTO_ht ≡ fin_revenue par construction
+      // (api/ventiler.js:75-79) — c'est ce que le propriétaire a accepté de payer pour son
+      // séjour. Prendre l'AUTO réel sans compenser le FMEN casse cette identité et sous-estime
+      // la créance propriétaire (bug trouvé le 07/09/2026, cf. facturesEvoliz.js qui utilise
+      // déjà montant_ht ici — vérifié par audit Opus : Erregina -12,50€, Maison Maïté -93,75€).
+      if (v.code === 'AUTO') osVentByBien[v.bien_id].autoHT += (v.montant_ht || 0)
       // MEN saisi manuellement = coût AE refacturé au proprio, hors TVA → canal AUTO (cf. facturesEvoliz)
       if (v.code === 'MEN')  osVentByBien[v.bien_id].autoHT += (v.montant_ht || 0)
     }
@@ -355,7 +360,13 @@ export async function buildComptaMensuelle(mois, bienIds = null) {
     const deboursProp = deboursPropByBien[b.id] || 0
     const loyDispo   = Math.max(0, loyHt - prestDeduct - fraisLoy - autoHt - deboursProp)
     // Absorption owner stay AUTO puis FMEN sur LOY résiduel
-    const osData       = osVentByBien[b.id] || { fmenTTC: 0, autoHT: 0 }
+    // mode_encaissement='proprio' : aucune absorption (facturesEvoliz.js:440-454, "tout en
+    // DEB_AE") — le séjour propriétaire y est facturé séparément via la facture débours, pas
+    // déduit du reversement. Sans cette exception, buildComptaMensuelle sous-estimait à tort
+    // le reversement de ces biens (bug trouvé le 07/09/2026, cf. audit Opus, cas 506P -80€).
+    const osData       = b.mode_encaissement === 'proprio'
+      ? { fmenTTC: 0, autoHT: 0 }
+      : (osVentByBien[b.id] || { fmenTTC: 0, autoHT: 0 })
     const osAutoAbsorb = Math.min(osData.autoHT, loyDispo)
     const osFmenAbsorb = Math.min(osData.fmenTTC, Math.max(0, loyDispo - osAutoAbsorb))
     ownerStayAbsorbByBien[b.id] = osAutoAbsorb + osFmenAbsorb
