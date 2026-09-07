@@ -21,6 +21,12 @@
  * Même architecture que alerte-solde-manuel : un seul Edge Function partagé DCB/Lauian,
  * agence passée dans le body du cron, mail récap quotidien qui s'arrête de lui-même dès que
  * la situation est résolue (rapprochee=true ou reservation réellement annulée).
+ *
+ * owner_stay exclu des deux sections (ajouté le 07/09/2026, même bug que alerte-solde-manuel
+ * cf. project_alerte_solde_manuel) : un séjour propriétaire manuel peut avoir un contrat
+ * auto-généré puis annulé (pas un vrai locataire), ou un guest_name = nom du propriétaire —
+ * sans ce filtre, 3 des 19 lignes "Contrat annulé" de la section 2 étaient les propriétaires
+ * eux-mêmes (Andrea/SCI du Tourmalet-MUNDUZ, Dominique belair/408P, Vincent Balhadere×2).
  */
 import { serve } from 'https://deno.land/std@0.168.0/http/server.ts'
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
@@ -135,7 +141,7 @@ serve(async (req) => {
 
   const { data: resas } = await supabase
     .from('reservation')
-    .select('code, guest_name, arrival_date, fin_revenue, rapprochee, final_status, bien!inner(code, agence)')
+    .select('code, guest_name, arrival_date, fin_revenue, rapprochee, final_status, owner_stay, bien!inner(code, agence)')
     .in('code', codesAVerifier)
     .eq('bien.agence', AGENCE)
   const resaByCode = Object.fromEntries((resas || []).map(r => [r.code, r]))
@@ -144,6 +150,7 @@ serve(async (req) => {
     .map(c => {
       const r = resaByCode[c.reservation_id]
       if (!r) return null
+      if (r.owner_stay) return null // séjour propriétaire, pas un solde voyageur
       if (r.rapprochee) return null // encaissé entre-temps, plus à risque
       if (['cancelled', 'not accepted'].includes(r.final_status)) return null
       if (!(r.fin_revenue > 0)) return null
@@ -162,6 +169,7 @@ serve(async (req) => {
     .map(c => {
       const r = resaByCode[c.reservation_id]
       if (!r) return null
+      if (r.owner_stay) return null // séjour propriétaire — contrat auto-généré/annulé sans rapport avec un vrai locataire
       if (['cancelled', 'not accepted'].includes(r.final_status)) return null // déjà annulée, résolu
       if (!(r.fin_revenue > 0)) return null
       return {
