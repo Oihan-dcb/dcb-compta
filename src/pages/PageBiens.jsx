@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react'
 import { AGENCE } from '../lib/agence'
-import { syncBiens, getBiens } from '../services/syncBiens'
+import { syncBiens, getBiens, resoudreCollisionBien } from '../services/syncBiens'
 import { getProprietaires } from '../services/syncProprietaires'
 import { formatMontant } from '../lib/hospitable'
 
@@ -156,6 +156,21 @@ export default function PageBiens() {
       setError(err.message)
     } finally {
       setSyncing(false)
+    }
+  }
+
+  const [resolvingCollision, setResolvingCollision] = useState(null)
+  async function resoudreCollision(c) {
+    if (!confirm(`Rattacher "${c.bien_existant_code || c.hospitable_name}" au bien Hospitable réel ?\n\nhospitable_id : ${c.bien_existant_hospitable_id} → ${c.hospitable_id_nouveau}\n\nLes autres champs (adresse, photo…) seront remplis automatiquement juste après par une resync.`)) return
+    setResolvingCollision(c.hospitable_id_nouveau)
+    try {
+      await resoudreCollisionBien(c.bien_existant_id, c.hospitable_id_nouveau)
+      setSyncResult(r => r ? { ...r, collisions: r.collisions.filter(x => x.hospitable_id_nouveau !== c.hospitable_id_nouveau) } : r)
+      await lancerSync()
+    } catch (err) {
+      setError(err.message)
+    } finally {
+      setResolvingCollision(null)
     }
   }
 
@@ -346,9 +361,18 @@ export default function PageBiens() {
           d'en créer un nouveau) :
           <ul style={{ margin: '8px 0 0', paddingLeft: 20 }}>
             {syncResult.collisions.map(c => (
-              <li key={c.hospitable_id_nouveau}>
-                <strong>{c.hospitable_name}</strong> — bien existant <code>{c.bien_existant_code}</code>
-                {' '}(hospitable_id actuel : <code>{c.bien_existant_hospitable_id}</code>) → nouveau : <code>{c.hospitable_id_nouveau}</code>
+              <li key={c.hospitable_id_nouveau} style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+                <span>
+                  <strong>{c.hospitable_name}</strong> — bien existant <code>{c.bien_existant_code}</code>
+                  {' '}(hospitable_id actuel : <code>{c.bien_existant_hospitable_id}</code>) → nouveau : <code>{c.hospitable_id_nouveau}</code>
+                </span>
+                <button
+                  onClick={() => resoudreCollision(c)}
+                  disabled={resolvingCollision === c.hospitable_id_nouveau}
+                  style={{ fontSize: 11, fontWeight: 700, padding: '3px 9px', borderRadius: 6, border: '1px solid #CC9933', background: '#FFF8EC', color: '#CC9933', cursor: resolvingCollision === c.hospitable_id_nouveau ? 'default' : 'pointer' }}
+                >
+                  {resolvingCollision === c.hospitable_id_nouveau ? '⏳…' : '🔗 Rattacher'}
+                </button>
               </li>
             ))}
           </ul>

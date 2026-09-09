@@ -65,7 +65,7 @@ function normalizeName(nom, prenom) {
     .trim();
 }
 
-module.exports = async (req, res) => {
+export default async function handler(req, res) {
   // ── Auth : même pattern que sync-biens.js ─────────────────────────────────
   const token = req.query?.token || (req.headers.authorization || '').replace(/^Bearer\s+/i, '').trim();
   if (!WEBHOOK_SECRET) return res.status(500).json({ error: 'HOSPITABLE_WEBHOOK_SECRET non configuré' });

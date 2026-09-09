@@ -154,6 +154,18 @@ export async function syncBiens() {
 }
 
 /**
+ * Résout une collision détectée par syncBiens() : rattache le bien suivi manuellement
+ * (créé depuis PowerHouse, hospitable_id "manual-<uuid>") au bien Hospitable réel qui vient
+ * de se connecter. On ne fait QUE basculer hospitable_id — les autres champs (adresse, photo,
+ * ville, listed…) seront remplis par le prochain passage de syncBiens(), qui matchera
+ * désormais ce bien par son vrai hospitable_id comme n'importe quel bien synchronisé.
+ */
+export async function resoudreCollisionBien(bienExistantId, hospitableIdNouveau) {
+  const { error } = await supabase.from('bien').update({ hospitable_id: hospitableIdNouveau }).eq('id', bienExistantId)
+  if (error) throw error
+}
+
+/**
  * Extrait un code court depuis le nom Hospitable
  * ex: '602 "Horizonte"' → '602'
  * ex: 'CERES' → 'CERES'

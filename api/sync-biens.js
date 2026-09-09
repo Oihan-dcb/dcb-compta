@@ -84,7 +84,15 @@ function extractCode(name) {
   return firstMeaningful?.toUpperCase() || null;
 }
 
-module.exports = async (req, res) => {
+export default async function handler(req, res) {
+  // CORS : appelable depuis PowerHouse (dcb-planning.vercel.app), même Supabase Auth
+  // (projet omuncchvypbtxkpalwcr partagé) — le token de session d'un staff PowerHouse
+  // authentifie donc aussi bien ici que sur dcb-compta. 09/09/2026.
+  res.setHeader('Access-Control-Allow-Origin', '*');
+  res.setHeader('Access-Control-Allow-Methods', 'GET,POST,OPTIONS');
+  res.setHeader('Access-Control-Allow-Headers', 'Authorization, Content-Type');
+  if (req.method === 'OPTIONS') return res.status(200).end();
+
   // ── Auth : même pattern que sync-reservations.js ──────────────────────────
   const token = req.query?.token || (req.headers.authorization || '').replace(/^Bearer\s+/i, '').trim();
   if (!WEBHOOK_SECRET) return res.status(500).json({ error: 'HOSPITABLE_WEBHOOK_SECRET non configuré' });
