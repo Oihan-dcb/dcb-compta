@@ -1659,11 +1659,11 @@ export default function PageAutoEntrepreneurs() {
                     </label>
                     <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
                       <input
-                        value={`webcal://dcb-planning.vercel.app/api/ical-rdv?staff=${form.prenom.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '')}`}
+                        value={`webcal://dcb-planning.vercel.app/api/ical-rdv?t=${form.ical_rdv_token || ''}`}
                         readOnly
                         style={{ flex: 1, padding: '7px 10px', borderRadius: 6, border: '1px solid #e5e7eb', fontSize: 11, background: '#fffbeb', color: '#92400e', cursor: 'default', fontFamily: 'monospace' }}
                       />
-                      <button type="button" onClick={() => navigator.clipboard.writeText(`webcal://dcb-planning.vercel.app/api/ical-rdv?staff=${form.prenom.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '')}`)}
+                      <button type="button" onClick={() => navigator.clipboard.writeText(`webcal://dcb-planning.vercel.app/api/ical-rdv?t=${form.ical_rdv_token || ''}`)}
                         style={{ padding: '6px 10px', borderRadius: 6, border: '1px solid #D9CEB8', background: '#FDF5E8', color: '#92400e', fontSize: 11, cursor: 'pointer', whiteSpace: 'nowrap', fontWeight: 600 }}>
                         Copier
                       </button>
