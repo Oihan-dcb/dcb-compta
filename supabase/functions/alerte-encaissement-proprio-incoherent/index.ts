@@ -92,6 +92,11 @@ serve(async (req) => {
   const dryRun = body.dry_run === true
   const AGENCE = body.agence || 'dcb'
 
+  // Hors champ : résas 2025 (demande Oïhan 09/09/2026, ex. ASKIDA/Aïta — cas isolés anciens,
+  // jamais traités, pas de valeur à les resignaler indéfiniment). Ne couvre que l'année en
+  // cours et la suite — un futur cas ancien similaire ne polluera pas non plus l'alerte.
+  const DATE_MIN = '2026-01-01'
+
   const { data: resas, error } = await supabase
     .from('reservation')
     .select('id, guest_name, arrival_date, fin_revenue, platform, bien!inner(code, hospitable_name, agence, gestion_loyer)')
@@ -100,6 +105,7 @@ serve(async (req) => {
     .gt('fin_revenue', 0)
     .eq('bien.gestion_loyer', false)
     .eq('bien.agence', AGENCE)
+    .gte('arrival_date', DATE_MIN)
     .order('arrival_date')
   if (error) return json({ error: error.message }, 500)
 
