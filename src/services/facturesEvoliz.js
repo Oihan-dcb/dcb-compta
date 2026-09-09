@@ -331,10 +331,18 @@ async function genererFactureGroupe(proprio, biens, mois, ctx) {
   const fraisDirectTTCFacture = (fraisDirectPourFacture).reduce((s, f) => s + (f.montant_ttc || 0), 0)
   const fraisDirectHTFacture  = Math.round(fraisDirectTTCFacture / 1.20)
   const fraisDirectTVAFacture = fraisDirectTTCFacture - fraisDirectHTFacture
-  // Pour le reversement Lauian : uniquement facturer_et_deduire (déduction LOY)
-  const fraisDirectTTCReversement = AGENCE === 'lauian'
-    ? fraisDirect.filter(f => f.mode_traitement === 'facturer_et_deduire').reduce((s, f) => s + (f.montant_ttc || 0), 0)
-    : fraisDirectTTC
+  // Uniquement facturer_et_deduire réduit le reversement (déduction LOY) — facturer_direct
+  // est facturé À PART (ligne FRAIS sur la facture, cf. fraisDirectHTFacture) et ne doit
+  // JAMAIS toucher au virement, quelle que soit l'agence (cf. commentaire ligne 328-329, déjà
+  // correct côté Lauian). Bug trouvé le 09/09/2026 (signalé par Hélène/416 Harea, propriétaire
+  // facturée deux fois pour le même débours "facturer_direct" : une fois sur sa facture, une
+  // fois en le voyant déduit de son virement) : la branche DCB utilisait fraisDirectTTC (tous
+  // modes confondus) au lieu de filtrer comme la branche Lauian. Resté sans impact réel tant
+  // que le virement SEPA se basait sur le brut ventilation plutôt que sur ce montant_reversement
+  // (changé le 06/09/2026, commit c2e58c5) — c'est ce changement qui a rendu le bug actif.
+  const fraisDirectTTCReversement = fraisDirect
+    .filter(f => f.mode_traitement === 'facturer_et_deduire')
+    .reduce((s, f) => s + (f.montant_ttc || 0), 0)
   const fraisDirectHT  = Math.round(fraisDirectTTC / 1.20)
   const fraisDirectTVA = fraisDirectTTC - fraisDirectHT
 
