@@ -9,7 +9,7 @@ Deno.serve(async (req) => {
   if (req.method === 'OPTIONS') return new Response('ok', { headers: corsHeaders })
 
   try {
-    const { ae_id } = await req.json()
+    const { ae_id, redirect_to } = await req.json()
     if (!ae_id) {
       return new Response(JSON.stringify({ error: 'ae_id requis' }), {
         status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' }
@@ -35,7 +35,9 @@ Deno.serve(async (req) => {
       email: ae.email,
       // Sans redirectTo explicite, Supabase retombe sur le Site URL global du projet
       // (partagé avec dcb-compta) — envoyait les AE sur dcb-compta au lieu du portail.
-      options: { redirectTo: 'https://staff-app.destinationcotebasque.com' },
+      // redirect_to optionnel (ex. invitation PowerHouse, dcb-planning/api/powerhouse-invite.js)
+      // permet de rediriger ailleurs que le Portail AE sans dupliquer cette fonction.
+      options: { redirectTo: redirect_to || 'https://staff-app.destinationcotebasque.com' },
     })
     if (linkErr) throw linkErr
 
