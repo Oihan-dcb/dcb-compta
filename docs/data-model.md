@@ -910,4 +910,45 @@ Upsert idempotent. Retourne `true` **uniquement sur la transition** vers « prê
 
 **Trou fermé (22/08/2026)** : ~2,7 % des médias `apres_menage` (3/112) étaient envoyés sans `bien_id` (champ facultatif dans la modale de contexte du Portail AE) — ces ménages ne produisaient aucune ligne « prêt ». Le bien est désormais **obligatoire pour `apres_menage`** (`MEDIA_SUBJECTS_BIEN_REQUIRED` dans `Messagerie.jsx`) : bouton d'envoi désactivé + message explicite tant qu'aucun bien n'est choisi, plus un garde-fou dans `confirmUpload` (seul écrivain de `media_library`).
 
+## Ajout 2026-09-09 — `bien.secteur`, `secteur_branding`, `staff_bien_scope` (migrations 222-224)
+
+```sql
+alter table bien add column secteur text not null default 'cote-basque'
+  check (secteur in ('cote-basque','bordeaux','bassin-arcachon'));
+alter table auto_entrepreneur add column secteurs text[]; -- null = tous secteurs (comportement par défaut)
+
+create table staff_bien_scope (auth_user_id uuid, bien_id uuid, created_at timestamptz, primary key(auth_user_id,bien_id));
+create table secteur_branding (id text primary key, label text, secteurs text[], tagline text, brand_color text, logo_storage_path text);
+create function my_secteurs() returns text[] ...       -- NULL pour staff_users et comptes sans secteurs (accès total)
+create function my_scoped_bien_ids() returns setof uuid ... -- union secteur match + staff_bien_scope
+```
+
+Fondation pour un accès staff scopé géographiquement (dossier Léa Escudier, Bordeaux/Bassin
+d'Arcachon) — **seule la table `bien` référence `my_scoped_bien_ids()` à ce jour** ; les ~19
+autres tables `bien_id` (mission_menage, mandat_signature, tech_issues, etc.) et les endpoints
+`api/*.js` en service_role (qui bypassent la RLS) restent à scoper avant d'activer réellement
+`secteurs` sur un compte. Détail : mémoire `project_staff_scope_geo_bordeaux_lea_2026-09`.
+
+`secteur_branding` = sous-marque théorique "Destination Bordeaux" (affichage seulement) — **ne
+pas confondre** avec `agency_config.agence='bordeaux'` (entité de facturation indépendante
+réservée à une vraie scission DBDX future, `agence` reste `'dcb'` sur les biens Bordeaux gérés
+par DCB).
+
+## Ajout 2026-09-09 — `mandat_lien` (migration 250) + `mandat_signature.rib_path`/`acte_propriete_path` (migrations 221, 251)
+
+Session d'onboarding propriétaire par lien public, OTP-first (staff pose agence/apporteur
+Léa/honoraires/contact → propriétaire complète lui-même sa fiche + celle de son bien → cascade
+vers `proprietaire`/`bien`/`proprietaire_onboarding`/`mandat_signature`). Table séparée de
+`mandat_signature` (dont `bien_id`/`proprietaire_id` sont NOT NULL et structurants ailleurs) —
+RLS staff seul, tout accès public passe par service_role (`dcb-contrats/api/mandat-onb-*.js`).
+Colonnes clés : `token`/`token_expires_at`, `otp_hash`/`otp_verified_at`/`session_key_hash`
+(preuve de session post-OTP), `proprio_draft`/`bien_draft` (jsonb, auto-save), `statut`
+(cree|envoye|otp_verifie|complete|expire|annule), `dup_proprietaire_id`/`dup_bien_id` (doublons
+détectés, non bloquants).
+
+`mandat_signature.rib_path`/`rib_taken_at` et `acte_propriete_path`/`acte_propriete_taken_at` :
+2 pièces supplémentaires demandées et bloquantes à la signature, même pattern que
+`identite_path`/`assurance_hab_path` (migration 198) — annexées filigranées au PDF signé.
+Détail complet : mémoire `project_mandat_lien_onboarding_2026-09`.
+
 L'obligation n'a **pas** été étendue à `avant_menage` : c'est le sujet **par défaut** de la modale, donc le fourre-tout des envois non catégorisés (69,8 % sans bien, 88/126, contre 2,7 % pour `apres_menage`). L'y exiger bloquerait la majorité des envois pour un sujet qu'aucune automatisation ne consomme. Le correctif pertinent de ce côté serait de revoir le **sujet par défaut** de la modale — non fait, décision produit.

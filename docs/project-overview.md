@@ -1622,3 +1622,70 @@ d'auto-annulation** pour le cas 2 : un contrat peut être annulé APRÈS un séj
 auto-annuler la réservation effacerait un vrai séjour. Alerte uniquement, décision humaine.
 
 Voir mémoire `project_contrat_annule_ne_maj_pas_reservation` pour le détail des cas trouvés.
+
+## Fix session 07 septembre 2026 — `relance-facture-impayee` relançait des honoraires déjà réglés par nettage
+
+Peio (propriétaire AUREAN) a reçu un rappel de paiement pour sa facture d'honoraires
+`T-20260000402` (août 2026) alors que `bien.gestion_loyer=true` : sur ce mode, les honoraires
+sont directement prélevés sur le loyer encaissé par DCB avant reversement (comme documenté
+dans le commentaire Evoliz de la facture elle-même) — aucun virement n'est jamais dû par le
+propriétaire pour ce type de facture. Comme aucun paiement Evoliz ne peut jamais être constaté
+en face, `sync-evoliz-statut` ne passe jamais ces factures en `payee`, et
+`relance-facture-impayee` les relançait comme de vraies impayées.
+
+Portée plus large que le seul cas AUREAN : 18 factures `honoraires` du mois 2026-08 (émises le
+06/09) concernées, qui auraient déclenché la même relance erronée le 08/09 sans le fix.
+
+Fix déployé (v5) : `relance-facture-impayee` exclut désormais toute facture `honoraires` avec
+`bien.gestion_loyer !== false && !solde_negatif`. Détail règle métier : `docs/domain-rules.md` §19.
+
+## Fix session 09 septembre 2026 — Onboarding propriétaire par lien, RLS scoping géographique staff, cron Hospitable/Evoliz cassé ~6 mois
+
+Session longue à cheval sur `dcb-compta`, `dcb-planning` (PowerHouse) et `dcb-contrats`.
+
+**1. Accès staff scopé par secteur géographique (Léa Escudier, Bordeaux/Bassin d'Arcachon).**
+Aucun scoping n'existait — un compte staff voyait tout le parc DCB+Lauïan. Migrations 222-223 :
+`bien.secteur` (cote-basque/bordeaux/bassin-arcachon), `auto_entrepreneur.secteurs`,
+`my_scoped_bien_ids()`, `staff_bien_scope` (exceptions), trigger anti-auto-élévation sur
+`auto_entrepreneur` (fermait aussi un trou pré-existant : un compte `type='staff'` pouvait
+légalement s'auto-promouvoir `acces_admin`). Seule la table `bien` est scopée à ce stade — les
+~19 autres tables `bien_id` et les endpoints `api/*.js` en service_role restent à faire avant
+d'activer réellement `secteurs` sur la fiche de Léa. Détail : mémoire
+`project_staff_scope_geo_bordeaux_lea_2026-09`.
+
+**2. Sous-marque "Destination Bordeaux".** Migration 224 (`secteur_branding`) — habillage
+théorique rattaché à `bien.secteur`, ne touche pas `bien.agence` (facturation dcb inchangée). À
+ne pas confondre avec `agency_config.agence='bordeaux'` (coquille existante depuis 04/2026,
+réservée à une vraie scission DBDX future).
+
+**3. Bug trouvé : cron nightly Hospitable/Evoliz cassé depuis ~mars 2026.** `api/sync-biens.js`
+et `api/sync-proprietaires.js` étaient restés en `module.exports` (CommonJS) alors que
+`package.json` est passé en `"type":"module"` — crash sur CHAQUE appel, y compris les 4 crons
+nightly (dcb+lauian). Masqué par la sync manuelle occasionnelle via le bouton `PageBiens.jsx`
+(code client, chemin différent). Corrigé (`export default`). CORS ajouté sur `sync-biens.js` +
+bouton "🔗 Rattacher" (résolution de collision bien manuel/Hospitable, `resoudreCollisionBien`)
+— manquait totalement (uniquement documenté "à résoudre à la main" = SQL manuel).
+
+**4. Onboarding propriétaire par lien public, OTP-first.** Nouvelle table `mandat_lien`
+(migration 250, RLS staff seul). Le staff pose agence/apporteur Léa/honoraires/contact puis
+génère un lien ; le propriétaire vérifie son identité par code (sur le contact fourni par le
+staff, AVANT toute saisie) puis complète lui-même sa fiche et celle de son bien
+(`dcb-contrats/public/mandat-onboarding.html` + `api/mandat-onb-*.js`) ; cascade serveur
+proprietaire→bien→proprietaire_onboarding→mandat_signature puis redirection vers le stepper de
+signature existant (OTP non redemandé). Écran staff : `MandatLienModal` + panneau "Liens en
+attente" dans PowerHouse (`28-propri-view.jsx`). RIB (migration 221) et acte de propriété
+(migration 251) ajoutés aux pièces demandées à la signature, comme CNI/assurance.
+
+Test réel du 09/09/2026 (Villa TEST, Bordeaux) a marché de bout en bout mais a révélé plusieurs
+bugs, tous corrigés le jour même : le garde-fou anti-double-signature ne bloquait que
+`statut='signe'`, pas `'partiel'` (cas Bordeaux, mandant re-signait sans nouvel OTP tant que
+Léa n'avait pas co-signé) ; écran "Mandat signé" trompeur en cas partiel + aucun e-mail de
+confirmation n'était envoyé à la signature partielle (`notifierSignaturePartielle` ajoutée) ;
+filigrane des annexes sans le numéro de mandat (paramètre `ref` accepté mais jamais utilisé) ;
+bouton "Continuer" restant visuellement pâle après upload sur iOS Safari (repaint `:disabled`
+non fiable, forcé en inline). Détail complet : mémoire `project_mandat_lien_onboarding_2026-09`.
+
+**5. Création manuelle d'un bien depuis PowerHouse.** `66-bien-form-modal.jsx` — bien créé avant
+connexion Hospitable réelle (`hospitable_id:"manual-<uuid>"`, `listed:false`), avec garde-fous
+anti-doublon nom/code repris de `syncBiens.js`. Bug bloquant trouvé et corrigé le jour même :
+`bien.code_postal` n'existe pas comme colonne (fusion dans `adresse`).
