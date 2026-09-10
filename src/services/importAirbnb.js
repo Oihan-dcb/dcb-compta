@@ -80,7 +80,15 @@ export function parseAirbnbCSV(text) {
       const total = Math.round(parseAmount(cols[iVerse] || '0') * 100)
       if (!groups[date]) groups[date] = { payoutDate: date, totalCents: 0, rows: [] }
       groups[date].totalCents += total
-    } else if (type === 'réservation' || type === 'reservation') {
+    } else if (type !== 'payout' && (cols[iCode] || '').trim()) {
+      // N'importe quel type de ligne portant un code de confirmation compte pour cette résa —
+      // pas seulement 'réservation'/'reservation'. Trouvé le 10/09/2026 (Andrea Gómez De La
+      // Puente, HMFCXW82ZM) : une ligne "Résolution" (versement lié à un litige/dossier de
+      // résolution Airbnb CLA-xxxxx, montant distinct du virement logement) portait le même code
+      // de confirmation mais n'était pas reconnue — son montant entrait bien dans le total du
+      // virement bancaire (donc le rapprochement du MOUVEMENT réussissait), mais jamais rattaché
+      // à la réservation (reservation_paiement) : la résa restait bloquée "en attente de payin"
+      // indéfiniment (fin_revenue Hospitable inclut la résolution, reservation_paiement non).
       const code = (cols[iCode] || '').trim()
       if (!code) continue
       const amount = Math.round(parseAmount(cols[iMontant] || '0') * 100)
