@@ -192,6 +192,7 @@ async function prechargerDonneesFacturation(mois, bienIds, proprietaireIds, agen
     { data: ventilData },
     { data: resaData },
     { data: osResaData },
+    { data: manuelResaData },
     { data: prestData },
     { data: fraisData },
     { data: expenseData },
@@ -211,6 +212,14 @@ async function prechargerDonneesFacturation(mois, bienIds, proprietaireIds, agen
       .select('id, bien_id, fin_revenue')
       .in('bien_id', bienIds).eq('mois_comptable', mois)
       .eq('owner_stay', true).eq('platform', 'manual'),
+
+    // Résas verrouillées (ajustement manuel, migration 226) : leur coût ménage est déjà
+    // déduit du LOY/VIR par construction (ventilation.js:172, total conservé). Les inclure
+    // dans autoBien/menBien double-déduirait ce coût — incident 10/09/2026, TXORIA/HM9BHSSYFR.
+    supabase.from('reservation')
+      .select('id, bien_id')
+      .in('bien_id', bienIds).eq('mois_comptable', mois)
+      .eq('ventilation_manuelle', true),
 
     supabase.from('prestation_hors_forfait')
       .select('bien_id, montant, regime, type_imputation, description, prestation_type:prestation_type_id(nom), ae:ae_id(type)')
@@ -248,6 +257,7 @@ async function prechargerDonneesFacturation(mois, bienIds, proprietaireIds, agen
     ventilationGlobale:   ventilData    || [],
     reservationsGlobales: resaData      || [],
     ownerStayGlobal:      osResaData    || [],
+    ventilationManuelleGlobal: manuelResaData || [],
     prestationsGlobales:  prestData     || [],
     fraisGlobaux:         fraisData     || [],
     expensesGlobales:     expenseData   || [],
@@ -286,6 +296,9 @@ async function genererFactureGroupe(proprio, biens, mois, ctx) {
   const expenses       = ctx.expensesGlobales.filter(e => bienIds.includes(e.bien_id))
   const ventilation    = ctx.ventilationGlobale.filter(v => bienIds.includes(v.bien_id))
   const ownerStayResas = ctx.ownerStayGlobal.filter(r => bienIds.includes(r.bien_id))
+  // Résas ventilation_manuelle=true (migration 226) : leur ménage est déjà déduit du LOY/VIR
+  // par construction — exclues de autoBien/menBien plus bas pour ne pas le déduire deux fois.
+  const manuelIds = new Set(ctx.ventilationManuelleGlobal.filter(r => bienIds.includes(r.bien_id)).map(r => r.id))
 
   const aeParBien = new Map()
 
@@ -482,16 +495,19 @@ async function genererFactureGroupe(proprio, biens, mois, ctx) {
       loyPoolGroupe = Math.max(0, loyPoolGroupe - deduit)
     }
 
-    // AUTO depuis ventilation deja chargee en memoire
+    // AUTO depuis ventilation deja chargee en memoire.
+    // Exclure les résas ventilation_manuelle=true : leur coût ménage est déjà déduit du
+    // LOY/VIR par construction (l'ajustement manuel conserve le total de la résa), le
+    // redéduire ici double la déduction — TXORIA/HM9BHSSYFR août 2026, FMEN manuel 300,00 €.
     const autoBien = ventilation
-      .filter(function(l) { return l.bien_id === bien.id && l.code === 'AUTO' })
+      .filter(function(l) { return l.bien_id === bien.id && l.code === 'AUTO' && !manuelIds.has(l.reservation_id) })
       .reduce(function(s, l) { return s + (l.montant_reel !== null ? l.montant_reel : (l.montant_ht || 0)) }, 0)
     // MEN de ce bien : AUTO est deja deduit du MEN pour donner FMEN
     // La part AUTO couverte par MEN ne touche pas le LOY du proprio (CAS DCB)
     // Exclure le MEN des owner stays (saisie manuelle refacturée au proprio via l'absorption
-    // owner stay — pas un ménage collecté auprès d'un voyageur)
+    // owner stay — pas un ménage collecté auprès d'un voyageur) et des résas verrouillées.
     const menBien = ventilation
-      .filter(function(l) { return l.bien_id === bien.id && l.code === 'MEN' && !osAllIds.has(l.reservation_id) })
+      .filter(function(l) { return l.bien_id === bien.id && l.code === 'MEN' && !osAllIds.has(l.reservation_id) && !manuelIds.has(l.reservation_id) })
       .reduce(function(s, l) { return s + l.montant_ht }, 0)
     const autoCouvertMen = Math.min(autoBien, menBien)
     const autoNetMen     = Math.max(0, autoBien - autoCouvertMen)
@@ -927,6 +943,10 @@ async function genererFactureDebours(proprio, biens, mois, ctx) {
   // Hors du if : réutilisé plus bas pour exclure ces lignes AUTO de autoBien (elles sont
   // déjà comptées séparément via osAutoByBien — cf. fix double-compte 07/09/2026).
   const osIdsSet = new Set((osResasDebours || []).map(function(r) { return r.id }))
+  // Résas ventilation_manuelle=true (migration 226) : leur ménage est déjà déduit du LOY/VIR
+  // par construction — sans cette exclusion, leur AUTO générerait ICI un DEB_AE fantôme en
+  // plus de la déduction manuelle déjà faite (même incident que genererFactureGroupe, 10/09/2026).
+  const manuelIdsDebours = new Set(ctx.ventilationManuelleGlobal.filter(r => bienIds.includes(r.bien_id)).map(r => r.id))
   const osAutoByBien = new Map()
   if ((osResasDebours || []).length > 0) {
     const osAutoVent = ctx.ventilationGlobale.filter(
