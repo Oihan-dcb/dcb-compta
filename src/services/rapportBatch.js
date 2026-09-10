@@ -65,6 +65,11 @@ export function buildRendererPayloadFrom({ result, bien, notesRow }) {
 // Liste des rapports en attente ce mois-ci : un item par bien "simple" non déjà envoyé, et pour
 // Maison Maïté un item par chambre PLUS un item global consolidé — tous non déjà envoyés
 // (biensEnvoyes, vérifié par bien_id : chaque chambre a le sien, le global est ancré sur M-MAITE).
+// Un bien ne compte comme "actif" QUE via bienIdsActifs (activité réelle ce mois — résa ou
+// prestation) — plus de fallback `b.listed` seul (retiré 10/09/2026, demandé par Oïhan : des
+// biens listés mais jamais loués encombraient la liste, ex. Aitzina/Canopée). bienIdsActifs
+// couvre déjà un bien démasqué d'Airbnb tant qu'il a une activité réelle (cf. incident 408P
+// "Ikuspegi") — pas besoin de `listed` en plus pour ça.
 export function listeProprioEnAttente(propsFiltres, biensEnvoyes, bienIdsActifs, agence) {
   const items = []
   for (const p of propsFiltres) {
@@ -80,7 +85,7 @@ export function listeProprioEnAttente(propsFiltres, biensEnvoyes, bienIdsActifs,
       const maison = maiteBiens.find(b => b.code === 'M-MAITE') || maiteBiens[0]
       for (const chambre of maiteBiens) {
         if (chambre.id === maison.id) continue
-        const active = (chambre.listed || bienIdsActifs?.has(chambre.id)) && chambre.agence === agence
+        const active = bienIdsActifs?.has(chambre.id) && chambre.agence === agence
         if (active && !biensEnvoyes.has(chambre.id)) {
           items.push({ proprio: p, bienId: chambre.id, isGlobal: false, maiteIds: [], label: chambre.hospitable_name || chambre.code })
         }
@@ -90,7 +95,7 @@ export function listeProprioEnAttente(propsFiltres, biensEnvoyes, bienIdsActifs,
       }
       continue
     }
-    const bien = biens.find(b => (b.listed || bienIdsActifs?.has(b.id)) && b.agence === agence)
+    const bien = biens.find(b => bienIdsActifs?.has(b.id) && b.agence === agence)
     if (bien && !biensEnvoyes.has(bien.id)) {
       items.push({ proprio: p, bienId: bien.id, isGlobal: false, maiteIds: [], label: bien.hospitable_name || bien.code })
     }

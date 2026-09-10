@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback, useRef, Fragment } from 'react'
-import MoisSelector, { MOIS_FR } from '../components/MoisSelector'
+import MoisSelector from '../components/MoisSelector'
 import { useMoisPersisted } from '../hooks/useMoisPersisted'
 import { supabase } from '../lib/supabase'
 import { authPost, authPostRaw } from '../lib/authFetch'
@@ -15,6 +15,11 @@ import ModalRapportsGroupes from '../components/ModalRapportsGroupes'
 
 const moisCourant = new Date().toISOString().substring(0, 7)
 const fmt = c => ((c || 0) / 100).toFixed(2).replace('.', ',') + ' €'
+// Mois en toutes lettres — demandé par Oïhan 10/09/2026 (incohérence "Aoû 2026" abrégé dans les
+// titres/objets de mail de cette page vs "Août 2026" en entier dans le contenu du rapport lui-même,
+// généré par rapportStatement.js). Le sélecteur de mois (MoisSelector, grille compacte partagée par
+// 9 autres pages) garde volontairement l'abrégé — trop long en entier pour sa grille 4 colonnes.
+const MOIS_FR_COMPLET = ['Janvier','Février','Mars','Avril','Mai','Juin','Juillet','Août','Septembre','Octobre','Novembre','Décembre']
 
 const PLATFORM_LABELS = {
   airbnb:  'Airbnb',
@@ -181,10 +186,14 @@ export default function PageRapports() {
   useEffect(() => {
     if (!selectedPropId) return
     const proprio = proprietaires.find(p => p.id === selectedPropId)
-    // Un bien démasqué d'Airbnb (listed=false) doit rester sélectionnable tant qu'il
-    // a une activité réelle ce mois-ci (résa/prestation) — sinon son rapport disparaît
-    // silencieusement (cf. incident 408P "Ikuspegi", masqué mais ~10k€ de résas en cours).
-    const biens = (proprio?.bien || []).filter(b => (b.listed || bienIdsActifs?.has(b.id)) && b.agence === AGENCE)
+    // Seuls les biens avec une activité réelle ce mois-ci (résa/prestation) sont
+    // sélectionnables — demandé par Oïhan 10/09/2026 (des biens listés mais jamais loués
+    // encombraient la liste, ex. Aitzina/Canopée). bienIdsActifs couvre aussi un bien
+    // démasqué d'Airbnb (listed=false) tant qu'il a une activité réelle : ne PAS revenir à
+    // un simple `b.listed` seul, qui masquerait un bien actif juste démasqué (cf. incident
+    // 408P "Ikuspegi", ~10k€ de résas en cours disparues du rapport) — c'est bienIdsActifs,
+    // pas `listed`, qui protège de ça.
+    const biens = (proprio?.bien || []).filter(b => (bienIdsActifs?.has(b.id)) && b.agence === AGENCE)
     const maiteFirst = biens.find(b => b.groupe_facturation === 'MAITE')
     setSelectedBienId((maiteFirst || biens[0])?.id || '')
     setData(null)
@@ -226,7 +235,7 @@ export default function PageRapports() {
   // Ce guard resélectionne le premier proprio valide (MAITE en priorité).
   useEffect(() => {
     if (bienIdsActifs === null || !proprietaires.length) return
-    const filtered = proprietaires.filter(p => (p.bien || []).some(b => b.listed || bienIdsActifs.has(b.id)))
+    const filtered = proprietaires.filter(p => (p.bien || []).some(b => bienIdsActifs.has(b.id)))
     if (!filtered.length || filtered.some(p => p.id === selectedPropId)) return
     const maiteFirst = filtered.find(p => (p.bien || []).some(b => b.groupe_facturation === 'MAITE'))
     setSelectedPropId((maiteFirst || filtered[0]).id)
@@ -423,7 +432,7 @@ export default function PageRapports() {
     setGeneratingBloc(which)
 
     const [yr, mo] = mois.split('-').map(Number)
-    const moisLabel = MOIS_FR[mo - 1] + ' ' + yr
+    const moisLabel = MOIS_FR_COMPLET[mo - 1] + ' ' + yr
     const m1 = nextMoisStr(mois)
     const m2 = nextMoisStr(m1)
     const prixMoyenNuit = data.kpis.nuitsOccupees > 0
@@ -481,8 +490,8 @@ export default function PageRapports() {
 
     const [m1yr, m1mo] = m1.split('-').map(Number)
     const [m2yr, m2mo] = m2.split('-').map(Number)
-    const nextMoisLabel = MOIS_FR[m1mo - 1] + ' ' + m1yr
-    const nextNextMoisLabel = MOIS_FR[m2mo - 1] + ' ' + m2yr
+    const nextMoisLabel = MOIS_FR_COMPLET[m1mo - 1] + ' ' + m1yr
+    const nextNextMoisLabel = MOIS_FR_COMPLET[m2mo - 1] + ' ' + m2yr
     const totalNuitsFutures = (resasFutures || []).reduce((s, r) => s + (r.nights || 0), 0)
     const meteoPrevisions = meteoFutur || 'Données météo non disponibles pour les prochaines semaines.'
 
@@ -877,21 +886,20 @@ FORMAT :
   }
 
   const proprio = proprietaires.find(p => p.id === selectedPropId)
-  const biensActifs = (proprio?.bien || []).filter(b => (b.listed || bienIdsActifs?.has(b.id)) && b.agence === AGENCE)
+  const biensActifs = (proprio?.bien || []).filter(b => (bienIdsActifs?.has(b.id)) && b.agence === AGENCE)
   const isMaite = (proprio?.bien || []).some(b => b.groupe_facturation === 'MAITE')
   const maiteIds = (proprio?.bien || []).filter(b => b.groupe_facturation === 'MAITE').map(b => b.id)
   // En mode global, on ancre toutes les notes sur le bien MAISON (code='MAISON') — stable entre sessions
   const maiteMaison = (proprio?.bien || []).find(b => b.groupe_facturation === 'MAITE' && b.code === 'MAISON')
   const noteBienId = (isMaite && modeMaite === 'global' && maiteMaison) ? maiteMaison.id : selectedBienId
   const biensActifsMaite = biensActifs.filter(b => b.groupe_facturation === 'MAITE')
-  // Un proprio dont l'UNIQUE bien est démasqué d'Airbnb (listed=false) mais sans
-  // activité ce mois-ci disparaissait entièrement du dropdown — biensActifs (ligne
-  // 880) protège déjà ce cas au niveau du bien via `b.listed ||`, mais ce filtre au
-  // niveau du proprio ne reprenait pas la même condition (même incident que "408P
-  // Ikuspegi", jamais corrigé ici).
+  // Seuls les proprios ayant au moins un bien avec une activité réelle ce mois-ci
+  // apparaissent (même condition bienIdsActifs que biensActifs ci-dessus, ligne 884 —
+  // demandé par Oïhan 10/09/2026, remplace l'ancien `b.listed ||` qui faisait toujours
+  // apparaître un bien listé même sans la moindre résa/prestation).
   const propsFiltres = (bienIdsActifs === null
     ? proprietaires
-    : proprietaires.filter(p => (p.bien || []).some(b => b.listed || bienIdsActifs.has(b.id)))
+    : proprietaires.filter(p => (p.bien || []).some(b => bienIdsActifs.has(b.id)))
   ).map(p => ({
     ...p,
     bien: [...(p.bien || [])].sort((a, b) => (a.code || '').localeCompare(b.code || '')),
@@ -904,7 +912,7 @@ FORMAT :
     return codeA.localeCompare(codeB)
   })
   const [year, monthIdx] = mois.split('-')
-  const moisLabel = MOIS_FR[parseInt(monthIdx) - 1] + ' ' + year
+  const moisLabel = MOIS_FR_COMPLET[parseInt(monthIdx) - 1] + ' ' + year
 
   const STATUT_STYLES = {
     idle:             { label: 'Non envoyé',     color: '#9C8E7D', bg: '#F0EBE1' },
@@ -1000,7 +1008,7 @@ FORMAT :
             const isMaiteP = (p.bien || []).some(b => b.groupe_facturation === 'MAITE')
             const codes = isMaiteP
               ? 'Maison Maïté'
-              : (p.bien || []).filter(b => (b.listed || bienIdsActifs?.has(b.id)) && b.agence === AGENCE).map(b => b.code).filter(Boolean).join(', ')
+              : (p.bien || []).filter(b => (bienIdsActifs?.has(b.id)) && b.agence === AGENCE).map(b => b.code).filter(Boolean).join(', ')
             return (
               <option key={p.id} value={p.id} style={{ color: bienEnvoye ? '#9C8E7D' : 'inherit' }}>
                 {bienEnvoye ? '✓ ' : ''}{codes ? `${codes} — ` : ''}{p.nom}
