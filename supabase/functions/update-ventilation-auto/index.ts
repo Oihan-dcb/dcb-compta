@@ -108,6 +108,7 @@ async function traiterVentilAutoId(supabase: ReturnType<typeof createClient>, ve
     .eq('ventilation_auto_id', ventilAutoId)
     .not('montant', 'is', null)
     .neq('statut', 'cancelled')
+    .neq('statut', 'refuse')
 
   if (mErr) return { action: 'error', ventilation_auto_id: ventilAutoId, reason: mErr.message }
   if (!missions?.length) return { action: 'skipped', ventilation_auto_id: ventilAutoId, reason: 'Aucune mission avec montant' }
@@ -128,25 +129,52 @@ async function traiterVentilAutoId(supabase: ReturnType<typeof createClient>, ve
   const provision = ventil.montant_ht || 0
   const reelActuel = ventil.montant_reel
 
+  // ── Garde-fous avant toute écriture (un seul SELECT reservation) ────────────
+  const { data: resaInfo, error: rErr } = await supabase
+    .from('reservation')
+    .select('bien_id, mois_comptable, ventilation_manuelle')
+    .eq('id', ventil.reservation_id)
+    .maybeSingle()
+
+  // Fail-closed : sans la résa, on ne peut vérifier NI le verrou manuel NI la clôture.
+  // Avant ce fix l'erreur était ignorée (`const { data } = ...`) et on écrivait quand même.
+  if (rErr) {
+    return { action: 'error', ventilation_auto_id: ventilAutoId, reservation_id: ventil.reservation_id, reason: `Lecture réservation impossible : ${rErr.message}` }
+  }
+  if (!resaInfo) {
+    return { action: 'skipped', ventilation_auto_id: ventilAutoId, reservation_id: ventil.reservation_id, reason: 'Réservation introuvable — écriture refusée (garde-fous non vérifiables)' }
+  }
+
+  // Verrou ajustement manuel (migration 226) : la ventilation de cette résa a été saisie
+  // à la main (« ⚖️ Ajuster », ModalResa.jsx:293). AUCUN moteur ne doit la recalculer —
+  // ventilation-auto/index.ts:124 et api/ventiler.js:69 le respectent déjà, ce fichier NON.
+  // Sans ce garde-fou, la cascade FMEN ci-dessous écrase FMEN.montant_reel, qui PRIME sur
+  // montant_ttc dans la facture proprio (facturesEvoliz.js:1276), buildComptaMensuelle.js:196
+  // et buildRapportData.js:399 → le montant fixé à la main est remplacé par un dérivé de la
+  // provision. Incident 10/09/2026 : TXORIA/HM9BHSSYFR (FMEN manuel 300,00 € → 362,50 €) et
+  // OLATUA/HM9NCH8B9T (FMEN manuel 400,00 € → 350,00 €, bien déjà clôturé entre-temps).
+  if (resaInfo.ventilation_manuelle === true) {
+    return { action: 'skipped', ventilation_auto_id: ventilAutoId, reservation_id: ventil.reservation_id, reason: 'Ventilation ajustée manuellement (reservation.ventilation_manuelle=true) — recalcul interdit (migration 226)' }
+  }
+
   // Bien clôturé (facture envoyée à Evoliz) : la saisie est FIGÉE — skip propre plutôt
   // qu'une erreur du trigger trg_fige_cloture (migration 227). Les heures saisies après
   // clôture ne modifient plus la facture ; réouvrir la saisie pour les prendre en compte.
-  const { data: resaInfo } = await supabase
-    .from('reservation')
-    .select('bien_id, mois_comptable')
-    .eq('id', ventil.reservation_id)
-    .maybeSingle()
-  if (resaInfo?.bien_id && resaInfo?.mois_comptable) {
-    const { data: cloture } = await supabase
-      .from('cloture_bien')
-      .select('id')
-      .eq('bien_id', resaInfo.bien_id)
-      .eq('mois', resaInfo.mois_comptable)
-      .eq('active', true)
-      .limit(1)
-    if (cloture?.length) {
-      return { action: 'skipped', ventilation_auto_id: ventilAutoId, reservation_id: ventil.reservation_id, reason: 'Bien clôturé (facture envoyée Evoliz) — saisie figée, rouvrir pour appliquer' }
-    }
+  if (!resaInfo.bien_id || !resaInfo.mois_comptable) {
+    return { action: 'skipped', ventilation_auto_id: ventilAutoId, reservation_id: ventil.reservation_id, reason: 'bien_id / mois_comptable absent sur la réservation — clôture non vérifiable, écriture refusée' }
+  }
+  const { data: cloture, error: cErr } = await supabase
+    .from('cloture_bien')
+    .select('id')
+    .eq('bien_id', resaInfo.bien_id)
+    .eq('mois', resaInfo.mois_comptable)
+    .eq('active', true)
+    .limit(1)
+  if (cErr) {
+    return { action: 'error', ventilation_auto_id: ventilAutoId, reservation_id: ventil.reservation_id, reason: `Lecture cloture_bien impossible : ${cErr.message}` }
+  }
+  if (cloture?.length) {
+    return { action: 'skipped', ventilation_auto_id: ventilAutoId, reservation_id: ventil.reservation_id, reason: 'Bien clôturé (facture envoyée Evoliz) — saisie figée, rouvrir pour appliquer' }
   }
 
   if (reelActuel === totalReel) {
@@ -174,12 +202,17 @@ async function traiterVentilAutoId(supabase: ReturnType<typeof createClient>, ve
 
     if (uErr) return { action: 'error', ventilation_auto_id: ventilAutoId, reason: uErr.message }
 
-    // Mettre à jour FMEN montant_reel si la ligne existe
+    // Mettre à jour FMEN montant_reel si la ligne existe.
+    // L'erreur DOIT être remontée : sans ça, un rejet du trigger trg_fige_cloture laissait
+    // AUTO.montant_reel écrit et FMEN.montant_reel non écrit, tout en renvoyant
+    // action:'updated' + fmen_reel_apres (valeur calculée en mémoire, jamais relue) —
+    // incohérence silencieuse entre la réponse de la fonction et l'état réel de la base.
     if (fmenVentil && fmenReelApres !== null) {
-      await supabase
+      const { error: fErr } = await supabase
         .from('ventilation')
         .update({ montant_reel: Math.max(0, fmenReelApres) })
         .eq('id', fmenVentil.id)
+      if (fErr) return { action: 'error', ventilation_auto_id: ventilAutoId, reservation_id: ventil.reservation_id, reason: `AUTO.montant_reel écrit (${totalReel}) mais cascade FMEN REJETÉE : ${fErr.message} — état incohérent, corriger à la main` }
     }
   }
 

@@ -49,10 +49,11 @@ export async function buildComptaMensuelle(mois, bienIds = null) {
     .eq('agence', AGENCE)
   if (bienIds) biensQuery = biensQuery.in('id', bienIds)
 
-  // Missions AE du mois de réalisation (montant réel facturé, pas provision ventilation)
+  // Missions AE du mois de réalisation (montant réel facturé, pas provision ventilation).
+  // reservation:reservation_id(...) est nécessaire pour auto_absorbable — cf. Phase 2.
   let missionsQuery = supabase
     .from('mission_menage')
-    .select('bien_id, montant, impute_salaire, ae:ae_id(type)')
+    .select('bien_id, montant, impute_salaire, reservation_id, ae:ae_id(type), reservation:reservation_id(mois_comptable, ventilation_manuelle)')
     .eq('mois', mois)
     .neq('statut', 'cancelled')
     .not('montant', 'is', null)
@@ -211,11 +212,33 @@ export async function buildComptaMensuelle(mois, bienIds = null) {
   // AUTO HT par bien — calculé depuis mission_menage.montant par mois de réalisation
   // (règle métier : les ménages sont facturés par les AEs le mois de la réalisation,
   //  pas le mois comptable de la réservation)
-  const autoByBien = {}
+  // autoByBien alimente DEUX usages : l'affichage `auto.ht` de la ligne (colonne "AUTO",
+  // vue coût AE du mois) et `auto_absorbable` (déduction du reversement). Les deux n'ont
+  // PAS le même périmètre légitime → deux agrégats distincts depuis le 10/09/2026.
+  const autoByBien = {}            // affichage : tout le coût AE réalisé ce mois-ci
+  const autoAbsorbableBaseByBien = {} // déduction : seulement ce qui n'est pas déjà déduit ailleurs
   for (const m of (missionsData || [])) {
     if (m.ae?.type === 'staff') continue  // staff DCB → pas un débours AE externe
     if (m.impute_salaire) continue        // ménage couvert par le salaire de Manon → pas de débours AE
     autoByBien[m.bien_id] = (autoByBien[m.bien_id] || 0) + (m.montant || 0)
+
+    // (1) Résa à ventilation ajustée manuellement (migration 226) : le coût ménage est DÉJÀ
+    //     déduit du LOY/VIR par construction (ventilation.js:172, le total de la résa est
+    //     conservé quand on ajoute la ligne FMEN à la main). Le redéduire ici = double
+    //     déduction. Cas réel : TXORIA/HM9BHSSYFR août 2026, FMEN manuel 300,00 €.
+    if (m.reservation?.ventilation_manuelle === true) continue
+
+    // (2) Résa rattachée à un AUTRE mois comptable (séjour à cheval : réalisation du ménage
+    //     en M, résa comptabilisée en M−1). Son MEN vit dans la ventilation de M−1 et couvre
+    //     déjà cet AUTO là-bas ; le compter en M face à un men.ht de M (= 0) crée une
+    //     absorption fantôme. Cas réel : TXORIA/E2SOGO (mois_comptable 2026-07, départ 16/08,
+    //     MEN 600,00 € couvre AUTO 300,00 €) → 200,00 € déduits à tort du reversement d'août.
+    if (m.reservation && m.reservation.mois_comptable !== mois) continue
+
+    // Mission sans réservation (reservation_id NULL) : conservée — aucun MEN ne peut la
+    // couvrir, elle s'absorbe donc légitimement sur le LOY. À surveiller côté données :
+    // une mission orpheline en doublon d'une mission liée est indétectable ici.
+    autoAbsorbableBaseByBien[m.bien_id] = (autoAbsorbableBaseByBien[m.bien_id] || 0) + (m.montant || 0)
   }
 
   // Factures honoraires — une par bien (bien_id non null) ou une globale (bien_id null)
@@ -358,7 +381,7 @@ export async function buildComptaMensuelle(mois, bienIds = null) {
     const fraisLoy   = fraisLoyByBien[b.id]    || 0
     const prestDeduct = prestDeductByBien[b.id] || 0
     const deboursProp = deboursPropByBien[b.id] || 0
-    const loyDispo   = Math.max(0, loyHt - prestDeduct - fraisLoy - autoHt - deboursProp)
+    const loyDispo   = Math.max(0, loyHt - prestDeduct - fraisLoy - (autoAbsorbableBaseByBien[b.id] || 0) - deboursProp)
     // Absorption owner stay AUTO puis FMEN sur LOY résiduel
     // mode_encaissement='proprio' : aucune absorption (facturesEvoliz.js:440-454, "tout en
     // DEB_AE") — le séjour propriétaire y est facturé séparément via la facture débours, pas
@@ -379,7 +402,7 @@ export async function buildComptaMensuelle(mois, bienIds = null) {
     // le MEN saisi la neutralise ici — la déduction passe par ownerStayAbsorb, pas par autoAbsorbable.
     // (facturesEvoliz l'exclut au contraire car son autoBien vient des ventilations, sans la mission owner.)
     const menHt       = vent(b.id, 'MEN').ht
-    const autoAbsorbable = Math.max(0, autoHt - menHt)
+    const autoAbsorbable = Math.max(0, (autoAbsorbableBaseByBien[b.id] || 0) - menHt)
     // Source de vérité : facture per-bien si validée, sinon calcul ventilation
     const factureBienP3   = honByBien[b.id]
     const virNetLive = Math.max(0, virHt2 - fraisLoy - fraisDirect - prestDeduct - deboursProp - ownerStayAbsorbByBien[b.id] - autoAbsorbable) + rembours
@@ -450,7 +473,7 @@ export async function buildComptaMensuelle(mois, bienIds = null) {
     const remboursements  = remboursParBien[b.id]   || 0
     const owner_stay_absorb = ownerStayAbsorbByBien[b.id] || 0
     // AUTO absorbable = AUTO non couvert par MEN (fallback Airbnb : MEN=0, AUTO pris sur LOY)
-    const auto_absorbable = Math.max(0, auto.ht - men.ht)
+    const auto_absorbable = Math.max(0, (autoAbsorbableBaseByBien[b.id] || 0) - men.ht)
     // Source de vérité : facture per-bien si validée (même source que le rapport PDF)
     // Sinon : calcul depuis ventilation VIR
     const factureBien4   = honByBien[b.id]
