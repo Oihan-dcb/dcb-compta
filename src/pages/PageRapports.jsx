@@ -435,7 +435,13 @@ export default function PageRapports() {
   async function handleEmailBlur() {
     const val = email.trim()
     try {
-      await supabase.from('proprietaire').update({ email: val || null }).eq('id', selectedPropId)
+      const { error } = await supabase.from('proprietaire').update({ email: val || null }).eq('id', selectedPropId)
+      if (error) { console.error('saveEmail:', error); return }
+      // `proprietaires` n'est chargé qu'une fois au montage (ligne ~176) — sans cette mise à jour
+      // locale, revenir sur ce propriétaire après avoir changé de bien/proprio réaffichait
+      // l'ancien email (charger() relit proprio.email depuis ce tableau resté périmé), alors que
+      // l'enregistrement en base avait bien réussi. Pas un problème de RLS malgré les apparences.
+      setProprietaires(prev => prev.map(p => p.id === selectedPropId ? { ...p, email: val || null } : p))
     } catch (e) { console.error('saveEmail:', e) }
   }
 
