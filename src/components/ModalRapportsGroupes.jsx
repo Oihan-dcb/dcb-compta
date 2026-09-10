@@ -15,7 +15,7 @@
 // Détail de la liste et de l'ancrage du global : cf. src/services/rapportBatch.js.
 import { useState, useEffect, useCallback, useRef } from 'react'
 import JSZip from 'jszip'
-import { authPostRaw } from '../lib/authFetch'
+import { authPost, authPostRaw } from '../lib/authFetch'
 import { supabase } from '../lib/supabase'
 import { genererRapportHTML, envoyerRapportEmail } from '../services/rapportProprietaire'
 import { genererStatementHTML, genererMailStatementHTML } from '../services/rapportStatement'
@@ -129,6 +129,29 @@ export default function ModalRapportsGroupes({ mode, mois, moisLabel, propsFiltr
     )
   }
 
+  // Transfert portail automatique — même appel que la vue simple (PageRapports.jsx),
+  // toujours en variante statement quelle que soit la case "Version statement" du
+  // mode groupé. N'interrompt jamais l'envoi groupé : l'email est déjà parti, un
+  // échec ici (log console) ne doit pas faire remonter 'erreur' sur l'item.
+  async function pousserAuPortail(item) {
+    try {
+      const rapportData = buildRendererPayloadFrom(item)
+      const statementHtml = genererStatementHTML(item.proprio, mois, rapportData)
+      const bienName = item.bien?.hospitable_name || ''
+      const res = await authPost('/api/rapport-to-portail', {
+        html: statementHtml,
+        orientation: 'landscape',
+        proprio_id: item.proprio.id,
+        bien_id: item.bienId,
+        mois,
+        bien_name: bienName,
+      })
+      if (!res.ok) console.warn(`[portail] échec ${item.bien?.code || item.bienId} ${mois} :`, res.data?.error)
+    } catch (e) {
+      console.warn(`[portail] erreur réseau ${item.bien?.code || item.bienId} ${mois} :`, e.message)
+    }
+  }
+
   async function demarrer() {
     setRunning(true)
     setGlobalError(null)
@@ -159,6 +182,7 @@ export default function ModalRapportsGroupes({ mode, mois, moisLabel, propsFiltr
           patchItem(idx, { statut: 'fait_pdf' })
         } else {
           await envoyerUnRapport(item)
+          await pousserAuPortail(item)
           onEnvoye?.(item.bienId)
           patchItem(idx, { statut: 'fait_envoye' })
         }

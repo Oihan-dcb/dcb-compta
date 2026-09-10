@@ -111,11 +111,8 @@ export default function PageRapports() {
   const [savingMenage, setSavingMenage] = useState(false)
   const [statutPortail, setStatutPortail] = useState('idle') // idle | sending | sent | stored_no_push | no_push | error
   const [portailErrDetail, setPortailErrDetail] = useState('')
-  const [sendingMailPortail, setSendingMailPortail] = useState(false)
   const [modeGroupe, setModeGroupe] = useState(null) // null | 'download' | 'send' — ouvre ModalRapportsGroupes
   const reqRef = useRef(0)
-
-  const PORTAIL_OWNER_API = import.meta.env.VITE_PORTAIL_OWNER_URL || 'https://portail-owner.destinationcotebasque.com'
 
   async function envoyerAuPortail() {
     if (!selectedPropId || !selectedBienId || !mois || !data) return
@@ -146,30 +143,6 @@ export default function PageRapports() {
       setPortailErrDetail(e.message || 'Erreur réseau')
     }
     setTimeout(() => setStatutPortail('idle'), 4000)
-  }
-
-  async function envoyerMailPortail() {
-    if (!selectedPropId || !mois || !data) return
-    setSendingMailPortail(true)
-    try {
-      const { data: { session } } = await supabase.auth.getSession()
-      const headers = { 'Content-Type': 'application/json', Authorization: `Bearer ${session.access_token}` }
-      const bienName = data.bien?.hospitable_name || ''
-      const res = await fetch(`${PORTAIL_OWNER_API}/api/notify-proprio`, {
-        method: 'POST',
-        headers,
-        body: JSON.stringify({ proprio_id: selectedPropId, mois, type: 'releve', force_canal: 'email', extra: { bienName } }),
-      })
-      const json = await res.json().catch(() => ({}))
-      if (res.ok && json.sent) {
-        alert(`✓ Mail envoyé à ${json.email || 'le propriétaire'}`)
-      } else {
-        alert('⚠️ ' + (json.error || `Erreur ${res.status}`))
-      }
-    } catch (e) {
-      alert('⚠️ ' + (e.message || 'Erreur réseau'))
-    }
-    setSendingMailPortail(false)
   }
 
   useEffect(() => {
@@ -885,6 +858,12 @@ FORMAT :
       )
       setBiensEnvoyes(prev => new Set([...prev, selectedBienId]))
       setStatut('sent')
+      // Transfert portail automatique — avant : bouton "📲 Portail" séparé, à cliquer
+      // en plus de "Envoyer" (un oubli laissait le proprio sans relevé dans son espace).
+      // envoyerAuPortail() gère déjà ses propres erreurs (statutPortail/portailErrDetail,
+      // affichées ci-dessous) sans jamais lever — l'échec du push ne doit pas faire
+      // passer l'email, déjà parti, pour un échec.
+      envoyerAuPortail()
     } catch (e) {
       console.error('ERREUR ENVOI STATEMENT:', e)
       if (e?.uncertainSend) {
@@ -1605,38 +1584,19 @@ FORMAT :
                 onClick={envoyer} disabled={statut === 'sending' || !email}>
                 {statut === 'sending' ? '…' : 'Envoyer'}
               </button>
-              <button
-                style={{
-                  fontSize: '0.85em', padding: '8px 14px', border: '1.5px solid var(--brand)',
-                  borderRadius: 8, background: statutPortail === 'sent' ? '#DCFCE7' : 'white',
-                  color: statutPortail === 'sent' ? '#15803D' : 'var(--brand)',
-                  cursor: 'pointer', fontWeight: 600, opacity: statutPortail === 'sending' ? 0.6 : 1,
-                }}
-                onClick={envoyerAuPortail}
-                disabled={statutPortail === 'sending' || !selectedPropId}
-                title="Notifie le propriétaire que son relevé est disponible dans son espace portail"
-              >
-                {statutPortail === 'sending'       ? '…'
-                  : statutPortail === 'sent'        ? '📲 Stocké + notifié ✓'
-                  : statutPortail === 'stored_no_push' ? '📲 Stocké ✓ (push non livré)'
-                  : statutPortail === 'error'       ? '📲 Erreur'
-                  : '📲 Portail'}
-              </button>
+              {/* Le transfert vers le portail (stockage + notification) se fait désormais
+                  automatiquement dans envoyer() — plus de bouton "📲 Portail" séparé.
+                  statutPortail garde son badge d'état ci-dessous pour la visibilité. */}
+              {statutPortail === 'sending' && (
+                <span style={{ fontSize: '0.78em', color: 'var(--text-muted, #9C8E7D)' }}>📲 transfert portail…</span>
+              )}
+              {statutPortail === 'sent' && (
+                <span style={{ fontSize: '0.78em', color: '#15803D' }}>📲 stocké + notifié ✓</span>
+              )}
+              {statutPortail === 'stored_no_push' && (
+                <span style={{ fontSize: '0.78em', color: '#6B5E4E' }}>📲 stocké ✓ (notif. non livrée)</span>
+              )}
             </div>
-            {statutPortail === 'stored_no_push' && (
-              <button
-                style={{
-                  fontSize: '0.85em', padding: '8px 14px', border: '1.5px solid #6B5E4E',
-                  borderRadius: 8, background: 'white', color: '#6B5E4E',
-                  cursor: 'pointer', fontWeight: 600, opacity: sendingMailPortail ? 0.6 : 1,
-                }}
-                onClick={envoyerMailPortail}
-                disabled={sendingMailPortail}
-                title="Envoyer un email de notification au propriétaire"
-              >
-                {sendingMailPortail ? '…' : '✉️ Envoyer un mail'}
-              </button>
-            )}
             {(statutPortail === 'error' || statutPortail === 'stored_no_push') && portailErrDetail && (
               <div style={{ marginTop: 6, padding: '6px 10px', background: '#fff0f0', border: '1px solid #f5c6c6', borderRadius: 6, fontSize: '0.78em', color: '#c0392b' }}>
                 ⚠️ Portail : {portailErrDetail}
