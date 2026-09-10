@@ -90,6 +90,10 @@ function AjusterVentil({ resa, ventil, onDone, onCancel }) {
     COM: (ttcDe(lCom) / 100).toFixed(2),
   }))
   const [saving, setSaving] = useState(false)
+  // FMEN absent de la résa (ex. Airbnb n'a ventilé aucun ménage) : champ de création
+  // libre, optionnel — vide par défaut, n'entre dans l'ajustement que si rempli.
+  const [fmenCreate, setFmenCreate] = useState('')
+  const fmenCreateRaw = fmenCreate.trim()
   // Taux de commission de la résa (stocké sur la ligne HON) — sert à répartir proportionnellement
   // la baisse de MEN entre HON et LOY au lieu de tout faire absorber par LOY.
   const tauxCom = lHon?.taux_calcule ?? 0.25
@@ -100,7 +104,11 @@ function AjusterVentil({ resa, ventil, onDone, onCancel }) {
   const menNew = lMen ? parse(vals.MEN) : 0
   const honSaisi = lHon ? parse(vals.HON) : 0
   const comSaisi = lCom ? parse(vals.COM) : 0
-  const invalid = (lMen && menNew === null) || (lHon && honSaisi === null) || (lCom && comSaisi === null)
+  // FMEN créé (absent sur la résa) : optionnel, invalide seulement si rempli avec
+  // une valeur non numérique/négative.
+  const fmenCreateNew = !lFmen ? (fmenCreateRaw === '' ? null : parse(fmenCreateRaw)) : null
+  const fmenCreateInvalid = !lFmen && fmenCreateRaw !== '' && fmenCreateNew === null
+  const invalid = (lMen && menNew === null) || (lHon && honSaisi === null) || (lCom && comSaisi === null) || fmenCreateInvalid
   // FMEN dérivé de la règle MEN = FMEN + AUTO
   const fmenNew = lMen ? (menNew === null ? null : menNew - autoFige) : ttcDe(lFmen)
   const fmenNegatif = fmenNew !== null && fmenNew < 0
@@ -117,6 +125,7 @@ function AjusterVentil({ resa, ventil, onDone, onCancel }) {
     : (lHon ? ttcDe(lHon) - (honNew ?? 0) : 0)
     + (lCom ? ttcDe(lCom) - (comSaisi ?? 0) : 0)
     + (lFmen ? ttcDe(lFmen) - (fmenNew ?? 0) : 0)
+    + (fmenCreateNew !== null ? -fmenCreateNew : 0)
     + (lAuto ? (lAuto.montant_ht ?? 0) - autoFige : 0)
   const loyNew = (lLoy?.montant_ht || 0) + delta
 
@@ -129,6 +138,7 @@ function AjusterVentil({ resa, ventil, onDone, onCancel }) {
       if (lCom && comSaisi !== null) edits.COM = comSaisi
       if (lAuto) edits.AUTO = autoFige
       if (lFmen && fmenNew !== null) edits.FMEN = fmenNew
+      if (!lFmen && fmenCreateNew !== null) edits.FMEN = fmenCreateNew
       await ajusterVentilationManuelle(resa, edits)
       if (onDone) onDone()
     } catch (e) {
@@ -199,6 +209,15 @@ function AjusterVentil({ resa, ventil, onDone, onCancel }) {
             <tr style={rowStyle}>
               <td style={{ padding: '6px 0' }}>FMEN <span style={{ color: '#999', fontSize: '0.85em' }}>= MEN − AUTO, calculé (HT {fmenNew === null || fmenNegatif ? '—' : fmtE(Math.round(fmenNew / 1.2))})</span></td>
               <td style={{ ...calcStyle, color: fmenNegatif ? '#DC2626' : '#666' }}>{fmenNew === null ? '—' : fmtE(fmenNew)}</td>
+            </tr>
+          )}
+          {!lFmen && (
+            <tr style={rowStyle}>
+              <td style={{ padding: '6px 0' }}><strong>FMEN</strong> <span style={{ color: '#999', fontSize: '0.85em' }}>absent sur cette résa — ajouter le forfait ménage (optionnel)</span></td>
+              <td style={{ textAlign: 'right', padding: '4px 0' }}>
+                <input value={fmenCreate} onChange={e => setFmenCreate(e.target.value)} placeholder="0,00"
+                  style={{ width: 100, textAlign: 'right', padding: '4px 6px', border: '1px solid ' + (fmenCreateInvalid ? '#DC2626' : '#ccc'), borderRadius: 5 }} /> €
+              </td>
             </tr>
           )}
           {lLoy && (

@@ -194,19 +194,43 @@ export async function ajusterVentilationManuelle(resa, edits) {
   // (total = LOY + HON + FMEN) → sa modification n'impacte PAS le LOY.
   const HORS_DELTA = ['MEN']
   const HORS_TVA = ['AUTO', 'MEN']
+  // FMEN peut être CRÉÉ depuis ce panneau s'il n'existe pas encore sur la résa — cas
+  // réel : Airbnb n'a ventilé aucun ménage (ni MEN ni FMEN), seuls HON/AUTO/LOY
+  // existent (Maison Txoria, résa HM9BHSSYFR). Jusqu'ici seules les lignes déjà
+  // existantes étaient éditables ; impossible d'ajouter le forfait DCB sans repasser
+  // par la ventilation manuelle intégrale (VentilationEdit).
+  const LIBELLE_CREATION = { FMEN: 'Forfait ménage' }
   let delta = 0
   const updates = []
+  const inserts = []
   for (const [code, ttcNew] of Object.entries(edits)) {
     const l = get(code)
-    if (!l || ttcNew == null || ttcNew < 0) continue
+    if (!l && !LIBELLE_CREATION[code]) continue
+    if (ttcNew == null || ttcNew < 0) continue
     const horsTVA = HORS_TVA.includes(code)
-    const ttcOld = l.montant_ttc ?? l.montant_ht ?? 0
+    const ttcOld = l ? (l.montant_ttc ?? l.montant_ht ?? 0) : 0
     if (ttcNew === ttcOld) continue
     const ht = horsTVA ? ttcNew : Math.round(ttcNew / 1.2)
-    updates.push({ id: l.id, vals: { montant_ht: ht, montant_tva: horsTVA ? l.montant_tva : ttcNew - ht, montant_ttc: ttcNew, calcul_source: 'manual' } })
+    if (l) {
+      updates.push({ id: l.id, vals: { montant_ht: ht, montant_tva: horsTVA ? l.montant_tva : ttcNew - ht, montant_ttc: ttcNew, calcul_source: 'manual' } })
+    } else {
+      inserts.push({
+        reservation_id: resa.id,
+        bien_id: resa.bien?.id || resa.bien_id,
+        proprietaire_id: resa.bien?.proprietaire_id || null,
+        mois_comptable: resa.mois_comptable,
+        code,
+        libelle: LIBELLE_CREATION[code],
+        montant_ht: ht,
+        montant_tva: horsTVA ? 0 : ttcNew - ht,
+        montant_ttc: ttcNew,
+        taux_tva: horsTVA ? 0 : 20,
+        calcul_source: 'manual',
+      })
+    }
     if (!HORS_DELTA.includes(code)) delta += ttcOld - ttcNew
   }
-  if (!updates.length) return { changed: false, delta: 0 }
+  if (!updates.length && !inserts.length) return { changed: false, delta: 0 }
 
   // LOY/VIR n'absorbent le delta que s'il y en a un (modifier seulement MEN → delta 0,
   // pas besoin de ligne LOY — ex. séjours propriétaires sans reversement)
@@ -225,14 +249,20 @@ export async function ajusterVentilationManuelle(resa, edits) {
     const { error } = await supabase.from('ventilation').update(u.vals).eq('id', u.id)
     if (error) throw error
   }
+  if (inserts.length) {
+    const { error } = await supabase.from('ventilation').insert(inserts)
+    if (error) throw error
+  }
   const { error: flagErr } = await supabase.from('reservation').update({ ventilation_manuelle: true }).eq('id', resa.id)
   if (flagErr) throw flagErr
 
   logOp({
     categorie: 'ventilation', action: 'ajustement_manuel', statut: 'ok', source: 'app',
     mois_comptable: resa.mois_comptable, reservation_id: resa.id, bien_id: resa.bien?.id || resa.bien_id,
-    message: `Ajustement manuel ${resa.code} : ` + Object.entries(edits).map(([c, v]) => `${c}=${(v / 100).toFixed(2)}€ TTC`).join(', ') + ` → delta LOY ${(delta / 100).toFixed(2)}€ (total conservé)`,
-    meta: { edits, delta },
+    message: `Ajustement manuel ${resa.code} : ` + Object.entries(edits).map(([c, v]) => `${c}=${(v / 100).toFixed(2)}€ TTC`).join(', ')
+      + (inserts.length ? ` (création ${inserts.map(i => i.code).join(', ')})` : '')
+      + ` → delta LOY ${(delta / 100).toFixed(2)}€ (total conservé)`,
+    meta: { edits, delta, created: inserts.map(i => i.code) },
   })
   return { changed: true, delta }
 }
