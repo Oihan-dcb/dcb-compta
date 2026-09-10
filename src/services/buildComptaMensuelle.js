@@ -244,9 +244,19 @@ export async function buildComptaMensuelle(mois, bienIds = null) {
     //     MEN 600,00 € couvre AUTO 300,00 €) → 200,00 € déduits à tort du reversement d'août.
     if (m.reservation && m.reservation.mois_comptable !== mois) continue
 
-    // Mission sans réservation (reservation_id NULL) : conservée — aucun MEN ne peut la
-    // couvrir, elle s'absorbe donc légitimement sur le LOY. À surveiller côté données :
-    // une mission orpheline en doublon d'une mission liée est indétectable ici.
+    // (3) Mission sans réservation (reservation_id NULL) : EXCLUE. facturesEvoliz.js (le vrai
+    //     moteur de facturation) calcule autoBien depuis ventilation.AUTO, qui n'existe que par
+    //     réservation — une mission orpheline n'a donc AUCUNE ligne AUTO et n'est jamais déduite
+    //     du reversement réellement facturé. L'inclure ici créait un écart Vue mensuelle vs
+    //     facture réelle qui n'a rien à voir avec un vrai double-comptage (cas réel : TXORIA,
+    //     mission du 17/08 sans résa, 100,00 € — probable doublon de saisie à vérifier avec
+    //     l'équipe, cf. commentaire plus haut). Tant qu'une mission n'est pas rattachée à une
+    //     résa (donc à une ligne AUTO), elle ne réduit le reversement affiché nulle part —
+    //     cohérent avec la réalité facturée, mais signale un coût AE potentiellement non
+    //     recouvré auprès du propriétaire : à traiter en rattachant la mission, pas en
+    //     bidouillant ce calcul.
+    if (!m.reservation_id) continue
+
     autoAbsorbableBaseByBien[m.bien_id] = (autoAbsorbableBaseByBien[m.bien_id] || 0) + (m.montant || 0)
   }
 
