@@ -1316,10 +1316,15 @@ FORMAT :
             )}
 
             {/* BLOC 3b/3c/4b — Charges DCB */}
-            {!vueSynthese && ((data.extrasGlobaux || []).length > 0 || (data.haownerList || []).length > 0 || (data.assuranceList || []).length > 0 || data.frais.length > 0 || (data.ownerStayList || []).length > 0) && (() => {
-              const total = (data.extrasGlobaux || []).length + (data.haownerList || []).length + (data.assuranceList || []).length + data.frais.length + (data.ownerStayList || []).length
+            {/* extrasParResa (débours rattachés à une résa précise, ex. "Lits pour propriétaire")
+                étaient déjà dans data.kpis/le total facturé (cf. _kpiDebours) et déjà affichés dans
+                le statement PDF (rapportStatement.js) — mais absents de cette liste à l'écran :
+                l'argent était compté mais son détail invisible en dehors du PDF envoyé au proprio. */}
+            {!vueSynthese && ((data.extrasGlobaux || []).length > 0 || (data.extrasParResa || []).length > 0 || (data.haownerList || []).length > 0 || (data.assuranceList || []).length > 0 || data.frais.length > 0 || (data.ownerStayList || []).length > 0) && (() => {
+              const total = (data.extrasGlobaux || []).length + (data.extrasParResa || []).length + (data.haownerList || []).length + (data.assuranceList || []).length + data.frais.length + (data.ownerStayList || []).length
               const allRows = [
                 ...(data.extrasGlobaux || []).map(p => ({ ...p, _type: 'debours' })),
+                ...(data.extrasParResa || []).map(p => ({ ...p, _type: 'debours_resa' })),
                 ...(data.haownerList || []).map(p => ({ ...p, _type: 'achat' })),
                 ...(data.assuranceList || []).map(p => ({ ...p, _type: 'assurance' })),
                 ...(data.ownerStayList || []).map(p => ({ ...p, _type: 'menage_proprio' })),
@@ -1342,7 +1347,8 @@ FORMAT :
                     </thead>
                     <tbody>
                       {allRows.map((row, i) => {
-                        const isDebours     = row._type === 'debours'
+                        const isDeboursResa = row._type === 'debours_resa'
+                        const isDebours     = row._type === 'debours' || isDeboursResa
                         const isAchat       = row._type === 'achat'
                         const isAssurance   = row._type === 'assurance'
                         const isFrais       = row._type === 'frais'
@@ -1358,7 +1364,7 @@ FORMAT :
                           ? `${row.libelle || 'Aircover — remboursement assurance'}${row.guest_name ? ` — ${row.guest_name}` : ''}`
                           : row.libelle || row.description || '—'
                         const isRemboursement = isFrais && row.mode_traitement === 'remboursement'
-                        const typeLabel = isDebours ? 'Débours' : isAchat ? 'Achat' : isAssurance ? 'Assurance' : isMenageProprio ? 'Ménage' : isRemboursement ? 'Remboursement' : 'Frais'
+                        const typeLabel = isDeboursResa ? 'Débours (résa)' : isDebours ? 'Débours' : isAchat ? 'Achat' : isAssurance ? 'Assurance' : isMenageProprio ? 'Ménage' : isRemboursement ? 'Remboursement' : 'Frais'
                         const typeColor = isDebours ? '#9C8E7D' : isAchat ? 'var(--brand)' : isAssurance ? '#2d7a50' : isMenageProprio ? '#4A3728' : isRemboursement ? '#059669' : '#c2410c'
                         // Montant cell — pour les frais facturés, décomposer déduit vs reliquat
                         const fraisFacture = isFrais && row.statut === 'facture' && row.statut_deduction && row.statut_deduction !== 'en_attente'
