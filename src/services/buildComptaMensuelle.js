@@ -20,6 +20,15 @@ import { supabase } from '../lib/supabase'
 import { AGENCE } from '../lib/agence'
 import { STATUTS_NON_VENTILABLES } from '../lib/constants'
 
+// Statuts de facture qui ne valent PAS preuve d'un reversement arrêté — même liste que
+// buildRapportData.js (FACTURE_STATUTS_NON_CONFIRMES). La requête facture_evoliz de ce
+// fichier (Phase 1) ne filtre pas le statut, contrairement à Rapports : sans ce garde,
+// une facture 'brouillon' (donc son montant_reversement, potentiellement calculé avec des
+// données depuis corrigées) était affichée comme si elle faisait foi. Incident 10/09/2026 :
+// TXORIA/août, brouillon créé pendant la corruption montant_reel, jamais régénéré depuis.
+const FACTURE_STATUTS_NON_CONFIRMES = ['brouillon', 'calcul_en_cours']
+const reversementConfirme = (f) => (f?.montant_reversement != null && !FACTURE_STATUTS_NON_CONFIRMES.includes(f.statut)) ? f.montant_reversement : null
+
 // PostgREST plafonne une réponse à 1000 lignes par défaut sans pagination explicite — au-delà,
 // le surplus est coupé SANS erreur ni avertissement (pas de throw, pas de warning réseau). Trouvé
 // le 07/09/2026 : ventilation d'août 2026 = 1104 lignes → les 104 dernières (dont toutes celles
@@ -253,8 +262,9 @@ export async function buildComptaMensuelle(mois, bienIds = null) {
   // Somme montant_reversement par proprio (pour l'écart au niveau proprio)
   const reversementFactureParProprio = {}
   for (const f of honFacts) {
-    if (f.montant_reversement != null)
-      reversementFactureParProprio[f.proprietaire_id] = (reversementFactureParProprio[f.proprietaire_id] || 0) + f.montant_reversement
+    const confirme = reversementConfirme(f)
+    if (confirme != null)
+      reversementFactureParProprio[f.proprietaire_id] = (reversementFactureParProprio[f.proprietaire_id] || 0) + confirme
   }
 
   // Statut global par proprio : 'validee' si toutes validées, sinon le statut le plus "bas"
@@ -406,9 +416,7 @@ export async function buildComptaMensuelle(mois, bienIds = null) {
     // Source de vérité : facture per-bien si validée, sinon calcul ventilation
     const factureBienP3   = honByBien[b.id]
     const virNetLive = Math.max(0, virHt2 - fraisLoy - fraisDirect - prestDeduct - deboursProp - ownerStayAbsorbByBien[b.id] - autoAbsorbable) + rembours
-    const virNet = (factureBienP3?.montant_reversement != null)
-      ? factureBienP3.montant_reversement
-      : virNetLive
+    const virNet = reversementConfirme(factureBienP3) ?? virNetLive
     loyParProprio[b.proprietaire_id] = (loyParProprio[b.proprietaire_id] || 0) + virNet
     loyParProprioLive[b.proprietaire_id] = (loyParProprioLive[b.proprietaire_id] || 0) + virNetLive
 
@@ -489,9 +497,7 @@ export async function buildComptaMensuelle(mois, bienIds = null) {
     // parure validés après la facture, jamais répercutés, jamais alertés (signalé par la
     // propriétaire elle-même début septembre).
     const reversement_calcule_live = Math.max(0, vir.ht - frais_loy - frais_direct - prest_deduct - debours_prop - owner_stay_absorb - auto_absorbable) + remboursements
-    const reversement_calcule = (factureBien4?.montant_reversement != null)
-      ? factureBien4.montant_reversement
-      : reversement_calcule_live
+    const reversement_calcule = reversementConfirme(factureBien4) ?? reversement_calcule_live
 
     // Écart reversement au niveau proprio : Σ factures vs Σ reversement_calcule_live tous biens
     let ecart_reversement_proprio = null
