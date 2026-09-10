@@ -226,7 +226,7 @@ export default function PageRapports() {
   // Ce guard resélectionne le premier proprio valide (MAITE en priorité).
   useEffect(() => {
     if (bienIdsActifs === null || !proprietaires.length) return
-    const filtered = proprietaires.filter(p => (p.bien || []).some(b => bienIdsActifs.has(b.id)))
+    const filtered = proprietaires.filter(p => (p.bien || []).some(b => b.listed || bienIdsActifs.has(b.id)))
     if (!filtered.length || filtered.some(p => p.id === selectedPropId)) return
     const maiteFirst = filtered.find(p => (p.bien || []).some(b => b.groupe_facturation === 'MAITE'))
     setSelectedPropId((maiteFirst || filtered[0]).id)
@@ -884,9 +884,14 @@ FORMAT :
   const maiteMaison = (proprio?.bien || []).find(b => b.groupe_facturation === 'MAITE' && b.code === 'MAISON')
   const noteBienId = (isMaite && modeMaite === 'global' && maiteMaison) ? maiteMaison.id : selectedBienId
   const biensActifsMaite = biensActifs.filter(b => b.groupe_facturation === 'MAITE')
+  // Un proprio dont l'UNIQUE bien est démasqué d'Airbnb (listed=false) mais sans
+  // activité ce mois-ci disparaissait entièrement du dropdown — biensActifs (ligne
+  // 880) protège déjà ce cas au niveau du bien via `b.listed ||`, mais ce filtre au
+  // niveau du proprio ne reprenait pas la même condition (même incident que "408P
+  // Ikuspegi", jamais corrigé ici).
   const propsFiltres = (bienIdsActifs === null
     ? proprietaires
-    : proprietaires.filter(p => (p.bien || []).some(b => bienIdsActifs.has(b.id)))
+    : proprietaires.filter(p => (p.bien || []).some(b => b.listed || bienIdsActifs.has(b.id)))
   ).map(p => ({
     ...p,
     bien: [...(p.bien || [])].sort((a, b) => (a.code || '').localeCompare(b.code || '')),
