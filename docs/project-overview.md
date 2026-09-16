@@ -1689,3 +1689,30 @@ non fiable, forcé en inline). Détail complet : mémoire `project_mandat_lien_o
 connexion Hospitable réelle (`hospitable_id:"manual-<uuid>"`, `listed:false`), avec garde-fous
 anti-doublon nom/code repris de `syncBiens.js`. Bug bloquant trouvé et corrigé le jour même :
 `bien.code_postal` n'existe pas comme colonne (fusion dans `adresse`).
+
+## Fix session 16 septembre 2026 — Écart TXORIA reversement (Rapports vs Comptabilité), doublon prestation ONGI
+
+Chaîne de 4 bugs réels trouvés en remontant un écart signalé sur TXORIA entre le reversement
+« Rapports » et la « Vue mensuelle » comptabilité : `update-ventilation-auto` (seul des 3 moteurs
+de ventilation à ne pas respecter `reservation.ventilation_manuelle`, a causé une corruption
+réelle de `montant_reel` en testant le bug — corrigée) ; `buildComptaMensuelle.js` et
+`facturesEvoliz.js` (le vrai moteur de facturation) déduisaient tous les deux deux fois le coût
+AE (`AUTO`) d'un reversement dans certains cas (résa `ventilation_manuelle`, résa à cheval sur 2
+mois, missions orphelines) ; `buildComptaMensuelle.js` se basait en plus sur une facture
+`brouillon` potentiellement obsolète au lieu de recalculer en direct. Détail complet, invariants
+I-140 à I-143 : `docs/invariants.md`.
+
+Root cause remontée jusqu'à une mission de ménage réelle (TXORIA, 100€, 17/08) jamais rattachée
+à sa réservation (`mission_menage.reservation_id IS NULL`) — ménage de départ d'une résa de
+juillet réalisé en 2 temps (16+17 août), jamais matché par `sync-ical-ae:matchResa`. Nouveau
+garde-fou permanent : `alerte-mission-menage-orpheline` (migration 256), qui a immédiatement
+révélé un historique de 23 missions similaires (~1002€, DCB+Lauian, depuis mars 2026) — à
+traiter par l'équipe, pas par ce fix.
+
+Séparément, doublon signalé par Laura sur `prestation_hors_forfait` (ONGI, 12,50€, `dcb_direct`,
+saisi 2 fois à 62s d'écart) : cru supprimé après clôture, ce qui n'a jamais eu lieu (aucun DELETE
+réel n'existe côté UI, et `check_cloture_bien_fige` bloque tout DELETE sans exception). Corrigé
+manuellement (réouverture technique, suppression, reclôture) — confirmé sans impact
+facture/séquestre (`dcb_direct` = recap interne uniquement). Nouveau garde-fou permanent :
+`alerte-prestation-doublon` (migration 257), qui détecte toute resaisie identique (bien, date,
+montant, imputation, description, AE) encore `statut='valide'` le lendemain de sa création.
