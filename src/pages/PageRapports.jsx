@@ -20,6 +20,13 @@ const fmt = c => ((c || 0) / 100).toFixed(2).replace('.', ',') + ' €'
 // généré par rapportStatement.js). Le sélecteur de mois (MoisSelector, grille compacte partagée par
 // 9 autres pages) garde volontairement l'abrégé — trop long en entier pour sa grille 4 colonnes.
 const MOIS_FR_COMPLET = ['Janvier','Février','Mars','Avril','Mai','Juin','Juillet','Août','Septembre','Octobre','Novembre','Décembre']
+// Les 3 blocs IA des rapports propriétaires tournaient sans `model` explicite → llm-analyse
+// retombait sur son défaut claude-haiku-4-5, le plus petit modèle disponible, pour un texte
+// envoyé aux propriétaires (trouvé 16/09/2026, erreurs d'analyse remontées par Laura sur Folle
+// Brise/Miramarvel/Eneko). opus-4-6 et pas opus-5 (vide sur ce compte Anthropic, cf. memory
+// project_verify_virements_sortants_opus_2026-09) — doit rester dans ALLOWED_MODELS de
+// supabase/functions/llm-analyse si jamais retouché.
+const LLM_MODEL = 'claude-opus-4-6'
 
 const PLATFORM_LABELS = {
   airbnb:  'Airbnb',
@@ -537,7 +544,20 @@ PERFORMANCE FAIBLE :
 - Toujours abordée si présente
 - Ton factuel et constructif
 - Donner des éléments d'explication
-- Montrer implicitement que la situation est pilotée${isMaite ? `
+- Montrer implicitement que la situation est pilotée
+
+RÈGLE ABSOLUE — SOURCE UNIQUE DES DONNÉES :
+- Tout ce que tu écris doit venir EXCLUSIVEMENT des données fournies dans le message, pour CE bien précis et aucun autre
+- N'invente JAMAIS une cause externe non fournie (météo, événement local, comportement des voyageurs, concurrence, saisonnalité, positionnement tarifaire) : si une variation n'est pas expliquée par une donnée fournie, constate-la sans l'expliquer plutôt que d'inventer une raison
+- "N-1" désigne toujours le même mois, un an plus tôt — jamais "le mois dernier" ni "le mois précédent"
+- N'extrapole jamais une tendance ou une saison à partir d'un seul mois de données
+- Ne compare jamais ce bien à d'autres biens, à une moyenne de marché ou à un standard du secteur
+- Une donnée absente n'est ni un signal positif ni un signal négatif — c'est une absence, à mentionner sans l'interpréter
+- Si un chiffre fourni te semble incohérent, n'en parle jamais et ne le remets jamais en question (pas de "anomalie", "erreur d'enregistrement", "paramètres de calcul", "base de données") — ce texte est lu directement par le propriétaire, rédige avec ce qui est exploitable
+
+AVIS VOYAGEURS :
+- S'il y a des avis : donne leur nombre et la note moyenne, et reprends fidèlement leur contenu — y compris un avis critique, formulé factuellement et sans dramatiser
+- S'il n'y a AUCUN avis ce mois-ci : dis-le une seule fois, factuellement ("aucun avis reçu ce mois-ci"), sans l'expliquer et sans en tirer une conclusion sur la satisfaction, l'attractivité ou la fréquentation. Si une note globale du bien (tous mois confondus) est fournie, tu peux t'y référer pour resituer.${isMaite ? `
 
 ---
 
@@ -554,20 +574,25 @@ Pour parler d'occupation, appuie-toi sur la liste des réservations (dates, nuit
 }` : ''}`
 
     async function _genererAnalyse() {
+      const moisLabelN1 = MOIS_FR_COMPLET[mo - 1] + ' ' + (yr - 1)
+      const nuitsBloqueesOwnerStay = data.kpis.nuitsBloqueesOwnerStay || 0
       const prompt = `Bien : ${bienNom} — ${moisLabel}
+${isMaite ? '' : `(le nom ci-dessus est le SEUL bien concerné par ce rapport — ne mentionne aucun autre bien)`}
 
 Données disponibles :
-- Revenu total maison : ${fmt(data.kpis.caHeb)}
+- ${isMaite ? 'Revenu total maison' : 'Revenu hébergement du mois'} : ${fmt(data.kpis.caHeb)}
 - Taux de commission : ${tauxCommission}%
 - Reversement net : ${fmt(data.kpis.loyTotal)}${isGlobalMaite ? `
 - Réservations ce mois : ${resasGuest.length} (sur l'ensemble des chambres + privatisation éventuelle)` : `
-- Réservations : ${data.kpis.nbResas} (N-1 : ${data.kpisN1?.nbResas > 0 ? data.kpisN1.nbResas : 'N/A'})
-- Taux occupation : ${data.kpis.tauxOcc}% (N-1 : ${data.kpisN1?.tauxOcc > 0 ? data.kpisN1.tauxOcc + '%' : 'N/A'})`}
+- Réservations ce mois : ${data.kpis.nbResas} (en ${moisLabelN1} : ${data.kpisN1?.nbResas > 0 ? data.kpisN1.nbResas : 'aucune donnée comparable'})
+- Taux d'occupation ce mois : ${data.kpis.tauxOcc}% (en ${moisLabelN1} : ${data.kpisN1?.tauxOcc > 0 ? data.kpisN1.tauxOcc + '%' : 'aucune donnée comparable'})${nuitsBloqueesOwnerStay > 0 ? `
+- Nuits indisponibles ce mois (séjour propriétaire) : ${nuitsBloqueesOwnerStay} — déjà retirées du calcul du taux d'occupation ci-dessus` : ''}`}
 - Prix moyen/nuit : ${prixMoyenNuit}€
-- Note voyageurs : ${data.noteMoisMoy ? data.noteMoisMoy + '/5 (' + data.reviews.length + ' avis)' : 'aucun avis ce mois'}
+- Avis reçus ce mois-ci : ${data.reviews.length}${data.reviews.length > 0 ? ` (note moyenne ${data.noteMoisMoy}/5)` : ''}${data.noteGlobaleMoy ? `
+- Note globale du bien, tous mois confondus : ${data.noteGlobaleMoy}/5 sur ${data.nbReviewsGlobal} avis` : ''}
 
 Avis voyageurs :
-${data.reviews.map(r => '- ' + r.rating + '/5 : "' + (r.comment || '') + '"').join('\n') || 'Aucun avis ce mois'}
+${data.reviews.map(r => '- ' + r.rating + '/5 : "' + (r.comment || '(sans commentaire)') + '"').join('\n') || 'Aucun avis reçu ce mois-ci.'}
 
 ${isGlobalMaite && resasGuest.length > 0 ? `Répartition des réservations :
 ${resasGuest.map(r => {
@@ -594,40 +619,45 @@ FORMAT :
 - 3 à 4 paragraphes maximum
 - Pas de transition vers les mois suivants`
       const { data: llmData, error: llmErr } = await Promise.race([
-        supabase.functions.invoke('llm-analyse', { body: { prompt, system: SYSTEM_PROMPT } }),
+        supabase.functions.invoke('llm-analyse', { body: { prompt, system: SYSTEM_PROMPT, model: LLM_MODEL } }),
         new Promise((_, reject) => setTimeout(() => reject(new Error('timeout')), 30000)),
       ])
       if (llmErr) throw llmErr
       if (llmData?.error) throw new Error(llmData.error)
       const txt = llmData?.text || ''
       if (txt) {
-        setLlmAnalyse(cleanLlmText(txt))
+        const cleaned = cleanLlmText(txt)
+        setLlmAnalyse(cleaned)
         await supabase.from('bien_notes').upsert(
           { bien_id: noteBienId, mois, note_analyse_llm: txt, updated_at: new Date().toISOString() },
           { onConflict: 'bien_id,mois' }
         )
+        return cleaned
       }
+      return null
     }
 
     async function _genererContexte() {
+      const moisLabelN1c = MOIS_FR_COMPLET[mo - 1] + ' ' + (yr - 1)
       const prompt = `Bien : ${bienNom} — ${moisLabel}
 
 Données disponibles :
 - Météo : ${meteoResume}
 ${isGlobalMaite
   ? `- Réservations : ${data.kpis.nbResas} séjours (maison entière + chambres confondus)`
-  : `- Taux d'occupation : ${data.kpis.tauxOcc}% (N-1 : ${data.kpisN1?.tauxOcc > 0 ? data.kpisN1.tauxOcc + '%' : 'N/A'})
-- Réservations : ${data.kpis.nbResas} (N-1 : ${data.kpisN1?.nbResas > 0 ? data.kpisN1.nbResas : 'N/A'})`}
+  : `- Taux d'occupation : ${data.kpis.tauxOcc}% (en ${moisLabelN1c} : ${data.kpisN1?.tauxOcc > 0 ? data.kpisN1.tauxOcc + '%' : 'aucune donnée comparable'})
+- Réservations : ${data.kpis.nbResas} (en ${moisLabelN1c} : ${data.kpisN1?.nbResas > 0 ? data.kpisN1.nbResas : 'aucune donnée comparable'})`}
 
 OBJECTIF :
-Apporter un éclairage extérieur sur la performance.
+Apporter un éclairage sur la performance à partir UNIQUEMENT de la météo et des chiffres ci-dessus.
 
 CONTENU ATTENDU :
-- Impact de la météo ou de la saisonnalité sur la demande
-- Lecture du niveau de demande locative à ${villeLabel} ce mois
-- Mise en perspective du marché local (événements, vacances, dynamique de la destination)
+- Impact de la météo fournie sur la demande, si un lien plausible existe
+- Lecture du niveau d'occupation/réservations à ${villeLabel} ce mois, uniquement à partir des chiffres ci-dessus
 
 CONTRAINTES :
+- N'invente AUCUN événement local, vacances scolaires ou dynamique de marché non fourni ci-dessus — tu n'as accès qu'à la météo et aux chiffres de ce bien, rien d'autre
+- Si la météo ou les chiffres ne suggèrent rien de particulier, un paragraphe court et sobre vaut mieux qu'une explication inventée
 - Ne pas répéter les données du bloc Analyse
 - Ne pas reprendre la NOTE OÏHAN
 - Ne pas mentionner le reversement ou les honoraires
@@ -637,22 +667,32 @@ FORMAT :
 - Démarrer directement par le contexte météo ou marché
 - 2 à 3 paragraphes maximum`
       const { data: llmData, error: llmErr } = await Promise.race([
-        supabase.functions.invoke('llm-analyse', { body: { prompt, system: SYSTEM_PROMPT } }),
+        supabase.functions.invoke('llm-analyse', { body: { prompt, system: SYSTEM_PROMPT, model: LLM_MODEL } }),
         new Promise((_, reject) => setTimeout(() => reject(new Error('timeout')), 30000)),
       ])
       if (llmErr) throw llmErr
       if (llmData?.error) throw new Error(llmData.error)
       const txt = llmData?.text || ''
       if (txt) {
-        setLlmContexte(cleanLlmText(txt))
+        const cleaned = cleanLlmText(txt)
+        setLlmContexte(cleaned)
         await supabase.from('bien_notes').upsert(
           { bien_id: noteBienId, mois, note_contexte: txt, updated_at: new Date().toISOString() },
           { onConflict: 'bien_id,mois' }
         )
+        return cleaned
       }
+      return null
     }
 
-    async function _genererTendances() {
+    // analyseOverride/contexteOverride : passés explicitement en mode "Tout générer" pour éviter
+    // de relire llmAnalyse/llmContexte (état React) juste après les avoir mis à jour dans la même
+    // passe — un setState ne se reflète pas dans la closure avant le prochain rendu, donc ce bloc
+    // lisait toujours l'ANCIEN texte du mois précédent. Trouvé 16/09/2026, cf. memory
+    // project_ia_rapports_prompt_2026-09.
+    async function _genererTendances(analyseOverride, contexteOverride) {
+      const analyseTxt = analyseOverride !== undefined ? analyseOverride : llmAnalyse
+      const contexteTxt = contexteOverride !== undefined ? contexteOverride : llmContexte
       const prompt = `Bien : ${bienNom} — Perspectives ${nextMoisLabel} / ${nextNextMoisLabel}
 
 Données disponibles :
@@ -666,8 +706,8 @@ Prévisions météo :
 ${meteoPrevisions}
 
 CE QUI A DÉJÀ ÉTÉ DIT dans les blocs précédents (ne pas répéter) :
-- Analyse : "${llmAnalyse?.substring(0, 250) || 'non généré'}"
-- Contexte : "${llmContexte?.substring(0, 250) || 'non généré'}"
+- Analyse : "${analyseTxt?.substring(0, 250) || 'non généré'}"
+- Contexte : "${contexteTxt?.substring(0, 250) || 'non généré'}"
 
 OBJECTIF :
 Donner de la visibilité sur les prochains mois et rassurer.
@@ -688,7 +728,7 @@ FORMAT :
 - 2 à 3 paragraphes maximum
 - Pas de conclusion formelle ni de signature`
       const { data: llmData, error: llmErr } = await Promise.race([
-        supabase.functions.invoke('llm-analyse', { body: { prompt, system: SYSTEM_PROMPT } }),
+        supabase.functions.invoke('llm-analyse', { body: { prompt, system: SYSTEM_PROMPT, model: LLM_MODEL } }),
         new Promise((_, reject) => setTimeout(() => reject(new Error('timeout')), 30000)),
       ])
       if (llmErr) throw llmErr
@@ -727,9 +767,9 @@ FORMAT :
 
     try {
       if (which === 'all') {
-        await _genererAnalyse()
-        await _genererContexte()
-        await _genererTendances()
+        const freshAnalyse = await _genererAnalyse()
+        const freshContexte = await _genererContexte()
+        await _genererTendances(freshAnalyse, freshContexte)
       }
       else if (which === 'analyse') await _genererAnalyse()
       else if (which === 'contexte') await _genererContexte()

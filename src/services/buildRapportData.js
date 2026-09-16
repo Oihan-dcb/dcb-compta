@@ -19,12 +19,33 @@
 import { supabase } from '../lib/supabase'
 import { STATUTS_NON_VENTILABLES } from '../lib/constants'
 
+const nextMonthStr = (ym) => {
+  const [yy, mm] = ym.split('-').map(Number)
+  return mm === 12 ? `${yy + 1}-01` : `${yy}-${String(mm + 1).padStart(2, '0')}`
+}
+
+// Nuits d'une résa qui tombent réellement dans [debut, finExclusive) — et pas ses nights bruts,
+// qui comptent la durée TOTALE du séjour même quand il déborde largement du mois (ex. une
+// longue durée à cheval sur 10 mois compterait ses ~300 nuits dans les 31 jours d'août = 1065%
+// d'occupation). Trouvé le 16/09/2026 (Folle-brise/Miramarvel/Eneko, rapports IA envoyés aux
+// propriétaires avec des taux aberrants >100%, cf. memory project_ia_rapports_prompt_2026-09).
+const nightsInRange = (r, debut, finExclusive) => {
+  if (!r.arrival_date || !r.departure_date) return 0
+  const start = r.arrival_date > debut ? r.arrival_date : debut
+  const end = r.departure_date < finExclusive ? r.departure_date : finExclusive
+  const diff = Math.round((new Date(end + 'T00:00:00Z') - new Date(start + 'T00:00:00Z')) / 86400000)
+  return Math.max(0, diff)
+}
+
 export async function buildRapportData(bienId, propId, mois, opts = {}) {
   const { isGlobal = false, maiteIds = [] } = opts
   const [y, m] = mois.split('-').map(Number)
   const nuitsDispos = new Date(y, m, 0).getDate()
   const moisN1 = `${y - 1}-${String(m).padStart(2, '0')}`
-  const moisSuivant = m === 12 ? `${y + 1}-01` : `${y}-${String(m + 1).padStart(2, '0')}`
+  const moisSuivant = nextMonthStr(mois)
+  const moisN1Suivant = nextMonthStr(moisN1)
+  const moisDebut = `${mois}-01`, moisFinExclusive = `${moisSuivant}-01`
+  const moisN1Debut = `${moisN1}-01`, moisN1FinExclusive = `${moisN1Suivant}-01`
   const prev3Mois = Array.from({ length: 3 }, (_, i) => {
     let mm = m - (i + 1); let yy = y
     while (mm <= 0) { mm += 12; yy-- }
@@ -49,13 +70,15 @@ export async function buildRapportData(bienId, propId, mois, opts = {}) {
         .order('arrival_date')
       return isGlobal ? q.in('bien_id', maiteIds) : q.eq('bien_id', bienId)
     })(),
-    // 2. N-1 (même mois, année précédente)
+    // 2. N-1 (même mois, année précédente) — mêmes colonnes/filtre que le mois courant
+    // (STATUTS_NON_VENTILABLES + owner_stay exclu plus bas), sinon N-1 et le mois courant ne
+    // comparent pas le même périmètre (trouvé 16/09/2026 : N-1 comptait les séjours propriétaire
+    // et les statuts non-ventilables que le mois courant excluait déjà, gonflant les N-1 à tort).
     (() => {
       let q = supabase
         .from('reservation')
-        .select('id, fin_revenue, nights, final_status')
+        .select('id, fin_revenue, nights, arrival_date, departure_date, final_status, owner_stay')
         .eq('mois_comptable', moisN1)
-        .neq('final_status', 'cancelled')
       return isGlobal ? q.in('bien_id', maiteIds) : q.eq('bien_id', bienId)
     })(),
     // 3. Frais propriétaire avec tous les champs nécessaires
@@ -525,9 +548,20 @@ export async function buildRapportData(bienId, propId, mois, opts = {}) {
   const caHeb = resasGuest.reduce((s, r) => s + (r.fin_revenue || 0) - getMgmtFee(r), 0)
   const baseCommTotal = resasGuest.reduce((s, r) => s + (r.base_comm || 0), 0)
   const durees = resasGuest.map(r => r.nights || 0).filter(v => v > 0)
+  // nuitsOccupees = durée TOTALE des séjours (utilisé pour prixMoyenNuit/dureeMoy — inchangé,
+  // une longue durée doit rester comptée en entier pour ces deux usages-là).
   const nuitsOccupees = durees.reduce((s, v) => s + v, 0)
   const dureeMoy = durees.length ? (durees.reduce((s, v) => s + v, 0) / durees.length).toFixed(1) : '0'
-  const tauxOcc = nuitsDispos > 0 ? Math.round((nuitsOccupees / nuitsDispos) * 100) : 0
+  // tauxOcc : UNIQUEMENT les nuits qui tombent réellement dans le mois (nightsInRange), sur un
+  // dénominateur qui exclut les nuits bloquées par un séjour propriétaire — sinon (a) une longue
+  // durée à cheval sur plusieurs mois donne un taux >100% (Folle-brise 1065% en août), et (b) un
+  // séjour propriétaire fait mécaniquement chuter le taux au lieu de simplement réduire la
+  // disponibilité réelle (Miramarvel 58% affiché au lieu de 78%). Trouvé 16/09/2026 — cf. memory
+  // project_ia_rapports_prompt_2026-09.
+  const nuitsOccupeesMois = resasGuest.reduce((s, r) => s + nightsInRange(r, moisDebut, moisFinExclusive), 0)
+  const nuitsBloqueesOwnerStay = resasEnrichies.filter(r => r.owner_stay).reduce((s, r) => s + nightsInRange(r, moisDebut, moisFinExclusive), 0)
+  const nuitsDisponibles = Math.max(0, nuitsDispos - nuitsBloqueesOwnerStay)
+  const tauxOcc = nuitsDisponibles > 0 ? Math.round((nuitsOccupeesMois / nuitsDisponibles) * 100) : 0
   // honTotal kpis = somme des r.hon depuis resasEnrichies (via ventByResa)
   // ventByResa déduplique implicitement (last-write-wins par code/resa)
   // → immunisé contre les lignes HON en doublon dans la table ventilation
@@ -554,11 +588,20 @@ export async function buildRapportData(bienId, propId, mois, opts = {}) {
     ? Math.round(virHistoValues.reduce((s, v) => s + v, 0) / virHistoValues.length)
     : null
 
-  const resaN1Valid = resasN1 || []
-  const caHebN1 = resaN1Valid.reduce((s, r) => s + (r.fin_revenue || 0), 0)
-  const nuitesN1 = resaN1Valid.map(r => r.nights || 0).filter(v => v > 0)
-  const nuitsOccN1 = nuitesN1.reduce((s, v) => s + v, 0)
-  const tauxOccN1 = nuitsDispos > 0 ? Math.round((nuitsOccN1 / nuitsDispos) * 100) : 0
+  // Même filtre que resasValides/resasGuest côté mois courant (STATUTS_NON_VENTILABLES + owner_stay
+  // exclu) — sinon N-1 ne compare pas le même périmètre (trouvé 16/09/2026, cf. commentaire sur la
+  // requête N-1 plus haut).
+  const resaN1Valid = (resasN1 || []).filter(r =>
+    !STATUTS_NON_VENTILABLES.includes(r.final_status) || (r.fin_revenue || 0) > 0
+  )
+  const resaN1Guest = resaN1Valid.filter(r => !r.owner_stay)
+  const caHebN1 = resaN1Guest.reduce((s, r) => s + (r.fin_revenue || 0), 0)
+  const nuitsOccN1Mois = resaN1Guest.reduce((s, r) => s + nightsInRange(r, moisN1Debut, moisN1FinExclusive), 0)
+  const nuitsOccN1 = resaN1Guest.map(r => r.nights || 0).filter(v => v > 0).reduce((s, v) => s + v, 0)
+  const nuitsBloqueesOwnerStayN1 = resaN1Valid.filter(r => r.owner_stay).reduce((s, r) => s + nightsInRange(r, moisN1Debut, moisN1FinExclusive), 0)
+  const nuitsDisposN1 = new Date(y - 1, m, 0).getDate() // même mois calendaire, année N-1 (ex. février peut différer d'un jour bissextile)
+  const nuitsDisponiblesN1 = Math.max(0, nuitsDisposN1 - nuitsBloqueesOwnerStayN1)
+  const tauxOccN1 = nuitsDisponiblesN1 > 0 ? Math.round((nuitsOccN1Mois / nuitsDisponiblesN1) * 100) : 0
 
   // Lignes "Aircover — remboursement assurance" : ventilation HAOWNER par résa (ex. verrou avancé
   // par DCB puis remboursé via une Resolution/Aircover Airbnb). Affiché pour transparence,
@@ -592,6 +635,7 @@ export async function buildRapportData(bienId, propId, mois, opts = {}) {
     nbReviewsGlobal: allReviewsData?.length || 0,
     kpis: {
       nbResas, caHeb, baseCommTotal, nuitsOccupees, nuitsDispos,
+      nuitsDisponibles, nuitsBloqueesOwnerStay,
       tauxOcc, dureeMoy, loyTotal, honTotal, fmenTotal, autoTotal, autoReelTotal, virementNet,
       gestionLoyer: bienConfig.gestionLoyer,
       modeEncaissement, virTotalProprioEncaisse,
@@ -601,7 +645,7 @@ export async function buildRapportData(bienId, propId, mois, opts = {}) {
       _fraisDeductionLoy: fraisDeductionLoy, _ownerStayMenageTotal: ownerStayMenageTotal,
     },
     kpisN1: {
-      nbResas: resaN1Valid.length, caHeb: caHebN1,
+      nbResas: resaN1Guest.length, caHeb: caHebN1,
       nuitsOccupees: nuitsOccN1, tauxOcc: tauxOccN1,
     },
   }
