@@ -571,19 +571,20 @@ async function genererFactureGroupe(proprio, biens, mois, ctx) {
 
   // Totaux facture — en mode Lauian, FMEN est facturé par DCB (pas par Lauian)
   const inclureFMEN = AGENCE !== 'lauian'
-  // Frais déduits du loyer : refacturés au propriétaire (ligne POSITIVE TVA 20 %, incluse dans
-  // le total). Avant le 24/09/2026 la ligne était NÉGATIVE et hors total : poussée telle quelle
-  // (quantity=-1), elle faisait un avoir chez Evoliz alors que le propriétaire avait bien payé
-  // le frais via la retenue sur son reversement (1 580,96 € mars→juillet, cf. journal_ops
-  // evoliz_correction_frais_negatifs). Le reversement n'est pas concerné : il retire déjà
-  // fraisDeduitTotal. HT/TVA arrondis par frais, exactement comme les lignes ci-dessous.
+  // Frais « déduire du loyer » : ce sont des PRESTATIONS DCB (frais de gestion, VIP…) ou des
+  // ACHATS SURFACTURÉS — jamais des débours (règle Oïhan, 24/09/2026). Toujours facturés ici,
+  // TVA 20 %, pour leur montant ENTIER : la part retenue sur le loyer (fraisDeduitTotal, qui
+  // réduit le reversement) comme le reliquat non couvert (fraisReliquatTotal, réclamé au
+  // propriétaire via resteAPayer). Avant : ligne NÉGATIVE hors total (avoir chez Evoliz, 1 580,96 €
+  // mars→juillet) et reliquat sur la facture de DÉBOURS à TVA 0 %, jamais transmise à Evoliz
+  // pour les biens où le propriétaire encaisse (DUL/B16/B24 : frais de gestion hors comptabilité).
   let fraisDeduitHT = 0, fraisDeduitTVA = 0
   for (const frais of (fraisDeduire || [])) {
-    const { deduit = 0 } = fraisDeductionMap.get(frais.id) || {}
-    if (deduit <= 0) continue
-    const ht = Math.round(deduit / 1.20)
+    const montant = frais.montant_ttc || 0
+    if (montant <= 0) continue
+    const ht = Math.round(montant / 1.20)
     fraisDeduitHT  += ht
-    fraisDeduitTVA += deduit - ht
+    fraisDeduitTVA += montant - ht
   }
   const totalHT  = com.ht  + (inclureFMEN ? menConsolide.ht  : 0) + div.ht  + haownerHT  + (inclureFMEN ? osFmenSurplusHT  : 0) + fraisDirectHTFacture  + fraisDeduitHT
   const totalTVA = com.tva + (inclureFMEN ? menConsolide.tva : 0) + div.tva + haownerTVA + (inclureFMEN ? osFmenSurplusTVA : 0) + fraisDirectTVAFacture + fraisDeduitTVA
@@ -682,7 +683,21 @@ async function genererFactureGroupe(proprio, biens, mois, ctx) {
     // Supprimer l'ancienne ligne RECAP si elle existe (remplacée par le contrôle virements UI)
     await supabase.from('facture_evoliz_ligne').delete()
       .eq('facture_id', existingFacture.id).eq('code', 'RECAP')
-    return { created: false, skipped: true, raison: 'Facture déjà envoyée' }
+    // Frais saisis APRÈS l'envoi de la facture : ils ne partent plus sur la facture de débours
+    // (règle 24/09/2026) → jamais de disparition silencieuse, on le trace pour qu'ils soient
+    // reportés (mois_facturation suivant) ou facturés en rectificative.
+    const fraisNonFactures = [...(fraisDeduire || []), ...(fraisDirectPourFacture || [])]
+      .filter(f => f.statut === 'a_facturer')
+    if (fraisNonFactures.length) {
+      await supabase.from('journal_ops').insert({
+        categorie: 'facturation', action: 'frais_apres_facture_envoyee', source: 'app', statut: 'warning',
+        mois_comptable: mois,
+        message: `${proprio.nom} ${mois} : ${fraisNonFactures.length} frais saisi(s) après l'envoi de la facture d'honoraires, non facturé(s) — ` +
+          fraisNonFactures.map(f => `${f.libelle} ${(f.montant_ttc / 100).toFixed(2)} €`).join(', ') +
+          ' → passer mois_facturation au mois suivant ou émettre une facture rectificative.',
+      })
+    }
+    return { created: false, skipped: true, raison: 'Facture déjà envoyée', fraisNonFactures: fraisNonFactures.length }
   }
 
   const factureData = {
@@ -803,22 +818,26 @@ async function genererFactureGroupe(proprio, biens, mois, ctx) {
     })
   }
 
-  // Frais déduits du loyer : ligne POSITIVE (refacturation) limitée au montant effectivement
-  // déduit — incluse dans totalHT/totalTVA (cf. fraisDeduitHT). Le reliquat non couvert part
-  // sur la facture de débours.
+  // Frais « déduire du loyer » : ligne POSITIVE TVA 20 % pour le montant entier (prestation DCB
+  // ou achat surfacturé), incluse dans totalHT/totalTVA (cf. fraisDeduitHT). Retenue sur le loyer
+  // à hauteur de `deduit`, le reste (`reliquat`) est réclamé au propriétaire (resteAPayer).
   for (const frais of (fraisDeduire || [])) {
+    const montant = frais.montant_ttc || 0
+    if (montant <= 0) continue
     const { deduit = 0 } = fraisDeductionMap.get(frais.id) || {}
-    if (deduit <= 0) continue
-    const deduitHT  = Math.round(deduit / 1.20)
-    const deduitTVA = deduit - deduitHT
+    const montantHT  = Math.round(montant / 1.20)
+    const montantTVA = montant - montantHT
     lignes.push({
       facture_id:  factureId,
       code:        'FRAIS',
       libelle:     frais.libelle || 'Frais proprietaire',
-      montant_ht:  deduitHT,
+      description: deduit >= montant ? 'Retenu sur le reversement'
+        : deduit > 0 ? `Retenu sur le reversement à hauteur de ${(deduit / 100).toFixed(2)} €, solde à régler`
+        : 'À régler (aucun loyer encaissé par l\'agence ce mois-ci)',
+      montant_ht:  montantHT,
       taux_tva:    20,
-      montant_tva: deduitTVA,
-      montant_ttc: deduit,
+      montant_tva: montantTVA,
+      montant_ttc: montant,
       ordre:       ordre++,
     })
   }
@@ -997,29 +1016,6 @@ async function genererFactureDebours(proprio, biens, mois, ctx) {
       ['deduction_loy', 'haowner', 'debours_proprio'].includes(p.type_imputation)
   })
 
-  // fraisDirectsAll : query DB maintenue intentionnellement (dépendance d'ordre avec genererFactureGroupe)
-  const { data: fraisDirectsAll } = await supabase
-    .from('frais_proprietaire')
-    .select('bien_id, id, montant_ttc, libelle')
-    .in('bien_id', bienIds)
-    .eq('mois_facturation', mois)
-    .in('mode_traitement', ['facturer_direct', 'facturer_et_deduire'])
-    .eq('mode_encaissement', 'dcb')
-    .eq('statut', 'a_facturer')
-
-  // fraisReliquatAll : part de frais deduire_loyer/facturer_et_deduire non couverte par le LOY
-  // (montant_reliquat déjà calculé et écrit en base par genererFactureGroupe, exécuté juste avant
-  // pour ce même proprio/mois — cf. dépendance d'ordre ci-dessus). Sans cette ligne, ce reliquat
-  // n'était jamais refacturé au propriétaire — cf. incident 408P "Ikuspegi" (100,01€ juillet 2026).
-  const { data: fraisReliquatAll } = await supabase
-    .from('frais_proprietaire')
-    .select('bien_id, id, montant_reliquat, libelle')
-    .in('bien_id', bienIds)
-    .eq('mois_facturation', mois)
-    .in('mode_traitement', ['deduire_loyer', 'facturer_et_deduire'])
-    .eq('statut', 'facture')
-    .gt('montant_reliquat', 0)
-
   const ventilByBien = new Map()
   const prestByBien  = new Map()
   ;(ventilAuto || []).forEach(function(l) {
@@ -1031,17 +1027,6 @@ async function genererFactureDebours(proprio, biens, mois, ctx) {
     prestByBien.get(p.bien_id).push(p)
   })
 
-  const fraisDirectsByBien = new Map()
-  ;(fraisDirectsAll || []).forEach(function(f) {
-    if (!fraisDirectsByBien.has(f.bien_id)) fraisDirectsByBien.set(f.bien_id, [])
-    fraisDirectsByBien.get(f.bien_id).push(f)
-  })
-
-  const fraisReliquatByBien = new Map()
-  ;(fraisReliquatAll || []).forEach(function(f) {
-    if (!fraisReliquatByBien.has(f.bien_id)) fraisReliquatByBien.set(f.bien_id, [])
-    fraisReliquatByBien.get(f.bien_id).push(f)
-  })
 
   // Pool LOY partagé entre les biens mode_encaissement='dcb' d'un même groupe_facturation --
   // même pooling que genererFactureGroupe (cf. cas M-MAITE : le bien "parent" ne porte quasiment
@@ -1085,10 +1070,7 @@ async function genererFactureDebours(proprio, biens, mois, ctx) {
       })
       .reduce(function(s, p) { return s + (p.montant || 0) }, 0)
 
-    const fraisReliquatBien = fraisReliquatByBien.get(bien.id) || []
-    const fraisReliquatBienTotal = fraisReliquatBien.reduce(function(s, f) { return s + (f.montant_reliquat || 0) }, 0)
-
-    if (autoBien === 0 && osAutoHT === 0 && deboursPropTotal === 0 && fraisReliquatBienTotal === 0) continue
+    if (autoBien === 0 && osAutoHT === 0 && deboursPropTotal === 0) continue
 
     let montantAFacturer = 0
     let debPropSurplus   = 0
@@ -1153,7 +1135,7 @@ async function genererFactureDebours(proprio, biens, mois, ctx) {
       loyPoolGroupeDebours = Math.max(0, loyPoolGroupeDebours - osAutoAbsorb)
     }
 
-    if (montantAFacturer === 0 && fraisReliquatBienTotal === 0) continue
+    if (montantAFacturer === 0) continue
 
     const autoSurplusBienDebours = Math.max(0, montantAFacturer - debPropSurplus - osAutoSurplus)
     if (autoSurplusBienDebours > 0) {
@@ -1197,36 +1179,10 @@ async function genererFactureDebours(proprio, biens, mois, ctx) {
       })
     }
 
-    // Frais proprietaire a facturer directement -- lignes separees, hors montantAFacturer
-    // En mode Lauian : ces frais DCB sont facturés par DCB via lauian_fmen — exclus du débours Lauian
-    const fraisDirectsBien = AGENCE === 'lauian' ? [] : (fraisDirectsByBien.get(bien.id) || [])
-    for (const frais of fraisDirectsBien) {
-      lignes.push({
-        code:        'FRAIS',
-        libelle:     frais.libelle,
-        montant_ht:  frais.montant_ttc,
-        taux_tva:    0,
-        montant_tva: 0,
-        montant_ttc: frais.montant_ttc,
-        ordre:       ordre++,
-      })
-    }
-
-    // Frais deduire_loyer/facturer_et_deduire dont le reliquat n'a pas pu être absorbé par le
-    // LOY (bien mode_encaissement='proprio', ou LOY insuffisant ce mois-ci) -- refacturé ici,
-    // sinon perdu silencieusement (cf. incident 408P "Ikuspegi")
-    const fraisReliquatBienLignes = AGENCE === 'lauian' ? [] : fraisReliquatBien
-    for (const frais of fraisReliquatBienLignes) {
-      lignes.push({
-        code:        'FRAIS',
-        libelle:     (frais.libelle || 'Frais propriétaire') + ' (reliquat)',
-        montant_ht:  frais.montant_reliquat,
-        taux_tva:    0,
-        montant_tva: 0,
-        montant_ttc: frais.montant_reliquat,
-        ordre:       ordre++,
-      })
-    }
+    // Plus aucun frais_proprietaire sur la facture de débours (règle Oïhan, 24/09/2026) : frais
+    // de gestion, VIP, achats surfacturés = prestations DCB TVA 20 %, toujours sur la facture
+    // d'honoraires (y compris le reliquat non couvert par le LOY). Avant : lignes FRAIS à TVA 0 %
+    // ici, jamais transmises à Evoliz pour les biens sans collecte de loyer.
   }
 
   const existing = ctx.facturesExistantes.get(
@@ -1289,16 +1245,6 @@ async function genererFactureDebours(proprio, biens, mois, ctx) {
     await supabase.from('facture_evoliz_ligne').insert(
       lignes.map(l => ({ ...l, facture_id: factureId }))
     )
-    // Passer les frais directs en statut 'facture' -- uniquement dans le chemin non-skipped
-    // En mode Lauian : ces frais DCB sont gérés par DCB (lauian_fmen) — ne pas les marquer ici
-    if (AGENCE !== 'lauian') {
-      const fraisDirectsIds = (fraisDirectsAll || []).map(f => f.id)
-      if (fraisDirectsIds.length > 0) {
-        await supabase.from('frais_proprietaire')
-          .update({ statut: 'facture' })
-          .in('id', fraisDirectsIds)
-      }
-    }
   }
 
   return { created, factureId, totalHT, totalTTC: totalHT }
