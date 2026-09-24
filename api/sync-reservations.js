@@ -5,6 +5,7 @@
 // Appelé par le webhook Hospitable et par le cron nightly.
 // Sécurisé par WEBHOOK_SECRET dans le query string.
 
+import { skipDuplicateCron } from './_cronGuard.js';
 const HOSPITABLE_TOKEN = process.env.HOSPITABLE_TOKEN;
 const SUPABASE_URL     = process.env.SUPABASE_URL || 'https://omuncchvypbtxkpalwcr.supabase.co';
 const SUPABASE_KEY     = process.env.SUPABASE_SERVICE_ROLE_KEY;
@@ -346,6 +347,7 @@ async function syncMois(mois, agence) {
 // ── Handler ───────────────────────────────────────────────────────────────────
 
 export default async function handler(req, res) {
+  if (skipDuplicateCron(req, res)) return; // cf. api/_cronGuard.js — crons exécutés par dcb-compta seulement
   if (req.method !== 'GET' && req.method !== 'POST') return res.status(405).end();
 
   // Auth : webhook secret (cron) OU JWT Supabase (UI)

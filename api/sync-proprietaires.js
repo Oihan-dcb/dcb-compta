@@ -13,6 +13,7 @@
 // fiche existante de la même agence : pas de création, la collision est
 // remontée dans le log pour résolution manuelle (lier l'id_evoliz à la fiche).
 
+import { skipDuplicateCron } from './_cronGuard.js';
 const SUPABASE_URL      = process.env.SUPABASE_URL || 'https://omuncchvypbtxkpalwcr.supabase.co';
 const SUPABASE_KEY      = process.env.SUPABASE_SERVICE_ROLE_KEY;
 const SUPABASE_ANON_KEY = process.env.SUPABASE_ANON_KEY;
@@ -66,6 +67,7 @@ function normalizeName(nom, prenom) {
 }
 
 export default async function handler(req, res) {
+  if (skipDuplicateCron(req, res)) return; // cf. api/_cronGuard.js — crons exécutés par dcb-compta seulement
   // ── Auth : même pattern que sync-biens.js ─────────────────────────────────
   const token = req.query?.token || (req.headers.authorization || '').replace(/^Bearer\s+/i, '').trim();
   if (!WEBHOOK_SECRET) return res.status(500).json({ error: 'HOSPITABLE_WEBHOOK_SECRET non configuré' });

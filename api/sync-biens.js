@@ -13,6 +13,7 @@
 // normalisé identique à un bien déjà existant : pas de création, la collision
 // est remontée dans le log pour résolution manuelle.
 
+import { skipDuplicateCron } from './_cronGuard.js';
 const HOSPITABLE_TOKEN = process.env.HOSPITABLE_TOKEN;
 const SUPABASE_URL      = process.env.SUPABASE_URL || 'https://omuncchvypbtxkpalwcr.supabase.co';
 const SUPABASE_KEY      = process.env.SUPABASE_SERVICE_ROLE_KEY;
@@ -85,6 +86,7 @@ function extractCode(name) {
 }
 
 export default async function handler(req, res) {
+  if (skipDuplicateCron(req, res)) return; // cf. api/_cronGuard.js — crons exécutés par dcb-compta seulement
   // CORS : appelable depuis PowerHouse (dcb-planning.vercel.app), même Supabase Auth
   // (projet omuncchvypbtxkpalwcr partagé) — le token de session d'un staff PowerHouse
   // authentifie donc aussi bien ici que sur dcb-compta. 09/09/2026.
@@ -119,7 +121,12 @@ export default async function handler(req, res) {
     const properties = await hospFetchAll('/v2/properties');
     log.total = properties.length;
 
-    const existingBiens = await sb(`bien?agence=eq.${agence}&select=id,code,hospitable_name,hospitable_id,listed`);
+    // TOUTES agences confondues (comme src/services/syncBiens.js) : un seul compte Hospitable
+    // porte les biens DCB ET Lauïan. Filtré par agence, chaque cron voyait les biens de l'autre
+    // agence comme "nouveaux" → INSERT → 409 (hospitable_id unique) → le cron entier échouait,
+    // mises à jour comprises, toutes les nuits depuis le 10/09/2026 (Villa Coco côté dcb,
+    // XABADENIA côté lauian — 58 erreurs import_log). `agence` ne sert plus qu'aux créations.
+    const existingBiens = await sb(`bien?select=id,code,hospitable_name,hospitable_id,listed,agence`);
     const existingMap = new Map((existingBiens || []).map(b => [b.hospitable_id, b]));
     const existingByName = new Map((existingBiens || []).map(b => [normalizeName(b.hospitable_name), b]));
 

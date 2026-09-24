@@ -3,6 +3,17 @@ import { AGENCE } from '../lib/agence'
 import { syncBiens, getBiens, resoudreCollisionBien } from '../services/syncBiens'
 import { getProprietaires } from '../services/syncProprietaires'
 import { formatMontant } from '../lib/hospitable'
+import { supabase } from '../lib/supabase'
+
+// Écriture d'un champ de `bien` qui ÉCHOUE BRUYAMMENT (audit 24/09/2026) : avant, chaque
+// sauvegarde faisait `await supabase.from('bien').update(...)` sans lire `error` — un refus RLS,
+// un trigger ou une contrainte passait inaperçu et l'écran affichait la valeur comme enregistrée.
+// `.select('id')` : un UPDATE bloqué par RLS ne renvoie pas d'erreur mais 0 ligne.
+async function majBien(bienId, patch) {
+  const { data, error } = await supabase.from('bien').update(patch).eq('id', bienId).select('id')
+  if (error) throw error
+  if (!data?.length) throw new Error("Modification refusée (droits insuffisants ou bien introuvable) — rien n'a été enregistré")
+}
 
 const ICAL_TOKEN = import.meta.env.VITE_HOSPITABLE_ICAL_TOKEN || ''
 const ICAL_BASE  = 'https://api.hospitable.com/v1/properties/reservations.ics'
@@ -223,10 +234,7 @@ export default function PageBiens() {
 
   async function saveProprietaire(bienId, proprietaireId) {
     try {
-      const { supabase } = await import('../lib/supabase')
-      await supabase.from('bien')
-        .update({ proprietaire_id: proprietaireId || null })
-        .eq('id', bienId)
+      await majBien(bienId, { proprietaire_id: proprietaireId || null })
       setBiens(prev => prev.map(b => {
         if (b.id !== bienId) return b
         const proprio = proprietaires.find(p => p.id === proprietaireId)
@@ -242,15 +250,17 @@ export default function PageBiens() {
   async function saveField(bienId, field, value) {
     setSaving(s => ({ ...s, [bienId]: true }))
     try {
-      const { supabase } = await import('../lib/supabase')
       // taux_commission_override est un ratio (ex: 0.20 pour 20%), pas en centimes
-      // Champs texte : sauvegarder tel quel
-      const TEXT_FIELDS = ['airbnb_account', 'ical_code', 'ical_url', 'photo_url', 'classification_date', 'classification_fin', 'code']
+      // Champs texte : sauvegarder tel quel. 'classification' en faisait défaut : "3_etoiles"
+      // passait par parseFloat()*100 et était enregistré "300" (cas SUZETTE, audit 24/09/2026)
+      // — tarif de taxe de séjour alors introuvable (PageTaxeSejour.getConfig).
+      const TEXT_FIELDS = ['airbnb_account', 'ical_code', 'ical_url', 'photo_url', 'classification', 'classification_date', 'classification_fin', 'code']
       const finalVal = value === '' || value === null ? null
         : TEXT_FIELDS.includes(field) ? value
         : field === 'taux_commission_override' ? value
         : Math.round(parseFloat(value) * 100)
-      await supabase.from('bien').update({ [field]: finalVal }).eq('id', bienId)
+      if (typeof finalVal === 'number' && Number.isNaN(finalVal)) throw new Error(`Valeur invalide pour ${field} : "${value}"`)
+      await majBien(bienId, { [field]: finalVal })
       setBiens(prev => prev.map(b => b.id === bienId ? { ...b, [field]: finalVal } : b))
       setEditing(e => { const n = {...e}; delete n[bienId+'_'+field]; delete n[bienId+'_taux_com']; return n })
     } catch (err) {
@@ -262,34 +272,36 @@ export default function PageBiens() {
 
   async function toggleAE(bienId, currentVal) {
     try {
-      const { supabase } = await import('../lib/supabase')
-      await supabase.from('bien').update({ has_ae: !currentVal }).eq('id', bienId)
+      await majBien(bienId, { has_ae: !currentVal })
       setBiens(prev => prev.map(b => b.id === bienId ? { ...b, has_ae: !currentVal } : b))
     } catch (err) {
       setError('Erreur : ' + err.message)
     }
   }
 
+  // `supabase` n'était pas importé dans ce module (seulement en import() dynamique ailleurs) :
+  // chaque clic levait une ReferenceError silencieuse — aucun bien n'a jamais pu passer
+  // gestion_taxe_sejour=true, et PageTaxeSejour (filtrée dessus) restait vide.
   async function toggleGestionTaxeSejour(bienId, currentVal) {
-    const newVal = !currentVal
-    await supabase.from('bien').update({ gestion_taxe_sejour: newVal }).eq('id', bienId)
-    setBiens(prev => prev.map(b => b.id === bienId ? { ...b, gestion_taxe_sejour: newVal } : b))
+    try {
+      const newVal = !currentVal
+      await majBien(bienId, { gestion_taxe_sejour: newVal })
+      setBiens(prev => prev.map(b => b.id === bienId ? { ...b, gestion_taxe_sejour: newVal } : b))
+    } catch (err) { setError('Erreur : ' + err.message) }
   }
 
   async function toggleGestionLoyer(bienId, currentVal) {
     try {
-      const { supabase } = await import('../lib/supabase')
       const newVal = (currentVal === false || currentVal === null) ? true : false
-      await supabase.from('bien').update({ gestion_loyer: newVal }).eq('id', bienId)
+      await majBien(bienId, { gestion_loyer: newVal })
       setBiens(prev => prev.map(b => b.id === bienId ? { ...b, gestion_loyer: newVal } : b))
     } catch (err) { setError('Erreur : ' + err.message) }
   }
 
   async function toggleAgence(bienId, current) {
     try {
-      const { supabase } = await import('../lib/supabase')
       const next = current === 'lauian' ? 'dcb' : 'lauian'
-      await supabase.from('bien').update({ agence: next }).eq('id', bienId)
+      await majBien(bienId, { agence: next })
       setBiens(prev => prev.map(b => b.id === bienId ? { ...b, agence: next } : b))
     } catch (err) { setError('Erreur : ' + err.message) }
   }
