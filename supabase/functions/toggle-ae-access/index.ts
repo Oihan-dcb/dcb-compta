@@ -48,7 +48,18 @@ Deno.serve(async (req) => {
     })
     if (banErr) throw banErr
 
-    return new Response(JSON.stringify({ success: true, ae_user_id: ae.ae_user_id, banned: !actif }), {
+    // banned_until bloque les NOUVELLES connexions/refresh mais ne tue pas une session
+    // déjà ouverte (PWA, onglet laissé ouvert) — elle continue de rafraîchir son token
+    // indéfiniment sans jamais repasser par le check de ban. Constaté 08-09/2026 : des
+    // AE archivés ont continué à lire/écrire dans le messenger du Portail AE des
+    // semaines après leur archivage. On tue donc explicitement les sessions actives.
+    let sessionsRevoked = true
+    if (!actif) {
+      const { error: revokeErr } = await supabaseAdmin.rpc('admin_revoke_user_sessions', { p_user_id: ae.ae_user_id })
+      if (revokeErr) sessionsRevoked = false
+    }
+
+    return new Response(JSON.stringify({ success: true, ae_user_id: ae.ae_user_id, banned: !actif, sessionsRevoked }), {
       headers: { ...corsHeaders, 'Content-Type': 'application/json' }
     })
 
