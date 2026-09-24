@@ -205,11 +205,11 @@ serve(async (req) => {
       // n'est ni relancée (relance-debours lit 'envoye_proprio') ni rapprochée — cas B16, GASQ,
       // PATXI juillet 2026, jamais réclamés (audit I-154, 24/09/2026).
       const { data: deboursMuets } = await supabase.from('facture_evoliz')
-        .select('id, mois, total_ttc, updated_at, bien:bien_id(code, mode_encaissement), proprietaire:proprietaire_id(nom, prenom)')
+        .select('id, mois, total_ttc, created_at, bien:bien_id(code, mode_encaissement), proprietaire:proprietaire_id(nom, prenom)')
         .eq('agence', agence).eq('type_facture', 'debours').in('statut', ['valide', 'envoye_evoliz'])
         .is('envoye_proprio_at', null).gt('total_ttc', 0)
       for (const d of deboursMuets || []) {
-        if (new Date(d.updated_at) > limite) continue
+        if (new Date(d.created_at) > limite) continue
         const b = (d as any).bien, p = (d as any).proprietaire
         nonEnvoyees.push({
           agence, mois: d.mois, bien: b?.code || '—', proprio: [p?.prenom, p?.nom].filter(Boolean).join(' ') || '—',
