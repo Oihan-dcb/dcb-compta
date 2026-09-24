@@ -192,10 +192,11 @@ const [pushing, setPushing] = useState(false)
           .eq('agence', AGENCE)
           .gt('debit', 0)
           .order('date_operation', { ascending: true }),
+        // TOUS les AE, archivés compris : sert à écarter leurs virements du contrôle des
+        // virements propriétaires (le dernier paiement d'un AE archivé ne doit pas y remonter)
         supabase
           .from('auto_entrepreneur')
-          .select('nom, prenom')
-          .eq('actif', true),
+          .select('nom, prenom'),
       ])
       if (error) throw error
       setVirementsSortants(mouvements || [])

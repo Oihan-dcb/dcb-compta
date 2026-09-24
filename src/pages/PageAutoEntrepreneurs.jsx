@@ -830,7 +830,7 @@ export default function PageAutoEntrepreneurs() {
 
       <div style={{ display: 'flex', gap: 8, marginBottom: 20 }}>
         <button style={TAB_STYLE(tab === 'vision')} onClick={() => { setTab('vision'); chargerVision(visionMois) }}>📊 Vision mensuelle</button>
-        <button style={TAB_STYLE(tab === 'aes')} onClick={() => setTab('aes')}>🧹 Staff & AE ({aes.length})</button>
+        <button style={TAB_STYLE(tab === 'aes')} onClick={() => setTab('aes')}>🧹 Staff & AE ({aes.filter(a => a.actif !== false).length})</button>
         <button style={TAB_STYLE(tab === 'prestations')} onClick={() => setTab('prestations')}>⚙️ Types de prestations ({prestationTypes.length})</button>
         <button style={TAB_STYLE(tab === 'controle')} onClick={() => { setTab('controle'); chargerVirementsAE(visionMois); chargerVision(visionMois) }}>🔍 Contrôle virements</button>
         <button style={TAB_STYLE(tab === 'heures')} onClick={() => setTab('heures')}>⏱ Heures staff</button>
@@ -1154,7 +1154,9 @@ export default function PageAutoEntrepreneurs() {
               return autoMatchVirementAE(ae, virementsAE)
             }
 
-            const aesActifs = aes.filter(ae => ae.actif !== false)
+            // Actifs + archivés qui ont travaillé ce mois-là : un AE archivé après avoir travaillé
+            // en août doit rester contrôlable (et payable) pour août.
+            const aesActifs = aes.filter(ae => ae.actif !== false || montantAttendu(ae.id) > 0)
             const totalAttendu = aesActifs.reduce((s, ae) => s + montantAttendu(ae.id), 0)
             const totalVire = aesActifs.reduce((s, ae) => {
               const v = getVirLie(ae)
@@ -1325,7 +1327,8 @@ export default function PageAutoEntrepreneurs() {
               { value: 'repos', label: 'Repos' },
             ]
             const ABSENCES_LABEL = { conge_paye: 'CP', maladie: 'Maladie', rtt: 'RTT', ferie: 'Férié', repos: 'Repos' }
-            const staffList = aes.filter(a => a.type === 'staff' || a.type === 'assistante' || a.type === 'gerant')
+            // Archivés exclus (sauf celui déjà sélectionné, pour ne pas perdre l'affichage en cours)
+            const staffList = aes.filter(a => (a.type === 'staff' || a.type === 'assistante' || a.type === 'gerant') && (a.actif !== false || a.id === heuresAeId))
             const days = getDaysOfMonth(heuresMois)
             let totalH = 0
             days.forEach(d => { const h = netHeures(heures[d]); if (h) totalH += h })
@@ -1742,7 +1745,7 @@ export default function PageAutoEntrepreneurs() {
                   <select value={form.linked_ae_user_id || ''} onChange={e => change('linked_ae_user_id', e.target.value || null)}
                     style={{ padding: '8px 10px', borderRadius: 7, border: '1.5px solid #CC9933', fontSize: 13 }}>
                     <option value="">— Choisir le compte principal</option>
-                    {aes.filter(a => a.id !== editing && a.ae_user_id && !a.is_chat_hidden).map(a => (
+                    {aes.filter(a => a.id !== editing && a.ae_user_id && !a.is_chat_hidden && (a.actif !== false || a.ae_user_id === form.linked_ae_user_id)).map(a => (
                       <option key={a.ae_user_id} value={a.ae_user_id}>{a.prenom} {a.nom} ({a.type})</option>
                     ))}
                   </select>

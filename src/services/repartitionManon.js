@@ -38,14 +38,18 @@ export function poolMensuelH(mois) { return round2(POOL_HEBDO_H * semainesDuMois
 
 async function comptesManon(agence) {
   const { data } = await supabase.from('auto_entrepreneur')
-    .select('id, type').eq('agence', agence).ilike('nom', 'castet').ilike('prenom', 'manon')
-  return { staff: (data || []).find(c => c.type === 'staff'), ae: (data || []).find(c => c.type === 'ae') }
+    .select('id, type, actif').eq('agence', agence).ilike('nom', 'castet').ilike('prenom', 'manon')
+  return {
+    staff: (data || []).find(c => c.type === 'staff'), ae: (data || []).find(c => c.type === 'ae'),
+    // Toutes ses fiches archivées → le bloc ne s'affiche plus que pour un mois où elle a travaillé
+    archivee: (data || []).length > 0 && (data || []).every(c => c.actif === false),
+  }
 }
 
 // Calcule la répartition du mois (LECTURE SEULE). Retourne aussi la liste des ménages
 // avec leur couverture (pour l'affichage + l'application).
 export async function chargerRepartitionManon(mois, agence = AGENCE) {
-  const { staff, ae } = await comptesManon(agence)
+  const { staff, ae, archivee } = await comptesManon(agence)
   if (!ae) return { error: 'Compte AE de Manon introuvable' }
 
   // Jours salariés pointés (terminés)
@@ -108,6 +112,7 @@ export async function chargerRepartitionManon(mois, agence = AGENCE) {
     sap_total_h: sumH(l => l.regime === 'sap'),
     lignes,
     comptes: { staff_id: staff?.id || null, ae_id: ae.id },
+    archivee,
   }
 }
 

@@ -41,10 +41,14 @@ export default function RepartitionManon() {
     setApplying(false)
   }
 
+  // Manon archivée : plus de bloc, sauf pour un mois où elle a pointé ou fait des ménages
+  // (historique nécessaire à la compta de ce mois).
+  if (data?.archivee && !data.jours_pointes && !data.lignes?.length) return null
+
   return (
     <div style={{ background: '#FAFAF7', border: '1px solid #E5E7EB', borderRadius: 12, padding: 18, marginBottom: 20 }}>
       <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 14, flexWrap: 'wrap' }}>
-        <h3 style={{ margin: 0, fontSize: 16, fontWeight: 700 }}>🔀 Répartition Manon (hybride)</h3>
+        <h3 style={{ margin: 0, fontSize: 16, fontWeight: 700 }}>🔀 Répartition Manon (hybride){data?.archivee && <span style={{ marginLeft: 8, fontSize: 11, fontWeight: 600, color: '#6B7280', background: '#E5E7EB', borderRadius: 4, padding: '2px 6px' }}>🗄️ archivée</span>}</h3>
         <input type="month" value={mois} onChange={e => setMois(e.target.value)}
           style={{ border: '1px solid #D1D5DB', borderRadius: 7, padding: '5px 9px', fontSize: 13 }} />
         <button onClick={appliquer} disabled={applying || loading || !data || data.error}
