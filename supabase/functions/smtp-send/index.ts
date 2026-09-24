@@ -29,7 +29,9 @@ serve(async (req) => {
     }
 
     const toArray = Array.isArray(to)
-      ? to.flatMap((e: string) => (typeof e === 'string' && e.includes(';') ? e.split(';') : [e]))
+      // Sépare aussi sur ',' : 7 fiches proprio stockent plusieurs adresses dans un seul champ
+      // ("a@x.fr,b@y.com") et les appelants passent souvent [proprio.email] (24/09/2026).
+      ? to.flatMap((e: string) => (typeof e === 'string' ? e.split(/[,;]/) : [e]))
           .map((e: string) => (e || '').trim()).filter((e: string) => e.includes('@'))
       : to.split(/[,;]/).map((e: string) => e.trim()).filter((e: string) => e.includes('@'))
 
