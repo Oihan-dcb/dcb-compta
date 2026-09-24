@@ -117,7 +117,9 @@ export default function PageRapports() {
   const [showMailPreview, setShowMailPreview] = useState(false)
   const [erreurDetail, setErreurDetail] = useState('')
   const [colsConfig, setColsConfig] = useState({})
-  const [useStatement, setUseStatement] = useState(false)
+  // Format Statement coché par défaut (demande Oïhan 24/09/2026) : c'est le format envoyé
+  // aux propriétaires et déposé sur le portail — le « Rapport mensuel » reste accessible en décochant.
+  const [useStatement, setUseStatement] = useState(true)
   const [saisirMenageId, setSaisirMenageId] = useState(null)
   const [saisirMontant, setSaisirMontant] = useState('')
   const [savingMenage, setSavingMenage] = useState(false)
