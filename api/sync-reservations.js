@@ -132,10 +132,18 @@ function parseReservation(resa, bien, mois) {
   // Owner stay : fin_revenue = forfait ménage (cleaning fee invité ou fallback fiche bien)
   const isOwnerStay = resa.stay_type === 'owner_stay' ||
     (typeof resa.owner_stay === 'boolean' ? resa.owner_stay : (resa.owner_stay != null && resa.owner_stay !== false));
+  // Séjour propriétaire annulé AVANT l'arrivée prévue : annulation sans frais, pas de forfait
+  // ménage (règle Oïhan, 24/09/2026). Annulé à l'arrivée ou après : forfait conservé (le ménage
+  // a pu être fait). Heure d'annulation = dernier passage 'cancelled' de l'historique Hospitable ;
+  // introuvable → comportement inchangé (forfait facturé), jamais de supposition.
+  const annuleLe = isCancelled
+    ? [...(resa.reservation_status?.history || [])].reverse().find(h => h.category === 'cancelled')?.changed_at
+    : null;
+  const annuleAvantArrivee = !!(isOwnerStay && annuleLe && resa.check_in && new Date(annuleLe) < new Date(resa.check_in));
   const ownerCleaningFee = isOwnerStay
-    ? ((resa.financials?.guest?.fees || []).find(f => f.label?.toLowerCase().includes('cleaning'))?.amount
+    ? (annuleAvantArrivee ? 0 : ((resa.financials?.guest?.fees || []).find(f => f.label?.toLowerCase().includes('cleaning'))?.amount
         ?? bien.forfait_menage_proprio
-        ?? null)
+        ?? null))
     : null;
 
   return {
@@ -509,8 +517,10 @@ export default async function handler(req, res) {
     return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`
   };
   const offsetParam = req.query?.offset ?? req.body?.offset;
-  const offset = offsetParam != null && /^\d+$/.test(String(offsetParam)) ? Number(offsetParam) : null;
-  if (offset != null && offset > 6) return res.status(400).json({ error: 'offset max 6' });
+  // offset négatif = mois à venir (-1 = M+1) : les résas futures n'étaient resynchronisées que
+  // par le webhook, alors que la ventilation nocturne traite M+1 (I-151).
+  const offset = offsetParam != null && /^-?\d+$/.test(String(offsetParam)) ? Number(offsetParam) : null;
+  if (offset != null && (offset > 6 || offset < -2)) return res.status(400).json({ error: 'offset entre -2 et 6' });
   const moisAtraiter = moisExplicite ? [moisExplicite]
     : offset != null ? [moisDecale(offset)]
     : [moisDecale(1), currentMois];

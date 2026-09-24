@@ -60,6 +60,14 @@
       "schedule": "45 2 * * *"
     },
     {
+      "path": "/api/sync-reservations?agence=dcb&offset=-1",
+      "schedule": "50 2 * * *"
+    },
+    {
+      "path": "/api/sync-reservations?agence=lauian&offset=-1",
+      "schedule": "55 2 * * *"
+    },
+    {
       "path": "/api/sync-reservations?agence=dcb&offset=0",
       "schedule": "0 3 * * *"
     },
