@@ -139,6 +139,17 @@ async function calculerVentilationResa(resa: Resa, agence: string, supa: ReturnT
     if (men > 0) lignesOwnerStay.push(ligneHorsTVA('AUTO', 'Débours auto-entrepreneur', autoHT, bien, resa))
 
     if (!dryRun) {
+      // Idempotence (audit I-151, 24/09/2026) : cette branche faisait DELETE+INSERT à CHAQUE
+      // passage, sans le contrôle ajouté le 06/08 pour les résas normales — boucle nocturne
+      // (72 suppressions/recréations en 10 jours sur YMLPAL/OUL4OO) qui cassait au passage
+      // mission_menage.ventilation_auto_id (FK ON DELETE SET NULL).
+      const { data: existantes } = await supa.from('ventilation').select('code, montant_ht, montant_tva, montant_ttc').eq('reservation_id', resa.id)
+      const cle = (l: { code: string; montant_ht: number; montant_tva: number; montant_ttc: number }) => `${l.code}|${l.montant_ht}|${l.montant_tva}|${l.montant_ttc}`
+      const setExist = new Set((existantes || []).map(cle))
+      if ((existantes || []).length === lignesOwnerStay.length && lignesOwnerStay.every(l => setExist.has(cle(l)))) {
+        await supa.from('reservation').update({ ventilation_calculee: true }).eq('id', resa.id)
+        return lignesOwnerStay.map(toComparable)
+      }
       const { data: existingAutoReel } = await supa.from('ventilation').select('montant_reel').eq('reservation_id', resa.id).eq('code', 'AUTO').maybeSingle()
       const autoReel = existingAutoReel?.montant_reel ?? null
       await supa.from('ventilation').delete().eq('reservation_id', resa.id)
@@ -405,7 +416,7 @@ serve(async (req) => {
 
     if (moisUniques.length > 0) {
       const { data: clotures } = await supa.from('cloture_comptable')
-        .select('mois').eq('agence', agenceTarget).eq('cloture_ventil', true).in('mois', moisUniques)
+        .select('mois').eq('agence', agenceTarget).not('cloture_ventil', 'is', null).in('mois', moisUniques) // timestamptz : « clôturé » = renseigné (I-151)
       const moisClos = new Set((clotures || []).map((c: { mois: string }) => c.mois))
       moisList = moisUniques.filter(m => !moisClos.has(m)).sort()
     }

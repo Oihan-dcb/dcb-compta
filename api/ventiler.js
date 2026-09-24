@@ -90,6 +90,15 @@ async function _writeResa(resa, agence, supa, dryRun = false) {
 
     if (dryRun) return lignesOwnerStay.map(toComparable)
 
+    // Idempotence séjour propriétaire (I-151) : même contrôle que pour les résas normales
+    const { data: existantesOS } = await supa.from('ventilation').select('code, montant_ht, montant_tva, montant_ttc').eq('reservation_id', resa.id)
+    const cleOS = l => `${l.code}|${l.montant_ht}|${l.montant_tva}|${l.montant_ttc}`
+    const setOS = new Set((existantesOS || []).map(cleOS))
+    if ((existantesOS || []).length === lignesOwnerStay.length && lignesOwnerStay.every(l => setOS.has(cleOS(l)))) {
+      await supa.from('reservation').update({ ventilation_calculee: true }).eq('id', resa.id)
+      return lignesOwnerStay.map(toComparable)
+    }
+
     const { data: existingAutoReel } = await supa.from('ventilation')
       .select('montant_reel').eq('reservation_id', resa.id).eq('code', 'AUTO').maybeSingle()
     const autoReel = existingAutoReel?.montant_reel ?? null

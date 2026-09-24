@@ -6,6 +6,7 @@
 // Sécurisé par WEBHOOK_SECRET dans le query string.
 
 import { skipDuplicateCron } from './_cronGuard.js';
+import { STATUTS_NON_VENTILABLES } from '../src/lib/constants.js';
 const HOSPITABLE_TOKEN = process.env.HOSPITABLE_TOKEN;
 const SUPABASE_URL     = process.env.SUPABASE_URL || 'https://omuncchvypbtxkpalwcr.supabase.co';
 const SUPABASE_KEY     = process.env.SUPABASE_SERVICE_ROLE_KEY;
@@ -216,6 +217,21 @@ async function ecrireResa(resa, bien, mois) {
     if (!resaId) throw new Error('Upsert sans ID retourné');
   } catch (e) {
     throw new Error(`[upsert] ${e.message}`);
+  }
+
+  // Ajustements Hospitable (résolutions, AirCover, remboursements) détectés ICI, à chaque
+  // synchro — plus seulement pendant la ventilation : un ajustement arrivé après verrouillage du
+  // mois ou sur une résa non ventilée n'était jamais vu (6/31 en 2026, dont BACALAN +250€
+  // AirCover, audit I-151). Même insertion que _detecterAjustements (api/ventiler.js) : nouveau =
+  // 'a_qualifier', jamais d'écrasement d'une qualification (contrainte unique + ignore).
+  // Annulée à 0 € : rien à répartir, pas de ligne (sinon rapports bloqués « à trancher »).
+  const ajustements = (resa.financials?.host?.adjustments || []).filter(a => (a.amount || 0) !== 0);
+  const annuleeSansRevenu = STATUTS_NON_VENTILABLES.includes(parsed.final_status) && !parsed.fin_revenue;
+  if (ajustements.length && !annuleeSansRevenu) {
+    await sb('reservation_ajustement?on_conflict=reservation_id,label,montant', {
+      method: 'POST', prefer: 'return=minimal,resolution=ignore-duplicates',
+      body: JSON.stringify(ajustements.map(a => ({ reservation_id: resaId, mois_comptable: parsed.mois_comptable, montant: a.amount, label: a.label || null }))),
+    }).catch(e => console.error(`[sync-reservations] ajustements ${resa.code}:`, e.message));
   }
 
   if (resa.financials?.host) {

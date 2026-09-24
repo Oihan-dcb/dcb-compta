@@ -48,7 +48,9 @@ type Ligne = {
   motifs: string[];
 }
 
-function htmlRecap(lignes: Ligne[]) {
+type Ajust = { bien: string; resa: string; mois: string; montant: number; label: string; depuis: string }
+
+function htmlRecap(lignes: Ligne[], ajusts: Ajust[] = []) {
   const td = 'padding:10px 14px;border-bottom:1px solid #EDE6D8;font-size:13px;color:#2C2416'
   const sub = 'color:#9C8E7D;font-size:11px'
   const ligne = (l: Ligne) => {
@@ -74,9 +76,10 @@ function htmlRecap(lignes: Ligne[]) {
     <table width="760" cellpadding="0" cellspacing="0" style="background:#fff;border-radius:10px;overflow:hidden;max-width:760px;width:100%">
       <tr><td style="background:#CC9933;padding:26px 40px;text-align:center">
         <p style="margin:0;color:#fff;font-size:11px;letter-spacing:2px;text-transform:uppercase;opacity:0.85">Destination Côte Basque</p>
-        <p style="margin:8px 0 0;color:#fff;font-size:19px;font-weight:bold">⚠ Réservation(s) modifiée(s) après facturation</p>
-        <p style="margin:6px 0 0;color:rgba(255,255,255,0.75);font-size:13px">${lignes.length} changement${lignes.length > 1 ? 's' : ''} sur des mois déjà facturés</p>
+        <p style="margin:8px 0 0;color:#fff;font-size:19px;font-weight:bold">⚠ Contrôle facturation</p>
+        <p style="margin:6px 0 0;color:rgba(255,255,255,0.75);font-size:13px">${lignes.length} changement${lignes.length > 1 ? 's' : ''} après facturation · ${ajusts.length} ajustement${ajusts.length > 1 ? 's' : ''} Hospitable à qualifier</p>
       </td></tr>
+      ${lignes.length ? '' : '<!--'}
       <tr><td style="padding:10px 0 0">
         <table width="100%" cellpadding="0" cellspacing="0">
           <tr style="background:#FBF5E6"><th style="${th}">Bien / mois</th><th style="${th}">Réservation</th><th style="${th}">Revenu</th><th style="${th}">Facture</th></tr>
@@ -92,8 +95,22 @@ function htmlRecap(lignes: Ligne[]) {
         faire un avoir ou une régularisation sur le mois suivant, puis poser <code>resolu_at</code> dans
         <code>reservation_changement_post_facture</code>.
       </td></tr>
+      ${lignes.length ? '' : '-->'}
+      ${ajusts.length ? `
+      <tr><td style="padding:18px 40px 4px;font-size:14px;font-weight:bold;color:#2C2416">Ajustements Hospitable à qualifier depuis plus de 7 jours</td></tr>
+      <tr><td style="padding:0">
+        <table width="100%" cellpadding="0" cellspacing="0">
+          <tr style="background:#FBF5E6"><th style="${th}">Bien / mois</th><th style="${th}">Réservation</th><th style="${th}">Ajustement</th><th style="${th}">Détecté le</th></tr>
+          ${ajusts.map(a => `<tr><td style="${td}"><strong>${a.bien}</strong><br><span style="${sub}">${a.mois}</span></td><td style="${td}">${a.resa}</td><td style="${td}"><strong style="color:${a.montant < 0 ? '#C0392B' : '#059669'}">${fmtEur(a.montant)}</strong><br><span style="${sub}">${a.label}</span></td><td style="${td}">${a.depuis}</td></tr>`).join('')}
+        </table>
+      </td></tr>
+      <tr><td style="padding:12px 40px 16px;font-size:12px;color:#666;line-height:1.5">
+        Tant qu'un ajustement (résolution Airbnb, AirCover, remboursement) n'est pas qualifié, il n'est attribué à
+        personne : l'argent est au séquestre mais ni les honoraires ni le reversement n'en tiennent compte. Le qualifier
+        (hébergement / ménage / aucun) depuis la réservation. Rappel chaque lundi tant qu'il en reste.
+      </td></tr>` : ''}
       <tr><td style="background:#f9f6f0;padding:16px 40px;text-align:center;font-size:11px;color:#9C8E7D">
-        Généré automatiquement — chaque changement n'est signalé qu'une fois.
+        Généré automatiquement — chaque changement n'est signalé qu'une fois ; les ajustements en attente, chaque lundi.
       </td></tr>
     </table>
   </td></tr></table>
@@ -103,7 +120,7 @@ function htmlRecap(lignes: Ligne[]) {
 serve(async (req) => {
   if (req.method === 'OPTIONS') return new Response('ok')
   const supabase = createClient(SUPABASE_URL, SERVICE_KEY)
-  let body: { dry_run?: boolean; agence?: string } = {}
+  let body: { dry_run?: boolean; agence?: string; inclure_ajustements?: boolean } = {}
   try { body = await req.json() } catch { /* GET accepté */ }
   const dryRun = body.dry_run === true
   const AGENCE = body.agence || 'dcb'
@@ -115,10 +132,30 @@ serve(async (req) => {
     .is('resolu_at', null)
     .order('detecte_at')
   if (error) return json({ error: error.message }, 500)
-  if (!rows?.length) return json({ ok: true, agence: AGENCE, ouverts: 0 })
+
+  // Ajustements Hospitable 'a_qualifier' depuis > 7 jours (I-151) : rappel le lundi seulement
+  const lundi = new Date().getUTCDay() === 1 || body.inclure_ajustements === true
+  let ajusts: Ajust[] = []
+  if (lundi) {
+    const limite = new Date(Date.now() - 7 * 86400000).toISOString()
+    // 12 derniers mois comptables seulement : au-delà, exercice clos — rappel sans fin inutile
+    const d12 = new Date(); d12.setUTCMonth(d12.getUTCMonth() - 12)
+    const moisMin = d12.toISOString().slice(0, 7)
+    const { data: aq } = await supabase.from('reservation_ajustement')
+      .select('montant, label, created_at, mois_comptable, reservation:reservation_id!inner(code, bien:bien_id!inner(code, hospitable_name, agence))')
+      .eq('statut', 'a_qualifier').lt('created_at', limite).gte('mois_comptable', moisMin)
+      .eq('reservation.bien.agence', AGENCE)
+      .order('created_at')
+    ajusts = (aq || []).map((a: any) => ({
+      bien: a.reservation?.bien?.hospitable_name || a.reservation?.bien?.code || '—',
+      resa: a.reservation?.code || '—', mois: a.mois_comptable, montant: a.montant,
+      label: a.label || '—', depuis: String(a.created_at).slice(0, 10),
+    }))
+  }
+  if (!rows?.length && !ajusts.length) return json({ ok: true, agence: AGENCE, ouverts: 0, ajustements: 0 })
 
   // Lignes de facture (date de (re)génération + HON facturé)
-  const factureIds = [...new Set(rows.map(r => r.facture_id).filter(Boolean))] as string[]
+  const factureIds = [...new Set((rows || []).map(r => r.facture_id).filter(Boolean))] as string[]
   const lignesFacture = new Map<string, { generee_at: string; hon: number }>()
   if (factureIds.length) {
     const { data: lf } = await supabase.from('facture_evoliz_ligne')
@@ -133,7 +170,7 @@ serve(async (req) => {
 
   // 1. Résolution automatique des brouillons régénérés après le changement
   const resolus: string[] = []
-  const ouverts = rows.filter(r => {
+  const ouverts = (rows || []).filter(r => {
     const statut = (r.facture as any)?.statut ?? r.facture_statut
     const lf = r.facture_id ? lignesFacture.get(r.facture_id) : undefined
     if (STATUTS_REGENERABLES.includes(statut) && lf && lf.generee_at > r.detecte_at) {
@@ -150,7 +187,7 @@ serve(async (req) => {
 
   // 2. Nouveaux changements à signaler — regroupés par résa (1er ancien → dernier nouveau)
   const nouveaux = ouverts.filter(r => !r.alerte_envoyee_at)
-  if (!nouveaux.length) return json({ ok: true, agence: AGENCE, resolus_auto: resolus.length, ouverts: ouverts.length, nouveaux: 0 })
+  if (!nouveaux.length && !ajusts.length) return json({ ok: true, agence: AGENCE, resolus_auto: resolus.length, ouverts: ouverts.length, nouveaux: 0 })
 
   // HON actuel en ventilation (propriétaire × mois) pour les factures régénérables
   const honVentil = new Map<string, number>()
@@ -194,21 +231,23 @@ serve(async (req) => {
       headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${SERVICE_KEY}` },
       body: JSON.stringify({
         to: [to],
-        subject: `⚠ ${lignes.length} réservation${lignes.length > 1 ? 's' : ''} modifiée${lignes.length > 1 ? 's' : ''} après facturation`,
-        html: htmlRecap(lignes),
+        subject: lignes.length
+          ? `⚠ ${lignes.length} réservation${lignes.length > 1 ? 's' : ''} modifiée${lignes.length > 1 ? 's' : ''} après facturation${ajusts.length ? ` + ${ajusts.length} ajustement(s) à qualifier` : ''}`
+          : `⚠ ${ajusts.length} ajustement${ajusts.length > 1 ? 's' : ''} Hospitable à qualifier`,
+        html: htmlRecap(lignes, ajusts),
       }),
     })
     if (!res.ok) return json({ error: 'erreur_smtp', detail: await res.text() }, 500)
-    await supabase.from('reservation_changement_post_facture')
+    if (nouveaux.length) await supabase.from('reservation_changement_post_facture')
       .update({ alerte_envoyee_at: new Date().toISOString() })
       .in('id', nouveaux.map(r => r.id))
     await supabase.from('journal_ops').insert({
       categorie: 'facturation', action: 'alerte_changement_post_facture', source: 'cron', statut: 'ok',
-      message: `${lignes.length} résa(s) modifiée(s) après facturation (agence ${AGENCE}), alerte envoyée à ${to}`,
+      message: `${lignes.length} résa(s) modifiée(s) après facturation, ${ajusts.length} ajustement(s) à qualifier (agence ${AGENCE}), alerte envoyée à ${to}`,
     })
   }
 
-  return json({ dry_run: dryRun, agence: AGENCE, resolus_auto: resolus.length, ouverts: ouverts.length, nouveaux: lignes.length, lignes })
+  return json({ dry_run: dryRun, agence: AGENCE, resolus_auto: resolus.length, ouverts: ouverts.length, nouveaux: lignes.length, lignes, ajustements: ajusts })
 })
 
 function json(data: unknown, status = 200) {

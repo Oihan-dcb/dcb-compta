@@ -268,6 +268,16 @@ function VentilationEdit({ resa, ventil, onSaved, onCancel }) {
     setSaving(true)
     try {
       // Facture envoyée = saisie figée (verrou cloture_bien)
+      // Cohérence HT/TVA/TTC avant toute écriture (audit I-151) : une ligne HON saisie avec une TVA
+      // à 10 % et HT+TVA≠TTC (SUZETTE/QIH8GV, août 2026) faussait le total local de la facture
+      // Evoliz (Evoliz, lui, recalcule la TVA depuis le HT : la facture légale restait juste).
+      for (const l of lines) {
+        if (!l.code) continue
+        const ht = parseFloat(l.ht || 0), tva = parseFloat(l.tva || 0), ttc = parseFloat(l.ttc || 0)
+        if (![ht, tva, ttc].every(Number.isFinite)) throw new Error(`Ligne ${l.code} : montant invalide`)
+        if (Math.abs(ht + tva - ttc) > 0.011) throw new Error(`Ligne ${l.code} : HT (${ht}) + TVA (${tva}) ≠ TTC (${ttc})`)
+        if (tva !== 0 && Math.abs(tva - Math.round(ht * TVA_RATE * 100) / 100) > 0.021) throw new Error(`Ligne ${l.code} : TVA ${tva} ≠ 20 % de ${ht} HT`)
+      }
       await verifierSaisieOuverte(resa.bien?.id || resa.bien_id, resa.mois_comptable)
       // Liens bancaires / montant réel AE posés sur les lignes existantes : restaurés après
       // réécriture, comme le fait le moteur automatique (api/ventiler.js _writeResa). Avant,
