@@ -203,7 +203,7 @@ serve(async (req) => {
       // 'envoye_evoliz' / id 'N/A' au push (canal officiel = mail « Info charges ») mais le mail
       // n'est parti que si quelqu'un clique « Envoyer au proprio ». Sans ce contrôle, la demande
       // n'est ni relancée (relance-debours lit 'envoye_proprio') ni rapprochée — cas B16, GASQ,
-      // PATXI juillet 2026, jamais réclamés (audit I-154, 24/09/2026).
+      // PATXI juillet 2026, jamais réclamés (audit I-155, 24/09/2026).
       const { data: deboursMuets } = await supabase.from('facture_evoliz')
         .select('id, mois, total_ttc, created_at, bien:bien_id(code, mode_encaissement), proprietaire:proprietaire_id(nom, prenom)')
         .eq('agence', agence).eq('type_facture', 'debours').in('statut', ['valide', 'envoye_evoliz'])

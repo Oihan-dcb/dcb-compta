@@ -1,4 +1,4 @@
--- Migration 271 : rattachement d'une facture rectificative à la facture/demande qu'elle justifie (I-154)
+-- Migration 271 : rattachement d'une facture rectificative à la facture/demande qu'elle justifie (I-155)
 -- Cas d'usage (24/09/2026) : frais de gestion / VIP / achats réclamés à tort en débours TVA 0 %
 -- juillet-août → facturés à 20 % pour le même TTC (F-360 à F-368), rattachés à leur demande de
 -- débours ; sync-evoliz-statut enregistre le paiement Evoliz quand la demande liée est réglée.
