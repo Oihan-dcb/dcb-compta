@@ -680,8 +680,17 @@ export default function PageExports() {
               setLoading(prev => ({ ...prev, sct_proprios_lc: true }))
               setError(null)
               try {
-                const { xml, sansIban } = await genererSCTVirementsPropriosLC(mois)
-                setWarning(sansIban.length ? `⚠ ${sansIban.length} propriétaire(s) dû(s) SANS IBAN, absent(s) du fichier — à virer à la main ou compléter l'IBAN : ${sansIban.join(' ; ')}` : null)
+                const { xml, sansIban, msgId, lignes, total_cts } = await genererSCTVirementsPropriosLC(mois)
+                // Composition du fichier mémorisée : la banque ne débite qu'une ligne « REM VIR SEPA »,
+                // verify-virements-sortants s'en sert pour rattacher chaque facture à la remise (I-152).
+                const { data: { user } } = await supabase.auth.getUser()
+                const { error: sctErr } = await supabase.from('sct_export').insert({
+                  agence: AGENCE, mois, type_export: 'proprios_lc', msg_id: msgId, total_cts, nb: lignes.length, lignes, cree_par: user?.email || null,
+                })
+                setWarning([
+                  sansIban.length ? `⚠ ${sansIban.length} propriétaire(s) dû(s) SANS IBAN, absent(s) du fichier — à virer à la main ou compléter l'IBAN : ${sansIban.join(' ; ')}` : null,
+                  sctErr ? `⚠ Composition du fichier non enregistrée (${sctErr.message}) : le contrôle automatique ne pourra pas rattacher cette remise.` : null,
+                ].filter(Boolean).join(' — ') || null)
                 const blob = new Blob([xml], { type: 'application/xml;charset=utf-8;' })
                 const url = URL.createObjectURL(blob)
                 const a = document.createElement('a')

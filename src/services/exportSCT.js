@@ -362,7 +362,7 @@ export async function genererSCTVirementsPropriosLC(mois, agence = AGENCE) {
   // proprietaire_id) — même logique de correspondance que buildComptaMensuelle.js.
   const { data: factures, error: errFact } = await supabase
     .from('facture_evoliz')
-    .select('bien_id, proprietaire_id, montant_reversement')
+    .select('id, bien_id, proprietaire_id, montant_reversement')
     .eq('mois', mois)
     .eq('agence', agence)
     .eq('type_facture', 'honoraires')
@@ -389,6 +389,7 @@ export async function genererSCTVirementsPropriosLC(mois, agence = AGENCE) {
 
   const sansFacture = []
   const transactions = []
+  const lignesFichier = []
   let i = 0
   for (const [key, g] of groups.entries()) {
     const facture = g.isGroupe ? factureByProprio[g.prop.id] : factureByBien[key]
@@ -397,6 +398,9 @@ export async function genererSCTVirementsPropriosLC(mois, agence = AGENCE) {
       continue
     }
     i++
+    // Composition du fichier (facture → montant) : enregistrée par PageExports dans sct_export,
+    // pour que verify-virements-sortants rapproche la remise bancaire groupée (I-152).
+    lignesFichier.push({ cle: facture.id, montant_cts: facture.montant_reversement, nom: [g.prop.nom, g.prop.prenom].filter(Boolean).join(' '), label: g.label })
     transactions.push({
       endToEndId:   `VIR-LC-${String(key).slice(0, 8).toUpperCase()}-${i}-${runSuffix()}`,
       montant:       facture.montant_reversement,
@@ -418,8 +422,9 @@ export async function genererSCTVirementsPropriosLC(mois, agence = AGENCE) {
 
   const debtorNom = config.agence_titulaire || 'DESTINATION COTE BASQUE'
 
+  const msgId = msgIdTimestamp(debtorNom)
   const xml = buildSCT({
-    msgId:       msgIdTimestamp(debtorNom),
+    msgId,
     pmtInfId:    `PMT-VIR-LC-${mois}-${runSuffix()}`,
     debtorNom,
     debtorIban:  config.seq_lc_iban,
@@ -428,7 +433,7 @@ export async function genererSCTVirementsPropriosLC(mois, agence = AGENCE) {
     debtorAdrLine2: config.adresse_ligne2,
     transactions,
   })
-  return { xml, sansIban }
+  return { xml, sansIban, msgId, lignes: lignesFichier, total_cts: lignesFichier.reduce((t, l) => t + l.montant_cts, 0) }
 }
 
 // ── Virements internes LC (HON + COM + FMEN + Frais Stripe) ────────────────────

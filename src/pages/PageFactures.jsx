@@ -57,10 +57,10 @@ const [pushing, setPushing] = useState(false)
   const [sendingCharges, setSendingCharges] = useState(null) // factureId en cours d'envoi info charges
   const [reopening, setReopening] = useState(null) // factureId en cours de réouverture clôture
   
-  // Contrôle virements propriétaires
+  // Contrôle virements propriétaires — persisté en base (virement_sortant_controle),
+  // vérifié/rapproché par l'Edge Function verify-virements-sortants (matching strict + Opus)
   const [virementsSortants, setVirementsSortants] = useState([])
-  const [liensVirements, setLiensVirements] = useState({})   // facture_id → mouvement_id
-  const [commentairesCtrl, setCommentairesCtrl] = useState({}) // facture_id → string
+  const [controleVirements, setControleVirements] = useState({}) // cle → { mouvement_bancaire_id, lien_manuel, explicitement_non_lie, ecart_cts, match_source, match_confiance, match_raison, commentaire }
   const [loadingVirements, setLoadingVirements] = useState(false)
   const [listeAE, setListeAE] = useState([]) // [{ nom, prenom }]
 
@@ -72,22 +72,49 @@ const [pushing, setPushing] = useState(false)
 
   useEffect(() => { charger(); chargerCOM(); chargerVirements() }, [mois])
 
-  // Persistance localStorage pour liens et commentaires
-  useEffect(() => {
+  // Lien manuel ou commentaire posé par Oïhan sur une facture/COM — persisté en base
+  // (virement_sortant_controle), jamais réécrit par le recalcul auto/Opus tant que lien_manuel=true.
+  async function upsertControleVirement(cle, patch) {
+    setControleVirements(prev => ({ ...prev, [cle]: { ...(prev[cle] || {}), cle, ...patch } }))
     try {
-      const saved = JSON.parse(localStorage.getItem(`dcb_ctrl_vir_${mois}`) || '{}')
-      if (saved.liens) setLiensVirements(saved.liens)
-      if (saved.commentaires) setCommentairesCtrl(saved.commentaires)
-    } catch {}
-  }, [mois])
+      const { supabase } = await import('../lib/supabase')
+      const { error } = await supabase.from('virement_sortant_controle')
+        .upsert({ agence: AGENCE, mois, cle, ...patch }, { onConflict: 'agence,mois,cle' })
+      if (error) console.error('upsertControleVirement:', error)
+    } catch (err) {
+      console.error('upsertControleVirement:', err)
+    }
+  }
 
-  function sauvegarderCtrl(newLiens, newCommentaires) {
+  // Migration douce, une fois par mois : reprend les liens/commentaires posés dans l'ancien
+  // localStorage (dcb_ctrl_vir_${mois}) et les pousse en base, pour ne pas perdre le travail de
+  // rapprochement manuel déjà fait par Oïhan avant l'introduction de virement_sortant_controle.
+  async function migrerLocalStorageCtrl(mouvements) {
+    let saved
     try {
-      localStorage.setItem(`dcb_ctrl_vir_${mois}`, JSON.stringify({
-        liens: newLiens ?? liensVirements,
-        commentaires: newCommentaires ?? commentairesCtrl,
-      }))
-    } catch {}
+      saved = JSON.parse(localStorage.getItem(`dcb_ctrl_vir_${mois}`) || '{}')
+    } catch { return }
+    if (!saved.liens && !saved.commentaires) return
+
+    const cles = new Set([...Object.keys(saved.liens || {}), ...Object.keys(saved.commentaires || {})])
+    for (const cle of cles) {
+      const lienValue = saved.liens?.[cle]
+      const commentaire = saved.commentaires?.[cle] || null
+      const patch = { commentaire }
+      if (lienValue) {
+        const nonLie = lienValue === 'none'
+        const mvt = !nonLie ? mouvements.find(v => v.id === lienValue) : null
+        patch.lien_manuel = true
+        patch.explicitement_non_lie = nonLie
+        patch.mouvement_bancaire_id = nonLie ? null : (mvt?.id ?? null)
+        patch.match_source = 'manuel'
+        // écart recalculé au prochain passage de verify-virements-sortants (attendu pas
+        // toujours disponible ici selon l'ordre de chargement) — le lien manuel, lui, est
+        // immédiatement préservé, ce qui est le point critique de cette migration.
+      }
+      await upsertControleVirement(cle, patch)
+    }
+    try { localStorage.removeItem(`dcb_ctrl_vir_${mois}`) } catch {}
   }
 
   useEffect(() => {
@@ -173,6 +200,15 @@ const [pushing, setPushing] = useState(false)
       if (error) throw error
       setVirementsSortants(mouvements || [])
       setListeAE(aes || [])
+
+      // Vérification serveur (matching strict + Opus sur cas ambigus) — remplace le localStorage.
+      const { data: verif, error: errVerif } = await supabase.functions.invoke('verify-virements-sortants', {
+        body: { mois, agence: AGENCE },
+      })
+      if (errVerif) console.error('verify-virements-sortants:', errVerif)
+      setControleVirements(verif?.controle || {})
+
+      await migrerLocalStorageCtrl(mouvements || [])
     } catch (err) {
       console.error('chargerVirements:', err)
     } finally {
@@ -243,7 +279,7 @@ const [pushing, setPushing] = useState(false)
           .eq('reservation.owner_stay', false),
         supabase
           .from('prestation_hors_forfait')
-          .select('bien_id, type_imputation, montant_ht, regime')
+          .select('bien_id, type_imputation, montant, regime')
           .eq('mois', mois)
           .in('bien_id', uniqueBienIds)
           .in('type_imputation', ['deduction_loy', 'haowner']),
@@ -416,8 +452,8 @@ const [pushing, setPushing] = useState(false)
       for (const p of (prestRows || [])) {
         if (p.regime === 'sap' && p.type_imputation === 'deduction_loy') continue  // SAP : facturé en parallèle, pas d'imputation proprio
         if (!prestByBien[p.bien_id]) prestByBien[p.bien_id] = { PREST: 0, HAOWNER: 0 }
-        if (p.type_imputation === 'deduction_loy') prestByBien[p.bien_id].PREST += (p.montant_ht || 0)
-        else if (p.type_imputation === 'haowner') prestByBien[p.bien_id].HAOWNER += (p.montant_ht || 0)
+        if (p.type_imputation === 'deduction_loy') prestByBien[p.bien_id].PREST += (p.montant || 0)
+        else if (p.type_imputation === 'haowner') prestByBien[p.bien_id].HAOWNER += (p.montant || 0)
       }
 
       // Construire le résultat par facture
@@ -1062,6 +1098,33 @@ const [pushing, setPushing] = useState(false)
                       return null
                     })()}
 
+                    {/* Badge virement sortant — symétrique du badge Tréso, côté argent qui part
+                        vers le propriétaire (cf. verify-virements-sortants / virement_sortant_controle) */}
+                    {(() => {
+                      if (!(f.montant_reversement > 0) || mois >= moisCourant) return null
+                      const vc = controleVirements[f.id]
+                      if (!vc) return null
+                      const incertain = vc.match_source === 'opus' && vc.match_confiance === 'incertain'
+                      if (vc.mouvement_bancaire_id && !incertain && vc.ecart_cts === 0) return (
+                        <span style={{ padding: '4px 10px', borderRadius: 100, fontSize: 11, fontWeight: 600, background: '#DCFCE7', color: '#15803D' }}>
+                          Virement ✓
+                        </span>
+                      )
+                      if (vc.mouvement_bancaire_id && !incertain && vc.ecart_cts) return (
+                        <span
+                          title={`Écart de ${(vc.ecart_cts / 100).toFixed(2)} € entre le virement réel et le montant facturé — cf. bloc Contrôle virements propriétaires ci-dessous`}
+                          style={{ padding: '4px 10px', borderRadius: 100, fontSize: 11, fontWeight: 600, background: '#FEE2E2', color: '#DC2626' }}
+                        >
+                          Virement ⚠ {vc.ecart_cts > 0 ? '+' : ''}{(vc.ecart_cts / 100).toFixed(2)} €
+                        </span>
+                      )
+                      return (
+                        <span style={{ padding: '4px 10px', borderRadius: 100, fontSize: 11, fontWeight: 600, background: '#FEF3C7', color: '#B45309' }}>
+                          Virement : à vérifier
+                        </span>
+                      )
+                    })()}
+
                     {/* Statut */}
                     <span style={{
                       padding: '4px 12px', borderRadius: 100,
@@ -1373,42 +1436,41 @@ const [pushing, setPushing] = useState(false)
         }
         const virsTableau = virementsSortants.filter(v => !estVirementAE(v))
 
-        // Normalisation pour matching
-        const norm = s => (s || '').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/[^a-z0-9]/g, ' ').replace(/\s+/g, ' ').trim()
-
-        // Auto-match sur detail (ex: "Loyer Mars EKIA") — code du bien de la facture uniquement
-        function autoMatchVirement(f) {
-          const bienCode = f.bien?.code
-          const tokens = bienCode
-            ? [norm(bienCode)].filter(t => t.length >= 2)
-            : (f.proprietaire?.bien || []).map(b => norm(b.code)).filter(t => t.length >= 2)
-
-          let best = null, bestScore = 0
-          for (const vir of virsTableau) {
-            if (Object.values(liensVirements).includes(vir.id)) continue
-            const lib = norm((vir.detail || '') + ' ' + (vir.libelle || ''))
-            const score = tokens.reduce((s, t) => s + (lib.includes(t) ? 1 : 0), 0)
-            if (score > bestScore) { bestScore = score; best = vir }
-          }
-          return bestScore >= 1 ? best : null
+        // Le rapprochement (matching strict puis Opus sur cas ambigus) est calculé côté
+        // serveur par verify-virements-sortants et persisté dans virement_sortant_controle —
+        // controleVirements en est la copie locale. Ici on ne fait plus que lire le résultat +
+        // gérer l'override manuel (le matching lui-même n'est plus recalculé côté client).
+        function getControle(cle) {
+          return controleVirements[cle] || null
         }
-
-        // Résoudre le virement lié (manuel > auto) — clé = id facture
-        // liensVirements[id] = 'none' → explicitement non lié ; id → lien manuel ; absent → auto-match
-        function getVirementLie(id, autoMatchFn) {
-          const manuelId = liensVirements[id]
-          if (manuelId === 'none') return null
-          if (manuelId) return virsTableau.find(v => v.id === manuelId) || null
-          return autoMatchFn ? autoMatchFn() : null
+        function getVirementLie(cle) {
+          const c = getControle(cle)
+          if (!c || c.explicitement_non_lie || !c.mouvement_bancaire_id) return null
+          return virsTableau.find(v => v.id === c.mouvement_bancaire_id) || null
         }
 
         const COM_KEY = comFacture ? `com-${comFacture.id}` : null
-        const virComLie = COM_KEY ? getVirementLie(COM_KEY, null) : null
+        const virComLie = COM_KEY ? getVirementLie(COM_KEY) : null
 
         const allLiés = new Set([
-          ...facturesAvecReversement.map(f => getVirementLie(f.id, () => autoMatchVirement(f))?.id),
+          ...facturesAvecReversement.map(f => getVirementLie(f.id)?.id),
           virComLie?.id,
         ].filter(Boolean))
+
+        function badgeConfiance(cle) {
+          const c = getControle(cle)
+          if (!c || c.lien_manuel || c.match_source !== 'opus') return null
+          return (
+            <span
+              title={c.match_raison || 'Appariement propose par Opus'}
+              style={{ marginLeft: 6, fontSize: 10, fontWeight: 600, padding: '1px 6px', borderRadius: 100,
+                background: c.match_confiance === 'incertain' ? '#FEF3C7' : '#EDE9FE',
+                color: c.match_confiance === 'incertain' ? '#B45309' : '#6D28D9' }}
+            >
+              {c.match_confiance === 'incertain' ? 'IA : a confirmer' : 'IA'}
+            </span>
+          )
+        }
 
         const totalAttendu = facturesAvecReversement.reduce((s, f) => s + f.montant_reversement, 0)
         const virementsNonLiés = virsTableau.filter(v => !allLiés.has(v.id))
@@ -1445,9 +1507,9 @@ const [pushing, setPushing] = useState(false)
                   {/* Ligne COM */}
                   {comFacture && COM_KEY && (
                     (() => {
-                      const manuelLienCOM = liensVirements[COM_KEY]
-                      const commentaireCOM = commentairesCtrl[COM_KEY] || ''
-                      const ecartCOM = virComLie ? comFacture.total_ttc - virComLie.debit : null
+                      const controleCOM = getControle(COM_KEY)
+                      const commentaireCOM = controleCOM?.commentaire || ''
+                      const ecartCOM = controleCOM?.ecart_cts ?? null
                       const okCOM = ecartCOM !== null && Math.abs(ecartCOM) <= 100
                       const optionsCOM = virsTableau.filter(v => !allLiés.has(v.id) || virComLie?.id === v.id)
                       return (
@@ -1459,12 +1521,17 @@ const [pushing, setPushing] = useState(false)
                           <td className="right montant" style={{ fontWeight: 600 }}>{(comFacture.total_ttc / 100).toFixed(2)} €</td>
                           <td style={{ fontSize: 13, maxWidth: 220 }}>
                             <select
-                              value={manuelLienCOM === 'none' ? '' : (manuelLienCOM || virComLie?.id || '')}
+                              value={controleCOM?.explicitement_non_lie ? '' : (controleCOM?.mouvement_bancaire_id || '')}
                               onChange={e => {
-                                const val = e.target.value === '' ? 'none' : e.target.value
-                                const newLiens = { ...liensVirements, [COM_KEY]: val }
-                                setLiensVirements(newLiens)
-                                sauvegarderCtrl(newLiens, null)
+                                const val = e.target.value
+                                const mvt = val ? virsTableau.find(v => v.id === val) : null
+                                upsertControleVirement(COM_KEY, {
+                                  mouvement_bancaire_id: mvt?.id ?? null,
+                                  lien_manuel: true,
+                                  explicitement_non_lie: !val,
+                                  ecart_cts: mvt ? comFacture.total_ttc - mvt.debit : null,
+                                  match_source: 'manuel', match_confiance: null, match_raison: null,
+                                })
                               }}
                               style={{ fontSize: 12, width: '100%', padding: '3px 6px', border: '1px solid var(--border)', borderRadius: 4, background: 'white' }}
                             >
@@ -1489,14 +1556,11 @@ const [pushing, setPushing] = useState(false)
                                 ? <span style={{ padding: '3px 10px', borderRadius: 100, fontSize: 11, fontWeight: 600, background: '#D1FAE5', color: '#059669' }}>✓ OK</span>
                                 : <span style={{ padding: '3px 10px', borderRadius: 100, fontSize: 11, fontWeight: 600, background: '#FEE2E2', color: '#DC2626' }}>Écart</span>
                             }
+                            {badgeConfiance(COM_KEY)}
                           </td>
                           <td>
                             <input type="text" value={commentaireCOM} placeholder="Note…"
-                              onChange={e => {
-                                const newComm = { ...commentairesCtrl, [COM_KEY]: e.target.value }
-                                setCommentairesCtrl(newComm)
-                                sauvegarderCtrl(null, newComm)
-                              }}
+                              onChange={e => upsertControleVirement(COM_KEY, { commentaire: e.target.value })}
                               style={{ fontSize: 12, width: '100%', padding: '3px 6px', border: '1px solid var(--border)', borderRadius: 4, background: 'white' }}
                             />
                           </td>
@@ -1511,11 +1575,11 @@ const [pushing, setPushing] = useState(false)
                       : (proprio?.bien || []).some(b => b.groupe_facturation === 'MAITE')
                         ? 'Maison Maïté'
                         : (proprio?.bien || []).slice().sort((a,b)=>(a.code||'').localeCompare(b.code||'')).map(b=>b.code).filter(Boolean).join(', ')
-                    const vir = getVirementLie(f.id, () => autoMatchVirement(f))
-                    const ecart = vir ? f.montant_reversement - vir.debit : null
+                    const controle = getControle(f.id)
+                    const vir = getVirementLie(f.id)
+                    const ecart = controle?.ecart_cts ?? null
                     const ok = ecart !== null && Math.abs(ecart) <= 100
-                    const manuelLien = liensVirements[f.id]
-                    const commentaire = commentairesCtrl[f.id] || ''
+                    const commentaire = controle?.commentaire || ''
 
                     // Options : exclure les virements déjà pris par une autre facture (manuel ou auto)
                     const options = virsTableau.filter(v =>
@@ -1531,12 +1595,17 @@ const [pushing, setPushing] = useState(false)
                         <td className="right montant" style={{ fontWeight: 600 }}>{(f.montant_reversement / 100).toFixed(2)} €</td>
                         <td style={{ fontSize: 13, maxWidth: 220 }}>
                           <select
-                            value={manuelLien === 'none' ? '' : (manuelLien || vir?.id || '')}
+                            value={controle?.explicitement_non_lie ? '' : (controle?.mouvement_bancaire_id || '')}
                             onChange={e => {
-                              const val = e.target.value === '' ? 'none' : e.target.value
-                              const newLiens = { ...liensVirements, [f.id]: val }
-                              setLiensVirements(newLiens)
-                              sauvegarderCtrl(newLiens, null)
+                              const val = e.target.value
+                              const mvt = val ? virsTableau.find(v => v.id === val) : null
+                              upsertControleVirement(f.id, {
+                                mouvement_bancaire_id: mvt?.id ?? null,
+                                lien_manuel: true,
+                                explicitement_non_lie: !val,
+                                ecart_cts: mvt ? f.montant_reversement - mvt.debit : null,
+                                match_source: 'manuel', match_confiance: null, match_raison: null,
+                              })
                             }}
                             style={{ fontSize: 12, width: '100%', padding: '3px 6px', border: '1px solid var(--border)', borderRadius: 4, background: 'white' }}
                           >
@@ -1547,7 +1616,7 @@ const [pushing, setPushing] = useState(false)
                               </option>
                             ))}
                           </select>
-                          {!manuelLien && vir && <div style={{ fontSize: 11, color: 'var(--text-muted)', marginTop: 2 }}>auto-match</div>}
+                          {!controle?.lien_manuel && vir && controle?.match_source === 'auto' && <div style={{ fontSize: 11, color: 'var(--text-muted)', marginTop: 2 }}>auto-match</div>}
                         </td>
                         <td className="right montant" style={{ color: vir ? 'var(--text)' : 'var(--text-muted)' }}>
                           {vir ? `${(vir.debit / 100).toFixed(2)} €` : '—'}
@@ -1562,17 +1631,14 @@ const [pushing, setPushing] = useState(false)
                               ? <span style={{ padding: '3px 10px', borderRadius: 100, fontSize: 11, fontWeight: 600, background: '#D1FAE5', color: '#059669' }}>✓ OK</span>
                               : <span style={{ padding: '3px 10px', borderRadius: 100, fontSize: 11, fontWeight: 600, background: '#FEE2E2', color: '#DC2626' }}>Écart</span>
                           }
+                          {badgeConfiance(f.id)}
                         </td>
                         <td>
                           <input
                             type="text"
                             value={commentaire}
                             placeholder="Note…"
-                            onChange={e => {
-                              const newComm = { ...commentairesCtrl, [f.id]: e.target.value }
-                              setCommentairesCtrl(newComm)
-                              sauvegarderCtrl(null, newComm)
-                            }}
+                            onChange={e => upsertControleVirement(f.id, { commentaire: e.target.value })}
                             style={{ fontSize: 12, width: '100%', padding: '3px 6px', border: '1px solid var(--border)', borderRadius: 4, background: 'white' }}
                           />
                         </td>
@@ -1586,13 +1652,13 @@ const [pushing, setPushing] = useState(false)
                     <td className="right montant" style={{ fontWeight: 700 }}>{(totalAttendu / 100).toFixed(2)} €</td>
                     <td colSpan={2} className="right montant" style={{ fontWeight: 700 }}>
                       {(() => {
-                        const totalVir = facturesAvecReversement.reduce((s, f) => s + (getVirementLie(f)?.debit || 0), 0)
+                        const totalVir = facturesAvecReversement.reduce((s, f) => s + (getVirementLie(f.id)?.debit || 0), 0)
                         return totalVir > 0 ? `${(totalVir / 100).toFixed(2)} €` : '—'
                       })()}
                     </td>
                     <td className="right montant" style={{ fontWeight: 700 }}>
                       {(() => {
-                        const totalVir = facturesAvecReversement.reduce((s, f) => s + (getVirementLie(f)?.debit || 0), 0)
+                        const totalVir = facturesAvecReversement.reduce((s, f) => s + (getVirementLie(f.id)?.debit || 0), 0)
                         if (!totalVir) return '—'
                         const diff = totalAttendu - totalVir
                         return <span style={{ color: Math.abs(diff) <= 100 ? '#059669' : '#DC2626' }}>

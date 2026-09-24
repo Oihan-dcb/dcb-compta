@@ -739,7 +739,37 @@ VIR_trésorerie = max(0, creditsProuves − HON_ttc − FMEN_ttc − AUTOREEL �
 
 L'Edge Function `allocate-encaissements` est déclenchée automatiquement à chaque visite de la page Factures (en arrière-plan). Le badge trésorerie (Tréso ✓ / Tréso ⚠ / Non prouvé) s'affiche dans l'en-tête de chaque facture dès que le calcul est disponible.
 
+### 16.6 Contrôle virements sortants — symétrique, côté argent qui part (septembre 2026)
+
+Le contrôle ci-dessus (§16.1-16.5) ne vérifie que le sens **entrant** (encaissements plateforme prouvés). Rien d'équivalent n'existait côté **sortant** (argent réellement viré au propriétaire) avant l'incident Cécile Alaux/PANORAMA (juin 2026, cf. §17 `skip_facturation` et mémoire `project_exportsct_reversement_bug_2026-09`) : 10 écarts entre virement réel et facture (358,05€ de sur-virements + 1497,77€ de sous-virements) découverts seulement après une plainte cliente, faute d'un contrôle automatique — le seul mécanisme existant (bloc "Contrôle virements propriétaires" de `PageFactures.jsx`) ne persistait qu'en `localStorage`, sans trace serveur ni alerte.
+
+**Edge Function `verify-virements-sortants`** (invoquée au chargement de la page Factures, comme `allocate-encaissements`) :
+1. Compare `facture_evoliz.montant_reversement` (honoraires) / `total_ttc` (facture COM) au débit bancaire réel constaté sur le compte séquestre location saisonnière — remonté nuit après nuit par Pennylane (`pennylane-mouvement-sync.js`), y compris pour les virements faits "à la main" hors export SCT.
+2. Matching strict par code bien dans le libellé bancaire (score ≥ 1, candidat unique) — **avec garde-fou montant** : le débit doit rester dans un ordre de grandeur plausible de l'attendu (0,5x-2x). Sans ce garde-fou, un code bien court/numérique (ex. "602") peut matcher par coïncidence une transaction sans rapport (constaté : "REMBOURSEMENT AIRCOVER 602 GAL" à tort matché à la facture du bien 602).
+3. Sinon (ambigu, ou facture COM sans code bien) → un appel groupé à `llm-analyse` (modèle `claude-opus-4-6`) tranche sur les cas restants, avec la même contrainte de plausibilité appliquée au pool de mouvements proposés. Réponse JSON stricte, confiance `certain`/`incertain`.
+4. Résultat persisté dans `virement_sortant_controle` (`agence, mois, cle` unique — `cle` = `facture_evoliz.id` ou `com-<id>`) — jamais réécrit pour une ligne `lien_manuel=true` (override manuel d'Oïhan, préservé).
+5. Badge `Virement ✓ / ⚠ +X,XX € / à vérifier` affiché dans l'en-tête de chaque facture (symétrique du badge Tréso), plus le bloc "Contrôle virements propriétaires" existant (désormais alimenté par cette table plutôt que le localStorage).
+
+Validé sur données réelles (2026-06, mois de l'audit) : a retrouvé automatiquement l'écart VIKY/Carossio (28,31€, `match_source='opus'`, `match_confiance='incertain'` — nom du virement "SOPHIE CAROSSIO" vs facture "Antoine Carossio", jugement plausible plutôt qu'un matching strict aurait pu faire). Les virements manuels historiques les plus atypiques (libellé sans aucun signal exploitable) restent non résolus — attendu : le contrôle n'a pas vocation à reconstituer l'historique déjà audité manuellement, mais à empêcher qu'un futur écart mette de nouveau 6 mois à être détecté.
+
 ---
+
+
+**Compléments du 24/09/2026 (audit segment Banque, I-152)** :
+- **Planifié chaque nuit** (migration 267) : dcb et lauian, mois M-1 et M-2, 04:10-04:19 UTC. Avant, la
+  fonction ne tournait qu'à l'ouverture de la page Factures : juillet et août n'avaient jamais été contrôlés.
+- **Séquestre uniquement** : les débits du compte courant (`source='Powens_courant'` : paie, fournisseurs,
+  HON/FMEN internes) sont exclus.
+- **Fenêtre M+1..M+2** : un reversement du mois M part toujours après la fin du mois. Avec l'ancienne
+  fenêtre [M, M+1], le virement de juillet payé le 10/08 était rattaché à tort à août (RICHOU).
+- **Un débit déjà rattaché de façon sûre à un autre mois n'est jamais réutilisé.**
+- **« certain » seulement si le montant colle** (écart ≤ 1 % ou ≤ 1 €) ; un code bien reconnu avec un
+  montant différent reste proposé mais « incertain ».
+- **Remises groupées** : un fichier SCT est débité en une seule ligne « REM VIR SEPA DU jj/mm/aa ».
+  PageExports enregistre la composition de chaque fichier généré (`sct_export`, migration 266) ; la
+  remise est rattachée au fichier de même total (certain) ou à ±3 % (incertain : virement ajouté ou
+  retiré à la main dans la banque) et chaque facture du fichier est liée à ce débit. Les remises
+  antérieures au 24/09/2026 (06/07, 06/08, 07/09) n'ont pas de composition enregistrée : non rattachables.
 
 ## 17. Glossaire — Les 4 types de VIR (ne pas confondre)
 
@@ -847,6 +877,36 @@ propriétaires (`buildComptaMensuelle.js`, `facturesEvoliz.js`, `buildRapportDat
 PowerHouse. Cf. incident `staff_dcb` (I-136, `invariants.md`) qui a motivé ce document.
 
 *Ajout session 22 août 2026 — suite à une demande de centralisation cross-app de la gestion staff.*
+
+---
+
+## 19. `relance-facture-impayee` — exclusion des factures d'honoraires « nettées »
+
+> ✅ Fix session 07/09/2026 — cas AUREAN (`T-20260000402`).
+
+Une facture `type_facture='honoraires'` d'un bien `gestion_loyer=true` (donc `mode_encaissement='dcb'`)
+avec `solde_negatif=false` est une facture **nettée** : les honoraires sont directement prélevés sur
+le loyer encaissé par DCB avant reversement au propriétaire (`montant_reversement` = ce qui reste dû
+au propriétaire, déjà net d'HON — cf. commentaire Evoliz généré dans `evoliz.js` : *"les honoraires de
+gestion sont directement prélevés sur le loyer encaissé avant reversement au propriétaire"*). Le
+propriétaire **ne doit rien régler par virement** pour cette facture.
+
+Or Evoliz ne verra jamais de paiement correspondant (aucun virement réel n'est jamais reçu ni saisi
+en face) : `sync-evoliz-statut` ne fera donc jamais passer ces factures de `envoye_evoliz` à `payee`.
+Sans exclusion explicite, `relance-facture-impayee` les traite comme de vraies impayées et relance le
+propriétaire indéfiniment pour un montant déjà réglé par construction.
+
+**Règle** : `relance-facture-impayee` doit exclure toute facture `type_facture='honoraires'` où
+`bien.gestion_loyer !== false && !solde_negatif` (déjà réglée par nettage). Ne restent éligibles à la
+relance :
+- les factures `honoraires` de biens `gestion_loyer=false` (le propriétaire encaisse lui-même,
+  facture réglée par virement sur le compte courant — cf. `isChargesProprio` dans `evoliz.js`),
+- les factures `honoraires` avec `solde_negatif=true` (remboursement de frais avancés réellement dû),
+- toutes les factures `type_facture='debours'` (toujours réglées par virement séquestre, non concernées).
+
+Découvert le 07/09/2026 : ~18 factures du mois 2026-08 (émises le 06/09) auraient déclenché la même
+relance erronée le lendemain (08/09) sans ce fix — AUREAN (émise le 04/09) a été la seule touchée
+avant correction.
 
 ---
 

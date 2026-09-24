@@ -24,7 +24,7 @@ Deno.serve(async (req) => {
     })
   }
 
-  const ALLOWED_MODELS = ['claude-haiku-4-5-20251001', 'claude-sonnet-4-6']
+  const ALLOWED_MODELS = ['claude-haiku-4-5-20251001', 'claude-sonnet-4-6', 'claude-opus-4-6']
   const selectedModel = ALLOWED_MODELS.includes(model) ? model : 'claude-haiku-4-5-20251001'
 
   const apiKey = Deno.env.get('ANTHROPIC_API_KEY') ?? ''
