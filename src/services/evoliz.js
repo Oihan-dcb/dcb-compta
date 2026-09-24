@@ -178,6 +178,26 @@ export async function creerClientEvoliz(proprietaire) {
 // plus de saisie prestations/heures côté AE/admin — RLS, voir migration 193).
 // Par bien (facture mono-bien) ou tout le groupe (Maïté : bien_id null → biens du proprio).
 // COM exclu (facture globale, pas rattachée à un bien). Best-effort : n'interrompt jamais le push.
+/**
+ * Ajustements ménage M+1 (I-155) : à l'ENVOI d'une facture honoraires, avance le marqueur
+ * ventilation.fmen_facture des résas passées dont l'ajustement figure sur cette facture
+ * (lignes FMEN portant ventilation_id). Fait à l'envoi et non à la génération : régénérer
+ * le brouillon ne doit jamais « consommer » un ajustement qui n'est pas encore parti.
+ */
+export async function appliquerMarqueursAjustementMenage(factureId) {
+  const { data: lignes, error } = await supabase
+    .from('facture_evoliz_ligne').select('ventilation_id, montant_ttc')
+    .eq('facture_id', factureId).not('ventilation_id', 'is', null)
+  if (error) throw error
+  for (const l of (lignes || [])) {
+    const { data: v } = await supabase.from('ventilation').select('fmen_facture').eq('id', l.ventilation_id).maybeSingle()
+    if (!v) continue
+    await supabase.from('ventilation')
+      .update({ fmen_facture: (v.fmen_facture || 0) + (l.montant_ttc || 0) })
+      .eq('id', l.ventilation_id)
+  }
+}
+
 async function cloturerBiensFacture(facture) {
   try {
     if (!facture || facture.type_facture === 'com' || !facture.mois) return
@@ -450,6 +470,13 @@ export async function creerFactureEvoliz(facture) {
     )
   }
 
+  try {
+    await appliquerMarqueursAjustementMenage(facture.id)
+  } catch (e) {
+    // Ne jamais faire échouer un envoi déjà réussi chez Evoliz : l'ajustement ressortirait
+    // simplement une seconde fois le mois suivant — à corriger à la main (journal).
+    console.error('[evoliz] marqueurs ajustement ménage non appliqués', facture.id, e)
+  }
   await cloturerBiensFacture(facture)
   return { invoiceId, invoiceNumber }
 }

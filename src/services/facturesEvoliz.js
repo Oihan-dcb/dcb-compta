@@ -18,7 +18,7 @@
 import { supabase } from '../lib/supabase'
 import { AGENCE, AGENCE_BRAND } from '../lib/agence'
 import { logOp } from './journal'
-import { evolizCall } from './evoliz'
+import { evolizCall, appliquerMarqueursAjustementMenage } from './evoliz'
 
 const MENTION_MANDAT = "Conformément au mandat de gestion, les honoraires de gestion sont directement prélevés sur le loyer encaissé avant reversement au propriétaire."
 
@@ -571,6 +571,38 @@ async function genererFactureGroupe(proprio, biens, mois, ctx) {
 
   // Totaux facture — en mode Lauian, FMEN est facturé par DCB (pas par Lauian)
   const inclureFMEN = AGENCE !== 'lauian'
+
+  // ── Ajustements ménage M+1 (I-155, 24/09/2026) ────────────────────────────────
+  // Le coût réel de l'aide-ménage est souvent connu APRÈS l'envoi de la facture du mois (ménage de
+  // fin de mois déclaré début M+1). update-ventilation-auto l'enregistre désormais même sur un mois
+  // clôturé (migration 271) ; ventilation.fmen_facture mémorise ce qui a été facturé par résa. Toute
+  // différence sur un mois déjà envoyé sort ici en ligne « Ajustement ménage » (+/-). Le marqueur des
+  // mois passés n'est avancé qu'à l'ENVOI Evoliz (appliquerMarqueursAjustementMenage) : une
+  // régénération du brouillon recalcule donc l'ajustement sans jamais le perdre.
+  const ajustementsMenage = []
+  if (inclureFMEN) {
+    const [{ data: pastFact }, { data: pastFmen }] = await Promise.all([
+      supabase.from('facture_evoliz').select('mois, statut')
+        .eq('proprietaire_id', proprio.id).eq('type_facture', 'honoraires').lt('mois', mois),
+      supabase.from('ventilation')
+        .select('id, mois_comptable, montant_ttc, montant_reel, fmen_facture, reservation:reservation_id(code, owner_stay, ventilation_manuelle)')
+        .in('bien_id', bienIds).eq('code', 'FMEN')
+        .gte('mois_comptable', '2026-05').lt('mois_comptable', mois)
+        .not('fmen_facture', 'is', null),
+    ])
+    const moisEnvoyes = new Set((pastFact || []).filter(f => ['envoye_evoliz', 'payee'].includes(f.statut)).map(f => f.mois))
+    for (const v of (pastFmen || [])) {
+      if (!moisEnvoyes.has(v.mois_comptable)) continue // mois pas encore envoyé → sa propre facture s'en charge
+      if (v.reservation?.owner_stay || v.reservation?.ventilation_manuelle) continue
+      const effectif = v.montant_reel != null ? v.montant_reel : (v.montant_ttc || 0)
+      const delta = effectif - v.fmen_facture
+      if (delta === 0) continue
+      ajustementsMenage.push({ ventilation_id: v.id, ttc: delta, libelle: `Ajustement ménage ${v.reservation?.code || ''} (${v.mois_comptable}) — coût réel de l'aide-ménage` })
+    }
+  }
+  const ajustMenHT  = ajustementsMenage.reduce((s, a) => s + Math.round(a.ttc / 1.20), 0)
+  const ajustMenTTC = ajustementsMenage.reduce((s, a) => s + a.ttc, 0)
+  const ajustMenTVA = ajustMenTTC - ajustMenHT
   // Frais « déduire du loyer » : ce sont des PRESTATIONS DCB (frais de gestion, VIP…) ou des
   // ACHATS SURFACTURÉS — jamais des débours (règle Oïhan, 24/09/2026). Toujours facturés ici,
   // TVA 20 %, pour leur montant ENTIER : la part retenue sur le loyer (fraisDeduitTotal, qui
@@ -586,8 +618,8 @@ async function genererFactureGroupe(proprio, biens, mois, ctx) {
     fraisDeduitHT  += ht
     fraisDeduitTVA += montant - ht
   }
-  const totalHT  = com.ht  + (inclureFMEN ? menConsolide.ht  : 0) + div.ht  + haownerHT  + (inclureFMEN ? osFmenSurplusHT  : 0) + fraisDirectHTFacture  + fraisDeduitHT
-  const totalTVA = com.tva + (inclureFMEN ? menConsolide.tva : 0) + div.tva + haownerTVA + (inclureFMEN ? osFmenSurplusTVA : 0) + fraisDirectTVAFacture + fraisDeduitTVA
+  const totalHT  = com.ht  + (inclureFMEN ? menConsolide.ht  : 0) + div.ht  + haownerHT  + (inclureFMEN ? osFmenSurplusHT  : 0) + fraisDirectHTFacture  + fraisDeduitHT  + ajustMenHT
+  const totalTVA = com.tva + (inclureFMEN ? menConsolide.tva : 0) + div.tva + haownerTVA + (inclureFMEN ? osFmenSurplusTVA : 0) + fraisDirectTVAFacture + fraisDeduitTVA + ajustMenTVA
   const totalTTC = totalHT + totalTVA
 
   // ownerStayAbsorbTotal = part couverte par LOY → réduit le reversement
@@ -785,6 +817,33 @@ async function genererFactureGroupe(proprio, biens, mois, ctx) {
       montant_ttc: menConsolide.ttc,
       ordre: ordre++,
     })
+  }
+
+  // Ajustements ménage des mois déjà envoyés (une ligne par résa, traçabilité — I-155)
+  for (const a of ajustementsMenage) {
+    const ht = Math.round(a.ttc / 1.20)
+    lignes.push({
+      facture_id: factureId,
+      code: 'FMEN',
+      libelle: a.libelle,
+      description: 'Coût réel de l\'aide-ménage connu après l\'envoi de la facture du mois concerné',
+      montant_ht: ht,
+      taux_tva: 20,
+      montant_tva: a.ttc - ht,
+      montant_ttc: a.ttc,
+      ventilation_id: a.ventilation_id,
+      ordre: ordre++,
+    })
+  }
+
+  // Mémoriser le FMEN facturé ce mois, par résa (base des ajustements M+1). Posé à la génération :
+  // une régénération du brouillon re-marque aux valeurs courantes, ce qui est voulu pour le mois
+  // courant (les mois passés, eux, ne bougent qu'à l'envoi).
+  if (AGENCE !== 'lauian') {
+    for (const l of ventilation.filter(v => v.code === 'FMEN' && !osResaIds.has(v.reservation_id))) {
+      const effectif = l.montant_reel != null ? l.montant_reel : l.montant_ttc
+      if (l.fmen_facture !== effectif) await supabase.from('ventilation').update({ fmen_facture: effectif }).eq('id', l.id)
+    }
   }
 
   if (div.ht > 0) {
@@ -1859,6 +1918,7 @@ export async function marquerEnvoyeeEvoliz(factureId, idEvoliz, numeroFacture) {
     .eq('id', factureId)
 
   if (error) throw error
+  await appliquerMarqueursAjustementMenage(factureId) // I-155 : ajustements ménage consommés à l'envoi
 }
 
 // ── FACTURE COM (Commissions Web Directes) ───────────────────────────────────

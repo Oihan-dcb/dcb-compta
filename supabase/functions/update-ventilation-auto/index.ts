@@ -173,9 +173,11 @@ async function traiterVentilAutoId(supabase: ReturnType<typeof createClient>, ve
   if (cErr) {
     return { action: 'error', ventilation_auto_id: ventilAutoId, reservation_id: ventil.reservation_id, reason: `Lecture cloture_bien impossible : ${cErr.message}` }
   }
-  if (cloture?.length) {
-    return { action: 'skipped', ventilation_auto_id: ventilAutoId, reservation_id: ventil.reservation_id, reason: 'Bien clôturé (facture envoyée Evoliz) — saisie figée, rouvrir pour appliquer' }
-  }
+  // Bien clôturé : on enregistre QUAND MÊME le coût réel (I-155, migration 271). La facture du
+  // mois reste figée — l'écart ressort en « Ajustement ménage » sur la facture suivante
+  // (facturesEvoliz.js, marqueur ventilation.fmen_facture). Avant, ce skip figeait le réel pour
+  // toujours dès qu'un ménage était déclaré après l'envoi (BELEZIA juillet : 125 € → resté 0 €).
+  const moisCloture = !!cloture?.length
 
   if (reelActuel === totalReel) {
     return { action: 'unchanged', ventilation_auto_id: ventilAutoId, reservation_id: ventil.reservation_id, provision, reel_actuel: reelActuel, total_missions: totalReel }
@@ -227,6 +229,8 @@ async function traiterVentilAutoId(supabase: ReturnType<typeof createClient>, ve
     fmen_provision: fmenVentil?.montant_ttc ?? null,
     fmen_reel_apres: fmenReelApres !== null ? Math.max(0, fmenReelApres) : null,
     missions: missions.map(m => ({ id: m.id, montant: m.montant })),
+    // Mois déjà facturé : l'écart ressortira en « Ajustement ménage » sur la facture suivante
+    mois_cloture: moisCloture,
   }
 }
 
