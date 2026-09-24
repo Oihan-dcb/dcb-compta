@@ -14,6 +14,7 @@
 // remontée dans le log pour résolution manuelle (lier l'id_evoliz à la fiche).
 
 import { skipDuplicateCron } from './_cronGuard.js';
+import { planifierSynchro, emailDepuisClientEvoliz, CHAMPS_SYNC } from '../src/services/proprietaireSyncCore.js';
 const SUPABASE_URL      = process.env.SUPABASE_URL || 'https://omuncchvypbtxkpalwcr.supabase.co';
 const SUPABASE_KEY      = process.env.SUPABASE_SERVICE_ROLE_KEY;
 const SUPABASE_ANON_KEY = process.env.SUPABASE_ANON_KEY;
@@ -54,16 +55,6 @@ async function evolizCall(action, companyId, payload = {}) {
   const data = await res.json();
   if (!res.ok) throw new Error(`Evoliz proxy ${res.status}: ${JSON.stringify(data)}`);
   return data;
-}
-
-function normalizeName(nom, prenom) {
-  const s = `${nom || ''} ${prenom || ''}`;
-  return s
-    .normalize('NFD').replace(/[̀-ͯ]/g, '')
-    .toLowerCase()
-    .replace(/[^a-z0-9\s]/g, ' ')
-    .replace(/\s+/g, ' ')
-    .trim();
 }
 
 export default async function handler(req, res) {
@@ -119,84 +110,39 @@ export default async function handler(req, res) {
     });
     log.total = allClients.length;
 
-    // 2. Mapper vers les lignes proprietaire
-    const rows = allClients
-      .filter(c => c.enabled !== false)
-      .map(c => {
-        const name = (c.name || '').trim();
-        const parts = name.split(/\s+/);
-        let nom = name;
-        let prenom = null;
+    // 2-4. Fusion via le noyau partagé (src/services/proprietaireSyncCore.js) : complète les
+    // champs vides, ne remplace un champ que s'il a changé chez Evoliz, ne touche jamais
+    // actif/agence d'une fiche existante (I-148).
+    const actifsEvoliz = allClients.filter(c => c.enabled !== false);
+    const existingProps = await sb(`proprietaire?agence=eq.${agence}&select=id,nom,prenom,id_evoliz,email,actif,duplicate_of_id,evoliz_snapshot,${CHAMPS_SYNC.join(',')}`);
+    const autres = await sb(`proprietaire?agence=neq.${agence}&id_evoliz=not.is.null&select=id_evoliz`);
+    const { inserts, updates, collisions } = planifierSynchro(actifsEvoliz, existingProps || [], new Set((autres || []).map(p => p.id_evoliz)), agence);
+    log.collisions = collisions;
 
-        if (c.type === 'Particulier' && parts.length >= 2) {
-          const upperParts = parts.filter(p => p === p.toUpperCase() && p.length > 1);
-          const mixedParts = parts.filter(p => p !== p.toUpperCase() || p.length <= 1);
-          if (upperParts.length > 0 && mixedParts.length > 0) {
-            nom = upperParts.join(' ');
-            prenom = mixedParts.join(' ');
-          } else {
-            nom = parts[parts.length - 1];
-            prenom = parts.slice(0, -1).join(' ');
-          }
+    if (inserts.length) {
+      await sb('proprietaire', { method: 'POST', prefer: 'return=minimal', body: JSON.stringify(inserts) });
+    }
+    for (const u of updates) {
+      await sb(`proprietaire?id=eq.${u.id}`, { method: 'PATCH', prefer: 'return=minimal', body: JSON.stringify(u.patch) })
+        .catch(e => { log.errors++; console.warn('sync-proprietaires update error:', e.message); });
+    }
+    log.created = inserts.length;
+    log.updated = updates.length;
+
+    // 4b. Emails manquants (I-148) : listClients ne renvoie pas l'email → getClient sur les fiches
+    // actives qui en sont dépourvues (plafonné par run pour rester dans maxDuration).
+    const sansEmail = (existingProps || []).filter(p => p.id_evoliz && !p.email && p.actif && !p.duplicate_of_id).slice(0, 25);
+    log.emails_completes = 0;
+    for (const p of sansEmail) {
+      try {
+        const resp = await evolizCall('getClient', companyId, { clientId: p.id_evoliz });
+        const email = emailDepuisClientEvoliz(resp?.data);
+        if (email) {
+          await sb(`proprietaire?id=eq.${p.id}&email=is.null`, { method: 'PATCH', prefer: 'return=minimal', body: JSON.stringify({ email }) });
+          log.emails_completes++;
         }
-
-        const addr = c.address || {};
-        // Evoliz v1 : mobile, phone directs — mais PAS d'email sur l'objet client
-        // (l'email vit dans /clients/{id}/contacts, pas dans listClients). Ne
-        // jamais inclure `email` dans les lignes synchronisées ici : ça écraserait
-        // à null l'email saisi à la main dans DCB Compta à chaque sync (bug
-        // corrigé 2026-08-05).
-        const tel = (c.mobile || c.phone || '').trim() || null;
-
-        return {
-          id_evoliz: String(c.clientid),
-          nom: nom.trim(),
-          prenom: prenom?.trim() || null,
-          telephone: tel,
-          adresse: addr.addr || null,
-          code_postal: addr.postcode || null,
-          ville: addr.town || null,
-          pays: addr.country?.label || 'France',
-          actif: true,
-          agence,
-        };
-      });
-
-    // 3. Récupérer les fiches existantes de l'agence pour détecter les collisions
-    const existingProps = await sb(`proprietaire?agence=eq.${agence}&select=id,nom,prenom,id_evoliz`);
-    const existingByEvolizId = new Map((existingProps || []).filter(p => p.id_evoliz).map(p => [p.id_evoliz, p]));
-    const existingByName = new Map((existingProps || []).map(p => [normalizeName(p.nom, p.prenom), p]));
-
-    const existants = rows.filter(r => existingByEvolizId.has(r.id_evoliz));
-    const candidatsNouveaux = rows.filter(r => !existingByEvolizId.has(r.id_evoliz));
-
-    const nouveaux = [];
-    for (const r of candidatsNouveaux) {
-      const match = existingByName.get(normalizeName(r.nom, r.prenom));
-      if (match) {
-        log.collisions.push({
-          nom: r.nom, prenom: r.prenom,
-          id_evoliz_nouveau: r.id_evoliz,
-          proprietaire_existant_id: match.id,
-          proprietaire_existant_nom: `${match.nom} ${match.prenom || ''}`.trim(),
-        });
-      } else {
-        nouveaux.push(r);
-      }
+      } catch (e) { console.warn('sync-proprietaires getClient:', p.id_evoliz, e.message); }
     }
-
-    // 4. Insert des nouveaux + update des existants
-    if (nouveaux.length) {
-      await sb('proprietaire', { method: 'POST', prefer: 'return=minimal', body: JSON.stringify(nouveaux) });
-    }
-    for (const r of existants) {
-      await sb(`proprietaire?id_evoliz=eq.${encodeURIComponent(r.id_evoliz)}&agence=eq.${agence}`, {
-        method: 'PATCH', prefer: 'return=minimal', body: JSON.stringify(r),
-      }).catch(e => console.warn('sync-proprietaires update error:', e.message));
-    }
-
-    log.created = nouveaux.length;
-    log.updated = existants.length;
 
     // 5. Logger la sync
     await sb('import_log', {
@@ -208,7 +154,7 @@ export default async function handler(req, res) {
         nb_lignes_traitees: log.total,
         nb_lignes_creees: log.created,
         nb_lignes_mises_a_jour: log.updated,
-        message: `[cron] Sync proprietaires ${agence} — ${log.created} créés, ${log.updated} mis à jour`
+        message: `[cron] Sync proprietaires ${agence} — ${log.created} créés, ${log.updated} mis à jour, ${log.emails_completes} email(s) complété(s)`
           + (log.collisions.length ? ` — ⚠ ${log.collisions.length} collision(s) à résoudre manuellement : ${log.collisions.map(c => `${c.nom} ${c.prenom || ''}`.trim()).join(', ')}` : ''),
       }),
     });

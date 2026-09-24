@@ -155,6 +155,7 @@ export default function PageExports() {
   const [moisDispos, setMoisDispos] = useState([moisCourant])
   const [loading, setLoading] = useState({})
   const [error, setError] = useState(null)
+  const [warning, setWarning] = useState(null)
   const [success, setSuccess] = useState(null)
   const [preview, setPreview] = useState(null) // { titre, csv, downloadFn }
 
@@ -473,6 +474,12 @@ export default function PageExports() {
           {error}
         </div>
       )}
+      {warning && (
+        <div style={{ padding: 12, background: '#FFFBEB', border: '1px solid #F59E0B', borderRadius: 6, marginBottom: 16, color: '#92400E', fontSize: '0.9em', display: 'flex', gap: 12, alignItems: 'flex-start' }}>
+          <span style={{ flex: 1 }}>{warning}</span>
+          <button onClick={() => setWarning(null)} style={{ background: 'none', border: 'none', color: '#92400E', cursor: 'pointer', fontSize: 16, lineHeight: 1 }}>×</button>
+        </div>
+      )}
       {success && (
         <div style={{ padding: 12, background: '#E8F5E9', border: '1px solid #66BB6A', borderRadius: 6, marginBottom: 16, color: '#2E7D32', fontSize: '0.9em' }}>
           {success}
@@ -621,7 +628,8 @@ export default function PageExports() {
               setLoading(prev => ({ ...prev, sct_proprios: true }))
               setError(null)
               try {
-                const xml = await genererSCTVirementsProprios(mois)
+                const { xml, sansIban } = await genererSCTVirementsProprios(mois)
+                setWarning(sansIban.length ? `⚠ ${sansIban.length} propriétaire(s) dû(s) SANS IBAN, absent(s) du fichier — à virer à la main ou compléter l'IBAN : ${sansIban.join(' ; ')}` : null)
                 const blob = new Blob([xml], { type: 'application/xml;charset=utf-8;' })
                 const url = URL.createObjectURL(blob)
                 const a = document.createElement('a')
@@ -672,7 +680,8 @@ export default function PageExports() {
               setLoading(prev => ({ ...prev, sct_proprios_lc: true }))
               setError(null)
               try {
-                const xml = await genererSCTVirementsPropriosLC(mois)
+                const { xml, sansIban } = await genererSCTVirementsPropriosLC(mois)
+                setWarning(sansIban.length ? `⚠ ${sansIban.length} propriétaire(s) dû(s) SANS IBAN, absent(s) du fichier — à virer à la main ou compléter l'IBAN : ${sansIban.join(' ; ')}` : null)
                 const blob = new Blob([xml], { type: 'application/xml;charset=utf-8;' })
                 const url = URL.createObjectURL(blob)
                 const a = document.createElement('a')

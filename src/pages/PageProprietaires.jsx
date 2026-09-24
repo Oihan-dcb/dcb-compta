@@ -35,6 +35,21 @@ const MANDAT_STATUT_LABELS = {
   en_renouvellement: 'En renouvellement',
 }
 
+// Même contrôle que la fonction SQL iban_est_valide (migration 262), qui bloque de toute façon
+// l'écriture en base — ici pour un message immédiat et lisible avant l'appel.
+function ibanValide(saisie) {
+  const ib = saisie.replace(/[^A-Za-z0-9]/g, '').toUpperCase()
+  if (!/^[A-Z]{2}[0-9]{2}[A-Z0-9]{11,30}$/.test(ib)) return false
+  if (ib.startsWith('FR') && ib.length !== 27) return false
+  const mv = ib.slice(4) + ib.slice(0, 4)
+  let reste = 0
+  for (const c of mv) {
+    const chiffres = /[0-9]/.test(c) ? c : String(c.charCodeAt(0) - 55)
+    for (const d of chiffres) reste = (reste * 10 + Number(d)) % 97
+  }
+  return reste === 1
+}
+
 function badgeStatutMandat(statut) {
   const colors = {
     actif:             { bg: '#d1fae5', color: '#065f46' },
@@ -202,7 +217,8 @@ function ModalFiche({ proprio, onClose, onSaved }) {
       // Ne mettre à jour que les champs non-nuls retournés par Evoliz
       const toUpdate = Object.fromEntries(Object.entries(payload).filter(([, v]) => v != null))
       if (Object.keys(toUpdate).length > 0) {
-        await supabase.from('proprietaire').update(toUpdate).eq('id', proprio.id)
+        const { error: upErr } = await supabase.from('proprietaire').update(toUpdate).eq('id', proprio.id)
+        if (upErr) throw upErr
       }
 
       setForm(f => ({ ...f, ...toUpdate }))
@@ -280,6 +296,10 @@ function ModalFiche({ proprio, onClose, onSaved }) {
   async function sauvegarder() {
     setSaving(true); setErr(null); setOk(false)
     try {
+      const ibanSaisi = form.iban.trim()
+      if (ibanSaisi && ibanSaisi !== (proprio.iban || '').trim() && !ibanValide(ibanSaisi)) {
+        throw new Error('IBAN invalide : clé de contrôle ou longueur incorrecte — vérifier la saisie')
+      }
       const payload = {
         nom:            form.nom.trim(),
         prenom:         form.prenom.trim() || null,
@@ -1998,6 +2018,12 @@ export default function PageProprietaires() {
     sansMandat:   proprios.filter(p => p.actif !== false && (!p.mandat_gestion || p.mandat_gestion.length === 0)).length,
     sansEvoliz:   proprios.filter(p => p.actif !== false && !p.id_evoliz).length,
   }
+  // Propriétaires avec un bien actif mais sans e-mail : rapports, débours et relances ne leur
+  // parviennent pas. La synchro Evoliz complète l'email dès qu'Evoliz l'a (getClient) — au
+  // 24/09/2026 aucun des manquants n'y figure, ni dans Hospitable ni dans les mandats : saisie
+  // manuelle nécessaire (I-148).
+  const sansEmailActifs = proprios.filter(p => p.actif !== false && !p.duplicate_of_id && !(p.email || '').trim()
+    && (p.bien || []).some(b => b.listed && b.agence === AGENCE))
 
   return (
     <div>
@@ -2036,6 +2062,20 @@ export default function PageProprietaires() {
           </div>
         </div>
       </div>
+
+      {sansEmailActifs.length > 0 && (
+        <div className="alert alert-warning" style={{ marginBottom: 16 }}>
+          ✉ {sansEmailActifs.length} propriétaire{sansEmailActifs.length > 1 ? 's' : ''} avec un bien actif sans e-mail —
+          rapports, débours et relances ne leur parviennent pas :
+          {' '}{sansEmailActifs.map(p => (
+            <span key={p.id} onClick={() => setSelected(p)}
+              style={{ display: 'inline-block', margin: '2px 4px', padding: '1px 7px', borderRadius: 4, background: 'rgba(245,158,11,0.15)', fontWeight: 600, cursor: 'pointer', textDecoration: 'underline', textDecorationStyle: 'dotted' }}>
+              {[p.nom, p.prenom].filter(Boolean).join(' ')}
+              {' '}<span style={{ fontWeight: 400, opacity: 0.7 }}>({(p.bien || []).filter(b => b.listed).map(b => b.code).join(', ')})</span>
+            </span>
+          ))}
+        </div>
+      )}
 
       {/* Toolbar */}
       <div className="toolbar">

@@ -66,8 +66,17 @@ Deno.serve(async (req) => {
       userId = proprio.auth_user_id
     } else {
       // Chercher si un compte auth existe déjà pour cet email
-      const { data: existingUsers } = await supabaseAdmin.auth.admin.listUsers()
-      const existing = existingUsers?.users?.find(u => u.email?.toLowerCase() === emailLower)
+      // Paginé : listUsers() sans argument ne renvoie que la 1re page (50 comptes). Le projet en
+      // compte exactement 50 au 24/09/2026 — au-delà, un compte existant n'était plus trouvé et
+      // createUser échouait ("already registered") : invitation impossible (audit I-148).
+      let existing: { id: string } | undefined
+      for (let page = 1; page <= 50 && !existing; page++) {
+        const { data: pageData, error: listErr } = await supabaseAdmin.auth.admin.listUsers({ page, perPage: 1000 })
+        if (listErr) throw listErr
+        const users = pageData?.users ?? []
+        existing = users.find(u => u.email?.toLowerCase() === emailLower)
+        if (users.length < 1000) break
+      }
 
       if (existing) {
         userId = existing.id

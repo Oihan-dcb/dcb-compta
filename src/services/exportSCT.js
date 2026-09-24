@@ -222,8 +222,14 @@ export async function genererSCTVirementsProprios(mois, agence = AGENCE) {
     .eq('statut', 'a_virer')
   if (errVir) throw errVir
 
-  const valid = (virements || []).filter(v => !v.etudiant?.archived && v.etudiant?.proprietaire?.iban && v.montant > 0)
-  if (!valid.length) throw new Error(`Aucun virement propriétaire à effectuer pour ${mois} (avec IBAN configuré)`)
+  const aVirer = (virements || []).filter(v => !v.etudiant?.archived && v.montant > 0)
+  const valid = aVirer.filter(v => v.etudiant?.proprietaire?.iban)
+  // Propriétaires dus mais sans IBAN : exclus du fichier, mais SIGNALÉS (avant : exclus en
+  // silence — à payer à la main sans que rien ne le rappelle, audit I-148 du 24/09/2026).
+  const sansIban = [...new Set(aVirer.filter(v => !v.etudiant?.proprietaire?.iban)
+    .map(v => [v.etudiant?.proprietaire?.nom, v.etudiant?.proprietaire?.prenom].filter(Boolean).join(' ') || '— propriétaire inconnu —'))]
+  if (!valid.length) throw new Error(`Aucun virement propriétaire à effectuer pour ${mois} (avec IBAN configuré)`
+    + (sansIban.length ? ` — sans IBAN : ${sansIban.join(', ')}` : ''))
 
   const transactions = valid.map((v, i) => {
     const prop = v.etudiant.proprietaire
@@ -240,7 +246,7 @@ export async function genererSCTVirementsProprios(mois, agence = AGENCE) {
 
   const debtorNom = config.agence_titulaire || 'DESTINATION COTE BASQUE'
 
-  return buildSCT({
+  const xml = buildSCT({
     msgId:       msgIdTimestamp(debtorNom),
     pmtInfId:    `PMT-PROP-LLD-${mois}-${runSuffix()}`,
     debtorNom,
@@ -250,6 +256,7 @@ export async function genererSCTVirementsProprios(mois, agence = AGENCE) {
     debtorAdrLine2: config.adresse_ligne2,
     transactions,
   })
+  return { xml, sansIban }
 }
 
 // ── Virement honoraires DCB (LLD) ──────────────────────────────────────────────
@@ -333,10 +340,20 @@ export async function genererSCTVirementsPropriosLC(mois, agence = AGENCE) {
     .gt('montant_ttc', 0)
   if (errVir) throw errVir
 
-  const valid = (lignes || []).filter(l =>
-    (l.bien?.agence || agence) === agence && l.proprietaire?.iban
-  )
-  if (!valid.length) throw new Error(`Aucun virement LC à effectuer pour ${mois} (avec IBAN configuré)`)
+  const lignesAgence = (lignes || []).filter(l => (l.bien?.agence || agence) === agence)
+  const valid = lignesAgence.filter(l => l.proprietaire?.iban)
+  // Propriétaires dus mais sans IBAN : exclus du fichier, mais SIGNALÉS. Avant : exclus en
+  // silence (15 propriétaires au 24/09/2026 dont RICHOU/ONTZI 15 904€, BERDEA 15 243€), payés
+  // à la main sans que l'export ne rappelle qu'ils manquent (audit I-148).
+  const sansIbanMap = new Map()
+  for (const l of lignesAgence.filter(l => !l.proprietaire?.iban)) {
+    const nom = [l.proprietaire?.nom, l.proprietaire?.prenom].filter(Boolean).join(' ') || '— propriétaire inconnu —'
+    if (!sansIbanMap.has(nom)) sansIbanMap.set(nom, new Set())
+    sansIbanMap.get(nom).add(l.bien?.groupe_facturation || l.bien?.code || l.bien_id)
+  }
+  const sansIban = [...sansIbanMap].map(([nom, biens]) => `${nom} (${[...biens].join(', ')})`)
+  if (!valid.length) throw new Error(`Aucun virement LC à effectuer pour ${mois} (avec IBAN configuré)`
+    + (sansIban.length ? ` — sans IBAN : ${sansIban.join(', ')}` : ''))
 
   // Montant réellement dû = facture_evoliz.montant_reversement (net des débours/retenues),
   // jamais la somme brute de ventilation.VIR — voir incident Cécile Alaux 2026-06 (+15€ à
@@ -401,7 +418,7 @@ export async function genererSCTVirementsPropriosLC(mois, agence = AGENCE) {
 
   const debtorNom = config.agence_titulaire || 'DESTINATION COTE BASQUE'
 
-  return buildSCT({
+  const xml = buildSCT({
     msgId:       msgIdTimestamp(debtorNom),
     pmtInfId:    `PMT-VIR-LC-${mois}-${runSuffix()}`,
     debtorNom,
@@ -411,6 +428,7 @@ export async function genererSCTVirementsPropriosLC(mois, agence = AGENCE) {
     debtorAdrLine2: config.adresse_ligne2,
     transactions,
   })
+  return { xml, sansIban }
 }
 
 // ── Virements internes LC (HON + COM + FMEN + Frais Stripe) ────────────────────
