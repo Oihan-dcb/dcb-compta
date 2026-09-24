@@ -9,7 +9,7 @@
       "maxDuration": 60
     },
     "api/sync-reservations.js": {
-      "maxDuration": 120
+      "maxDuration": 300
     },
     "api/sync-biens.js": {
       "maxDuration": 60
@@ -60,12 +60,28 @@
       "schedule": "45 2 * * *"
     },
     {
-      "path": "/api/sync-reservations?agence=dcb",
+      "path": "/api/sync-reservations?agence=dcb&offset=0",
       "schedule": "0 3 * * *"
     },
     {
-      "path": "/api/sync-reservations?agence=lauian",
+      "path": "/api/sync-reservations?agence=dcb&offset=1",
+      "schedule": "5 3 * * *"
+    },
+    {
+      "path": "/api/sync-reservations?agence=dcb&offset=2",
+      "schedule": "10 3 * * *"
+    },
+    {
+      "path": "/api/sync-reservations?agence=lauian&offset=0",
       "schedule": "15 3 * * *"
+    },
+    {
+      "path": "/api/sync-reservations?agence=lauian&offset=1",
+      "schedule": "20 3 * * *"
+    },
+    {
+      "path": "/api/sync-reservations?agence=lauian&offset=2",
+      "schedule": "25 3 * * *"
     },
     {
       "path": "/api/sync-payouts",

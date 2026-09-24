@@ -52,6 +52,15 @@ export default async function handler(req, res) {
 
   const supa = createClient(SUPABASE_URL, SUPABASE_SRK)
 
+  // État avant qualification : restauré si la reventilation échoue. Avant (I-145), l'ajustement
+  // restait 'traite' même quand /api/ventiler échouait (ex. GASQ/HOST-GAWGVI, -590€ qualifié le
+  // 06/09/2026, ventilation jamais recalculée) — il disparaissait de la file "à qualifier" sans
+  // aucun effet sur la ventilation ni la facture, et plus rien ne le signalait.
+  const { data: avant } = await createClient(SUPABASE_URL, SUPABASE_SRK)
+    .from('reservation_ajustement')
+    .select('type, statut, qualifie_par, qualifie_le, montant_fmen, montant_auto')
+    .eq('id', ajustement_id).maybeSingle()
+
   try {
     const patch = { type, statut: 'traite', qualifie_par: user.email || user.id, qualifie_le: new Date().toISOString() }
     if (type === 'menage') { patch.montant_fmen = montant_fmen; patch.montant_auto = montant_auto }
@@ -72,7 +81,8 @@ export default async function handler(req, res) {
     })
     if (!ventilerRes.ok) {
       const detail = await ventilerRes.text().catch(() => '')
-      throw new Error(`Reventilation échouée : ${detail}`)
+      if (avant) await supa.from('reservation_ajustement').update(avant).eq('id', ajustement_id)
+      throw new Error(`Reventilation échouée, qualification annulée : ${detail}`)
     }
 
     return res.json({ ok: true, reservation_id: updated.reservation_id })

@@ -380,11 +380,25 @@ export default async function handler(req, res) {
   // reste actuellement en panne (401, voir project-overview.md). Bug trouvé le 06/09/2026 :
   // résa Maya/HMZATQK95E restée 'checkpoint' en base 6 jours après son annulation réelle,
   // updated_at figé au dernier jour où août était encore le mois courant (31/08 03h00).
-  const moisPrecedent = (() => {
-    const d = new Date(today.getFullYear(), today.getMonth() - 1, 1)
+  //
+  // ?offset=N (crons vercel.json, un appel par mois depuis le 24/09/2026) : ne traite QUE le
+  // mois M-N. Le mode "[M-1, M] dans un seul appel" ci-dessous dépassait maxDuration côté DCB
+  // en haute saison (août = 178 résas ≈ 110s sur 120s) → la fonction était tuée avant
+  // d'attaquer le mois courant, qui n'était donc plus JAMAIS resynchronisé par le cron
+  // (import_log : que des lignes 2026-08 à 03h, aucune 2026-09). Découpé en 1 cron par mois,
+  // et étendu à M-2 : une résolution Airbnb (remboursement partiel voyageur) peut arriver
+  // plusieurs semaines après la fin du séjour (cas VIKY/HM8SZAKKMK, juillet, -1500€ connus
+  // seulement mi-août, facture juillet déjà générée → HON surfacturé de 375€ TTC, I-144).
+  const moisDecale = (n) => {
+    const d = new Date(today.getFullYear(), today.getMonth() - n, 1)
     return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`
-  })();
-  const moisAtraiter = moisExplicite ? [moisExplicite] : [moisPrecedent, currentMois];
+  };
+  const offsetParam = req.query?.offset ?? req.body?.offset;
+  const offset = offsetParam != null && /^\d+$/.test(String(offsetParam)) ? Number(offsetParam) : null;
+  if (offset != null && offset > 6) return res.status(400).json({ error: 'offset max 6' });
+  const moisAtraiter = moisExplicite ? [moisExplicite]
+    : offset != null ? [moisDecale(offset)]
+    : [moisDecale(1), currentMois];
 
   console.log(`[sync-reservations] mois=${moisAtraiter.join(',')} agence=${agence}`);
 

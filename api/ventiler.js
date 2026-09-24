@@ -361,7 +361,9 @@ export default async function handler(req, res) {
   if (!token) return res.status(401).json({ error: 'Token manquant' })
   if (!(await verifyToken(token))) return res.status(401).json({ error: 'Non authentifié' })
 
-  const { mois, reservation_id, agence = 'dcb', dry_run } = req.body || {}
+  const { mois, reservation_id, dry_run } = req.body || {}
+  const agenceParam = req.body?.agence
+  const agence = agenceParam || 'dcb'
   const dryRun = dry_run === true
   const supa = createClient(SUPABASE_URL, SUPABASE_SRK)
 
@@ -388,7 +390,15 @@ export default async function handler(req, res) {
       if (fetchErr) throw fetchErr
       if (!resa) return res.status(404).json({ error: 'Réservation introuvable' })
 
-      const lignesResa = await _writeResa(resa, agence, supa, dryRun)
+      // Agence déduite du bien quand l'appelant ne la précise pas : sans ça, le défaut 'dcb'
+      // faisait sortir _writeResa en silence (garde agence de _writeResa) pour tout bien Lauïan —
+      // qualifier-ajustement.js n'envoie que reservation_id, donc un ajustement Lauïan qualifié
+      // n'était JAMAIS appliqué (cas MARNEKO/HMCHKSQZTH, -395€ hébergement, 10/09/2026, I-145).
+      const agenceResa = agenceParam || resa.bien?.agence || 'dcb'
+      if (resa.bien?.agence && resa.bien.agence !== agenceResa) {
+        return res.status(409).json({ error: `Agence ${agenceResa} ≠ agence du bien (${resa.bien.agence}) — résa non reventilée` })
+      }
+      const lignesResa = await _writeResa(resa, agenceResa, supa, dryRun)
       return res.json({ ok: true, dry_run: dryRun, ...(dryRun ? { lignes: lignesResa } : {}) })
     }
 
