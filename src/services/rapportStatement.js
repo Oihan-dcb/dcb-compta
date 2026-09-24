@@ -348,9 +348,10 @@ export function genererStatementHTML(proprio, mois, data) {
     ${deboursSeuls > 0 ? `<div style="display:flex;justify-content:space-between;padding:3px 0;border-bottom:1px solid #ece8e2;font-size:10px">
       <span style="color:#9c8c7a">Débours / prestations</span><span style="color:#DC2626">− ${fmt(deboursSeuls)}</span>
     </div>` : ''}
-    ${sansGestionLoyer ? fraisFacturesDirectList.map(f => `<div style="display:flex;justify-content:space-between;padding:3px 0;border-bottom:1px solid #ece8e2;font-size:10px">
-      <span style="color:#9c8c7a">${escapeNonAscii(f.libelle || 'Frais propriétaire')}</span><span style="color:#DC2626">− ${fmt(f.montant_ttc || 0)}</span>
-    </div>`).join('') : ''}
+    ${/* Frais « facturer_direct » : plus affichés en déduction côté Reversement (24/09/2026). Ils
+         ne sont PAS retirés du virement (virementNet, cf. fix 416 Harea du 09/09) — le propriétaire
+         les paie sur sa facture, déjà listés « (facturé) » côté Charges. L'affichage en « − »
+         (ajouté le 04/07, 8636f9a) faisait croire à une double facturation, cas GASQ août. */ ''}
     ${haownerTotal > 0 ? `<div style="display:flex;justify-content:space-between;padding:3px 0;border-bottom:1px solid #ece8e2;font-size:10px">
       <span style="color:#CC9933">Achats HAOWNER</span><span style="color:#DC2626">− ${fmt(haownerTotal)}</span>
     </div>` : ''}
