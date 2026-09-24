@@ -18,6 +18,7 @@
  */
 import { serve } from 'https://deno.land/std@0.168.0/http/server.ts'
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
+import { compteDesPaiements, etatCompte } from '../_shared/fraicheurBanque.ts'
 
 const SUPABASE_URL = Deno.env.get('SUPABASE_URL') ?? ''
 const SERVICE_KEY  = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? ''
@@ -101,7 +102,7 @@ serve(async (req) => {
 
   let query = supabase
     .from('facture_evoliz')
-    .select('id, mois, agence, type_facture, total_ttc, total_ht, solde_negatif, nb_relances, date_emission, derniere_relance_at, id_evoliz, numero_facture, bien:bien_id(code, hospitable_name, gestion_loyer), proprietaire:proprietaire_id(nom, prenom, email)')
+    .select('id, mois, agence, type_facture, total_ttc, total_ht, total_ttc_evoliz, reste_a_payer_evoliz, solde_negatif, nb_relances, date_emission, derniere_relance_at, id_evoliz, numero_facture, bien:bien_id(code, hospitable_name, gestion_loyer), proprietaire:proprietaire_id(nom, prenom, email)')
     .in('type_facture', ['honoraires', 'debours'])
     .eq('statut', 'envoye_evoliz')
     // DCB uniquement pour l'instant : Lauïan n'a pas Pennylane, donc pas de vérité
@@ -115,7 +116,28 @@ serve(async (req) => {
   const now = Date.now()
   const results: unknown[] = []
 
+  // Garde-fou fraîcheur banque (audit I-153) : si le compte où arrivent les paiements n'est plus
+  // alimenté, on ne peut pas savoir qui a payé → aucune relance ce jour-là (alerte-fraicheur-banque
+  // prévient déjà Oïhan chaque matin). Cas réel : 408P, 506P, B16, PATXI relancés du 13 au 17/09
+  // alors qu'ils avaient payé, flux compte courant muet depuis le 10/07.
+  const comptesMuets = new Map<string, string>()
+  for (const cle of new Set((factures || []).map(f => `${f.agence || 'dcb'}|${f.type_facture}`))) {
+    const [ag, type] = cle.split('|')
+    const compte = compteDesPaiements(ag, type as 'honoraires' | 'debours')
+    if (!compte) continue
+    const etat = await etatCompte(supabase, compte)
+    if (etat.muet) comptesMuets.set(cle, `${etat.label} : dernière opération ${etat.derniere ?? 'aucune'}`)
+  }
+  if (comptesMuets.size && !dryRun) {
+    await supabase.from('journal_ops').insert({
+      categorie: 'facturation', action: 'relance_facture_suspendue', source: 'cron', statut: 'warning',
+      message: `Relances suspendues, relevé bancaire muet — ${[...comptesMuets.values()].join(' ; ')}`,
+    })
+  }
+
   for (const f of factures || []) {
+    const muet = comptesMuets.get(`${f.agence || 'dcb'}|${f.type_facture}`)
+    if (muet) { results.push({ id: f.id, action: 'skip_releve_bancaire_muet', detail: muet }); continue }
     // Facture d'honoraires "nettée" : bien géré en gestion_loyer (mode_encaissement=dcb),
     // les honoraires sont directement prélevés sur le loyer avant reversement au
     // propriétaire (cf. commentaire Evoliz dans src/services/evoliz.js) — aucune somme
@@ -143,7 +165,12 @@ serve(async (req) => {
     const bienNom = f.bien?.code || f.bien?.hospitable_name || f.proprietaire?.nom || 'votre bien'
     const [y, m] = (f.mois || '').split('-')
     const moisLabel = `${MOIS_FR[parseInt(m) - 1] || f.mois} ${y}`
-    const montantEur = ((f.total_ttc || f.total_ht || 0) / 100).toLocaleString('fr-FR', { minimumFractionDigits: 2 })
+    // Montant de la facture Evoliz que le propriétaire a reçue (reste à payer), pas le calcul
+    // local qui peut différer (TVA recalculée par Evoliz, cf. GASQ juillet 2 002,38 € relancé pour
+    // une facture de 1 952,40 €) — repli sur le local tant que sync-evoliz-statut ne l'a pas relue.
+    const montantCts = f.reste_a_payer_evoliz ?? f.total_ttc_evoliz ?? f.total_ttc ?? f.total_ht ?? 0
+    if (f.reste_a_payer_evoliz === 0) { results.push({ id: f.id, action: 'skip_solde_chez_evoliz' }); continue }
+    const montantEur = (montantCts / 100).toLocaleString('fr-FR', { minimumFractionDigits: 2 })
     const typeLabel = TYPE_LABEL[f.type_facture] || 'de gestion'
 
     if (nb >= 2) {

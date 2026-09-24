@@ -15,6 +15,7 @@
  */
 import { serve } from 'https://deno.land/std@0.168.0/http/server.ts'
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
+import { compteDesPaiements, etatCompte } from '../_shared/fraicheurBanque.ts'
 
 const SUPABASE_URL = Deno.env.get('SUPABASE_URL') ?? ''
 const SERVICE_KEY  = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? ''
@@ -96,7 +97,26 @@ serve(async (req) => {
   const now = Date.now()
   const results: unknown[] = []
 
+  // Garde-fou fraîcheur banque (audit I-153) : les remboursements de débours arrivent sur le
+  // séquestre (DCB) / le compte Caisse d'Épargne (Lauïan). Compte muet → aucune relance : on ne
+  // peut pas savoir qui a remboursé. alerte-fraicheur-banque prévient Oïhan chaque matin.
+  const agencesMuettes = new Map<string, string>()
+  for (const ag of new Set((factures || []).map(f => f.agence || 'dcb'))) {
+    const compte = compteDesPaiements(ag, 'debours')
+    if (!compte) continue
+    const etat = await etatCompte(supabase, compte)
+    if (etat.muet) agencesMuettes.set(ag, `${etat.label} : dernière opération ${etat.derniere ?? 'aucune'}`)
+  }
+  if (agencesMuettes.size && !dryRun) {
+    await supabase.from('journal_ops').insert({
+      categorie: 'facturation', action: 'relance_debours_suspendue', source: 'cron', statut: 'warning',
+      message: `Relances débours suspendues, relevé bancaire muet — ${[...agencesMuettes.values()].join(' ; ')}`,
+    })
+  }
+
   for (const f of factures || []) {
+    const muet = agencesMuettes.get(f.agence || 'dcb')
+    if (muet) { results.push({ id: f.id, action: 'skip_releve_bancaire_muet', detail: muet }); continue }
     const nb = f.nb_relances || 0
     const refDate = f.derniere_relance_at || f.envoye_proprio_at
     if (!refDate || nb >= 3) { results.push({ id: f.id, action: 'skip', nb }); continue }

@@ -11,7 +11,10 @@
  * synchro, une relance basée sur le statut local relancerait indéfiniment
  * des propriétaires ayant déjà payé.
  *
- * Body optionnel : { agence: 'dcb' | 'lauian' } — sinon les deux agences.
+ * Relit aussi, pour chaque facture, le TTC et le reste à payer RÉELS d'Evoliz, son numéro
+ * définitif (F-…) et la date de paiement (audit I-153, 24/09/2026).
+ *
+ * Body optionnel : { agence: 'dcb' | 'lauian', dry_run?: true } — sinon les deux agences.
  */
 import { serve } from 'https://deno.land/std@0.168.0/http/server.ts'
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
@@ -97,42 +100,65 @@ serve(async (req) => {
   const results: Record<string, unknown> = {}
   const aSignaler: NonEnvoyee[] = []
 
-  // Fenêtre large (6 mois) : couvre tout ce qui peut encore être 'envoye_evoliz'
   const now = new Date()
   const dateTo = now.toISOString().slice(0, 10)
-  const dateFromD = new Date(now); dateFromD.setMonth(dateFromD.getMonth() - 6)
-  const dateFrom = dateFromD.toISOString().slice(0, 10)
 
   for (const agence of agences) {
     const companyId = EVOLIZ_COMPANY_ID[agence]
     if (!companyId) { results[agence] = { error: 'agence inconnue' }; continue }
 
     try {
+      // Factures à relire : encore ouvertes, jamais relues, ou payées sans date de paiement
+      // (audit I-153 : 135 factures payées sans date, numéros T- de brouillon jamais remplacés).
       const { data: factures, error } = await supabase
         .from('facture_evoliz')
-        .select('id, id_evoliz, mois, total_ttc, type_facture, date_emission, bien:bien_id(code, mode_encaissement), proprietaire:proprietaire_id(nom, prenom)')
+        .select('id, id_evoliz, statut, mois, total_ttc, type_facture, date_emission, date_paiement, numero_facture, total_ttc_evoliz, reste_a_payer_evoliz, evoliz_synced_at, bien:bien_id(code, mode_encaissement), proprietaire:proprietaire_id(nom, prenom)')
         .eq('agence', agence)
-        .eq('statut', 'envoye_evoliz')
+        .in('statut', ['envoye_evoliz', 'payee'])
         .not('id_evoliz', 'is', null)
+        .neq('id_evoliz', 'N/A')
+        .or('statut.eq.envoye_evoliz,evoliz_synced_at.is.null,date_paiement.is.null')
       if (error) throw error
       if (!factures?.length) { results[agence] = { checked: 0, updated: 0 }; continue }
 
+      // Fenêtre = depuis la plus ancienne facture à relire (avant : 6 mois glissants — une
+      // facture impayée de plus de 6 mois n'était plus jamais contrôlée, sans alerte).
+      const plusAncienne = factures.map(f => f.date_emission).filter(Boolean).sort()[0]
+      const dateFrom = plusAncienne && plusAncienne < '2026-01-01' ? plusAncienne : '2026-01-01'
       const invoices = await evolizListInvoices(companyId, dateFrom, dateTo)
       const statutById = new Map(invoices.map((inv: any) => [String(inv.invoiceid), inv]))
 
-      let updated = 0
+      let updated = 0, enrichies = 0, introuvables = 0
       const updatedIds: string[] = []
       const nonEnvoyees: NonEnvoyee[] = []
       const limite = new Date(now); limite.setDate(limite.getDate() - JOURS_TOLERANCE)
       for (const f of factures) {
         const inv = statutById.get(String(f.id_evoliz))
-        if (!inv) continue // pas trouvé dans la fenêtre (facture plus ancienne que 6 mois) — ignoré
-        if (inv.status === 'paid' && (inv.total?.net_to_pay ?? 0) <= 0) {
-          await supabase.from('facture_evoliz').update({ statut: 'payee' }).eq('id', f.id).eq('statut', 'envoye_evoliz')
-          updated++
-          updatedIds.push(f.id)
+        if (!inv) { introuvables++; continue } // supprimée chez Evoliz, ou émise avant dateFrom
+        const cts = (v: unknown) => v == null ? null : Math.round(Number(v) * 100)
+        const payee = inv.status === 'paid' && (inv.total?.net_to_pay ?? 0) <= 0
+        // Montant/numéro réels (Evoliz recalcule la TVA : écarts de centimes ; le numéro
+        // définitif F- remplace le T- du brouillon à la validation)
+        const maj: Record<string, unknown> = {
+          total_ttc_evoliz: cts(inv.total?.vat_include),
+          reste_a_payer_evoliz: cts(inv.total?.net_to_pay),
+          evoliz_synced_at: now.toISOString(),
+        }
+        if (inv.document_number && inv.document_number !== f.numero_facture) maj.numero_facture = inv.document_number
+        if (payee && !f.date_paiement) maj.date_paiement = (inv.status_dates?.paid || dateTo).slice(0, 10)
+        const change = maj.numero_facture !== undefined || maj.date_paiement !== undefined ||
+          maj.total_ttc_evoliz !== f.total_ttc_evoliz || maj.reste_a_payer_evoliz !== f.reste_a_payer_evoliz ||
+          !f.evoliz_synced_at || (payee && f.statut === 'envoye_evoliz')
+        if (change && !body.dry_run) {
+          if (payee && f.statut === 'envoye_evoliz') maj.statut = 'payee'
+          await supabase.from('facture_evoliz').update(maj).eq('id', f.id).eq('statut', f.statut)
+          enrichies++
+        }
+        if (payee) {
+          if (f.statut === 'envoye_evoliz') { updated++; updatedIds.push(f.id) }
           continue
         }
+        if (f.statut !== 'envoye_evoliz') continue
         // Poussée chez Evoliz mais jamais partie chez le client : 'filled' = brouillon (T-),
         // 'create' = validée (F-) sans envoi. Cas 408P Belair (24/09/2026) : juillet validée
         // non envoyée, août brouillon — et createPayment échoue sur un brouillon ("not payable"),
@@ -148,7 +174,7 @@ serve(async (req) => {
         }
       }
       aSignaler.push(...nonEnvoyees)
-      results[agence] = { checked: factures.length, updated, updatedIds, non_envoyees: nonEnvoyees.length }
+      results[agence] = { checked: factures.length, updated, updatedIds, enrichies, introuvables, non_envoyees: nonEnvoyees.length }
     } catch (e: any) {
       results[agence] = { error: e.message }
     }

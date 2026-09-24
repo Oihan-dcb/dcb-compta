@@ -1552,7 +1552,7 @@ export async function matcherDeboursProprietaires(agence = AGENCE) {
       .eq('type_facture', 'debours')
       .eq('statut', 'envoye_proprio'),
     supabase.from('mouvement_bancaire')
-      .select('id, libelle, detail, credit')
+      .select('id, libelle, detail, credit, date_operation')
       .eq('agence', agence)
       .eq('statut_matching', 'en_attente')
       .in('canal', ['sepa_manuel', 'interne']) // 'interne' : libellés "Debours AE-<bien>-<mois>" (detectCanal les classe à part)
@@ -1577,7 +1577,7 @@ export async function matcherDeboursProprietaires(agence = AGENCE) {
     // Pas de colonne note_matching sur mouvement_bancaire (contrairement à d'autres
     // tables du projet) — statut_matching seul suffit à sortir le mouvement de "en_attente".
     const [e1, e2] = await Promise.all([
-      supabase.from('facture_evoliz').update({ statut: 'remboursement_recu' }).eq('id', d.id).then(r => r.error),
+      supabase.from('facture_evoliz').update({ statut: 'remboursement_recu', date_paiement: m.date_operation || null }).eq('id', d.id).then(r => r.error),
       supabase.from('mouvement_bancaire')
         .update({ statut_matching: 'matche_auto' })
         .eq('id', m.id).then(r => r.error),
@@ -1621,14 +1621,14 @@ export async function matcherHonorairesProprietaires(agence = AGENCE) {
 
   const [{ data: factures }, { data: mvts }] = await Promise.all([
     supabase.from('facture_evoliz')
-      .select('id, mois, type_facture, total_ttc, id_evoliz, numero_facture, proprietaire:proprietaire_id(nom), bien:bien_id(code)')
+      .select('id, mois, type_facture, total_ttc, total_ttc_evoliz, reste_a_payer_evoliz, id_evoliz, numero_facture, proprietaire:proprietaire_id(nom), bien:bien_id(code)')
       .eq('agence', agence)
       .in('type_facture', ['honoraires', 'debours'])
       .eq('statut', 'envoye_evoliz')
       .not('id_evoliz', 'is', null)
       .neq('id_evoliz', 'N/A'),
     supabase.from('mouvement_bancaire')
-      .select('id, libelle, detail, credit')
+      .select('id, libelle, detail, credit, date_operation')
       .eq('agence', agence)
       .eq('statut_matching', 'en_attente')
       .in('canal', ['sepa_manuel', 'interne'])
@@ -1644,10 +1644,15 @@ export async function matcherHonorairesProprietaires(agence = AGENCE) {
 
   for (const f of factures) {
     const nomNorm = norm(f.proprietaire?.nom)
-    if (!nomNorm || !f.total_ttc) continue
+    // Montant attendu = celui de la facture Evoliz que le propriétaire a sous les yeux (reste à
+    // payer, puis TTC Evoliz), relu chaque nuit par sync-evoliz-statut. Le total local peut
+    // différer de quelques centimes (TVA recalculée par Evoliz) : le match exact sur total_ttc
+    // seul ne reconnaissait jamais ces paiements (audit I-153). Total local gardé en repli.
+    const attendus = [...new Set([f.reste_a_payer_evoliz, f.total_ttc_evoliz, f.total_ttc].filter(v => v > 0))]
+    if (!nomNorm || !attendus.length) continue
 
     const candidats = disponibles.filter(m =>
-      m.credit === f.total_ttc && norm(`${m.libelle || ''} ${m.detail || ''}`).includes(nomNorm)
+      attendus.includes(m.credit) && norm(`${m.libelle || ''} ${m.detail || ''}`).includes(nomNorm)
     )
     if (candidats.length !== 1) continue
     const m = candidats[0]
@@ -1659,9 +1664,9 @@ export async function matcherHonorairesProprietaires(agence = AGENCE) {
           companyId,
           payload: {
             invoiceId: f.id_evoliz,
-            paydate: new Date().toISOString().slice(0, 10),
+            paydate: m.date_operation || new Date().toISOString().slice(0, 10),
             paytypeid: 2, // Virement
-            amount: f.total_ttc / 100,
+            amount: m.credit / 100, // montant réellement reçu (= montant attendu, cf. match)
             label: 'Virement compte courant (rapprochement auto)',
           },
         },
@@ -1672,7 +1677,7 @@ export async function matcherHonorairesProprietaires(agence = AGENCE) {
       }
 
       const [e1, e2] = await Promise.all([
-        supabase.from('facture_evoliz').update({ statut: 'payee' }).eq('id', f.id).then(r => r.error),
+        supabase.from('facture_evoliz').update({ statut: 'payee', date_paiement: m.date_operation || null }).eq('id', f.id).then(r => r.error),
         supabase.from('mouvement_bancaire').update({ statut_matching: 'matche_auto' }).eq('id', m.id).then(r => r.error),
       ])
       if (e1 || e2) throw new Error(e1?.message || e2?.message)
@@ -1683,7 +1688,7 @@ export async function matcherHonorairesProprietaires(agence = AGENCE) {
       await logOp({
         categorie: 'facture', action: 'paiement_honoraires_auto', source: 'cron', statut: 'ok',
         mois_comptable: f.mois,
-        message: `Facture ${f.type_facture} ${bienNom} ${f.mois} (${(f.total_ttc / 100).toFixed(2)} €) : virement détecté compte courant, createPayment Evoliz OK, facture ${f.numero_facture || f.id_evoliz} marquée payée`,
+        message: `Facture ${f.type_facture} ${bienNom} ${f.mois} (${(m.credit / 100).toFixed(2)} €) : virement détecté compte courant, createPayment Evoliz OK, facture ${f.numero_facture || f.id_evoliz} marquée payée`,
       })
     } catch (err) {
       errors.push({ id: f.id, error: err.message })

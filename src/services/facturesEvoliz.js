@@ -558,8 +558,22 @@ async function genererFactureGroupe(proprio, biens, mois, ctx) {
 
   // Totaux facture — en mode Lauian, FMEN est facturé par DCB (pas par Lauian)
   const inclureFMEN = AGENCE !== 'lauian'
-  const totalHT  = com.ht  + (inclureFMEN ? menConsolide.ht  : 0) + div.ht  + haownerHT  + (inclureFMEN ? osFmenSurplusHT  : 0) + fraisDirectHTFacture
-  const totalTVA = com.tva + (inclureFMEN ? menConsolide.tva : 0) + div.tva + haownerTVA + (inclureFMEN ? osFmenSurplusTVA : 0) + fraisDirectTVAFacture
+  // Frais déduits du loyer : refacturés au propriétaire (ligne POSITIVE TVA 20 %, incluse dans
+  // le total). Avant le 24/09/2026 la ligne était NÉGATIVE et hors total : poussée telle quelle
+  // (quantity=-1), elle faisait un avoir chez Evoliz alors que le propriétaire avait bien payé
+  // le frais via la retenue sur son reversement (1 580,96 € mars→juillet, cf. journal_ops
+  // evoliz_correction_frais_negatifs). Le reversement n'est pas concerné : il retire déjà
+  // fraisDeduitTotal. HT/TVA arrondis par frais, exactement comme les lignes ci-dessous.
+  let fraisDeduitHT = 0, fraisDeduitTVA = 0
+  for (const frais of (fraisDeduire || [])) {
+    const { deduit = 0 } = fraisDeductionMap.get(frais.id) || {}
+    if (deduit <= 0) continue
+    const ht = Math.round(deduit / 1.20)
+    fraisDeduitHT  += ht
+    fraisDeduitTVA += deduit - ht
+  }
+  const totalHT  = com.ht  + (inclureFMEN ? menConsolide.ht  : 0) + div.ht  + haownerHT  + (inclureFMEN ? osFmenSurplusHT  : 0) + fraisDirectHTFacture  + fraisDeduitHT
+  const totalTVA = com.tva + (inclureFMEN ? menConsolide.tva : 0) + div.tva + haownerTVA + (inclureFMEN ? osFmenSurplusTVA : 0) + fraisDirectTVAFacture + fraisDeduitTVA
   const totalTTC = totalHT + totalTVA
 
   // ownerStayAbsorbTotal = part couverte par LOY → réduit le reversement
@@ -770,7 +784,9 @@ async function genererFactureGroupe(proprio, biens, mois, ctx) {
     })
   }
 
-  // Frais déduits du loyer : ligne négative limitée au montant effectivement déduit
+  // Frais déduits du loyer : ligne POSITIVE (refacturation) limitée au montant effectivement
+  // déduit — incluse dans totalHT/totalTVA (cf. fraisDeduitHT). Le reliquat non couvert part
+  // sur la facture de débours.
   for (const frais of (fraisDeduire || [])) {
     const { deduit = 0 } = fraisDeductionMap.get(frais.id) || {}
     if (deduit <= 0) continue
@@ -780,10 +796,10 @@ async function genererFactureGroupe(proprio, biens, mois, ctx) {
       facture_id:  factureId,
       code:        'FRAIS',
       libelle:     frais.libelle || 'Frais proprietaire',
-      montant_ht:  -deduitHT,
+      montant_ht:  deduitHT,
       taux_tva:    20,
-      montant_tva: -deduitTVA,
-      montant_ttc: -deduit,
+      montant_tva: deduitTVA,
+      montant_ttc: deduit,
       ordre:       ordre++,
     })
   }

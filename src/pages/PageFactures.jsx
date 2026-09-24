@@ -658,7 +658,7 @@ const [pushing, setPushing] = useState(false)
   async function confirmerVirement(factureId) {
     try {
       const { error } = await (await import('../lib/supabase')).default
-        .from('facture_evoliz').update({ statut: 'remboursement_recu' }).eq('id', factureId)
+        .from('facture_evoliz').update({ statut: 'remboursement_recu', date_paiement: new Date().toISOString().slice(0, 10) }).eq('id', factureId)
       if (error) throw error
       setSuccess('Virement confirmé — facture clôturée.')
       await charger()

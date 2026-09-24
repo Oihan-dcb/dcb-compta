@@ -100,7 +100,7 @@ serve(async (req) => {
   // relance-debours continuait de le relancer (incident du 15/07/2026).
   const { data: updated, error } = await supabase
     .from('facture_evoliz')
-    .update({ statut: 'remboursement_recu' })
+    .update({ statut: 'remboursement_recu', date_paiement: new Date().toISOString().slice(0, 10) }) // date déclarée par le proprio
     .eq('id', verified.factureId)
     .eq('statut', 'envoye_proprio')
     .select('id')

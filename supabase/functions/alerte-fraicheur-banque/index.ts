@@ -13,24 +13,12 @@
  */
 import { serve } from 'https://deno.land/std@0.168.0/http/server.ts'
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
+import { COMPTES_SUIVIS, etatCompte } from '../_shared/fraicheurBanque.ts'
 
 const SUPABASE_URL = Deno.env.get('SUPABASE_URL') ?? ''
 const SERVICE_KEY  = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? ''
 const DESTINATAIRE = 'oihan@destinationcotebasque.com'
 
-// Comptes suivis. Seuil en jours calendaires (week-end compris : 4 j absorbe un pont).
-const COMPTES = [
-  { source: 'Pennylane_LOCATION_SAISONNIERE', agence: 'dcb',    label: 'Séquestre location saisonnière (Pennylane)', jours: 4,
-    action: 'Pennylane → Banque → CAISSE EPARGNE LOCATIONS SAISONNIERES : reconnecter la banque si la synchronisation est interrompue.' },
-  { source: 'Powens_courant',                agence: 'dcb',    label: 'Compte courant DCB (Pennylane)',            jours: 5,
-    action: 'Pennylane → Banque → CAISSE EPARGNE COURANT : reconnecter la banque (consentement DSP2 expiré, à renouveler tous les 180 jours).' },
-  { source: 'CaisseEpargne',                 agence: 'lauian', label: 'Lauïan — Caisse d\'Épargne (import CSV manuel)', jours: 10,
-    action: 'dcb-compta Lauïan → Banque : importer le dernier relevé CSV Caisse d\'Épargne.' },
-]
-
-function joursDepuis(iso: string) {
-  return Math.floor((Date.now() - new Date(iso + 'T12:00:00Z').getTime()) / 86400000)
-}
 function fmtDate(iso: string) {
   return new Date(iso + 'T12:00:00Z').toLocaleDateString('fr-FR', { day: 'numeric', month: 'long', year: 'numeric' })
 }
@@ -43,14 +31,9 @@ serve(async (req) => {
   const dryRun = body.dry_run === true
 
   const etat = []
-  for (const c of COMPTES) {
-    const { data, error } = await supabase.from('mouvement_bancaire')
-      .select('date_operation').eq('source', c.source).eq('agence', c.agence)
-      .order('date_operation', { ascending: false }).limit(1)
-    if (error) return json({ error: error.message }, 500)
-    const derniere = data?.[0]?.date_operation ?? null
-    const age = derniere ? joursDepuis(derniere) : null
-    etat.push({ ...c, derniere, age, muet: age == null || age > c.jours })
+  for (const c of COMPTES_SUIVIS) {
+    try { etat.push(await etatCompte(supabase, c)) }
+    catch (e) { return json({ error: (e as Error).message }, 500) }
   }
   const muets = etat.filter(e => e.muet)
   if (!muets.length) return json({ ok: true, muets: 0, etat })
