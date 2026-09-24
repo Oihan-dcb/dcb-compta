@@ -100,15 +100,15 @@ export default async function handler(req, res) {
     // ne touche pas au matching résa ci-dessus.
     const { lies: deboursLies } = await matcherDeboursProprietaires(AGENCE)
 
-    console.log(`[pennylane-mouvement-sync] ${AGENCE} — ${transactionsBrutes.length} tx récupérées, ${doublonsEvites} doublon(s) évité(s), ${importLog.inseres} importée(s), ${deboursLies} débours rapproché(s), mois traités: ${[...moisAtraiter].join(',')}`)
+    console.log(`[pennylane-mouvement-sync] ${AGENCE} — ${transactionsBrutes.length} tx récupérées, ${doublonsEvites} doublon(s) évité(s), ${importLog.inseres} nouvelle(s), ${importLog.ignores} déjà en base${importLog.erreurs ? `, ${importLog.erreurs} en erreur` : ''}, ${deboursLies} débours rapproché(s), mois traités: ${[...moisAtraiter].join(',')}`)
 
     await supabase.from('import_log').insert({
       type: 'pennylane_sequestre_saisonniere',
       agence: AGENCE,
-      statut: doublonsEvites > 0 ? 'partial' : 'success',
+      statut: importLog.erreurs > 0 ? 'partial' : 'success', // doublons évités = normal, pas un échec (I-152)
       nb_lignes_traitees: transactionsBrutes.length,
       nb_lignes_creees: importLog.inseres,
-      message: `${transactionsBrutes.length} tx récupérées, ${doublonsEvites} doublon(s) évité(s), ${importLog.inseres} importée(s), ${deboursLies} débours rapproché(s)`,
+      message: `${transactionsBrutes.length} tx récupérées, ${doublonsEvites} doublon(s) évité(s), ${importLog.inseres} nouvelle(s), ${importLog.ignores} déjà en base${importLog.erreurs ? `, ${importLog.erreurs} en erreur` : ''}, ${deboursLies} débours rapproché(s)`,
     })
 
     return res.json({ ok: true, agence: AGENCE, fetched: transactionsBrutes.length, doublonsEvites, import: importLog, matching: matchResults, deboursLies })

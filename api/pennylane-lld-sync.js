@@ -88,7 +88,7 @@ export default async function handler(req, res) {
     await supabase.from('import_log').insert({
       type: 'pennylane_lld_loyers',
       agence: AGENCE,
-      statut: doublonsEvites > 0 ? 'partial' : 'success',
+      statut: 'success', // doublons évités = normal, pas un échec (I-152)
       nb_lignes_traitees: transactionsBrutes.length,
       nb_lignes_creees: inseres,
       message: `${transactionsBrutes.length} tx récupérées, ${doublonsEvites} doublon(s) évité(s), ${inseres} importée(s), ${lies} lié(s)`,

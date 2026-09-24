@@ -101,15 +101,15 @@ export default async function handler(req, res) {
     // pourquoi (avant ce fix, un virement honoraires payé sur le courant ne remontait jamais).
     const { lies: honorairesLies, errors: honorairesErrors } = await matcherHonorairesProprietaires(AGENCE)
 
-    console.log(`[pennylane-courant-sync] ${AGENCE} — ${transactionsBrutes.length} tx récupérées, ${doublonsEvites} doublon(s) évité(s), ${importLog.inseres} importée(s), ${deboursLies} débours rapproché(s), ${honorairesLies} facture(s) honoraires/débours payée(s) auto`)
+    console.log(`[pennylane-courant-sync] ${AGENCE} — ${transactionsBrutes.length} tx récupérées, ${doublonsEvites} doublon(s) évité(s), ${importLog.inseres} nouvelle(s), ${importLog.ignores} déjà en base${importLog.erreurs ? `, ${importLog.erreurs} en erreur` : ''}, ${deboursLies} débours rapproché(s), ${honorairesLies} facture(s) honoraires/débours payée(s) auto`)
 
     await supabase.from('import_log').insert({
       type: 'pennylane_courant',
       agence: AGENCE,
-      statut: doublonsEvites > 0 || honorairesErrors?.length ? 'partial' : 'success',
+      statut: importLog.erreurs > 0 || honorairesErrors?.length ? 'partial' : 'success', // doublons évités = normal, pas un échec (I-152)
       nb_lignes_traitees: transactionsBrutes.length,
       nb_lignes_creees: importLog.inseres,
-      message: `${transactionsBrutes.length} tx récupérées, ${doublonsEvites} doublon(s) évité(s), ${importLog.inseres} importée(s), ${deboursLies} débours rapproché(s), ${honorairesLies} facture(s) honoraires/débours payée(s) auto${honorairesErrors?.length ? ` (${honorairesErrors.length} erreur(s) createPayment)` : ''}`,
+      message: `${transactionsBrutes.length} tx récupérées, ${doublonsEvites} doublon(s) évité(s), ${importLog.inseres} nouvelle(s), ${importLog.ignores} déjà en base${importLog.erreurs ? `, ${importLog.erreurs} en erreur` : ''}, ${deboursLies} débours rapproché(s), ${honorairesLies} facture(s) honoraires/débours payée(s) auto${honorairesErrors?.length ? ` (${honorairesErrors.length} erreur(s) createPayment)` : ''}`,
     })
 
     return res.json({ ok: true, agence: AGENCE, fetched: transactionsBrutes.length, doublonsEvites, import: importLog, deboursLies, honorairesLies, honorairesErrors })

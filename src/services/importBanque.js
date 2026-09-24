@@ -169,11 +169,19 @@ export async function importerMouvementsBancaires(rows, moisSelectionnes) {
   const BATCH = 100
   for (let i = 0; i < aImporter.length; i += BATCH) {
     const batch = aImporter.slice(i, i + BATCH)
-    const { error } = await supabase.from('mouvement_bancaire').upsert(batch.map(m => ({ ...m, agence: AGENCE })), { onConflict: 'numero_operation', ignoreDuplicates: true })
+    // .select('id') : avec ignoreDuplicates, seules les lignes RÉELLEMENT insérées sont renvoyées.
+    // Avant (audit I-152, 24/09/2026), tout le lot était compté « inséré » : le compte courant
+    // affichait « 196 importées » chaque nuit alors que plus rien n'arrivait depuis le 10/07
+    // (connexion bancaire Pennylane tombée) — la panne est restée invisible 2 mois et demi.
+    const { data, error } = await supabase.from('mouvement_bancaire').upsert(batch.map(m => ({ ...m, agence: AGENCE })), { onConflict: 'numero_operation', ignoreDuplicates: true }).select('id')
     if (error) {
       if (error.code === '23505') { log.ignores += batch.length }
       else { log.erreurs += batch.length; console.error('Import batch:', error.message) }
-    } else { log.inseres += batch.length }
+    } else {
+      const n = (data || []).length
+      log.inseres += n
+      log.ignores += batch.length - n
+    }
   }
   return log
 }
