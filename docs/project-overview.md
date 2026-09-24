@@ -10,7 +10,7 @@
 
 DCB Compta est une application comptable mensuelle pour une conciergerie de locations. Son cœur est la **ventilation** qui transforme chaque réservation en codes comptables (HON, FMEN, AUTO, LOY, VIR). Ces codes pilotent directement les factures propriétaires et les reversements.
 
-**Architecture CSV-first** : l'export CSV Hospitable est la source principale de données pour la comptabilité mensuelle. L'API Hospitable et les webhooks sont des sources secondaires d'enrichissement — utiles mais non indispensables à la cohérence comptable.
+**Source des réservations (mise à jour 24/09/2026)** : l'API Hospitable est la source réelle — cron `api/sync-reservations` (1 appel par mois M, M-1, M-2) + webhook `api/webhook-hospitable` (synchro de la seule résa concernée). L'ancienne architecture « CSV-first » n'est plus utilisée : aucun import CSV Hospitable n'apparaît dans `import_log`.
 
 **Le système est séquentiel et fragile** : une erreur en amont (mauvaise ventilation, mauvais matching) se propage silencieusement jusqu'aux factures et aux virements. Il présentait trois critiques structurels actifs : ventilation dupliquée en 3 versions dont une cassée (V2 alignée avec V1 ✅ — session 07/04/2026), double moteur de matching aux logiques divergentes, prestations hors forfait intégrées (`deduction_loy`, `haowner`, `debours_proprio` ✅ — `dcb_direct` : log interne par conception ✅). Module rapport mensuel propriétaires ajouté (mars 2026).
 

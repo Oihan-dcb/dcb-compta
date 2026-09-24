@@ -17,6 +17,7 @@
  * Auth : Bearer JWT Supabase valide requis (tout utilisateur authentifié).
  */
 
+import crypto from 'crypto'
 import { createClient } from '@supabase/supabase-js'
 // Noyau partagé (Étape 4, audit fusion des moteurs, 21/08/2026) — même pattern déjà
 // éprouvé en prod par api/matching-auto.js → src/services/rapprochement.js.
@@ -25,12 +26,16 @@ import { TVA_RATE, STATUTS_NON_VENTILABLES, ligneTVA, ligneHorsTVA, _calculerLig
 const SUPABASE_URL      = process.env.SUPABASE_URL || 'https://omuncchvypbtxkpalwcr.supabase.co'
 const SUPABASE_ANON_KEY = process.env.SUPABASE_ANON_KEY
 const SUPABASE_SRK      = process.env.SUPABASE_SERVICE_ROLE_KEY
+// Appels serveur à serveur (webhook Hospitable → recalcul d'une seule résa, I-149) : même
+// secret que api/sync-reservations.js, comparé en temps constant.
+const SERVER_SECRETS    = [process.env.HOSPITABLE_WEBHOOK_SECRET, process.env.CRON_SECRET].filter(Boolean)
 
 const STATUTS_VERROU_FACTURE  = ['envoye_evoliz']
 
 // ── Auth ──────────────────────────────────────────────────────────────────────
 
 async function verifyToken(token) {
+  if (token && SERVER_SECRETS.some(sec => sec.length === token.length && crypto.timingSafeEqual(Buffer.from(sec), Buffer.from(token)))) return true
   const r = await fetch(`${SUPABASE_URL}/auth/v1/user`, {
     headers: { apikey: SUPABASE_ANON_KEY, Authorization: 'Bearer ' + token },
   })

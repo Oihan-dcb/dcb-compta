@@ -199,6 +199,69 @@ function findBienByResa(resa, biens) {
 
 // ── Sync principal ───────────────────────────────────────────────────────────
 
+// Écrit UNE résa Hospitable (réservation + fees + payout synthétique Airbnb). Partagé par la
+// synchro du mois (syncMois) et la synchro unitaire du webhook (syncUneResa) — même logique.
+async function ecrireResa(resa, bien, mois) {
+  const parsed = parseReservation(resa, bien, mois);
+  const upsertBody = sanitize(parsed.guest_name ? parsed : { ...parsed, guest_name: undefined });
+
+  let resaId;
+  try {
+    const upserted = await sb('reservation?on_conflict=hospitable_id', {
+      method: 'POST',
+      prefer: 'return=representation,resolution=merge-duplicates',
+      body: JSON.stringify(upsertBody),
+    });
+    resaId = Array.isArray(upserted) ? upserted[0]?.id : upserted?.id;
+    if (!resaId) throw new Error('Upsert sans ID retourné');
+  } catch (e) {
+    throw new Error(`[upsert] ${e.message}`);
+  }
+
+  if (resa.financials?.host) {
+    try {
+      await syncFees(resaId, resa.financials.host);
+    } catch (e) {
+      console.error(`[sync-reservations] fees ${resa.code}:`, e.message);
+    }
+  }
+
+  // Payout synthétique Airbnb
+  if (resa.platform === 'airbnb' && parsed.fin_revenue && parsed.arrival_date && bien.gestion_loyer !== false) {
+    try {
+      const payoutId = resaId + '_airbnb_payout';
+      const payouts = await sb('payout_hospitable?on_conflict=hospitable_id', {
+        method: 'POST',
+        prefer: 'return=representation,resolution=merge-duplicates',
+        body: JSON.stringify({
+          hospitable_id:    payoutId,
+          platform:         'airbnb',
+          amount:           parsed.fin_revenue,
+          date_payout:      parsed.arrival_date,
+          mois_comptable:   parsed.mois_comptable,
+          // PAS de statut_matching ici : l'upsert merge-duplicates le réécrivait à
+          // 'en_attente' chaque nuit, y compris pour les payouts déjà rapprochés (438
+          // lignes avec mouvement_id mais statut 'en_attente' au 24/09/2026). À la
+          // création, le défaut de colonne vaut déjà 'en_attente' (audit I-149).
+        }),
+      });
+      const ph = Array.isArray(payouts) ? payouts[0] : payouts;
+      if (ph?.id) {
+        await sb('payout_reservation?on_conflict=payout_id,reservation_id', {
+          method: 'POST',
+          prefer: 'return=minimal,resolution=ignore-duplicates',
+          body: JSON.stringify({ payout_id: ph.id, reservation_id: resaId }),
+        }).catch(() => {});
+      }
+    } catch (e) {
+      throw new Error(`[payout_airbnb] ${e.message}`);
+    }
+  }
+
+  return resaId;
+}
+
+
 async function syncMois(mois, agence) {
   const log = { created: 0, updated: 0, errors: 0, total: 0, errorDetails: [] };
 
@@ -262,60 +325,7 @@ async function syncMois(mois, agence) {
     try {
       const bien = bienByHospId.get(resa.property_id) || findBienByResa(resa, biens);
       if (!bien) continue;
-
-      const parsed = parseReservation(resa, bien, mois);
-      const upsertBody = sanitize(parsed.guest_name ? parsed : { ...parsed, guest_name: undefined });
-
-      let resaId;
-      try {
-        const upserted = await sb('reservation?on_conflict=hospitable_id', {
-          method: 'POST',
-          prefer: 'return=representation,resolution=merge-duplicates',
-          body: JSON.stringify(upsertBody),
-        });
-        resaId = Array.isArray(upserted) ? upserted[0]?.id : upserted?.id;
-        if (!resaId) throw new Error('Upsert sans ID retourné');
-      } catch (e) {
-        throw new Error(`[upsert] ${e.message}`);
-      }
-
-      if (resa.financials?.host) {
-        try {
-          await syncFees(resaId, resa.financials.host);
-        } catch (e) {
-          console.error(`[sync-reservations] fees ${resa.code}:`, e.message);
-        }
-      }
-
-      // Payout synthétique Airbnb
-      if (resa.platform === 'airbnb' && parsed.fin_revenue && parsed.arrival_date && bien.gestion_loyer !== false) {
-        try {
-          const payoutId = resaId + '_airbnb_payout';
-          const payouts = await sb('payout_hospitable?on_conflict=hospitable_id', {
-            method: 'POST',
-            prefer: 'return=representation,resolution=merge-duplicates',
-            body: JSON.stringify({
-              hospitable_id:    payoutId,
-              platform:         'airbnb',
-              amount:           parsed.fin_revenue,
-              date_payout:      parsed.arrival_date,
-              mois_comptable:   parsed.mois_comptable,
-              statut_matching:  'en_attente',
-            }),
-          });
-          const ph = Array.isArray(payouts) ? payouts[0] : payouts;
-          if (ph?.id) {
-            await sb('payout_reservation?on_conflict=payout_id,reservation_id', {
-              method: 'POST',
-              prefer: 'return=minimal,resolution=ignore-duplicates',
-              body: JSON.stringify({ payout_id: ph.id, reservation_id: resaId }),
-            }).catch(() => {});
-          }
-        } catch (e) {
-          throw new Error(`[payout_airbnb] ${e.message}`);
-        }
-      }
-
+      await ecrireResa(resa, bien, mois);
       existingMap.has(resa.id) ? log.updated++ : log.created++;
     } catch (err) {
       console.error(`[sync-reservations] ✗ ${resa.code}:`, err.message);
@@ -344,6 +354,25 @@ async function syncMois(mois, agence) {
   return log;
 }
 
+// ── Synchro d'UNE résa (webhook) ─────────────────────────────────────────────
+// Avant (audit I-149, 24/09/2026) : chaque événement Hospitable relançait syncMois pour le
+// mois d'arrivée, pour les DEUX agences (~110s pour DCB en haute saison, 4351 synchros de mois
+// en 90 jours, 504 constatés). Ici : 1 appel Hospitable, la seule résa concernée, même écriture
+// (ecrireResa). Renvoie null si le bien n'est pas suivi (non listé / inconnu).
+async function syncUneResa(hospId) {
+  const r = await hospFetch(`/v2/reservations/${encodeURIComponent(hospId)}`, { include: 'financials,guest,properties' });
+  const resa = r?.data || r;
+  if (!resa?.id) throw new Error(`Résa Hospitable introuvable : ${hospId}`);
+  const propId = resa.property_id || resa.properties?.[0]?.id || null;
+  const biens = await sb(`bien?listed=eq.true&select=id,hospitable_id,hospitable_name,proprietaire_id,provision_ae_ref,forfait_dcb_ref,has_ae,agence,gestion_loyer,forfait_menage_proprio`);
+  const bien = (propId && biens.find(b => b.hospitable_id === propId)) || findBienByResa(resa, biens);
+  if (!bien) return null;
+  resa.property_id = bien.hospitable_id;
+  const mois = resa.arrival_date ? resa.arrival_date.substring(0, 7) : null;
+  const reservationId = await ecrireResa(resa, bien, mois);
+  return { reservation_id: reservationId, code: resa.code, agence: bien.agence, mois_comptable: mois };
+}
+
 // ── Handler ───────────────────────────────────────────────────────────────────
 
 export default async function handler(req, res) {
@@ -367,6 +396,18 @@ export default async function handler(req, res) {
     if (ALLOWED_EMAILS.length) {
       const { email } = await authRes.json();
       if (!ALLOWED_EMAILS.includes((email || '').toLowerCase())) return res.status(403).json({ error: 'Accès refusé' });
+    }
+  }
+
+  // Mode unitaire (webhook) : ?hospitable_id=<uuid résa Hospitable>
+  const hospIdParam = req.query?.hospitable_id || req.body?.hospitable_id;
+  if (hospIdParam) {
+    try {
+      const r = await syncUneResa(String(hospIdParam));
+      return res.json(r ? { ok: true, ...r } : { ok: true, skipped: 'bien_non_suivi' });
+    } catch (err) {
+      console.error('[sync-reservations] unitaire', hospIdParam, err.message);
+      return res.status(500).json({ error: err.message });
     }
   }
 

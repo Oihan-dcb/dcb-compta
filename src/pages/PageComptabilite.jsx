@@ -2066,6 +2066,20 @@ function SequestreCloture() {
           virByResa[v.reservation_id].push(v)
         }
       }
+      // Preuve de paiement actuelle = reservation_paiement.mouvement_id (rapprochement depuis mars
+      // 2026) : ventilation(VIR).mouvement_id n'est plus renseigné (0 % des résas Airbnb/Booking de
+      // mai à août 2026). Sans cette source, toute résa Airbnb était exclue d'office (audit I-149).
+      for (let i = 0; i < resaIds.length; i += 400) {
+        const { data: paies } = await supabase
+          .from('reservation_paiement')
+          .select('reservation_id, mouvement:mouvement_id(date_operation)')
+          .in('reservation_id', resaIds.slice(i, i + 400))
+          .not('mouvement_id', 'is', null)
+        for (const v of paies || []) {
+          if (!virByResa[v.reservation_id]) virByResa[v.reservation_id] = []
+          virByResa[v.reservation_id].push(v)
+        }
+      }
 
       // Airbnb sans VIRPayinProuvé = exclu. Booking sans VIRPayinProuvé = gardé si booking_payout_line connue
       resasAll = resasAll.filter(r => {

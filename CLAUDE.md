@@ -75,7 +75,7 @@ Le mot "VIR" designe 4 objets distincts. Utiliser systematiquement le nom offici
 | Nom officiel | Definition courte |
 |---|---|
 | **VIRProprio** | `ventilation.code='VIR'` — montant calcule a reverser au proprio (LOY + taxes) |
-| **VIRPayinProuvé** | VIRProprio rapproche a un mouvement bancaire (`mouvement_id IS NOT NULL`) — prouve que le payout Airbnb/Booking est arrive en banque. Condition SequestreCloture "Certain" Airbnb/Booking : `mouvement.date_operation <= dateCloture` |
+| **VIRPayinProuvé** | Résa dont le payout Airbnb/Booking est prouvé arrivé en banque. **Depuis mars 2026 la preuve vit dans `reservation_paiement.mouvement_id`** (rapprochement) ; `ventilation(VIR).mouvement_id` n'est plus renseigné (historique jan-fév 2026 seulement) — lire les DEUX (audit I-149). Condition SequestreCloture "Certain" Airbnb/Booking : `mouvement.date_operation <= dateCloture` |
 | **PAYIN** | `mouvement_bancaire` entrant — virement SEPA brut (Airbnb, Booking, Stripe, voyageur direct). Source du rapprochement qui cree VIRPayinProuve |
 | **VIRProprioReel** | Calcul residuel matrice de controle — ce que DCB peut reellement virer apres ses retenues (`fraisVIR`) |
 

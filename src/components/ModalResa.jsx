@@ -269,9 +269,22 @@ function VentilationEdit({ resa, ventil, onSaved, onCancel }) {
     try {
       // Facture envoyée = saisie figée (verrou cloture_bien)
       await verifierSaisieOuverte(resa.bien?.id || resa.bien_id, resa.mois_comptable)
-      await supabase.from('ventilation').delete().eq('reservation_id', resa.id)
+      // Liens bancaires / montant réel AE posés sur les lignes existantes : restaurés après
+      // réécriture, comme le fait le moteur automatique (api/ventiler.js _writeResa). Avant,
+      // une saisie manuelle les effaçait (audit I-149, 24/09/2026).
+      const { data: anciennes, error: selErr } = await supabase.from('ventilation')
+        .select('code, mouvement_id, montant_reel').eq('reservation_id', resa.id)
+      if (selErr) throw selErr
+      const aRestaurer = {}
+      for (const a of anciennes || []) {
+        if (a.mouvement_id != null || a.montant_reel != null) aRestaurer[a.code] = { mouvement_id: a.mouvement_id, montant_reel: a.montant_reel }
+      }
+      const { error: delErr } = await supabase.from('ventilation').delete().eq('reservation_id', resa.id)
+      if (delErr) throw delErr
+      // Lignes négatives conservées (remboursement, FMEN négatif, régularisation) : l'ancien
+      // filtre `ttc > 0` les supprimait en silence. Seules les lignes vides / à 0 sont ignorées.
       const lignes = lines
-        .filter(l => l.code && parseFloat(l.ttc) > 0)
+        .filter(l => l.code && Number.isFinite(parseFloat(l.ttc)) && parseFloat(l.ttc) !== 0)
         .map(l => ({
           reservation_id: resa.id,
           bien_id: resa.bien?.id,
@@ -281,7 +294,7 @@ function VentilationEdit({ resa, ventil, onSaved, onCancel }) {
           montant_ht: Math.round(parseFloat(l.ht || 0) * 100),
           montant_tva: Math.round(parseFloat(l.tva || 0) * 100),
           montant_ttc: Math.round(parseFloat(l.ttc || 0) * 100),
-          taux_tva: parseFloat(l.tva) > 0 ? 20 : 0,
+          taux_tva: Math.abs(parseFloat(l.tva) || 0) > 0 ? 20 : 0, // abs : une ligne négative garde sa TVA
           mois_comptable: resa.mois_comptable,
           calcul_source: 'manual',
         }))
@@ -289,8 +302,15 @@ function VentilationEdit({ resa, ventil, onSaved, onCancel }) {
         const { error } = await supabase.from('ventilation').insert(lignes)
         if (error) throw error
       }
+      for (const [code, patch] of Object.entries(aRestaurer)) {
+        if (!lignes.some(l => l.code === code)) continue
+        const clean = Object.fromEntries(Object.entries(patch).filter(([, v]) => v != null))
+        const { error: rErr } = await supabase.from('ventilation').update(clean).eq('reservation_id', resa.id).eq('code', code)
+        if (rErr) throw rErr
+      }
       // Saisie libre = ajustement manuel : verrou contre les recalculs auto (migration 226)
-      await supabase.from('reservation').update({ ventilation_calculee: true, ventilation_manuelle: true }).eq('id', resa.id)
+      const { error: flagErr } = await supabase.from('reservation').update({ ventilation_calculee: true, ventilation_manuelle: true }).eq('id', resa.id)
+      if (flagErr) throw flagErr
       if (onSaved) onSaved(false, { id: resa.id, ventilation: lignes, ventilation_calculee: true, ventilation_manuelle: true })
     } catch (err) {
       alert('Erreur : ' + err.message)
@@ -629,6 +649,9 @@ export default function ModalResa({ resa, onClose, onSaved }) {
     setSavingRevenu(true)
     try {
       const newVal = Math.round(parseFloat(revenuVal.replace(',', '.')) * 100)
+      if (!Number.isFinite(newVal)) throw new Error(`Montant invalide : "${revenuVal}"`)
+      // Même verrou que la saisie des lignes : bien/mois clôturé = saisie figée (I-149)
+      await verifierSaisieOuverte(resa.bien?.id || resa.bien_id, resa.mois_comptable)
       const { error: delErr } = await supabase.from('ventilation').delete().eq('reservation_id', resa.id)
       if (delErr) throw delErr
       const { data: updData, error: updErr } = await supabase.from('reservation').update({ fin_revenue: newVal, ventilation_calculee: false }).eq('id', resa.id).select('id, fin_revenue')
