@@ -40,6 +40,7 @@ export default function PageAutoEntrepreneurs() {
   const [error, setError] = useState(null)
   const [success, setSuccess] = useState(null)
   const [confirmModal, setConfirmModal] = useState(null)
+  const [showArchives, setShowArchives] = useState(false)
   // Heures staff
   const [heuresMois, setHeuresMois] = useState(() => new Date().toISOString().slice(0, 7))
   const [heuresAeId, setHeuresAeId] = useState(null)
@@ -602,17 +603,32 @@ export default function PageAutoEntrepreneurs() {
     finally { setSaving(false) }
   }
 
-  async function supprimer(id) {
-    // Archive (actif=false), jamais de suppression définitive — on doit tout conserver comme
-    // historique (décision Oïhan 23/08/2026). La suppression est de toute façon refusée en base
-    // dès qu'il existe missions / prestations / heures / contrat (migration 274, I-157).
+  // Archiver / réactiver — même fonctionnement que PowerHouse (fiche staff) : jamais de
+  // suppression définitive (décision Oïhan 23/08/2026, suppression refusée en base depuis la
+  // migration 274, I-157). L'accès de connexion suit : coupé à l'archivage, rétabli à la
+  // réactivation ; un échec est affiché (il était avalé en silence).
+  function archiverOuReactiver(ae) {
+    const reactive = ae.actif === false
+    const nom = `${ae.prenom || ''} ${ae.nom || ''}`.trim()
     setConfirmModal({
-      message: 'Archiver cet auto-entrepreneur ?\nIl disparaît du planning et des écrans actifs, mais sa fiche et son historique restent conservés (récupérable en le réactivant).',
+      message: reactive
+        ? `Réactiver ${nom} ?\nIl redevient visible dans le planning et les écrans actifs, et son accès de connexion est restauré.`
+        : `Archiver ${nom} ?\nIl disparaît du planning et des écrans actifs, son accès de connexion est coupé, mais sa fiche et son historique restent conservés (récupérable en le réactivant).`,
       onConfirm: async () => {
         setConfirmModal(null)
         try {
-          await saveAutoEntrepreneur({ id, actif: false })
-          await setAEAccessActif(id, false).catch(() => {}) // best-effort : coupe l'accès de connexion
+          await saveAutoEntrepreneur({ id: ae.id, actif: reactive })
+          let msg = reactive ? `${nom} réactivé ✓` : `${nom} archivé ✓`
+          if (ae.ae_user_id) {
+            try {
+              await setAEAccessActif(ae.id, reactive)
+              msg += reactive ? ', accès restauré' : ', accès de connexion coupé'
+            } catch (e) {
+              setError(`${reactive ? 'Réactivé' : 'Archivé'}, mais l'accès de connexion n'a pas pu être ${reactive ? 'restauré' : 'coupé'} : ${e.message}`)
+            }
+          }
+          setSuccess(msg)
+          setTimeout(() => setSuccess(null), 2500)
           await charger()
         }
         catch (err) { setError(err.message) }
@@ -855,7 +871,7 @@ export default function PageAutoEntrepreneurs() {
                 )}
               </div>
 
-              {aes.map(ae => (
+              {aes.filter(ae => ae.actif !== false).map(ae => (
                 <div key={ae.id} style={{ background: '#fff', borderRadius: 10, border: '1px solid #e5e7eb', padding: '14px 18px', display: 'flex', alignItems: 'center', gap: 16 }}>
                   <div style={{ width: 44, height: 44, borderRadius: 22, background: ae.actif ? '#1a3a6e' : '#9ca3af', color: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 16, fontWeight: 700, flexShrink: 0 }}>
                     {(ae.prenom?.[0] || ae.nom[0]).toUpperCase()}
@@ -880,10 +896,35 @@ export default function PageAutoEntrepreneurs() {
                       <button onClick={() => resetMdp(ae)} title={ae.ae_user_id ? 'Générer un lien de réinitialisation' : 'Créer l\'accès portail'} style={{ background: '#fff7ed', color: '#c2410c', border: '1px solid #fed7aa', borderRadius: 6, padding: '6px 10px', fontSize: 12, cursor: 'pointer' }}>🔑 {ae.ae_user_id ? 'Renvoi lien' : 'Créer accès'}</button>
                     )}
                     <button onClick={() => ouvrir(ae)} style={{ background: '#f3f4f6', border: 'none', borderRadius: 6, padding: '6px 12px', fontSize: 12, cursor: 'pointer', fontWeight: 600 }}>Modifier</button>
-                    <button onClick={() => supprimer(ae.id)} title="Archiver (jamais supprimé, réactivable)" style={{ background: '#fee2e2', color: '#dc2626', border: 'none', borderRadius: 6, padding: '6px 10px', fontSize: 12, cursor: 'pointer' }}>🗄️</button>
+                    <button onClick={() => archiverOuReactiver(ae)} title="Archiver (jamais supprimé, réactivable)" style={{ background: '#fff', color: '#dc2626', border: '1px solid #dc2626', borderRadius: 6, padding: '6px 10px', fontSize: 12, fontWeight: 700, cursor: 'pointer' }}>🗄️ Archiver</button>
                   </div>
                 </div>
               ))}
+
+              {/* Historique — AE / staff archivés (même présentation que PowerHouse) */}
+              {(() => {
+                const archives = aes.filter(ae => ae.actif === false)
+                return (
+                  <div style={{ marginTop: 10 }}>
+                    <button onClick={() => setShowArchives(v => !v)} style={{ background: 'none', border: 'none', color: '#9C8E7D', fontSize: 12, fontWeight: 700, cursor: 'pointer', padding: 0 }}>
+                      {showArchives ? '▾' : '▸'} 🗄️ Historique — archivés{archives.length ? ` (${archives.length})` : ''}
+                    </button>
+                    {showArchives && (archives.length === 0
+                      ? <div style={{ fontSize: 12, color: '#9C8E7D', marginTop: 10 }}>Aucun auto-entrepreneur archivé.</div>
+                      : <div style={{ display: 'flex', flexDirection: 'column', gap: 6, marginTop: 10 }}>
+                          {archives.map(ae => (
+                            <div key={ae.id} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '8px 12px', borderRadius: 8, background: '#F3F4F6', fontSize: 13 }}>
+                              <span style={{ opacity: .6 }}>🗄️</span>
+                              <span style={{ fontWeight: 600, color: '#6B7280', flex: 1 }}>{ae.prenom} {ae.nom}</span>
+                              <span style={{ fontSize: 10, color: '#9CA3AF', background: '#E5E7EB', borderRadius: 4, padding: '2px 6px' }}>{ae.type === 'staff' ? 'Staff DCB' : ae.type === 'gerant' ? 'Gérant' : 'AE'}</span>
+                              <button onClick={() => ouvrir(ae)} style={{ background: '#fff', border: '1px solid #e5e7eb', borderRadius: 6, padding: '4px 10px', fontSize: 12, cursor: 'pointer', fontWeight: 600 }}>Voir la fiche</button>
+                              <button onClick={() => archiverOuReactiver(ae)} style={{ background: '#fff', color: '#059669', border: '1px solid #059669', borderRadius: 6, padding: '4px 10px', fontSize: 12, fontWeight: 700, cursor: 'pointer' }}>♻️ Réactiver</button>
+                            </div>
+                          ))}
+                        </div>)}
+                  </div>
+                )
+              })()}
             </div>
           )}
 
