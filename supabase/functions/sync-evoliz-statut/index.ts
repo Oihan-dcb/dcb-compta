@@ -49,7 +49,7 @@ function htmlAlerte(lignes: NonEnvoyee[]) {
       <tr style="background:#FBF5E6"><th style="${th}">Mois</th><th style="${th}">Bien / propriétaire</th><th style="${th}">Evoliz</th><th style="${th}">Net à payer</th></tr>
       ${ls.map(l => `<tr><td style="${td}">${l.mois}<br><span style="color:#9C8E7D;font-size:11px">${l.agence}</span></td>
         <td style="${td}"><strong>${l.bien}</strong><br><span style="color:#9C8E7D;font-size:11px">${l.proprio}</span></td>
-        <td style="${td}">${l.numero}<br><span style="color:${l.statut_evoliz === 'filled' ? '#C0392B' : '#CC9933'};font-size:11px">${l.statut_evoliz === 'filled' ? 'brouillon' : 'validée, non envoyée'}</span></td>
+        <td style="${td}">${l.numero}<br><span style="color:${l.statut_evoliz === 'filled' ? '#C0392B' : '#CC9933'};font-size:11px">${l.statut_evoliz === 'filled' ? 'brouillon' : l.statut_evoliz === 'debours_non_envoye' ? 'demande de débours jamais envoyée' : 'validée, non envoyée'}</span></td>
         <td style="${td};font-weight:bold">${fmtEur(l.net_a_payer)}</td></tr>`).join('')}
     </table></td></tr>`
   const proprio = lignes.filter(l => l.proprio_paie), autres = lignes.filter(l => !l.proprio_paie)
@@ -58,7 +58,7 @@ function htmlAlerte(lignes: NonEnvoyee[]) {
   <table width="720" cellpadding="0" cellspacing="0" style="background:#fff;border-radius:10px;overflow:hidden;max-width:720px;width:100%">
     <tr><td style="background:#CC9933;padding:22px 28px;text-align:center;color:#fff">
       <div style="font-size:11px;letter-spacing:2px;text-transform:uppercase;opacity:.85">Destination Côte Basque</div>
-      <div style="font-size:18px;font-weight:bold;margin-top:6px">⚠ Factures honoraires jamais envoyées depuis Evoliz</div>
+      <div style="font-size:18px;font-weight:bold;margin-top:6px">⚠ Factures / débours jamais envoyés au propriétaire</div>
       <div style="font-size:13px;opacity:.8;margin-top:4px">${lignes.length} facture(s) émise(s) il y a plus de ${JOURS_TOLERANCE} jours, encore en brouillon ou non envoyées</div>
     </td></tr>
     ${bloc('Le propriétaire paie lui-même', 'Risque réel : il ne peut pas payer une facture qu\'il n\'a pas reçue. Valider puis envoyer depuis Evoliz. Tant qu\'une facture est en brouillon, un paiement reçu ne peut pas y être enregistré (« This invoice is not payable »).', proprio)}
@@ -199,8 +199,55 @@ serve(async (req) => {
           })
         }
       }
+      // Demandes de débours jamais envoyées au propriétaire : un bien sans collecte de loyer passe
+      // 'envoye_evoliz' / id 'N/A' au push (canal officiel = mail « Info charges ») mais le mail
+      // n'est parti que si quelqu'un clique « Envoyer au proprio ». Sans ce contrôle, la demande
+      // n'est ni relancée (relance-debours lit 'envoye_proprio') ni rapprochée — cas B16, GASQ,
+      // PATXI juillet 2026, jamais réclamés (audit I-154, 24/09/2026).
+      const { data: deboursMuets } = await supabase.from('facture_evoliz')
+        .select('id, mois, total_ttc, updated_at, bien:bien_id(code, mode_encaissement), proprietaire:proprietaire_id(nom, prenom)')
+        .eq('agence', agence).eq('type_facture', 'debours').in('statut', ['valide', 'envoye_evoliz'])
+        .is('envoye_proprio_at', null).gt('total_ttc', 0)
+      for (const d of deboursMuets || []) {
+        if (new Date(d.updated_at) > limite) continue
+        const b = (d as any).bien, p = (d as any).proprietaire
+        nonEnvoyees.push({
+          agence, mois: d.mois, bien: b?.code || '—', proprio: [p?.prenom, p?.nom].filter(Boolean).join(' ') || '—',
+          numero: 'débours', statut_evoliz: 'debours_non_envoye', net_a_payer: (d.total_ttc || 0) / 100, proprio_paie: true,
+        })
+      }
+
+      // Factures rectificatives rattachées à une demande (ex. frais facturés à 20 % inclus dans une
+      // demande de débours) : soldées chez Evoliz dès que la demande liée est réglée.
+      let rectifSoldees = 0
+      const { data: rectifs } = await supabase.from('facture_evoliz')
+        .select('id, id_evoliz, reste_a_payer_evoliz, total_ttc_evoliz, liee:facture_liee_id(statut, date_paiement)')
+        .eq('agence', agence).eq('type_facture', 'rectificative').eq('statut', 'envoye_evoliz')
+        .not('facture_liee_id', 'is', null)
+      for (const r of rectifs || []) {
+        const liee = (r as any).liee
+        if (!liee || !['remboursement_recu', 'payee'].includes(liee.statut)) continue
+        const montant = r.reste_a_payer_evoliz ?? r.total_ttc_evoliz
+        if (!montant || body.dry_run) continue
+        const paydate = liee.date_paiement || dateTo
+        const res = await fetch(`${SUPABASE_URL}/functions/v1/evoliz-proxy`, {
+          method: 'POST',
+          headers: { apikey: SERVICE_KEY, Authorization: `Bearer ${SERVICE_KEY}`, 'Content-Type': 'application/json' },
+          body: JSON.stringify({ action: 'createPayment', companyId, payload: {
+            invoiceId: r.id_evoliz, paydate, paytypeid: 2, amount: montant / 100, label: 'Réglée avec la demande de débours liée' } }),
+        })
+        const j = await res.json().catch(() => ({}))
+        if (!res.ok || j?.error || (j?.status && j.status >= 400)) {
+          await supabase.from('journal_ops').insert({ categorie: 'facturation', action: 'rectificative_paiement_auto', source: 'cron', statut: 'error',
+            message: `Rectificative ${r.id} : createPayment Evoliz échoué — ${JSON.stringify(j).slice(0, 300)}` })
+          continue
+        }
+        await supabase.from('facture_evoliz').update({ statut: 'payee', date_paiement: paydate, reste_a_payer_evoliz: 0 }).eq('id', r.id).eq('statut', 'envoye_evoliz')
+        rectifSoldees++
+      }
+
       aSignaler.push(...nonEnvoyees)
-      results[agence] = { checked: factures.length, updated, updatedIds, enrichies, introuvables, non_envoyees: nonEnvoyees.length }
+      results[agence] = { checked: factures.length, updated, updatedIds, enrichies, introuvables, non_envoyees: nonEnvoyees.length, rectificatives_soldees: rectifSoldees }
     } catch (e: any) {
       results[agence] = { error: e.message }
     }
