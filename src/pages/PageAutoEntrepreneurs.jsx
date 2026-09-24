@@ -1,6 +1,6 @@
 import { AGENCE } from '../lib/agence'
 import { useState, useEffect, useRef } from 'react'
-import { getAutoEntrepreneurs, saveAutoEntrepreneur, deleteAutoEntrepreneur, createAEWithAuth, createAEAccess, resetAEPassword, setAEAccessActif } from '../services/autoEntrepreneurs'
+import { getAutoEntrepreneurs, saveAutoEntrepreneur, createAEWithAuth, createAEAccess, resetAEPassword, setAEAccessActif } from '../services/autoEntrepreneurs'
 import { supabase } from '../lib/supabase'
 import { authPost } from '../lib/authFetch'
 import RepartitionManon from '../components/RepartitionManon'
@@ -604,8 +604,8 @@ export default function PageAutoEntrepreneurs() {
 
   async function supprimer(id) {
     // Archive (actif=false), jamais de suppression définitive — on doit tout conserver comme
-    // historique (décision Oïhan 23/08/2026). deleteAutoEntrepreneur() reste dans le service
-    // pour un usage exceptionnel en console/SQL, mais plus jamais appelé depuis l'UI.
+    // historique (décision Oïhan 23/08/2026). La suppression est de toute façon refusée en base
+    // dès qu'il existe missions / prestations / heures / contrat (migration 274, I-157).
     setConfirmModal({
       message: 'Archiver cet auto-entrepreneur ?\nIl disparaît du planning et des écrans actifs, mais sa fiche et son historique restent conservés (récupérable en le réactivant).',
       onConfirm: async () => {
@@ -768,7 +768,14 @@ export default function PageAutoEntrepreneurs() {
       message: 'Supprimer ce type de prestation ?\nCette action est irréversible.',
       onConfirm: async () => {
         setConfirmModal(null)
-        await supabase.from('prestation_type').delete().eq('id', id)
+        setErrorPT(null)
+        // Un type déjà utilisé par des prestations ne peut pas être supprimé (clé étrangère) :
+        // l'échec passait inaperçu (erreur non lue). On l'archive à la place.
+        const { error } = await supabase.from('prestation_type').delete().eq('id', id)
+        if (error) {
+          const { error: e2 } = await supabase.from('prestation_type').update({ actif: false }).eq('id', id)
+          setErrorPT(e2 ? `Suppression impossible : ${error.message}` : 'Type déjà utilisé par des prestations : archivé (inactif) au lieu d\'être supprimé.')
+        }
         const { data: ptData } = await supabase.from('prestation_type').select('*').order('nom')
         setPrestationTypes(ptData || [])
       }

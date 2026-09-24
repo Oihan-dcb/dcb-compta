@@ -3,6 +3,7 @@ import { useState, useEffect } from 'react'
 import { supabase } from '../lib/supabase'
 import { useMoisPersisted } from '../hooks/useMoisPersisted'
 import { useMoisCloture, BanniereCloture } from '../hooks/useMoisCloture'
+import { isMoisCloture } from '../services/cloture'
 
 const STATUT_LABEL = { en_attente: 'En attente', valide: 'Validé', annule: 'Annulé' }
 const STATUT_COLOR = { en_attente: '#f59e0b', valide: '#16a34a', annule: '#dc2626' }
@@ -150,7 +151,16 @@ export default function PagePrestationsAE() {
         reservation_id: formEdit.reservation_id || null,
         updated_at: new Date().toISOString()
       }
-      await supabase.from('prestation_hors_forfait').update(updates).eq('id', editing)
+      // Déplacer la prestation vers un autre mois : ce mois-là ne doit pas être clôturé non plus
+      // (le contrôle moisBloque ne porte que sur le mois affiché).
+      if (updates.mois && updates.mois !== mois && await isMoisCloture(updates.mois, AGENCE, 'facturat')) {
+        throw new Error(`🔒 ${updates.mois} est clôturé (Facturation) — déplacement impossible.`)
+      }
+      // .select() : un refus RLS / clôture en base (0 ligne modifiée) ne renvoie pas d'erreur —
+      // l'écran affichait « enregistré » sans que rien n'ait changé.
+      const { data: maj, error } = await supabase.from('prestation_hors_forfait').update(updates).eq('id', editing).select('id')
+      if (error) throw error
+      if (!maj?.length) throw new Error('Modification refusée (droits ou clôture) — rien n\'a été enregistré.')
       setSuccess('Modifications enregistrées ✓')
       setEditing(null)
       await charger()

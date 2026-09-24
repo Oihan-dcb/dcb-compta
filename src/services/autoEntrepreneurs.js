@@ -34,14 +34,6 @@ export async function saveAutoEntrepreneur(ae) {
   }
 }
 
-export async function deleteAutoEntrepreneur(id) {
-  const { error } = await supabase
-    .from('auto_entrepreneur')
-    .delete()
-    .eq('id', id)
-  if (error) throw error
-}
-
 export async function createAEWithAuth(ae, email) {
   // 1. Créer la fiche AE en base (sans ae_user_id pour l'instant)
   const { data, error } = await supabase

@@ -26,7 +26,8 @@ async function fetchData(mois, bienIds = null) {
   const [{ data: missionsRaw, error: missErr }, { data: prestationsRaw, error: prestErr }] = await Promise.all([
     missQuery,
     supabase.from('prestation_hors_forfait')
-      .select(`id, mission_id, ae_id, montant, impute_salaire, prestation_type:prestation_type_id(nom)`)
+      .select(`id, mission_id, ae_id, bien_id, montant, impute_salaire, date_prestation, description, prestation_type:prestation_type_id(nom),
+        bien:bien_id(code, hospitable_name, agence), auto_entrepreneur:ae_id(id, prenom, nom, taux_horaire, type)`)
       .eq('mois', mois)
       .neq('statut', 'annule')
       .not('ae_id', 'is', null),
@@ -52,8 +53,17 @@ async function fetchData(mois, bienIds = null) {
   const missionsByAe = {}
   for (const m of missions) {
     const aeId = m.ae_id
-    if (!missionsByAe[aeId]) missionsByAe[aeId] = { ae: m.auto_entrepreneur, missions: [] }
+    if (!missionsByAe[aeId]) missionsByAe[aeId] = { ae: m.auto_entrepreneur, missions: [], extrasSansMission: [] }
     missionsByAe[aeId].missions.push(m)
+  }
+  // Extras sans mission (ex. forfait technique, course) : ignorés jusqu'au 24/09/2026 alors que
+  // le Portail AE les compte dans la facture de l'AE → relevé et facture AE ne tombaient pas au
+  // même total (audit segment AE, I-157). Agence = celle du bien de la prestation.
+  for (const p of prestations) {
+    if (p.mission_id || p.bien?.agence !== AGENCE) continue
+    if (bienIds && !bienIds.includes(p.bien_id)) continue
+    if (!missionsByAe[p.ae_id]) missionsByAe[p.ae_id] = { ae: p.auto_entrepreneur, missions: [], extrasSansMission: [] }
+    missionsByAe[p.ae_id].extrasSansMission.push(p)
   }
 
   return { missionsByAe, prestByMission, nomMois }
@@ -71,7 +81,7 @@ function styleRow(row, fill, bold = false, fontSize = 10, fontColor = BROWN) {
   })
 }
 
-function addSheet(wb, ae, missions, prestByMission, nomMois) {
+function addSheet(wb, ae, missions, prestByMission, nomMois, extrasSansMission = []) {
   const nomAE = ae ? `${ae.prenom || ''} ${ae.nom || ''}`.trim() : 'AE inconnu'
   const isStaff = ae?.type === 'staff'
   const tauxHoraire = ae?.taux_horaire ? (ae.taux_horaire / 100).toFixed(2) : '—'
@@ -184,6 +194,26 @@ function addSheet(wb, ae, missions, prestByMission, nomMois) {
     totalExtras += sousExtras
   }
 
+  // ── Extras sans mission ───────────────────────────────────────────────────
+  if (extrasSansMission.length) {
+    ws.addRow([])
+    const rx = ws.addRow(['EXTRAS HORS MISSION', '', '', '', ''])
+    ws.mergeCells(`A${rx.number}:E${rx.number}`)
+    styleRow(rx, BEIGE, true, 11)
+    let sousX = 0
+    for (const p of extrasSansMission) {
+      const montantExtra = !isStaff && p.montant ? p.montant / 100 : null
+      if (!isStaff) sousX += p.montant || 0
+      const re = ws.addRow([p.date_prestation || '', p.bien?.hospitable_name || p.bien?.code || '', (p.prestation_type?.nom || 'Extra') + (p.description ? ` — ${p.description}` : ''), '', montantExtra])
+      styleRow(re, WHITE, false)
+      if (montantExtra !== null) re.getCell(5).numFmt = '#,##0.00 "€"'
+    }
+    const rsx = ws.addRow(['Sous-total extras hors mission', '', '', '', !isStaff && sousX ? sousX / 100 : null])
+    styleRow(rsx, BEIGE, true)
+    if (!isStaff && sousX) rsx.getCell(5).numFmt = '#,##0.00 "€"'
+    totalExtras += sousX
+  }
+
   // ── Total général ─────────────────────────────────────────────────────────
   ws.addRow([])
   const rt = ws.addRow([
@@ -206,8 +236,8 @@ export async function exportAutoDebours(mois, bienIds = null) {
   wb.creator = 'DCB Compta'
   wb.created = new Date()
 
-  for (const [, { ae, missions }] of Object.entries(missionsByAe)) {
-    addSheet(wb, ae, missions, prestByMission, nomMois)
+  for (const [, { ae, missions, extrasSansMission }] of Object.entries(missionsByAe)) {
+    addSheet(wb, ae, missions, prestByMission, nomMois, extrasSansMission)
   }
 
   const buf = await wb.xlsx.writeBuffer()
@@ -223,7 +253,7 @@ export async function exportAutoDeboursCombined(mois, bienIds = null) {
 
   const lines = ['\uFEFF']
 
-  for (const [, { ae, missions }] of Object.entries(missionsByAe)) {
+  for (const [, { ae, missions, extrasSansMission = [] }] of Object.entries(missionsByAe)) {
     const nomAE = ae ? `${ae.prenom || ''} ${ae.nom || ''}`.trim() : 'AE inconnu'
     const isStaff = ae?.type === 'staff'
     const tauxHoraire = ae?.taux_horaire ? (ae.taux_horaire / 100).toFixed(2) : '—'
@@ -265,6 +295,18 @@ export async function exportAutoDeboursCombined(mois, bienIds = null) {
       }
       lines.push(row([`Sous-total ${key}`, '', '', sousHeures ? sousHeures.toFixed(2) + ' h' : '', !isStaff && (sousMontant + sousExtras) ? ((sousMontant + sousExtras) / 100).toFixed(2) + ' EUR' : '']))
       totalHeures += sousHeures; totalMontant += sousMontant; totalExtras += sousExtras
+    }
+
+    if (extrasSansMission.length) {
+      lines.push(row([]))
+      lines.push(row(['EXTRAS HORS MISSION', '', '', '', '']))
+      let sousX = 0
+      for (const p of extrasSansMission) {
+        if (!isStaff) sousX += p.montant || 0
+        lines.push(row([p.date_prestation || '', p.bien?.hospitable_name || p.bien?.code || '', (p.prestation_type?.nom || 'Extra') + (p.description ? ` — ${p.description}` : ''), '', !isStaff && p.montant ? (p.montant / 100).toFixed(2) : '']))
+      }
+      lines.push(row(['Sous-total extras hors mission', '', '', '', !isStaff && sousX ? (sousX / 100).toFixed(2) + ' EUR' : '']))
+      totalExtras += sousX
     }
 
     lines.push(row([]))
