@@ -1817,6 +1817,14 @@ export async function envoyerEmailChargesProprio(facture) {
     const err = await res.text()
     throw new Error(`smtp-send: ${err}`)
   }
+  // Trace de l'envoi (24/09/2026) : sans elle, impossible de savoir si et à quelle adresse un
+  // récap charges est parti (cas 408P Belair, adresse erronée en août, aucune trace du récap).
+  await supabase.from('journal_ops').insert({
+    categorie: 'facturation', action: 'email_charges_envoye', source: 'app', statut: 'ok',
+    mois_comptable: facture.mois,
+    message: `Récap charges ${bienNom} ${facture.mois} envoyé à ${proprio.email}`,
+    meta: { facture_id: facture.id },
+  }).then(null, () => {})
   return true
 }
 
