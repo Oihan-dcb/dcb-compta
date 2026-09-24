@@ -240,14 +240,41 @@ async function _writeResa(resa, agence, supa, dryRun = false) {
 
 // ── Traitement mois complet (port de calculerVentilationMois) ─────────────────
 
+// Verrou PAR BIEN (depuis le 24/09/2026, I-146) — avant : une seule facture envoyée figeait TOUS
+// les biens du propriétaire. Cas GASQ (août) : resté en brouillon, mais jamais recalculé la nuit
+// parce que la facture B16 du même propriétaire était déjà envoyée → HON faux de 147,50€.
+// Un bien est verrouillé si :
+//   • cloture_bien active (bien, mois) — posée par bien à l'envoi Evoliz, groupes compris ;
+//   • OU facture honoraires envoyée qui le couvre : son bien_id, les biens du même
+//     groupe_facturation, ou — facture sans bien_id (ancienne facture groupée) — tous les
+//     biens du propriétaire (prudence).
+async function biensVerrouilles(mois, supa) {
+  const [{ data: clotures }, { data: factures }] = await Promise.all([
+    supa.from('cloture_bien').select('bien_id').eq('mois', mois).eq('active', true),
+    supa.from('facture_evoliz').select('proprietaire_id, bien_id').eq('mois', mois)
+      .eq('type_facture', 'honoraires').in('statut', STATUTS_VERROU_FACTURE),
+  ])
+  const verrou = new Set((clotures || []).map(c => c.bien_id).filter(Boolean))
+  const proprios = [...new Set((factures || []).map(f => f.proprietaire_id).filter(Boolean))]
+  if (proprios.length) {
+    const { data: biens } = await supa.from('bien').select('id, proprietaire_id, groupe_facturation').in('proprietaire_id', proprios)
+    const byId = new Map((biens || []).map(b => [b.id, b]))
+    for (const f of factures || []) {
+      if (!f.bien_id) {
+        for (const b of biens || []) if (b.proprietaire_id === f.proprietaire_id) verrou.add(b.id)
+        continue
+      }
+      verrou.add(f.bien_id)
+      const groupe = byId.get(f.bien_id)?.groupe_facturation
+      if (groupe) for (const b of biens || []) if (b.proprietaire_id === f.proprietaire_id && b.groupe_facturation === groupe) verrou.add(b.id)
+    }
+  }
+  return verrou
+}
+
 async function processMois(mois, agence, supa, dryRun = false) {
-  // Verrou factures
-  const { data: facturesVerrouillees } = await supa.from('facture_evoliz')
-    .select('proprietaire_id').eq('mois', mois).eq('type_facture', 'honoraires')
-    .in('statut', STATUTS_VERROU_FACTURE)
-  const proprietairesVerrouilles = new Set(
-    (facturesVerrouillees || []).map(f => f.proprietaire_id).filter(Boolean)
-  )
+  // Verrou factures (par bien)
+  const biensFiges = await biensVerrouilles(mois, supa)
 
   // Supprimer ventilations orphelines des resas annulées sans payout
   // ventilation_manuelle=false obligatoire : une ligne verrouillée manuellement (saisie humaine,
@@ -313,7 +340,7 @@ async function processMois(mois, agence, supa, dryRun = false) {
     .filter(r => r.bien != null && (r.bien.agence || agence) === agence)
 
   for (const resa of resasFiltrees) {
-    if (proprietairesVerrouilles.has(resa.bien?.proprietaire_id)) { skipped++; continue }
+    if (biensFiges.has(resa.bien_id)) { skipped++; continue }
     try {
       const lignesResa = await _writeResa(resa, agence, supa, dryRun)
       if (dryRun) lignesParResa.push({ code: resa.code, lignes: lignesResa })
@@ -397,6 +424,11 @@ export default async function handler(req, res) {
       const agenceResa = agenceParam || resa.bien?.agence || 'dcb'
       if (resa.bien?.agence && resa.bien.agence !== agenceResa) {
         return res.status(409).json({ error: `Agence ${agenceResa} ≠ agence du bien (${resa.bien.agence}) — résa non reventilée` })
+      }
+      // Même verrou par bien que processMois : une résa d'un bien déjà facturé (envoyé Evoliz /
+      // clôturé) ne se reventile pas en douce — l'écart passe par avoir/régularisation (I-144).
+      if (!dryRun && resa.mois_comptable && (await biensVerrouilles(resa.mois_comptable, supa)).has(resa.bien_id)) {
+        return res.status(409).json({ error: `Bien déjà facturé/clôturé pour ${resa.mois_comptable} — rouvrez la saisie depuis Facturation ou passez par une régularisation` })
       }
       const lignesResa = await _writeResa(resa, agenceResa, supa, dryRun)
       return res.json({ ok: true, dry_run: dryRun, ...(dryRun ? { lignes: lignesResa } : {}) })

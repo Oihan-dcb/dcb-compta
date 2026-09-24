@@ -251,11 +251,38 @@ async function calculerVentilationResa(resa: Resa, agence: string, supa: ReturnT
 
 // ── calculerVentilationMois ────────────────────────────────────────────────────
 
+// Verrou PAR BIEN (I-146, 24/09/2026) — même règle que biensVerrouilles() dans api/ventiler.js :
+// cloture_bien active, ou facture honoraires envoyée qui couvre le bien (bien_id, même
+// groupe_facturation, ou tous les biens du proprio si la facture n'a pas de bien_id). Avant, une
+// seule facture envoyée figeait TOUS les biens du propriétaire (cas GASQ bloqué par B16).
+async function biensVerrouilles(mois: string, supa: ReturnType<typeof createClient>): Promise<Set<string>> {
+  const [{ data: clotures }, { data: factures }] = await Promise.all([
+    supa.from('cloture_bien').select('bien_id').eq('mois', mois).eq('active', true),
+    supa.from('facture_evoliz').select('proprietaire_id, bien_id').eq('mois', mois)
+      .eq('type_facture', 'honoraires').in('statut', STATUTS_VERROU_FACTURE),
+  ])
+  const verrou = new Set<string>((clotures || []).map((c: { bien_id: string }) => c.bien_id).filter(Boolean))
+  const proprios = [...new Set((factures || []).map((f: { proprietaire_id: string }) => f.proprietaire_id).filter(Boolean))]
+  if (proprios.length) {
+    const { data: biens } = await supa.from('bien').select('id, proprietaire_id, groupe_facturation').in('proprietaire_id', proprios)
+    const liste = (biens || []) as { id: string; proprietaire_id: string; groupe_facturation: string | null }[]
+    const byId = new Map(liste.map(b => [b.id, b]))
+    for (const f of (factures || []) as { proprietaire_id: string; bien_id: string | null }[]) {
+      if (!f.bien_id) {
+        for (const b of liste) if (b.proprietaire_id === f.proprietaire_id) verrou.add(b.id)
+        continue
+      }
+      verrou.add(f.bien_id)
+      const groupe = byId.get(f.bien_id)?.groupe_facturation
+      if (groupe) for (const b of liste) if (b.proprietaire_id === f.proprietaire_id && b.groupe_facturation === groupe) verrou.add(b.id)
+    }
+  }
+  return verrou
+}
+
 async function calculerVentilationMois(mois: string, agence: string, supa: ReturnType<typeof createClient>, dryRun: boolean) {
-  // Verrou factures
-  const { data: facturesVerrouillees } = await supa.from('facture_evoliz')
-    .select('proprietaire_id').eq('mois', mois).eq('type_facture', 'honoraires').in('statut', STATUTS_VERROU_FACTURE)
-  const proprietairesVerrouilles = new Set((facturesVerrouillees || []).map((f: { proprietaire_id: string }) => f.proprietaire_id).filter(Boolean))
+  // Verrou factures (par bien)
+  const biensFiges = await biensVerrouilles(mois, supa)
 
   // Supprimer ventilations orphelines
   // ventilation_manuelle=false obligatoire : une ligne verrouillée manuellement (saisie humaine,
@@ -319,7 +346,7 @@ async function calculerVentilationMois(mois: string, agence: string, supa: Retur
   const lignesParResa: { code: string; lignes: LigneComparable[] | null }[] = []
 
   for (const resa of resasFiltrees) {
-    if (proprietairesVerrouilles.has(resa.bien?.proprietaire_id || '')) { skipped++; continue }
+    if (biensFiges.has(resa.bien_id)) { skipped++; continue }
     try {
       const lignesResa = await calculerVentilationResa(resa, agence, supa, dryRun)
       if (dryRun) lignesParResa.push({ code: resa.code, lignes: lignesResa })
