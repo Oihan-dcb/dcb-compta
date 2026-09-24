@@ -90,6 +90,19 @@ async function evolizListInvoices(companyId: string, dateFrom: string, dateTo: s
   return all
 }
 
+async function evolizCreatePayment(companyId: string, invoiceId: string, amount: number, paydate: string) {
+  const res = await fetch(`${SUPABASE_URL}/functions/v1/evoliz-proxy`, {
+    method: 'POST',
+    headers: { apikey: SERVICE_KEY, Authorization: `Bearer ${SERVICE_KEY}`, 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      action: 'createPayment', companyId,
+      payload: { invoiceId, paydate, amount, paytypeid: 6, label: 'Retenue sur le reversement (frais déduits du loyer)' },
+    }),
+  })
+  const json = await res.json().catch(() => ({}))
+  return { ok: res.ok && !json?.error && (json?.status === 200 || json?.status === 201), json }
+}
+
 serve(async (req) => {
   if (req.method === 'OPTIONS') return new Response('ok')
   let body: { agence?: string; alerte?: boolean; dry_run?: boolean } = {}
@@ -112,7 +125,7 @@ serve(async (req) => {
       // (audit I-153 : 135 factures payées sans date, numéros T- de brouillon jamais remplacés).
       const { data: factures, error } = await supabase
         .from('facture_evoliz')
-        .select('id, id_evoliz, statut, mois, total_ttc, type_facture, date_emission, date_paiement, numero_facture, total_ttc_evoliz, reste_a_payer_evoliz, evoliz_synced_at, bien:bien_id(code, mode_encaissement), proprietaire:proprietaire_id(nom, prenom)')
+        .select('id, id_evoliz, statut, mois, total_ttc, type_facture, date_emission, date_paiement, numero_facture, total_ttc_evoliz, reste_a_payer_evoliz, evoliz_synced_at, montant_retenu_loyer, retenue_evoliz_payee_at, bien:bien_id(code, mode_encaissement), proprietaire:proprietaire_id(nom, prenom)')
         .eq('agence', agence)
         .in('statut', ['envoye_evoliz', 'payee'])
         .not('id_evoliz', 'is', null)
@@ -136,6 +149,19 @@ serve(async (req) => {
         const inv = statutById.get(String(f.id_evoliz))
         if (!inv) { introuvables++; continue } // supprimée chez Evoliz, ou émise avant dateFrom
         const cts = (v: unknown) => v == null ? null : Math.round(Number(v) * 100)
+        // Frais déjà retenus sur le reversement d'un bien mode proprio (migration 270) : posés
+        // comme paiement partiel dès que la facture est validée (Evoliz refuse un paiement sur un
+        // brouillon 'filled'). Une seule fois (retenue_evoliz_payee_at).
+        if ((f as any).montant_retenu_loyer > 0 && !(f as any).retenue_evoliz_payee_at
+            && inv.status !== 'filled' && inv.status !== 'paid' && (inv.total?.net_to_pay ?? 0) > 0 && !body.dry_run) {
+          const retenu = Math.min((f as any).montant_retenu_loyer, cts(inv.total?.net_to_pay) || 0)
+          const pay = await evolizCreatePayment(companyId, String(f.id_evoliz), retenu / 100, dateTo)
+          if (pay.ok) {
+            await supabase.from('facture_evoliz').update({ retenue_evoliz_payee_at: now.toISOString() }).eq('id', f.id)
+            inv.total.net_to_pay = Math.max(0, Number(inv.total.net_to_pay) - retenu / 100)
+            if (inv.total.net_to_pay <= 0) inv.status = 'paid'
+          }
+        }
         const payee = inv.status === 'paid' && (inv.total?.net_to_pay ?? 0) <= 0
         // Montant/numéro réels (Evoliz recalcule la TVA : écarts de centimes ; le numéro
         // définitif F- remplace le T- du brouillon à la validation)

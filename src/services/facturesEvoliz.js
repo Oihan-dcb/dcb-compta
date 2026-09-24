@@ -396,7 +396,20 @@ async function genererFactureGroupe(proprio, biens, mois, ctx) {
     }), { ht: 0, tva: 0, ttc: 0 })
 
   const com = sumByCode('HON')
-  const men = sumByCode('FMEN')
+  // FMEN : « le réel prime » (règle validée par Oïhan le 05/07/2026, déjà appliquée par les
+  // rapports, la vue mensuelle et la facture FMEN Lauïan) — FMEN.montant_reel (TTC) = FMEN prévu
+  // + AUTO prévu − AUTO réel, posé par update-ventilation-auto. Avant le 24/09/2026 la facture
+  // honoraires DCB lisait le prévu alors que la facture de débours facture l'AUTO réel : l'écart
+  // prévu/réel était payé deux fois (aide-ménage plus chère, ex. DUL +18,75 €/mois) ou jamais
+  // facturé (moins chère, ex. 408P −31,25 €/mois). Repli sur le prévu tant que le réel est inconnu
+  // (montant_reel NULL : pas de mission saisie, ou résa en ventilation_manuelle).
+  const men = ventilation
+    .filter(l => l.code === 'FMEN' && !osResaIds.has(l.reservation_id))
+    .reduce((s, l) => {
+      if (l.montant_reel == null) return { ht: s.ht + l.montant_ht, tva: s.tva + l.montant_tva, ttc: s.ttc + l.montant_ttc }
+      const ht = Math.round(l.montant_reel / 1.20)
+      return { ht: s.ht + ht, tva: s.tva + (l.montant_reel - ht), ttc: s.ttc + l.montant_reel }
+    }, { ht: 0, tva: 0, ttc: 0 })
   const mgt = sumByCode('MGT')
   const ae  = sumByCode('AE')
   const loy = sumByCode('LOY')
@@ -682,6 +695,12 @@ async function genererFactureGroupe(proprio, biens, mois, ctx) {
     total_tva: totalTVA,
     total_ttc: totalTTC,
     montant_reversement: montantReversement,
+    // Frais retenus sur le loyer d'un bien où le propriétaire paie lui-même (ex. GASQ, résas
+    // directes encaissées par DCB) : part de la facture déjà réglée — sync-evoliz-statut la pose
+    // comme paiement partiel à la validation, sinon le propriétaire la paierait deux fois (mig. 270).
+    montant_retenu_loyer: (fraisDeduire || [])
+      .filter(f => biens.find(b => b.id === f.bien_id)?.mode_encaissement === 'proprio')
+      .reduce((s, f) => s + ((fraisDeductionMap.get(f.id) || {}).deduit || 0), 0) || null,
     statut: totalHT === 0 && div.ht === 0 ? 'calcul_en_cours' : 'brouillon',
     solde_negatif: soldeNegatif,
     montant_reclame: soldeNegatif ? div.ht + resteAPayer : null,
@@ -1799,6 +1818,15 @@ export async function envoyerEmailChargesProprio(facture) {
                 <td style="padding:14px 16px;font-size:14px;font-weight:700;color:#2C2416">Total TTC</td>
                 <td style="padding:14px 16px;font-size:18px;font-weight:bold;color:#CC9933;text-align:right;font-family:'Courier New',monospace">${totalEur} €</td>
               </tr>
+              ${facture.montant_retenu_loyer > 0 ? `
+              <tr>
+                <td style="padding:10px 16px;font-size:13px;color:#2C2416">Déjà réglé par retenue sur votre reversement</td>
+                <td style="padding:10px 16px;font-size:14px;color:#2C2416;text-align:right;font-family:'Courier New',monospace">− ${(facture.montant_retenu_loyer / 100).toLocaleString('fr-FR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} €</td>
+              </tr>
+              <tr style="background:#FBF5E6">
+                <td style="padding:14px 16px;font-size:14px;font-weight:700;color:#2C2416">Reste à régler</td>
+                <td style="padding:14px 16px;font-size:18px;font-weight:bold;color:#CC9933;text-align:right;font-family:'Courier New',monospace">${((totalTTC - facture.montant_retenu_loyer) / 100).toLocaleString('fr-FR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} €</td>
+              </tr>` : ''}
             </tfoot>
           </table>
 
