@@ -101,7 +101,7 @@ serve(async (req) => {
 
   let query = supabase
     .from('facture_evoliz')
-    .select('id, mois, agence, type_facture, total_ttc, total_ht, nb_relances, date_emission, derniere_relance_at, id_evoliz, numero_facture, bien:bien_id(code, hospitable_name), proprietaire:proprietaire_id(nom, prenom, email)')
+    .select('id, mois, agence, type_facture, total_ttc, total_ht, solde_negatif, nb_relances, date_emission, derniere_relance_at, id_evoliz, numero_facture, bien:bien_id(code, hospitable_name, gestion_loyer), proprietaire:proprietaire_id(nom, prenom, email)')
     .in('type_facture', ['honoraires', 'debours'])
     .eq('statut', 'envoye_evoliz')
     // DCB uniquement pour l'instant : Lauïan n'a pas Pennylane, donc pas de vérité
@@ -116,6 +116,17 @@ serve(async (req) => {
   const results: unknown[] = []
 
   for (const f of factures || []) {
+    // Facture d'honoraires "nettée" : bien géré en gestion_loyer (mode_encaissement=dcb),
+    // les honoraires sont directement prélevés sur le loyer avant reversement au
+    // propriétaire (cf. commentaire Evoliz dans src/services/evoliz.js) — aucune somme
+    // réelle n'est due par virement. Evoliz ne verra donc jamais de paiement et
+    // sync-evoliz-statut ne passera jamais ces factures en 'payee' : sans cette
+    // exclusion, la relance boucle indéfiniment sur des biens qui ne doivent rien
+    // (cas AUREAN 2026-09-07, gestion_loyer=true, solde_negatif=false).
+    if (f.type_facture === 'honoraires' && f.bien?.gestion_loyer !== false && !f.solde_negatif) {
+      results.push({ id: f.id, action: 'skip_honoraires_nette_gestion_loyer' }); continue
+    }
+
     const nb = f.nb_relances || 0
     const refDate = f.derniere_relance_at || f.date_emission
     if (!refDate || nb >= 3) { results.push({ id: f.id, action: 'skip', nb }); continue }
