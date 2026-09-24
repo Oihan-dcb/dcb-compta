@@ -32,4 +32,8 @@ export const STATUTS_NON_VENTILABLES = [
   'checkpoint',
   'checkpoint voided',
   'request',
+  // Résa supprimée côté Hospitable (24/09/2026, demande Oïhan) : jamais effacée de la base —
+  // on garde l'historique — mais passée 'deleted' + fin_revenue=0 par sync-reservations,
+  // uniquement après un 404 explicite de l'API sur la résa elle-même (cf. marquerSupprimee).
+  'deleted',
 ]

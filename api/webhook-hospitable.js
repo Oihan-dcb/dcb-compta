@@ -33,7 +33,7 @@ export default async function handler(req, res) {
   const { action, data } = req.body || {};
   console.log(`[webhook-hospitable] event: ${action}`);
 
-  if (!['reservation.created', 'reservation.updated'].includes(action)) {
+  if (!['reservation.created', 'reservation.updated', 'reservation.deleted'].includes(action)) {
     return res.status(200).json({ ok: true, skipped: true, reason: 'event_ignored' });
   }
 
@@ -48,6 +48,8 @@ export default async function handler(req, res) {
       const r = await fetch(`${SELF_URL}/api/sync-reservations?hospitable_id=${encodeURIComponent(hospId)}&token=${WEBHOOK_SECRET}`, { method: 'POST' });
       const d = await r.json();
       if (r.ok && d?.skipped) return res.status(200).json({ ok: true, skipped: d.skipped });
+      // Résa supprimée côté Hospitable : passée 'deleted' (historique conservé), pas de repli
+      if (r.ok && d?.deleted != null) return res.status(200).json({ ok: true, mode: 'resa', ...d });
       if (r.ok && d?.reservation_id) {
         console.log(`[webhook-hospitable] ${action} ${d.code} (${d.agence} ${d.mois_comptable}) synchronisée`);
         const v = await fetch(`${SELF_URL}/api/ventiler`, {

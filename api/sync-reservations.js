@@ -334,6 +334,25 @@ async function syncMois(mois, agence) {
     }
   }
 
+  // 4b. Résas en base absentes de la réponse Hospitable → confirmées une par une (404)
+  log.deleted = 0;
+  try {
+    const biensIds = new Set(biens.map(b => b.id));
+    const vus = new Set(allResas.map(r => r.id));
+    const enBase = await sb(`reservation?mois_comptable=eq.${mois}&final_status=neq.deleted&select=id,hospitable_id,code,bien_id,mois_comptable,fin_revenue,final_status`);
+    const absentes = (enBase || []).filter(r => r.hospitable_id && biensIds.has(r.bien_id) && !vus.has(r.hospitable_id));
+    if (absentes.length > SEUIL_SUPPRESSIONS_PAR_MOIS) {
+      // Garde-fou : une absence massive = réponse API incomplète, pas des suppressions
+      log.errorDetails.push({ code: 'suppressions', message: `${absentes.length} résas absentes de Hospitable pour ${mois} — au-delà du seuil (${SEUIL_SUPPRESSIONS_PAR_MOIS}), aucune marquée` });
+    } else {
+      for (const row of absentes) {
+        if (await est404(row.hospitable_id)) { await marquerSupprimee(row); log.deleted++; }
+      }
+    }
+  } catch (e) {
+    log.errorDetails.push({ code: 'suppressions', message: e.message });
+  }
+
   // 5. Log import
   await sb('import_log', {
     method: 'POST',
@@ -347,11 +366,39 @@ async function syncMois(mois, agence) {
       nb_lignes_creees:      log.created,
       nb_lignes_mises_a_jour: log.updated,
       nb_erreurs:            log.errors,
-      message:               `[cron] Sync ${mois} ${agence} — ${log.created} créées, ${log.updated} mises à jour, ${log.errors} erreurs`,
+      message:               `[cron] Sync ${mois} ${agence} — ${log.created} créées, ${log.updated} mises à jour, ${log.errors} erreurs${log.deleted ? `, ${log.deleted} supprimée(s) côté Hospitable (statut deleted)` : ''}`,
     }),
   }).catch(() => {});
 
   return log;
+}
+
+// ── Résas supprimées côté Hospitable ─────────────────────────────────────────
+// Jamais d'effacement (historique demandé par Oïhan, 24/09/2026) : final_status='deleted',
+// fin_revenue=0, montant et statut d'avant tracés dans journal_ops. Ne s'applique qu'après un
+// 404 EXPLICITE de l'API sur la résa elle-même — une simple absence de la liste ne suffit pas.
+const SEUIL_SUPPRESSIONS_PAR_MOIS = 10;
+
+async function marquerSupprimee(row) {
+  await sb(`reservation?id=eq.${row.id}`, {
+    method: 'PATCH', prefer: 'return=minimal',
+    body: JSON.stringify({ final_status: 'deleted', fin_revenue: 0 }),
+  });
+  await sb('journal_ops', {
+    method: 'POST', prefer: 'return=minimal',
+    body: JSON.stringify({
+      categorie: 'import', action: 'delete_hospitable', statut: 'warning', source: 'sync_hospitable',
+      mois_comptable: row.mois_comptable, reservation_id: row.id, bien_id: row.bien_id,
+      message: `Réservation ${row.code || row.hospitable_id} supprimée côté Hospitable (404) — conservée en base, statut deleted`,
+      avant: { final_status: row.final_status, fin_revenue: row.fin_revenue },
+      apres: { final_status: 'deleted', fin_revenue: 0 },
+    }),
+  }).catch(() => {});
+}
+
+async function est404(hospId) {
+  try { await hospFetch(`/v2/reservations/${encodeURIComponent(hospId)}`); return false; }
+  catch (e) { return /^Hospitable 404\b/.test(e.message); }
 }
 
 // ── Synchro d'UNE résa (webhook) ─────────────────────────────────────────────
@@ -360,7 +407,16 @@ async function syncMois(mois, agence) {
 // en 90 jours, 504 constatés). Ici : 1 appel Hospitable, la seule résa concernée, même écriture
 // (ecrireResa). Renvoie null si le bien n'est pas suivi (non listé / inconnu).
 async function syncUneResa(hospId) {
-  const r = await hospFetch(`/v2/reservations/${encodeURIComponent(hospId)}`, { include: 'financials,guest,properties' });
+  let r;
+  try {
+    r = await hospFetch(`/v2/reservations/${encodeURIComponent(hospId)}`, { include: 'financials,guest,properties' });
+  } catch (e) {
+    if (!/^Hospitable 404\b/.test(e.message)) throw e;
+    // Supprimée côté Hospitable (ex. événement reservation.deleted) : statut, pas effacement
+    const rows = await sb(`reservation?hospitable_id=eq.${encodeURIComponent(hospId)}&final_status=neq.deleted&select=id,hospitable_id,code,bien_id,mois_comptable,fin_revenue,final_status`);
+    for (const row of rows || []) await marquerSupprimee(row);
+    return { deleted: (rows || []).length, hospitable_id: hospId };
+  }
   const resa = r?.data || r;
   if (!resa?.id) throw new Error(`Résa Hospitable introuvable : ${hospId}`);
   const propId = resa.property_id || resa.properties?.[0]?.id || null;
@@ -451,8 +507,9 @@ export default async function handler(req, res) {
     const log = logs.reduce((acc, l) => ({
       created: acc.created + l.created, updated: acc.updated + l.updated,
       errors: acc.errors + l.errors, total: acc.total + l.total,
+      deleted: acc.deleted + (l.deleted || 0),
       errorDetails: [...acc.errorDetails, ...l.errorDetails],
-    }), { created: 0, updated: 0, errors: 0, total: 0, errorDetails: [] });
+    }), { created: 0, updated: 0, errors: 0, total: 0, deleted: 0, errorDetails: [] });
     console.log(`[sync-reservations] ✓ créées:${log.created} mises à jour:${log.updated} erreurs:${log.errors}`);
     return res.json({ ok: true, mois: moisAtraiter, agence, ...log, details: logs });
   } catch (err) {
