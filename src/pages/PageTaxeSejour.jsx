@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react'
 import { supabase } from '../lib/supabase'
 import { AGENCE } from '../lib/agence'
+import { STATUTS_NON_VENTILABLES } from '../lib/constants'
 
 const CLASSIFICATIONS = [
   { value: 'non_classe', label: 'Non classé' },
@@ -23,6 +24,14 @@ function getQuarterRange(year, quarter) {
   }
 }
 
+// Taxe théorique d'une résa selon le tarif de la commune (en euros).
+// - Classé (forfait) : tarif €/pers/nuit, déjà TTC (taxes additionnelles incluses : 1★ 1,15 € =
+//   0,80 € × 1,44 à Biarritz) → tarif × personnes × nuits.
+// - Non classé (pourcentage) : le taux s'applique au coût HT de la nuitée PAR PERSONNE (CGCT
+//   L2333-30), plafonné, puis × coefficient additionnel. Avant le 24/09/2026 le taux était appliqué
+//   au prix de la nuit du logement entier puis × personnes → taxe surestimée dès que le plafond
+//   n'était pas atteint (300 €/nuit à 4 : 19,60 € au lieu de 15,00 €).
+// Mineurs exonérés mais non connus (Hospitable ne donne que le total de voyageurs).
 function calculTaxe(resa, config) {
   if (!config) return null
   const nbPersonnes = resa.guest_count || 1
@@ -30,10 +39,10 @@ function calculTaxe(resa, config) {
   if (config.type_calcul === 'forfait') {
     return config.tarif_pers_nuit * nbPersonnes * nbNuits
   }
-  // pourcentage (non classé) — fin_accommodation stocké en centimes
-  const prixNuitHT = nbNuits > 0 ? (resa.fin_accommodation || 0) / 100 / nbNuits : 0
-  const taxeParPersParNuit = Math.min(prixNuitHT * (config.taux_pct / 100), config.plafond_ht)
-  return taxeParPersParNuit * config.coeff_additionnel * nbPersonnes * nbNuits
+  // fin_accommodation stocké en centimes
+  const prixNuitParPers = (resa.fin_accommodation || 0) / 100 / nbNuits / nbPersonnes
+  const partParPersParNuit = Math.min(prixNuitParPers * (config.taux_pct / 100), config.plafond_ht)
+  return partParPersParNuit * (config.coeff_additionnel || 1) * nbPersonnes * nbNuits
 }
 
 function fmt(n) {
@@ -48,6 +57,9 @@ export default function PageTaxeSejour() {
   const [trimestre, setTrimestre] = useState(Math.ceil((now.getMonth() + 1) / 3))
   const [biens, setBiens] = useState([])
   const [reservations, setReservations] = useState([])
+  const [taxeEncaissee, setTaxeEncaissee] = useState({}) // reservation_id → euros (ventilation TAXE)
+  // Service pas encore lancé : aucun bien n'a gestion_taxe_sejour → aperçu sur tous les biens
+  const [apercu, setApercu] = useState(true)
   const [configs, setConfigs] = useState([]) // taxe_sejour_config rows
   const [loading, setLoading] = useState(false)
   const [editingConfig, setEditingConfig] = useState(null)
@@ -66,22 +78,37 @@ export default function PageTaxeSejour() {
 
     const [{ data: biensData }, { data: resaData }] = await Promise.all([
       supabase.from('bien')
-        .select('id, code, hospitable_name, ville, classification, agence, listed')
+        .select('id, code, hospitable_name, ville, classification, agence, listed, gestion_taxe_sejour')
         .eq('agence', AGENCE)
         .eq('listed', true)
-        .eq('gestion_taxe_sejour', true)
         .order('code'),
+      // Toutes les résas où l'agence encaisse la taxe : direct, manuel, Booking (qui ne la reverse
+      // pas lui-même — elle arrive dans le virement). Airbnb la collecte et la reverse seul.
+      // Avant : platform='direct' seulement (manuel + Booking oubliés, ~la moitié de la taxe)
+      // et résas annulées comptées.
       supabase.from('reservation')
-        .select('id, bien_id, guest_name, guest_count, arrival_date, departure_date, nights, fin_accommodation, platform')
+        .select('id, bien_id, guest_name, guest_count, arrival_date, departure_date, nights, fin_accommodation, platform, final_status, owner_stay')
         .eq('agence', AGENCE)
-        .eq('platform', 'direct')
+        .neq('platform', 'airbnb')
         .gte('arrival_date', debut)
         .lte('arrival_date', fin)
         .order('arrival_date'),
     ])
 
+    const resas = (resaData || []).filter(r => !STATUTS_NON_VENTILABLES.includes(r.final_status) && !r.owner_stay)
+    // Taxe réellement encaissée auprès du voyageur = lignes TAXE de la ventilation
+    const encaisse = {}
+    for (let i = 0; i < resas.length; i += 200) {
+      const ids = resas.slice(i, i + 200).map(r => r.id)
+      const { data: tx, error: txErr } = await supabase.from('ventilation')
+        .select('reservation_id, montant_ttc').eq('code', 'TAXE').in('reservation_id', ids)
+      if (txErr) { setError(txErr.message); break }
+      for (const t of tx || []) encaisse[t.reservation_id] = (encaisse[t.reservation_id] || 0) + (t.montant_ttc || 0) / 100
+    }
+
     setBiens(biensData || [])
-    setReservations(resaData || [])
+    setReservations(resas)
+    setTaxeEncaissee(encaisse)
     setLoading(false)
   }
 
@@ -143,10 +170,17 @@ export default function PageTaxeSejour() {
   }
 
   const { label: trimLabel } = getQuarterRange(annee, trimestre)
-  const totalGlobal = biens.reduce((sum, b) => {
+  const biensAffiches = biens.filter(b => (apercu || b.gestion_taxe_sejour) && resaParBien[b.id]?.length > 0)
+  let totalGlobal = 0, totalEncaisse = 0
+  const tarifsManquants = new Set()
+  for (const b of biensAffiches) {
     const config = getConfig(b.ville, b.classification || 'non_classe')
-    return sum + (resaParBien[b.id] || []).reduce((s, r) => s + (calculTaxe(r, config) || 0), 0)
-  }, 0)
+    if (!config) tarifsManquants.add(`${b.ville || '(commune vide)'} — ${CLASS_LABEL[b.classification || 'non_classe']}`)
+    for (const r of resaParBien[b.id]) {
+      totalGlobal += calculTaxe(r, config) || 0
+      totalEncaisse += taxeEncaissee[r.id] || 0
+    }
+  }
 
   const DEADLINES = {
     dcb:     { 1: '15 avril', 2: '15 juillet', 3: '15 octobre', 4: '15 janvier' },
@@ -204,28 +238,50 @@ export default function PageTaxeSejour() {
               📅 Reversement avant le <strong>{deadline}</strong>
             </div>
             {loading && <span style={{ fontSize: 12, color: 'var(--text-muted)' }}>Chargement…</span>}
-            <div style={{ marginLeft: 'auto', background: 'var(--header-bg)', border: '2px solid var(--brand)', borderRadius: 10, padding: '8px 20px', textAlign: 'center' }}>
-              <div style={{ fontSize: 10, color: 'var(--text-muted)', textTransform: 'uppercase' }}>Total à déclarer</div>
-              <div style={{ fontSize: 22, fontWeight: 700, color: 'var(--brand)' }}>{fmt(totalGlobal)}</div>
+            <label style={{ fontSize: 12, display: 'flex', alignItems: 'center', gap: 6, cursor: 'pointer' }}>
+              <input type="checkbox" checked={apercu} onChange={e => setApercu(e.target.checked)} />
+              Aperçu tous les biens <span style={{ color: 'var(--text-muted)' }}>(sinon : biens « gestion taxe de séjour » seulement)</span>
+            </label>
+            <div style={{ marginLeft: 'auto', display: 'flex', gap: 10 }}>
+              <div style={{ background: 'var(--header-bg)', border: '1px solid var(--border)', borderRadius: 10, padding: '8px 16px', textAlign: 'center' }}>
+                <div style={{ fontSize: 10, color: 'var(--text-muted)', textTransform: 'uppercase' }}>Encaissée voyageurs</div>
+                <div style={{ fontSize: 18, fontWeight: 700 }}>{fmt(totalEncaisse)}</div>
+              </div>
+              <div style={{ background: 'var(--header-bg)', border: '2px solid var(--brand)', borderRadius: 10, padding: '8px 16px', textAlign: 'center' }}>
+                <div style={{ fontSize: 10, color: 'var(--text-muted)', textTransform: 'uppercase' }}>Due (calcul tarif)</div>
+                <div style={{ fontSize: 22, fontWeight: 700, color: 'var(--brand)' }}>{fmt(totalGlobal)}</div>
+              </div>
+              <div style={{ background: Math.abs(totalEncaisse - totalGlobal) > 1 ? '#FEF3C7' : '#DCFCE7', borderRadius: 10, padding: '8px 16px', textAlign: 'center' }}>
+                <div style={{ fontSize: 10, color: 'var(--text-muted)', textTransform: 'uppercase' }}>Écart</div>
+                <div style={{ fontSize: 18, fontWeight: 700 }}>{fmt(totalEncaisse - totalGlobal)}</div>
+              </div>
             </div>
           </div>
 
-          <div style={{ background: 'var(--brand-pale)', border: '1px solid #E4A853', borderRadius: 8, padding: '10px 16px', marginBottom: 20, fontSize: 12, color: '#92400E' }}>
-            ℹ️ Seules les <strong>réservations directes</strong> sont concernées — Airbnb et Booking collectent la taxe eux-mêmes. Le nombre de voyageurs utilisé est <code>nb_guests</code> total (mineurs non déduits, à ajuster manuellement si besoin).
+          <div style={{ background: 'var(--brand-pale)', border: '1px solid #E4A853', borderRadius: 8, padding: '10px 16px', marginBottom: 12, fontSize: 12, color: '#92400E' }}>
+            ℹ️ Service <strong>pas encore lancé</strong> : aujourd'hui la taxe encaissée est reversée au propriétaire avec son loyer, qui la déclare lui-même.
+            Résas prises en compte : directes, manuelles et Booking (Booking ne reverse pas la taxe lui-même) — Airbnb la collecte et la reverse seul. Annulations et séjours propriétaires exclus.
+            « Encaissée » = taxe réellement facturée au voyageur ; « Due » = calcul selon le tarif de la commune (mineurs non déduits : Hospitable ne donne que le total de voyageurs).
           </div>
+          {tarifsManquants.size > 0 && (
+            <div style={{ background: '#FEE2E2', borderRadius: 8, padding: '10px 16px', marginBottom: 20, fontSize: 12, color: '#B91C1C' }}>
+              ⚠ Tarif manquant (onglet Tarifs) : {[...tarifsManquants].join(' · ')}
+            </div>
+          )}
 
           {reservations.length === 0 && !loading && (
             <div style={{ textAlign: 'center', padding: 60, background: 'var(--white)', borderRadius: 12, color: 'var(--text-muted)' }}>
               <div style={{ fontSize: 36, marginBottom: 12 }}>🏖️</div>
-              <div style={{ fontWeight: 600, marginBottom: 6 }}>Aucune réservation directe sur {trimLabel}</div>
-              <div style={{ fontSize: 13 }}>Les réservations avec platform = 'direct' apparaîtront ici</div>
+              <div style={{ fontWeight: 600, marginBottom: 6 }}>Aucune réservation concernée sur {trimLabel}</div>
+              <div style={{ fontSize: 13 }}>Réservations directes, manuelles et Booking (hors annulations)</div>
             </div>
           )}
 
-          {biens.filter(b => resaParBien[b.id]?.length > 0).map(b => {
+          {biensAffiches.map(b => {
             const config = getConfig(b.ville, b.classification || 'non_classe')
             const resas = resaParBien[b.id] || []
             const totalBien = resas.reduce((s, r) => s + (calculTaxe(r, config) || 0), 0)
+            const encaisseBien = resas.reduce((s, r) => s + (taxeEncaissee[r.id] || 0), 0)
 
             return (
               <div key={b.id} style={{ background: 'var(--white)', borderRadius: 12, marginBottom: 16, overflow: 'hidden', boxShadow: '0 1px 6px rgba(0,0,0,.06)' }}>
@@ -238,17 +294,22 @@ export default function PageTaxeSejour() {
                       {!config && ' ⚠ tarif manquant'}
                     </span>
                   </div>
-                  <div style={{ fontWeight: 700, fontSize: 15, color: 'var(--brand)' }}>{fmt(totalBien)}</div>
+                  <div style={{ fontSize: 13 }}>
+                    <span style={{ color: 'var(--text-muted)' }}>encaissée {fmt(encaisseBien)} · </span>
+                    <span style={{ fontWeight: 700, fontSize: 15, color: 'var(--brand)' }}>due {fmt(totalBien)}</span>
+                  </div>
                 </div>
                 <table style={{ width: '100%', borderCollapse: 'collapse' }}>
                   <thead>
                     <tr>
                       <th style={th}>Voyageur</th>
+                      <th style={th}>Canal</th>
                       <th style={th}>Arrivée</th>
                       <th style={{ ...th, textAlign: 'center' }}>Nuits</th>
                       <th style={{ ...th, textAlign: 'center' }}>Pers.</th>
                       <th style={{ ...th, textAlign: 'right' }}>Loyer HT</th>
-                      <th style={{ ...th, textAlign: 'right' }}>Taxe</th>
+                      <th style={{ ...th, textAlign: 'right' }}>Encaissée</th>
+                      <th style={{ ...th, textAlign: 'right' }}>Due</th>
                     </tr>
                   </thead>
                   <tbody>
@@ -257,18 +318,21 @@ export default function PageTaxeSejour() {
                       return (
                         <tr key={r.id}>
                           <td style={td}>{r.guest_name || '—'}</td>
+                          <td style={{ ...td, fontSize: 11, color: 'var(--text-muted)' }}>{r.platform}</td>
                           <td style={td}>{r.arrival_date ? new Date(r.arrival_date + 'T12:00:00').toLocaleDateString('fr-FR') : '—'}</td>
                           <td style={{ ...td, textAlign: 'center' }}>{r.nights || '—'}</td>
                           <td style={{ ...td, textAlign: 'center' }}>{r.guest_count || '—'}</td>
                           <td style={{ ...td, textAlign: 'right' }}>{r.fin_accommodation != null ? fmt(r.fin_accommodation / 100) : '—'}</td>
-                          <td style={{ ...td, textAlign: 'right', fontWeight: 600, color: taxe != null ? 'var(--brand)' : '#B91C1C' }}>{taxe != null ? fmt(taxe) : '⚠ config'}</td>
+                          <td style={{ ...td, textAlign: 'right', color: taxeEncaissee[r.id] ? 'var(--text)' : '#B91C1C' }}>{taxeEncaissee[r.id] ? fmt(taxeEncaissee[r.id]) : '0,00 € ⚠'}</td>
+                          <td style={{ ...td, textAlign: 'right', fontWeight: 600, color: taxe != null ? 'var(--brand)' : '#B91C1C' }}>{taxe != null ? fmt(taxe) : '⚠ tarif'}</td>
                         </tr>
                       )
                     })}
                   </tbody>
                   <tfoot>
                     <tr style={{ background: 'var(--bg)' }}>
-                      <td colSpan={5} style={{ ...td, fontWeight: 700 }}>Total {b.code}</td>
+                      <td colSpan={6} style={{ ...td, fontWeight: 700 }}>Total {b.code}</td>
+                      <td style={{ ...td, textAlign: 'right', fontWeight: 700 }}>{fmt(encaisseBien)}</td>
                       <td style={{ ...td, textAlign: 'right', fontWeight: 700, color: 'var(--brand)' }}>{fmt(totalBien)}</td>
                     </tr>
                   </tfoot>
