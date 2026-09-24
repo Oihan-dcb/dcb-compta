@@ -410,6 +410,15 @@ async function genererFactureGroupe(proprio, biens, mois, ctx) {
       const ht = Math.round(l.montant_reel / 1.20)
       return { ht: s.ht + ht, tva: s.tva + (l.montant_reel - ht), ttc: s.ttc + l.montant_reel }
     }, { ht: 0, tva: 0, ttc: 0 })
+  // HON + forfait ménage (tel que facturé : réel sinon prévu) des résas encaissées par DCB sur
+  // les biens où le propriétaire paie ses factures : déjà retenus sur le loyer reversé.
+  // (FMEN réel + AUTO réel = FMEN prévu + AUTO prévu : la retenue couvre exactement la facture
+  // et les débours.) Hors séjours propriétaires.
+  const retenuResasDcbProprio = ventilation
+    .filter(l => (l.code === 'HON' || l.code === 'FMEN') && !osResaIds.has(l.reservation_id) &&
+      biens.find(b => b.id === l.bien_id)?.mode_encaissement === 'proprio' &&
+      PLATFORMS_DCB_FACT.includes(resaPlatMapFact.get(l.reservation_id) || ''))
+    .reduce((s, l) => s + (l.code === 'FMEN' && l.montant_reel != null ? l.montant_reel : (l.montant_ttc || 0)), 0)
   const mgt = sumByCode('MGT')
   const ae  = sumByCode('AE')
   const loy = sumByCode('LOY')
@@ -742,12 +751,15 @@ async function genererFactureGroupe(proprio, biens, mois, ctx) {
     total_tva: totalTVA,
     total_ttc: totalTTC,
     montant_reversement: montantReversement,
-    // Frais retenus sur le loyer d'un bien où le propriétaire paie lui-même (ex. GASQ, résas
-    // directes encaissées par DCB) : part de la facture déjà réglée — sync-evoliz-statut la pose
-    // comme paiement partiel à la validation, sinon le propriétaire la paierait deux fois (mig. 270).
-    montant_retenu_loyer: (fraisDeduire || [])
+    // Part de la facture DÉJÀ RÉGLÉE par retenue sur le reversement, pour un bien où le
+    // propriétaire paie lui-même ses factures (ex. GASQ, résas directes encaissées par DCB) :
+    // frais retenus + HONORAIRES et FORFAIT MÉNAGE des résas encaissées par DCB (retenus du loyer
+    // avant reversement). sync-evoliz-statut la pose comme paiement partiel à la validation, sinon
+    // le propriétaire la paie deux fois (mig. 270). Les honoraires/ménage manquaient jusqu'au
+    // 24/09/2026 : GASQ août (résa Barrier) 1 055,48 € retenus ET réclamés, 506P et PATXI payés 2×.
+    montant_retenu_loyer: Math.min(totalTTC, retenuResasDcbProprio + (fraisDeduire || [])
       .filter(f => biens.find(b => b.id === f.bien_id)?.mode_encaissement === 'proprio')
-      .reduce((s, f) => s + ((fraisDeductionMap.get(f.id) || {}).deduit || 0), 0) || null,
+      .reduce((s, f) => s + ((fraisDeductionMap.get(f.id) || {}).deduit || 0), 0)) || null,
     statut: totalHT === 0 && div.ht === 0 ? 'calcul_en_cours' : 'brouillon',
     solde_negatif: soldeNegatif,
     montant_reclame: soldeNegatif ? div.ht + resteAPayer : null,
