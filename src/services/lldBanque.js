@@ -187,58 +187,9 @@ export async function mettreAJourMouvementLLD(id, payload) {
   if (error) throw error
 }
 
-// ── Mise à jour loyer_suivi depuis mouvements rapprochés ──────────────────────
-// Pour chaque mouvement rapproché (compte=loyers, credit>0), marque le loyer
-// correspondant comme reçu. N'envoie aucun email ni quittance.
-// Matching automatique DB-side : associe les mouvements non liés aux étudiants par nom/prénom
-// Appelable depuis n'importe quelle page (ne dépend pas de l'état React)
-export async function autoMatcherMouvementsLLD(agence = AGENCE) {
-  const norm = s => (s || '').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '')
-
-  const [{ data: mvts }, { data: etudiants }] = await Promise.all([
-    supabase
-      .from('lld_mouvement_bancaire')
-      .select('id, libelle, detail, credit, compte')
-      .eq('agence', agence)
-      .eq('statut', 'non_rapproche')
-      .is('etudiant_id', null),
-    supabase
-      .from('etudiant')
-      .select('id, nom, prenom, caution, loyer_nu, bien(code)')
-      .eq('agence', agence),
-  ])
-
-  if (!mvts?.length || !etudiants?.length) return { lies: 0 }
-
-  let lies = 0
-  for (const m of mvts) {
-    const haystack = norm(`${m.libelle || ''} ${m.detail || ''}`)
-    let match = etudiants.find(e => {
-      if (!norm(e.nom) || !haystack.includes(norm(e.nom))) return false
-      if (e.prenom) return haystack.includes(norm(e.prenom))
-      return true
-    })
-    if (!match) {
-      const candidats = etudiants.filter(e => e.bien?.code && haystack.includes(norm(e.bien.code)))
-      if (candidats.length === 1) match = candidats[0]
-    }
-    if (!match && m.credit) {
-      // Matching par montant : caution uniquement pour compte cautions, loyer_nu pour compte loyers
-      const candidats = m.compte === 'cautions'
-        ? etudiants.filter(e => e.caution === m.credit)
-        : etudiants.filter(e => e.loyer_nu === m.credit)
-      if (candidats.length === 1) match = candidats[0]
-    }
-    if (match) {
-      const { error } = await supabase
-        .from('lld_mouvement_bancaire')
-        .update({ etudiant_id: match.id, statut: 'rapproche' })
-        .eq('id', m.id)
-      if (!error) lies++
-    }
-  }
-  return { lies }
-}
+// Rapprochement des LOYERS / CAUTIONS : voir lldAuto.rapprocherLLD (moteur v2, lldCore.js).
+// Les anciennes autoMatcherMouvementsLLD / majLoyersDepuisVirements (nom + prénom obligatoires,
+// mois = date bancaire) ont été retirées le 24/09/2026 pour ne garder qu'un seul moteur (I-159).
 
 export async function autoMatcherVirementsProprioLLD(agence = AGENCE) {
   const norm = s => (s || '').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '')
@@ -329,46 +280,4 @@ export async function controleTresorerieLLD(mois, agence = AGENCE) {
       montant: l.montant_recu || 0,
     })),
   }
-}
-
-export async function majLoyersDepuisVirements(agence = AGENCE) {
-  // 1. Récupérer tous les mouvements rapprochés crédits sur le compte loyers
-  const { data: mvts, error: errMvts } = await supabase
-    .from('lld_mouvement_bancaire')
-    .select('id, etudiant_id, mois_releve, credit, date_operation')
-    .eq('agence', agence)
-    .eq('compte', 'loyers')
-    .eq('statut', 'rapproche')
-    .gt('credit', 0)
-  if (errMvts) throw errMvts
-
-  if (!mvts?.length) return { updated: 0, skipped: 0 }
-
-  // 2. Pour chaque mouvement, mettre à jour le loyer_suivi correspondant
-  let updated = 0, skipped = 0
-  for (const m of mvts) {
-    if (!m.etudiant_id || !m.mois_releve) { skipped++; continue }
-
-    // Chercher le loyer_suivi (attendu ou en_retard seulement)
-    const { data: loyer } = await supabase
-      .from('loyer_suivi')
-      .select('id, statut')
-      .eq('agence', agence)
-      .eq('etudiant_id', m.etudiant_id)
-      .eq('mois', m.mois_releve)
-      .in('statut', ['attendu', 'en_retard'])
-      .maybeSingle()
-
-    if (!loyer) { skipped++; continue }
-
-    const { error } = await supabase
-      .from('loyer_suivi')
-      .update({ statut: 'recu', montant_recu: m.credit, date_reception: m.date_operation })
-      .eq('id', loyer.id)
-
-    if (!error) updated++
-    else skipped++
-  }
-
-  return { updated, skipped }
 }

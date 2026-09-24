@@ -7,7 +7,7 @@
 // matching automatique LLD.
 //
 // ZÉRO duplication : réutilise src/services/lldBanque.js (importerMouvementsLLD,
-// autoMatcherMouvementsLLD, majLoyersDepuisVirements) — les mêmes fonctions
+// + rapprocherLLD de lldAuto.js, moteur v2) — les mêmes fonctions
 // qu'utilisait le bouton manuel Powens avant sa suppression.
 //
 // Compte Pennylane ciblé : CAISSE EPARGNE SEQUESTRE (id 14431420416) = sous-compte
@@ -15,7 +15,8 @@
 // encore connecté à Pennylane (validé avec Oïhan le 06/07/2026) — reste sur import CSV
 // manuel dans PageLocationsLongues jusqu'à nouvel ordre.
 
-import { importerMouvementsLLD, autoMatcherMouvementsLLD, majLoyersDepuisVirements } from '../src/services/lldBanque.js'
+import { importerMouvementsLLD } from '../src/services/lldBanque.js'
+import { rapprocherLLD } from '../src/services/lldAuto.js'
 import { fetchAllPennylaneTransactions } from '../src/services/pennylaneTransactions.js'
 import { filtrerTransactionsDupliquees } from '../src/services/pennylaneDedup.js'
 import { supabase } from '../src/lib/supabase.js'
@@ -80,8 +81,11 @@ export default async function handler(req, res) {
       .filter(Boolean)
 
     const inseres = await importerMouvementsLLD(rows, COMPTE)
-    const { lies } = await autoMatcherMouvementsLLD()
-    const { updated, skipped } = await majLoyersDepuisVirements()
+    // Moteur v2 (lldCore.js, I-159) : identifie le payeur (parents, plateformes, payeurs
+    // mémorisés), classe loyer / caution / frais et affecte le bon mois de loyer.
+    const r = await rapprocherLLD(AGENCE)
+    const lies = r.loyers_recus + r.loyers_partiels + r.cautions + r.frais + r.avances
+    const updated = r.loyers_recus, skipped = r.suggestions + r.non_reconnus
 
     console.log(`[pennylane-lld-sync] ${AGENCE} — ${transactionsBrutes.length} tx récupérées, ${doublonsEvites} doublon(s) évité(s), ${inseres} importée(s), ${lies} lié(s), ${updated} loyer(s) maj`)
 

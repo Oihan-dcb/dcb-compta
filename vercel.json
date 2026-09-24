@@ -32,6 +32,9 @@
     "api/pennylane-lld-sync.js": {
       "maxDuration": 60
     },
+    "api/lld-auto.js": {
+      "maxDuration": 120
+    },
     "api/pennylane-achats-statut.js": {
       "maxDuration": 60
     },
@@ -114,6 +117,10 @@
     {
       "path": "/api/pennylane-lld-sync",
       "schedule": "55 3 * * *"
+    },
+    {
+      "path": "/api/lld-auto",
+      "schedule": "30 4 * * *"
     },
     {
       "path": "/api/pennylane-achats-statut",

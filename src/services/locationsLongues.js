@@ -1,5 +1,5 @@
-import { supabase } from '../lib/supabase'
-import { AGENCE } from '../lib/agence'
+import { supabase } from '../lib/supabase.js'
+import { AGENCE } from '../lib/agence.js'
 
 // ── Étudiants ──────────────────────────────────────────────────────────────
 
@@ -25,6 +25,18 @@ export async function archiverEtudiant(id, archiver = true) {
 }
 
 export async function supprimerEtudiant(id) {
+  // Suppression réservée aux fiches créées par erreur, SANS historique : sinon on archive.
+  // (Avant le 24/09/2026 : effaçait loyers encaissés, virements, cautions, documents, journal —
+  // l'historique est aussi protégé en base, migration 275.)
+  const [{ count: nLoyers }, { count: nVir }, { count: nMvt }, { count: nDocs }] = await Promise.all([
+    supabase.from('loyer_suivi').select('id', { count: 'exact', head: true }).eq('etudiant_id', id).or('statut.eq.recu,montant_recu.gt.0'),
+    supabase.from('virement_proprio_suivi').select('id', { count: 'exact', head: true }).eq('etudiant_id', id).eq('statut', 'vire'),
+    supabase.from('lld_mouvement_bancaire').select('id', { count: 'exact', head: true }).eq('etudiant_id', id),
+    supabase.from('etudiant_document').select('id', { count: 'exact', head: true }).eq('etudiant_id', id),
+  ])
+  if ((nLoyers || 0) + (nVir || 0) + (nMvt || 0) + (nDocs || 0) > 0) {
+    throw new Error("Cet étudiant a un historique (loyers, virements, paiements ou documents) : archivez-le plutôt que de le supprimer.")
+  }
   await supabase.from('lld_log').delete().eq('etudiant_id', id)
   await supabase.from('loyer_suivi').delete().eq('etudiant_id', id)
   await supabase.from('virement_proprio_suivi').delete().eq('etudiant_id', id)
@@ -138,9 +150,11 @@ export async function initialiserLoyersMois(mois, agence = AGENCE) {
   const tous = await listerEtudiants(agence, null, false)
   const [y, m] = mois.split('-').map(Number)
   const dernierJour = `${mois}-${String(new Date(y, m, 0).getDate()).padStart(2, '0')}`
+  // + présent au moins un jour dans le mois (prorata > 0) : sans ce filtre, un étudiant « actif »
+  // arrivé en septembre recevait un loyer à 0 € pour juillet/août lors d'un rattrapage.
   const etudiants = tous.filter(e =>
-    e.statut === 'actif' ||
-    (e.statut === 'en_attente' && e.date_entree && e.date_entree <= dernierJour)
+    (e.statut === 'actif' || (e.statut === 'en_attente' && e.date_entree && e.date_entree <= dernierJour)) &&
+    prorataMois(e, mois).facteur > 0
   )
   if (!etudiants.length) return []
 

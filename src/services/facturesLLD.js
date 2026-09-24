@@ -1,6 +1,6 @@
-import { supabase } from '../lib/supabase'
-import { AGENCE } from '../lib/agence'
-import { montantTotalEtudiant } from './locationsLongues'
+import { supabase } from '../lib/supabase.js'
+import { AGENCE } from '../lib/agence.js'
+import { montantTotalEtudiant } from './locationsLongues.js'
 
 const TVA_RATE = 0.20
 

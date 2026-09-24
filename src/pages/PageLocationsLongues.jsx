@@ -4,6 +4,7 @@ import { useState, useEffect } from 'react'
 import { supabase } from '../lib/supabase'
 import MoisSelector from '../components/MoisSelector'
 import LastSyncBadge from '../components/LastSyncBadge'
+import LLDCeMois from '../components/LLDCeMois'
 import { formatMontant } from '../lib/hospitable'
 import { useMoisPersisted } from '../hooks/useMoisPersisted'
 import {
@@ -42,10 +43,10 @@ import {
   listerMoisDisposLLD,
   supprimerMouvementLLD,
   mettreAJourMouvementLLD,
-  majLoyersDepuisVirements,
   autoMatcherVirementsProprioLLD,
   controleTresorerieLLD,
 } from '../services/lldBanque'
+import { rapprocherLLD, rattacherMouvementLLD, dissocierMouvementLLD } from '../services/lldAuto'
 
 const moisCourant = new Date().toISOString().slice(0, 7)
 const RELANCES_ACTIVES_DEPUIS = '2026-05'
@@ -106,8 +107,9 @@ const FORM_ETUDIANT_EMPTY = {
 
 export default function PageLocationsLongues() {
   const [mois, setMois] = useMoisPersisted()
-  const [onglet, setOnglet] = useState(() => localStorage.getItem('tab_lld') || 'mensuel') // 'mensuel' | 'etudiants'
-  useEffect(() => localStorage.setItem('tab_lld', onglet), [onglet])
+  // « Ce mois-ci » par défaut (I-159) : la page d'action de Laura ; les autres onglets = détail
+  const [onglet, setOnglet] = useState(() => localStorage.getItem('tab_lld_v2') || 'cemois') // 'cemois' | 'mensuel' | 'suivi' | 'etudiants' | 'banque'
+  useEffect(() => localStorage.setItem('tab_lld_v2', onglet), [onglet])
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState(null)
   const [success, setSuccess] = useState(null)
@@ -452,14 +454,12 @@ export default function PageLocationsLongues() {
       const moisStr = banqueParsed.moisDispos.join(', ')
       const dernierMois = banqueParsed.moisDispos[banqueParsed.moisDispos.length - 1] || banqueMois
       setBanqueParsed(null)
+      // Rapprochement v2 (même moteur que la nuit : parents, plateformes, payeurs mémorisés,
+      // loyer / caution / frais, mois du libellé)
+      const r = await rapprocherLLD(AGENCE)
       await chargerBanque(banqueCompte, dernierMois)
       setBanqueMois(dernierMois)
-      // Auto-matching après import
-      const updatedMvts = [...banqueMouvements]
-      const lies = await autoLierMouvements(updatedMvts, updatedMvts)
-      setBanqueMouvements(updatedMvts)
-      const { updated } = await majLoyersDepuisVirements()
-      setSuccess(`${n} mouvement(s) importé(s) — ${lies} lié(s) — ${updated} loyer(s) mis à jour · compte ${banqueCompte} (${moisStr})`)
+      setSuccess(`${n} mouvement(s) importé(s) · compte ${banqueCompte} (${moisStr}) — ${resumeRapprochement(r)}`)
     } catch (e) { setError(e.message) }
     finally { setBanqueImporting(false) }
   }
@@ -472,77 +472,40 @@ export default function PageLocationsLongues() {
     } catch (e) { setError(e.message) }
   }
 
-  // Normalisation pour matching insensible aux accents
-  const norm = s => (s || '').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '')
-
-  // Matching automatique : associe les mouvements non liés à un étudiant
-  // Retourne le nombre de mouvements liés, met à jour la DB et l'état local
-  async function autoLierMouvements(mouvements, updatedMvts) {
-    const nonLies = mouvements.filter(m => !m.etudiant_id && !m.etudiant)
-    let lies = 0
-    for (const m of nonLies) {
-      const haystack = norm(`${m.libelle || ''} ${m.detail || ''}`)
-      // 1. Par nom + prénom dans libellé/détail
-      let match = etudiants.find(e => {
-        if (!norm(e.nom) || !haystack.includes(norm(e.nom))) return false
-        if (e.prenom) return haystack.includes(norm(e.prenom))
-        return true
-      })
-      // 2. Par code bien dans libellé/détail
-      if (!match) {
-        const candidats = etudiants.filter(e => e.bien?.code && haystack.includes(norm(e.bien.code)))
-        if (candidats.length === 1) match = candidats[0]
-      }
-      // 3. Par montant exact (caution pour compte cautions, loyer_nu pour compte loyers)
-      if (!match && m.credit) {
-        const candidats = m.compte === 'cautions'
-          ? etudiants.filter(e => e.caution === m.credit)
-          : etudiants.filter(e => e.loyer_nu === m.credit)
-        if (candidats.length === 1) match = candidats[0]
-      }
-      if (match) {
-        try {
-          await mettreAJourMouvementLLD(m.id, { etudiant_id: match.id, statut: 'rapproche' })
-          const idx = updatedMvts.findIndex(x => x.id === m.id)
-          if (idx >= 0) updatedMvts[idx] = { ...updatedMvts[idx], etudiant_id: match.id, statut: 'rapproche', etudiant: { id: match.id, nom: match.nom, prenom: match.prenom } }
-          lies++
-        } catch { /* continuer */ }
-      }
-    }
-    return lies
+  function resumeRapprochement(r) {
+    return `${r.loyers_recus} loyer(s) reçu(s), ${r.loyers_partiels} partiel(s), ${r.cautions} caution(s), ${r.frais} frais, ${r.suggestions} à confirmer, ${r.non_reconnus} non reconnu(s)`
   }
 
-  async function handleAutoLierCautions() {
-    const updatedMvts = [...banqueMouvements]
-    const lies = await autoLierMouvements(banqueMouvements, updatedMvts)
-    setBanqueMouvements(updatedMvts)
-    setSuccess(`${lies} mouvement(s) lié(s) automatiquement sur ${banqueMouvements.filter(m => !m.etudiant_id && !m.etudiant).length + lies} non liés`)
-  }
-
-  async function handleMajLoyersDepuisVirements() {
+  // Rapprochement automatique (bouton) — même moteur que la nuit (lldAuto.rapprocherLLD)
+  async function handleRapprocher() {
     setError(null)
     try {
-      const { updated, skipped } = await majLoyersDepuisVirements()
-      setSuccess(`${updated} loyer(s) marqué(s) "reçu" · ${skipped} ignoré(s) (déjà à jour, non rapproché ou mois absent)`)
-      // Recharger les loyers du mois courant pour refléter les changements
+      const r = await rapprocherLLD(AGENCE)
+      setSuccess(resumeRapprochement(r))
+      await chargerBanque(banqueCompte, banqueMois)
       if (mois) setLoyers(await listerLoyersMois(mois))
     } catch (e) { setError(e.message) }
   }
+  const handleAutoLierCautions = handleRapprocher
+  const handleMajLoyersDepuisVirements = handleRapprocher
 
   async function handleLierMouvement(id, etudiantId) {
     setError(null)
     try {
-      const payload = etudiantId
-        ? { etudiant_id: etudiantId, statut: 'rapproche' }
-        : { etudiant_id: null, statut: 'non_rapproche' }
-      await mettreAJourMouvementLLD(id, payload)
-      const etudiant = etudiantId ? etudiants.find(e => e.id === etudiantId) || null : null
-      setBanqueMouvements(prev => prev.map(m => m.id === id
-        ? { ...m, ...payload, etudiant: etudiant ? { id: etudiant.id, nom: etudiant.nom, prenom: etudiant.prenom } : null }
-        : m
-      ))
+      if (etudiantId) {
+        // Rattachement manuel : le payeur est MÉMORISÉ (reconnu seul les mois suivants) et le
+        // paiement est affecté au bon loyer / à la caution par le moteur
+        const r = await rattacherMouvementLLD(id, etudiantId, AGENCE)
+        setSuccess(`Rattaché${r.motif ? ` — payeur « ${r.motif} » mémorisé` : ''} · ${resumeRapprochement(r)}`)
+      } else {
+        await dissocierMouvementLLD(id)
+        setSuccess('Paiement dissocié (retiré du loyer / de la caution)')
+      }
+      await chargerBanque(banqueCompte, banqueMois)
+      if (mois) setLoyers(await listerLoyersMois(mois))
     } catch (e) { setError(e.message) }
   }
+
 
   // ── Dossier ────────────────────────────────────────────────────────────
   async function ouvrirDossier(e) {
@@ -789,7 +752,7 @@ export default function PageLocationsLongues() {
 
       {/* Onglets */}
       <div style={{ display: 'flex', gap: 4, marginBottom: 20, borderBottom: '2px solid var(--border)' }}>
-        {[['mensuel', 'Mensuel'], ['suivi', 'Suivi'], ['etudiants', 'Locataires'], ['banque', 'Banque LLD']].map(([key, label]) => (
+        {[['cemois', '⚡ Ce mois-ci'], ['mensuel', 'Mensuel'], ['suivi', 'Suivi'], ['etudiants', 'Locataires'], ['banque', 'Banque LLD']].map(([key, label]) => (
           <button key={key} onClick={() => setOnglet(key)}
             style={{
               padding: '8px 18px', border: 'none', cursor: 'pointer', fontSize: 14, fontWeight: 600,
@@ -805,7 +768,9 @@ export default function PageLocationsLongues() {
       {error && <div className="alert alert-error">{error}</div>}
       {success && <div className="alert alert-success">{success}</div>}
 
-      {loading && <div className="loading-state"><span className="spinner" /> Chargement…</div>}
+      {loading && onglet !== 'cemois' && <div className="loading-state"><span className="spinner" /> Chargement…</div>}
+
+      {onglet === 'cemois' && <LLDCeMois />}
 
       {/* ── Vue mensuelle ── */}
       {!loading && onglet === 'mensuel' && (
