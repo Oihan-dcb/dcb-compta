@@ -16,9 +16,9 @@
  *  { mois, rows, totals, alerts, metadata }
  */
 
-import { supabase } from '../lib/supabase'
-import { AGENCE } from '../lib/agence'
-import { STATUTS_NON_VENTILABLES } from '../lib/constants'
+import { supabase } from '../lib/supabase.js'
+import { AGENCE } from '../lib/agence.js'
+import { STATUTS_NON_VENTILABLES } from '../lib/constants.js'
 
 // Statuts de facture qui ne valent PAS preuve d'un reversement arrêté — même liste que
 // buildRapportData.js (FACTURE_STATUTS_NON_CONFIRMES). La requête facture_evoliz de ce
@@ -217,6 +217,31 @@ export async function buildComptaMensuelle(mois, bienIds = null) {
     ventilAgg[key].ttc += (v.montant_ttc || 0)
   }
   const vent = (bienId, code) => ventilAgg[`${bienId}::${code}`] || { ht: 0, tva: 0, ttc: 0 }
+
+  // Part « hors séquestre » au niveau de la RÉSA (et non plus du bien) : pour un bien où le
+  // propriétaire encaisse, seules ses résas Airbnb/Booking (payées au propriétaire) sont hors
+  // séquestre. Ses résas directes/manuelles sont encaissées par DCB : leurs HON/FMEN sont retenus
+  // sur le loyer et SONT dans le séquestre, donc à virer vers le courant. Avant le 25/09/2026 tout
+  // le bien était « hors séquestre » → ces honoraires restaient au séquestre sans justification
+  // (GASQ août, résa Barrier : 1 055,48 €), tout en étant aussi réclamés au propriétaire.
+  const PLATEFORMES_ENCAISSEES_DCB = ['direct', 'manual']
+  const platParResa = new Map(resas.map(r => [r.id, r.platform || '']))
+  const modeParBien = new Map((biens || []).map(b => [b.id, b.mode_encaissement]))
+  const ventilAggHS = {}
+  for (const v of ventils) {
+    if (!['HON', 'FMEN', 'COM'].includes(v.code)) continue
+    if (modeParBien.get(v.bien_id) !== 'proprio') continue
+    if (PLATEFORMES_ENCAISSEES_DCB.includes(platParResa.get(v.reservation_id) || '')) continue
+    const key = `${v.bien_id}::${v.code}`
+    if (!ventilAggHS[key]) ventilAggHS[key] = { ht: 0, tva: 0, ttc: 0 }
+    if (v.code === 'FMEN' && v.montant_reel != null) {
+      const ht = Math.round(v.montant_reel / 1.20)
+      ventilAggHS[key].ht += ht; ventilAggHS[key].tva += v.montant_reel - ht; ventilAggHS[key].ttc += v.montant_reel
+      continue
+    }
+    ventilAggHS[key].ht += v.montant_ht || 0; ventilAggHS[key].tva += v.montant_tva || 0; ventilAggHS[key].ttc += v.montant_ttc || 0
+  }
+  const ventHS = (bienId, code) => ventilAggHS[`${bienId}::${code}`] || { ht: 0, tva: 0, ttc: 0 }
 
   // AUTO HT par bien — calculé depuis mission_menage.montant par mois de réalisation
   // (règle métier : les ménages sont facturés par les AEs le mois de la réalisation,
@@ -614,6 +639,9 @@ export async function buildComptaMensuelle(mois, bienIds = null) {
       // bien ne transitent JAMAIS par le compte séquestre DCB — ce sont des créances à facturer/
       // recevoir du propriétaire, pas de l'argent déjà en séquestre prêt à virer vers le courant.
       hors_sequestre:    b.mode_encaissement === 'proprio',
+      // Montants réellement hors séquestre (résas payées au propriétaire) — cf. ventilAggHS
+      hs: (() => { const h = ventHS(b.id, 'HON'), f = ventHS(b.id, 'FMEN'), c = ventHS(b.id, 'COM')
+        return { hon_ht: h.ht, hon_tva: h.tva, hon_ttc: h.ttc, fmen_ht: f.ht, fmen_tva: f.tva, fmen_ttc: f.ttc, com_ht: c.ht, com_tva: c.tva, com_ttc: c.ttc } })(),
 
       nb_resas,
       nb_rapprochees,
@@ -696,18 +724,9 @@ export async function buildComptaMensuelle(mois, bienIds = null) {
   // Sous-total "hors séquestre" (mode_encaissement='proprio') — jamais d'argent physique en
   // séquestre pour ces biens ; à soustraire de totals.*_ttc pour obtenir le montant réellement
   // virable du compte séquestre vers le compte courant. Voir I-129.
-  const rowsHorsSequestre = rows.filter(r => r.hors_sequestre)
-  totals.hors_sequestre = {
-    hon_ht:   rowsHorsSequestre.reduce((s, r) => s + r.hon_ht,   0),
-    hon_tva:  rowsHorsSequestre.reduce((s, r) => s + r.hon_tva,  0),
-    hon_ttc:  rowsHorsSequestre.reduce((s, r) => s + r.hon_ttc,  0),
-    fmen_ht:  rowsHorsSequestre.reduce((s, r) => s + r.fmen_ht,  0),
-    fmen_tva: rowsHorsSequestre.reduce((s, r) => s + r.fmen_tva, 0),
-    fmen_ttc: rowsHorsSequestre.reduce((s, r) => s + r.fmen_ttc, 0),
-    com_ht:   rowsHorsSequestre.reduce((s, r) => s + r.com_ht,   0),
-    com_tva:  rowsHorsSequestre.reduce((s, r) => s + r.com_tva,  0),
-    com_ttc:  rowsHorsSequestre.reduce((s, r) => s + r.com_ttc,  0),
-  }
+  const hsSum = k => rows.reduce((s, r) => s + (r.hs?.[k] || 0), 0)
+  totals.hors_sequestre = Object.fromEntries(
+    ['hon_ht', 'hon_tva', 'hon_ttc', 'fmen_ht', 'fmen_tva', 'fmen_ttc', 'com_ht', 'com_tva', 'com_ttc'].map(k => [k, hsSum(k)]))
 
   // ── Phase 6 : alertes globales (dédupliquées au niveau proprio) ───────────
   const alerts = []
@@ -997,8 +1016,8 @@ export function exportComptaCSV(data, bienActif = {}) {
   // Dont hors séquestre (mode_encaissement='proprio') — à soustraire de TOTAL DCB pour obtenir le
   // montant réellement virable du compte séquestre vers le compte courant. Voir I-129.
   {
-    const actifHorsSeq = actifDCB.filter(r => r.hors_sequestre)
-    if (actifHorsSeq.length > 0) {
+    const actifHorsSeq = actifDCB.map(r => r.hs || {})
+    if (actifHorsSeq.some(h => (h.hon_ttc || 0) + (h.fmen_ttc || 0) + (h.com_ttc || 0) !== 0)) {
       rows.push([
         'DONT HORS SÉQUESTRE (proprio, à facturer)', '', '',
         '', '', '', '',

@@ -18,7 +18,7 @@ export async function exportFacturesEvoliz(mois, bienIds = null) {
     .select(selectStr)
     .eq('mois', mois)
     .eq('agence', AGENCE)
-    .neq('type_facture', 'lauian_fmen')
+    .not('type_facture', 'in', '(lauian_fmen,rectificative)')
     .order('created_at', { ascending: true })
   if (bienIds) query = query.or(`bien_id.in.(${bienIds.join(',')}),bien_id.is.null`)
   const { data: facturesDCB, error: fetchError } = await query
@@ -34,7 +34,20 @@ export async function exportFacturesEvoliz(mois, bienIds = null) {
     .order('created_at', { ascending: true })
   if (lauianError) throw new Error(`Export factures Lauian FMEN : ${lauianError.message}`)
 
-  const factures = [...(facturesDCB || []), ...(facturesLauian || [])]
+  // Rectificatives : rattachées au mois de la facture d'origine (mois), mais émises plus tard →
+  // pour le comptable, elles vont dans l'export du mois de leur ÉMISSION (date_emission).
+  const [ya, ma] = mois.split('-').map(Number)
+  const finMois = `${mois}-${String(new Date(ya, ma, 0).getDate()).padStart(2, '0')}`
+  const { data: rectificatives, error: rectErr } = await supabase
+    .from('facture_evoliz')
+    .select(selectStr)
+    .eq('agence', AGENCE)
+    .eq('type_facture', 'rectificative')
+    .gte('date_emission', `${mois}-01`).lte('date_emission', finMois)
+    .order('created_at', { ascending: true })
+  if (rectErr) throw new Error(`Export factures rectificatives : ${rectErr.message}`)
+
+  const factures = [...(facturesDCB || []), ...(rectificatives || []), ...(facturesLauian || [])]
     .filter(f => (f.lignes?.length || 0) > 0)
 
   const now = new Date()
@@ -59,7 +72,7 @@ export async function exportFacturesEvoliz(mois, bienIds = null) {
   ]
   const colonnesCSV = colonnes.map(q).join(';')
 
-  const typeLabels = { 'honoraires': 'Honoraires', 'debours': 'Débours', 'com': 'Commission', 'lauian_fmen': 'FMEN Lauian', 'lld': 'LLD' }
+  const typeLabels = { 'honoraires': 'Honoraires', 'debours': 'Débours', 'com': 'Commission', 'lauian_fmen': 'FMEN Lauian', 'lld': 'LLD', 'rectificative': 'Facture rectificative' }
   const statutLabels = {
     'brouillon': 'Brouillon', 'calcul_en_cours': 'Calcul en cours',
     'valide': 'Validée', 'envoi_en_cours': 'Envoi en cours',
@@ -94,6 +107,9 @@ export async function exportFacturesEvoliz(mois, bienIds = null) {
   // n'ont pas le même sens selon la nature).
   const SECTIONS = [
     { titre: 'LOCATIONS SAISONNIÈRES (Honoraires, Débours, Commission)', types: ['honoraires', 'debours', 'com'] },
+    // Factures complémentaires rectifiant une facture validée (frais passés en déduction, frais
+    // réclamés en débours…) — cf. I-153 / I-156
+    { titre: 'FACTURES RECTIFICATIVES', types: ['rectificative'] },
     { titre: 'LONGUE DURÉE — LLD', types: ['lld'] },
     { titre: 'FMEN LAUIAN (ménage facturé pour le compte de Lauian)', types: ['lauian_fmen'] },
   ]

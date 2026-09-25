@@ -800,7 +800,9 @@ export default function PageComptabilite() {
                 {/* Ligne "dont hors séquestre" — à soustraire de TOTAL DCB pour obtenir le montant
                     réellement virable du compte séquestre vers le compte courant (I-129) */}
                 {(() => {
-                  const actifsHorsSeq = actifsDCB.filter(r => r.hors_sequestre)
+                  // Part hors séquestre calculée par résa (r.hs) : les résas directes d'un bien
+                  // « proprio encaisse » sont dans le séquestre et restent virables (25/09/2026)
+                  const actifsHorsSeq = actifsDCB.map(r => r.hs || {})
                   const horsSeqSomme  = tsum(actifsHorsSeq, 'hon_ttc') + tsum(actifsHorsSeq, 'fmen_ttc') + tsum(actifsHorsSeq, 'com_ttc')
                   if (horsSeqSomme === 0) return null
                   return (

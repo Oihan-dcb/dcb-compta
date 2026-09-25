@@ -450,19 +450,17 @@ export async function genererSCTInternesLC(mois, agence = AGENCE) {
   if (!config?.seq_lc_iban)   throw new Error('IBAN séquestre LC non configuré (voir Agence → Comptes bancaires)')
   if (!config?.agence_iban)   throw new Error('IBAN compte agence non configuré (voir Agence → Comptes bancaires)')
 
-  // Totaux HON / COM / FMEN depuis ventilation
-  const { data: ventLines, error: errVent } = await supabase
-    .from('ventilation')
-    .select('code, montant_ttc, bien(agence)')
-    .eq('mois_comptable', mois)
-    .in('code', ['HON', 'COM', 'FMEN'])
-  if (errVent) throw errVent
-
-  const filtered = (ventLines || []).filter(l => (l.bien?.agence || agence) === agence && l.montant_ttc > 0)
-  const sum = (code) => filtered.filter(l => l.code === code).reduce((s, l) => s + l.montant_ttc, 0)
-  const totHON  = sum('HON')
-  const totCOM  = sum('COM')
-  const totFMEN = sum('FMEN')
+  // Totaux HON / COM / FMEN = MÊME calcul que la page Comptabilité (« TOTAL DCB − dont hors
+  // séquestre ») — une seule source (25/09/2026). L'ancienne formule sommait toute la ventilation,
+  // y compris les résas Airbnb/Booking des biens où le propriétaire encaisse (argent jamais entré
+  // au séquestre : 4 356 € juin, 12 096 € juillet, 12 170 € août), prenait le ménage prévu et
+  // ignorait les montants négatifs.
+  const { buildComptaMensuelle } = await import('./buildComptaMensuelle.js')
+  const compta = await buildComptaMensuelle(mois)
+  const t = compta.totals, hs = t.hors_sequestre || {}
+  const totHON  = (t.hon_ttc  || 0) - (hs.hon_ttc  || 0)
+  const totCOM  = (t.com_ttc  || 0) - (hs.com_ttc  || 0)
+  const totFMEN = (t.fmen_ttc || 0) - (hs.fmen_ttc || 0)
 
   // Frais Stripe du mois (brut - net)
   const { data: mvtsStripe, error: errMvt } = await supabase
