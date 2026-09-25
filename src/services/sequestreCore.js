@@ -39,7 +39,13 @@ export function classerSortie(mvt, ctx = {}) {
 
   if (mvt.canal === 'frais_bancaires' || /^\*?frais /.test(t) || t === 'frais') return { type: 'frais_bancaires', mois: moisDe(mvt.date_operation) }
   if (/^rem vir sepa du/.test(t)) return { type: 'reversement_groupe', mois: moisPrecedent(mvt.date_operation) }
-  if (/\blauian\b/.test(t)) return { type: 'inter_agence', mois }
+  if ((ctx.autreAgenceRe || /\blauian\b/).test(t)) {
+    // Vers l'autre agence : paiement d'un service qu'elle facture (forfait ménage / commission —
+    // ex. séquestre Lauïan → DCB « FMEN AVRIL 26 - LAUIAN ») ou reversement d'argent encaissé pour elle
+    const k = t.match(/\b(fmen|menage|com|commissions?|commisions?|hon|honoraires)\b/)
+    if (k && !/\b(reversement|stripe|resas?)\b/.test(t)) return { type: 'transfert_dcb', sous: k[1].startsWith('hon') ? 'hon' : (k[1] === 'fmen' || k[1] === 'menage') ? 'fmen' : 'com', mois }
+    return { type: 'inter_agence', mois }
+  }
   // Virements DCB : libellé qui COMMENCE par HON / FMEN / COM / COMMISSIONS (convention interne)
   // + variantes réellement utilisées en 2026 : « VIR SEPA DCB MENAGE », « COMM DISTRIBUTION DU MOIS
   // DE J… », « VIREMENT FMEN AVRIL »
@@ -63,7 +69,7 @@ export function classerSortie(mvt, ctx = {}) {
 // factures : [{ type_facture, montants: [cts…], proprio_nom }] — un virement d'un propriétaire
 // du montant exact d'une de ses factures est un paiement de facture (même sans mot-clé :
 // « VIR INST MME BELAIR DOMINIQUE (ref: 408P…) » = facture honoraires 408P août).
-export function classerEntree(mvt, factures = []) {
+export function classerEntree(mvt, factures = [], ctx = {}) {
   const t = norm(`${mvt.libelle || ''} ${mvt.detail || ''}`)
   if (/\bfrais stripe\b/.test(t)) return { type: 'frais_stripe_rembourses' }
   if (/^\*? ?remise (sur )?frais|remise frais/.test(t)) return { type: 'remise_frais_bancaires' }
@@ -85,7 +91,7 @@ export function classerEntree(mvt, factures = []) {
   if (f) return { type: f.type_facture === 'debours' ? 'remboursement_debours' : 'paiement_facture' }
   if (/\b(debours|rebours|debour)\b/.test(t)) return { type: 'remboursement_debours' }
   if (/\b(facturation|facture|honoraires)\b/.test(t)) return { type: 'paiement_facture' }
-  if (/\blauian\b/.test(t)) return { type: 'inter_agence' }
+  if ((ctx.autreAgenceRe || /\blauian\b/).test(t)) return { type: 'inter_agence' }
   return { type: 'non_affecte' }
 }
 

@@ -50,15 +50,49 @@ async function toutes(q) {
   return out
 }
 
-export async function soldeBancaireSequestre() {
+export async function soldeBancaireSequestre(pennylaneId = PENNYLANE_SEQUESTRE_LC) {
   const { data, error } = await supabase.functions.invoke('pennylane-proxy', { body: { action: 'listBankAccounts', payload: {} } })
   if (error) throw new Error(`Pennylane : ${error.message}`)
-  const compte = (data?.data?.items || []).find(a => String(a.id) === PENNYLANE_SEQUESTRE_LC)
+  const compte = (data?.data?.items || []).find(a => String(a.id) === String(pennylaneId))
   if (!compte) throw new Error('Compte séquestre location saisonnière introuvable dans Pennylane')
   return { montant: Math.round(Number(compte.balance) * 100), maj: compte.updated_at }
 }
 
-export async function justifierSequestre(agence = 'dcb', { date = new Date().toISOString().slice(0, 10), solde = null, moisDebut = MOIS_DEBUT } = {}) {
+// ── Fiche du compte séquestre de l'agence (migration 278) ─────────────────────────────────────
+// sources = [{source, du, au}] : périodes pendant lesquelles chaque source bancaire EST le relevé du
+// compte (jamais deux sources pour une même opération : recoupé avec le relevé de la banque)
+export async function compteSequestre(agence) {
+  const { data, error } = await supabase.from('sequestre_compte').select('*').eq('agence', agence).maybeSingle()
+  if (error) throw error
+  if (data) return data
+  // Repli historique DCB (avant la migration 278)
+  if (agence === 'dcb') return { agence, sources: [{ source: 'CaisseEpargne', du: '2025-12-24', au: '2026-07-03' }, { source: 'csv', du: '2025-12-24', au: '2026-07-03' }, { source: SOURCE_SEQUESTRE_LC, du: BASCULE_PENNYLANE, au: null }],
+    ouverture_date: '2025-12-23', ouverture_solde: 0, mois_debut: MOIS_DEBUT, pennylane_account_id: PENNYLANE_SEQUESTRE_LC, autres_agences_regex: 'lauian' }
+  throw new Error(`Aucun compte séquestre configuré pour l'agence ${agence} (table sequestre_compte)`)
+}
+const dansCompte = (compte, source, date) => (compte.sources || []).some(x => x.source === source && date >= x.du && (!x.au || date <= x.au))
+const filtreSources = compte => (compte.sources || []).map(x => `and(source.eq.${x.source},date_operation.gte.${x.du}${x.au ? `,date_operation.lte.${x.au}` : ''})`).join(',')
+
+// Solde du relevé importé = ouverture + mouvements. C'est lui qu'on justifie (chaque euro importé
+// attribué). Le solde de la banque (Pennylane, ou saisi à la main) sert de contrôle d'IMPORT : un
+// écart = mouvements pas encore importés (ex. Pennylane resynchronisé en journée) ou en double.
+async function soldeReleve(compte, date) {
+  const mv = await toutes(() => supabase.from('mouvement_bancaire').select('credit, debit').eq('agence', compte.agence)
+    .lte('date_operation', date).or(filtreSources(compte)).neq('statut_matching', 'ignore'))
+  return (compte.ouverture_solde || 0) + sum(mv, m => (m.credit || 0) - (m.debit || 0))
+}
+async function soldeCompte(compte, date) {
+  const releve = await soldeReleve(compte, date)
+  let banque = null
+  if (compte.pennylane_account_id) banque = await soldeBancaireSequestre(compte.pennylane_account_id)
+  else if (compte.solde_manuel != null) banque = { montant: compte.solde_manuel, maj: `${compte.solde_manuel_date} (saisi)`, date: compte.solde_manuel_date }
+  return { montant: releve, maj: `${date} (ouverture + relevé importé)`, banque }
+}
+
+export async function justifierSequestre(agence = 'dcb', { date = new Date().toISOString().slice(0, 10), solde = null, moisDebut = null } = {}) {
+  const compte = await compteSequestre(agence)
+  moisDebut = moisDebut || compte.mois_debut || MOIS_DEBUT
+  const autreAgenceRe = compte.autres_agences_regex ? new RegExp(`\\b(${compte.autres_agences_regex})\\b`) : null
   const moisCourant = moisDe(date)
   const MOIS_DEBUT_ = moisDebut, DEBUT_ = `${moisDebut}-01`
   const [aes, proprietaires, mvts, factures, reservations, affectations] = await Promise.all([
@@ -70,7 +104,7 @@ export async function justifierSequestre(agence = 'dcb', { date = new Date().toI
       // Avant la bascule : relevé CE importé en deux sources complémentaires (« CaisseEpargne » +
       // « csv », surtout les crédits de janvier-mars) — recoupé ligne à ligne avec le relevé complet
       // du compte le 25/09/2026 (630 opérations, 0 manquante après complément, doublons en 'ignore')
-      .or(`and(source.eq.${SOURCE_SEQUESTRE_LC},date_operation.gte.${BASCULE_PENNYLANE}),and(source.in.(CaisseEpargne,csv),date_operation.lt.${BASCULE_PENNYLANE})`)
+      .or(filtreSources(compte))
       .neq('statut_matching', 'ignore').order('date_operation')),
     toutes(() => supabase.from('facture_evoliz')
       .select('id, mois, type_facture, statut, total_ttc, total_ttc_evoliz, montant_reversement, bien_id, proprietaire_id, numero_facture, bien:bien_id(code), proprietaire:proprietaire_id(nom)')
@@ -80,11 +114,22 @@ export async function justifierSequestre(agence = 'dcb', { date = new Date().toI
       .eq('bien.agence', agence).gte('mois_comptable', MOIS_DEBUT_)),
     toutes(() => supabase.from('sequestre_affectation').select('mouvement_id, type, sous, mois, note')),
   ])
+  // Alias de libellés par tiers (migration 279) : mémorisés par la boîte « À affecter »
+  const { data: aliasLibelles } = await supabase.from('sequestre_alias').select('sens, motif, type, sous, tiers_type, tiers_id, note').eq('agence', agence)
+  const normTxt = t => (t || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim()
+  const parAlias = (m, sens) => {
+    const t = normTxt(`${m.libelle || ''} ${m.detail || ''}`)
+    const a = (aliasLibelles || []).find(x => (x.sens === sens || x.sens === 'les_deux') && t.includes(normTxt(x.motif)))
+    return a ? { type: a.type, sous: a.sous || undefined, tiers_id: a.tiers_id || undefined, note: a.note || `alias « ${a.motif} »`, regle: 'alias' } : null
+  }
   // Réaffectations manuelles (migration 277) : priment sur le classement par libellé
   const affecte = new Map(affectations.map(a => [a.mouvement_id, a]))
-  const forcer = (m, c) => {
+  // Priorité : affectation manuelle du mouvement > alias de libellé > règles automatiques
+  const forcer = (m, c, sens) => {
     const a = affecte.get(m.id)
-    return a ? { ...c, type: a.type, sous: a.sous ?? c.sous, mois: a.mois ?? c.mois, note: a.note } : c
+    if (a) return { ...c, type: a.type, sous: a.sous ?? c.sous, mois: a.mois ?? c.mois, note: a.note, regle: 'affectation_manuelle' }
+    const al = sens ? parAlias(m, sens) : null
+    return al ? { ...c, ...al } : { ...c, regle: 'auto' }
   }
   // Fiches propriétaire sans bien (co-titulaire, doublon resté après fusion — « Peres Hélène » =
   // co-titulaire de BURGY 416/602, « ELISSALT Hélène » doublon de la fiche ONGI) : un virement à leur
@@ -97,7 +142,7 @@ export async function justifierSequestre(agence = 'dcb', { date = new Date().toI
     const titulaire = proprietaires.find(q => avecBien.has(q.id) && emails(q).some(e => emails(p).includes(e)))
     if (titulaire) alias.set(p.id, titulaire.id)
   }
-  const ctx = { aes: aes.filter(a => a.type === 'ae'), proprietaires: proprietaires.filter(p => avecBien.has(p.id) || alias.has(p.id)) }
+  const ctx = { aes: aes.filter(a => a.type === 'ae'), proprietaires: proprietaires.filter(p => avecBien.has(p.id) || alias.has(p.id)), autreAgenceRe }
   const facturesMontants = factures.filter(f => ['honoraires', 'debours'].includes(f.type_facture)).map(f => ({
     type_facture: f.type_facture, proprio_nom: f.proprietaire?.nom, bien_code: f.bien?.code,
     montants: [f.total_ttc, f.total_ttc_evoliz].filter(Boolean),
@@ -130,9 +175,7 @@ export async function justifierSequestre(agence = 'dcb', { date = new Date().toI
     // Seuls les paiements arrivés SUR CE COMPTE comptent : un paiement reçu sur l'ancien séquestre
     // (BudgetBakers, avant le changement de banque du 28/01/2026) ou sur le courant est déjà dans le
     // solde repris (7 443,18 €) ou n'est pas au séquestre — sinon compté deux fois (25/09/2026 : −7,6 k€)
-    const src = p.mouvement.source, d = p.mouvement.date_operation
-    const surCeCompte = (src === SOURCE_SEQUESTRE_LC && d >= BASCULE_PENNYLANE) || (['CaisseEpargne', 'csv'].includes(src) && d < BASCULE_PENNYLANE)
-    if (!surCeCompte) continue
+    if (!dansCompte(compte, p.mouvement.source, p.mouvement.date_operation)) continue
     const r = resaDCB.get(p.reservation_id)
     encaisseParMois[r.mois_comptable] = (encaisseParMois[r.mois_comptable] || 0) + (p.montant || 0)
     const ep = (encProprio[r.mois_comptable] ||= {}); ep[r.bien?.proprietaire_id] = (ep[r.bien?.proprietaire_id] || 0) + (p.montant || 0)
@@ -165,7 +208,7 @@ export async function justifierSequestre(agence = 'dcb', { date = new Date().toI
   // ── Classement des mouvements ─────────────────────────────────────────────
   // Sortie rattachée à une réservation (remboursement voyageur prélevé par Stripe…) : déjà
   // déduite de l'encaissé de la résa (paiement négatif) — ni sortie à identifier, ni double compte
-  const sorties = mvts.filter(m => m.debit > 0).map(m => ({ ...m, ...(lieParMvt.has(m.id) ? { type: 'lie_resa', mois: moisDe(m.date_operation) } : forcer(m, classerSortie(m, ctx))) }))
+  const sorties = mvts.filter(m => m.debit > 0).map(m => ({ ...m, ...(lieParMvt.has(m.id) ? { type: 'lie_resa', mois: moisDe(m.date_operation) } : forcer(m, classerSortie(m, ctx), 'sortie')) }))
     .map(s => s.tiers_id && alias.has(s.tiers_id) ? { ...s, tiers_id: alias.get(s.tiers_id) } : s)
   const entrees = mvts.filter(m => m.credit > 0)
   const transits = apparierTransits(entrees.filter(e => !lieParMvt.has(e.id)), sorties.filter(s => s.type === 'inter_agence' || s.type === 'autre'))
@@ -181,7 +224,7 @@ export async function justifierSequestre(agence = 'dcb', { date = new Date().toI
       else if (reste > 100) horsMois.plateforme_non_rapprochee.push({ ...e, montant: reste, raison: 'part du virement non reliée à une réservation' })
       continue
     }
-    const c = forcer(e, classerEntree(e, facturesMontants))
+    const c = forcer(e, classerEntree(e, facturesMontants, ctx), 'entree')
     ;(horsMois[c.type] || horsMois.non_affecte).push({ ...e, ...c, montant: e.credit })
   }
   const sortiesMois = (types, mois) => sorties.filter(s => !transitIds.has(s.id) && types.includes(s.type) && s.mois === mois)
@@ -343,7 +386,7 @@ export async function justifierSequestre(agence = 'dcb', { date = new Date().toI
     { cle: 'stripe', label: 'Virements reçus inférieurs aux paiements reliés (frais Stripe, payout partiel Airbnb, lignes Stripe manquantes) / frais Stripe remboursés par DCB', montant: tot('frais_stripe_rembourses') },
     { cle: 'frais_bancaires', label: 'Frais bancaires (nets des remises)', montant: tot('remise_frais_bancaires') - fraisBancaires },
     { cle: 'reprise_ancien_sequestre', label: 'Solde repris de l\'ancien compte séquestre (changement de banque, janvier 2026) — à ventiler avec la clôture 2025', montant: tot('reprise_ancien_sequestre') },
-    { cle: 'autre_agence', label: 'Résas Lauïan encaissées sur ce séquestre (Stripe DCB) − déjà reversées au séquestre Lauïan', montant: sum(autreAgenceLiens, l => l.montant) - sum(versAutreAgence, s => s.debit) },
+    { cle: 'autre_agence', label: 'Réservations d\'une autre agence encaissées sur ce séquestre − déjà reversées à son séquestre', montant: sum(autreAgenceLiens, l => l.montant) - sum(versAutreAgence, s => s.debit) },
     { cle: 'annulees', label: 'Réservations annulées — net encaissé − remboursé (frais d\'annulation retenus / frais perdus)', montant: sum(annuleesLiens, l => l.montant) },
     { cle: 'plateformes_non_rapprochees', label: 'Encaissements plateformes non reliés à une réservation', montant: tot('plateforme_non_rapprochee') },
     { cle: 'entrees_non_affectees', label: 'Autres encaissements à identifier', montant: tot('non_affecte') + tot('inter_agence') },
@@ -415,7 +458,53 @@ export async function justifierSequestre(agence = 'dcb', { date = new Date().toI
   if (sejoursInconnus.length) anomalies.push({ cle: `sejour_payout_sans_resa_${sejoursInconnus.map(o => o.code).sort().join('_')}`, montant: sum(sejoursInconnus, o => o.montant),
     message: `Séjour(s) payé(s) par la plateforme mais absent(s) des réservations (non synchronisé par Hospitable — à créer, part propriétaire à reverser) : ${sejoursInconnus.map(o => `${o.code} ${o.guest || ''} arrivée ${o.checkin} ${eur(o.montant)}`).join(' ; ')}` })
   if (sum(sortiesAutres, s => s.debit) > 100) anomalies.push({ cle: 'sorties_a_identifier', montant: -sum(sortiesAutres, s => s.debit), message: `${sortiesAutres.length} sortie(s) non identifiée(s) : ${eur(sum(sortiesAutres, s => s.debit))}` })
-  const soldeBanque = solde ?? (await soldeBancaireSequestre())
+  const soldeBanque = solde ?? (await soldeCompte(compte, date))
+  // Contrôle d'IMPORT : solde de la banque ≠ relevé importé
+  let ecartImport = null
+  if (soldeBanque.banque) {
+    const refDate = soldeBanque.banque.date || date
+    const releveRef = refDate === date ? soldeBanque.montant : await soldeReleve(compte, refDate)
+    ecartImport = soldeBanque.banque.montant - releveRef
+    if (Math.abs(ecartImport) > 100) anomalies.push({ cle: `ecart_import_${refDate}`, montant: ecartImport,
+      message: `Relevé importé pas à jour : solde banque ${eur(soldeBanque.banque.montant)} (${soldeBanque.banque.maj}) ≠ ouverture + mouvements importés ${eur(releveRef)} — mouvements pas encore importés, ou importés en double` })
+  }
+
+  // ── Grand livre des mandants : chaque mouvement attribué à un ayant droit et à un mois ──────
+  const ecritures = []
+  const ec = (m, ligne, montant, ayant_droit, nature, extra = {}) => ecritures.push({ agence, mouvement_id: m.id, ligne, date_operation: m.date_operation, montant,
+    ayant_droit, nature, mois: extra.mois || null, tiers_id: extra.tiers_id || null, tiers_nom: extra.tiers_nom || null, regle: extra.regle || 'auto', detail: extra.detail || null })
+  const nomProprio = id => { const p = proprietaires.find(x => x.id === id); return p ? `${p.nom}${p.prenom ? ' ' + p.prenom : ''}` : null }
+  const nomAe = id => { const a = aes.find(x => x.id === id); return a ? `${a.prenom || ''} ${a.nom || ''}`.trim() : null }
+  const typeSortie = { reversement: 'proprietaire', reversement_hors_facture: 'proprietaire', transfert_dcb: 'agence', paiement_ae: 'ae', frais_bancaires: 'banque',
+    inter_agence: 'autre_agence', remboursement_voyageur: 'voyageur', lie_resa: 'voyageur', autre: 'a_affecter' }
+  for (const sm of sorties.filter(x => x.date_operation >= DEBUT_)) {
+    if (transitIds.has(sm.id)) { ec(sm, 0, -sm.debit, 'autre_agence', 'transit', { mois: sm.mois }); continue }
+    if (sm.type === 'reversement_groupe') {
+      const compo = (compoRemises || []).find(c => c.mois === sm.mois && c.total_cts === sm.debit)
+      if (!compo) { ec(sm, 0, -sm.debit, 'a_affecter', 'remise_groupee_sans_detail', { mois: sm.mois, detail: { conseil: 'importer le PDF « Détail Remise » (scripts/import-detail-remise.mjs)' } }); continue }
+      compo.lignes.forEach((l, i) => { const pid = l.proprietaire_id || factureProprio.get(l.cle)
+        ec(sm, i, -l.montant_cts, pid ? 'proprietaire' : 'a_affecter', 'reversement', { mois: sm.mois, tiers_id: pid, tiers_nom: nomProprio(pid) || l.nom, regle: 'detail_remise' }) })
+      continue
+    }
+    const ad = typeSortie[sm.type] || 'a_affecter'
+    ec(sm, 0, -sm.debit, ad, sm.sous || sm.type, { mois: sm.mois, tiers_id: sm.tiers_id, tiers_nom: ad === 'ae' ? nomAe(sm.tiers_id) : nomProprio(sm.tiers_id), regle: sm.regle })
+  }
+  const typeEntree = { remboursement_debours: 'proprietaire', paiement_facture: 'agence', frais_stripe_rembourses: 'agence', retour_dcb: 'agence', remise_frais_bancaires: 'banque',
+    inter_agence: 'autre_agence', reprise_ancien_sequestre: 'reprise', plateforme_non_rapprochee: 'a_affecter', non_affecte: 'a_affecter' }
+  const dejaEc = new Set()
+  for (const [k, lst] of Object.entries(horsMois)) for (const e of lst) {
+    const partielle = e.raison && lieParMvt.has(e.id)
+    // payout inférieur aux paiements reliés : l'écriture « réservations » est plafonnée au montant
+    // reçu plus bas — ne pas ajouter la différence une 2e fois
+    if (partielle && e.montant < 0) continue
+    ec(e, partielle ? 1 : 0, e.montant, typeEntree[k] || 'a_affecter', k, { mois: e.mois || moisDe(e.date_operation), regle: e.regle || 'auto', detail: e.raison ? { raison: e.raison } : null })
+    if (!partielle) dejaEc.add(e.id)
+  }
+  for (const e of entrees.filter(x => x.date_operation >= DEBUT_ && !dejaEc.has(x.id))) {
+    if (transitIds.has(e.id)) { ec(e, 0, e.credit, 'autre_agence', 'transit'); continue }
+    const lie = lieParMvt.get(e.id) || 0
+    if (lie) ec(e, 0, Math.min(e.credit, lie), 'reservations', 'encaissement_resa', { regle: 'rapprochement', mois: moisDe(e.date_operation) })
+  }
   const lignes = arr => arr.map(m => ({ date: m.date_operation, montant: m.montant ?? m.debit ?? m.credit, libelle: (m.libelle || '').replace(/\n/g, ' ').slice(0, 120), raison: m.raison }))
 
   return {
@@ -423,7 +512,8 @@ export async function justifierSequestre(agence = 'dcb', { date = new Date().toI
     solde_banque: soldeBanque,
     total_justifie: totalJustifie,
     ecart: soldeBanque.montant - totalJustifie,
-    poches, par_mois: parMois, anomalies, sorties_anterieures_total: totalSortiesAnterieures,
+    ecart_import: ecartImport,
+    poches, par_mois: parMois, anomalies, sorties_anterieures_total: totalSortiesAnterieures, ecritures,
     detail: {
       debours_non_rembourses: deboursOuverts.map(f => ({ mois: f.mois, bien: f.bien?.code, montant: f.total_ttc, statut: f.statut })),
       remboursements_debours: lignes(horsMois.remboursement_debours),
