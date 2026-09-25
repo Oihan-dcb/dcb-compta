@@ -221,3 +221,14 @@ Migration 283 + `src/services/sequestreCloture.js` + composant `SequestreCloture
 - Pour G2 (« figer la clôture au 30/09 ») : clôturer les mois dans l'ordre depuis `mois_debut` de la fiche Lauïan, puis
   « Clôturer l'exercice » le 01/10. Rien à coder côté Lauïan : il suffit que la fiche `sequestre_compte` Lauïan soit juste.
 - Non couvert : séquestre **LLD** (…7053744 78) — pas de fiche `sequestre_compte`, à créer avec son export complet.
+
+## 15. Lauïan dans l'app — état au 26/09/2026 (session DCB)
+- Fix commun (commit d7e06f0) : nos résas payées sur le séquestre d'une autre agence = encaissé du mois + poche
+  négative « à recevoir ». Justificatif Lauïan : **écart 0,15 € à chaque fin de mois** (avant : −8 874,66 €).
+- **Janvier → mars 2026 clôturés** pour Lauïan (écarts 0,00 €, décision Oïhan) : affectations de ces mois verrouillées.
+  Avril → septembre + exercice : à clôturer après les réponses de Laura, au 01/10.
+- À faire à réception du virement DCB (6 083,32 € net) : inscrire la compensation LVH 3 067,68 € sur la fiche Lauïan
+  (`sequestre_compte.compensations_inter_agence`), sinon la poche « à recevoir » (9 024,81 €) restera ouverte.
+  Vérifier aussi l'écart 9 151,00 (côté DCB) / 9 024,81 (côté Lauïan) = 126,19 € (frais Stripe ALTHEA ?).
+- Les écarts identifiés par la session Lauïan (Manivit, Stripe, Cirauqui/Fredou, Hamilton…) sont aujourd'hui absorbés
+  par la poche « part Lauïan détenue » : les régulariser avant de clôturer avril-septembre.
