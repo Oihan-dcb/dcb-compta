@@ -202,6 +202,7 @@ aeAmount = isCancelled ? 0 : (bien.provision_ae_ref || 0)
 ```
 
 - Annulation → `aeAmount = 0` (pas de provision AE sur une résa annulée)
+- Annulation (règle Oïhan 25/09/2026) → **aucun ménage** : FMEN = 0, MEN = 0, AUTO absente, même si le cleaning fee reste dans les financials Airbnb. Le montant retenu revient au propriétaire après HON : Airbnb/Booking via `revenue − HON − taxes` ; Direct annulée via `LOY = revenue − HON − COM − taxes`. Avant ce fix, un FMEN était retenu à tort sur le propriétaire (ex. HMQKYJB5A5 FOLLE 75,12 €), et une annulée remboursée à 100 % gardait son ancienne ventilation si son mois était verrouillé (HMSFJF3F2Y AMAÏA : 646,86 € reversés à tort).
 - Réservation normale → `bien.provision_ae_ref` en centimes
 - Si `provision_ae_ref` est null → `aeAmount = 0`
 

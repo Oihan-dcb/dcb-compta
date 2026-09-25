@@ -157,7 +157,11 @@ export function _calculerLignes(resa, agence) {
   const dueToOwner = ((resa.platform === 'airbnb' || resa.platform === 'booking') && totalFeesForOwnerRate > 0)
     ? Math.round(Math.abs(hostServiceFee) * fmenBase / totalFeesForOwnerRate * (1 - tauxCom))
     : 0
-  let fmenTTC = Math.max(0, fmenBase - dueToOwner - aeAmount) + ajustementFmenExtra
+  // Annulation : le séjour n'a pas lieu → aucun ménage (ni FMEN, ni AUTO, ni MEN), le montant
+  // éventuellement retenu revient au propriétaire (après HON). Règle Oïhan 25/09/2026 — avant,
+  // le cleaning fee resté dans les financials Airbnb d'une annulée produisait un FMEN
+  // (ex. HMSFJF3F2Y Hamilton, HMQKYJB5A5 Vivancos) retenu à tort sur le propriétaire.
+  let fmenTTC = isCancelled ? 0 : Math.max(0, fmenBase - dueToOwner - aeAmount) + ajustementFmenExtra
   // fmenHT peut être négatif si ajustementFmenExtra dépasse la marge FMEN normale (DCB
   // absorbe la perte) — pas de floor à 0 ici, pour que HON+FMEN+AUTO+LOY se recoupe exactement.
   let fmenHT  = fmenTTC !== 0 ? Math.round(fmenTTC / (1 + TVA_RATE)) : 0
@@ -165,7 +169,7 @@ export function _calculerLignes(resa, agence) {
   // En fallback, le ménage voyageur NET de la commission Airbnb (= fmenBase − dueToOwner) est
   // fondu dans `accommodation` → on le retranche de la base de commission, sinon HON serait
   // calculé sur le ménage. (Cas normal : le ménage est déjà hors accommodation.)
-  const menageFonduAccommodation = airbnbFallbackActif ? (fmenBase - dueToOwner) : 0
+  const menageFonduAccommodation = airbnbFallbackActif && !isCancelled ? (fmenBase - dueToOwner) : 0
 
   const commissionableBase = accommodation + hostServiceFee + discountsTotal + extraGuestFee - menageFonduAccommodation + ajustementHebergement
   let honTTC = isDirect
@@ -182,7 +186,7 @@ export function _calculerLignes(resa, agence) {
 
   const menLabelsToExclude = ['management fee', 'host service fee', 'resort fee']
   const menFees   = guestFeesAll.filter(f => !menLabelsToExclude.includes(f.label?.toLowerCase()))
-  const menAmount = menFees.reduce((s, f) => s + (f.amount || 0), 0)
+  const menAmount = isCancelled ? 0 : menFees.reduce((s, f) => s + (f.amount || 0), 0)
 
   const resortFeeRaw = guestFeesAll.find(f => f.label?.toLowerCase() === 'resort fee')?.amount || 0
   // skip_facturation : pas de COM non plus — le LOY reverse déjà 100 % du revenu (frais de
@@ -200,6 +204,12 @@ export function _calculerLignes(resa, agence) {
     loyAmount = commissionableBase - honTTC + ownerFees
   } else {
     loyAmount = revenue - honTTC - fmenTTC - aeAmount - taxesTotal
+  }
+
+  // Direct annulée : pas de FMEN → le montant retenu (ménage compris) va au propriétaire,
+  // sinon la part ménage ne serait attribuée à personne (formule Direct = base commissionnable).
+  if (isDirect && isCancelled) {
+    loyAmount = revenue - honTTC - comAmount - taxesTotal
   }
 
   if (resa.platform === 'booking') {

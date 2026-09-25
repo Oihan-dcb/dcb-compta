@@ -695,6 +695,30 @@ describe('Batch / FK — calculerVentilationResa', () => {
     // AUTO = 0 (annulée)
     expect(ligne(lignes, 'AUTO')).toBeUndefined()
   })
+
+  it('résa cancelled avec cleaning fee resté dans les financials → ni FMEN, ni MEN, ni AUTO ; tout au propriétaire après HON (HMQKYJB5A5)', () => {
+    const resa = {
+      id: 'test-cancel-menage',
+      code: 'TEST-CM',
+      platform: 'airbnb',
+      fin_revenue: 13631,
+      fin_accommodation: 7000,
+      final_status: 'cancelled',
+      owner_stay: false,
+      mois_comptable: '2026-07',
+      reservation_fee: [
+        { label: 'Cleaning fee', amount: 8500, fee_type: 'guest_fee' },
+        { label: 'Host Service Fee', amount: -1869, fee_type: 'host_fee' },
+      ],
+      bien: makeBien({ provision_ae_ref: 2500 }),
+    }
+    const { lignes } = _calculerLignes(resa)
+    expect(ligne(lignes, 'FMEN')).toBeUndefined()
+    expect(ligne(lignes, 'MEN')).toBeUndefined()
+    expect(ligne(lignes, 'AUTO')).toBeUndefined()
+    const hon = ligne(lignes, 'HON')?.montant_ttc || 0
+    expect(ligne(lignes, 'LOY').montant_ttc + hon).toBe(13631)
+  })
 })
 
 // ─────────────────────────────────────────────────────────────────────────
