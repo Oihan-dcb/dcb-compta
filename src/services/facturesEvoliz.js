@@ -18,6 +18,7 @@
 import { supabase } from '../lib/supabase'
 import { AGENCE, AGENCE_BRAND } from '../lib/agence'
 import { logOp } from './journal'
+import { STATUTS_NON_VENTILABLES } from '../lib/constants'
 import { evolizCall, appliquerMarqueursAjustementMenage } from './evoliz'
 
 const MENTION_MANDAT = "Conformément au mandat de gestion, les honoraires de gestion sont directement prélevés sur le loyer encaissé avant reversement au propriétaire."
@@ -253,8 +254,24 @@ async function prechargerDonneesFacturation(mois, bienIds, proprietaireIds, agen
     facturesExistantes.set(key, { id: f.id, statut: f.statut })
   }
 
+  // Garde-fou I-168 : une réservation annulée à 0 € (remboursée en totalité) ne doit JAMAIS peser sur
+  // la facture, même si sa ventilation est restée en base (passée à 0 € après un calcul antérieur).
+  // DUL2 juillet 2026 : HM8HQQP53E (annulée, 0 € encaissé) gardait VIR 384,44 € → facturé et viré.
+  const idsVent = [...new Set((ventilData || []).map(v => v.reservation_id).filter(Boolean))]
+  const annulees0 = new Set()
+  for (let i = 0; i < idsVent.length; i += 200) {
+    const { data: rs } = await supabase.from('reservation').select('id, final_status, fin_revenue, owner_stay')
+      .in('id', idsVent.slice(i, i + 200)).in('final_status', STATUTS_NON_VENTILABLES)
+    for (const r of rs || []) if (!r.owner_stay && !((r.fin_revenue || 0) > 0)) annulees0.add(r.id)
+  }
+  if (annulees0.size) {
+    logOp({ categorie: 'facture', action: 'annulee_0_ignoree', statut: 'warning', mois_comptable: mois,
+      message: `${annulees0.size} réservation(s) annulée(s) à 0 € encore ventilée(s) — ignorée(s) dans la facture`, meta: { reservation_ids: [...annulees0] } })
+  }
+  const ventilPropre = (ventilData || []).filter(v => !annulees0.has(v.reservation_id))
+
   return {
-    ventilationGlobale:   ventilData    || [],
+    ventilationGlobale:   ventilPropre,
     reservationsGlobales: resaData      || [],
     ownerStayGlobal:      osResaData    || [],
     ventilationManuelleGlobal: manuelResaData || [],

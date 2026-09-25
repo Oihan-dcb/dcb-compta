@@ -246,6 +246,7 @@ const [pushing, setPushing] = useState(false)
         { data: ventRows },
         { data: prestRows },
         { data: rembRows },
+        { data: fraisDedRows },
       ] = await Promise.all([
         supabase
           .from('reservation_mouvement')
@@ -294,7 +295,16 @@ const [pushing, setPushing] = useState(false)
           .eq('mode_traitement', 'remboursement')
           .neq('statut', 'brouillon')
           .in('bien_id', uniqueBienIds),
+        supabase
+          .from('frais_proprietaire')
+          .select('bien_id, montant_ttc')
+          .eq('mois_facturation', mois)
+          .in('mode_traitement', ['deduire_loyer', 'facturer_et_deduire'])
+          .neq('statut', 'brouillon')
+          .in('bien_id', uniqueBienIds),
       ])
+      const fraisDedByBien = {}
+      for (const r of (fraisDedRows || [])) fraisDedByBien[r.bien_id] = (fraisDedByBien[r.bien_id] || 0) + (r.montant_ttc || 0)
       const rembByBien = {}
       for (const r of (rembRows || [])) rembByBien[r.bien_id] = (rembByBien[r.bien_id] || 0) + (r.montant_ttc || 0)
 
@@ -451,12 +461,12 @@ const [pushing, setPushing] = useState(false)
       const ventByBien = {}
       for (const v of (ventRows || [])) {
         if (proprioEncaisseResaIds.has(v.reservation_id)) continue
-        if (!ventByBien[v.bien_id]) ventByBien[v.bien_id] = { VIR: 0, HON: 0, FMEN: 0, AUTOREEL: 0, COM: 0 }
+        if (!ventByBien[v.bien_id]) ventByBien[v.bien_id] = { VIR: 0, HON: 0, FMEN: 0, AUTOREEL: 0, AUTOPROV: 0, COM: 0 }
         const b = ventByBien[v.bien_id]
         if (v.code === 'VIR') b.VIR += (v.montant_ht || 0)
         else if (v.code === 'HON') b.HON += (v.montant_ttc || 0)
         else if (v.code === 'FMEN') b.FMEN += (v.montant_ttc || 0)
-        else if (v.code === 'AUTO') b.AUTOREEL += (v.montant_reel != null ? v.montant_reel : (v.montant_ht || 0))
+        else if (v.code === 'AUTO') { b.AUTOREEL += (v.montant_reel != null ? v.montant_reel : (v.montant_ht || 0)); b.AUTOPROV += (v.montant_ht || 0) }
         else if (v.code === 'COM') b.COM += (v.montant_ttc || 0)
       }
 
@@ -474,7 +484,7 @@ const [pushing, setPushing] = useState(false)
       for (const f of facturesList) {
         const bienIds = factureBienMap[f.id]
         let creditsProuves = 0, payinAttendu = 0
-        let vir = 0, hon = 0, fmen = 0, autoreel = 0, com = 0, prest = 0, haowner = 0
+        let vir = 0, hon = 0, fmen = 0, autoreel = 0, autoprov = 0, com = 0, prest = 0, haowner = 0
         let totalResas = 0, resasProuvees = new Set(), resasAnomalie = new Set()
         const payinManquantResas = []
 
@@ -488,7 +498,7 @@ const [pushing, setPushing] = useState(false)
 
           const bv = ventByBien[bid] || {}
           hon += bv.HON || 0; fmen += bv.FMEN || 0
-          autoreel += bv.AUTOREEL || 0; com += bv.COM || 0
+          autoreel += bv.AUTOREEL || 0; autoprov += bv.AUTOPROV || 0; com += bv.COM || 0
 
           const bp = prestByBien[bid] || {}
           prest += bp.PREST || 0; haowner += bp.HAOWNER || 0
@@ -515,8 +525,12 @@ const [pushing, setPushing] = useState(false)
         // contrôle, une résa annulée à 0 € restée ventilée faisait facturer un loyer jamais encaissé
         // avec un badge « Tréso ✓ » (DUL2 juillet 2026 : 4 730,62 € facturés et virés pour 4 346,18 €
         // réellement disponibles, HM8HQQP53E 384,44 €).
+        // Côté propriétaire, le ménage AE est retenu à la PROVISION (AUTO montant_ht) : l'écart avec le
+        // coût réel est à la charge de DCB (ONGI/ONTZI sans provision : AE payé sur le FMEN)
         const remboursements = bienIds.reduce((t, bid) => t + (rembByBien[bid] || 0), 0)
-        const surReversement = (f.montant_reversement || 0) - vir - remboursements
+        const fraisDeduits = bienIds.reduce((t, bid) => t + (fraisDedByBien[bid] || 0), 0)
+        const virProprio = Math.max(0, creditsProuves - hon - fmen - autoprov - prest - haowner - com) - fraisDeduits + remboursements
+        const surReversement = (f.montant_reversement || 0) - virProprio
         const isSafe = solde === 0 && resasAnomalie.size === 0
           && totalResas > 0 && resasProuvees.size === totalResas && payinManquant === 0 && !hasResaManquant
           && surReversement <= 100

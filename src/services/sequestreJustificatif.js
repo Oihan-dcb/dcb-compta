@@ -543,8 +543,13 @@ export async function justifierSequestre(agence = 'dcb', { date = new Date().toI
     }
     const parResa = {}
     for (const v of figees) (parResa[v.reservation_id] ||= {})[v.code] = ((parResa[v.reservation_id] || {})[v.code] || 0) + v.montant_ttc
+    // Déjà rectifiée : un frais propriétaire cite le code de la résa (retenue « Rectification facture »)
+    const { data: rectifs } = Object.keys(parResa).length
+      ? await supabase.from('frais_proprietaire').select('libelle').neq('statut', 'brouillon').ilike('libelle', 'Rectification facture%')
+      : { data: [] }
     for (const [id, c] of Object.entries(parResa)) {
       const r = resaAnnulee.get(id)
+      if ((rectifs || []).some(f => f.libelle.includes(r.code))) continue
       anomalies.push({ cle: `annulee_0_ventilee_${r.code}`, mois: r.mois_comptable, montant: -(c.VIR || 0),
         message: `${r.code} (${r.mois_comptable}) annulée à 0 € mais encore répartie : ${Object.entries(c).map(([k, v]) => `${k} ${eur(v)}`).join(', ')} — loyer versé au propriétaire sans encaissement, à régulariser` })
     }
