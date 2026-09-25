@@ -11,6 +11,7 @@
 import { justifierSequestre } from '../src/services/sequestreJustificatif.js'
 import { AGENCE } from '../src/lib/agence.js'
 import { supabase } from '../src/lib/supabase.js'
+import { journaliser, listerClotures, verifierClotures } from '../src/services/sequestreCloture.js'
 
 const SUPABASE_URL = process.env.SUPABASE_URL || process.env.VITE_SUPABASE_URL || 'https://omuncchvypbtxkpalwcr.supabase.co'
 const SUPABASE_SRK = process.env.SUPABASE_SERVICE_ROLE_KEY
@@ -88,7 +89,25 @@ async function traiterAgence(agence, dryRun) {
 
     const clesAvant = new Set((precedent?.detail?.anomalies || []).map(a => a.cle))
     const nouvelles = j.anomalies.filter(a => !clesAvant.has(a.cle))
+    const clesMaintenant = new Set(j.anomalies.map(a => a.cle))
+    const resolues = (precedent?.detail?.anomalies || []).filter(a => !clesMaintenant.has(a.cle))
     const aBouge = precedent && Math.abs(j.ecart - precedent.ecart) > SEUIL_VARIATION
+
+    // Journal (migration 283) : photo du jour, variation, anomalies apparues / résolues
+    await journaliser(agence, 'calcul', `Calcul de nuit : solde ${eur(j.solde_banque.montant)}, justifié ${eur(j.total_justifie)}, écart ${eur(j.ecart)}, ${j.anomalies.length} anomalie(s)`,
+      { montant: j.ecart, auteur: 'cron', detail: { ecart_import: j.ecart_import, a_affecter: j.ecritures.filter(x => x.ayant_droit === 'a_affecter').length } })
+    if (aBouge) await journaliser(agence, 'variation_ecart', `L'écart a bougé de ${j.ecart - precedent.ecart > 0 ? '+' : ''}${eur(j.ecart - precedent.ecart)} depuis le ${String(precedent.date).split('-').reverse().join('/')} (${eur(precedent.ecart)} → ${eur(j.ecart)})`,
+      { montant: j.ecart - precedent.ecart, auteur: 'cron' })
+    for (const a of nouvelles) await journaliser(agence, 'anomalie_nouvelle', a.message, { mois: a.mois || null, montant: a.montant ?? null, auteur: 'cron', detail: { cle: a.cle } })
+    for (const a of resolues) await journaliser(agence, 'anomalie_resolue', `Résolue : ${a.message}`, { mois: a.mois || null, montant: a.montant ?? null, auteur: 'cron', detail: { cle: a.cle } })
+
+    // Dérive des mois clôturés (recalcul à la date d'arrêté des 3 derniers mois clôturés)
+    let derives = []
+    try { derives = await verifierClotures(agence, await listerClotures(agence), { max: 3 }) } catch (e) { console.error('[verifierClotures]', e.message) }
+    for (const d of derives) await journaliser(agence, 'derive_mois_cloture', `Mois clôturé ${d.mois} modifié après coup : ${d.champ} ${eur(d.avant)} → ${eur(d.apres)} (${d.delta > 0 ? '+' : ''}${eur(d.delta)})`,
+      { mois: d.mois, montant: d.delta, auteur: 'cron', detail: d })
+    for (const d of derives) nouvelles.push({ cle: `derive_${d.mois}_${d.champ}`, message: `⚠ Mois clôturé ${d.mois} modifié après coup : ${d.champ} ${eur(d.avant)} → ${eur(d.apres)}` })
+
     let alerte = { envoyee: false }
     if (aBouge || nouvelles.length || !precedent) {
       const r = await fetch(`${SUPABASE_URL}/functions/v1/smtp-send`, {

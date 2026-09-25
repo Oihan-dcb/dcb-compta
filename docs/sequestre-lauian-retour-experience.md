@@ -211,3 +211,13 @@ reconstruit (mail Laura, section 9) :
 - Cohérence LVH : votre poche « LVH récupéré 3 067,68 € → DCB » + « 6 083,32 € → Lauïan » = 9 151 € ✔ ; votre
   explication (trou Lalande 1 694,42 € couvert par des HON/FMEN DCB 2025 restés au séquestre) est compatible avec nos
   relevés (aucune restitution LVH sur les 5 comptes Lauïan ni sur les 4 comptes Shine DCB).
+
+## 14. Système commun de clôture et de suivi — livré par la session DCB (26/09/2026)
+Migration 283 + `src/services/sequestreCloture.js` + composant `SequestreClotures` (page Séquestre, toutes agences) :
+- **Clôture mensuelle figée + verrou** des affectations du mois ; **clôture d'exercice** (Lauïan : `exercice_fin_mois = 9`,
+  exercice 01/10/2025 → 30/09/2026 créé avec l'ouverture 32 052,35 € de la plaquette) ; ouverture automatique du suivant.
+- **Journal** `sequestre_journal` (calculs, variations, anomalies, affectations, clôtures, dérives) et **contrôle de dérive**
+  des 3 derniers mois clôturés chaque nuit (cron `api/sequestre-justificatif`, déjà multi-agence : Lauïan inclus).
+- Pour G2 (« figer la clôture au 30/09 ») : clôturer les mois dans l'ordre depuis `mois_debut` de la fiche Lauïan, puis
+  « Clôturer l'exercice » le 01/10. Rien à coder côté Lauïan : il suffit que la fiche `sequestre_compte` Lauïan soit juste.
+- Non couvert : séquestre **LLD** (…7053744 78) — pas de fiche `sequestre_compte`, à créer avec son export complet.

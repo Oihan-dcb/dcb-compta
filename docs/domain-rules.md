@@ -928,3 +928,18 @@ Evoliz : il revient à l'agence (poche « Extras voyageurs » du justificatif s�
 Annulée / refusée / expirée avec `fin_revenue = 0` (remboursée en totalité, rien retenu) = **aucune ligne
 de ventilation** : ni HON, ni FMEN, ni MEN, ni AUTO, ni LOY/VIR, ni TAXE — on n'invente pas d'argent.
 Annulée **avec** un montant retenu (`fin_revenue > 0`) : ventilation normale (le ménage retenu reste un FMEN).
+
+### Séquestre — clôtures et journal (migration 283, 26/09/2026)
+- **Clôture mensuelle** (page Séquestre › Clôtures) : fige le justificatif calculé au dernier jour du mois
+  (poches, dû/payé par ayant droit, écart) dans `sequestre_cloture_mensuelle` et **verrouille** le mois : une
+  affectation manuelle sur un mouvement de ce mois est refusée (trigger). Ordre obligatoire (mois précédent
+  clôturé d'abord) ; écart > 1 € ⇒ clôture refusée sauf forçage avec motif. Réouverture : dernier mois clôturé
+  seulement, motif obligatoire.
+- **Dérive** : chaque nuit, le cron recalcule les 3 derniers mois clôturés **à leur date d'arrêté** et compare à
+  la photo figée ; tout écart > 1 € (frais modifié après coup, lien changé, facture régénérée…) ⇒ journal
+  `derive_mois_cloture` + alerte mail.
+- **Exercice** (`sequestre_exercice`, fin au 31/12 pour DCB, au 30/09 pour Lauïan — `sequestre_compte.exercice_fin_mois`) :
+  clôturable quand tous ses mois le sont ; fige la photo à la date de fin et ouvre l'exercice suivant (solde
+  d'ouverture = solde du relevé). Le justificatif, lui, reste calculé sur tout l'historique du compte.
+- **Journal** (`sequestre_journal`) : calcul de nuit, variation d'écart, anomalies apparues/résolues, affectations
+  et libellés mémorisés (triggers), clôtures, réouvertures, dérives.

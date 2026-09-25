@@ -3,11 +3,13 @@ import { supabase } from '../lib/supabase'
 import { AGENCE } from '../lib/agence'
 import { justifierSequestre } from '../services/sequestreJustificatif'
 import SequestreAAffecter from '../components/SequestreAAffecter'
+import SequestreClotures from '../components/SequestreClotures'
 
 // Séquestre — justificatif (I-161) : le solde du séquestre location saisonnière décomposé en poches
 // (à qui appartient chaque euro), pour l'agence de l'app (fiche sequestre_compte, migrations 278-280).
 // Photo calculée chaque nuit (api/sequestre-justificatif, 05:20) ; « Recalculer » refait le calcul.
 // Boîte « À affecter » : les mouvements que les règles n'ont pas su attribuer (grand livre).
+// Clôtures et journal (migration 283) : mois figés + verrou, exercice, fil de tout ce qui bouge.
 
 const eur = c => ((c || 0) / 100).toLocaleString('fr-FR', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) + ' €'
 const fmtD = d => d ? String(d).slice(0, 10).split('-').reverse().join('/') : '—'
@@ -114,6 +116,9 @@ export default function PageSequestre() {
             </tbody>
           </table>
         </div>
+
+        <h2 style={{ fontSize: 16, margin: '0 0 8px' }}>Clôtures et journal</h2>
+        <SequestreClotures agence={AGENCE} onChange={charger} />
 
         <h2 style={{ fontSize: 16, margin: '0 0 4px' }}>À affecter</h2>
         <div style={{ fontSize: 12, color: 'var(--text-muted)', marginBottom: 8 }}>Mouvements que les règles automatiques n'ont pas su attribuer. Une affectation vaut pour ce mouvement ; « mémoriser pour ce libellé » l'applique aussi aux suivants.</div>

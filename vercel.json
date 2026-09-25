@@ -36,7 +36,7 @@
       "maxDuration": 120
     },
     "api/sequestre-justificatif.js": {
-      "maxDuration": 180
+      "maxDuration": 300
     },
     "api/pennylane-achats-statut.js": {
       "maxDuration": 60
