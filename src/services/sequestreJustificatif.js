@@ -468,6 +468,7 @@ export async function justifierSequestre(agence = 'dcb', { date = new Date().toI
   // HMBW82NCS9, séjour du 30/12/2025 versé par Airbnb le 02/01/2026 : 971,10 € comptés nulle part)
   const encaisseAnterieur = encaisseAnterieurApres
   const avantSuivi = (compte.ouverture_solde || 0) + sum(mvts.filter(m => m.date_operation < DEBUT_), m => (m.credit || 0) - (m.debit || 0)) + encaisseAnterieur - sum(sortiesAnterieures, s => s.debit)
+  const compensationsTotal = sum(compte.compensations_inter_agence || [], c => c.montant || 0)
   const poches = [
     { cle: 'proprietaires', label: 'Propriétaires — reversements restant dus', montant: sum(facturesListe, p => p.proprietaires.reste) },
     { cle: 'ae', label: 'AE — ménages et extras non encore payés', montant: sum(facturesListe, p => p.ae.reste) },
@@ -480,7 +481,11 @@ export async function justifierSequestre(agence = 'dcb', { date = new Date().toI
     { cle: 'avant_suivi', label: 'Exercice antérieur : mouvements du compte avant le 1er mois suivi − sorties réglant des dettes antérieures (à solder avec la clôture annuelle)', montant: avantSuivi },
     { cle: 'reprise_ancien_sequestre', label: 'Solde repris de l\'ancien compte séquestre (changement de banque, janvier 2026) — à ventiler avec la clôture 2025', montant: tot('reprise_ancien_sequestre') },
     { cle: 'creance_autre_agence', label: 'À recevoir du séquestre d\'une autre agence (nos réservations payées sur son compte) − déjà reçu', montant: sum(creanceAutreAgence, x => x.montant) - sum(horsMois.inter_agence, e => e.credit || 0) },
-    { cle: 'autre_agence', label: 'Réservations d\'une autre agence encaissées sur ce séquestre − déjà reversées à son séquestre', montant: sum(autreAgenceLiens, l => l.montant) - sum(versAutreAgence, s => s.debit) },
+    { cle: 'autre_agence', label: 'Réservations d\'une autre agence encaissées sur ce séquestre − déjà reversées à son séquestre − compensations', montant: sum(autreAgenceLiens, l => l.montant) - sum(versAutreAgence, s => s.debit) - compensationsTotal },
+    // Compensation inter-agences (migration 282) : ce que l'autre agence nous devait (LVH 2025 : loyers
+    // d'un bien DCB versés sur le séquestre Lauïan, propriétaire payé par DCB) est retenu sur ce qu'on lui
+    // reverse. Reste sur ce compte ; revient à l'agence (le propriétaire a déjà été payé en 2025).
+    { cle: 'compensation_inter_agence', label: 'Récupéré par compensation sur l\'autre agence (LVH 2025 : propriétaire déjà payé par DCB) — revient à l\'agence, à solder avec la clôture 2025', montant: compensationsTotal },
     { cle: 'annulees', label: 'Réservations annulées — net encaissé − remboursé (frais d\'annulation retenus / frais perdus)', montant: sum(annuleesLiens, l => l.montant) },
     { cle: 'extra_voyageur', label: 'Extras voyageurs payés par Stripe (bouquet, lit bébé, départ tardif…) — services DCB', montant: tot('extra_voyageur') },
     { cle: 'aircover', label: 'Remboursements AirCover (dégâts) — reviennent à qui a payé la réparation', montant: tot('aircover') },

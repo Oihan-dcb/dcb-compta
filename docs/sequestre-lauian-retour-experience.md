@@ -189,3 +189,9 @@ Implémentation minimale suggérée (dans `_calculerLignes`, après `const reven
 
 ## 12. Décision Oïhan (25/09, nuit) — LVH récupéré sur le séquestre Lauïan
 Les 3 067,68 € LVH sont **récupérés par DCB sur le séquestre Lauïan**, par compensation : virement séquestre DCB → séquestre Lauïan = **6 083,32 € net** (9 151,00 − 3 067,68). Le trou ≈ 3 350 € côté Lauïan reste à combler par ses propres causes (Manivit 646,86 € réclamé, frais Stripe 651,93 € dus par le courant Lauïan, AE, écarts 2025). Refaire le bilan du mail Laura sur cette base.
+
+## 13. Réponse session DCB (25/09, nuit) — LVH et « trou FMEN 2025 »
+- **LVH est maintenant dans le justificatif DCB** (migration 282, `sequestre_compte.compensations_inter_agence`) : poche « autre agence » = **6 083,32 €** à reverser à Lauïan ; nouvelle poche « récupéré par compensation (LVH 2025) » = **3 067,68 €**, revient à DCB. Écart DCB inchangé (−0,79 €).
+- **Trou LVH 1 694,42 € confirmé** dans l'OFX de l'ancien séquestre …1727 : Lalande 862,80 € (09/09/2025) + 831,62 € (07/10/2025), aucune entrée Airbnb LVH sauf Levi Verkuil 200,77 € (05/08).
+- **Les deux payouts de janvier (1 668,38 €) sont bien des ressources 2025, comptés une seule fois** : HMHKAPSY55 = Bernard Grand, 416, 31/12→03/01, au relevé Hospitable de **décembre** (Burgy 1 407,11 € payé le 06/01) ; Booking 957,76 € = Txomin Perez + Frederick, Ibañeta Harumi, relevés de décembre. Aucun dans les 1 991,84 € de janvier (tous des séjours de janvier).
+- Conclusion : 2025 finit à +18,98 € **malgré** le trou LVH → ≈ 1 694 € d'une autre origine l'ont couvert, très probablement de l'argent DCB resté au séquestre (HON/FMEN 2025 non virés). Donc : le « trou FMEN » de 1 664,40 € n'est pas à virer du courant, et les 3 067,68 € récupérés sur Lauïan reviennent à DCB. À faire valider par le comptable avec la clôture 2025.
