@@ -88,3 +88,9 @@ encaissés par le Stripe DCB** : les compter en créance sur DCB (ou les exclure
 - Reste 1 seul mouvement à affecter : Airbnb 13 547,14 € du 13/01 (autre compte Airbnb, export attendu).
 - Justificatif Lauïan (lecture seule) : écart −8 113,56 € ; toujours dominé par les 9 151 € encaissés
   par le Stripe DCB (§2).
+- **Airbnb 13 547,14 € du 13/01 rattaché** (export compte ARROSA) : 4 séjours ARROSA été 2025
+  (HM3XA5AR2H, HMPEJHB5XP, HMS9RPXQR4 + AirCover 720,70, HM2PTSR2SR). Payouts **gelés par Airbnb**
+  (infos légales manquantes sur le compte Airbnb du propriétaire) ; Oïhan a payé le propriétaire en
+  2025 sans attendre → le payout reconstitue le séquestre (avance), aucun reversement dû.
+  → cas à prévoir dans le système commun : « avance propriétaire sur payout plateforme gelé ».
+  À affecter Lauïan = **0**. Justificatif lecture seule après lien : écart +5 433,58 €.
