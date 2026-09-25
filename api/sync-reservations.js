@@ -113,6 +113,14 @@ function parseReservation(resa, bien, mois) {
     && fin.revenue?.amount != null && fin.revenue.amount > 0
     && fin.revenue.amount === hostFeesTotal;
 
+  // Réservation MANUELLE annulée : Hospitable garde le prix total en revenue (il ne remet jamais
+  // une manuelle à zéro). Sans paiement enregistré, c'est une annulation sans frais → 0.
+  // Cas Y6MOIX (SUZETTE 02-09/08/2026, annulée le 15/06, 2 935 € jamais perçus) : restait
+  // « annulée avec revenu », donc comptée comme encaissement manquant. Un paiement arrivé
+  // quand même en banque est signalé par le justificatif (paiement sur résa annulée sans revenu).
+  const isManualCancelSansPaiement = platform === 'manual' && isCancelled
+    && !((resa.financials?.guest?.payments || []).some(p => (p.amount || 0) > 0));
+
   // Bug agrégat Hospitable (constaté 03/07/2026, résa HMQR9Q5ASN) : quand host.adjustments
   // existe (résolutions Airbnb), leur champ revenue compte l'ajustement DEUX FOIS
   // (1160,76 + 2×75 = 1310,76 alors que le ledger ne porte qu'une résolution de 75 €).
@@ -164,7 +172,7 @@ function parseReservation(resa, bien, mois) {
     reservation_status:  resa.reservation_status,
     final_status:        statutCombine || 'accepted',
     fin_accommodation:   isOwnerStay ? ownerCleaningFee : (fin.accommodation?.amount ?? null),
-    fin_revenue:         isOwnerStay ? ownerCleaningFee : (notAccepted || isFullRefundDirect ? 0 : revenueFiable),
+    fin_revenue:         isOwnerStay ? ownerCleaningFee : (notAccepted || isFullRefundDirect || isManualCancelSansPaiement ? 0 : revenueFiable),
     fin_host_service_fee: hostServiceFee?.amount ?? null,
     fin_taxes_total:     taxesTotal || null,
     fin_currency:        fin.currency || 'EUR',
