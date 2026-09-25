@@ -859,3 +859,22 @@ describe('HMS2SR33WH — Airbnb BGH avec EXTRA_GUEST_FEE (taux 22%)', () => {
     expect(ligne(lignes, 'LOY').montant_ttc).toBe(78666)
   })
 })
+
+describe('Annulée à 0 € — aucune ligne (règle Oïhan 25/09/2026)', () => {
+  const base = {
+    id: 'test-annulee', code: 'HM8HQQP53E', platform: 'airbnb', fin_accommodation: 0,
+    final_status: 'cancelled', owner_stay: false, mois_comptable: '2026-07',
+    reservation_fee: [
+      { label: 'Cleaning fee', amount: 9000, fee_type: 'guest_fee' },
+      { label: 'Host Service Fee', amount: -1500, fee_type: 'host_fee' },
+    ],
+    bien: makeBien({}),
+  }
+  it('annulée remboursée en totalité (fin_revenue 0) : ni FMEN, ni MEN, ni VIR', () => {
+    expect(_calculerLignes({ ...base, fin_revenue: 0 }).lignes).toEqual([])
+  })
+  it('annulée avec frais retenus (fin_revenue > 0) : ventilation normale', () => {
+    const { lignes } = _calculerLignes({ ...base, fin_revenue: 7500, fin_accommodation: 0 })
+    expect(lignes.length).toBeGreaterThan(0)
+  })
+})

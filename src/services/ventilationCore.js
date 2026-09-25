@@ -62,6 +62,11 @@ export function _calculerLignes(resa, agence) {
   if ((bien.agence || agence) !== agence) return { lignes: [], isProlongation: false, fallbackAirbnb: null }
 
   const revenue = resa.fin_revenue || 0
+  // Règle Oïhan (25/09/2026) : annulée à 0 € (remboursée en totalité, rien retenu) = AUCUNE ligne —
+  // ni HON, ni FMEN, ni MEN, ni AUTO, ni LOY/VIR : on n'invente pas d'argent. Les traitements par mois
+  // excluent déjà ces résas ; ce garde-fou couvre le recalcul d'une résa seule (reservation_id).
+  // Annulée AVEC un montant retenu (fin_revenue > 0) : règles normales, inchangées.
+  if (STATUTS_NON_VENTILABLES.includes(resa.final_status) && revenue <= 0) return { lignes: [], isProlongation: false, fallbackAirbnb: null }
 
   let fees = resa.reservation_fee || []
 

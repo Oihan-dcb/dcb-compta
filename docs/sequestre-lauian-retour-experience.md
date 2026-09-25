@@ -184,3 +184,4 @@ La règle « pas de ménage » ne vaut **que pour une annulée à 0 €** (rembo
 Implémentation minimale suggérée (dans `_calculerLignes`, après `const revenue`) :
 `if (STATUTS_NON_VENTILABLES.includes(resa.final_status) && revenue <= 0) return { lignes: [], isProlongation: false, fallbackAirbnb: null }`
 + test « annulée à 0 € avec community fee → aucune ligne » ; la session Lauïan ne touche plus au moteur.
+**✅ FAIT par la session DCB (25/09, 23h) : garde-fou dans `_calculerLignes` + 2 tests + simulation mai-août (seules les annulées à 0 € changent), `ventilation-auto` redéployée — invariant I-168. Rien réécrit en base.**

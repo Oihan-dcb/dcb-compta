@@ -530,6 +530,25 @@ export async function justifierSequestre(agence = 'dcb', { date = new Date().toI
           message: `${f.bien.code} : remboursement de ${eur(f.montant_ttc)} (reversement ${f.mois_facturation}) déjà viré à la main (${(egal ? [egal] : siens).map(s => `${s.date_operation.split('-').reverse().join('/')} ${eur(s.debit)}`).join(' + ')}) — double paiement si la ligne reste active` })
     }
   }
+  // Résa annulée à 0 € (rien encaissé, rien retenu) qui garde une répartition : passée à 0 € après le
+  // verrouillage du mois, jamais recalculée → loyer versé au propriétaire sans aucun encaissement
+  // (DUL2 HM8HQQP53E 384,44 €, PANTXIKA HMEAQXCBW8 403,80 €, juillet 2026). Règle Oïhan : annulée à
+  // 0 € = aucune ligne, on n'invente pas d'argent.
+  {
+    const annulees0 = [...resaAnnulee.values()].filter(r => !(r.fin_revenue > 0))
+    const figees = []
+    for (let i = 0; i < annulees0.length; i += 200) {
+      const { data } = await supabase.from('ventilation').select('reservation_id, code, montant_ttc').in('reservation_id', annulees0.slice(i, i + 200).map(r => r.id)).in('code', ['VIR', 'HON', 'FMEN', 'COM'])
+      for (const v of data || []) if (v.montant_ttc) figees.push(v)
+    }
+    const parResa = {}
+    for (const v of figees) (parResa[v.reservation_id] ||= {})[v.code] = ((parResa[v.reservation_id] || {})[v.code] || 0) + v.montant_ttc
+    for (const [id, c] of Object.entries(parResa)) {
+      const r = resaAnnulee.get(id)
+      anomalies.push({ cle: `annulee_0_ventilee_${r.code}`, mois: r.mois_comptable, montant: -(c.VIR || 0),
+        message: `${r.code} (${r.mois_comptable}) annulée à 0 € mais encore répartie : ${Object.entries(c).map(([k, v]) => `${k} ${eur(v)}`).join(', ')} — loyer versé au propriétaire sans encaissement, à régulariser` })
+    }
+  }
   // Paiement relié à une résa annulée SANS revenu : lien presque toujours faux (HMKBNZXMPW,
   // 25/09/2026 : payout 1 065,53 € d'un autre séjour du même bien, annulation synchronisée en retard)
   const liensAnnulees = Object.values(annuleesLiens.reduce((a, l) => { (a[l.code] ||= { code: l.code, montant: 0 }).montant += l.montant || 0; return a }, {})).filter(x => x.montant > 100) // négatif = frais Stripe perdus sur une annulation remboursée : normal

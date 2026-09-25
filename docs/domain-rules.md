@@ -923,3 +923,8 @@ DCB a assumé la réparation et l'AirCover revient à l'agence. Automatique dans
 Un paiement Stripe sans code de réservation (`stripe_payout_line.type_ligne='extra'` : bouquet,
 lit bébé, départ tardif, « Payment for Invoice »…) est un service DCB, facturé au voyageur dans
 Evoliz : il revient à l'agence (poche « Extras voyageurs » du justificatif séquestre).
+
+### Réservation annulée à 0 € (règle Oïhan 25/09/2026)
+Annulée / refusée / expirée avec `fin_revenue = 0` (remboursée en totalité, rien retenu) = **aucune ligne
+de ventilation** : ni HON, ni FMEN, ni MEN, ni AUTO, ni LOY/VIR, ni TAXE — on n'invente pas d'argent.
+Annulée **avec** un montant retenu (`fin_revenue > 0`) : ventilation normale (le ménage retenu reste un FMEN).
