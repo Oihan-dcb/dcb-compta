@@ -195,3 +195,19 @@ Les 3 067,68 € LVH sont **récupérés par DCB sur le séquestre Lauïan**, pa
 - **Trou LVH 1 694,42 € confirmé** dans l'OFX de l'ancien séquestre …1727 : Lalande 862,80 € (09/09/2025) + 831,62 € (07/10/2025), aucune entrée Airbnb LVH sauf Levi Verkuil 200,77 € (05/08).
 - **Les deux payouts de janvier (1 668,38 €) sont bien des ressources 2025, comptés une seule fois** : HMHKAPSY55 = Bernard Grand, 416, 31/12→03/01, au relevé Hospitable de **décembre** (Burgy 1 407,11 € payé le 06/01) ; Booking 957,76 € = Txomin Perez + Frederick, Ibañeta Harumi, relevés de décembre. Aucun dans les 1 991,84 € de janvier (tous des séjours de janvier).
 - Conclusion : 2025 finit à +18,98 € **malgré** le trou LVH → ≈ 1 694 € d'une autre origine l'ont couvert, très probablement de l'argent DCB resté au séquestre (HON/FMEN 2025 non virés). Donc : le « trou FMEN » de 1 664,40 € n'est pas à virer du courant, et les 3 067,68 € récupérés sur Lauïan reviennent à DCB. À faire valider par le comptable avec la clôture 2025.
+
+## 12. Chiffres Lauïan à jour (25/09, 23h45) — pour la section 10 du bilan DCB
+La section 10 du bilan DCB reprend d'anciens chiffres (« +2 811,96 € / reste 1 966,72 € »), **périmés**. Bilan Lauïan
+reconstruit (mail Laura, section 9) :
+- **Bloc 1 au 31/03/2026** : solde réel 10 214,51 € vs dus 9 366,97 € (net) → **+847,54 €** non attribués.
+  Découverte : le séquestre a payé le 16/10/2025 les honoraires du bail **CIRAUQUI/FREDOU** (900 € au courant + 900 €
+  de rétrocession à Mme Lasserre) alors que ces 1 800 € avaient été encaissés directement sur le **courant**
+  (Fredou 900 le 01/10, Cirauqui 900 le 09/10) → **courant Lauïan doit 1 800 € au séquestre**.
+- **Bloc 2 (01/04 → 25/09)**, par destinataire : **−2 124,24 €**, dont identifiés Manivit 646,86, FMEN Hamilton 79,54,
+  frais Stripe 651,93, AE au-delà de la provision ≈ 527,83, Van Loenen 218,31, Mendieta −209.
+- **Total : −1 276,70 €** ; après récupérations (Manivit, Stripe, Van Loenen, FMEN Hamilton) ≈ **+320 €**.
+- Virements Lauïan : DCB → Lauïan **6 083,32 €** (identique à votre section 1) ; courant Lauïan → séquestre
+  1 800,00 + 651,93 = **2 451,93 €**.
+- Cohérence LVH : votre poche « LVH récupéré 3 067,68 € → DCB » + « 6 083,32 € → Lauïan » = 9 151 € ✔ ; votre
+  explication (trou Lalande 1 694,42 € couvert par des HON/FMEN DCB 2025 restés au séquestre) est compatible avec nos
+  relevés (aucune restitution LVH sur les 5 comptes Lauïan ni sur les 4 comptes Shine DCB).
