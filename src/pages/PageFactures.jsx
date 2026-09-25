@@ -245,6 +245,7 @@ const [pushing, setPushing] = useState(false)
         { data: resasRows },
         { data: ventRows },
         { data: prestRows },
+        { data: rembRows },
       ] = await Promise.all([
         supabase
           .from('reservation_mouvement')
@@ -284,7 +285,18 @@ const [pushing, setPushing] = useState(false)
           .eq('mois', mois)
           .in('bien_id', uniqueBienIds)
           .in('type_imputation', ['deduction_loy', 'haowner']),
+        // Remboursements dus au propriétaire (régularisations d'autres mois) : ajoutés légitimement
+        // au reversement facturé sans encaissement du mois
+        supabase
+          .from('frais_proprietaire')
+          .select('bien_id, montant_ttc')
+          .eq('mois_facturation', mois)
+          .eq('mode_traitement', 'remboursement')
+          .neq('statut', 'brouillon')
+          .in('bien_id', uniqueBienIds),
       ])
+      const rembByBien = {}
+      for (const r of (rembRows || [])) rembByBien[r.bien_id] = (rembByBien[r.bien_id] || 0) + (r.montant_ttc || 0)
 
       // ── Ajustements de résolution croisés ───────────────────────────────────
       // Un payout peut être amputé d'un montant appartenant à une AUTRE résa
@@ -499,8 +511,15 @@ const [pushing, setPushing] = useState(false)
         const payinManquant = Math.max(0, payinAttendu - creditsProuves)
         // Safe : solde = 0, toutes réservations prouvées, aucune anomalie, PAYIN complet
         const hasResaManquant = payinManquantResas.some(r => r.manque > 0)
+        // Reversement FACTURÉ vs ce que les encaissements prouvés permettent de reverser : sans ce
+        // contrôle, une résa annulée à 0 € restée ventilée faisait facturer un loyer jamais encaissé
+        // avec un badge « Tréso ✓ » (DUL2 juillet 2026 : 4 730,62 € facturés et virés pour 4 346,18 €
+        // réellement disponibles, HM8HQQP53E 384,44 €).
+        const remboursements = bienIds.reduce((t, bid) => t + (rembByBien[bid] || 0), 0)
+        const surReversement = (f.montant_reversement || 0) - vir - remboursements
         const isSafe = solde === 0 && resasAnomalie.size === 0
           && totalResas > 0 && resasProuvees.size === totalResas && payinManquant === 0 && !hasResaManquant
+          && surReversement <= 100
 
         result[f.id] = {
           creditsProuves, credits: creditsProuves,
@@ -510,6 +529,7 @@ const [pushing, setPushing] = useState(false)
           totalResas,
           countProuvees: resasProuvees.size,
           countAnomalies: resasAnomalie.size,
+          surReversement,
           isSafe,
           notComputed: (allocRows || []).length === 0 && (resasRows || []).length > 0,
         }
@@ -1085,9 +1105,10 @@ const [pushing, setPushing] = useState(false)
                           Tréso ✓
                         </span>
                       )
-                      if (sc.solde < 0) return (
-                        <span style={{ padding: '4px 10px', borderRadius: 100, fontSize: 11, fontWeight: 600, background: '#FEE2E2', color: '#DC2626' }}>
-                          Tréso ⚠
+                      if (sc.solde < 0 || sc.surReversement > 100) return (
+                        <span title={sc.surReversement > 100 ? `Reversement facturé supérieur de ${(sc.surReversement / 100).toFixed(2)} € à ce que les encaissements prouvés permettent de reverser` : undefined}
+                          style={{ padding: '4px 10px', borderRadius: 100, fontSize: 11, fontWeight: 600, background: '#FEE2E2', color: '#DC2626' }}>
+                          Tréso ⚠{sc.surReversement > 100 ? ` +${(sc.surReversement / 100).toFixed(2)} €` : ''}
                         </span>
                       )
                       const hasResaManquant = (sc.payinManquantResas || []).some(r => r.manque > 0)
