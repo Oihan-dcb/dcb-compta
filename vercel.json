@@ -35,6 +35,9 @@
     "api/lld-auto.js": {
       "maxDuration": 120
     },
+    "api/sequestre-justificatif.js": {
+      "maxDuration": 180
+    },
     "api/pennylane-achats-statut.js": {
       "maxDuration": 60
     },
@@ -121,6 +124,10 @@
     {
       "path": "/api/lld-auto",
       "schedule": "30 4 * * *"
+    },
+    {
+      "path": "/api/sequestre-justificatif",
+      "schedule": "20 5 * * *"
     },
     {
       "path": "/api/pennylane-achats-statut",

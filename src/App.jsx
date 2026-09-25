@@ -46,6 +46,7 @@ import PageAgence from './pages/PageAgence'
 import PageProprietaires from './pages/PageProprietaires'
 import PageDashboardProprietaire from './pages/PageDashboardProprietaire'
 import PageTaxeSejour from './pages/PageTaxeSejour'
+import PageSequestre from './pages/PageSequestre'
 import PageCloture from './pages/PageCloture'
 import PageDemandesOwner from './pages/PageDemandesOwner'
 import PageReglesVentilation from './pages/PageReglesVentilation'
@@ -349,6 +350,7 @@ export default function App() {
             </NavLink>
             <NavLink to="/factures" className={({isActive}) => isActive ? 'nav-link active' : 'nav-link'}>Facturation</NavLink>
             <NavLink to="/comptabilite" className={({isActive}) => isActive ? 'nav-link active' : 'nav-link'}>Comptabilité</NavLink>
+            {AGENCE === 'dcb' && <NavLink to="/sequestre" className={({isActive}) => isActive ? 'nav-link active' : 'nav-link'}>Séquestre</NavLink>}
             <NavLink to="/exports" className={({isActive}) => isActive ? 'nav-link active' : 'nav-link'}>Exports</NavLink>
             <NavLink to="/locations-longues" className={({isActive}) => isActive ? 'nav-link active' : 'nav-link'}>Loc-longues</NavLink>
             <NavLink to="/achats" className={({isActive}) => isActive ? 'nav-link active' : 'nav-link'}>Achats</NavLink>
@@ -388,6 +390,7 @@ export default function App() {
             <Route path="/proprietaires" element={<PageProprietaires />} />
             <Route path="/demandes-owner" element={<PageDemandesOwner />} />
             <Route path="/taxe-sejour" element={<PageTaxeSejour />} />
+            <Route path="/sequestre" element={<PageSequestre />} />
             <Route path="/cloture" element={<PageCloture />} />
             <Route path="/regles-ventilation" element={<PageReglesVentilation />} />
           </Routes>
