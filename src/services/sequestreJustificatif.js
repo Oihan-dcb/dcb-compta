@@ -230,7 +230,13 @@ export async function justifierSequestre(agence = 'dcb', { date = new Date().toI
   const montantRef = p => { const m = (p.reference || '').match(/\(([\d.,]+)\s*€\)\s*$/); return m ? Math.round(parseFloat(m[1].replace(',', '.')) * 100) : p.amount }
   const payoutSpecial = e => (payoutsSpeciaux || []).find(p => (Math.abs((e.montant ?? e.credit) - p.amount) <= 2 || Math.abs((e.montant ?? e.credit) - montantRef(p)) <= 2) &&
     Math.abs(Date.parse(e.date_operation) - Date.parse(p.date_payout)) <= 5 * 86400000)
-  const horsMois = { aircover: [], prime_plateforme: [], remboursement_debours: [], paiement_facture: [], frais_stripe_rembourses: [], remise_frais_bancaires: [], plateforme_non_rapprochee: [], non_affecte: [], inter_agence: [], retour_dcb: [], reprise_ancien_sequestre: [] }
+  // Paiements Stripe « extra » (sans code de réservation : bouquet, lit bébé, départ tardif, facture
+  // de service…) = services DCB (règle Oïhan 25/09/2026) — facturés au voyageur dans Evoliz
+  const { data: lignesExtra } = await supabase.from('stripe_payout_line').select('mouvement_id, montant_net, guest_name, description').eq('type_ligne', 'extra').is('reservation_code', null)
+  const extrasParMvt = new Map()
+  for (const l of lignesExtra || []) { const x = extrasParMvt.get(l.mouvement_id) || { montant: 0, qui: [] }; x.montant += l.montant_net; x.qui.push(`${l.guest_name || '?'} ${(l.montant_net / 100).toFixed(2)} €${l.description ? ` (${l.description})` : ''}`); extrasParMvt.set(l.mouvement_id, x) }
+  const extraStripe = (e, montant) => { const x = extrasParMvt.get(e.id); return x && Math.abs(x.montant - montant) <= 100 ? x : null }
+  const horsMois = { extra_voyageur: [], aircover: [], prime_plateforme: [], remboursement_debours: [], paiement_facture: [], frais_stripe_rembourses: [], remise_frais_bancaires: [], plateforme_non_rapprochee: [], non_affecte: [], inter_agence: [], retour_dcb: [], reprise_ancien_sequestre: [] }
   for (const e of entrees) {
     if (transitIds.has(e.id) || e.date_operation < DEBUT_) continue
     const lie = lieParMvt.get(e.id) || 0
@@ -240,12 +246,17 @@ export async function justifierSequestre(agence = 'dcb', { date = new Date().toI
       if (reste < -100) horsMois.frais_stripe_rembourses.push({ ...e, montant: reste, raison: 'frais Stripe retenus (encaissement net)' })
       else if (reste > 100) {
         const sp = payoutSpecial({ ...e, montant: reste })
-        if (sp) horsMois[/host rewards|misc credit/i.test(sp.reference) ? 'prime_plateforme' : 'aircover'].push({ ...e, montant: reste, raison: sp.reference })
+        const ex = !sp && extraStripe(e, reste)
+        if (ex) horsMois.extra_voyageur.push({ ...e, montant: reste, raison: `extra voyageur Stripe : ${ex.qui.join(', ')}` })
+        else if (sp) horsMois[/host rewards|misc credit/i.test(sp.reference) ? 'prime_plateforme' : 'aircover'].push({ ...e, montant: reste, raison: sp.reference })
         else horsMois.plateforme_non_rapprochee.push({ ...e, montant: reste, raison: 'part du virement non reliée à une réservation' })
       }
       continue
     }
     let c = forcer(e, classerEntree(e, facturesMontants, ctx), 'entree')
+    if (c.type === 'plateforme_non_rapprochee' && c.regle === 'auto' && extraStripe(e, e.credit)) {
+      c = { ...c, type: 'extra_voyageur', raison: `extra voyageur Stripe : ${extraStripe(e, e.credit).qui.join(', ')}` }
+    }
     if (c.type === 'plateforme_non_rapprochee' && c.regle === 'auto') {
       const sp = payoutSpecial(e)
       if (sp) c = { ...c, type: /host rewards|misc credit/i.test(sp.reference) ? 'prime_plateforme' : 'aircover', raison: sp.reference }
@@ -450,6 +461,7 @@ export async function justifierSequestre(agence = 'dcb', { date = new Date().toI
     { cle: 'creance_autre_agence', label: 'À recevoir du séquestre d\'une autre agence (nos réservations payées sur son compte) − déjà reçu', montant: sum(creanceAutreAgence, x => x.montant) - sum(horsMois.inter_agence, e => e.credit || 0) },
     { cle: 'autre_agence', label: 'Réservations d\'une autre agence encaissées sur ce séquestre − déjà reversées à son séquestre', montant: sum(autreAgenceLiens, l => l.montant) - sum(versAutreAgence, s => s.debit) },
     { cle: 'annulees', label: 'Réservations annulées — net encaissé − remboursé (frais d\'annulation retenus / frais perdus)', montant: sum(annuleesLiens, l => l.montant) },
+    { cle: 'extra_voyageur', label: 'Extras voyageurs payés par Stripe (bouquet, lit bébé, départ tardif…) — services DCB', montant: tot('extra_voyageur') },
     { cle: 'aircover', label: 'Remboursements AirCover (dégâts) — reviennent à qui a payé la réparation', montant: tot('aircover') },
     { cle: 'prime_plateforme', label: 'Primes plateforme à l\'hôte (Airbnb Host Rewards…) — dues à l\'agence', montant: tot('prime_plateforme') },
     { cle: 'plateformes_non_rapprochees', label: 'Encaissements plateformes non reliés à une réservation', montant: tot('plateforme_non_rapprochee') },
@@ -593,7 +605,7 @@ export async function justifierSequestre(agence = 'dcb', { date = new Date().toI
     e.tiers_id = f?.bien?.proprietaire_id
     e.raison = `${e.raison || 'AirCover'} → ${f ? `propriétaire ${f.bien.code} (réparation « ${f.libelle.slice(0, 60)} » retenue le ${f.date.split('-').reverse().join('/')})` : 'DCB (aucune réparation retenue au propriétaire)'}`
   }
-  const typeEntree = { aircover: 'a_affecter', prime_plateforme: 'agence', remboursement_debours: 'proprietaire', paiement_facture: 'agence', frais_stripe_rembourses: 'agence', retour_dcb: 'agence', remise_frais_bancaires: 'banque',
+  const typeEntree = { extra_voyageur: 'agence', aircover: 'a_affecter', prime_plateforme: 'agence', remboursement_debours: 'proprietaire', paiement_facture: 'agence', frais_stripe_rembourses: 'agence', retour_dcb: 'agence', remise_frais_bancaires: 'banque',
     inter_agence: 'autre_agence', reprise_ancien_sequestre: 'reprise', plateforme_non_rapprochee: 'a_affecter', non_affecte: 'a_affecter' }
   const dejaEc = new Set()
   for (const [k, lst] of Object.entries(horsMois)) for (const e of lst) {
@@ -632,7 +644,7 @@ export async function justifierSequestre(agence = 'dcb', { date = new Date().toI
       remboursements_debours: lignes(horsMois.remboursement_debours),
       factures_payees_sequestre: lignes(horsMois.paiement_facture),
       plateformes_non_rapprochees: lignes(horsMois.plateforme_non_rapprochee),
-      aircover: lignes(horsMois.aircover), primes_plateforme: lignes(horsMois.prime_plateforme),
+      extras_voyageurs: lignes(horsMois.extra_voyageur), aircover: lignes(horsMois.aircover), primes_plateforme: lignes(horsMois.prime_plateforme),
       entrees_a_identifier: lignes([...horsMois.non_affecte, ...horsMois.inter_agence]),
       sorties_a_identifier: lignes(sortiesAutres),
       sorties_anterieures: lignes(sortiesAnterieures),

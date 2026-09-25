@@ -918,3 +918,8 @@ Un « Resolution Payout: AirCover damage reimbursement » Airbnb revient à qui 
 si une réparation du même montant (±1 €, ±60 jours) a été retenue au propriétaire (frais
 `deduire_loyer` / `facturer_*`), l'AirCover lui est dû → frais `remboursement` au mois suivant ; sinon
 DCB a assumé la réparation et l'AirCover revient à l'agence. Automatique dans le justificatif séquestre.
+
+### Extras voyageurs payés par Stripe (règle Oïhan 25/09/2026)
+Un paiement Stripe sans code de réservation (`stripe_payout_line.type_ligne='extra'` : bouquet,
+lit bébé, départ tardif, « Payment for Invoice »…) est un service DCB, facturé au voyageur dans
+Evoliz : il revient à l'agence (poche « Extras voyageurs » du justificatif séquestre).
