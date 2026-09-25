@@ -163,12 +163,13 @@ export async function justifierSequestre(agence = 'dcb', { date = new Date().toI
   const preuves = []
   for (let i = 0; i < resaIds.length; i += 200) {
     const { data, error: ePrv } = await supabase.from('reservation_paiement')
-      .select('reservation_id, mouvement_id, montant, mouvement:mouvement_id(date_operation, source)')
+      .select('reservation_id, mouvement_id, montant, mouvement:mouvement_id(date_operation, source, agence)')
       .in('reservation_id', resaIds.slice(i, i + 200))
     if (ePrv) throw ePrv
     preuves.push(...(data || []))
   }
   const encaisseParMois = {}
+  const creanceAutreAgence = [] // paiements de nos résas arrivés sur le séquestre d'une autre agence
   const encProprio = {} // mois → proprietaire_id → encaissé (détail des anomalies)
   const lieParMvt = new Map()
   for (const p of preuves || []) {
@@ -176,6 +177,12 @@ export async function justifierSequestre(agence = 'dcb', { date = new Date().toI
     // Seuls les paiements arrivés SUR CE COMPTE comptent : un paiement reçu sur l'ancien séquestre
     // (BudgetBakers, avant le changement de banque du 28/01/2026) ou sur le courant est déjà dans le
     // solde repris (7 443,18 €) ou n'est pas au séquestre — sinon compté deux fois (25/09/2026 : −7,6 k€)
+    // Payé sur le séquestre d'une AUTRE agence (même nom de source bancaire possible : les deux
+    // relevés CE s'appellent « CaisseEpargne ») : créance sur cette agence, pas un encaissement ici
+    if (p.mouvement.agence && p.mouvement.agence !== agence) {
+      if (p.mouvement.date_operation >= DEBUT_) creanceAutreAgence.push({ agence: p.mouvement.agence, reservation_id: p.reservation_id, montant: p.montant || 0, date: p.mouvement.date_operation })
+      continue
+    }
     if (!dansCompte(compte, p.mouvement.source, p.mouvement.date_operation)) continue
     const r = resaDCB.get(p.reservation_id)
     encaisseParMois[r.mois_comptable] = (encaisseParMois[r.mois_comptable] || 0) + (p.montant || 0)
@@ -377,6 +384,10 @@ export async function justifierSequestre(agence = 'dcb', { date = new Date().toI
   const tot = k => sum(horsMois[k], m => m.montant)
 
   const facturesListe = parMois.filter(p => p.facture)
+  // Argent arrivé sur le compte AVANT le 1er mois suivi (ex. payouts du 24 au 31/12/2025 pour des
+  // séjours 2025, dont les propriétaires ont été payés par l'ancien compte) moins les sorties qui
+  // soldent des dettes d'avant le suivi : relève de la clôture de l'exercice précédent
+  const avantSuivi = (compte.ouverture_solde || 0) + sum(mvts.filter(m => m.date_operation < DEBUT_), m => (m.credit || 0) - (m.debit || 0)) - sum(sortiesAnterieures, s => s.debit)
   const poches = [
     { cle: 'proprietaires', label: 'Propriétaires — reversements restant dus', montant: sum(facturesListe, p => p.proprietaires.reste) },
     { cle: 'ae', label: 'AE — ménages et extras non encore payés', montant: sum(facturesListe, p => p.ae.reste) },
@@ -386,11 +397,13 @@ export async function justifierSequestre(agence = 'dcb', { date = new Date().toI
     { cle: 'factures_payees_sequestre', label: 'Factures d\'honoraires payées sur le séquestre (dues à DCB)', montant: tot('paiement_facture') },
     { cle: 'stripe', label: 'Virements reçus inférieurs aux paiements reliés (frais Stripe, payout partiel Airbnb, lignes Stripe manquantes) / frais Stripe remboursés par DCB', montant: tot('frais_stripe_rembourses') },
     { cle: 'frais_bancaires', label: 'Frais bancaires (nets des remises)', montant: tot('remise_frais_bancaires') - fraisBancaires },
+    { cle: 'avant_suivi', label: 'Exercice antérieur : mouvements du compte avant le 1er mois suivi − sorties réglant des dettes antérieures (à solder avec la clôture annuelle)', montant: avantSuivi },
     { cle: 'reprise_ancien_sequestre', label: 'Solde repris de l\'ancien compte séquestre (changement de banque, janvier 2026) — à ventiler avec la clôture 2025', montant: tot('reprise_ancien_sequestre') },
+    { cle: 'creance_autre_agence', label: 'À recevoir du séquestre d\'une autre agence (nos réservations payées sur son compte) − déjà reçu', montant: sum(creanceAutreAgence, x => x.montant) - sum(horsMois.inter_agence, e => e.credit || 0) },
     { cle: 'autre_agence', label: 'Réservations d\'une autre agence encaissées sur ce séquestre − déjà reversées à son séquestre', montant: sum(autreAgenceLiens, l => l.montant) - sum(versAutreAgence, s => s.debit) },
     { cle: 'annulees', label: 'Réservations annulées — net encaissé − remboursé (frais d\'annulation retenus / frais perdus)', montant: sum(annuleesLiens, l => l.montant) },
     { cle: 'plateformes_non_rapprochees', label: 'Encaissements plateformes non reliés à une réservation', montant: tot('plateforme_non_rapprochee') },
-    { cle: 'entrees_non_affectees', label: 'Autres encaissements à identifier', montant: tot('non_affecte') + tot('inter_agence') },
+    { cle: 'entrees_non_affectees', label: 'Autres encaissements à identifier', montant: tot('non_affecte') },
     { cle: 'sorties_non_affectees', label: 'Autres sorties à identifier', montant: -sum(sortiesAutres, s => s.debit) },
   ]
   // Sorties soldant des dettes d'avant la période (remise du 09/06 pour mai, HON/FMEN de mai…) :
