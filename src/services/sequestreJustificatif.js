@@ -221,7 +221,13 @@ export async function justifierSequestre(agence = 'dcb', { date = new Date().toI
   const entrees = mvts.filter(m => m.credit > 0)
   const transits = apparierTransits(entrees.filter(e => !lieParMvt.has(e.id)), sorties.filter(s => s.type === 'inter_agence' || s.type === 'autre'))
   const transitIds = new Set(transits.flatMap(p => [p.entree.id, p.sortie.id]))
-  const horsMois = { remboursement_debours: [], paiement_facture: [], frais_stripe_rembourses: [], remise_frais_bancaires: [], plateforme_non_rapprochee: [], non_affecte: [], inter_agence: [], retour_dcb: [], reprise_ancien_sequestre: [] }
+  // Versements Airbnb qui ne sont pas des séjours (copie Hospitable payout_hospitable.reference) :
+  // « Resolution Payout: AirCover damage reimbursement … » / « Misc Credit: Host Rewards … »
+  const { data: payoutsSpeciaux } = await supabase.from('payout_hospitable').select('amount, date_payout, platform_id, reference')
+    .eq('platform', 'airbnb').or('reference.ilike.Resolution Payout%,reference.ilike.Misc Credit%').gte('date_payout', DEBUT_)
+  const payoutSpecial = e => (payoutsSpeciaux || []).find(p => Math.abs((e.montant ?? e.credit) - p.amount) <= 2 &&
+    Math.abs(Date.parse(e.date_operation) - Date.parse(p.date_payout)) <= 5 * 86400000)
+  const horsMois = { aircover: [], prime_plateforme: [], remboursement_debours: [], paiement_facture: [], frais_stripe_rembourses: [], remise_frais_bancaires: [], plateforme_non_rapprochee: [], non_affecte: [], inter_agence: [], retour_dcb: [], reprise_ancien_sequestre: [] }
   for (const e of entrees) {
     if (transitIds.has(e.id) || e.date_operation < DEBUT_) continue
     const lie = lieParMvt.get(e.id) || 0
@@ -229,10 +235,18 @@ export async function justifierSequestre(agence = 'dcb', { date = new Date().toI
       const reste = e.credit - lie
       // Stripe verse net de ses frais : reste négatif = frais Stripe retenus sur l'encaissement
       if (reste < -100) horsMois.frais_stripe_rembourses.push({ ...e, montant: reste, raison: 'frais Stripe retenus (encaissement net)' })
-      else if (reste > 100) horsMois.plateforme_non_rapprochee.push({ ...e, montant: reste, raison: 'part du virement non reliée à une réservation' })
+      else if (reste > 100) {
+        const sp = payoutSpecial({ ...e, montant: reste })
+        if (sp) horsMois[/host rewards|misc credit/i.test(sp.reference) ? 'prime_plateforme' : 'aircover'].push({ ...e, montant: reste, raison: sp.reference })
+        else horsMois.plateforme_non_rapprochee.push({ ...e, montant: reste, raison: 'part du virement non reliée à une réservation' })
+      }
       continue
     }
-    const c = forcer(e, classerEntree(e, facturesMontants, ctx), 'entree')
+    let c = forcer(e, classerEntree(e, facturesMontants, ctx), 'entree')
+    if (c.type === 'plateforme_non_rapprochee' && c.regle === 'auto') {
+      const sp = payoutSpecial(e)
+      if (sp) c = { ...c, type: /host rewards|misc credit/i.test(sp.reference) ? 'prime_plateforme' : 'aircover', raison: sp.reference }
+    }
     ;(horsMois[c.type] || horsMois.non_affecte).push({ ...e, ...c, montant: e.credit })
   }
   const sortiesMois = (types, mois) => sorties.filter(s => !transitIds.has(s.id) && types.includes(s.type) && s.mois === mois)
@@ -402,6 +416,8 @@ export async function justifierSequestre(agence = 'dcb', { date = new Date().toI
     { cle: 'creance_autre_agence', label: 'À recevoir du séquestre d\'une autre agence (nos réservations payées sur son compte) − déjà reçu', montant: sum(creanceAutreAgence, x => x.montant) - sum(horsMois.inter_agence, e => e.credit || 0) },
     { cle: 'autre_agence', label: 'Réservations d\'une autre agence encaissées sur ce séquestre − déjà reversées à son séquestre', montant: sum(autreAgenceLiens, l => l.montant) - sum(versAutreAgence, s => s.debit) },
     { cle: 'annulees', label: 'Réservations annulées — net encaissé − remboursé (frais d\'annulation retenus / frais perdus)', montant: sum(annuleesLiens, l => l.montant) },
+    { cle: 'aircover', label: 'Remboursements AirCover (dégâts) — reviennent à qui a payé la réparation', montant: tot('aircover') },
+    { cle: 'prime_plateforme', label: 'Primes plateforme à l\'hôte (Airbnb Host Rewards…) — dues à l\'agence', montant: tot('prime_plateforme') },
     { cle: 'plateformes_non_rapprochees', label: 'Encaissements plateformes non reliés à une réservation', montant: tot('plateforme_non_rapprochee') },
     { cle: 'entrees_non_affectees', label: 'Autres encaissements à identifier', montant: tot('non_affecte') },
     { cle: 'sorties_non_affectees', label: 'Autres sorties à identifier', montant: -sum(sortiesAutres, s => s.debit) },
@@ -503,7 +519,7 @@ export async function justifierSequestre(agence = 'dcb', { date = new Date().toI
     const ad = typeSortie[sm.type] || 'a_affecter'
     ec(sm, 0, -sm.debit, ad, sm.sous || sm.type, { mois: sm.mois, tiers_id: sm.tiers_id, tiers_nom: ad === 'ae' ? nomAe(sm.tiers_id) : nomProprio(sm.tiers_id), regle: sm.regle })
   }
-  const typeEntree = { remboursement_debours: 'proprietaire', paiement_facture: 'agence', frais_stripe_rembourses: 'agence', retour_dcb: 'agence', remise_frais_bancaires: 'banque',
+  const typeEntree = { aircover: 'a_affecter', prime_plateforme: 'agence', remboursement_debours: 'proprietaire', paiement_facture: 'agence', frais_stripe_rembourses: 'agence', retour_dcb: 'agence', remise_frais_bancaires: 'banque',
     inter_agence: 'autre_agence', reprise_ancien_sequestre: 'reprise', plateforme_non_rapprochee: 'a_affecter', non_affecte: 'a_affecter' }
   const dejaEc = new Set()
   for (const [k, lst] of Object.entries(horsMois)) for (const e of lst) {
@@ -542,6 +558,7 @@ export async function justifierSequestre(agence = 'dcb', { date = new Date().toI
       remboursements_debours: lignes(horsMois.remboursement_debours),
       factures_payees_sequestre: lignes(horsMois.paiement_facture),
       plateformes_non_rapprochees: lignes(horsMois.plateforme_non_rapprochee),
+      aircover: lignes(horsMois.aircover), primes_plateforme: lignes(horsMois.prime_plateforme),
       entrees_a_identifier: lignes([...horsMois.non_affecte, ...horsMois.inter_agence]),
       sorties_a_identifier: lignes(sortiesAutres),
       sorties_anterieures: lignes(sortiesAnterieures),
