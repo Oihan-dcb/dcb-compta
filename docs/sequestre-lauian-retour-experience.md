@@ -129,7 +129,12 @@ les biens DCB sans collecte de loyer sortent en faux positifs, à exclure).
 pas fait pour 2026 (651,93 € sur les résas Lauïan, dont 346,25 € prélevés côté Stripe DCB). Le système commun devrait
 porter ces frais en « dû par le courant de l'agence ».
 
-## 10. ⚠️ Passage de relais — bug « annulée » : correctif DÉJÀ DÉPLOYÉ par la session Lauïan (25/09, 22h30)
+## 10. ⛔ ANNULÉ par Oïhan (25/09, 22h40) — commit 26a2c9a reverté (081cbb7), `ventilation-auto` redéployée sans la règle.
+**« Résa annulée = aucun ménage » n'est PAS une règle d'Oïhan : ne pas la réappliquer, ne pas recalculer les 17 résas ci-dessous.**
+Seul point réel qui reste : les résas annulées à **0 € encaissé** dont le VIRProprio a quand même été versé
+(AMAÏA HMSFJF3F2Y 646,86 € Manivit — réclamé ; DUL2 HM8HQQP53E 384,44 € ; PANTXIKA HMEAQXCBW8 403,80 € — décision Oïhan).
+
+### (historique) Passage de relais — bug « annulée » : correctif DÉJÀ DÉPLOYÉ par la session Lauïan (25/09, 22h30)
 Fait avant de lire votre message « laisse-le à l'autre session » — je m'arrête ici, la suite est à vous.
 - **Commit `26a2c9a`** (`ventilationCore.js` + test + `domain-rules.md`), poussé, **edge function `ventilation-auto` redéployée**.
   Règle Oïhan : résa annulée = **aucun ménage** (FMEN 0, MEN 0, pas d'AUTO) ; le retenu va au propriétaire
