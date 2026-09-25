@@ -506,6 +506,15 @@ export async function justifierSequestre(agence = 'dcb', { date = new Date().toI
     const lie = lieParMvt.get(e.id) || 0
     if (lie) ec(e, 0, Math.min(e.credit, lie), 'reservations', 'encaissement_resa', { regle: 'rapprochement', mois: moisDe(e.date_operation) })
   }
+  // Alertes du grand livre : remise groupée sans composition, mouvements en attente d'affectation
+  const sansDetail = ecritures.filter(x => x.nature === 'remise_groupee_sans_detail')
+  if (sansDetail.length) anomalies.push({ cle: `remise_sans_detail_${sansDetail.map(x => x.date_operation).join('_')}`, montant: sum(sansDetail, x => x.montant),
+    message: `Remise(s) groupée(s) sans détail des bénéficiaires : ${sansDetail.map(x => `${x.date_operation} ${eur(-x.montant)}`).join(', ')} — importer le PDF « Détail Remise » de la banque (scripts/import-detail-remise.mjs)` })
+  const limite = new Date(Date.parse(date) - 2 * 86400000).toISOString().slice(0, 10)
+  const enAttente = ecritures.filter(x => x.ayant_droit === 'a_affecter' && x.date_operation <= limite && x.nature !== 'remise_groupee_sans_detail')
+  if (enAttente.length) anomalies.push({ cle: `a_affecter_${enAttente.length}_${enAttente[0].date_operation}`, montant: sum(enAttente, x => x.montant),
+    message: `${enAttente.length} mouvement(s) du séquestre sans ayant droit depuis plus de 48 h (${eur(sum(enAttente, x => x.montant))}) — page Séquestre, boîte « À affecter »` })
+
   const lignes = arr => arr.map(m => ({ date: m.date_operation, montant: m.montant ?? m.debit ?? m.credit, libelle: (m.libelle || '').replace(/\n/g, ' ').slice(0, 120), raison: m.raison }))
 
   return {
