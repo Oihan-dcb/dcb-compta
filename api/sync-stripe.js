@@ -163,7 +163,10 @@ export default async function handler(req, res) {
             mouvement_id: po.mouvement_id,
             // Remboursement : id du remboursement (re_xxx), jamais l'id de la charge d'origine —
             // sinon collision avec la ligne 'reservation' déjà existante (UNIQUE sur stripe_charge_id)
-            stripe_charge_id: isRefund ? (tx.source || tx.id) : (ch.id || null),
+            // Jamais null : sans charge résolue (paiement de facture Stripe, pyr_…), la clé UNIQUE
+            // ne dédoublonnait rien → la ligne était réinsérée à chaque passage tant que le virement
+            // restait en attente (Lauïan, payout 30/07/2026 : 30 copies de la même ligne 6 606,18 €).
+            stripe_charge_id: isRefund ? (tx.source || tx.id) : (ch.id || tx.source || tx.id),
             reservation_code: code,
             type_ligne: isRefund ? 'remboursement' : (!code ? 'extra' : (terme ? 'paiement_partiel' : 'reservation')),
             terme: terme || null,
