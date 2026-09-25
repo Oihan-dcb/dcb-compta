@@ -350,7 +350,7 @@ export default function App() {
             </NavLink>
             <NavLink to="/factures" className={({isActive}) => isActive ? 'nav-link active' : 'nav-link'}>Facturation</NavLink>
             <NavLink to="/comptabilite" className={({isActive}) => isActive ? 'nav-link active' : 'nav-link'}>Comptabilité</NavLink>
-            {AGENCE === 'dcb' && <NavLink to="/sequestre" className={({isActive}) => isActive ? 'nav-link active' : 'nav-link'}>Séquestre</NavLink>}
+            <NavLink to="/sequestre" className={({isActive}) => isActive ? 'nav-link active' : 'nav-link'}>Séquestre</NavLink>
             <NavLink to="/exports" className={({isActive}) => isActive ? 'nav-link active' : 'nav-link'}>Exports</NavLink>
             <NavLink to="/locations-longues" className={({isActive}) => isActive ? 'nav-link active' : 'nav-link'}>Loc-longues</NavLink>
             <NavLink to="/achats" className={({isActive}) => isActive ? 'nav-link active' : 'nav-link'}>Achats</NavLink>

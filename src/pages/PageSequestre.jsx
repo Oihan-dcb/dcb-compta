@@ -2,10 +2,12 @@ import { useState, useEffect } from 'react'
 import { supabase } from '../lib/supabase'
 import { AGENCE } from '../lib/agence'
 import { justifierSequestre } from '../services/sequestreJustificatif'
+import SequestreAAffecter from '../components/SequestreAAffecter'
 
-// Séquestre — justificatif (I-161) : le solde bancaire réel du séquestre location saisonnière,
-// décomposé en poches (à qui appartient chaque euro). Photo calculée chaque nuit
-// (api/sequestre-justificatif, 05:20) ; « Recalculer » refait le calcul à l'instant.
+// Séquestre — justificatif (I-161) : le solde du séquestre location saisonnière décomposé en poches
+// (à qui appartient chaque euro), pour l'agence de l'app (fiche sequestre_compte, migrations 278-280).
+// Photo calculée chaque nuit (api/sequestre-justificatif, 05:20) ; « Recalculer » refait le calcul.
+// Boîte « À affecter » : les mouvements que les règles n'ont pas su attribuer (grand livre).
 
 const eur = c => ((c || 0) / 100).toLocaleString('fr-FR', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) + ' €'
 const fmtD = d => d ? String(d).slice(0, 10).split('-').reverse().join('/') : '—'
@@ -31,11 +33,11 @@ export default function PageSequestre() {
 
   async function charger() {
     setLoading(true); setErr(null)
-    const { data, error } = await supabase.from('sequestre_justificatif').select('*').eq('agence', 'dcb').order('date', { ascending: false }).limit(60)
+    const { data, error } = await supabase.from('sequestre_justificatif').select('*').eq('agence', AGENCE).order('date', { ascending: false }).limit(60)
     if (error) setErr(error.message)
     const dernier = data?.[0]
-    if (dernier) setJ({ date: dernier.date, solde_banque: { montant: dernier.solde_banque, maj: dernier.solde_maj }, total_justifie: dernier.total_justifie,
-      ecart: dernier.ecart, poches: dernier.poches, par_mois: dernier.par_mois, detail: dernier.detail, anomalies: dernier.detail?.anomalies || [], source: 'photo de la nuit' })
+    if (dernier) setJ({ date: dernier.date, solde_banque: { montant: dernier.solde_banque, maj: dernier.solde_maj, banque: dernier.detail?.banque }, total_justifie: dernier.total_justifie,
+      ecart: dernier.ecart, ecart_import: dernier.detail?.ecart_import, poches: dernier.poches, par_mois: dernier.par_mois, detail: dernier.detail, anomalies: dernier.detail?.anomalies || [], source: 'photo de la nuit' })
     setHistorique(data || [])
     setLoading(false)
   }
@@ -43,12 +45,11 @@ export default function PageSequestre() {
 
   async function recalculer() {
     setCalcul(true); setErr(null)
-    try { const r = await justifierSequestre('dcb'); setJ({ ...r, source: 'calcul à l\'instant' }) }
+    try { const r = await justifierSequestre(AGENCE); setJ({ ...r, source: 'calcul à l\'instant' }) }
     catch (e) { setErr(e.message) }
     setCalcul(false)
   }
 
-  if (AGENCE !== 'dcb') return <div style={{ padding: 30 }}>Le justificatif du séquestre est disponible pour DCB (séquestre suivi sur Pennylane).</div>
 
   const th = { textAlign: 'left', padding: '8px 10px', fontSize: 11, textTransform: 'uppercase', color: 'var(--text-muted)', background: 'var(--header-bg)' }
   const td = { padding: '7px 10px', borderTop: '1px solid #F3EFE6', fontSize: 13 }
@@ -71,7 +72,7 @@ export default function PageSequestre() {
 
       {j && <>
         <div style={{ display: 'flex', gap: 12, marginBottom: 18, flexWrap: 'wrap' }}>
-          {[['Solde bancaire (Pennylane)', j.solde_banque.montant, `synchro ${fmtD(j.solde_banque.maj)}`],
+          {[['Solde du relevé importé', j.solde_banque.montant, j.solde_banque.banque ? `banque : ${eur(j.solde_banque.banque.montant)}${Math.abs(j.ecart_import || 0) > 100 ? ` — ${eur(j.ecart_import)} pas encore importés` : ' ✓'}` : 'ouverture + mouvements'],
             ['Total justifié', j.total_justifie, 'somme des poches'],
             ['Écart', j.ecart, Math.abs(j.ecart) <= 100 ? '✓ séquestre justifié' : 'à expliquer']].map(([l, v, sub], i) => (
             <div key={l} style={{ flex: 1, minWidth: 200, background: '#fff', border: `${i === 2 ? 2 : 1}px solid ${i === 2 ? (Math.abs(v) <= 100 ? '#059669' : '#B91C1C') : 'var(--border)'}`, borderRadius: 10, padding: '12px 16px' }}>
@@ -114,6 +115,10 @@ export default function PageSequestre() {
           </table>
         </div>
 
+        <h2 style={{ fontSize: 16, margin: '0 0 4px' }}>À affecter</h2>
+        <div style={{ fontSize: 12, color: 'var(--text-muted)', marginBottom: 8 }}>Mouvements que les règles automatiques n'ont pas su attribuer. Une affectation vaut pour ce mouvement ; « mémoriser pour ce libellé » l'applique aussi aux suivants.</div>
+        <div style={{ marginBottom: 20 }}><SequestreAAffecter agence={AGENCE} /></div>
+
         <h2 style={{ fontSize: 16, margin: '0 0 8px' }}>Mois par mois</h2>
         <div style={{ background: '#fff', border: '1px solid var(--border)', borderRadius: 10, overflow: 'auto', marginBottom: 20 }}>
           <table style={{ width: '100%', borderCollapse: 'collapse', minWidth: 900 }}>
@@ -150,7 +155,7 @@ export default function PageSequestre() {
           <strong>Lecture :</strong> « DCB détenu » = encaissé du mois − reversements dus − AE dus − déjà viré à DCB : ce que le séquestre détient réellement encore pour DCB.
           « DCB théorique » = ce qui reste à virer d'après la page Comptabilité (honoraires, ménage, commissions des résas encaissées + frais retenus).
           Une <strong>anomalie</strong> négative = il manque de l'argent au séquestre pour ce mois (virement DCB en trop, encaissement manquant, débours non remboursé) ;
-          positive = de l'argent en plus (encaissement non réparti, reversement non facturé…). Mois suivis à partir de juin 2026 ; un reliquat d'avant juin ressort dans l'écart.
+          positive = de l'argent en plus (encaissement non réparti, reversement non facturé…). Mois suivis à partir de la date de départ de la fiche du compte séquestre.
         </div>
 
         {historique.length > 1 && <>

@@ -112,7 +112,7 @@ export async function justifierSequestre(agence = 'dcb', { date = new Date().toI
     toutes(() => supabase.from('reservation')
       .select('id, code, mois_comptable, platform, final_status, fin_revenue, bien:bien_id!inner(agence, mode_encaissement, proprietaire_id)')
       .eq('bien.agence', agence).gte('mois_comptable', MOIS_DEBUT_)),
-    toutes(() => supabase.from('sequestre_affectation').select('mouvement_id, type, sous, mois, note')),
+    toutes(() => supabase.from('sequestre_affectation').select('mouvement_id, type, sous, mois, note, tiers_id')),
   ])
   // Alias de libellés par tiers (migration 279) : mémorisés par la boîte « À affecter »
   const { data: aliasLibelles } = await supabase.from('sequestre_alias').select('sens, motif, type, sous, tiers_type, tiers_id, note').eq('agence', agence)
@@ -127,7 +127,7 @@ export async function justifierSequestre(agence = 'dcb', { date = new Date().toI
   // Priorité : affectation manuelle du mouvement > alias de libellé > règles automatiques
   const forcer = (m, c, sens) => {
     const a = affecte.get(m.id)
-    if (a) return { ...c, type: a.type, sous: a.sous ?? c.sous, mois: a.mois ?? c.mois, note: a.note, regle: 'affectation_manuelle' }
+    if (a) return { ...c, type: a.type, sous: a.sous ?? c.sous, mois: a.mois ?? c.mois, tiers_id: a.tiers_id ?? c.tiers_id, note: a.note, regle: 'affectation_manuelle' }
     const al = sens ? parAlias(m, sens) : null
     return al ? { ...c, ...al } : { ...c, regle: 'auto' }
   }
