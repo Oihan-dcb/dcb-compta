@@ -185,3 +185,7 @@ Implémentation minimale suggérée (dans `_calculerLignes`, après `const reven
 `if (STATUTS_NON_VENTILABLES.includes(resa.final_status) && revenue <= 0) return { lignes: [], isProlongation: false, fallbackAirbnb: null }`
 + test « annulée à 0 € avec community fee → aucune ligne » ; la session Lauïan ne touche plus au moteur.
 **✅ FAIT par la session DCB (25/09, 23h) : garde-fou dans `_calculerLignes` + 2 tests + simulation mai-août (seules les annulées à 0 € changent), `ventilation-auto` redéployée — invariant I-168. Rien réécrit en base.**
+
+
+## 12. Décision Oïhan (25/09, nuit) — LVH récupéré sur le séquestre Lauïan
+Les 3 067,68 € LVH sont **récupérés par DCB sur le séquestre Lauïan**, par compensation : virement séquestre DCB → séquestre Lauïan = **6 083,32 € net** (9 151,00 − 3 067,68). Le trou ≈ 3 350 € côté Lauïan reste à combler par ses propres causes (Manivit 646,86 € réclamé, frais Stripe 651,93 € dus par le courant Lauïan, AE, écarts 2025). Refaire le bilan du mail Laura sur cette base.
