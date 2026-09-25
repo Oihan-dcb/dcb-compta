@@ -371,7 +371,7 @@ export async function justifierSequestre(agence = 'dcb', { date = new Date().toI
   }
   // Paiement relié à une résa annulée SANS revenu : lien presque toujours faux (HMKBNZXMPW,
   // 25/09/2026 : payout 1 065,53 € d'un autre séjour du même bien, annulation synchronisée en retard)
-  const liensAnnulees = Object.values(annuleesLiens.reduce((a, l) => { (a[l.code] ||= { code: l.code, montant: 0 }).montant += l.montant || 0; return a }, {})).filter(x => Math.abs(x.montant) > 100)
+  const liensAnnulees = Object.values(annuleesLiens.reduce((a, l) => { (a[l.code] ||= { code: l.code, montant: 0 }).montant += l.montant || 0; return a }, {})).filter(x => x.montant > 100) // négatif = frais Stripe perdus sur une annulation remboursée : normal
   if (liensAnnulees.length) anomalies.push({ cle: `paiement_resa_annulee_${liensAnnulees.map(x => x.code).sort().join('_')}`, montant: sum(liensAnnulees, x => x.montant),
     message: `Paiement(s) relié(s) à une réservation annulée sans revenu — vérifier le rapprochement (probable mauvaise résa) : ${liensAnnulees.map(x => `${x.code} ${eur(x.montant)}`).join(', ')}` })
   // Résa encaissée nettement au-delà de son revenu : presque toujours un double rattachement
