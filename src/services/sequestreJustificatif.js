@@ -180,8 +180,19 @@ export async function justifierSequestre(agence = 'dcb', { date = new Date().toI
     // solde repris (7 443,18 €) ou n'est pas au séquestre — sinon compté deux fois (25/09/2026 : −7,6 k€)
     // Payé sur le séquestre d'une AUTRE agence (même nom de source bancaire possible : les deux
     // relevés CE s'appellent « CaisseEpargne ») : créance sur cette agence, pas un encaissement ici
+    // → compté comme encaissé du mois (la résa est bien payée, ses ayants droit sont dus) ET porté en
+    // poche négative « à recevoir » (l'argent n'est pas sur ce compte). Avant : exclu de l'encaissé ET
+    // compté en positif → le manque était compté deux fois (Lauïan, résas payées sur le Stripe DCB :
+    // écart −8 874,66 € au 26/09/2026).
     if (p.mouvement.agence && p.mouvement.agence !== agence) {
-      if (p.mouvement.date_operation >= DEBUT_) creanceAutreAgence.push({ agence: p.mouvement.agence, reservation_id: p.reservation_id, montant: p.montant || 0, date: p.mouvement.date_operation })
+      if (p.mouvement.date_operation >= DEBUT_) {
+        creanceAutreAgence.push({ agence: p.mouvement.agence, reservation_id: p.reservation_id, montant: p.montant || 0, date: p.mouvement.date_operation })
+        const rc = resaDCB.get(p.reservation_id)
+        if (rc) {
+          encaisseParMois[rc.mois_comptable] = (encaisseParMois[rc.mois_comptable] || 0) + (p.montant || 0)
+          const epc = (encProprio[rc.mois_comptable] ||= {}); epc[rc.bien?.proprietaire_id] = (epc[rc.bien?.proprietaire_id] || 0) + (p.montant || 0)
+        }
+      }
       continue
     }
     if (!dansCompte(compte, p.mouvement.source, p.mouvement.date_operation)) continue
@@ -489,7 +500,7 @@ export async function justifierSequestre(agence = 'dcb', { date = new Date().toI
     { cle: 'frais_bancaires', label: 'Frais bancaires (nets des remises)', montant: tot('remise_frais_bancaires') - fraisBancaires },
     { cle: 'avant_suivi', label: 'Exercice antérieur : mouvements du compte avant le 1er mois suivi − sorties réglant des dettes antérieures (à solder avec la clôture annuelle)', montant: avantSuivi },
     { cle: 'reprise_ancien_sequestre', label: 'Solde repris de l\'ancien compte séquestre (changement de banque, janvier 2026) — à ventiler avec la clôture 2025', montant: tot('reprise_ancien_sequestre') },
-    { cle: 'creance_autre_agence', label: 'À recevoir du séquestre d\'une autre agence (nos réservations payées sur son compte) − déjà reçu', montant: sum(creanceAutreAgence, x => x.montant) - sum(horsMois.inter_agence, e => e.credit || 0) },
+    { cle: 'creance_autre_agence', label: 'À recevoir du séquestre d\'une autre agence (nos réservations payées sur son compte, pas encore arrivées ici)', montant: -(sum(creanceAutreAgence, x => x.montant) - sum(horsMois.inter_agence, e => e.credit || 0)) },
     { cle: 'autre_agence', label: 'Réservations d\'une autre agence encaissées sur ce séquestre − déjà reversées à son séquestre − compensations', montant: sum(autreAgenceLiens, l => l.montant) - sum(versAutreAgence, s => s.debit) - compensationsTotal },
     // Compensation inter-agences (migration 282) : ce que l'autre agence nous devait (LVH 2025 : loyers
     // d'un bien DCB versés sur le séquestre Lauïan, propriétaire payé par DCB) est retenu sur ce qu'on lui
