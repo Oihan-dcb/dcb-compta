@@ -63,7 +63,7 @@ export async function justifierSequestre(agence = 'dcb', { date = new Date().toI
   const MOIS_DEBUT_ = moisDebut, DEBUT_ = `${moisDebut}-01`
   const [aes, proprietaires, mvts, factures, reservations, affectations] = await Promise.all([
     toutes(() => supabase.from('auto_entrepreneur').select('id, nom, prenom, type')),
-    toutes(() => supabase.from('proprietaire').select('id, nom, prenom').eq('agence', agence)),
+    toutes(() => supabase.from('proprietaire').select('id, nom, prenom, email').eq('agence', agence)),
     toutes(() => supabase.from('mouvement_bancaire')
       .select('id, date_operation, libelle, detail, credit, debit, canal, statut_matching, source')
       .eq('agence', agence).lte('date_operation', date)
@@ -86,7 +86,18 @@ export async function justifierSequestre(agence = 'dcb', { date = new Date().toI
     const a = affecte.get(m.id)
     return a ? { ...c, type: a.type, sous: a.sous ?? c.sous, mois: a.mois ?? c.mois, note: a.note } : c
   }
-  const ctx = { aes: aes.filter(a => a.type === 'ae'), proprietaires }
+  // Fiches propriétaire sans bien (co-titulaire, doublon resté après fusion — « Peres Hélène » =
+  // co-titulaire de BURGY 416/602, « ELISSALT Hélène » doublon de la fiche ONGI) : un virement à leur
+  // nom est attribué au propriétaire qui a des biens et partage leur adresse email
+  const { data: biensProprio } = await supabase.from('bien').select('proprietaire_id').eq('agence', agence).not('proprietaire_id', 'is', null)
+  const avecBien = new Set((biensProprio || []).map(b => b.proprietaire_id))
+  const emails = p => (p.email || '').toLowerCase().split(',').map(x => x.trim()).filter(Boolean)
+  const alias = new Map()
+  for (const p of proprietaires.filter(p => !avecBien.has(p.id))) {
+    const titulaire = proprietaires.find(q => avecBien.has(q.id) && emails(q).some(e => emails(p).includes(e)))
+    if (titulaire) alias.set(p.id, titulaire.id)
+  }
+  const ctx = { aes: aes.filter(a => a.type === 'ae'), proprietaires: proprietaires.filter(p => avecBien.has(p.id) || alias.has(p.id)) }
   const facturesMontants = factures.filter(f => ['honoraires', 'debours'].includes(f.type_facture)).map(f => ({
     type_facture: f.type_facture, proprio_nom: f.proprietaire?.nom, bien_code: f.bien?.code,
     montants: [f.total_ttc, f.total_ttc_evoliz].filter(Boolean),
@@ -140,6 +151,7 @@ export async function justifierSequestre(agence = 'dcb', { date = new Date().toI
   // Sortie rattachée à une réservation (remboursement voyageur prélevé par Stripe…) : déjà
   // déduite de l'encaissé de la résa (paiement négatif) — ni sortie à identifier, ni double compte
   const sorties = mvts.filter(m => m.debit > 0).map(m => ({ ...m, ...(lieParMvt.has(m.id) ? { type: 'lie_resa', mois: moisDe(m.date_operation) } : forcer(m, classerSortie(m, ctx))) }))
+    .map(s => s.tiers_id && alias.has(s.tiers_id) ? { ...s, tiers_id: alias.get(s.tiers_id) } : s)
   const entrees = mvts.filter(m => m.credit > 0)
   const transits = apparierTransits(entrees.filter(e => !lieParMvt.has(e.id)), sorties.filter(s => s.type === 'inter_agence' || s.type === 'autre'))
   const transitIds = new Set(transits.flatMap(p => [p.entree.id, p.sortie.id]))
@@ -181,6 +193,11 @@ export async function justifierSequestre(agence = 'dcb', { date = new Date().toI
     return m ? { ...f, mois_origine: `${m[2]}-${m[1]}` } : null
   }).filter(Boolean)
 
+  // Composition des remises groupées (« REM VIR SEPA ») : fichiers générés par l'app (proprios_lc)
+  // ou PDF « Détail Remise » de la banque importés (detail_remise_ce, scripts/import-detail-remise.mjs)
+  const { data: compoRemises } = await supabase.from('sct_export').select('mois, type_export, total_cts, lignes').eq('agence', agence)
+  const factureProprio = new Map(factures.map(f => [f.id, f.proprietaire_id]))
+
   const parMois = []
   for (const mois of moisFactures) {
     const encaisse = encaisseParMois[mois] || 0
@@ -190,6 +207,7 @@ export async function justifierSequestre(agence = 'dcb', { date = new Date().toI
     const proprioDu = sum(honoraires.filter(f => f.mois === mois), f => f.montant_reversement) + sum(horsFacture, s => s.debit)
     const proprioSorties = sortiesMois(['reversement_groupe', 'reversement', 'reversement_hors_facture'], mois)
     const proprioPaye = sum(proprioSorties, s => s.debit) + sum(regulVir.filter(f => f.mois_origine === mois), f => f.montant_ttc)
+      - sum(regulVir.filter(f => f.mois_facturation === mois), f => f.montant_ttc)
     const { data: missions } = await supabase.from('mission_menage').select('montant, impute_salaire, ae:ae_id!inner(type), bien:bien_id!inner(id, agence, proprietaire_id, skip_facturation, mode_encaissement)')
       .eq('mois', mois).eq('statut', 'valide').eq('bien.agence', agence).eq('ae.type', 'ae')
     const { data: prestas } = await supabase.from('prestation_hors_forfait').select('montant, impute_salaire, ae:ae_id!inner(type), bien:bien_id!inner(id, agence, proprietaire_id, skip_facturation, mode_encaissement)')
@@ -236,12 +254,35 @@ export async function justifierSequestre(agence = 'dcb', { date = new Date().toI
       add(r.proprietaire_id, -((r.hon_ttc - (h.hon_ttc || 0)) + (r.fmen_ttc - (h.fmen_ttc || 0)) + (r.com_ttc - (h.com_ttc || 0))))
     }
     for (const f of frais || []) add(f.bien?.proprietaire_id, -(f.montant_deduit_loy || 0))
+    // Reste dû par propriétaire : dû (factures + hors facture + sans facture − régul. réglées ici)
+    // − payé (lignes des remises groupées de ce mois + virements individuels + régul. du mois d'origine)
+    function resteParProprio() {
+      const du = {}, paye = {}, inconnu = []
+      const plus = (o, id, v) => { o[id || 'inconnu'] = (o[id || 'inconnu'] || 0) + (v || 0) }
+      for (const f of honoraires.filter(f => f.mois === mois)) plus(du, f.proprietaire_id, f.montant_reversement)
+      for (const x of horsFacture) plus(du, x.tiers_id, x.debit)
+      for (const r of sansFacture) plus(du, r.proprietaire_id, r.reversement_calcule)
+      // la régularisation réglée ce mois-ci est une dette du mois d'origine : retirée du dû ET du
+      // payé d'ici (elle est comptée payée pour le mois d'origine)
+      for (const f of regulRegleesIci) { plus(du, f.bien?.proprietaire_id, -f.montant_ttc); plus(paye, f.bien?.proprietaire_id, -f.montant_ttc) }
+      for (const sRem of proprioSorties.filter(x => x.type === 'reversement_groupe')) {
+        const compo = (compoRemises || []).find(c => c.mois === mois && c.total_cts === sRem.debit)
+        if (!compo) { inconnu.push(sRem); continue }
+        for (const l of compo.lignes || []) plus(paye, l.proprietaire_id || factureProprio.get(l.cle), l.montant_cts)
+      }
+      for (const x of proprioSorties.filter(x => x.type !== 'reversement_groupe')) plus(paye, x.tiers_id, x.debit)
+      for (const f of regulVir.filter(f => f.mois_origine === mois)) plus(paye, f.bien?.proprietaire_id, f.montant_ttc)
+      if (inconnu.length) return { composition_manquante: inconnu.map(x => ({ date: x.date_operation, montant: x.debit })) }
+      return Object.keys({ ...du, ...paye }).map(id => ({ proprietaire_id: id, nom: nomP(id), du: du[id] || 0, paye: paye[id] || 0, reste: (du[id] || 0) - (paye[id] || 0) }))
+        .filter(x => Math.abs(x.reste) >= 100).sort((a, b) => b.reste - a.reste)
+    }
     const nomP = id => { const p = proprietaires.find(x => x.id === id); return p ? `${p.nom}${p.prenom ? ' ' + p.prenom : ''}` : id }
     const anomaliesProprio = Object.entries(parP).filter(([, v]) => Math.abs(v) >= 5000)
       .sort((a, b) => a[1] - b[1]).map(([id, v]) => ({ proprietaire_id: id, nom: nomP(id), montant: v }))
     parMois.push({
       mois, facture: true, encaisse,
       proprietaires: { du: proprioDuTotal, du_sans_facture: proprioDuSansFacture, paye: proprioPaye, reste: proprioDuTotal - proprioPaye,
+        par_proprio: resteParProprio(),
         paiements: proprioSorties.map(s => ({ date: s.date_operation, montant: s.debit, libelle: s.libelle })) },
       ae: { du: aeDu, paye: aePaye, reste: aeDu - aePaye },
       dcb: { reste: dcbReste + aeAvanceTotal, paye: dcbPaye, theorique: dcbTheorique, reste_theorique: dcbTheorique - dcbPaye,
