@@ -157,7 +157,7 @@ Fait avant de lire votre message « laisse-le à l'autre session » — je m'arr
 | lauian | **HMSFJF3F2Y** | AMAÏA | 07 | oui | **LOY 646,86 → 0** — Manivit : **décision Oïhan = réclamer** |
 | lauian | HMQKYJB5A5 | FOLLE | 07 | oui | FMEN 75,12 → 0, LOY +75,12 (Lopez Quesada sous-payé) |
 
-- Non traité : la **taxe de séjour** sur une annulée (HOST-HXIDGK garde une TAXE 93,24 €) — pas de séjour = pas de taxe ?
+- **Taxe de séjour sur une annulée : on ne change pas la règle** (décision Oïhan 25/09) — la TAXE reste calculée comme avant.
 - Cause du « figé » Hamilton/Peterfy/Martorana : ventilation recalculée le 06/08 alors que `fin_revenue` valait encore le
   montant d'origine, puis passé à 0 (remboursement hôte) après verrouillage → pas de recalcul. Alerte à prévoir sur
   mois verrouillé quand `fin_revenue ≠ Σ ventilé`.
