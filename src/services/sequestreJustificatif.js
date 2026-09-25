@@ -127,6 +127,12 @@ export async function justifierSequestre(agence = 'dcb', { date = new Date().toI
   const lieParMvt = new Map()
   for (const p of preuves || []) {
     if (!p.mouvement_id || !p.mouvement || p.mouvement.date_operation > date) continue
+    // Seuls les paiements arrivés SUR CE COMPTE comptent : un paiement reçu sur l'ancien séquestre
+    // (BudgetBakers, avant le changement de banque du 28/01/2026) ou sur le courant est déjà dans le
+    // solde repris (7 443,18 €) ou n'est pas au séquestre — sinon compté deux fois (25/09/2026 : −7,6 k€)
+    const src = p.mouvement.source, d = p.mouvement.date_operation
+    const surCeCompte = (src === SOURCE_SEQUESTRE_LC && d >= BASCULE_PENNYLANE) || (['CaisseEpargne', 'csv'].includes(src) && d < BASCULE_PENNYLANE)
+    if (!surCeCompte) continue
     const r = resaDCB.get(p.reservation_id)
     encaisseParMois[r.mois_comptable] = (encaisseParMois[r.mois_comptable] || 0) + (p.montant || 0)
     const ep = (encProprio[r.mois_comptable] ||= {}); ep[r.bien?.proprietaire_id] = (ep[r.bien?.proprietaire_id] || 0) + (p.montant || 0)
@@ -164,7 +170,7 @@ export async function justifierSequestre(agence = 'dcb', { date = new Date().toI
   const entrees = mvts.filter(m => m.credit > 0)
   const transits = apparierTransits(entrees.filter(e => !lieParMvt.has(e.id)), sorties.filter(s => s.type === 'inter_agence' || s.type === 'autre'))
   const transitIds = new Set(transits.flatMap(p => [p.entree.id, p.sortie.id]))
-  const horsMois = { remboursement_debours: [], paiement_facture: [], frais_stripe_rembourses: [], remise_frais_bancaires: [], plateforme_non_rapprochee: [], non_affecte: [], inter_agence: [], retour_dcb: [] }
+  const horsMois = { remboursement_debours: [], paiement_facture: [], frais_stripe_rembourses: [], remise_frais_bancaires: [], plateforme_non_rapprochee: [], non_affecte: [], inter_agence: [], retour_dcb: [], reprise_ancien_sequestre: [] }
   for (const e of entrees) {
     if (transitIds.has(e.id) || e.date_operation < DEBUT_) continue
     const lie = lieParMvt.get(e.id) || 0
@@ -336,6 +342,7 @@ export async function justifierSequestre(agence = 'dcb', { date = new Date().toI
     { cle: 'factures_payees_sequestre', label: 'Factures d\'honoraires payées sur le séquestre (dues à DCB)', montant: tot('paiement_facture') },
     { cle: 'stripe', label: 'Virements reçus inférieurs aux paiements reliés (frais Stripe, payout partiel Airbnb, lignes Stripe manquantes) / frais Stripe remboursés par DCB', montant: tot('frais_stripe_rembourses') },
     { cle: 'frais_bancaires', label: 'Frais bancaires (nets des remises)', montant: tot('remise_frais_bancaires') - fraisBancaires },
+    { cle: 'reprise_ancien_sequestre', label: 'Solde repris de l\'ancien compte séquestre (changement de banque, janvier 2026) — à ventiler avec la clôture 2025', montant: tot('reprise_ancien_sequestre') },
     { cle: 'autre_agence', label: 'Résas Lauïan encaissées sur ce séquestre (Stripe DCB) − déjà reversées au séquestre Lauïan', montant: sum(autreAgenceLiens, l => l.montant) - sum(versAutreAgence, s => s.debit) },
     { cle: 'annulees', label: 'Réservations annulées — net encaissé − remboursé (frais d\'annulation retenus / frais perdus)', montant: sum(annuleesLiens, l => l.montant) },
     { cle: 'plateformes_non_rapprochees', label: 'Encaissements plateformes non reliés à une réservation', montant: tot('plateforme_non_rapprochee') },
