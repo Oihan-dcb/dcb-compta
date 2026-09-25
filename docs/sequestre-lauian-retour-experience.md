@@ -20,8 +20,10 @@ boîte « À affecter », alertes, clôture mensuelle).
     ALTHEA) : Hospitable Direct = **un compte Stripe par site de réservation** ; ces biens n'étaient
     publiés que sur destinationcotebasque.com (corrigé par Oïhan dans Hospitable le 25/09).
     Détection : `reservation_paiement` dont la résa a `bien.agence ≠ mouvement.agence`.
-  - 949,93 € d'un payout Airbnb du 05/01 arrivé sur le séquestre Lauïan pour 3 séjours DCB
-    (EKIA, 602, IBANETA, 26/12/2025).
+  - ~~949,93 € d'un payout Airbnb du 05/01 pour 3 séjours DCB~~ — **faux, corrigé le 25/09** : c'est
+    le séjour Lauïan ENEKO HMH9BJKYYF (Goberville, 949,93 € exact) ; le rapprochement l'avait relié à
+    3 résas DCB (somme 949,92) déjà payées sur le compte DCB le 29/12. Leçon : un subset-sum au
+    centime près entre agences doit être refusé quand une résa de la bonne agence a le montant exact.
 - **DCB comme créancier de Lauïan** (pas « courant Lauïan ») :
   - FMEN : factures `lauian_fmen` générées côté DCB par `genererFactureLauianFMEN`, **client = le
     propriétaire Lauïan** (pas la société Lauïan). Montant dû = factures (réel > provision > report +
@@ -60,7 +62,7 @@ Laura. → la boîte « À affecter » avec **mémorisation d'alias par tiers** 
 - Virement séquestre DCB → séquestre Lauïan 9 151,00 € (à passer AVANT les virements HON Lauïan).
 - Virements à faire depuis le séquestre Lauïan : honoraires 47 418,02 € → courant Lauïan ; frais
   1 894,80 € → courant Lauïan ; FMEN 11 100,56 € + 350 € rattrapage KOSTALDEA → DCB ; COM
-  3 615,10 € → DCB ; 949,93 € → DCB ; ARROSA 150,25 € → Mena Mauriz.
+  3 615,10 € → DCB ; ARROSA 150,25 € → Mena Mauriz.
 - À confirmer par Laura : AE (annexe F, 572,92 € restant), FMEN janv-mars (370,66 €), résolution
   Airbnb BITXI 395 €.
 - Charges DCB → Lauïan à facturer après justification : main d'œuvre Clémence, forfaits logiciels
@@ -68,3 +70,11 @@ Laura. → la boîte « À affecter » avec **mémorisation d'alias par tiers** 
 - Scripts d'analyse (lecture seule) dans le scratchpad de la session Lauïan : `lauian_seq.mjs`,
   `lauian_bien.mjs`, `lauian_pont.mjs` (pont de trésorerie au centime), `lauian_annexes.mjs`
   (génère les annexes par bien / résa / propriétaire / AE). À reprendre comme tests du système commun.
+
+## 6. Boîte « À affecter » Lauïan (25/09, session Lauïan)
+26 → 8 : 6 alias propriétaires (Cirauqui, Veyssière, Lopez Quesada, Manivit, Benichou ×2), alias
+« hono » (virements honoraires → courant Lauïan), alias remboursement DCB « trop perçu FMEN » ;
+liens ajoutés : 05/01 949,93 → ENEKO HMH9BJKYYF, 24/12 354,08 → ENEKO HMPJWDXMWY, 27/07 66 →
+COCO HMS53M5BCH (AirCover). Restent 8 payouts plateformes janv-mars (17 132,75 €, séjours d'avant
+l'app, dont Airbnb 13 547,14 € le 13/01). **Écart Lauïan du justificatif = −9 146 € ≈ les 9 151 €
+encaissés par le Stripe DCB** : les compter en créance sur DCB (ou les exclure de l'encaissé Lauïan).
