@@ -383,7 +383,11 @@ export async function buildComptaMensuelle(mois, bienIds = null) {
   // (ligne MEN posée depuis PageRapports). Sinon (séjour gratuit) rien ne réduit le reversement.
   const osAllIds = new Set(resas.filter(r => r.owner_stay).map(r => r.id))
   const osMenSaisiIds = new Set(ventils.filter(v => v.code === 'MEN' && osAllIds.has(v.reservation_id)).map(v => v.reservation_id))
-  const osResaIds = new Set(resas.filter(r => r.owner_stay && ((r.fin_revenue || 0) > 0 || osMenSaisiIds.has(r.id))).map(r => r.id))
+  // + séjours propriétaire saisis avant mai 2026 : fin_revenue resté NULL mais forfait ventilé
+  // (FMEN/AUTO > 0) — le propriétaire l'a bien payé par retenue (MUNDUZ TA1APB mars 2026 : 50 €
+  // retenus, 1 003,72 € versés ; le calcul live oubliait la retenue → faux « reste dû » de 50 €)
+  const osVentileIds = new Set(ventils.filter(v => osAllIds.has(v.reservation_id) && ['FMEN', 'AUTO'].includes(v.code) && (v.montant_ttc || v.montant_ht) > 0).map(v => v.reservation_id))
+  const osResaIds = new Set(resas.filter(r => r.owner_stay && ((r.fin_revenue || 0) > 0 || osMenSaisiIds.has(r.id) || (r.fin_revenue == null && osVentileIds.has(r.id)))).map(r => r.id))
   const osVentByBien = {}
   if (osResaIds.size > 0) {
     for (const v of ventils) {

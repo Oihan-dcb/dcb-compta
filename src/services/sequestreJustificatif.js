@@ -135,7 +135,7 @@ export async function justifierSequestre(agence = 'dcb', { date = new Date().toI
   // Fiches propriétaire sans bien (co-titulaire, doublon resté après fusion — « Peres Hélène » =
   // co-titulaire de BURGY 416/602, « ELISSALT Hélène » doublon de la fiche ONGI) : un virement à leur
   // nom est attribué au propriétaire qui a des biens et partage leur adresse email
-  const { data: biensProprio } = await supabase.from('bien').select('proprietaire_id').eq('agence', agence).not('proprietaire_id', 'is', null)
+  const { data: biensProprio } = await supabase.from('bien').select('proprietaire_id, code').eq('agence', agence).not('proprietaire_id', 'is', null)
   const avecBien = new Set((biensProprio || []).map(b => b.proprietaire_id))
   const emails = p => (p.email || '').toLowerCase().split(',').map(x => x.trim()).filter(Boolean)
   const alias = new Map()
@@ -143,7 +143,7 @@ export async function justifierSequestre(agence = 'dcb', { date = new Date().toI
     const titulaire = proprietaires.find(q => avecBien.has(q.id) && emails(q).some(e => emails(p).includes(e)))
     if (titulaire) alias.set(p.id, titulaire.id)
   }
-  const ctx = { aes: aes.filter(a => a.type === 'ae'), proprietaires: proprietaires.filter(p => avecBien.has(p.id) || alias.has(p.id)), autreAgenceRe }
+  const ctx = { aes: aes.filter(a => a.type === 'ae'), proprietaires: proprietaires.filter(p => avecBien.has(p.id) || alias.has(p.id)), biens: biensProprio || [], autreAgenceRe }
   const facturesMontants = factures.filter(f => ['honoraires', 'debours'].includes(f.type_facture)).map(f => ({
     type_facture: f.type_facture, proprio_nom: f.proprietaire?.nom, bien_code: f.bien?.code,
     montants: [f.total_ttc, f.total_ttc_evoliz].filter(Boolean),
@@ -324,6 +324,7 @@ export async function justifierSequestre(agence = 'dcb', { date = new Date().toI
   }).filter(Boolean)
   const idsRetRegul = new Set(retRegul.map(f => f.id))
 
+  const { data: relevesProprio } = await supabase.from('sequestre_releve_proprio').select('mois, bien_id, montant').eq('agence', agence)
   const parMois = []
   for (const mois of moisFactures) {
     const encaisse = encaisseParMois[mois] || 0
@@ -355,7 +356,13 @@ export async function justifierSequestre(agence = 'dcb', { date = new Date().toI
     const frais = (fraisTous || []).filter(f => !idsRetRegul.has(f.id))
     // Bien sans facture d'honoraires ce mois-là (LAGREOU/ASKIDA juin 2026 : bien perso du gérant,
     // aucune facture générée) : le reversement reste dû au propriétaire — compté au calcul live
-    const sansFacture = compta.rows.filter(r => !r.is_lauian_client && !r.is_lld && !r.facture_id && (r.reversement_calcule || 0) > 0)
+    // Relevé mensuel du propriétaire (sequestre_releve_proprio, migration 281) : prime sur le recalcul
+    // live pour les mois sans facture dans l'app (janv-mars 2026 : factures manuelles Evoliz). Un relevé
+    // négatif (propriétaire débiteur) = rien à reverser, la dette passe par la facture de débours.
+    const releveBien = new Map((relevesProprio || []).filter(x => x.mois === mois).map(x => [x.bien_id, Math.max(0, x.montant)]))
+    const sansFacture = compta.rows.filter(r => !r.is_lauian_client && !r.is_lld && !r.facture_id)
+      .map(r => releveBien.has(r.bien_id) ? { ...r, reversement_calcule: releveBien.get(r.bien_id), source_du: 'releve' } : r)
+      .filter(r => (r.reversement_calcule || 0) > 0)
     const proprioDuSansFacture = sum(sansFacture, r => r.reversement_calcule)
     // Ménage AE des biens skip_facturation : le LOY reverse 100 % du revenu, c'est DCB qui paie l'AE
     const aeSkip = [...(missions || []), ...(prestas || [])].filter(x => !x.impute_salaire && x.bien?.skip_facturation)

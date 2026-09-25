@@ -60,7 +60,13 @@ export function classerSortie(mvt, ctx = {}) {
   if (ae && !/\bloyers?\b/.test(t)) return { type: 'paiement_ae', mois, tiers_id: ae.id }
   if (/\b(debours|facture|factures)\b/.test(t) && !/\bloyers?\b/.test(t)) return { type: 'paiement_ae', mois, tiers_id: null }
   if (/\b(rembours|remboursement|refund|annulation)\b/.test(t) && !/\bloyer/.test(t)) return { type: 'remboursement_voyageur', mois }
-  const proprio = personneDans(t, ctx.proprietaires || [])
+  // Propriétaire : par son nom, sinon par le code d'un de ses biens dans le libellé (la banque tronque
+  // les noms : « VIR SEPA MUNDUZ SCI DU TOURMAL » = SCI DU TOURMALET, bien MUNDUZ — mars 2026)
+  let proprio = personneDans(t, ctx.proprietaires || [])
+  if (!proprio && ctx.biens?.length) {
+    const ids = [...new Set(ctx.biens.filter(b => b.proprietaire_id && norm(b.code || '').length >= 3 && contientMot(t, norm(b.code))).map(b => b.proprietaire_id))]
+    if (ids.length === 1) proprio = (ctx.proprietaires || []).find(p => p.id === ids[0]) || { id: ids[0] }
+  }
   if (proprio || /\b(loyer|loyers|reversement|reve|taxe de sejour)\b/.test(t)) return { type: 'reversement', mois, tiers_id: proprio?.id || null }
   return { type: 'autre', mois }
 }
