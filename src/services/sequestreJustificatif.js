@@ -86,7 +86,8 @@ async function soldeCompte(compte, date) {
   let banque = null
   if (compte.pennylane_account_id) banque = await soldeBancaireSequestre(compte.pennylane_account_id)
   else if (compte.solde_manuel != null) banque = { montant: compte.solde_manuel, maj: `${compte.solde_manuel_date} (saisi)`, date: compte.solde_manuel_date }
-  return { montant: releve, maj: `${date} (ouverture + relevé importé)`, banque }
+  // maj : horodatage (colonne timestamptz) — celui de la synchro Pennylane, sinon l'instant du calcul
+  return { montant: releve, maj: (compte.pennylane_account_id && banque?.maj) || new Date().toISOString(), banque }
 }
 
 export async function justifierSequestre(agence = 'dcb', { date = new Date().toISOString().slice(0, 10), solde = null, moisDebut = null } = {}) {
