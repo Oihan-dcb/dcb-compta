@@ -31,7 +31,8 @@ export const BASCULE_PENNYLANE = '2026-07-04'
 // Premier mois suivi : le relevé Pennylane du séquestre commence le 09/04/2026 ; mai est le
 // dernier mois intégralement antérieur. Les mois antérieurs sont réputés soldés — un reste
 // éventuel ressort dans l'écart.
-export const MOIS_DEBUT = '2026-06'
+// Premier mois complet du compte séquestre CE (ouvert à 0 le 24/12/2025 — relevé complet vérifié le 25/09/2026)
+export const MOIS_DEBUT = '2026-01'
 const DEBUT = `${MOIS_DEBUT}-01`
 
 const STATUTS_EXCLUS_RESA = ['cancelled', 'deleted', 'not_accepted', 'not accepted', 'declined', 'expired', 'request', 'checkpoint', 'checkpoint voided']
@@ -160,8 +161,13 @@ export async function justifierSequestre(agence = 'dcb', { date = new Date().toI
 
   // ── Mois facturés ─────────────────────────────────────────────────────────
   const honoraires = factures.filter(f => f.type_facture === 'honoraires' && f.statut !== 'calcul_en_cours')
-  const moisFactures = [...new Set(honoraires.filter(f => f.mois >= MOIS_DEBUT_ && f.statut !== 'brouillon').map(f => f.mois))].filter(m => m < moisCourant).sort()
-  const dernierFacture = moisFactures[moisFactures.length - 1] || moisPlus(MOIS_DEBUT_, -1)
+  // Tous les mois du suivi jusqu'au dernier mois facturé — y compris ceux sans facture dans l'app
+  // (janvier-février 2026 : factures faites à la main par Laura dans Evoliz) : le dû propriétaire
+  // y est calculé en live (règle « bien sans facture »)
+  const moisAvecFacture = [...new Set(honoraires.filter(f => f.mois >= MOIS_DEBUT_ && f.statut !== 'brouillon').map(f => f.mois))].filter(m => m < moisCourant).sort()
+  const dernierFacture = moisAvecFacture[moisAvecFacture.length - 1] || moisPlus(MOIS_DEBUT_, -1)
+  const moisFactures = []
+  for (let m = MOIS_DEBUT_; m <= dernierFacture; m = moisPlus(m, 1)) moisFactures.push(m)
 
   // « Régularisation virement MM/AAAA » (mode remboursement) : complément d'un virement trop court
   // du mois d'origine — la dette est déjà dans la facture d'origine. Dans la facture où elle est
