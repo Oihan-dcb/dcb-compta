@@ -185,7 +185,10 @@ export function _calculerLignes(resa, agence) {
   const menAmount = menFees.reduce((s, f) => s + (f.amount || 0), 0)
 
   const resortFeeRaw = guestFeesAll.find(f => f.label?.toLowerCase() === 'resort fee')?.amount || 0
-  const comAmount    = isDirect ? (managementFeeRaw + resortFeeRaw) : 0
+  // skip_facturation : pas de COM non plus — le LOY reverse déjà 100 % du revenu (frais de
+  // service compris). Avant (25/09/2026) : COM comptée EN PLUS du LOY intégral (ASKIDA août :
+  // 433,60 € comptés deux fois, gonflant la part DCB « virable » du séquestre).
+  const comAmount    = isDirect && !bien.skip_facturation ? (managementFeeRaw + resortFeeRaw) : 0
   const comHT        = comAmount > 0 ? Math.round(comAmount / (1 + TVA_RATE)) : 0
 
   const ownerFees = (isDirect && totalFeesForOwnerRate > 0)

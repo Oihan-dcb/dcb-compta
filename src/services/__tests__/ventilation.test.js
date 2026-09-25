@@ -456,6 +456,13 @@ describe('skip_facturation (I-124) — Direct, bien perso du gérant', () => {
     const { lignes } = _calculerLignes(resa)
     expect(ligne(lignes, 'MEN').montant_ttc).toBe(3500)
   })
+  it('COM absente même avec des frais de service (LOY déjà à 100 % — 25/09/2026, ASKIDA)', () => {
+    const r = { ...resa, fin_revenue: 30450, reservation_fee: [...resa.reservation_fee, { label: 'Management Fee', amount: 2000, fee_type: 'guest_fee' }] }
+    const { lignes } = _calculerLignes(r)
+    const com = ligne(lignes, 'COM')
+    expect(com === undefined || com.montant_ttc === 0).toBe(true)
+    expect(ligne(lignes, 'VIR').montant_ttc).toBe(30450)
+  })
 })
 
 // ─────────────────────────────────────────────────────────────────────────

@@ -67,10 +67,10 @@ export async function justifierSequestre(agence = 'dcb', { date = new Date().toI
       .or(`and(source.eq.${SOURCE_SEQUESTRE_LC},date_operation.gte.${BASCULE_PENNYLANE}),and(source.eq.CaisseEpargne,date_operation.lt.${BASCULE_PENNYLANE})`)
       .neq('statut_matching', 'ignore').order('date_operation')),
     toutes(() => supabase.from('facture_evoliz')
-      .select('id, mois, type_facture, statut, total_ttc, total_ttc_evoliz, montant_reversement, bien_id, numero_facture, bien:bien_id(code), proprietaire:proprietaire_id(nom)')
+      .select('id, mois, type_facture, statut, total_ttc, total_ttc_evoliz, montant_reversement, bien_id, proprietaire_id, numero_facture, bien:bien_id(code), proprietaire:proprietaire_id(nom)')
       .eq('agence', agence).gte('mois', '2026-01')),
     toutes(() => supabase.from('reservation')
-      .select('id, code, mois_comptable, platform, final_status, fin_revenue, bien:bien_id!inner(agence, mode_encaissement)')
+      .select('id, code, mois_comptable, platform, final_status, fin_revenue, bien:bien_id!inner(agence, mode_encaissement, proprietaire_id)')
       .eq('bien.agence', agence).gte('mois_comptable', MOIS_DEBUT_)),
     toutes(() => supabase.from('sequestre_affectation').select('mouvement_id, type, sous, mois, note')),
   ])
@@ -106,11 +106,13 @@ export async function justifierSequestre(agence = 'dcb', { date = new Date().toI
     preuves.push(...(data || []))
   }
   const encaisseParMois = {}
+  const encProprio = {} // mois → proprietaire_id → encaissé (détail des anomalies)
   const lieParMvt = new Map()
   for (const p of preuves || []) {
     if (!p.mouvement_id || !p.mouvement || p.mouvement.date_operation > date) continue
     const r = resaDCB.get(p.reservation_id)
     encaisseParMois[r.mois_comptable] = (encaisseParMois[r.mois_comptable] || 0) + (p.montant || 0)
+    const ep = (encProprio[r.mois_comptable] ||= {}); ep[r.bien?.proprietaire_id] = (ep[r.bien?.proprietaire_id] || 0) + (p.montant || 0)
     lieParMvt.set(p.mouvement_id, (lieParMvt.get(p.mouvement_id) || 0) + (p.montant || 0))
   }
   // Paiements reliés à des réservations d'autres mois (antérieurs au suivi) : pour ne pas les
@@ -129,7 +131,9 @@ export async function justifierSequestre(agence = 'dcb', { date = new Date().toI
   }
 
   // ── Classement des mouvements ─────────────────────────────────────────────
-  const sorties = mvts.filter(m => m.debit > 0).map(m => ({ ...m, ...forcer(m, classerSortie(m, ctx)) }))
+  // Sortie rattachée à une réservation (remboursement voyageur prélevé par Stripe…) : déjà
+  // déduite de l'encaissé de la résa (paiement négatif) — ni sortie à identifier, ni double compte
+  const sorties = mvts.filter(m => m.debit > 0).map(m => ({ ...m, ...(lieParMvt.has(m.id) ? { type: 'lie_resa', mois: moisDe(m.date_operation) } : forcer(m, classerSortie(m, ctx))) }))
   const entrees = mvts.filter(m => m.credit > 0)
   const transits = apparierTransits(entrees.filter(e => !lieParMvt.has(e.id)), sorties.filter(s => s.type === 'inter_agence' || s.type === 'autre'))
   const transitIds = new Set(transits.flatMap(p => [p.entree.id, p.sortie.id]))
@@ -157,12 +161,15 @@ export async function justifierSequestre(agence = 'dcb', { date = new Date().toI
   const parMois = []
   for (const mois of moisFactures) {
     const encaisse = encaisseParMois[mois] || 0
-    const proprioDu = sum(honoraires.filter(f => f.mois === mois), f => f.montant_reversement)
-    const proprioSorties = sortiesMois(['reversement_groupe', 'reversement'], mois)
+    // Reversement hors facture (réaffectation manuelle) : loyer dû au propriétaire que la facture
+    // ne porte pas (ITS juillet-août 2026 : ventilé sans VIRProprio, reversé à la main) — dû ET payé
+    const horsFacture = sortiesMois(['reversement_hors_facture'], mois)
+    const proprioDu = sum(honoraires.filter(f => f.mois === mois), f => f.montant_reversement) + sum(horsFacture, s => s.debit)
+    const proprioSorties = sortiesMois(['reversement_groupe', 'reversement', 'reversement_hors_facture'], mois)
     const proprioPaye = sum(proprioSorties, s => s.debit)
-    const { data: missions } = await supabase.from('mission_menage').select('montant, impute_salaire, ae:ae_id!inner(type), bien:bien_id!inner(agence)')
+    const { data: missions } = await supabase.from('mission_menage').select('montant, impute_salaire, ae:ae_id!inner(type), bien:bien_id!inner(agence, proprietaire_id)')
       .eq('mois', mois).eq('statut', 'valide').eq('bien.agence', agence).eq('ae.type', 'ae')
-    const { data: prestas } = await supabase.from('prestation_hors_forfait').select('montant, impute_salaire, ae:ae_id!inner(type), bien:bien_id!inner(agence)')
+    const { data: prestas } = await supabase.from('prestation_hors_forfait').select('montant, impute_salaire, ae:ae_id!inner(type), bien:bien_id!inner(agence, proprietaire_id)')
       .eq('mois', mois).eq('statut', 'valide').eq('bien.agence', agence).eq('ae.type', 'ae')
     const aeDu = sum((missions || []).filter(x => !x.impute_salaire), x => x.montant) + sum((prestas || []).filter(x => !x.impute_salaire), x => x.montant)
     const aePaye = sum(sortiesMois(['paiement_ae'], mois), s => s.debit)
@@ -174,17 +181,32 @@ export async function justifierSequestre(agence = 'dcb', { date = new Date().toI
     const compta = await buildComptaMensuelle(mois)
     const t = compta.totals, hs = t.hors_sequestre || {}
     const virable = (t.hon_ttc - (hs.hon_ttc || 0)) + (t.fmen_ttc - (hs.fmen_ttc || 0)) + (t.com_ttc - (hs.com_ttc || 0))
-    const { data: frais } = await supabase.from('frais_proprietaire').select('montant_deduit_loy, bien:bien_id!inner(agence)')
+    const { data: frais } = await supabase.from('frais_proprietaire').select('montant_deduit_loy, bien:bien_id!inner(agence, proprietaire_id)')
       .eq('bien.agence', agence).eq('mois_facturation', mois).in('mode_traitement', ['deduire_loyer', 'facturer_et_deduire'])
     const dcbTheorique = virable + sum(frais || [], f => f.montant_deduit_loy)
     const dcbReste = encaisse - proprioDu - aeDu - dcbPaye
+    // Anomalie par propriétaire : encaissé − reversement dû − AE − part DCB théorique − frais
+    const parP = {}
+    const add = (id, v) => { parP[id || 'sans_proprio'] = (parP[id || 'sans_proprio'] || 0) + (v || 0) }
+    for (const [id, v] of Object.entries(encProprio[mois] || {})) add(id, v)
+    for (const f of honoraires.filter(f => f.mois === mois)) add(f.proprietaire_id, -(f.montant_reversement || 0))
+    for (const x of horsFacture) add(x.tiers_id, -x.debit)
+    for (const x of [...(missions || []), ...(prestas || [])]) if (!x.impute_salaire) add(x.bien?.proprietaire_id, -x.montant)
+    for (const r of compta.rows.filter(r => !r.is_lauian_client && !r.is_lld)) {
+      const h = r.hs || {}
+      add(r.proprietaire_id, -((r.hon_ttc - (h.hon_ttc || 0)) + (r.fmen_ttc - (h.fmen_ttc || 0)) + (r.com_ttc - (h.com_ttc || 0))))
+    }
+    for (const f of frais || []) add(f.bien?.proprietaire_id, -(f.montant_deduit_loy || 0))
+    const nomP = id => { const p = proprietaires.find(x => x.id === id); return p ? `${p.nom}${p.prenom ? ' ' + p.prenom : ''}` : id }
+    const anomaliesProprio = Object.entries(parP).filter(([, v]) => Math.abs(v) >= 5000)
+      .sort((a, b) => a[1] - b[1]).map(([id, v]) => ({ proprietaire_id: id, nom: nomP(id), montant: v }))
     parMois.push({
       mois, facture: true, encaisse,
       proprietaires: { du: proprioDu, paye: proprioPaye, reste: proprioDu - proprioPaye,
         paiements: proprioSorties.map(s => ({ date: s.date_operation, montant: s.debit, libelle: s.libelle })) },
       ae: { du: aeDu, paye: aePaye, reste: aeDu - aePaye },
       dcb: { reste: dcbReste, paye: dcbPaye, theorique: dcbTheorique, reste_theorique: dcbTheorique - dcbPaye,
-        anomalie: dcbReste - (dcbTheorique - dcbPaye),
+        anomalie: dcbReste - (dcbTheorique - dcbPaye), anomalie_par_proprio: anomaliesProprio,
         virements: [...transferts.map(s => ({ date: s.date_operation, montant: s.debit, libelle: s.libelle, sous: s.sous, note: s.note })),
           ...retours.map(e => ({ date: e.date_operation, montant: -e.credit, libelle: e.libelle, sous: e.sous, note: e.note }))] },
     })
@@ -195,7 +217,7 @@ export async function justifierSequestre(agence = 'dcb', { date = new Date().toI
     .filter(m => m > dernierFacture && m >= MOIS_DEBUT_).sort()
   for (const mois of moisOuverts) {
     const encaisse = encaisseParMois[mois] || 0
-    const sortis = sortiesMois(['reversement', 'reversement_groupe', 'transfert_dcb', 'paiement_ae'], mois)
+    const sortis = sortiesMois(['reversement', 'reversement_groupe', 'reversement_hors_facture', 'transfert_dcb', 'paiement_ae'], mois)
     const retours = horsMois.retour_dcb.filter(e => e.mois === mois)
     const sorti = sum(sortis, s => s.debit) - sum(retours, e => e.credit)
     parMois.push({ mois, facture: false, encaisse, sorti, reste: encaisse - sorti,
@@ -207,7 +229,7 @@ export async function justifierSequestre(agence = 'dcb', { date = new Date().toI
   // Sorties attribuées à un mois antérieur au suivi (reversement de mai payé en juin…) : elles
   // soldent des dettes d'avant la période, hors justificatif.
   const sortiesAnterieures = sorties.filter(s => !transitIds.has(s.id) && s.date_operation >= DEBUT_ && s.mois < MOIS_DEBUT_ &&
-    ['reversement', 'reversement_groupe', 'transfert_dcb', 'paiement_ae'].includes(s.type))
+    ['reversement', 'reversement_groupe', 'reversement_hors_facture', 'transfert_dcb', 'paiement_ae'].includes(s.type))
   const fraisBancaires = sum(sorties.filter(s => s.type === 'frais_bancaires' && s.date_operation >= DEBUT_), s => s.debit)
   const deboursOuverts = factures.filter(f => f.type_facture === 'debours' && ['envoye_proprio', 'envoye_evoliz', 'valide'].includes(f.statut) && f.mois >= MOIS_DEBUT_ && f.mois <= dernierFacture)
   const tot = k => sum(horsMois[k], m => m.montant)
@@ -220,7 +242,7 @@ export async function justifierSequestre(agence = 'dcb', { date = new Date().toI
     { cle: 'non_factures', label: 'Mois non facturés et séjours à venir — encaissé non encore réparti', montant: sum(parMois.filter(p => !p.facture), p => p.reste) },
     { cle: 'debours_rembourses', label: 'Débours remboursés par les propriétaires (financent les AE)', montant: tot('remboursement_debours') },
     { cle: 'factures_payees_sequestre', label: 'Factures d\'honoraires payées sur le séquestre (dues à DCB)', montant: tot('paiement_facture') },
-    { cle: 'stripe', label: 'Stripe : frais retenus sur les encaissements / remboursés par DCB', montant: tot('frais_stripe_rembourses') },
+    { cle: 'stripe', label: 'Virements reçus inférieurs aux paiements reliés (frais Stripe, payout partiel Airbnb, lignes Stripe manquantes) / frais Stripe remboursés par DCB', montant: tot('frais_stripe_rembourses') },
     { cle: 'frais_bancaires', label: 'Frais bancaires (nets des remises)', montant: tot('remise_frais_bancaires') - fraisBancaires },
     { cle: 'annulees', label: 'Réservations annulées — net encaissé − remboursé (frais d\'annulation retenus / frais perdus)', montant: sum(annuleesLiens, l => l.montant) },
     { cle: 'plateformes_non_rapprochees', label: 'Encaissements plateformes non reliés à une réservation', montant: tot('plateforme_non_rapprochee') },
@@ -242,9 +264,10 @@ export async function justifierSequestre(agence = 'dcb', { date = new Date().toI
     if (p.ae.reste < -100) anomalies.push({ cle: `ae_trop_paye_${p.mois}`, mois: p.mois, montant: p.ae.reste,
       message: `${p.mois} : ${eur(-p.ae.reste)} payés aux AE au-delà des missions et extras validés` })
     if (Math.abs(p.dcb.anomalie) > 100) anomalies.push({ cle: `dcb_${p.mois}`, mois: p.mois, montant: p.dcb.anomalie,
-      message: p.dcb.anomalie < 0
+      message: (p.dcb.anomalie < 0
         ? `${p.mois} : il manque ${eur(-p.dcb.anomalie)} au séquestre par rapport à la part DCB théorique (virement DCB en trop, encaissement manquant ou débours non remboursé)`
-        : `${p.mois} : ${eur(p.dcb.anomalie)} de plus que la part DCB théorique (encaissement non réparti, reversement non facturé…)` })
+        : `${p.mois} : ${eur(p.dcb.anomalie)} de plus que la part DCB théorique (encaissement non réparti, reversement non facturé…)`) +
+        (p.dcb.anomalie_par_proprio.length ? ` — principaux : ${[...p.dcb.anomalie_par_proprio].sort((a, b) => Math.abs(b.montant) - Math.abs(a.montant)).slice(0, 4).map(x => `${x.nom} ${eur(x.montant)}`).join(', ')}` : '') })
   }
   if (sum(sortiesAutres, s => s.debit) > 100) anomalies.push({ cle: 'sorties_a_identifier', montant: -sum(sortiesAutres, s => s.debit), message: `${sortiesAutres.length} sortie(s) non identifiée(s) : ${eur(sum(sortiesAutres, s => s.debit))}` })
   const soldeBanque = solde ?? (await soldeBancaireSequestre())
@@ -266,6 +289,7 @@ export async function justifierSequestre(agence = 'dcb', { date = new Date().toI
       sorties_anterieures: lignes(sortiesAnterieures),
       annulees: Object.values(annuleesLiens.reduce((a, l) => { (a[l.code] ||= { code: l.code, montant: 0 }).montant += l.montant || 0; return a }, {})),
       retours_dcb: lignes(horsMois.retour_dcb),
+      stripe: lignes(horsMois.frais_stripe_rembourses),
       reaffectations: [...affecte.values()],
       transits: transits.map(p => ({ entree: p.entree.libelle?.slice(0, 60), sortie: p.sortie.libelle?.slice(0, 60), montant: p.entree.credit, date: p.entree.date_operation })),
     },
