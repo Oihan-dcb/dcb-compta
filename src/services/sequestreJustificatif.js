@@ -225,7 +225,10 @@ export async function justifierSequestre(agence = 'dcb', { date = new Date().toI
   // « Resolution Payout: AirCover damage reimbursement … » / « Misc Credit: Host Rewards … »
   const { data: payoutsSpeciaux } = await supabase.from('payout_hospitable').select('amount, date_payout, platform_id, reference')
     .eq('platform', 'airbnb').or('reference.ilike.Resolution Payout%,reference.ilike.Misc Credit%').gte('date_payout', DEBUT_)
-  const payoutSpecial = e => (payoutsSpeciaux || []).find(p => Math.abs((e.montant ?? e.credit) - p.amount) <= 2 &&
+  // Le montant de la résolution est dans le libellé « (11.07€) » : Airbnb la verse souvent DANS un
+  // payout de séjours (07/08/2026 : 594,96 € = séjours 583,89 € + AirCover 11,07 €) — amount = total
+  const montantRef = p => { const m = (p.reference || '').match(/\(([\d.,]+)\s*€\)\s*$/); return m ? Math.round(parseFloat(m[1].replace(',', '.')) * 100) : p.amount }
+  const payoutSpecial = e => (payoutsSpeciaux || []).find(p => (Math.abs((e.montant ?? e.credit) - p.amount) <= 2 || Math.abs((e.montant ?? e.credit) - montantRef(p)) <= 2) &&
     Math.abs(Date.parse(e.date_operation) - Date.parse(p.date_payout)) <= 5 * 86400000)
   const horsMois = { aircover: [], prime_plateforme: [], remboursement_debours: [], paiement_facture: [], frais_stripe_rembourses: [], remise_frais_bancaires: [], plateforme_non_rapprochee: [], non_affecte: [], inter_agence: [], retour_dcb: [], reprise_ancien_sequestre: [] }
   for (const e of entrees) {
