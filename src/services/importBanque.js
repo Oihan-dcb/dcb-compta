@@ -166,9 +166,11 @@ export async function importerMouvementsBancaires(rows, moisSelectionnes) {
     : rows
   const log = { inseres: 0, ignores: 0, erreurs: 0 }
   if (aImporter.length === 0) return log
+  const aImporterDedup = await retirerDoublonsRenommes(aImporter)
+  log.ignores += aImporter.length - aImporterDedup.length
   const BATCH = 100
-  for (let i = 0; i < aImporter.length; i += BATCH) {
-    const batch = aImporter.slice(i, i + BATCH)
+  for (let i = 0; i < aImporterDedup.length; i += BATCH) {
+    const batch = aImporterDedup.slice(i, i + BATCH)
     // .select('id') : avec ignoreDuplicates, seules les lignes RÉELLEMENT insérées sont renvoyées.
     // Avant (audit I-152, 24/09/2026), tout le lot était compté « inséré » : le compte courant
     // affichait « 196 importées » chaque nuit alors que plus rien n'arrivait depuis le 10/07
@@ -184,4 +186,26 @@ export async function importerMouvementsBancaires(rows, moisSelectionnes) {
     }
   }
   return log
+}
+
+// Doublon « renommé » : sans référence bancaire, la clé anti-doublon contient le libellé — or la
+// banque le réécrit parfois après coup (Lauïan 28/07/2026 : « VIR INT MARIE-THERESE GUERIN »
+// importé le 05/08, puis « VIREMENT RECU 088209021700 » / détail « MARIE-THERESE GUERIN » le
+// 10/09 → 494,96 € comptés deux fois et reliés deux fois à la même résa). Même agence, même
+// source, même date, même montant et au moins un mot significatif commun (nom du payeur) =
+// la même opération.
+const motsSignif = t => new Set((t || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toUpperCase()
+  .split(/[^A-Z]+/).filter(w => w.length >= 4 && !['SEPA', 'RECU', 'VIREMENT', 'INST', 'REASON', 'PRLV', 'FRAIS'].includes(w)))
+async function retirerDoublonsRenommes(rows) {
+  const sansRef = rows.filter(r => r.numero_operation.startsWith(`${r.source}_`))
+  if (!sansRef.length) return rows
+  const dates = sansRef.map(r => r.date_operation).sort()
+  const { data: existants } = await supabase.from('mouvement_bancaire')
+    .select('numero_operation, date_operation, debit, credit, libelle, detail, source')
+    .eq('agence', AGENCE).gte('date_operation', dates[0]).lte('date_operation', dates[dates.length - 1])
+  const doublon = r => (existants || []).some(x =>
+    x.numero_operation !== r.numero_operation && x.source === r.source && x.date_operation === r.date_operation &&
+    (x.debit || null) === (r.debit || null) && (x.credit || null) === (r.credit || null) &&
+    (() => { const a = motsSignif(`${x.libelle} ${x.detail}`); return [...motsSignif(`${r.libelle} ${r.detail}`)].some(w => a.has(w)) })())
+  return rows.filter(r => !r.numero_operation.startsWith(`${r.source}_`) || !doublon(r))
 }
