@@ -215,7 +215,7 @@ export default async function handler(req, res) {
                 mouvement_id: po.mouvement_id,
                 montant,
                 date_paiement: line?.created_at ?? null,
-                type_paiement: line?.terme ? 'partiel' : 'total',
+                type_paiement: line?.terme ? 'acompte' : 'total', // 'partiel' refusé par la contrainte (acompte|solde|remboursement|total) → insert en échec silencieux
               })
             } else if (montant != null && existRp.montant !== montant) {
               await supabase.from('reservation_paiement').update({ montant }).eq('id', existRp.id)
