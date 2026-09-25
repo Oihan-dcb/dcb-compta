@@ -64,6 +64,15 @@ export function classerEntree(mvt, factures = []) {
   if (/\bfrais stripe\b/.test(t)) return { type: 'frais_stripe_rembourses' }
   if (/^\*? ?remise (sur )?frais|remise frais/.test(t)) return { type: 'remise_frais_bancaires' }
   if (/\b(airbnb|booking|stripe|hospitable)\b/.test(t)) return { type: 'plateforme_non_rapprochee' }
+  // Retour d'un virement DCB trop versé (courant → séquestre) : « RETOUR COM AOUT », « HON JUILLET »…
+  // Libellé qui commence par la convention interne, ou émis par DCB avec un mot HON/FMEN/COM.
+  const retour = t.match(/^(?:retour )?(hon|honoraires|fmen|com|commissions?|commisions?)\b/) ||
+    (/\bdestination cote basque\b/.test(t) && t.match(/\b(?:retour )(hon|honoraires|fmen|com|commissions?|commisions?)\b/))
+  if (retour) {
+    const brut = `${mvt.libelle || ''} ${mvt.detail || ''}`
+    const sous = retour[1].startsWith('hon') ? 'hon' : retour[1] === 'fmen' ? 'fmen' : 'com'
+    return { type: 'retour_dcb', sous, mois: extraireMois(brut, mvt.date_operation) || moisPrecedent(mvt.date_operation) }
+  }
   // Montant exact d'une facture + nom du propriétaire OU code du bien dans le libellé
   // (« VIR SEPA M OU MME CHAUCHET JEAN - Reason: Dul juin 2026 » = débours DUL juin, 318,75 €)
   const f = factures.find(x => x.montants.includes(mvt.credit) && (

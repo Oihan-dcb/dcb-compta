@@ -363,14 +363,16 @@ async function syncMois(mois, agence) {
   try {
     const biensIds = new Set(biens.map(b => b.id));
     const vus = new Set(allResas.map(r => r.id));
-    const enBase = await sb(`reservation?mois_comptable=eq.${mois}&final_status=neq.deleted&select=id,hospitable_id,code,bien_id,mois_comptable,fin_revenue,final_status`);
+    const enBase = await sb(`reservation?mois_comptable=eq.${mois}&final_status=neq.deleted&select=id,hospitable_id,code,bien_id,mois_comptable,fin_revenue,final_status,arrival_date`);
     const absentes = (enBase || []).filter(r => r.hospitable_id && biensIds.has(r.bien_id) && !vus.has(r.hospitable_id));
     if (absentes.length > SEUIL_SUPPRESSIONS_PAR_MOIS) {
       // Garde-fou : une absence massive = réponse API incomplète, pas des suppressions
       log.errorDetails.push({ code: 'suppressions', message: `${absentes.length} résas absentes de Hospitable pour ${mois} — au-delà du seuil (${SEUIL_SUPPRESSIONS_PAR_MOIS}), aucune marquée` });
     } else {
       for (const row of absentes) {
-        if (await est404(row.hospitable_id)) { await marquerSupprimee(row); log.deleted++; }
+        if (!(await est404(row.hospitable_id))) continue;
+        if (await sejourReel(row)) { await signalerSejourReel404(row); continue; }
+        await marquerSupprimee(row); log.deleted++;
       }
     }
   } catch (e) {
@@ -420,6 +422,31 @@ async function marquerSupprimee(row) {
   }).catch(() => {});
 }
 
+// Garde-fou (25/09/2026) : Hospitable renvoie aussi 404 sur des séjours RÉELS passés — nuit du
+// 25/09, 11 résas ARREBA/MARNEKO de juillet-août (encaissées, facturées, reversées) passées
+// 'deleted' + fin_revenue=0. Un 404 ne prouve la suppression que d'une résa ni payée ni
+// commencée : un séjour déjà arrivé ou dont le paiement est rapproché n'est JAMAIS marqué,
+// seulement signalé.
+async function sejourReel(row) {
+  const today = new Date().toISOString().slice(0, 10);
+  if (row.arrival_date && row.arrival_date <= today && !['cancelled', 'deleted'].includes(row.final_status)) return true;
+  const paiements = await sb(`reservation_paiement?reservation_id=eq.${row.id}&mouvement_id=not.is.null&select=id&limit=1`);
+  return (paiements || []).length > 0;
+}
+
+async function signalerSejourReel404(row) {
+  const deja = await sb(`journal_ops?action=eq.resa_404_sejour_reel&reservation_id=eq.${row.id}&select=id&limit=1`).catch(() => []);
+  if ((deja || []).length) return;
+  await sb('journal_ops', {
+    method: 'POST', prefer: 'return=minimal',
+    body: JSON.stringify({
+      categorie: 'import', action: 'resa_404_sejour_reel', statut: 'warning', source: 'sync_hospitable',
+      mois_comptable: row.mois_comptable, reservation_id: row.id, bien_id: row.bien_id,
+      message: `Réservation ${row.code || row.hospitable_id} introuvable côté Hospitable (404) mais séjour commencé ou payé — NON marquée supprimée, à vérifier`,
+    }),
+  }).catch(() => {});
+}
+
 async function est404(hospId) {
   try { await hospFetch(`/v2/reservations/${encodeURIComponent(hospId)}`); return false; }
   catch (e) { return /^Hospitable 404\b/.test(e.message); }
@@ -437,9 +464,13 @@ async function syncUneResa(hospId) {
   } catch (e) {
     if (!/^Hospitable 404\b/.test(e.message)) throw e;
     // Supprimée côté Hospitable (ex. événement reservation.deleted) : statut, pas effacement
-    const rows = await sb(`reservation?hospitable_id=eq.${encodeURIComponent(hospId)}&final_status=neq.deleted&select=id,hospitable_id,code,bien_id,mois_comptable,fin_revenue,final_status`);
-    for (const row of rows || []) await marquerSupprimee(row);
-    return { deleted: (rows || []).length, hospitable_id: hospId };
+    const rows = await sb(`reservation?hospitable_id=eq.${encodeURIComponent(hospId)}&final_status=neq.deleted&select=id,hospitable_id,code,bien_id,mois_comptable,fin_revenue,final_status,arrival_date`);
+    let deleted = 0;
+    for (const row of rows || []) {
+      if (await sejourReel(row)) { await signalerSejourReel404(row); continue; }
+      await marquerSupprimee(row); deleted++;
+    }
+    return { deleted, hospitable_id: hospId };
   }
   const resa = r?.data || r;
   if (!resa?.id) throw new Error(`Résa Hospitable introuvable : ${hospId}`);

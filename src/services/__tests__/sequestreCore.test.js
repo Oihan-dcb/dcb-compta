@@ -56,3 +56,13 @@ describe('classerEntree — facture reconnue au code du bien', () => {
     expect(classerEntree({ libelle: 'VIR SEPA M OU MME CHAUCHET JEAN - Reason: Dul juin 2026', credit: 31875 }, factures).type).toBe('remboursement_debours')
   })
 })
+
+describe('classerEntree — retour d\'un virement DCB en trop', () => {
+  it('« RETOUR COM AOUT » = retour DCB imputé sur août', () => {
+    expect(classerEntree({ libelle: 'RETOUR COM AOUT', date_operation: '2026-09-26' })).toEqual({ type: 'retour_dcb', sous: 'com', mois: '2026-08' })
+    expect(classerEntree({ libelle: 'VIR SEPA DESTINATION COTE BASQUE - Reason: RETOUR HON JUILLET', date_operation: '2026-09-26' })).toMatchObject({ type: 'retour_dcb', sous: 'hon', mois: '2026-07' })
+  })
+  it('un payout Booking.com n\'est pas un retour COM', () => {
+    expect(classerEntree({ libelle: 'VIR SEPA Booking.com BV - Reason: NO.2cn75', date_operation: '2026-08-04' }).type).toBe('plateforme_non_rapprochee')
+  })
+})

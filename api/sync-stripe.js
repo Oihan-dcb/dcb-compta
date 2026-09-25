@@ -199,17 +199,26 @@ export default async function handler(req, res) {
             .select('id, code, fin_revenue')
             .in('code', codes)
           for (const resa of (resas || [])) {
+            // Toutes les lignes du code dans ce payout, pas seulement la première : un payout peut
+            // porter la charge ET son remboursement (annulation le jour même). Avant ce fix, seule
+            // la 1re ligne trouvée était reliée — HOST-5EOGB8, payout du 11/09/2026 : remboursement
+            // −942,80 € relié, charge +918,99 € perdue → « encaissement plateforme non relié » au
+            // justificatif du séquestre alors que le net réel de la résa était −23,81 €.
+            const lignesResa = lines.filter(l => l.reservation_code === resa.code)
+            const montant = lignesResa.length ? lignesResa.reduce((s, l) => s + (l.montant_net || 0), 0) : null
+            const line = lignesResa.find(l => l.type_ligne !== 'remboursement') || lignesResa[0]
             const { data: existRp } = await supabase.from('reservation_paiement')
-              .select('id').eq('reservation_id', resa.id).eq('mouvement_id', po.mouvement_id).maybeSingle()
+              .select('id, montant').eq('reservation_id', resa.id).eq('mouvement_id', po.mouvement_id).maybeSingle()
             if (!existRp) {
-              const line = lines.find(l => l.reservation_code === resa.code)
               await supabase.from('reservation_paiement').insert({
                 reservation_id: resa.id,
                 mouvement_id: po.mouvement_id,
-                montant: line?.montant_net ?? null,
+                montant,
                 date_paiement: line?.created_at ?? null,
                 type_paiement: line?.terme ? 'partiel' : 'total',
               })
+            } else if (montant != null && existRp.montant !== montant) {
+              await supabase.from('reservation_paiement').update({ montant }).eq('id', existRp.id)
             }
             const { data: allPaiements } = await supabase.from('reservation_paiement')
               .select('montant').eq('reservation_id', resa.id)
