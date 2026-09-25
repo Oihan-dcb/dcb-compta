@@ -11,7 +11,7 @@
 // L'agence traitée = VITE_AGENCE du projet Vercel (dcb-compta → dcb, lauian-compta →
 // lauian) — chaque projet matche SON agence, comme le front.
 
-import { lancerMatchingAuto, marquerFraisBancairesNonGeres } from '../src/services/rapprochement.js'
+import { lancerMatchingAuto, marquerFraisBancairesNonGeres, matcherDeboursProprietaires } from '../src/services/rapprochement.js'
 import { AGENCE } from '../src/lib/agence.js'
 
 const SUPABASE_URL      = process.env.SUPABASE_URL || 'https://omuncchvypbtxkpalwcr.supabase.co';
@@ -64,7 +64,15 @@ export default async function handler(req, res) {
     const { marques } = await marquerFraisBancairesNonGeres(AGENCE);
     if (marques > 0) console.log(`[matching-auto] ${AGENCE} — ${marques} frais bancaire(s) passé(s) non_gere`);
 
-    return res.json({ ok: true, agence: AGENCE, results, fraisBancairesNonGeres: marques });
+    // Remboursements de débours payés par les propriétaires : jusqu'ici lancé
+    // uniquement par les syncs Pennylane — une agence sans Pennylane (Lauïan : relevés CSV
+    // importés à la main) ne les rapprochait jamais (Manivit, débours juin 2026 payé le
+    // 15/07 mais relancé 3 fois). Idempotent : ne traite que les factures 'envoye_proprio'
+    // et les mouvements 'en_attente'.
+    const { lies: deboursLies } = await matcherDeboursProprietaires(AGENCE);
+    if (deboursLies) console.log(`[matching-auto] ${AGENCE} — ${deboursLies} remboursement(s) de débours propriétaire rapproché(s)`);
+
+    return res.json({ ok: true, agence: AGENCE, results, fraisBancairesNonGeres: marques, deboursLies });
   } catch (err) {
     console.error('[matching-auto] erreur:', err.message);
     return res.status(500).json({ error: err.message, results });

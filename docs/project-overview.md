@@ -1716,3 +1716,10 @@ manuellement (réouverture technique, suppression, reclôture) — confirmé san
 facture/séquestre (`dcb_direct` = recap interne uniquement). Nouveau garde-fou permanent :
 `alerte-prestation-doublon` (migration 257), qui détecte toute resaisie identique (bien, date,
 montant, imputation, description, AE) encore `statut='valide'` le lendemain de sa création.
+
+## Fix 25/09/2026 — remboursements de débours jamais rapprochés sur Lauïan
+`matcherDeboursProprietaires` (facture débours `envoye_proprio` ↔ virement du propriétaire, nom + montant exact) n'était
+appelé que par les syncs Pennylane (`pennylane-courant-sync`, `pennylane-mouvement-sync`). Lauïan n'a pas Pennylane
+(relevés CSV importés à la main) → aucun remboursement de débours n'était jamais reconnu : Manivit (AMAÏA, débours juin
+2026, 200 €) payé le 15/07 mais relancé 3 fois. Désormais aussi lancé par le cron nightly `api/matching-auto.js`
+(chaque projet Vercel, donc DCB et Lauïan). Rattrapage exécuté : 1 facture rapprochée (Manivit).
