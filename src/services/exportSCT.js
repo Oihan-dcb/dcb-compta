@@ -351,9 +351,10 @@ export async function genererSCTVirementsPropriosLC(mois, agence = AGENCE) {
     if (!sansIbanMap.has(nom)) sansIbanMap.set(nom, new Set())
     sansIbanMap.get(nom).add(l.bien?.groupe_facturation || l.bien?.code || l.bien_id)
   }
-  const sansIban = [...sansIbanMap].map(([nom, biens]) => `${nom} (${[...biens].join(', ')})`)
+  const listeSansIban = () => [...sansIbanMap].map(([nom, biens]) => `${nom} (${[...biens].join(', ')})`)
+  const sansIban0 = listeSansIban()
   if (!valid.length) throw new Error(`Aucun virement LC à effectuer pour ${mois} (avec IBAN configuré)`
-    + (sansIban.length ? ` — sans IBAN : ${sansIban.join(', ')}` : ''))
+    + (sansIban0.length ? ` — sans IBAN : ${sansIban0.join(', ')}` : ''))
 
   // Montant réellement dû = facture_evoliz.montant_reversement (net des débours/retenues),
   // jamais la somme brute de ventilation.VIR — voir incident Cécile Alaux 2026-06 (+15€ à
@@ -385,6 +386,29 @@ export async function genererSCTVirementsPropriosLC(mois, agence = AGENCE) {
     const g = groups.get(key)
     g.montant += l.montant_ttc
     g.biens.add(l.bien?.code || l.bien_id)
+  }
+
+  // Facture à reverser SANS VIRProprio ce mois-ci (bien sans séjour, seule une régularisation
+  // « remboursement » à verser) : avant, absente du fichier car la liste partait des lignes VIR —
+  // jamais payée (LALANDE/BDX, taxe de séjour de juin 70,60 € mise en août, 25/09/2026).
+  const clesVues = new Set([...groups.values()].map(g => g.isGroupe ? `p:${g.prop.id}` : null).filter(Boolean).concat([...groups.keys()]))
+  const orphelines = (factures || []).filter(f => (f.montant_reversement || 0) > 0 && !clesVues.has(f.bien_id || `p:${f.proprietaire_id}`))
+  if (orphelines.length) {
+    const { data: props } = await supabase.from('proprietaire').select('id, nom, prenom, iban, bic').in('id', orphelines.map(f => f.proprietaire_id))
+    const { data: biensO } = await supabase.from('bien').select('id, code, groupe_facturation, agence').in('id', orphelines.map(f => f.bien_id).filter(Boolean))
+    for (const f of orphelines) {
+      const prop = (props || []).find(p => p.id === f.proprietaire_id)
+      const b = (biensO || []).find(x => x.id === f.bien_id)
+      if (b && b.agence && b.agence !== agence) continue
+      const label = b?.groupe_facturation || b?.code || f.bien_id || 'groupe'
+      if (!prop?.iban) {
+        const nom = [prop?.nom, prop?.prenom].filter(Boolean).join(' ') || '— propriétaire inconnu —'
+        if (!sansIbanMap.has(nom)) sansIbanMap.set(nom, new Set())
+        sansIbanMap.get(nom).add(label)
+        continue
+      }
+      groups.set(f.bien_id || `p:${f.proprietaire_id}`, { montant: 0, prop, label, isGroupe: !f.bien_id, biens: new Set([b?.code || label]) })
+    }
   }
 
   const sansFacture = []
@@ -433,6 +457,7 @@ export async function genererSCTVirementsPropriosLC(mois, agence = AGENCE) {
     debtorAdrLine2: config.adresse_ligne2,
     transactions,
   })
+  const sansIban = listeSansIban()
   return { xml, sansIban, msgId, lignes: lignesFichier, total_cts: lignesFichier.reduce((t, l) => t + l.montant_cts, 0) }
 }
 

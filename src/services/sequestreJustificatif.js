@@ -266,17 +266,45 @@ export async function justifierSequestre(agence = 'dcb', { date = new Date().toI
   // réglée, ce n'est PAS une nouvelle dette : on la retire du dû de ce mois et on la compte comme
   // payée pour le mois d'origine (MUNDUZ / M-MAITE : taxe de séjour de juin oubliée, versée en août).
   const { data: regulsVirement } = await supabase.from('frais_proprietaire')
-    .select('libelle, montant_ttc, mois_facturation, bien:bien_id!inner(agence, proprietaire_id)')
-    .eq('bien.agence', agence).eq('mode_traitement', 'remboursement').ilike('libelle', 'Régularisation virement %')
-  const regulVir = (regulsVirement || []).map(f => {
-    const m = f.libelle.match(/Régularisation virement (\d{2})\/(\d{4})/)
-    return m ? { ...f, mois_origine: `${m[2]}-${m[1]}` } : null
-  }).filter(Boolean)
+    .select('libelle, montant_ttc, mois_facturation, statut, bien_id, bien:bien_id!inner(agence, proprietaire_id, groupe_facturation)')
+    .eq('bien.agence', agence).eq('mode_traitement', 'remboursement').neq('statut', 'brouillon').ilike('libelle', 'Régularisation virement %')
 
   // Composition des remises groupées (« REM VIR SEPA ») : fichiers générés par l'app (proprios_lc)
   // ou PDF « Détail Remise » de la banque importés (detail_remise_ce, scripts/import-detail-remise.mjs)
   const { data: compoRemises } = await supabase.from('sct_export').select('mois, type_export, total_cts, lignes').eq('agence', agence)
   const factureProprio = new Map(factures.map(f => [f.id, f.proprietaire_id]))
+  const facturesVersees = new Set((compoRemises || []).flatMap(c => (c.lignes || []).map(l => l.cle)).filter(Boolean))
+
+  // La régularisation n'est comptée payée pour le mois d'origine QUE si la facture qui la porte a
+  // réellement été versée (ligne de remise, ou virement individuel au propriétaire ce mois-là).
+  // Avant : comptée payée d'office → LALANDE/BDX 70,60 € (facture d'août sans séjour, jamais versée)
+  // apparaissait réglée alors que rien n'était parti (25/09/2026).
+  const regulVir = (regulsVirement || []).map(f => {
+    const m = f.libelle.match(/Régularisation virement (\d{2})\/(\d{4})/)
+    if (!m) return null
+    const fac = factures.find(x => x.type_facture === 'honoraires' && x.mois === f.mois_facturation &&
+      (x.bien_id === f.bien_id || (!x.bien_id && f.bien?.groupe_facturation && x.proprietaire_id === f.bien?.proprietaire_id)))
+    const virIndiv = sorties.some(s => ['reversement', 'reversement_hors_facture'].includes(s.type) && s.mois === f.mois_facturation && s.tiers_id === f.bien?.proprietaire_id)
+    const versee = !!fac && (facturesVersees.has(fac.id) || virIndiv)
+    return { ...f, mois_origine: `${m[2]}-${m[1]}`, versee }
+  }).filter(Boolean)
+  const regulsNonVersees = regulVir.filter(f => !f.versee && f.mois_facturation < moisPlus(new Date().toISOString().slice(0, 7), 0))
+  // Symétrique : « Régularisation virement MM/AAAA » retenue sur le loyer (deduire_loyer) = récupération
+  // d'un virement TROP LONG du mois d'origine (juin 2026 : virements calculés sur le brut, débours non
+  // déduits — AGUERRE, CHEVALIER, BURGY, Waldau). Comptée comme remboursée au mois d'origine, et hors
+  // part DCB du mois où elle est retenue (ce n'est pas un frais encaissé par l'agence). Retenue
+  // non déduite mais réglée via la demande de débours (ALAUX/PANORAMA 15 €) : idem.
+  const { data: retenuesRegul } = await supabase.from('frais_proprietaire')
+    .select('id, libelle, montant_ttc, montant_deduit_loy, mois_facturation, bien_id, bien:bien_id!inner(agence, proprietaire_id)')
+    .eq('bien.agence', agence).in('mode_traitement', ['deduire_loyer', 'facturer_et_deduire']).neq('statut', 'brouillon').ilike('libelle', 'Régularisation virement %')
+  const retRegul = (retenuesRegul || []).map(f => {
+    const m = f.libelle.match(/Régularisation virement (\d{2})\/(\d{4})/)
+    if (!m) return null
+    const debRecu = factures.some(x => x.type_facture === 'debours' && x.bien_id === f.bien_id && x.mois === f.mois_facturation && ['remboursement_recu', 'payee'].includes(x.statut))
+    const recupere = (f.montant_deduit_loy || 0) + (debRecu ? Math.max(0, f.montant_ttc - (f.montant_deduit_loy || 0)) : 0)
+    return recupere ? { ...f, mois_origine: `${m[2]}-${m[1]}`, recupere } : null
+  }).filter(Boolean)
+  const idsRetRegul = new Set(retRegul.map(f => f.id))
 
   const parMois = []
   for (const mois of moisFactures) {
@@ -286,8 +314,9 @@ export async function justifierSequestre(agence = 'dcb', { date = new Date().toI
     const horsFacture = sortiesMois(['reversement_hors_facture'], mois)
     const proprioDu = sum(honoraires.filter(f => f.mois === mois), f => f.montant_reversement) + sum(horsFacture, s => s.debit)
     const proprioSorties = sortiesMois(['reversement_groupe', 'reversement', 'reversement_hors_facture'], mois)
-    const proprioPaye = sum(proprioSorties, s => s.debit) + sum(regulVir.filter(f => f.mois_origine === mois), f => f.montant_ttc)
-      - sum(regulVir.filter(f => f.mois_facturation === mois), f => f.montant_ttc)
+    const proprioPaye = sum(proprioSorties, s => s.debit) + sum(regulVir.filter(f => f.versee && f.mois_origine === mois), f => f.montant_ttc)
+      - sum(regulVir.filter(f => f.versee && f.mois_facturation === mois), f => f.montant_ttc)
+      - sum(retRegul.filter(f => f.mois_origine === mois), f => f.recupere)
     const { data: missions } = await supabase.from('mission_menage').select('montant, impute_salaire, ae:ae_id!inner(type), bien:bien_id!inner(id, agence, proprietaire_id, skip_facturation, mode_encaissement)')
       .eq('mois', mois).eq('statut', 'valide').eq('bien.agence', agence).eq('ae.type', 'ae')
     const { data: prestas } = await supabase.from('prestation_hors_forfait').select('montant, impute_salaire, ae:ae_id!inner(type), bien:bien_id!inner(id, agence, proprietaire_id, skip_facturation, mode_encaissement)')
@@ -302,8 +331,9 @@ export async function justifierSequestre(agence = 'dcb', { date = new Date().toI
     const compta = await buildComptaMensuelle(mois)
     const t = compta.totals, hs = t.hors_sequestre || {}
     const virable = (t.hon_ttc - (hs.hon_ttc || 0)) + (t.fmen_ttc - (hs.fmen_ttc || 0)) + (t.com_ttc - (hs.com_ttc || 0))
-    const { data: frais } = await supabase.from('frais_proprietaire').select('montant_deduit_loy, bien:bien_id!inner(agence, proprietaire_id)')
+    const { data: fraisTous } = await supabase.from('frais_proprietaire').select('id, montant_deduit_loy, bien:bien_id!inner(agence, proprietaire_id)')
       .eq('bien.agence', agence).eq('mois_facturation', mois).in('mode_traitement', ['deduire_loyer', 'facturer_et_deduire'])
+    const frais = (fraisTous || []).filter(f => !idsRetRegul.has(f.id))
     // Bien sans facture d'honoraires ce mois-là (LAGREOU/ASKIDA juin 2026 : bien perso du gérant,
     // aucune facture générée) : le reversement reste dû au propriétaire — compté au calcul live
     const sansFacture = compta.rows.filter(r => !r.is_lauian_client && !r.is_lld && !r.facture_id && (r.reversement_calcule || 0) > 0)
@@ -315,7 +345,7 @@ export async function justifierSequestre(agence = 'dcb', { date = new Date().toI
     const aeAvance = [...(missions || []), ...(prestas || [])].filter(x => !x.impute_salaire && !x.bien?.skip_facturation && x.bien?.mode_encaissement === 'proprio')
     const dcbTheorique = virable + sum(frais || [], f => f.montant_deduit_loy) - sum(aeSkip, x => x.montant)
     const aeAvanceTotal = sum(aeAvance, x => x.montant)
-    const regulRegleesIci = regulVir.filter(f => f.mois_facturation === mois)
+    const regulRegleesIci = regulVir.filter(f => f.versee && f.mois_facturation === mois)
     const proprioDuTotal = proprioDu + proprioDuSansFacture - sum(regulRegleesIci, f => f.montant_ttc)
     const dcbReste = encaisse - proprioDuTotal - aeDu - dcbPaye
     // Anomalie par propriétaire : encaissé − reversement dû − AE − part DCB théorique − frais
@@ -351,7 +381,8 @@ export async function justifierSequestre(agence = 'dcb', { date = new Date().toI
         for (const l of compo.lignes || []) plus(paye, l.proprietaire_id || factureProprio.get(l.cle), l.montant_cts)
       }
       for (const x of proprioSorties.filter(x => x.type !== 'reversement_groupe')) plus(paye, x.tiers_id, x.debit)
-      for (const f of regulVir.filter(f => f.mois_origine === mois)) plus(paye, f.bien?.proprietaire_id, f.montant_ttc)
+      for (const f of regulVir.filter(f => f.versee && f.mois_origine === mois)) plus(paye, f.bien?.proprietaire_id, f.montant_ttc)
+      for (const f of retRegul.filter(f => f.mois_origine === mois)) plus(paye, f.bien?.proprietaire_id, -f.recupere)
       if (inconnu.length) return { composition_manquante: inconnu.map(x => ({ date: x.date_operation, montant: x.debit })) }
       return Object.keys({ ...du, ...paye }).map(id => ({ proprietaire_id: id, nom: nomP(id), du: du[id] || 0, paye: paye[id] || 0, reste: (du[id] || 0) - (paye[id] || 0) }))
         .filter(x => Math.abs(x.reste) >= 100).sort((a, b) => b.reste - a.reste)
@@ -442,6 +473,34 @@ export async function justifierSequestre(agence = 'dcb', { date = new Date().toI
         : `${p.mois} : ${eur(p.dcb.anomalie)} de plus que la part DCB théorique (encaissement non réparti, reversement non facturé…)`) +
         (p.dcb.anomalie_par_proprio.length ? ` — principaux : ${[...p.dcb.anomalie_par_proprio].sort((a, b) => Math.abs(b.montant) - Math.abs(a.montant)).slice(0, 4).map(x => `${x.nom} ${eur(x.montant)}`).join(', ')}` : '') })
   }
+  // Propriétaire payé au-delà de son dû sur un mois (≥ 10 €) : double paiement probable
+  // (CAROSSIO/VIKY juin 2026 : taxe de séjour 28,31 € versée dans la remise du 07/09 ET à la main le 24/09)
+  for (const p of facturesListe) for (const x of (Array.isArray(p.proprietaires.par_proprio) ? p.proprietaires.par_proprio : []))
+    if (x.reste <= -1000 && x.nom !== 'inconnu') anomalies.push({ cle: `proprio_paye_2x_${p.mois}_${x.proprietaire_id}_${x.reste}`, mois: p.mois, montant: x.reste,
+      message: `${p.mois} : ${x.nom} a reçu ${eur(-x.reste)} de plus que son dû (${eur(x.du)} dû, ${eur(x.paye)} versés) — double paiement ?` })
+  // Régularisation « remboursement » d'un mois passé jamais versée (facture non finalisée / hors fichier de virements)
+  for (const f of regulsNonVersees) anomalies.push({ cle: `regul_non_versee_${f.bien_id}_${f.mois_facturation}`, mois: f.mois_origine, montant: f.montant_ttc,
+    message: `${eur(f.montant_ttc)} de régularisation (${f.libelle.slice(0, 80)}) prévus au reversement de ${f.mois_facturation}, jamais versés` })
+  // Remboursement prévu (frais « remboursement ») dont le montant a AUSSI été viré à la main au même
+  // propriétaire : ITS 11 013,39 € (régul. juillet-août mise en septembre, déjà virée le 09/09), CAROSSIO 28,31 €
+  {
+    const { data: rembs } = await supabase.from('frais_proprietaire')
+      .select('id, bien_id, libelle, date, montant_ttc, mois_facturation, bien:bien_id!inner(agence, code, proprietaire_id)')
+      .eq('bien.agence', agence).eq('mode_traitement', 'remboursement').neq('statut', 'brouillon').gte('mois_facturation', MOIS_DEBUT_)
+    const manuels = sorties.filter(s => ['reversement', 'reversement_hors_facture'].includes(s.type) && s.tiers_id && !/^REM VIR/i.test(s.libelle || ''))
+    // Double paiement déjà compensé par une retenue du même montant sur le même bien → plus d'alerte
+    const { data: compens } = await supabase.from('frais_proprietaire').select('bien_id, montant_ttc, date, bien:bien_id!inner(agence)')
+      .eq('bien.agence', agence).in('mode_traitement', ['deduire_loyer', 'facturer_et_deduire']).neq('statut', 'brouillon').gte('mois_facturation', MOIS_DEBUT_)
+    for (const f of (rembs || []).filter(f => !(compens || []).some(c => c.bien_id === f.bien_id && c.montant_ttc === f.montant_ttc && c.date >= f.date))) {
+      const depuis = new Date(new Date(f.date).getTime() - 10 * 86400000).toISOString().slice(0, 10)
+      const siens = manuels.filter(s => s.tiers_id === f.bien.proprietaire_id && s.date_operation >= depuis)
+      const egal = siens.find(s => Math.abs(s.debit - f.montant_ttc) <= 100)
+      const total = sum(siens, s => s.debit)
+      if (egal || (siens.length > 1 && Math.abs(total - f.montant_ttc) <= 100))
+        anomalies.push({ cle: `remboursement_deja_vire_${f.id}`, mois: f.mois_facturation, montant: f.montant_ttc,
+          message: `${f.bien.code} : remboursement de ${eur(f.montant_ttc)} (reversement ${f.mois_facturation}) déjà viré à la main (${(egal ? [egal] : siens).map(s => `${s.date_operation.split('-').reverse().join('/')} ${eur(s.debit)}`).join(' + ')}) — double paiement si la ligne reste active` })
+    }
+  }
   // Paiement relié à une résa annulée SANS revenu : lien presque toujours faux (HMKBNZXMPW,
   // 25/09/2026 : payout 1 065,53 € d'un autre séjour du même bien, annulation synchronisée en retard)
   const liensAnnulees = Object.values(annuleesLiens.reduce((a, l) => { (a[l.code] ||= { code: l.code, montant: 0 }).montant += l.montant || 0; return a }, {})).filter(x => x.montant > 100) // négatif = frais Stripe perdus sur une annulation remboursée : normal
@@ -519,6 +578,18 @@ export async function justifierSequestre(agence = 'dcb', { date = new Date().toI
     const ad = typeSortie[sm.type] || 'a_affecter'
     ec(sm, 0, -sm.debit, ad, sm.sous || sm.type, { mois: sm.mois, tiers_id: sm.tiers_id, tiers_nom: ad === 'ae' ? nomAe(sm.tiers_id) : nomProprio(sm.tiers_id), regle: sm.regle })
   }
+  // AirCover (règle Oïhan 25/09/2026) : revient à qui a payé la réparation. Réparation retenue au
+  // propriétaire (frais du même montant, ±60 j) → propriétaire (à lui rembourser) ; sinon DCB a
+  // assumé la réparation → agence. (602 BURGY : Castorama 30 € retenu le 15/07 ↔ AirCover 30 € du 14/07)
+  const { data: fraisRepar } = await supabase.from('frais_proprietaire').select('montant_ttc, date, libelle, bien:bien_id!inner(agence, code, proprietaire_id)')
+    .eq('bien.agence', agence).in('mode_traitement', ['deduire_loyer', 'facturer_direct', 'facturer_et_deduire']).neq('statut', 'brouillon').gte('date', DEBUT_)
+  for (const e of horsMois.aircover) {
+    const t = Date.parse(e.date_operation)
+    const f = (fraisRepar || []).find(f => Math.abs(f.montant_ttc - e.montant) <= 100 && Math.abs(Date.parse(f.date) - t) <= 60 * 86400000 && !/aircover|compt[ée] 2/i.test(f.libelle))
+    e.aircover_ayant_droit = f ? 'proprietaire' : 'agence'
+    e.tiers_id = f?.bien?.proprietaire_id
+    e.raison = `${e.raison || 'AirCover'} → ${f ? `propriétaire ${f.bien.code} (réparation « ${f.libelle.slice(0, 60)} » retenue le ${f.date.split('-').reverse().join('/')})` : 'DCB (aucune réparation retenue au propriétaire)'}`
+  }
   const typeEntree = { aircover: 'a_affecter', prime_plateforme: 'agence', remboursement_debours: 'proprietaire', paiement_facture: 'agence', frais_stripe_rembourses: 'agence', retour_dcb: 'agence', remise_frais_bancaires: 'banque',
     inter_agence: 'autre_agence', reprise_ancien_sequestre: 'reprise', plateforme_non_rapprochee: 'a_affecter', non_affecte: 'a_affecter' }
   const dejaEc = new Set()
@@ -527,7 +598,7 @@ export async function justifierSequestre(agence = 'dcb', { date = new Date().toI
     // payout inférieur aux paiements reliés : l'écriture « réservations » est plafonnée au montant
     // reçu plus bas — ne pas ajouter la différence une 2e fois
     if (partielle && e.montant < 0) continue
-    ec(e, partielle ? 1 : 0, e.montant, typeEntree[k] || 'a_affecter', k, { mois: e.mois || moisDe(e.date_operation), regle: e.regle || 'auto', detail: e.raison ? { raison: e.raison } : null })
+    ec(e, partielle ? 1 : 0, e.montant, e.aircover_ayant_droit || typeEntree[k] || 'a_affecter', k, { mois: e.mois || moisDe(e.date_operation), tiers_id: e.tiers_id, tiers_nom: e.tiers_id ? nomProprio(e.tiers_id) : null, regle: e.regle || 'auto', detail: e.raison ? { raison: e.raison } : null })
     if (!partielle) dejaEc.add(e.id)
   }
   for (const e of entrees.filter(x => x.date_operation >= DEBUT_ && !dejaEc.has(x.id))) {

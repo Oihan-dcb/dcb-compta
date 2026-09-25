@@ -912,3 +912,9 @@ avant correction.
 
 *Fichier généré dans le cadre de l'audit structurel DCB Compta — mars 2026.*
 *Mis à jour avril 2026 — ne pas modifier sans relecture de `src/services/ventilation.js` V1, `src/services/facturesEvoliz.js`, `src/services/buildRapportData.js` et `src/pages/PageFactures.jsx`.*
+
+### AirCover — à qui revient le remboursement (règle Oïhan 25/09/2026)
+Un « Resolution Payout: AirCover damage reimbursement » Airbnb revient à qui a payé la réparation :
+si une réparation du même montant (±1 €, ±60 jours) a été retenue au propriétaire (frais
+`deduire_loyer` / `facturer_*`), l'AirCover lui est dû → frais `remboursement` au mois suivant ; sinon
+DCB a assumé la réparation et l'AirCover revient à l'agence. Automatique dans le justificatif séquestre.
