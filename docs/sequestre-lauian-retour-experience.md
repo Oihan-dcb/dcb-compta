@@ -99,3 +99,32 @@ encaissés par le Stripe DCB** : les compter en créance sur DCB (ou les exclure
 - Historique complet : séquestre **Shine** (26/02/2025 → 23/12/2025, 0 → 0) + séquestre **CE** ouvert le 25/04/2025 à 0 (relevés PDF mai-août). Le « solde d'ouverture » n'existe plus.
 - **Inter-agence, sens Lauïan → DCB : 3 067,68 €.** L'annonce Airbnb « Cozy 47m2 avec balcon » (LVH – Le Bouscat, bien DCB `BDX`) était sur le compte Airbnb Lauïan ; 11 séjours du 02/08 au 23/09/2025 ont été versés sur le Shine Lauïan (seul Levi Verkuil 200,77 € renvoyé à DCB). DCB a payé Emma Lalande (862,80 € le 08/09, 831,62 € le 07/10) → **créance du séquestre DCB sur le séquestre Lauïan**. Le virement DCB → Lauïan passe de 9 151,00 € à **6 083,32 € net**. À refléter dans le justificatif DCB (encaissements BDX août-sept 2025 jamais reçus côté DCB).
 - Écarts Lauïan identifiés : HON et FMEN de décembre 2025 jamais virés, AirCover 720,70 € non reversé, frais Stripe 2026 (651,93 €) jamais remboursés par le courant (le courant les avait remboursés pour 2025 le 27/12/2025). Reste : séquestre court d'environ 4 000 € par rapport à l'ensemble des créances — à détailler.
+
+## 9. Mise à jour 25/09 (nuit) — preuves et points pour le système commun
+**Comptes Lauïan (tous vérifiés depuis leur ouverture)** : séquestre Shine FR76 1741 8000 0100 0118 8939 513
+(26/02 → 23/12/2025, clôturé à 0), principal Shine …8758 511 (21/02 → 27/12/2025, 0 → 0), séquestre CE
+08002960142 40 (dep. 25/04/2025), courant CE 08002959940 64 (dep. 06/05/2025), excédent CE 08002960041 52 (cautions).
+Exports : iCloud `000 LAUIAN IMMOBILIER/Compta/2025/…EXPORT (ARCHIVE VRAC 2025)/` + `~/Downloads/operations_01032025_25092026.csv`
+(séquestre CE complet, somme = 65 857,32) et `operations_01092024_25092026.csv` (courant CE complet).
+
+**Solde d'ouverture de l'exercice** (plaquette cabinet au 30/09/2025) : séquestre Shine 14 210,59 + CE 18 841,76 =
+32 052,35 € au passif (467100/467200), sans détail par mandant — recalculé au centime depuis les relevés.
+Lauïan clôture au **30/09** → le justificatif doit pouvoir partir d'un solde d'ouverture d'exercice documenté.
+
+**LVH (inter-agence Lauïan → DCB, 3 067,68 €) — certain** : export Airbnb = versements vers IBAN …9513 (Shine Lauïan),
+retrouvés en banque ; aucune restitution sur les 5 comptes Lauïan ; factures DCB→Lauïan payées depuis
+(F-20260000054 frais mars→sept 2025 : VIP Arosteguy/Hospitable/PriceLabs ; F-20260000162 COM avr→sept 2025) sans LVH.
+Côté DCB : 11 résas `BDX` (02/08 → 23/09/2025) sans `reservation_paiement` alors que le propriétaire a été payé
+→ à inscrire en créance sur le séquestre Lauïan dans le justificatif DCB. Détection générique proposée :
+payout Airbnb dont l'IBAN de destination (export Airbnb, colonne « Détails ») appartient à une autre agence que le bien.
+
+**Bug moteur à traiter (impact réel)** : une résa ventilée puis **annulée et remboursée à 100 %** garde son ancienne
+ventilation si le mois est facturé/verrouillé → reversement propriétaire surpayé. Cas : AMAÏA HMSFJF3F2Y (Bill
+Hamilton, juillet 2026) : fin_revenue = 0 mais VIR 646,86 + FMEN 79,54 toujours en base, 646,86 inclus dans le
+reversement Manivit du 07/08/2026. Il faut au minimum une alerte « fin_revenue ≠ somme ventilée » sur mois verrouillé.
+Contrôle SQL utilisé : `abs(fin_revenue − Σ(VIR,HON,FMEN,AUTO,COM)) > 1 €` hors owner_stay (seul cas Lauïan réel ;
+les biens DCB sans collecte de loyer sortent en faux positifs, à exclure).
+
+**Frais Stripe** : en 2025 le courant Lauïan remboursait les frais Stripe au séquestre (27/12/2025 : 752,91 €) ;
+pas fait pour 2026 (651,93 € sur les résas Lauïan, dont 346,25 € prélevés côté Stripe DCB). Le système commun devrait
+porter ces frais en « dû par le courant de l'agence ».
