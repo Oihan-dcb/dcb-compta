@@ -25,6 +25,9 @@ describe('classerSortie', () => {
     expect(s('COM WEB - JUILLET', '2026-08-06')).toMatchObject({ type: 'transfert_dcb', sous: 'com', mois: '2026-07' })
     expect(s('COMMISIONS DIRECTES - JUILLET', '2026-08-06')).toMatchObject({ type: 'transfert_dcb', sous: 'com', mois: '2026-07' })
     expect(s('HON ITS AOUT', '2026-09-09')).toMatchObject({ type: 'transfert_dcb', sous: 'hon', mois: '2026-08' })
+    expect(s('VIR SEPA DCB MENAGE', '2026-02-06')).toMatchObject({ type: 'transfert_dcb', sous: 'fmen', mois: '2026-01' })
+    expect(s('COMM DISTRIBUTION DU MOIS DE J', '2026-02-06')).toMatchObject({ type: 'transfert_dcb', sous: 'com' })
+    expect(s('VIREMENT FMEN AVRIL', '2026-04-21')).toMatchObject({ type: 'transfert_dcb', sous: 'fmen', mois: '2026-04' })
   })
   it('paiements AE (nom, ou mot « débours ») avec le mois du libellé', () => {
     expect(s('VIR SEPA MLE LARZABAL SHANE - Reason: DEBOURS JUILLET XANE', '2026-08-06')).toEqual({ type: 'paiement_ae', mois: '2026-07', tiers_id: 'xane' })

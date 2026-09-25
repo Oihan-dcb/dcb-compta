@@ -138,12 +138,21 @@ export async function justifierSequestre(agence = 'dcb', { date = new Date().toI
   // restent au séquestre (net : frais d'annulation retenus > 0, frais Stripe perdus < 0)
   const resaAnnulee = new Map(reservations.filter(exclue).map(r => [r.id, r]))
   const annuleesLiens = []
+  // Réservations d'une AUTRE agence encaissées sur ce séquestre (résas directes Lauïan payées sur le
+  // Stripe DCB via destinationcotebasque.com jusqu'au 25/09/2026 : 9 151,00 € net) — argent du
+  // séquestre Lauïan, à lui reverser
+  const autreAgenceLiens = []
   const mvtIds = mvts.map(m => m.id)
   for (let i = 0; i < mvtIds.length; i += 200) {
-    const { data } = await supabase.from('reservation_paiement').select('mouvement_id, montant, reservation_id').in('mouvement_id', mvtIds.slice(i, i + 200))
+    const { data } = await supabase.from('reservation_paiement').select('mouvement_id, montant, reservation_id, reservation:reservation_id(code, bien:bien_id(agence))').in('mouvement_id', mvtIds.slice(i, i + 200))
     for (const l of data || []) if (!resaDCB.has(l.reservation_id)) {
       lieParMvt.set(l.mouvement_id, (lieParMvt.get(l.mouvement_id) || 0) + (l.montant || 0))
       if (resaAnnulee.has(l.reservation_id)) annuleesLiens.push({ ...l, code: resaAnnulee.get(l.reservation_id).code })
+      const ag = l.reservation?.bien?.agence
+      if (ag && ag !== agence) {
+        const mvt = mvts.find(m => m.id === l.mouvement_id)
+        if (mvt && mvt.date_operation >= DEBUT_) autreAgenceLiens.push({ agence: ag, code: l.reservation.code, montant: l.montant || 0, date: mvt.date_operation })
+      }
     }
   }
 
@@ -306,7 +315,9 @@ export async function justifierSequestre(agence = 'dcb', { date = new Date().toI
   }
 
   // ── Hors mois ─────────────────────────────────────────────────────────────
-  const sortiesAutres = sorties.filter(s => !transitIds.has(s.id) && s.date_operation >= DEBUT_ && ['autre', 'remboursement_voyageur', 'inter_agence'].includes(s.type))
+  const sortiesAutres = sorties.filter(s => !transitIds.has(s.id) && s.date_operation >= DEBUT_ && ['autre', 'remboursement_voyageur'].includes(s.type))
+  // Virements vers le séquestre de l'autre agence (hors transits appariés) : soldent la poche ci-dessous
+  const versAutreAgence = sorties.filter(s => !transitIds.has(s.id) && s.date_operation >= DEBUT_ && s.type === 'inter_agence')
   // Sorties attribuées à un mois antérieur au suivi (reversement de mai payé en juin…) : elles
   // soldent des dettes d'avant la période, hors justificatif.
   const sortiesAnterieures = sorties.filter(s => !transitIds.has(s.id) && s.date_operation >= DEBUT_ && s.mois < MOIS_DEBUT_ &&
@@ -325,6 +336,7 @@ export async function justifierSequestre(agence = 'dcb', { date = new Date().toI
     { cle: 'factures_payees_sequestre', label: 'Factures d\'honoraires payées sur le séquestre (dues à DCB)', montant: tot('paiement_facture') },
     { cle: 'stripe', label: 'Virements reçus inférieurs aux paiements reliés (frais Stripe, payout partiel Airbnb, lignes Stripe manquantes) / frais Stripe remboursés par DCB', montant: tot('frais_stripe_rembourses') },
     { cle: 'frais_bancaires', label: 'Frais bancaires (nets des remises)', montant: tot('remise_frais_bancaires') - fraisBancaires },
+    { cle: 'autre_agence', label: 'Résas Lauïan encaissées sur ce séquestre (Stripe DCB) − déjà reversées au séquestre Lauïan', montant: sum(autreAgenceLiens, l => l.montant) - sum(versAutreAgence, s => s.debit) },
     { cle: 'annulees', label: 'Réservations annulées — net encaissé − remboursé (frais d\'annulation retenus / frais perdus)', montant: sum(annuleesLiens, l => l.montant) },
     { cle: 'plateformes_non_rapprochees', label: 'Encaissements plateformes non reliés à une réservation', montant: tot('plateforme_non_rapprochee') },
     { cle: 'entrees_non_affectees', label: 'Autres encaissements à identifier', montant: tot('non_affecte') + tot('inter_agence') },
@@ -415,6 +427,7 @@ export async function justifierSequestre(agence = 'dcb', { date = new Date().toI
       sorties_anterieures: lignes(sortiesAnterieures),
       annulees: Object.values(annuleesLiens.reduce((a, l) => { (a[l.code] ||= { code: l.code, montant: 0 }).montant += l.montant || 0; return a }, {})),
       retours_dcb: lignes(horsMois.retour_dcb),
+      autre_agence: { encaisse: autreAgenceLiens, reverse: lignes(versAutreAgence) },
       stripe: lignes(horsMois.frais_stripe_rembourses),
       reaffectations: [...affecte.values()],
       transits: transits.map(p => ({ entree: p.entree.libelle?.slice(0, 60), sortie: p.sortie.libelle?.slice(0, 60), montant: p.entree.credit, date: p.entree.date_operation })),

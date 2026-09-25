@@ -41,7 +41,11 @@ export function classerSortie(mvt, ctx = {}) {
   if (/^rem vir sepa du/.test(t)) return { type: 'reversement_groupe', mois: moisPrecedent(mvt.date_operation) }
   if (/\blauian\b/.test(t)) return { type: 'inter_agence', mois }
   // Virements DCB : libellé qui COMMENCE par HON / FMEN / COM / COMMISSIONS (convention interne)
-  const dcb = t.match(/^(hon|honoraires|fmen|com|commissions?|commisions?)\b/)
+  // + variantes réellement utilisées en 2026 : « VIR SEPA DCB MENAGE », « COMM DISTRIBUTION DU MOIS
+  // DE J… », « VIREMENT FMEN AVRIL »
+  if (/^(vir sepa )?dcb menage\b/.test(t)) return { type: 'transfert_dcb', sous: 'fmen', mois }
+  if (/^comm distribution\b/.test(t)) return { type: 'transfert_dcb', sous: 'com', mois }
+  const dcb = t.replace(/^virement /, '').match(/^(hon|honoraires|fmen|com|commissions?|commisions?)\b/)
   if (dcb) {
     const sous = dcb[1].startsWith('hon') ? 'hon' : dcb[1] === 'fmen' ? 'fmen' : 'com'
     return { type: 'transfert_dcb', sous, mois }
