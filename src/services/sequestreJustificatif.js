@@ -169,6 +169,7 @@ export async function justifierSequestre(agence = 'dcb', { date = new Date().toI
     preuves.push(...(data || []))
   }
   const encaisseParMois = {}
+  let encaisseAnterieurApres = 0 // séjours d'avant le suivi payés sur le compte après son début
   const creanceAutreAgence = [] // paiements de nos résas arrivés sur le séquestre d'une autre agence
   const encProprio = {} // mois → proprietaire_id → encaissé (détail des anomalies)
   const lieParMvt = new Map()
@@ -201,11 +202,14 @@ export async function justifierSequestre(agence = 'dcb', { date = new Date().toI
   const autreAgenceLiens = []
   const mvtIds = mvts.map(m => m.id)
   for (let i = 0; i < mvtIds.length; i += 200) {
-    const { data } = await supabase.from('reservation_paiement').select('mouvement_id, montant, reservation_id, reservation:reservation_id(code, bien:bien_id(agence))').in('mouvement_id', mvtIds.slice(i, i + 200))
+    const { data } = await supabase.from('reservation_paiement').select('mouvement_id, montant, reservation_id, reservation:reservation_id(code, mois_comptable, final_status, bien:bien_id(agence))').in('mouvement_id', mvtIds.slice(i, i + 200))
     for (const l of data || []) if (!resaDCB.has(l.reservation_id)) {
       lieParMvt.set(l.mouvement_id, (lieParMvt.get(l.mouvement_id) || 0) + (l.montant || 0))
       if (resaAnnulee.has(l.reservation_id)) annuleesLiens.push({ ...l, code: resaAnnulee.get(l.reservation_id).code })
       const ag = l.reservation?.bien?.agence
+      const mvtL = mvts.find(m => m.id === l.mouvement_id)
+      if ((!ag || ag === agence) && l.reservation?.mois_comptable && l.reservation.mois_comptable < MOIS_DEBUT_ && mvtL && mvtL.date_operation >= DEBUT_ && dansCompte(compte, mvtL.source, mvtL.date_operation))
+        encaisseAnterieurApres += l.montant || 0
       if (ag && ag !== agence) {
         const mvt = mvts.find(m => m.id === l.mouvement_id)
         if (mvt && mvt.date_operation >= DEBUT_) autreAgenceLiens.push({ agence: ag, code: l.reservation.code, montant: l.montant || 0, date: mvt.date_operation })
@@ -331,6 +335,7 @@ export async function justifierSequestre(agence = 'dcb', { date = new Date().toI
     const proprioPaye = sum(proprioSorties, s => s.debit) + sum(regulVir.filter(f => f.versee && f.mois_origine === mois), f => f.montant_ttc)
       - sum(regulVir.filter(f => f.versee && f.mois_facturation === mois), f => f.montant_ttc)
       - sum(retRegul.filter(f => f.mois_origine === mois), f => f.recupere)
+      + sum(retRegul.filter(f => f.mois_facturation === mois), f => f.recupere)
     const { data: missions } = await supabase.from('mission_menage').select('montant, impute_salaire, ae:ae_id!inner(type), bien:bien_id!inner(id, agence, proprietaire_id, skip_facturation, mode_encaissement)')
       .eq('mois', mois).eq('statut', 'valide').eq('bien.agence', agence).eq('ae.type', 'ae')
     const { data: prestas } = await supabase.from('prestation_hors_forfait').select('montant, impute_salaire, ae:ae_id!inner(type), bien:bien_id!inner(id, agence, proprietaire_id, skip_facturation, mode_encaissement)')
@@ -360,7 +365,11 @@ export async function justifierSequestre(agence = 'dcb', { date = new Date().toI
     const dcbTheorique = virable + sum(frais || [], f => f.montant_deduit_loy) - sum(aeSkip, x => x.montant)
     const aeAvanceTotal = sum(aeAvance, x => x.montant)
     const regulRegleesIci = regulVir.filter(f => f.versee && f.mois_facturation === mois)
-    const proprioDuTotal = proprioDu + proprioDuSansFacture - sum(regulRegleesIci, f => f.montant_ttc)
+    // Retenue de rattrapage prélevée ce mois-ci (miroir de regulRegleesIci) : la facture du mois est
+    // nette de la retenue, mais cet argent rembourse le sur-virement du mois d'origine — réintégré au
+    // dû ET au payé d'ici (sinon il gonfle la part DCB du mois : compté 2×, −373,65 € le 25/09/2026)
+    const retRegulIci = retRegul.filter(f => f.mois_facturation === mois)
+    const proprioDuTotal = proprioDu + proprioDuSansFacture - sum(regulRegleesIci, f => f.montant_ttc) + sum(retRegulIci, f => f.recupere)
     const dcbReste = encaisse - proprioDuTotal - aeDu - dcbPaye
     // Anomalie par propriétaire : encaissé − reversement dû − AE − part DCB théorique − frais
     const parP = {}
@@ -389,6 +398,7 @@ export async function justifierSequestre(agence = 'dcb', { date = new Date().toI
       // la régularisation réglée ce mois-ci est une dette du mois d'origine : retirée du dû ET du
       // payé d'ici (elle est comptée payée pour le mois d'origine)
       for (const f of regulRegleesIci) { plus(du, f.bien?.proprietaire_id, -f.montant_ttc); plus(paye, f.bien?.proprietaire_id, -f.montant_ttc) }
+      for (const f of retRegulIci) { plus(du, f.bien?.proprietaire_id, f.recupere); plus(paye, f.bien?.proprietaire_id, f.recupere) }
       for (const sRem of proprioSorties.filter(x => x.type === 'reversement_groupe')) {
         const compo = (compoRemises || []).find(c => c.mois === mois && c.total_cts === sRem.debit)
         if (!compo) { inconnu.push(sRem); continue }
@@ -412,6 +422,7 @@ export async function justifierSequestre(agence = 'dcb', { date = new Date().toI
       ae: { du: aeDu, paye: aePaye, reste: aeDu - aePaye },
       dcb: { reste: dcbReste + aeAvanceTotal, paye: dcbPaye, theorique: dcbTheorique, reste_theorique: dcbTheorique - dcbPaye,
         anomalie: (dcbReste + aeAvanceTotal) - (dcbTheorique - dcbPaye), anomalie_par_proprio: anomaliesProprio,
+        anomalie_par_proprio_complet: Object.entries(parP).filter(([, v]) => Math.abs(v) >= 100).map(([id, v]) => ({ proprietaire_id: id, nom: nomP(id), montant: v })),
         debours_ae_avances: aeAvanceTotal,
         virements: [...transferts.map(s => ({ date: s.date_operation, montant: s.debit, libelle: s.libelle, sous: s.sous, note: s.note })),
           ...retours.map(e => ({ date: e.date_operation, montant: -e.credit, libelle: e.libelle, sous: e.sous, note: e.note }))] },
@@ -446,7 +457,10 @@ export async function justifierSequestre(agence = 'dcb', { date = new Date().toI
   // Argent arrivé sur le compte AVANT le 1er mois suivi (ex. payouts du 24 au 31/12/2025 pour des
   // séjours 2025, dont les propriétaires ont été payés par l'ancien compte) moins les sorties qui
   // soldent des dettes d'avant le suivi : relève de la clôture de l'exercice précédent
-  const avantSuivi = (compte.ouverture_solde || 0) + sum(mvts.filter(m => m.date_operation < DEBUT_), m => (m.credit || 0) - (m.debit || 0)) - sum(sortiesAnterieures, s => s.debit)
+  // + encaissements reçus APRÈS le début du suivi pour des séjours d'un mois antérieur (EKIA
+  // HMBW82NCS9, séjour du 30/12/2025 versé par Airbnb le 02/01/2026 : 971,10 € comptés nulle part)
+  const encaisseAnterieur = encaisseAnterieurApres
+  const avantSuivi = (compte.ouverture_solde || 0) + sum(mvts.filter(m => m.date_operation < DEBUT_), m => (m.credit || 0) - (m.debit || 0)) + encaisseAnterieur - sum(sortiesAnterieures, s => s.debit)
   const poches = [
     { cle: 'proprietaires', label: 'Propriétaires — reversements restant dus', montant: sum(facturesListe, p => p.proprietaires.reste) },
     { cle: 'ae', label: 'AE — ménages et extras non encore payés', montant: sum(facturesListe, p => p.ae.reste) },
