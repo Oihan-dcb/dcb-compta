@@ -274,6 +274,29 @@ export async function justifierSequestre(agence = 'dcb', { date = new Date().toI
   const liensAnnulees = Object.values(annuleesLiens.reduce((a, l) => { (a[l.code] ||= { code: l.code, montant: 0 }).montant += l.montant || 0; return a }, {})).filter(x => Math.abs(x.montant) > 100)
   if (liensAnnulees.length) anomalies.push({ cle: `paiement_resa_annulee_${liensAnnulees.map(x => x.code).sort().join('_')}`, montant: sum(liensAnnulees, x => x.montant),
     message: `Paiement(s) relié(s) à une réservation annulée sans revenu — vérifier le rapprochement (probable mauvaise résa) : ${liensAnnulees.map(x => `${x.code} ${eur(x.montant)}`).join(', ')}` })
+  // Séjour présent dans le détail d'un virement Booking/Airbnb mais absent des réservations :
+  // Hospitable ne l'expose pas toujours dans son API (Mirith Rast 6554316846, TXOMIN juillet 2026 :
+  // demande Booking pré-approuvée, visible dans l'interface Hospitable, absente de l'API) → jamais
+  // synchronisé, part propriétaire jamais reversée.
+  const orphelins = []
+  for (let i = 0; i < mvtIds.length; i += 200) {
+    const lot = mvtIds.slice(i, i + 200)
+    const [{ data: bk }, { data: ab }] = await Promise.all([
+      supabase.from('booking_payout_line').select('booking_ref, guest_name, checkin, amount_cents').in('mouvement_id', lot),
+      supabase.from('airbnb_payout_line').select('confirmation_code, guest_name, checkin, amount_cents').in('mouvement_id', lot),
+    ])
+    for (const l of bk || []) orphelins.push({ code: l.booking_ref, guest: l.guest_name, checkin: l.checkin, montant: l.amount_cents })
+    for (const l of ab || []) if (l.confirmation_code) orphelins.push({ code: l.confirmation_code, guest: l.guest_name, checkin: l.checkin, montant: l.amount_cents })
+  }
+  const codesConnus = new Set()
+  const codesPayout = [...new Set(orphelins.map(o => o.code))]
+  for (let i = 0; i < codesPayout.length; i += 200) {
+    const { data } = await supabase.from('reservation').select('code').in('code', codesPayout.slice(i, i + 200))
+    for (const r of data || []) codesConnus.add(r.code)
+  }
+  const sejoursInconnus = orphelins.filter(o => !codesConnus.has(o.code))
+  if (sejoursInconnus.length) anomalies.push({ cle: `sejour_payout_sans_resa_${sejoursInconnus.map(o => o.code).sort().join('_')}`, montant: sum(sejoursInconnus, o => o.montant),
+    message: `Séjour(s) payé(s) par la plateforme mais absent(s) des réservations (non synchronisé par Hospitable — à créer, part propriétaire à reverser) : ${sejoursInconnus.map(o => `${o.code} ${o.guest || ''} arrivée ${o.checkin} ${eur(o.montant)}`).join(' ; ')}` })
   if (sum(sortiesAutres, s => s.debit) > 100) anomalies.push({ cle: 'sorties_a_identifier', montant: -sum(sortiesAutres, s => s.debit), message: `${sortiesAutres.length} sortie(s) non identifiée(s) : ${eur(sum(sortiesAutres, s => s.debit))}` })
   const soldeBanque = solde ?? (await soldeBancaireSequestre())
   const lignes = arr => arr.map(m => ({ date: m.date_operation, montant: m.montant ?? m.debit ?? m.credit, libelle: (m.libelle || '').replace(/\n/g, ' ').slice(0, 120), raison: m.raison }))
