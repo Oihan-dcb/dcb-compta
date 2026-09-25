@@ -450,7 +450,11 @@ export async function buildComptaMensuelle(mois, bienIds = null) {
     const autoAbsorbable = Math.max(0, (autoAbsorbableBaseByBien[b.id] || 0) - menHt)
     // Source de vérité : facture per-bien si validée, sinon calcul ventilation
     const factureBienP3   = honByBien[b.id]
-    const virNetLive = Math.max(0, virHt2 - fraisLoy - fraisDirect - prestDeduct - deboursProp - ownerStayAbsorbByBien[b.id] - autoAbsorbable) + rembours
+    // frais « facturer_direct » : facturés À PART, ne réduisent JAMAIS le virement — même règle que
+    // facturesEvoliz (corrigée le 09/09/2026, Hélène/416). Ce calcul live les déduisait encore
+    // (25/09/2026 : GASQ août « facturé 2 802,31 vs recalculé 2 752,31 », fausse alerte ECART_REVERSEMENT).
+    // Les « facturer_et_deduire » sont déjà dans fraisLoy.
+    const virNetLive = Math.max(0, virHt2 - fraisLoy - prestDeduct - deboursProp - ownerStayAbsorbByBien[b.id] - autoAbsorbable) + rembours
     const virNet = reversementConfirme(factureBienP3) ?? virNetLive
     loyParProprio[b.proprietaire_id] = (loyParProprio[b.proprietaire_id] || 0) + virNet
     loyParProprioLive[b.proprietaire_id] = (loyParProprioLive[b.proprietaire_id] || 0) + virNetLive
@@ -531,7 +535,7 @@ export async function buildComptaMensuelle(mois, bienIds = null) {
     // exactement ce qui est arrivé à Cécile Alaux / Le Panorama - BDX en juin 2026 : 15€ de
     // parure validés après la facture, jamais répercutés, jamais alertés (signalé par la
     // propriétaire elle-même début septembre).
-    const reversement_calcule_live = Math.max(0, vir.ht - frais_loy - frais_direct - prest_deduct - debours_prop - owner_stay_absorb - auto_absorbable) + remboursements
+    const reversement_calcule_live = Math.max(0, vir.ht - frais_loy - prest_deduct - debours_prop - owner_stay_absorb - auto_absorbable) + remboursements  // frais_direct : facturé à part, jamais déduit (cf. virNetLive)
     const reversement_calcule = reversementConfirme(factureBien4) ?? reversement_calcule_live
 
     // Écart reversement au niveau proprio : Σ factures vs Σ reversement_calcule_live tous biens
