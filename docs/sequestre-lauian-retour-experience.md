@@ -128,3 +128,39 @@ les biens DCB sans collecte de loyer sortent en faux positifs, à exclure).
 **Frais Stripe** : en 2025 le courant Lauïan remboursait les frais Stripe au séquestre (27/12/2025 : 752,91 €) ;
 pas fait pour 2026 (651,93 € sur les résas Lauïan, dont 346,25 € prélevés côté Stripe DCB). Le système commun devrait
 porter ces frais en « dû par le courant de l'agence ».
+
+## 10. ⚠️ Passage de relais — bug « annulée » : correctif DÉJÀ DÉPLOYÉ par la session Lauïan (25/09, 22h30)
+Fait avant de lire votre message « laisse-le à l'autre session » — je m'arrête ici, la suite est à vous.
+- **Commit `26a2c9a`** (`ventilationCore.js` + test + `domain-rules.md`), poussé, **edge function `ventilation-auto` redéployée**.
+  Règle Oïhan : résa annulée = **aucun ménage** (FMEN 0, MEN 0, pas d'AUTO) ; le retenu va au propriétaire
+  (Airbnb/Booking : `revenue − HON − taxes` ; Direct annulée : `LOY = revenue − HON − COM − taxes`).
+  Tests 102/102. Dry-run (`_writeResa` dryRun) : 17 annulées 2026 modifiées, 22 témoins acceptés IDENTIQUES.
+- **Rien n'a été réécrit en base.** Les 17 ventilations existantes sont à reprendre par vous (mois verrouillés = régularisation) :
+
+| Agence | Résa | Bien | Mois | Verrou | Effet du recalcul |
+|---|---|---|---|---|---|
+| dcb | HOST-XLJHOF | GAXUXA | 02 | non | FMEN 82 → 0, LOY 92,55 → 173,26 |
+| dcb | HM2WM5CBDC | 416 | 03 | oui (payée) | FMEN 83,47 → 0, LOY +83,47 |
+| dcb | HMKFAEPWRF | CERES | 04 | oui | FMEN 228,89 → 0, LOY +228,89 |
+| dcb | HMW93C2JKE | EKIA | 04 | oui | FMEN 64,54 → 0, LOY +64,54 |
+| dcb | HMNQZ8FCYF | CERES | 04 | oui | FMEN 114,45 → 0, LOY +114,45 |
+| dcb | HM938TBKBT | 602 | 05 | oui | FMEN 41,73 → 0, LOY +41,73 |
+| dcb | HOST-COTEY7 | GAXUXA | 06 | oui | FMEN 82 → 0, LOY +81,03 |
+| dcb | HMR4K85RHK | ARREBA | 06 | oui | FMEN 21,99 → 0, LOY +21,99 |
+| dcb | **HM8HQQP53E** | DUL2 | 07 | oui | **LOY 384,44 → 0** (0 € encaissé, Chevalier surpayé) |
+| dcb | **HMEAQXCBW8** | PANTXIKA | 07 | oui | **LOY 403,80 → 0** (0 € encaissé, Waldau surpayé) |
+| dcb | HM8SZAKKMK | VIKY | 07 | non | FMEN 92,07 → 0 |
+| dcb | HOST-HXIDGK | IBANETA | 08 | oui | ⚠️ cas complexe (RGLM/SOLDE manuels, TAXE sur annulée) — ne pas réécrire tel quel |
+| dcb | HMMKQK2E2S | PATXI | 09 | non | FMEN 45,18 → 0 (le cron le corrigera) |
+| lauian | HMQJRNPFZF | MIRAMARVEL | 03 | non | FMEN 98,10 → 0, LOY +98,10 (Smaniotto sous-payé) |
+| lauian | HMZE225AMM | ENEKO | 04 | non (FMEN « valide ») | FMEN 86,05 → 0, LOY +86,05 (Cirauqui) — facture lauian_fmen avril à régénérer |
+| lauian | **HMSFJF3F2Y** | AMAÏA | 07 | oui | **LOY 646,86 → 0** — Manivit : **décision Oïhan = réclamer** |
+| lauian | HMQKYJB5A5 | FOLLE | 07 | oui | FMEN 75,12 → 0, LOY +75,12 (Lopez Quesada sous-payé) |
+
+- Non traité : la **taxe de séjour** sur une annulée (HOST-HXIDGK garde une TAXE 93,24 €) — pas de séjour = pas de taxe ?
+- Cause du « figé » Hamilton/Peterfy/Martorana : ventilation recalculée le 06/08 alors que `fin_revenue` valait encore le
+  montant d'origine, puis passé à 0 (remboursement hôte) après verrouillage → pas de recalcul. Alerte à prévoir sur
+  mois verrouillé quand `fin_revenue ≠ Σ ventilé`.
+- **LVH vs 9 151 €** : aucun recoupement. Les 9 151 € = résas Lauïan **2026** (SUZETTE, BERDEA, BITXI, ALTHEA) encaissées
+  par le **Stripe DCB** ; LVH = 11 résas du bien DCB `BDX` d'**août-sept. 2025** versées par **Airbnb** sur le Shine Lauïan.
+  Net DCB → Lauïan = 9 151,00 − 3 067,68 = **6 083,32 €**.
