@@ -108,7 +108,7 @@ export async function justifierSequestre(agence = 'dcb', { date = new Date().toI
       .or(filtreSources(compte))
       .neq('statut_matching', 'ignore').order('date_operation')),
     toutes(() => supabase.from('facture_evoliz')
-      .select('id, mois, type_facture, statut, total_ttc, total_ttc_evoliz, montant_reversement, bien_id, proprietaire_id, numero_facture, bien:bien_id(code), proprietaire:proprietaire_id(nom)')
+      .select('id, mois, type_facture, statut, total_ttc, total_ttc_evoliz, montant_reversement, bien_id, proprietaire_id, numero_facture, date_paiement, bien:bien_id(code), proprietaire:proprietaire_id(nom)')
       .eq('agence', agence).gte('mois', MOIS_DEBUT_ < '2026-01' ? MOIS_DEBUT_ : '2026-01')),
     toutes(() => supabase.from('reservation')
       .select('id, code, mois_comptable, platform, final_status, fin_revenue, bien:bien_id!inner(agence, mode_encaissement, proprietaire_id)')
@@ -291,7 +291,11 @@ export async function justifierSequestre(agence = 'dcb', { date = new Date().toI
   // ou PDF « Détail Remise » de la banque importés (detail_remise_ce, scripts/import-detail-remise.mjs)
   const { data: compoRemises } = await supabase.from('sct_export').select('mois, type_export, total_cts, lignes').eq('agence', agence)
   const factureProprio = new Map(factures.map(f => [f.id, f.proprietaire_id]))
-  const facturesVersees = new Set((compoRemises || []).flatMap(c => (c.lignes || []).map(l => l.cle)).filter(Boolean))
+  // Remises réellement débitées à la date du justificatif (sorties ≤ date) : une facture n'est « versée »
+  // que si sa remise est passée — sinon, recalculé à une date passée (clôture de juillet au 31/07), une
+  // régularisation réglée dans la remise du 07/09 comptait déjà comme versée (+1 209,78 € d'écart fantôme)
+  const totauxRemisesPassees = new Set(sorties.filter(x => x.type === 'reversement_groupe').map(x => x.debit))
+  const facturesVersees = new Set((compoRemises || []).filter(c => totauxRemisesPassees.has(c.total_cts)).flatMap(c => (c.lignes || []).map(l => l.cle)).filter(Boolean))
 
   // La régularisation n'est comptée payée pour le mois d'origine QUE si la facture qui la porte a
   // réellement été versée (ligne de remise, ou virement individuel au propriétaire ce mois-là).
@@ -318,8 +322,13 @@ export async function justifierSequestre(agence = 'dcb', { date = new Date().toI
   const retRegul = (retenuesRegul || []).map(f => {
     const m = f.libelle.match(/Régularisation virement (\d{2})\/(\d{4})/)
     if (!m) return null
-    const debRecu = factures.some(x => x.type_facture === 'debours' && x.bien_id === f.bien_id && x.mois === f.mois_facturation && ['remboursement_recu', 'payee'].includes(x.statut))
-    const recupere = (f.montant_deduit_loy || 0) + (debRecu ? Math.max(0, f.montant_ttc - (f.montant_deduit_loy || 0)) : 0)
+    const debRecu = factures.some(x => x.type_facture === 'debours' && x.bien_id === f.bien_id && x.mois === f.mois_facturation && ['remboursement_recu', 'payee'].includes(x.statut)
+      && (!x.date_paiement || x.date_paiement <= date))
+    // La retenue n'est effective qu'une fois le reversement du mois de facturation versé (à la date du calcul)
+    const facR = factures.find(x => x.type_facture === 'honoraires' && x.mois === f.mois_facturation &&
+      (x.bien_id === f.bien_id || (!x.bien_id && x.proprietaire_id === f.bien?.proprietaire_id)))
+    const retenueVersee = !!facR && (facturesVersees.has(facR.id) || sorties.some(s => ['reversement', 'reversement_hors_facture'].includes(s.type) && s.mois === f.mois_facturation && s.tiers_id === f.bien?.proprietaire_id))
+    const recupere = (retenueVersee ? (f.montant_deduit_loy || 0) : 0) + (debRecu ? Math.max(0, f.montant_ttc - (f.montant_deduit_loy || 0)) : 0)
     return recupere ? { ...f, mois_origine: `${m[2]}-${m[1]}`, recupere } : null
   }).filter(Boolean)
   const idsRetRegul = new Set(retRegul.map(f => f.id))
