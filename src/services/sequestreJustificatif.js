@@ -25,7 +25,9 @@ export const SOURCE_SEQUESTRE_LC = 'Pennylane_LOCATION_SAISONNIERE'
 // Relevé du séquestre : import CSV Caisse d'Épargne (source 'CaisseEpargne') jusqu'au 30/06/2026,
 // Pennylane ensuite (connecté le 06/07, historique partiel avant juillet : aucun mouvement de juin).
 // Jamais les deux sur une même période (sinon doublons).
-export const BASCULE_PENNYLANE = '2026-07-01'
+// Relevé CaisseEpargne jusqu'au 03/07 inclus ; flux Pennylane complet à partir du 06/07 (vérifié
+// 25/09/2026 : les 11 mouvements CE du 01-03/07 n'ont AUCUN équivalent Pennylane)
+export const BASCULE_PENNYLANE = '2026-07-04'
 // Premier mois suivi : le relevé Pennylane du séquestre commence le 09/04/2026 ; mai est le
 // dernier mois intégralement antérieur. Les mois antérieurs sont réputés soldés — un reste
 // éventuel ressort dans l'écart.
@@ -274,6 +276,23 @@ export async function justifierSequestre(agence = 'dcb', { date = new Date().toI
   const liensAnnulees = Object.values(annuleesLiens.reduce((a, l) => { (a[l.code] ||= { code: l.code, montant: 0 }).montant += l.montant || 0; return a }, {})).filter(x => Math.abs(x.montant) > 100)
   if (liensAnnulees.length) anomalies.push({ cle: `paiement_resa_annulee_${liensAnnulees.map(x => x.code).sort().join('_')}`, montant: sum(liensAnnulees, x => x.montant),
     message: `Paiement(s) relié(s) à une réservation annulée sans revenu — vérifier le rapprochement (probable mauvaise résa) : ${liensAnnulees.map(x => `${x.code} ${eur(x.montant)}`).join(', ')}` })
+  // Résa encaissée nettement au-delà de son revenu : presque toujours un double rattachement
+  // (HMWEBSK4Z4 BITXI 07/2026 : payée par le virement du 14/07 ET par celui du 31/07, qui était
+  // en réalité celui de deux autres séjours au même total)
+  // Critère : au moins deux virements différents reliés chacun pour le montant TOTAL de la résa
+  // (une résolution Airbnb retenue sur un payout suivant rend légitimement un virement > revenu)
+  const liensParResa = {}
+  for (const p of preuves) if (p.mouvement_id && p.mouvement && p.mouvement.date_operation <= date) (liensParResa[p.reservation_id] ||= []).push(p)
+  const candidatsDouble = Object.keys(liensParResa).filter(id => liensParResa[id].length >= 2)
+  const encParResa = Object.fromEntries(candidatsDouble.map(id => [id, sum(liensParResa[id], p => p.montant)]))
+  const revs = []
+  for (let i = 0; i < candidatsDouble.length; i += 200) {
+    const { data } = await supabase.from('reservation').select('id, code, fin_revenue').in('id', candidatsDouble.slice(i, i + 200))
+    revs.push(...(data || []))
+  }
+  const surPayees = revs.filter(r => r.fin_revenue > 0 && liensParResa[r.id].filter(p => Math.abs((p.montant || 0) - r.fin_revenue) <= 100).length >= 2)
+  if (surPayees.length) anomalies.push({ cle: `resa_sur_encaissee_${surPayees.map(r => r.code).sort().join('_')}`, montant: sum(surPayees, r => encParResa[r.id] - r.fin_revenue),
+    message: `Réservation(s) encaissée(s) bien au-delà de leur revenu — probable double rattachement d'un virement : ${surPayees.map(r => `${r.code} reçu ${eur(encParResa[r.id])} pour ${eur(r.fin_revenue)}`).join(' ; ')}` })
   // Séjour présent dans le détail d'un virement Booking/Airbnb mais absent des réservations :
   // Hospitable ne l'expose pas toujours dans son API (Mirith Rast 6554316846, TXOMIN juillet 2026 :
   // demande Booking pré-approuvée, visible dans l'interface Hospitable, absente de l'API) → jamais

@@ -1215,10 +1215,18 @@ async function _lierViaPayout(mouvementId, resaIds, mvt = null, statut = 'rappro
   //   → pour un batch multi-resas : chaque resa reçoit son propre montant (fin_revenue), pas le total du virement
   //   → pour une resa seule : min(fin_revenue, credit) ≈ credit (les 2 sont proches, quelques centimes d'écart possible)
   if (mvt) {
+    // Virement Stripe : le détail exact par résa est connu (stripe_payout_line). Sans ça, un
+    // acompte 50 % recevait le revenu TOTAL de la résa (HOST-UNV0ES, payout du 03/09/2026 :
+    // 520,79 € reliés pour 256,17 € réellement versés — virement « expliqué » au-delà de son montant).
+    const { data: lignesStripe } = await supabase.from('stripe_payout_line')
+      .select('reservation_code, montant_net').eq('mouvement_id', mouvementId)
     for (const rid of resaIds) {
-      const { data: resa } = await supabase.from('reservation').select('fin_revenue').eq('id', rid).single()
+      const { data: resa } = await supabase.from('reservation').select('fin_revenue, code').eq('id', rid).single()
       const finRev = resa?.fin_revenue || 0
-      const montant = finRev > 0 ? Math.min(finRev, mvt.credit) : mvt.credit
+      const lignesResa = (lignesStripe || []).filter(l => l.reservation_code && l.reservation_code === resa?.code)
+      const montant = lignesResa.length
+        ? lignesResa.reduce((t, l) => t + (l.montant_net || 0), 0)
+        : (finRev > 0 ? Math.min(finRev, mvt.credit) : mvt.credit)
       // Upsert avec contrainte explicite ; si la contrainte UNIQUE n'existe pas encore en base,
       // l'upsert échoue silencieusement (42P10) → fallback select+insert pour garantir la création
       const { error: upsertErr } = await supabase.from('reservation_paiement').upsert({
