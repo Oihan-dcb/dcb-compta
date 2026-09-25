@@ -78,3 +78,13 @@ liens ajoutés : 05/01 949,93 → ENEKO HMH9BJKYYF, 24/12 354,08 → ENEKO HMPJW
 COCO HMS53M5BCH (AirCover). Restent 8 payouts plateformes janv-mars (17 132,75 €, séjours d'avant
 l'app, dont Airbnb 13 547,14 € le 13/01). **Écart Lauïan du justificatif = −9 146 € ≈ les 9 151 €
 encaissés par le Stripe DCB** : les compter en créance sur DCB (ou les exclure de l'encaissé Lauïan).
+
+## 7. Mise à jour 25/09 fin de journée — « À affecter » 8 → 1
+- Relevés Booking Lauïan : 5 payouts janv. 2026 rattachés (MIRAMARVEL : Vareilles 813,38, Legrand
+  361,65, Fitoussi 643,56, Ego 447,38, Bruno Geay 761,10). **Booking 6610427759 (Bruno Geay,
+  21-28/12/2025) n'avait jamais été synchronisée** (séjour d'avant la couverture sync) : résa créée
+  avec le hospitable_id réel, `ventilation_manuelle=true` sans ventilation (proprio réglé hors app).
+  → le système commun doit prévoir « payout d'un séjour antérieur à l'app » sans exiger de ventilation.
+- Reste 1 seul mouvement à affecter : Airbnb 13 547,14 € du 13/01 (autre compte Airbnb, export attendu).
+- Justificatif Lauïan (lecture seule) : écart −8 113,56 € ; toujours dominé par les 9 151 € encaissés
+  par le Stripe DCB (§2).
