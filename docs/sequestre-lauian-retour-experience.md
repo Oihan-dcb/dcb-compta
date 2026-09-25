@@ -94,3 +94,8 @@ encaissés par le Stripe DCB** : les compter en créance sur DCB (ou les exclure
   2025 sans attendre → le payout reconstitue le séquestre (avance), aucun reversement dû.
   → cas à prévoir dans le système commun : « avance propriétaire sur payout plateforme gelé ».
   À affecter Lauïan = **0**. Justificatif lecture seule après lien : écart +5 433,58 €.
+
+## 8. Rapprochement 2025 depuis 0 (25/09 nuit)
+- Historique complet : séquestre **Shine** (26/02/2025 → 23/12/2025, 0 → 0) + séquestre **CE** ouvert le 25/04/2025 à 0 (relevés PDF mai-août). Le « solde d'ouverture » n'existe plus.
+- **Inter-agence, sens Lauïan → DCB : 3 067,68 €.** L'annonce Airbnb « Cozy 47m2 avec balcon » (LVH – Le Bouscat, bien DCB `BDX`) était sur le compte Airbnb Lauïan ; 11 séjours du 02/08 au 23/09/2025 ont été versés sur le Shine Lauïan (seul Levi Verkuil 200,77 € renvoyé à DCB). DCB a payé Emma Lalande (862,80 € le 08/09, 831,62 € le 07/10) → **créance du séquestre DCB sur le séquestre Lauïan**. Le virement DCB → Lauïan passe de 9 151,00 € à **6 083,32 € net**. À refléter dans le justificatif DCB (encaissements BDX août-sept 2025 jamais reçus côté DCB).
+- Écarts Lauïan identifiés : HON et FMEN de décembre 2025 jamais virés, AirCover 720,70 € non reversé, frais Stripe 2026 (651,93 €) jamais remboursés par le courant (le courant les avait remboursés pour 2025 le 27/12/2025). Reste : séquestre court d'environ 4 000 € par rapport à l'ensemble des créances — à détailler.
