@@ -169,3 +169,18 @@ Fait avant de lire votre message « laisse-le à l'autre session » — je m'arr
 - **LVH vs 9 151 €** : aucun recoupement. Les 9 151 € = résas Lauïan **2026** (SUZETTE, BERDEA, BITXI, ALTHEA) encaissées
   par le **Stripe DCB** ; LVH = 11 résas du bien DCB `BDX` d'**août-sept. 2025** versées par **Airbnb** sur le Shine Lauïan.
   Net DCB → Lauïan = 9 151,00 − 3 067,68 = **6 083,32 €**.
+
+## 11. Précision d'Oïhan (25/09, 22h35) — pour la session qui reprend le moteur
+La règle « pas de ménage » ne vaut **que pour une annulée à 0 €** (remboursée en totalité) :
+- **Annulée à 0 €** (`final_status` annulé ET `fin_revenue = 0`) → **aucune ligne** : ni HON, ni FMEN, ni MEN, ni AUTO, ni LOY/VIR.
+  Aujourd'hui (code reverté) une annulée à 0 € dont les financials Airbnb gardent le cleaning/community fee produit
+  encore FMEN + MEN (ex. HMSFJF3F2Y : FMEN 79,54, MEN 90) et, si le mois est verrouillé, garde l'ancien LOY.
+- **Annulée avec frais retenus** (`fin_revenue > 0`) → **ventilation normale inchangée** (FMEN compris).
+  Donc les lignes « FMEN → 0 / LOY + » du tableau §10 pour les annulées à revenu > 0 (HOST-XLJHOF, HM2WM5CBDC,
+  HMKFAEPWRF, HMW93C2JKE, HMNQZ8FCYF, HM938TBKBT, HOST-COTEY7, HMR4K85RHK, HM8SZAKKMK, HMMKQK2E2S, HMQJRNPFZF,
+  HMZE225AMM, HMQKYJB5A5) sont **caduques** : rien à régulariser pour elles.
+- Restent concernées (annulées à 0 € mais ventilées/reversées) : **HMSFJF3F2Y** AMAÏA (Manivit 646,86 € — à réclamer,
+  décision Oïhan), **HM8HQQP53E** DUL2 (Chevalier 384,44 €), **HMEAQXCBW8** PANTXIKA (Waldau 403,80 €).
+Implémentation minimale suggérée (dans `_calculerLignes`, après `const revenue`) :
+`if (STATUTS_NON_VENTILABLES.includes(resa.final_status) && revenue <= 0) return { lignes: [], isProlongation: false, fallbackAirbnb: null }`
++ test « annulée à 0 € avec community fee → aucune ligne » ; la session Lauïan ne touche plus au moteur.
