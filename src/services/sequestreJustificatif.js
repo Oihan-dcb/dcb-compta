@@ -66,11 +66,14 @@ export async function justifierSequestre(agence = 'dcb', { date = new Date().toI
     toutes(() => supabase.from('mouvement_bancaire')
       .select('id, date_operation, libelle, detail, credit, debit, canal, statut_matching, source')
       .eq('agence', agence).lte('date_operation', date)
-      .or(`and(source.eq.${SOURCE_SEQUESTRE_LC},date_operation.gte.${BASCULE_PENNYLANE}),and(source.eq.CaisseEpargne,date_operation.lt.${BASCULE_PENNYLANE})`)
+      // Avant la bascule : relevé CE importé en deux sources complémentaires (« CaisseEpargne » +
+      // « csv », surtout les crédits de janvier-mars) — recoupé ligne à ligne avec le relevé complet
+      // du compte le 25/09/2026 (630 opérations, 0 manquante après complément, doublons en 'ignore')
+      .or(`and(source.eq.${SOURCE_SEQUESTRE_LC},date_operation.gte.${BASCULE_PENNYLANE}),and(source.in.(CaisseEpargne,csv),date_operation.lt.${BASCULE_PENNYLANE})`)
       .neq('statut_matching', 'ignore').order('date_operation')),
     toutes(() => supabase.from('facture_evoliz')
       .select('id, mois, type_facture, statut, total_ttc, total_ttc_evoliz, montant_reversement, bien_id, proprietaire_id, numero_facture, bien:bien_id(code), proprietaire:proprietaire_id(nom)')
-      .eq('agence', agence).gte('mois', '2026-01')),
+      .eq('agence', agence).gte('mois', MOIS_DEBUT_ < '2026-01' ? MOIS_DEBUT_ : '2026-01')),
     toutes(() => supabase.from('reservation')
       .select('id, code, mois_comptable, platform, final_status, fin_revenue, bien:bien_id!inner(agence, mode_encaissement, proprietaire_id)')
       .eq('bien.agence', agence).gte('mois_comptable', MOIS_DEBUT_)),
