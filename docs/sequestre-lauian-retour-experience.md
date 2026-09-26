@@ -295,3 +295,34 @@ Mail Laura (`~/Downloads/Mail_Laura_sequestre_Lauian.html`) mis à jour avec vos
 - Bilan Lauïan (méthode par poches du mail) : **écart +322,02 € (argent en plus, non attribué)** → G1 (§19) ne s'applique
   que si l'écart redevient négatif après les réponses de Laura. Votre justificatif (0,15 €) absorbe ces points dans « part
   Lauïan détenue » : à réconcilier au moment de clôturer avril-septembre.
+
+## 21. Session DCB (26/09/2026) — part DCB virée, reliquat, ITS, lien partagé comptable
+
+- **Virements séquestre DCB → courant DCB faits le 26/09** (calcul mois par mois : part DCB théorique issue de
+  `buildComptaMensuelle` hors séquestre − déjà viré, juin et COM juillet/août trop virés déduits) :
+  `HON AOUT 26` 32 853,08 · `FMEN AOUT 26` 9 237,26 · `HON 506P DE LAUWE F-20260000311 JUILLET 26` 2 363,76 ·
+  `HON 408P BELAIR F-20260000323 AOUT 26` 1 715,60 · `COM EXTRAS AIRCOVER PRIMES 2026` 715,09 = **46 884,79 €**.
+  À contrôler à l'import du 27/09 : les virements C/D/E doivent vider les poches factures payées / extras / AirCover /
+  primes (sinon poche DCB à −4 794 € avec ces poches pleines : écart nul mais affichage faux → corriger le justificatif).
+- **Trop-virés expliqués** : juin = virement fait sur le total de la page Compta, qui incluait les biens où le
+  propriétaire encaisse (HON 2 726,07 + FMEN 1 744,23, argent jamais passé par le séquestre) ; ≈ 613 € FMEN juin non
+  expliqués (export 05/07 ≠ virement 06/07). Janvier FMEN +1 254,81 : probablement débours ménage de janvier virés avec
+  les forfaits (débours pas suivis dans l'app en janvier-février), hypothèse non vérifiée. Recouche MIRAMARVEL juin 115 €
+  (Xane) payée du courant puis reprise sur le séquestre : comptée en FMEN viré, clos.
+- **Reliquat ≈ 3 594,17 €** après ces virements = +12 146,33 (reprise ancien compte + avant suivi) − 10 320,90 (écarts
+  propriétaires 2026) + 2 367,76 (frais remboursés) − 738,91 (Stripe/banque/annulées) + 139,89. **Ce n'est PAS de l'argent
+  2025** : la plaquette 2025 porte tout le solde séquestre au 31/12 en 467 mandants (467300 = 38 059,09) et 2025 finit à
+  +18,98 €. Décision Oïhan : on le laisse jusqu'à la clôture de décembre (boni COM éventuel).
+- **Biens supprimés/mutés** : contrôlé, aucun impact (pas de ventilation/facture orpheline, doublon ARREBA vide, FMEN
+  Lauïan exclus des totaux DCB car poussés après le calcul des totaux).
+- **Créance ITS 743,73 €** : juin, Airbnb a versé les 3 séjours directement à Rémond (payouts Hospitable « Julien Remond,
+  IBAN …4097 » 25/06, 27/06, 30/06), rien reçu sur séquestre ni courant (export courant …546 89). 561,23 € F-20260000256
+  → courant DCB ; 182,50 € débours → séquestre DCB. Bien plus en location : décompte envoyé (pas de retenue possible) ;
+  sinon perte d'exploitation.
+- **Lien vivant pour Ludovic/Laura** : https://claude.ai/artifact/Japwdian6j8owxFtkL7j1W — réponses dans la base de
+  l'artifact (collection `reponses`, doc l1–l7 Ludovic, a1–a2 Laura, `remarques`). Réponses Oïhan : L1 rien à faire,
+  L2 on attend décembre, L4 pas de TVA (vérifier facturation électronique), L6 perte d'exploitation si impayé. Ouvertes :
+  L3 (écriture LVH), L5 (compensation juin), L7 (gestes commerciaux). AirCover ARROSA et KOSTALDEA = sujets Lauïan, hors
+  récap DCB.
+- Le courant DCB est dans `mouvement_bancaire` (source `Powens_courant`, depuis 06/2026) et les payouts Airbnb avec le
+  compte bénéficiaire sont lisibles via Hospitable (`get-transactions` : paires Payout / Reservation).
