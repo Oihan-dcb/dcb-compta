@@ -326,3 +326,14 @@ Mail Laura (`~/Downloads/Mail_Laura_sequestre_Lauian.html`) mis à jour avec vos
   récap DCB.
 - Le courant DCB est dans `mouvement_bancaire` (source `Powens_courant`, depuis 06/2026) et les payouts Airbnb avec le
   compte bénéficiaire sont lisibles via Hospitable (`get-transactions` : paires Payout / Reservation).
+
+## 22. Session Lauïan (26/09/2026, après-midi) — page partagée Laura + Ludovic
+- Page vivante Lauïan : https://claude.ai/artifact/NLn7acSQoAc9g44rkmTTwz (source `~/Downloads/Sequestre_Lauian_reponses.html`).
+  Base de l'artifact : `reponses/Q1…Q10`, `reponses/general`, `reponses/comptable` (Ludovic) {texte, at} ;
+  `actions/<A1…G2>` {statut ok|fait|non|question, note, at}. Vide au 26/09 14h.
+- Section 8 ajoutée pour le cabinet comptable (points de clôture, avis demandé sur G1). Ligne CCA 7 000 € retirée (Ludovic la connaît).
+- LVH : dernières mentions « déduit du virement DCB → Lauïan » corrigées (page + mail Laura) — **aucune compensation entre
+  séquestres** : 9 151 € DCB → Lauïan (fait) et 3 067,68 € Lauïan → séquestre DCB (C0) en virements séparés.
+- Laura et Ludovic invités en Éditeur (hors organisation : Contributeur/Commentateur = lecture seule). Consigne dans le mail :
+  n'écrire que dans les zones. Sauvegardes v1→v4 dans `~/Downloads/Sauvegardes_sequestre_Lauian/`.
+- Mail commun Ludovic + Laura rédigé (lien Lauïan, PJ `Bilan_sequestre_DCB_2025.html`). Page DCB distincte : Japwdian6j8owxFtkL7j1W (§21).
