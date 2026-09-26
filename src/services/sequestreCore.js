@@ -80,6 +80,9 @@ export function classerEntree(mvt, factures = [], ctx = {}) {
   // Frais de paiement pris en charge par l'agence (courant → séquestre) : Stripe et commission Hospitable
   // Direct (1 %, retenue sur chaque paiement direct)
   if (/\bfrais (stripe|hospitable)\b/.test(t)) return { type: 'frais_stripe_rembourses' }
+  // Régularisation d'écart : l'agence comble depuis son courant un manque résiduel du séquestre
+  // (arrondis…) — ne crée aucune dette, réduit l'écart (« REGULARISATION ECART SEQUESTRE 2026 »)
+  if (/\bregul(arisation)? (d )?ecart sequestre\b/.test(t)) return { type: 'regul_ecart' }
   if (/^\*? ?remise (sur )?frais|remise frais/.test(t)) return { type: 'remise_frais_bancaires' }
   // Virement de l'autre agence AVANT les mots-clés plateformes : « VIR SEPA DESTINATION COTE BASQUE —
   // REVERSEMENT STRIPE RESAS LAUIAN 2026 » (26/09/2026) n'est pas un versement Stripe

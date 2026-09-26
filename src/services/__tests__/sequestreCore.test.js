@@ -85,3 +85,9 @@ describe('Remboursement des frais Hospitable Direct par le courant (26/09/2026)'
     expect(classerEntree({ libelle: 'FRAIS HOSPITABLE JANVIER A AOUT 2026', detail: '', credit: 105454, date_operation: '2026-09-26' }, [], {}).type).toBe('frais_stripe_rembourses')
   })
 })
+
+describe('Régularisation d\'écart du séquestre (26/09/2026)', () => {
+  it('« REGULARISATION ECART SEQUESTRE 2026 » = regul_ecart (aucune poche)', () => {
+    expect(classerEntree({ libelle: 'REGULARISATION ECART SEQUESTRE 2026', detail: '', credit: 79, date_operation: '2026-09-27' }, [], {}).type).toBe('regul_ecart')
+  })
+})

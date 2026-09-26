@@ -263,7 +263,7 @@ export async function justifierSequestre(agence = 'dcb', { date = new Date().toI
   const extrasParMvt = new Map()
   for (const l of lignesExtra || []) { const x = extrasParMvt.get(l.mouvement_id) || { montant: 0, qui: [] }; x.montant += l.montant_net; x.qui.push(`${l.guest_name || '?'} ${(l.montant_net / 100).toFixed(2)} €${l.description ? ` (${l.description})` : ''}`); extrasParMvt.set(l.mouvement_id, x) }
   const extraStripe = (e, montant) => { const x = extrasParMvt.get(e.id); return x && Math.abs(x.montant - montant) <= 100 ? x : null }
-  const horsMois = { extra_voyageur: [], aircover: [], prime_plateforme: [], remboursement_debours: [], paiement_facture: [], frais_stripe_rembourses: [], remise_frais_bancaires: [], plateforme_non_rapprochee: [], non_affecte: [], inter_agence: [], retour_dcb: [], reprise_ancien_sequestre: [] }
+  const horsMois = { regul_ecart: [], extra_voyageur: [], aircover: [], prime_plateforme: [], remboursement_debours: [], paiement_facture: [], frais_stripe_rembourses: [], remise_frais_bancaires: [], plateforme_non_rapprochee: [], non_affecte: [], inter_agence: [], retour_dcb: [], reprise_ancien_sequestre: [] }
   for (const e of entrees) {
     if (transitIds.has(e.id) || e.date_operation < DEBUT_) continue
     const lie = lieParMvt.get(e.id) || 0
@@ -687,7 +687,7 @@ export async function justifierSequestre(agence = 'dcb', { date = new Date().toI
     e.tiers_id = f?.bien?.proprietaire_id
     e.raison = `${e.raison || 'AirCover'} → ${f ? `propriétaire ${f.bien.code} (réparation « ${f.libelle.slice(0, 60)} » retenue le ${f.date.split('-').reverse().join('/')})` : 'DCB (aucune réparation retenue au propriétaire)'}`
   }
-  const typeEntree = { extra_voyageur: 'agence', aircover: 'a_affecter', prime_plateforme: 'agence', remboursement_debours: 'proprietaire', paiement_facture: 'agence', frais_stripe_rembourses: 'agence', retour_dcb: 'agence', remise_frais_bancaires: 'banque',
+  const typeEntree = { regul_ecart: 'agence', extra_voyageur: 'agence', aircover: 'a_affecter', prime_plateforme: 'agence', remboursement_debours: 'proprietaire', paiement_facture: 'agence', frais_stripe_rembourses: 'agence', retour_dcb: 'agence', remise_frais_bancaires: 'banque',
     inter_agence: 'autre_agence', reprise_ancien_sequestre: 'reprise', plateforme_non_rapprochee: 'a_affecter', non_affecte: 'a_affecter' }
   const dejaEc = new Set()
   for (const [k, lst] of Object.entries(horsMois)) for (const e of lst) {
@@ -726,6 +726,7 @@ export async function justifierSequestre(agence = 'dcb', { date = new Date().toI
       remboursements_debours: lignes(horsMois.remboursement_debours),
       factures_payees_sequestre: lignes(horsMois.paiement_facture),
       plateformes_non_rapprochees: lignes(horsMois.plateforme_non_rapprochee),
+      regularisations_ecart: lignes(horsMois.regul_ecart),
       extras_voyageurs: lignes(horsMois.extra_voyageur), aircover: lignes(horsMois.aircover), primes_plateforme: lignes(horsMois.prime_plateforme),
       entrees_a_identifier: lignes([...horsMois.non_affecte, ...horsMois.inter_agence]),
       sorties_a_identifier: lignes(sortiesAutres),

@@ -268,3 +268,9 @@ Côté Lauïan, fait par la session DCB pour que ce virement solde tout seul la 
 Résultat : Lauïan attend exactement 9 151,00 € (écart 0,15 € inchangé) ; à l'arrivée du virement la poche passe à 0.
 Reste à faire côté Lauïan : virer **3 067,68 €** au séquestre DCB (« LVH 2025 LAUIAN VERS DCB ») en affectant la sortie à
 l'exercice antérieur, et **11 100,56 €** de FMEN au courant DCB (un virement par mois, §17).
+
+## 19. Régularisation d'écart (26/09/2026) — utilisable pour le G1 Lauïan
+Nouveau type reconnu par libellé : une entrée « REGULARISATION ECART SEQUESTRE … » (ex. « REGULARISATION ECART
+SEQUESTRE EXERCICE 2025-2026 ») comble un manque résiduel du séquestre **sans créer de dette** (aucune poche) : l'écart
+baisse du montant viré. À faire depuis le courant de l'agence, du montant exact de l'écart négatif, après le dernier
+import et avant la clôture du mois. DCB : −0,79 € à régulariser après l'import des virements du 26/09.
