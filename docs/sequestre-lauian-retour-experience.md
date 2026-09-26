@@ -274,3 +274,24 @@ Nouveau type reconnu par libellé : une entrée « REGULARISATION ECART SEQUESTR
 SEQUESTRE EXERCICE 2025-2026 ») comble un manque résiduel du séquestre **sans créer de dette** (aucune poche) : l'écart
 baisse du montant viré. À faire depuis le courant de l'agence, du montant exact de l'écart négatif, après le dernier
 import et avant la clôture du mois. DCB : −0,79 € à régulariser après l'import des virements du 26/09.
+
+## 20. Session Lauïan (26/09) — alignement avec §15 à §19
+Mail Laura (`~/Downloads/Mail_Laura_sequestre_Lauian.html`) mis à jour avec vos décisions :
+- **§17 appliqué** : A1 = 9 151,00 € reçus (fait 26/09) ; nouvelle ligne **C0 séquestre Lauïan → séquestre DCB
+  3 067,68 €** « LVH 2025 LAUIAN VERS DCB » ; plus aucune mention du net 6 083,32 €.
+- **§16 appliqué** : FMEN avril/août validées (F-370 → F-383). **KOSTALDEA 350 € : déjà facturé en juillet (F-20260000303)
+  et compris dans les 4 973,04 € de juillet** → ne pas l'ajouter en plus ; son bien-fondé est à trancher par Laura (Q10 ;
+  si refus : avoir 350 € + reversement à Mme Delissagaray). FMEN juillet à virer : **4 893,50 €** si l'avoir Hamilton
+  (79,54 €, séjour HMSFJF3F2Y annulé à 0 €) est émis — brouillon prêt, non envoyé.
+- **Janvier → mars 2026** : décision Oïhan = avant avril, **les tableaux de Laura font foi** (l'app n'existait pas). Ménages
+  février-mars dus à DCB = 924,83 € (tableaux) − 162,50 € payés directement à Esteban = **762,33 €** (et non 370,66 € de
+  l'app). Deux restes à répartir sur ces mois déjà clôturés chez vous : Larry Larry (MIRAMARVEL, 2e et 3e versements Airbnb
+  123,37 + 55,77 = 179,14 € absents du tableau de janvier) et décembre 2025 (reçu > réparti de 170,58 €) — questions Q7/Q8.
+- **Créances du séquestre Lauïan à inscrire** (poches négatives) : courant Lauïan 1 800 € (bail Cirauqui/Fredou, §12) +
+  **501,57 €** de frais Stripe 2026 (réel résa par résa, dont ALTHEA 23,81 — et non 651,93 € de frais bruts) ; Manivit
+  646,86 € ; SCI AIA Biarritz **225 €** (facture débours AE juillet jamais payée) ; Van Loenen 218,31 € ; Smaniotto 75,93 €.
+- Fix commun `113a842` : `matcherDeboursProprietaires` tourne aussi dans le cron `api/matching-auto.js` (Lauïan sans
+  Pennylane n'en bénéficiait jamais) ; rattrapage fait (Manivit débours juin 200 € → remboursement_recu 15/07).
+- Bilan Lauïan (méthode par poches du mail) : **écart +322,02 € (argent en plus, non attribué)** → G1 (§19) ne s'applique
+  que si l'écart redevient négatif après les réponses de Laura. Votre justificatif (0,15 €) absorbe ces points dans « part
+  Lauïan détenue » : à réconcilier au moment de clôturer avril-septembre.
