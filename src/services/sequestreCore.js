@@ -77,7 +77,9 @@ export function classerSortie(mvt, ctx = {}) {
 // « VIR INST MME BELAIR DOMINIQUE (ref: 408P…) » = facture honoraires 408P août).
 export function classerEntree(mvt, factures = [], ctx = {}) {
   const t = norm(`${mvt.libelle || ''} ${mvt.detail || ''}`)
-  if (/\bfrais stripe\b/.test(t)) return { type: 'frais_stripe_rembourses' }
+  // Frais de paiement pris en charge par l'agence (courant → séquestre) : Stripe et commission Hospitable
+  // Direct (1 %, retenue sur chaque paiement direct)
+  if (/\bfrais (stripe|hospitable)\b/.test(t)) return { type: 'frais_stripe_rembourses' }
   if (/^\*? ?remise (sur )?frais|remise frais/.test(t)) return { type: 'remise_frais_bancaires' }
   // Virement de l'autre agence AVANT les mots-clés plateformes : « VIR SEPA DESTINATION COTE BASQUE —
   // REVERSEMENT STRIPE RESAS LAUIAN 2026 » (26/09/2026) n'est pas un versement Stripe

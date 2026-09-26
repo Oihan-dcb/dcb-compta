@@ -79,3 +79,9 @@ describe('Entrée venant de l\'autre agence avec « STRIPE » dans le motif (26/
     expect(classerEntree({ libelle: 'VIR SEPA STRIPE TECHNOLOGY EURO', detail: '', credit: 100, date_operation: '2026-09-26' }, [], ctx).type).toBe('plateforme_non_rapprochee')
   })
 })
+
+describe('Remboursement des frais Hospitable Direct par le courant (26/09/2026)', () => {
+  it('« FRAIS HOSPITABLE JANVIER A AOUT 2026 » = frais remboursés, pas une plateforme', () => {
+    expect(classerEntree({ libelle: 'FRAIS HOSPITABLE JANVIER A AOUT 2026', detail: '', credit: 105454, date_operation: '2026-09-26' }, [], {}).type).toBe('frais_stripe_rembourses')
+  })
+})
