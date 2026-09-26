@@ -228,6 +228,18 @@ export async function justifierSequestre(agence = 'dcb', { date = new Date().toI
     }
   }
 
+  // Nos résas ANNULÉES payées / remboursées sur le séquestre d'une autre agence (ALTHEA HOST-5EOGB8 :
+  // −23,81 € de frais Stripe perdus, remboursés par le Stripe DCB) : font partie de ce que l'autre agence
+  // nous reverse (net) ET de la poche « annulées » (frais perdus à notre charge)
+  const annuleesIds = [...resaAnnulee.keys()]
+  for (let i = 0; i < annuleesIds.length; i += 200) {
+    const { data } = await supabase.from('reservation_paiement').select('reservation_id, montant, mouvement:mouvement_id(date_operation, agence)').in('reservation_id', annuleesIds.slice(i, i + 200))
+    for (const l of data || []) if (l.mouvement?.agence && l.mouvement.agence !== agence && l.mouvement.date_operation >= DEBUT_ && l.mouvement.date_operation <= date) {
+      creanceAutreAgence.push({ agence: l.mouvement.agence, reservation_id: l.reservation_id, montant: l.montant || 0, date: l.mouvement.date_operation })
+      annuleesLiens.push({ ...l, code: resaAnnulee.get(l.reservation_id).code })
+    }
+  }
+
   // ── Classement des mouvements ─────────────────────────────────────────────
   // Sortie rattachée à une réservation (remboursement voyageur prélevé par Stripe…) : déjà
   // déduite de l'encaissé de la résa (paiement négatif) — ni sortie à identifier, ni double compte

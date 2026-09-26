@@ -79,6 +79,10 @@ export function classerEntree(mvt, factures = [], ctx = {}) {
   const t = norm(`${mvt.libelle || ''} ${mvt.detail || ''}`)
   if (/\bfrais stripe\b/.test(t)) return { type: 'frais_stripe_rembourses' }
   if (/^\*? ?remise (sur )?frais|remise frais/.test(t)) return { type: 'remise_frais_bancaires' }
+  // Virement de l'autre agence AVANT les mots-clés plateformes : « VIR SEPA DESTINATION COTE BASQUE —
+  // REVERSEMENT STRIPE RESAS LAUIAN 2026 » (26/09/2026) n'est pas un versement Stripe
+  if (ctx.autreAgenceRe && ctx.autreAgenceRe.test(t) && /\b(airbnb|booking|stripe|hospitable)\b/.test(t)
+      && !/\b(stripe technology|airbnb payments|booking com b v)\b/.test(t)) return { type: 'inter_agence' }
   if (/\b(airbnb|booking|stripe|hospitable)\b/.test(t)) return { type: 'plateforme_non_rapprochee' }
   // Retour d'un virement DCB trop versé (courant → séquestre) : « RETOUR COM AOUT », « HON JUILLET »…
   // Libellé qui commence par la convention interne, ou émis par DCB avec un mot HON/FMEN/COM.

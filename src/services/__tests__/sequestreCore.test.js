@@ -69,3 +69,13 @@ describe('classerEntree — retour d\'un virement DCB en trop', () => {
     expect(classerEntree({ libelle: 'VIR SEPA Booking.com BV - Reason: NO.2cn75', date_operation: '2026-08-04' }).type).toBe('plateforme_non_rapprochee')
   })
 })
+
+describe('Entrée venant de l\'autre agence avec « STRIPE » dans le motif (26/09/2026)', () => {
+  const ctx = { autreAgenceRe: /\b(destination cote basque|dcb)\b/ }
+  it('reversement DCB → Lauïan des résas Stripe = inter_agence, pas plateforme', () => {
+    expect(classerEntree({ libelle: 'VIR SEPA DESTINATION COTE BASQUE', detail: 'REVERSEMENT STRIPE RESAS LAUIAN 2026', credit: 915100, date_operation: '2026-09-26' }, [], ctx).type).toBe('inter_agence')
+  })
+  it('un vrai versement Stripe reste plateforme', () => {
+    expect(classerEntree({ libelle: 'VIR SEPA STRIPE TECHNOLOGY EURO', detail: '', credit: 100, date_operation: '2026-09-26' }, [], ctx).type).toBe('plateforme_non_rapprochee')
+  })
+})

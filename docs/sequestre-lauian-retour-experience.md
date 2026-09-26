@@ -253,3 +253,18 @@ Migration 283 + `src/services/sequestreCloture.js` + composant `SequestreCloture
 - **Séquestre Lauïan → courant DCB : forfaits ménage** « FMEN AVRIL 26 - LAUIAN » 646,44 · « FMEN JUILLET 26 - LAUIAN »
   4 973,04 · « FMEN AOUT 26 - LAUIAN » 5 481,08.
 - Migration 284 : `compensations_inter_agence` DCB vidée ; §12/§13/§15 (compensation, net 6 083,32) sont caducs sur ce point.
+
+## 18. Virement FAIT (26/09/2026) : séquestre DCB → séquestre Lauïan 9 151,00 € — « REVERSEMENT STRIPE RESAS LAUIAN 2026 »
+Détail (100 % des résas Lauïan encaissées sur le Stripe DCB, net Stripe) : HOST-XPE5RT BERDEA Guérin 3 597,81 ·
+HOST-Q4KVZY SUZETTE Jourde 3 232,07 · HOST-EQWNPW SUZETTE Ithier (annulée, retenu) 1 111,23 · HOST-TY1EU2 SUZETTE
+Thomas 699,61 · HOST-L5BTUI BITXI Bridant 534,09 · HOST-5EOGB8 ALTHEA Bigot (annulée) −23,81 (frais Stripe perdus, à la
+charge de Lauïan).
+Côté Lauïan, fait par la session DCB pour que ce virement solde tout seul la poche « à recevoir » :
+- **fix commun** : nos résas annulées payées/remboursées chez l'autre agence entrent dans la créance ET la poche « annulées »
+  (ALTHEA −23,81) ; une entrée venant de l'autre agence dont le motif contient « STRIPE/AIRBNB » est classée inter-agence
+  (plus « plateforme à rattacher ») ;
+- **affectation** : 150 € du 07/07 « Remboursement trop percu FMEN JUIN » (DCB → séquestre Lauïan) = retour FMEN juin,
+  pas un acompte sur les résas.
+Résultat : Lauïan attend exactement 9 151,00 € (écart 0,15 € inchangé) ; à l'arrivée du virement la poche passe à 0.
+Reste à faire côté Lauïan : virer **3 067,68 €** au séquestre DCB (« LVH 2025 LAUIAN VERS DCB ») en affectant la sortie à
+l'exercice antérieur, et **11 100,56 €** de FMEN au courant DCB (un virement par mois, §17).
