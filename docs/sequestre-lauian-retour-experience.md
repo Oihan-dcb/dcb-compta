@@ -244,3 +244,12 @@ Migration 283 + `src/services/sequestreCloture.js` + composant `SequestreCloture
   160 € « non payé » ; août GROC 429 €, BESSON 286 €, BITXI 347,36 €.
 - evoliz-proxy : actions `listInvoicePayments` / `deletePayment` ajoutées (non utilisées : les paiements de juillet
   sont justes — retenue sur reversement propriétaire).
+
+## 17. Décision Oïhan (26/09/2026) — PAS de compensation LVH, reversements à 100 %
+- **Séquestre DCB → séquestre Lauïan : 9 151,00 €** (« REVERSEMENT STRIPE RESAS LAUIAN 2026 »).
+- **Séquestre Lauïan → séquestre DCB : 3 067,68 €** (« LVH 2025 LAUIAN VERS DCB ») — côté DCB une règle de libellé
+  `lvh 2025` le range en poche 2025 (reprise ancien séquestre). Côté Lauïan : affecter la sortie à l'exercice antérieur
+  (argent LVH reçu en 2025 sur le Shine), sinon la poche « autre agence » partira en négatif.
+- **Séquestre Lauïan → courant DCB : forfaits ménage** « FMEN AVRIL 26 - LAUIAN » 646,44 · « FMEN JUILLET 26 - LAUIAN »
+  4 973,04 · « FMEN AOUT 26 - LAUIAN » 5 481,08.
+- Migration 284 : `compensations_inter_agence` DCB vidée ; §12/§13/§15 (compensation, net 6 083,32) sont caducs sur ce point.
