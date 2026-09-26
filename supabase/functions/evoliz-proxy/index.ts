@@ -281,6 +281,19 @@ serve(async (req) => {
         break
       }
 
+      case 'listInvoicePayments': {
+        // Paiements enregistrés sur une facture (pour annuler un paiement saisi par erreur)
+        result = await evolizReq('GET', `/invoices/${payload.invoiceId}/payments`, company)
+        break
+      }
+
+      case 'deletePayment': {
+        // Annule un paiement saisi par erreur (26/09/2026 : 12 forfaits ménage Lauïan de juillet
+        // marqués payés sans virement reçu)
+        result = await evolizReq('DELETE', `/payments/${payload.paymentId}`, company)
+        break
+      }
+
       // ── PDF ──────────────────────────────────────────────
       case 'getInvoicePDF': {
         // Télécharge le PDF d'une facture.

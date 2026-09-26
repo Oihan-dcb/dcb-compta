@@ -232,3 +232,15 @@ Migration 283 + `src/services/sequestreCloture.js` + composant `SequestreCloture
   Vérifier aussi l'écart 9 151,00 (côté DCB) / 9 024,81 (côté Lauïan) = 126,19 € (frais Stripe ALTHEA ?).
 - Les écarts identifiés par la session Lauïan (Manivit, Stripe, Cirauqui/Fredou, Hamilton…) sont aujourd'hui absorbés
   par la poche « part Lauïan détenue » : les régulariser avant de clôturer avril-septembre.
+
+## 16. Forfaits ménage DCB des biens Lauïan (26/09/2026, session DCB)
+- Factures `lauian_fmen` **avril (2) et août (12)** validées dans Evoliz : F-20260000370 → F-20260000383 (6 127,52 €),
+  **non payées** côté Evoliz. Si Lauïan a déjà retenu ces forfaits sur les reversements propriétaires, enregistrer le
+  paiement « Retenue sur reversement Lauïan du JJ/MM/AAAA » (comme juillet, fait le 24/09).
+- Virements séquestre Lauïan → courant DCB constatés : 05/02 416,05 (janv-mars, 786,71 dus → reste 370,66), 08/06
+  1 580,27 (mai), **05/07 1 798,36 (juin — absent du tableau « URGENT » de Laura, à y ajouter)**. Rien depuis.
+  **Dû à DCB : 11 100,56 €** (avril 646,44 + juillet 4 973,04 + août 5 481,08), + KOSTALDEA 350 € si Laura confirme.
+- Tableau « URGENT » de Laura (25/09) page 2 — factures diverses à rapprocher : mars INES 50 € (OK), honoraires AIA
+  160 € « non payé » ; août GROC 429 €, BESSON 286 €, BITXI 347,36 €.
+- evoliz-proxy : actions `listInvoicePayments` / `deletePayment` ajoutées (non utilisées : les paiements de juillet
+  sont justes — retenue sur reversement propriétaire).
