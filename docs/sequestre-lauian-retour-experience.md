@@ -360,3 +360,5 @@ Mail Laura (`~/Downloads/Mail_Laura_sequestre_Lauian.html`) mis à jour avec vos
   **Pour la session DCB : avoir de 150,25 € sur F-20260000259 et virement DCB → séquestre Lauïan (ligne A5).** Côté Lauïan :
   D1 (150,25 → M. Mena Mauriz) rétablie. Seul cas dans les lauian_fmen ; le filtre actuel de facturesEvoliz.js exclut bien
   les remboursements, origine de la ligne non retrouvée.
+- **Décision finale Oïhan (27/09)** : les 150,25 € ARROSA **restent à DCB** (F-20260000259) — pas d'avoir, pas de retour.
+  Frais `cde554ca-ce7a-48af-b507-6f9e86e11757` passé en `brouillon` (annulé, journal_ops 0a2e7f91). D1 et A5 supprimées côté Lauïan.
