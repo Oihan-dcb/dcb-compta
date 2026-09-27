@@ -486,6 +486,7 @@ const [pushing, setPushing] = useState(false)
         let creditsProuves = 0, payinAttendu = 0
         let vir = 0, hon = 0, fmen = 0, autoreel = 0, autoprov = 0, com = 0, prest = 0, haowner = 0
         let totalResas = 0, resasProuvees = new Set(), resasAnomalie = new Set()
+        let ajustCroises = 0   // ≤ 0 : retenu sur les payouts de ces résas pour une AUTRE résa
         const payinManquantResas = []
 
         for (const bid of bienIds) {
@@ -505,6 +506,7 @@ const [pushing, setPushing] = useState(false)
 
           for (const r of (resasByBienId[bid] || [])) {
             const recu = creditByResaId[r.id] || 0
+            ajustCroises += crossDelta[r.id] || 0
             const attenduCash = (r.fin_revenue || 0) + (crossDelta[r.id] || 0)
             const manque = attenduCash - recu
             if (manque > 0) payinManquantResas.push({ guest_name: r.guest_name, platform: r.platform, fin_revenue: attenduCash, recu, manque })
@@ -514,9 +516,11 @@ const [pushing, setPushing] = useState(false)
         // VIR trésorerie = résiduel net des encaissements réels après retenues DCB
         // Les encaissements sont déjà nets de frais plateforme (Stripe montant_net, etc.)
         // → VIR = ce qui reste réellement à virer au propriétaire
-        vir = Math.max(0, creditsProuves - hon - fmen - autoreel - prest - haowner - com)
+        // creditsMois : encaissé du mois, retenues croisées pour d'autres résas réintégrées (cf. plus bas)
+        const creditsMois = creditsProuves - ajustCroises
+        vir = Math.max(0, creditsMois - hon - fmen - autoreel - prest - haowner - com)
         const emplois = vir + hon + fmen + autoreel + prest + haowner + com
-        const solde = creditsProuves - emplois
+        const solde = creditsMois - emplois
         // PAYIN manquant : ce que les réservations rapprochées auraient dû apporter
         const payinManquant = Math.max(0, payinAttendu - creditsProuves)
         // Safe : solde = 0, toutes réservations prouvées, aucune anomalie, PAYIN complet
@@ -527,9 +531,13 @@ const [pushing, setPushing] = useState(false)
         // réellement disponibles, HM8HQQP53E 384,44 €).
         // Côté propriétaire, le ménage AE est retenu à la PROVISION (AUTO montant_ht) : l'écart avec le
         // coût réel est à la charge de DCB (ONGI/ONTZI sans provision : AE payé sur le FMEN)
+        // Ajustements croisés (remboursement / résolution d'une AUTRE résa retenu par la plateforme sur le
+        // payout d'une résa de ce mois — 602 juin : −130 € Sara Michel ; CERES juin : −1 581,59 − 359 € sur
+        // Alan Yum pour Robert Bunes) : ils relèvent de la résa d'origine (sa propre régularisation), pas du
+        // loyer du mois → réintégrés ici, sinon « Tréso ⚠ +1 940,59 € » à tort.
         const remboursements = bienIds.reduce((t, bid) => t + (rembByBien[bid] || 0), 0)
         const fraisDeduits = bienIds.reduce((t, bid) => t + (fraisDedByBien[bid] || 0), 0)
-        const virProprio = Math.max(0, creditsProuves - hon - fmen - autoprov - prest - haowner - com) - fraisDeduits + remboursements
+        const virProprio = Math.max(0, creditsMois - hon - fmen - autoprov - prest - haowner - com) - fraisDeduits + remboursements
         const surReversement = (f.montant_reversement || 0) - virProprio
         const isSafe = solde === 0 && resasAnomalie.size === 0
           && totalResas > 0 && resasProuvees.size === totalResas && payinManquant === 0 && !hasResaManquant
@@ -544,6 +552,7 @@ const [pushing, setPushing] = useState(false)
           countProuvees: resasProuvees.size,
           countAnomalies: resasAnomalie.size,
           surReversement,
+          ajustCroises,
           isSafe,
           notComputed: (allocRows || []).length === 0 && (resasRows || []).length > 0,
         }
@@ -1115,8 +1124,9 @@ const [pushing, setPushing] = useState(false)
                       const sc = soldesControle[f.id]
                       if (!sc) return null
                       if (sc.isSafe) return (
-                        <span style={{ padding: '4px 10px', borderRadius: 100, fontSize: 11, fontWeight: 600, background: '#DCFCE7', color: '#15803D' }}>
-                          Tréso ✓
+                        <span title={sc.ajustCroises < 0 ? `Dont ${(-sc.ajustCroises / 100).toFixed(2)} € retenus par la plateforme sur ces versements pour une autre réservation (remboursement / résolution) — traités sur la réservation d'origine` : undefined}
+                          style={{ padding: '4px 10px', borderRadius: 100, fontSize: 11, fontWeight: 600, background: '#DCFCE7', color: '#15803D' }}>
+                          Tréso ✓{sc.ajustCroises < 0 ? ' · ajust.' : ''}
                         </span>
                       )
                       if (sc.solde < 0 || sc.surReversement > 100) return (

@@ -737,7 +737,7 @@ VIR_trésorerie = max(0, creditsProuves − HON_ttc − FMEN_ttc − AUTOREEL �
 
 ### 16.5 Chargement automatique
 
-L'Edge Function `allocate-encaissements` est déclenchée automatiquement à chaque visite de la page Factures (en arrière-plan). Le badge trésorerie (Tréso ✓ / Tréso ⚠ / Non prouvé) s'affiche dans l'en-tête de chaque facture dès que le calcul est disponible.
+L'Edge Function `allocate-encaissements` est déclenchée automatiquement à chaque visite de la page Factures (en arrière-plan). Le badge trésorerie (Tréso ✓ / Tréso ⚠ / Non prouvé) s'affiche dans l'en-tête de chaque facture dès que le calcul est disponible. Les montants retenus par la plateforme sur un versement du mois pour une **autre** réservation (remboursement, résolution, ajustement croisé) ne comptent pas comme un manque d'encaissement du mois : ils sont réintégrés dans le contrôle (badge « Tréso ✓ · ajust. ») et se régularisent sur la réservation d'origine (I-169).
 
 ### 16.6 Contrôle virements sortants — symétrique, côté argent qui part (septembre 2026)
 
