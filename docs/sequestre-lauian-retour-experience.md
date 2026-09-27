@@ -354,3 +354,9 @@ Mail Laura (`~/Downloads/Mail_Laura_sequestre_Lauian.html`) mis à jour avec vos
 - Frais bancaires du séquestre Lauïan 106,05 (80 actualisation 24/09, 25 com. virement reçu, 5 × 0,21) → A4 courant → séquestre.
 - Mendieta 209 € = prestations AE BERDEA 200 + clé 9 (déjà B7) : doublon retiré. Q2, Q5, Q9 résolues.
 - Résultat : poches 65 857,32 = solde ; G1 = 0. Tableau : https://claude.ai/artifact/1nBA1Aomjuv7FuEfA9BuFK
+- **Correction (27/09, plus tard)** : DCB n'a PAS reversé les 150,25 € ARROSA. La ligne FRAIS « Remboursement sur ménage »
+  (frais `remboursement`, crédit au propriétaire, séjour Koytcha HMENAJ2SF8 du 08→11/06/2026) figure **en plus** sur la
+  facture FMEN DCB **F-20260000259** (710,75 € = 560,50 + 150,25), payée par le séquestre Lauïan le 05-06/07.
+  **Pour la session DCB : avoir de 150,25 € sur F-20260000259 et virement DCB → séquestre Lauïan (ligne A5).** Côté Lauïan :
+  D1 (150,25 → M. Mena Mauriz) rétablie. Seul cas dans les lauian_fmen ; le filtre actuel de facturesEvoliz.js exclut bien
+  les remboursements, origine de la ligne non retrouvée.
