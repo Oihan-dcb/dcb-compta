@@ -308,6 +308,26 @@ const [pushing, setPushing] = useState(false)
       const rembByBien = {}
       for (const r of (rembRows || [])) rembByBien[r.bien_id] = (rembByBien[r.bien_id] || 0) + (r.montant_ttc || 0)
 
+      // Régularisations du virement de CE mois passées sur une facture ultérieure
+      // (« Régularisation virement MM/AAAA … » : remboursement = complément versé au proprio,
+      // déduire_loyer = trop-versé retenu) — pour que le badge Virement reconnaisse un écart déjà
+      // régularisé au lieu d'afficher « Virement ⚠ » indéfiniment (juin 2026 : 10 cas).
+      const [yR, mR] = mois.split('-')
+      const regulVirByBien = {}
+      const { data: regulRows, error: errRegul } = await supabase
+        .from('frais_proprietaire')
+        .select('bien_id, montant_ttc, mode_traitement, mois_facturation, libelle, statut')
+        .ilike('libelle', `R_gularisation virement ${mR}/${yR}%`)
+        .neq('statut', 'brouillon')
+        .in('bien_id', uniqueBienIds)
+      if (errRegul) console.error('régularisations virement:', errRegul)
+      for (const r of (regulRows || [])) {
+        const signe = r.mode_traitement === 'remboursement' ? 1 : -1
+        const b = regulVirByBien[r.bien_id] || (regulVirByBien[r.bien_id] = { montant: 0, lignes: [] })
+        b.montant += signe * (r.montant_ttc || 0)
+        b.lignes.push(`${r.mois_facturation} : ${signe > 0 ? '+' : '−'}${((r.montant_ttc || 0) / 100).toFixed(2)} € ${r.libelle}`)
+      }
+
       // ── Ajustements de résolution croisés ───────────────────────────────────
       // Un payout peut être amputé d'un montant appartenant à une AUTRE résa
       // (ex. Sara Michel : −130 € retenus sur son virement pour la résolution de Maeva ;
@@ -543,7 +563,10 @@ const [pushing, setPushing] = useState(false)
           && totalResas > 0 && resasProuvees.size === totalResas && payinManquant === 0 && !hasResaManquant
           && surReversement <= 100
 
+        const regulVirement = bienIds.reduce((t, bid) => t + (regulVirByBien[bid]?.montant || 0), 0)
+        const regulVirementLignes = bienIds.flatMap(bid => regulVirByBien[bid]?.lignes || [])
         result[f.id] = {
+          regulVirement, regulVirementLignes,
           creditsProuves, credits: creditsProuves,
           vir, hon, fmen, autoreel, prest, haowner, com,
           emplois, solde,
@@ -1156,9 +1179,20 @@ const [pushing, setPushing] = useState(false)
                           Virement ✓
                         </span>
                       )
+                      // Écart déjà régularisé sur une facture ultérieure (« Régularisation virement MM/AAAA »)
+                      const rg = soldesControle[f.id]
+                      if (vc.mouvement_bancaire_id && !incertain && vc.ecart_cts && rg?.regulVirement
+                          && Math.abs(vc.ecart_cts - rg.regulVirement) <= 1) return (
+                        <span
+                          title={`Écart de ${(vc.ecart_cts / 100).toFixed(2)} € entre le virement et la facture, régularisé :\n${rg.regulVirementLignes.join('\n')}`}
+                          style={{ padding: '4px 10px', borderRadius: 100, fontSize: 11, fontWeight: 600, background: '#DCFCE7', color: '#15803D' }}
+                        >
+                          Virement ✓ régularisé
+                        </span>
+                      )
                       if (vc.mouvement_bancaire_id && !incertain && vc.ecart_cts) return (
                         <span
-                          title={`Écart de ${(vc.ecart_cts / 100).toFixed(2)} € entre le virement réel et le montant facturé — cf. bloc Contrôle virements propriétaires ci-dessous`}
+                          title={`Écart de ${(vc.ecart_cts / 100).toFixed(2)} € entre le virement réel et le montant facturé${rg?.regulVirement ? ` (régularisation partielle trouvée : ${(rg.regulVirement / 100).toFixed(2)} €)` : ''} — cf. bloc Contrôle virements propriétaires ci-dessous`}
                           style={{ padding: '4px 10px', borderRadius: 100, fontSize: 11, fontWeight: 600, background: '#FEE2E2', color: '#DC2626' }}
                         >
                           Virement ⚠ {vc.ecart_cts > 0 ? '+' : ''}{(vc.ecart_cts / 100).toFixed(2)} €
