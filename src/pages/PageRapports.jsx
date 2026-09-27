@@ -144,6 +144,7 @@ export default function PageRapports() {
         bien_id: selectedBienId,
         mois,
         bien_name: bienName,
+        agence: data.bien?.agence || AGENCE,
       })
       if (!portailRes.ok) {
         setStatutPortail('error')
@@ -846,6 +847,17 @@ FORMAT :
       a.click()
       document.body.removeChild(a)
       URL.revokeObjectURL(url)
+      // Télécharger = régénérer : le rapport déposé sur le portail propriétaire est remplacé
+      // par cette version, sans notification ni mail (demande Oïhan 27/09/2026 — un rapport
+      // corrigé ne doit pas obliger à cliquer sur « Envoyer »). Seulement au format Statement,
+      // qui est celui du portail.
+      if (useStatement && selectedPropId && selectedBienId) {
+        const r = await authPost('/api/rapport-to-portail', {
+          html, orientation: 'landscape', proprio_id: selectedPropId, bien_id: selectedBienId,
+          mois, bien_name: data.bien?.hospitable_name || '', agence: data.bien?.agence || AGENCE, notify: false,
+        })
+        if (!r.ok) console.warn('[telechargerPDF] mise à jour portail échouée :', r.data?.error || r.status)
+      }
     } catch (error) {
       console.error('Erreur PDF:', error)
       alert('Erreur lors de la génération du PDF : ' + error.message)

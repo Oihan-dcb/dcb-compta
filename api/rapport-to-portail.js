@@ -1,5 +1,7 @@
 // POST /api/rapport-to-portail
-// { html, orientation, proprio_id, bien_id, mois, bien_name }
+// { html, orientation, proprio_id, bien_id, mois, bien_name, agence?, notify? }
+// notify=false : met à jour le document du portail sans prévenir le propriétaire
+// (utilisé par « Télécharger le PDF » pour que le portail reflète toujours le dernier calcul).
 // Côté serveur : génère PDF, upload Supabase Storage, upsert owner_documents, notifie portail
 // Évite tout envoi de binaire depuis le navigateur (fix Safari "Load failed")
 import chromium from '@sparticuz/chromium'
@@ -45,7 +47,7 @@ export default async function handler(req, res) {
   if (!ALLOWED_EMAILS.length) return res.status(500).json({ error: 'ALLOWED_ADMIN_EMAILS non configuré' })
   if (!ALLOWED_EMAILS.includes((email || '').toLowerCase())) return res.status(403).json({ error: 'Accès refusé' })
 
-  const { html, orientation = 'landscape', proprio_id, bien_id, mois, bien_name = '' } = req.body || {}
+  const { html, orientation = 'landscape', proprio_id, bien_id, mois, bien_name = '', agence = null, notify = true } = req.body || {}
   if (!html || typeof html !== 'string' || html.length < 100) return res.status(400).json({ error: 'html invalide' })
   if (!proprio_id || !bien_id || !mois) return res.status(400).json({ error: 'proprio_id, bien_id, mois requis' })
 
@@ -133,6 +135,7 @@ export default async function handler(req, res) {
       storage_path: storagePath,
       date_document: `${mois}-01`,
       mois_comptable: mois,
+      ...(agence === 'dcb' || agence === 'lauian' || agence === 'bdx' ? { agence } : {}),
     }),
   })
   if (!insRes.ok) {
@@ -143,6 +146,7 @@ export default async function handler(req, res) {
   // ── 4. Notification portail (server-to-server, pas de CORS) ──────────────
   let sent = false
   let notifErr = ''
+  if (notify === false) return res.json({ ok: true, sent: false, silent: true, nom: nomDoc })
   try {
     const notifRes = await fetch(`${PORTAIL_URL}/api/notify-proprio`, {
       method: 'POST',
