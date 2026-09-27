@@ -337,3 +337,20 @@ Mail Laura (`~/Downloads/Mail_Laura_sequestre_Lauian.html`) mis à jour avec vos
 - Laura et Ludovic invités en Éditeur (hors organisation : Contributeur/Commentateur = lecture seule). Consigne dans le mail :
   n'écrire que dans les zones. Sauvegardes v1→v4 dans `~/Downloads/Sauvegardes_sequestre_Lauian/`.
 - Mail commun Ludovic + Laura rédigé (lien Lauïan, PJ `Bilan_sequestre_DCB_2025.html`). Page DCB distincte : Japwdian6j8owxFtkL7j1W (§21).
+
+## 23. Session Lauïan (27/09/2026) — encaissements rapprochés, ligne AE refaite, écart Lauïan à 0
+- Avril-sept 2026 : 74 résas Airbnb (export CSV) + 9 payouts Booking + manuelles/directes = répartition de l'app au centime
+  (seule exception Van Loenen, E3). Les 32 rapports app Lauïan (`owner_documents`, rangés `agence='dcb'` → filtrer par
+  `bien.agence`) collent aux virements sauf ENEKO avril (+21,52 dû) et MIRAMARVEL avril (51,63 trop versé) = régénération HON avril.
+- La ligne « AE payés au-delà de la provision » (−527,83) était fausse : AE payés = missions validées 6 362,50 + prestations
+  hors forfait 1 858,66 (refacturées aux propriétaires via `prestation_hors_forfait` deduction_loy / factures de débours).
+  Provision AUTO avr-août 7 575 → surplus 1 212,50 ; forfait ventilé 14 030,37 vs facturé pur 13 551,44 (+478,93) ;
+  − ménages remboursés aux proprios 1 281,05 → **reste ménage 410,38 €**.
+- **Décision Oïhan 27/09 : ce reste revient à DCB (forfait = ménage − AE réel), ajusté pour que l'écart soit nul.**
+  → nouvelle ligne C14 séquestre Lauïan → courant DCB **202,56 €** « FMEN REEL AVRIL AOUT 26 - LAUIAN » (DCB renonce à 207,82).
+  **Pour la session DCB : facture DCB à émettre (forfait ménage réel) et entrée attendue sur le courant DCB.**
+- ARROSA juin 150,25 € « remboursement sur ménage » : encaissé par DCB dans FMEN juin (1 798,36), et **DCB l'a déjà reversé
+  à M. Mena Mauriz** (Oïhan) → D1 supprimée côté Lauïan.
+- Frais bancaires du séquestre Lauïan 106,05 (80 actualisation 24/09, 25 com. virement reçu, 5 × 0,21) → A4 courant → séquestre.
+- Mendieta 209 € = prestations AE BERDEA 200 + clé 9 (déjà B7) : doublon retiré. Q2, Q5, Q9 résolues.
+- Résultat : poches 65 857,32 = solde ; G1 = 0. Tableau : https://claude.ai/artifact/1nBA1Aomjuv7FuEfA9BuFK
