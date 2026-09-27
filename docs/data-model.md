@@ -952,3 +952,8 @@ détectés, non bloquants).
 Détail complet : mémoire `project_mandat_lien_onboarding_2026-09`.
 
 L'obligation n'a **pas** été étendue à `avant_menage` : c'est le sujet **par défaut** de la modale, donc le fourre-tout des envois non catégorisés (69,8 % sans bien, 88/126, contre 2,7 % pour `apres_menage`). L'y exiger bloquerait la majorité des envois pour un sujet qu'aucune automatisation ne consomme. Le correctif pertinent de ce côté serait de revoir le **sujet par défaut** de la modale — non fait, décision produit.
+
+### virement_sortant_controle — écart accepté (migration 285, 27/09/2026)
+`ecart_accepte_cts` (int), `ecart_accepte_note` (text), `ecart_accepte_par` (text), `ecart_accepte_le` (timestamptz) :
+écart virement/facture accepté par Oïhan avec justification (geste commercial, compensation hors facture). Le badge
+Virement est ✓ tant que `ecart_cts = ecart_accepte_cts`. Jamais écrits par `verify-virements-sortants` (I-171).

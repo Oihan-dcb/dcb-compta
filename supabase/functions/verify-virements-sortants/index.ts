@@ -338,6 +338,12 @@ serve(async (req) => {
         match_confiance: remise ? remise.confiance : auto ? confianceStricte(c.attendu_cts, auto.ecart) : opus ? opus.confiance : null,
         match_raison: remise ? remise.raison : opus ? opus.raison : auto && confianceStricte(c.attendu_cts, auto.ecart) === 'incertain' ? `Code bien reconnu mais montant différent (écart ${(auto.ecart / 100).toFixed(2)} €)` : null,
         commentaire: existantesByCle.get(c.cle)?.commentaire ?? null,
+        // Écart accepté par Oïhan (geste commercial…) : conservé tel quel, jamais recalculé ici —
+        // le front ne l'affiche ✓ que tant que l'écart courant est celui qui a été accepté.
+        ecart_accepte_cts: existantesByCle.get(c.cle)?.ecart_accepte_cts ?? null,
+        ecart_accepte_note: existantesByCle.get(c.cle)?.ecart_accepte_note ?? null,
+        ecart_accepte_par: existantesByCle.get(c.cle)?.ecart_accepte_par ?? null,
+        ecart_accepte_le: existantesByCle.get(c.cle)?.ecart_accepte_le ?? null,
       }
     }
 

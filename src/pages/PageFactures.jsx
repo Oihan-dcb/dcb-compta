@@ -1179,6 +1179,16 @@ const [pushing, setPushing] = useState(false)
                           Virement ✓
                         </span>
                       )
+                      // Écart accepté par Oïhan (geste commercial, compensé hors facture) — tant que l'écart
+                      // courant est exactement celui qui a été accepté (migration 285)
+                      if (vc.mouvement_bancaire_id && !incertain && vc.ecart_cts && vc.ecart_accepte_cts === vc.ecart_cts) return (
+                        <span
+                          title={`Écart de ${(vc.ecart_cts / 100).toFixed(2)} € accepté${vc.ecart_accepte_le ? ` le ${new Date(vc.ecart_accepte_le).toLocaleDateString('fr-FR')}` : ''}${vc.ecart_accepte_par ? ` par ${vc.ecart_accepte_par}` : ''} : ${vc.ecart_accepte_note || ''}`}
+                          style={{ padding: '4px 10px', borderRadius: 100, fontSize: 11, fontWeight: 600, background: '#DCFCE7', color: '#15803D' }}
+                        >
+                          Virement ✓ écart accepté
+                        </span>
+                      )
                       // Écart déjà régularisé sur une facture ultérieure (« Régularisation virement MM/AAAA »)
                       const rg = soldesControle[f.id]
                       if (vc.mouvement_bancaire_id && !incertain && vc.ecart_cts && rg?.regulVirement
@@ -1712,6 +1722,21 @@ const [pushing, setPushing] = useState(false)
                               : <span style={{ padding: '3px 10px', borderRadius: 100, fontSize: 11, fontWeight: 600, background: '#FEE2E2', color: '#DC2626' }}>Écart</span>
                           }
                           {badgeConfiance(f.id)}
+                          {vir && !ok && ecart !== null && (controle?.ecart_accepte_cts === ecart
+                            ? <div style={{ fontSize: 11, color: '#15803D', marginTop: 3 }} title={controle?.ecart_accepte_note || ''}>
+                                ✓ écart accepté{' '}
+                                <button type="button" className="btn" style={{ fontSize: 10, padding: '0 6px' }}
+                                  onClick={() => upsertControleVirement(f.id, { ecart_accepte_cts: null, ecart_accepte_note: null, ecart_accepte_par: null, ecart_accepte_le: null })}>annuler</button>
+                              </div>
+                            : <button type="button" className="btn" style={{ fontSize: 10, padding: '1px 6px', marginTop: 3, display: 'block' }}
+                                title="L'écart est voulu ou déjà compensé hors facture (geste commercial…) : il ne sera plus signalé tant qu'il ne change pas"
+                                onClick={async () => {
+                                  const note = window.prompt(`Accepter l'écart de ${(ecart / 100).toFixed(2)} € — justification (obligatoire) :`)
+                                  if (!note || !note.trim()) return
+                                  const { supabase } = await import('../lib/supabase')
+                                  const par = (await supabase.auth.getUser()).data?.user?.email || null
+                                  upsertControleVirement(f.id, { ecart_accepte_cts: ecart, ecart_accepte_note: note.trim(), ecart_accepte_par: par, ecart_accepte_le: new Date().toISOString() })
+                                }}>Accepter l'écart</button>)}
                         </td>
                         <td>
                           <input
