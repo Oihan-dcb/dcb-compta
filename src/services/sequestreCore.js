@@ -53,6 +53,11 @@ export function classerSortie(mvt, ctx = {}) {
   if (/^comm distribution\b/.test(t)) return { type: 'transfert_dcb', sous: 'com', mois }
   const dcb = t.replace(/^virement /, '').match(/^(hon|honoraires|fmen|com|commissions?|commisions?)\b/)
   if (dcb) {
+    // Virement d'une somme DCB qui n'est pas une part de mois : facture d'honoraires payée par le
+    // propriétaire sur le séquestre (numéro de facture cité : « HON 506P JUILLET26 F311 »,
+    // « HON 408P BELAIR F-20260000323 ») ou extras / AirCover / primes → vide sa propre poche
+    if (/\bf ?-?(2026)?0*\d{3,}\b/.test(t) && /\bf ?-?\d/.test(t)) return { type: 'transfert_dcb', sous: 'facture', mois }
+    if (/\b(extras?|aircover|primes?)\b/.test(t)) return { type: 'transfert_dcb', sous: 'extras', mois }
     const sous = dcb[1].startsWith('hon') ? 'hon' : dcb[1] === 'fmen' ? 'fmen' : 'com'
     return { type: 'transfert_dcb', sous, mois }
   }
@@ -79,7 +84,8 @@ export function classerEntree(mvt, factures = [], ctx = {}) {
   const t = norm(`${mvt.libelle || ''} ${mvt.detail || ''}`)
   // Frais de paiement pris en charge par l'agence (courant → séquestre) : Stripe et commission Hospitable
   // Direct (1 %, retenue sur chaque paiement direct)
-  if (/\bfrais (stripe|hospitable)\b/.test(t)) return { type: 'frais_stripe_rembourses' }
+  // « FRAIS HOSPITBL JANV - AOUT 26 » (26/09/2026) : la banque / la saisie abrège Hospitable
+  if (/\bfrais (stripe|hospi[a-z]*)\b/.test(t)) return { type: 'frais_stripe_rembourses' }
   // Régularisation d'écart : l'agence comble depuis son courant un manque résiduel du séquestre
   // (arrondis…) — ne crée aucune dette, réduit l'écart (« REGULARISATION ECART SEQUESTRE 2026 »)
   if (/\bregul(arisation)? (d )?ecart sequestre\b/.test(t)) return { type: 'regul_ecart' }

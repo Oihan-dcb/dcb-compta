@@ -290,7 +290,12 @@ export async function justifierSequestre(agence = 'dcb', { date = new Date().toI
     }
     ;(horsMois[c.type] || horsMois.non_affecte).push({ ...e, ...c, montant: e.credit })
   }
-  const sortiesMois = (types, mois) => sorties.filter(s => !transitIds.has(s.id) && types.includes(s.type) && s.mois === mois)
+  // Virements au courant qui soldent une poche (facture payée sur le séquestre, extras / AirCover /
+  // primes — sous 'facture' / 'extras', cf. classerSortie) : jamais comptés comme part de mois
+  const SOUS_POCHE = new Set(['facture', 'extras'])
+  const estViréPoche = s => s.type === 'transfert_dcb' && SOUS_POCHE.has(s.sous)
+  const sortiesMois = (types, mois) => sorties.filter(s => !transitIds.has(s.id) && types.includes(s.type) && s.mois === mois && !estViréPoche(s))
+  const viresPoche = sous => sum(sorties.filter(s => !transitIds.has(s.id) && s.date_operation >= DEBUT_ && estViréPoche(s) && s.sous === sous), s => s.debit)
 
   // ── Mois facturés ─────────────────────────────────────────────────────────
   const honoraires = factures.filter(f => f.type_facture === 'honoraires' && f.statut !== 'calcul_en_cours')
@@ -507,7 +512,7 @@ export async function justifierSequestre(agence = 'dcb', { date = new Date().toI
     { cle: 'dcb', label: 'DCB — part encore détenue au séquestre (mois facturés)', montant: sum(facturesListe, p => p.dcb.reste) },
     { cle: 'non_factures', label: 'Mois non facturés et séjours à venir — encaissé non encore réparti', montant: sum(parMois.filter(p => !p.facture), p => p.reste) },
     { cle: 'debours_rembourses', label: 'Débours AE (biens où le propriétaire encaisse) : remboursements reçus − ménages avancés par le séquestre', montant: tot('remboursement_debours') - sum(facturesListe, p => p.dcb.debours_ae_avances || 0) },
-    { cle: 'factures_payees_sequestre', label: 'Factures d\'honoraires payées sur le séquestre (dues à DCB)', montant: tot('paiement_facture') },
+    { cle: 'factures_payees_sequestre', label: 'Factures d\'honoraires payées sur le séquestre (dues à DCB) − déjà virées au courant', montant: tot('paiement_facture') - viresPoche('facture') },
     { cle: 'stripe', label: 'Virements reçus inférieurs aux paiements reliés (frais Stripe, payout partiel Airbnb, lignes Stripe manquantes) / frais Stripe remboursés par DCB', montant: tot('frais_stripe_rembourses') },
     { cle: 'frais_bancaires', label: 'Frais bancaires (nets des remises)', montant: tot('remise_frais_bancaires') - fraisBancaires },
     { cle: 'avant_suivi', label: 'Exercice antérieur : mouvements du compte avant le 1er mois suivi − sorties réglant des dettes antérieures (à solder avec la clôture annuelle)', montant: avantSuivi },
@@ -522,6 +527,7 @@ export async function justifierSequestre(agence = 'dcb', { date = new Date().toI
     { cle: 'extra_voyageur', label: 'Extras voyageurs payés par Stripe (bouquet, lit bébé, départ tardif…) — services DCB', montant: tot('extra_voyageur') },
     { cle: 'aircover', label: 'Remboursements AirCover (dégâts) — reviennent à qui a payé la réparation', montant: tot('aircover') },
     { cle: 'prime_plateforme', label: 'Primes plateforme à l\'hôte (Airbnb Host Rewards…) — dues à l\'agence', montant: tot('prime_plateforme') },
+    { cle: 'extras_vires_courant', label: 'Extras, AirCover et primes dus à l\'agence déjà virés au courant (« COM EXTRAS AIRCOVER PRIMES … »)', montant: -viresPoche('extras') },
     { cle: 'plateformes_non_rapprochees', label: 'Encaissements plateformes non reliés à une réservation', montant: tot('plateforme_non_rapprochee') },
     { cle: 'entrees_non_affectees', label: 'Autres encaissements à identifier', montant: tot('non_affecte') },
     { cle: 'sorties_non_affectees', label: 'Autres sorties à identifier', montant: -sum(sortiesAutres, s => s.debit) },
