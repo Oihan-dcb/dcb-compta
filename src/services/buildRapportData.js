@@ -86,6 +86,10 @@ export async function buildRapportData(bienId, propId, mois, opts = {}) {
       let q = supabase
         .from('frais_proprietaire')
         .select('id, libelle, montant_ttc, statut, date, mode_traitement, montant_deduit_loy, montant_reliquat, statut_deduction')
+        // Un frais « brouillon » n'est ni facturé, ni déduit, ni remboursé : il n'a rien à faire
+        // dans le rapport envoyé au propriétaire (ex. ARROSA 06/2026, frais annulé encore listé
+        // en « +150,25 € Crédit » alors que le total l'excluait déjà — 27/09/2026).
+        .neq('statut', 'brouillon')
         .gte('date', `${mois}-01`)
         .lt('date', `${moisSuivant}-01`)
       return isGlobal ? q.in('bien_id', maiteIds) : q.eq('bien_id', bienId)

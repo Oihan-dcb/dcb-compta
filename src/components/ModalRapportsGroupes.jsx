@@ -133,7 +133,9 @@ export default function ModalRapportsGroupes({ mode, mois, moisLabel, propsFiltr
   // toujours en variante statement quelle que soit la case "Version statement" du
   // mode groupé. N'interrompt jamais l'envoi groupé : l'email est déjà parti, un
   // échec ici (log console) ne doit pas faire remonter 'erreur' sur l'item.
-  async function pousserAuPortail(item) {
+  // notify=false : « Télécharger tout » remplace aussi les rapports du portail, sans mail ni
+  // notification (demande Oïhan 27/09/2026, même comportement que le téléchargement unitaire).
+  async function pousserAuPortail(item, notify = true) {
     try {
       const rapportData = buildRendererPayloadFrom(item)
       const statementHtml = genererStatementHTML(item.proprio, mois, rapportData)
@@ -145,6 +147,8 @@ export default function ModalRapportsGroupes({ mode, mois, moisLabel, propsFiltr
         bien_id: item.bienId,
         mois,
         bien_name: bienName,
+        agence: item.bien?.agence || AGENCE,
+        notify,
       })
       if (!res.ok) console.warn(`[portail] échec ${item.bien?.code || item.bienId} ${mois} :`, res.data?.error)
     } catch (e) {
@@ -179,6 +183,7 @@ export default function ModalRapportsGroupes({ mode, mois, moisLabel, propsFiltr
           const blob = await genererUnPdf(item)
           const bienNom = (item.bien?.hospitable_name || item.proprio?.nom || 'rapport').replace(/[^a-zA-Z0-9]/g, '_')
           zip.file(`Rapport_${bienNom}_${mois}.pdf`, blob)
+          await pousserAuPortail(item, false)
           patchItem(idx, { statut: 'fait_pdf' })
         } else {
           await envoyerUnRapport(item)
