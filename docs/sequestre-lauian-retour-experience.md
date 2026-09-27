@@ -362,3 +362,5 @@ Mail Laura (`~/Downloads/Mail_Laura_sequestre_Lauian.html`) mis à jour avec vos
   les remboursements, origine de la ligne non retrouvée.
 - **Décision finale Oïhan (27/09)** : les 150,25 € ARROSA **restent à DCB** (F-20260000259) — pas d'avoir, pas de retour.
   Frais `cde554ca-ce7a-48af-b507-6f9e86e11757` passé en `brouillon` (annulé, journal_ops 0a2e7f91). D1 et A5 supprimées côté Lauïan.
+- 150,25 ARROSA **justifiés en FMEN réel** : HMENAJ2SF8 AUTO réel 0 (ménage par Laura), FMEN réel = fmen_facture = 430,50
+  (déjà facturé sur F-20260000259) — journal_ops 745eae23. Pas d'ajustement M+1 attendu.
