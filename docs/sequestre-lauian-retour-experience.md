@@ -460,3 +460,16 @@ Si ces virements n'ont pas eu lieu : 16 097,68 € dus aux propriétaires.
   | F-379 OLATUA 08 | −50 | HM9NCH8B9T réel 350 (prov. 400) |
   | F-259 ARROSA 06 | +150,25 | FMEN réel HMENAJ2SF8 430,50 (ligne « Remboursement sur ménage », §23) |
   | F-218 ARROSA 05 | +194,90 | **FMEN d'1 seule résa (HMYHDAYPZK 237,22) + frais Préparation 112,50 + Location linge 665** : les 3 autres ménages de mai n'ont PAS été faits par DCB (frais « Ménages non faits par LAUIAN IMMMO » 1 032,60 = 3 × (FMEN 194,20/319,20 + AUTO) — `fmen_facture` y est tamponné mais rien n'est à rattraper). Les propriétaires ont fait ces ménages eux-mêmes (Oïhan) : **remboursement 1 032,60 € bien versé** — rapport `Rapport_Villa_Arrosa_2026-05-4.pdf` (« Ménages non faits par LAUIAN IMMMO + 1 032,60 € », total reversement 4 737,81 €) = virement « VIR SEPA M MENA MAURIZ IMANOL » du 08/06 = reversement de F-20260000121. Seul le statut du frais est resté `a_facturer` (non modifié par moi) : **vérifier que le justificatif Lauïan ne le compte pas comme encore dû** avant de le passer en `facture`. |
+
+## 26. Session Lauïan (28/09/2026, suite) — factures validées, Hamilton, ARROSA mai
+- **29 factures d'honoraires Lauïan juin-août VALIDÉES dans Evoliz Lauïan** (accord Oïhan) : T-134…T-192 → **F-20260000135 à
+  F-20260000163** ; `facture_evoliz.numero_facture` renseigné, journal_ops `validation_evoliz`. ⚠ Numérotation non
+  chronologique : les brouillons portent leurs dates d'origine (03/07, 06/08, 10/09) alors que F-20260000134 (Groc) est du
+  29/08 et que le lot a été validé du plus récent au plus ancien (F-135…146 = 10/09, F-147…158 = 06/08, F-159…163 = 03/07).
+  Signalé à Oïhan / Ludovic. T-20260000174 (doublon Mugnai août) **non validé** — à supprimer.
+  En-tête app SUZETTE août (F-20260000135, ex-T-189) toujours faux (2 039,74 au lieu de 2 086,78) — non corrigé.
+- **24.5 Hamilton : pris en compte.** F-302 exclut déjà Hamilton → C6 = **4 973,04** (pas d'avoir F1) ; la poche FMEN
+  passe à 11 100,56 ; le « reste ménage » perd le FMEN fantôme 79,54 (330,84) → **C14 = 123,02 €** (DCB renonce toujours à
+  207,82) ; écart toujours 0.
+- **24.5 ARROSA mai 1 032,60** : compté comme remboursement déjà versé dans le justificatif Lauïan (jamais comme dû) —
+  le statut du frais peut passer en `facture` sans effet.
