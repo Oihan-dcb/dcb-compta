@@ -510,3 +510,15 @@ Non vérifié : avril (total seulement, 646,44), avant avril (tableaux Laura), s
   (et non 10,42) — **l'app affiche des montants AE faux pour ces 3 mois** (à investiguer côté missions/prestations).
 - COCO : ménage de fond 03/07/2025 (Laura + Oïhan, 275 €) → honoraires Lauïan 2026 (B10). ENEKO : pas de remboursement.
 - Conséquence : C14 = 0 (DCB renonce aux 80,84 € de reste ménage), **G1 = 297,81 €** (courant → séquestre).
+
+## 29. Session Lauïan (28/09/2026) — option a : pas de virement C14, écart 0
+- **Décision Oïhan** : le complément de forfait ménage au réel avril-août (80,84 € : avril +202,08 · mai −150,28 ·
+  juin +37,25 · juillet +498,04 · août −506,25) n'est **pas viré à part** (C14 = 0). Il doit sortir tout seul en lignes
+  « Ajustement ménage » (effectif − `fmen_facture`) sur les factures FMEN DCB de septembre → **session DCB : contrôler
+  ces lignes avant validation** ; un virement séparé ferait payer DCB deux fois.
+- **Risque juillet** : `fmen_facture` n'est tamponné qu'à 4 493,04 € alors que 4 973,04 € ont été facturés en juillet
+  (F-301 à F-320, dont KOSTALDEA F-303 350 €) → 480 € d'écart. Si l'ajustement de septembre se base sur 4 493,04, il
+  refacturerait ~480 € déjà payés. À vérifier (probablement KOSTALDEA 350 € + une autre résa non tamponnée).
+- Conséquence séquestre : B10 (ménage de fond COCO 2025 en HON Lauïan) = 76,01 € au courant, G1 = 0, écart 0,00 €.
+- Larry (MIRAMARVEL, janvier) : facture HON complémentaire créée dans Evoliz Lauïan, brouillon **T-20260000193**
+  (35,35 HT / 42,42 TTC, client SMANIOTTO) — à valider.
