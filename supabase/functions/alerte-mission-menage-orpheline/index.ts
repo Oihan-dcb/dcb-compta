@@ -99,7 +99,9 @@ const TYPES_MENAGE_DEPART = ['checkout', 'cleaning'] // seuls types que sync-ica
 const STATUTS_HORS_PAIE   = '(cancelled,refuse,annule)'
 const JOURS_DELAI         = 8          // âge minimum d'une mission avant signalement
 const FENETRE_RESA_JOURS  = 3          // ± N jours autour de date_mission pour proposer la résa probable
-const DATE_MIN            = '2026-01-01'
+// Avant avril 2026 : ménages payés et refacturés d'après les relevés Hospitable / tableaux de Laura
+// (l'app ne faisait pas foi, missions restées « planifie ») — non actionnables (décision Oïhan 28/09/2026)
+const DATE_MIN            = '2026-04-01'
 const MARQUEUR_IGNORE     = '#hors-resa'
 
 const STAFF_EMAIL: Record<string, string> = {

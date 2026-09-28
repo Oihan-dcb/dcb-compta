@@ -98,11 +98,18 @@ Deno.serve(async (req) => {
     // 5b. Réservations candidates (pour lier mission ↔ résa ↔ ventilation AUTO)
     const linkEvts = evs.filter(e => !e.cancelled && e.bien && e.uid && e.isCleaningCheckout)
     const bienIds = [...new Set(linkEvts.map(e => e.bien.id))]
+    // Départ cherché par ordre de préférence : le jour du ménage, puis la VEILLE et l'avant-veille
+    // du ménage (ménage fait le lendemain / surlendemain du départ), puis le lendemain (ménage la
+    // veille du départ, rare). Avant le 28/09/2026 seuls [0, +1] étaient testés : sur les ménages
+    // rattachés depuis avril, 969 le jour du départ, 12 le lendemain, 1 la veille — les ménages du
+    // lendemain restaient orphelins (alerte-mission-menage-orpheline, 20 cas au 28/09).
+    const OFFSETS_DEPART = [0, -1, -2, 1]
     const depDates = new Set<string>()
     for (const e of linkEvts) {
-      depDates.add(e.dateStr)
-      const d1 = new Date(e.dateStr + 'T12:00:00Z'); d1.setUTCDate(d1.getUTCDate() + 1)
-      depDates.add(d1.toISOString().substring(0, 10))
+      for (const off of OFFSETS_DEPART) {
+        const d1 = new Date(e.dateStr + 'T12:00:00Z'); d1.setUTCDate(d1.getUTCDate() + off)
+        depDates.add(d1.toISOString().substring(0, 10))
+      }
     }
     const resaMap = new Map<string, string>() // `${bien_id}|${departure_date}` → resa_id
     const resaIds: string[] = []
@@ -125,7 +132,7 @@ Deno.serve(async (req) => {
     }
     const matchResa = (e: Ev): { resa_id: string | null; ventil_id: string | null } => {
       if (!e.bien || !e.isCleaningCheckout) return { resa_id: null, ventil_id: null }
-      for (const offset of [0, 1]) {
+      for (const offset of OFFSETS_DEPART) {
         const d = new Date(e.dateStr + 'T12:00:00Z'); d.setUTCDate(d.getUTCDate() + offset)
         const rid = resaMap.get(`${e.bien.id}|${d.toISOString().substring(0, 10)}`)
         if (rid) return { resa_id: rid, ventil_id: ventilMap.get(rid) ?? null }
