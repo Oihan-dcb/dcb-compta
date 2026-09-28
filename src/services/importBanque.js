@@ -32,8 +32,13 @@ export function detectCanal(lib, det, debit) {
   // Texte normalisé (minuscules + sans accents) pour matcher "reversée", "propriétaire", etc.
   const l = ((lib || '') + ' ' + (det || '')).normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase()
 
-  // Plateformes
-  if (l.includes('airbnb')) return 'airbnb'
+  // Virement entre nos comptes pour un paiement arrivé sur l'ancien RIB (« AIRBNB LOCATION erreur de
+  // rib », 06/03/2026) : interne, jamais un payout plateforme
+  if (l.includes('erreur de rib') || l.includes('ancien rib')) return 'interne'
+  // Plateformes — Airbnb seulement si l'émetteur est Airbnb (« AIRBNB PAYMENTS … ») : un mot
+  // « airbnb » dans le motif d'un virement voyageur (lit bébé réglé à part) ou d'un transfert
+  // interne classait le mouvement en payout OTA → faux « virement OTA sans réservation »
+  if (l.includes('airbnb payments')) return 'airbnb'
   if (l.includes('stripe technology') || l.includes('stripe payments')) return 'stripe'
   if (l.includes('booking')) return 'booking'
 
