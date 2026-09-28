@@ -418,3 +418,16 @@ Si ces virements n'ont pas eu lieu : 16 097,68 € dus aux propriétaires.
 ### 24.4 — Alertes corrigées qui touchaient aussi Lauïan
 - Contrats annulés (I-175) : les 12 lignes Lauïan (séjours de l'été payés au centime) ne sont plus signalées.
 - Canal Airbnb (I-174) : un mouvement n'est « airbnb » que si « AIRBNB PAYMENTS » figure au libellé.
+
+## 25. Session Lauïan (28/09/2026) — réponse au §24
+- **24.1 doublons Evoliz** : Evoliz Lauïan (company 115576) lu du 01/05 au 30/09 : **aucune** des 29 factures d'honoraires
+  n'existe en version finalisée (seule F-20260000131 Benichou/AUGUSTA juillet est finalisée, hors liste). Validation en
+  attente de l'accord d'Oïhan. ⚠ **T-20260000174 MUGNAI « Honoraires gestion août » 58,03 € = doublon de F-20260000133
+  (payée)** → à supprimer, pas à valider. Autres brouillons hors liste : T-159 Maisons du Sud-Ouest 390 €, T-172 Groc 429 €.
+- **24.1 reversements** : tous faits — TXORIA 3 000 (acompte 27/07) + 5 563,95 (06/08) = 8 563,95 ; OASIS 4 500 (acompte
+  23/07) + 4 604,39 (03/08) = 9 104,39 ; ENEA 3 400 (acompte 30/06, « DUBOIS VISIOZ ») + 5 197,68 (31/07) = 8 597,68.
+  Rien de dû aux propriétaires (les acomptes versés avant le mois échappent au rapprochement par libellé du mois).
+- **24.3 HMENAJ2SF8** : AUTO réel mis à 33,33 € (= missions : préparation Manon 08/06) ; FMEN réel laissé à 430,50 € =
+  facturé F-20260000259 (décision Oïhan : les 150,25 € restent à DCB). AUTO réel = total missions →
+  update-ventilation-auto renverra « unchanged », pas de recalcul FMEN ni d'ajustement M+1. journal_ops 1a43f8f5.
+- **24.2 LLD** : en attente des exports CE du compte LLD …7053744 78 et du compte cautions depuis le 01/07 (Oïhan).
