@@ -233,7 +233,7 @@ serve(async (req) => {
   // Exclusions non exprimables proprement en filtre PostgREST (null-safe côté JS) ──────────
   const retenue = (m: any) => {
     if (m.impute_salaire === true) return false                                  // couvert par un salaire
-    if (m.ae?.type === 'staff') return false                                     // salarié DCB, pas un débours AE
+    if (m.ae?.type === 'staff' || m.ae?.type === 'gerant') return false         // salarié / gérant DCB (jamais rémunéré), pas un débours AE
     if (m.regime === 'sap') return false                                         // SAP : aucune imputation proprio
     if (m.manual_mission_id) return false                                        // mission manuelle PowerHouse
     if (m.bien?.skip_facturation) return false                                   // bien interne, charge DCB assumée

@@ -252,7 +252,7 @@ export async function buildComptaMensuelle(mois, bienIds = null) {
   const autoByBien = {}            // affichage : tout le coût AE réalisé ce mois-ci
   const autoAbsorbableBaseByBien = {} // déduction : seulement ce qui n'est pas déjà déduit ailleurs
   for (const m of (missionsData || [])) {
-    if (m.ae?.type === 'staff') continue  // staff DCB → pas un débours AE externe
+    if (m.ae?.type === 'staff' || m.ae?.type === 'gerant') continue  // staff / gérant DCB → pas un débours AE externe
     if (m.impute_salaire) continue        // ménage couvert par le salaire de Manon → pas de débours AE
     autoByBien[m.bien_id] = (autoByBien[m.bien_id] || 0) + (m.montant || 0)
 

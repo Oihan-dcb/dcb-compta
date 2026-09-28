@@ -83,7 +83,7 @@ function styleRow(row, fill, bold = false, fontSize = 10, fontColor = BROWN) {
 
 function addSheet(wb, ae, missions, prestByMission, nomMois, extrasSansMission = []) {
   const nomAE = ae ? `${ae.prenom || ''} ${ae.nom || ''}`.trim() : 'AE inconnu'
-  const isStaff = ae?.type === 'staff'
+  const isStaff = ae?.type === 'staff' || ae?.type === 'gerant' // gérant : jamais rémunéré (28/09/2026)
   const tauxHoraire = ae?.taux_horaire ? (ae.taux_horaire / 100).toFixed(2) : '—'
   const sheetName = nomAE.replace(/[:\\/?*[\]]/g, '').slice(0, 31)
 
@@ -255,7 +255,7 @@ export async function exportAutoDeboursCombined(mois, bienIds = null) {
 
   for (const [, { ae, missions, extrasSansMission = [] }] of Object.entries(missionsByAe)) {
     const nomAE = ae ? `${ae.prenom || ''} ${ae.nom || ''}`.trim() : 'AE inconnu'
-    const isStaff = ae?.type === 'staff'
+    const isStaff = ae?.type === 'staff' || ae?.type === 'gerant' // gérant : jamais rémunéré (28/09/2026)
     const tauxHoraire = ae?.taux_horaire ? (ae.taux_horaire / 100).toFixed(2) : '—'
 
     lines.push(row(['═══════════════════════════════════════', nomAE, nomMois, '', '']))

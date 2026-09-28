@@ -321,7 +321,7 @@ async function genererFactureGroupe(proprio, biens, mois, ctx) {
 
   const prestationsDeduction = ctx.prestationsGlobales.filter(p => p.regime !== 'sap' && bienIds.includes(p.bien_id) && p.type_imputation === 'deduction_loy')
   const totalPrestations = (prestationsDeduction || []).reduce((s, p) => {
-    const isStaff = p.ae?.type === 'staff'
+    const isStaff = p.ae?.type === 'staff' || p.ae?.type === 'gerant'
     return s + (isStaff ? Math.round((p.montant || 0) * 1.20) : (p.montant || 0))
   }, 0)
 
@@ -487,7 +487,7 @@ async function genererFactureGroupe(proprio, biens, mois, ctx) {
   const prestDcbTotal = biensDcb.reduce((s, b) => s + (prestationsDeduction || [])
     .filter(p => p.bien_id === b.id)
     .reduce((s2, p) => {
-      const isStaff = p.ae?.type === 'staff'
+      const isStaff = p.ae?.type === 'staff' || p.ae?.type === 'gerant'
       return s2 + (isStaff ? Math.round((p.montant || 0) * 1.20) : (p.montant || 0))
     }, 0), 0)
   const haownerDcbTotal = biensDcb.reduce((s, b) => {
@@ -935,7 +935,7 @@ async function genererFactureGroupe(proprio, biens, mois, ctx) {
     if (!(p.montant > 0)) continue
     const bienProp = proprio.biens.find(function(b){ return b.id === p.bien_id })
     if (bienProp?.mode_encaissement !== 'dcb') continue
-    const isStaff = p.ae?.type === 'staff'
+    const isStaff = p.ae?.type === 'staff' || p.ae?.type === 'gerant'
     const ht  = p.montant
     const tva = isStaff ? Math.round(ht * 0.20) : 0
     const ttc = ht + tva
