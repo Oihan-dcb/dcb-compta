@@ -441,6 +441,22 @@ Si ces virements n'ont pas eu lieu : 16 097,68 € dus aux propriétaires.
   LOY 646,86 traînent encore en ventilation mais sont ignorées par la facturation).
   → **ne PAS émettre l'avoir F1 de 79,54 € sur F-302**, et le virement **C6 « FMEN JUILLET 26 - LAUIAN » =
   4 973,04 € (et non 4 893,50 €)**. Sinon les 79,54 € sont déduits deux fois au détriment de DCB.
-- Écarts facture ≠ FMEN ventilé (probablement « le réel prime », multiples de 25 €, non revérifiés un par un) :
-  juillet BERDEA +100, FOLLE −75,12, MIRAMARVEL +14,58 ; août AMAÏA −25, ARROSA +75, BITXI +25, COCO +50,
-  MARNEKO +50, MIRAMARVEL +18,75, OLATUA −50 ; mai ARROSA +194,90 ; juin ARROSA +150,25 (§23, connu).
+- **Écarts facture ≠ FMEN ventilé : tous expliqués (vérifiés résa par résa le 28/09).** La facture lauian_fmen
+  (`genererFactureLauianFMEN`) = Σ par résa du FMEN **réel** (`montant_reel` = FMEN prévu + AUTO prévu − AUTO réel)
+  sinon de la **provision**, + frais `facturer_direct`/`facturer_et_deduire` + ajustements M-1. Le total ménage payé
+  par le voyageur (MEN) ne bouge pas : un AE moins cher (AUTO réel < prévu) fait monter le FMEN DCB d'autant — jamais
+  un surcoût pour le propriétaire.
+  | Facture | Écart vs provision | Explication |
+  |---|---|---|
+  | F-307 BERDEA 07 | +100 | HOST-XPE5RT : FMEN réel 350 (prov. 250) |
+  | F-318 FOLLE 07 | −75,12 | HMQKYJB5A5 annulée, exclue (ses lignes FMEN 75,12 traînent en ventilation) |
+  | F-301 MIRAMARVEL 07 | +14,58 | HMA45ECZCY facturé 74,29 (réel alors) ; réel recalculé depuis à 65,96 → **ajustement −8,33 € attendu sur la facture de septembre** (automatique) ; autres résas au réel |
+  | F-376 AMAÏA 08 | −25 | 7ICS2R réel 145 (prov. 170) |
+  | F-371 ARROSA 08 | +75 | 3 résas au réel 305,25 (prov. 280,25) |
+  | F-380 BITXI 08 | +25 | HMJZK54KC5 réel 83,96 |
+  | F-370 COCO 08 | +50 | 2 résas réel +25 |
+  | F-373 MARNEKO 08 | +50 | 2 résas réel 58,96 (prov. 33,96) |
+  | F-382 MIRAMARVEL 08 | +18,75 | 3 résas réel +6,25 |
+  | F-379 OLATUA 08 | −50 | HM9NCH8B9T réel 350 (prov. 400) |
+  | F-259 ARROSA 06 | +150,25 | FMEN réel HMENAJ2SF8 430,50 (ligne « Remboursement sur ménage », §23) |
+  | F-218 ARROSA 05 | +194,90 | **FMEN d'1 seule résa (HMYHDAYPZK 237,22) + frais Préparation 112,50 + Location linge 665** : les 3 autres ménages de mai n'ont PAS été faits par DCB (frais « Ménages non faits par LAUIAN IMMMO » 1 032,60 = 3 × (FMEN 194,20/319,20 + AUTO) — `fmen_facture` y est tamponné mais rien n'est à rattraper). ⚠ ce frais de **1 032,60 € (mode remboursement, statut a_facturer, mois 2026-05) n'a jamais été reversé** au propriétaire Mena Mauriz : à traiter côté Lauïan (qui a fait ces ménages ?). |
