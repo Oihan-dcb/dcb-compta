@@ -497,3 +497,16 @@ Non vérifié : avril (total seulement, 646,44), avant avril (tableaux Laura), s
    HMRBQXBSMW (Henon) — ménages faits par les propriétaires, non facturés par DCB (F-218 = Le Dantec seul), remboursés
    1 032,60 € ; AUTO réel = missions (0, 0, 25 déjà posé) pour que `update-ventilation-auto` ne recalcule rien.
    Effet de bord voulu : le FMEN « dû à DCB » de mai pour ARROSA = 237,22 € (Le Dantec) = ce qui a été facturé et payé.
+
+## 28. Session Lauïan (28/09/2026) — réponses de Laura + décisions Oïhan → écart −297,81 (G1)
+- **BERDEA HMRDAQ92HZ (Van Loenen, 15/05)** : fausse réservation (nuit réduite à 50 €, 42,25 € reçus), aucun ménage — le
+  forfait AUTO 250 € venait du fallback. **Ventilation corrigée dans l'app** : HON 10,56 → 42,25 TTC, ligne AUTO supprimée,
+  `ventilation_manuelle=true` (journal 6dc226a4). Plus de retenue E3 au propriétaire. Pas de facture BERDEA mai existante.
+- **PALMARIA (Eve, ménage de fond 30/07, 225 €)** : relève de DCB (Oïhan/Laura). La facture de débours 225 € est aujourd'hui
+  côté **Lauïan** (`facture_evoliz` debours 2026-07 PALMARIA, N/A, envoye_proprio, impayée) → **pour la session DCB : la
+  refaire côté DCB (débours AIA Biarritz) et payer Eve** ; côté Lauïan D3 et E2 supprimés.
+- **Hélène (25 €)** : payée par DCB, financée par le FMEN (Hélène assujettie TVA) → D7 supprimée, rien à rembourser.
+- AE corrigés par Laura : Xane août juste (518,75, l'app affichait 543,75), Laura mai 25 (et non 87,50), Manon avril 18,75
+  (et non 10,42) — **l'app affiche des montants AE faux pour ces 3 mois** (à investiguer côté missions/prestations).
+- COCO : ménage de fond 03/07/2025 (Laura + Oïhan, 275 €) → honoraires Lauïan 2026 (B10). ENEKO : pas de remboursement.
+- Conséquence : C14 = 0 (DCB renonce aux 80,84 € de reste ménage), **G1 = 297,81 €** (courant → séquestre).
