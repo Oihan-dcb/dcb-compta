@@ -185,12 +185,17 @@ async function calculerVentilationResa(resa: Resa, agence: string, supa: ReturnT
   if (dryRun) return lignes.map(toComparable)
 
   // Sauvegarder montant_reel + mouvement_id avant suppression
-  const { data: existingLines } = await supa.from('ventilation').select('id, code, montant_ht, montant_tva, montant_ttc, montant_reel, mouvement_id').eq('reservation_id', resa.id)
+  const { data: existingLines } = await supa.from('ventilation').select('id, code, montant_ht, montant_tva, montant_ttc, montant_reel, mouvement_id, fmen_facture').eq('reservation_id', resa.id)
   const existingReels: Record<string, number> = {}
   const existingMouvements: Record<string, string> = {}
+  // fmen_facture = montant déjà facturé au propriétaire (factures FMEN Lauïan) : perdu à chaque
+  // recréation des lignes → « Rattrapage ménage » refacturant un forfait déjà payé (KOSTALDEA
+  // 9BSN1P 350 €, AMAÏA E2VWKM 130 €, avril MIRAMARVEL/ENEKO — I-178, 28/09/2026)
+  const existingFactures: Record<string, number> = {}
   for (const l of existingLines || []) {
     if (l.montant_reel != null) existingReels[l.code] = l.montant_reel
     if (l.mouvement_id != null) existingMouvements[l.code] = l.mouvement_id
+    if (l.fmen_facture != null) existingFactures[l.code] = l.fmen_facture
   }
 
   // Idempotence : si le recalcul produit exactement les mêmes lignes (codes + montants)
@@ -225,12 +230,13 @@ async function calculerVentilationResa(resa: Resa, agence: string, supa: ReturnT
   if (lignes.length > 0) { const { error } = await supa.from('ventilation').insert(lignes); if (error) throw error }
 
   // Restaurer montant_reel + mouvement_id
-  const codesToRestore = new Set([...Object.keys(existingReels), ...Object.keys(existingMouvements)])
+  const codesToRestore = new Set([...Object.keys(existingReels), ...Object.keys(existingMouvements), ...Object.keys(existingFactures)])
   if (isProlongation) codesToRestore.delete('AUTO')
   for (const code of codesToRestore) {
     const patch: Record<string, unknown> = {}
     if (existingReels[code] != null) patch.montant_reel = existingReels[code]
     if (existingMouvements[code] != null) patch.mouvement_id = existingMouvements[code]
+    if (existingFactures[code] != null) patch.fmen_facture = existingFactures[code]
     if (Object.keys(patch).length > 0) await supa.from('ventilation').update(patch).eq('reservation_id', resa.id).eq('code', code)
   }
 
