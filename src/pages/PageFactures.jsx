@@ -338,6 +338,23 @@ const [pushing, setPushing] = useState(false)
         b.montant += signe * (r.montant_ttc || 0)
         b.lignes.push(`${r.mois_facturation} : ${signe > 0 ? '+' : '−'}${((r.montant_ttc || 0) / 100).toFixed(2)} € ${r.libelle}`)
       }
+      // Rectifications de la FACTURE de ce mois (« Rectification facture MM/AAAA … ») : trop-versé
+      // retenu / complément sur une facture ultérieure → le badge Tréso reconnaît l'écart régularisé
+      // (DUL2 07/2026 : HM8HQQP53E annulée 384,44 € retenus en septembre — Oïhan 28/09/2026).
+      const regulTresoByBien = {}
+      const { data: rectifRows, error: errRectif } = await supabase
+        .from('frais_proprietaire')
+        .select('bien_id, montant_ttc, mode_traitement, mois_facturation, libelle')
+        .ilike('libelle', `Rectification facture ${mR}/${yR}%`)
+        .neq('statut', 'brouillon')
+        .in('bien_id', uniqueBienIds)
+      if (errRectif) console.error('rectifications facture:', errRectif)
+      for (const r of [...(rectifRows || []), ...(regulRows || [])]) {
+        const signe = r.mode_traitement === 'remboursement' ? 1 : -1
+        const b = regulTresoByBien[r.bien_id] || (regulTresoByBien[r.bien_id] = { montant: 0, lignes: [] })
+        b.montant += signe * (r.montant_ttc || 0)
+        b.lignes.push(`${r.mois_facturation} : ${signe > 0 ? '+' : '−'}${((r.montant_ttc || 0) / 100).toFixed(2)} € ${r.libelle}`)
+      }
 
       // ── Ajustements de résolution croisés ───────────────────────────────────
       // Un payout peut être amputé d'un montant appartenant à une AUTRE résa
@@ -601,8 +618,10 @@ const [pushing, setPushing] = useState(false)
 
         const regulVirement = bienIds.reduce((t, bid) => t + (regulVirByBien[bid]?.montant || 0), 0)
         const regulVirementLignes = bienIds.flatMap(bid => regulVirByBien[bid]?.lignes || [])
+        const regulTreso = bienIds.reduce((t, bid) => t + (regulTresoByBien[bid]?.montant || 0), 0)
+        const regulTresoLignes = bienIds.flatMap(bid => regulTresoByBien[bid]?.lignes || [])
         result[f.id] = {
-          regulVirement, regulVirementLignes,
+          regulVirement, regulVirementLignes, regulTreso, regulTresoLignes,
           creditsProuves, credits: creditsProuves,
           vir, hon, fmen, autoreel, prest, haowner, com,
           emplois, solde,
@@ -1186,6 +1205,13 @@ const [pushing, setPushing] = useState(false)
                         <span title={sc.ajustCroises < 0 ? `Dont ${(-sc.ajustCroises / 100).toFixed(2)} € retenus par la plateforme sur ces versements pour une autre réservation (remboursement / résolution) — traités sur la réservation d'origine` : undefined}
                           style={{ padding: '4px 10px', borderRadius: 100, fontSize: 11, fontWeight: 600, background: '#DCFCE7', color: '#15803D' }}>
                           Tréso ✓{sc.ajustCroises < 0 ? ' · ajust.' : ''}
+                        </span>
+                      )
+                      // Trop-versé déjà retenu (ou complément versé) sur une facture ultérieure
+                      if (sc.solde >= 0 && sc.surReversement > 100 && sc.surReversement + (sc.regulTreso || 0) <= 100) return (
+                        <span title={`Écart de ${(sc.surReversement / 100).toFixed(2)} € régularisé :\n${(sc.regulTresoLignes || []).join('\n')}`}
+                          style={{ padding: '4px 10px', borderRadius: 100, fontSize: 11, fontWeight: 600, background: '#DCFCE7', color: '#15803D' }}>
+                          Tréso ✓ régularisé
                         </span>
                       )
                       if (sc.solde < 0 || sc.surReversement > 100) return (
