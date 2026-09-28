@@ -349,6 +349,8 @@ Factures DCB → Propriétaires. Générées dans l'application, poussées vers 
 
 ---
 
+✅ **Unicité par agence (migration 286, 28/09/2026)** — index uniques partiels `facture_evoliz_unique_bien (agence, proprietaire_id, mois, type_facture, bien_id) WHERE bien_id IS NOT NULL` et `facture_evoliz_unique_groupe (agence, proprietaire_id, mois, type_facture) WHERE bien_id IS NULL`. DCB et Lauïan peuvent chacune facturer le même proprio/bien/mois (I-179).
+
 ### `facture_evoliz_ligne`
 
 Lignes de détail des factures propriétaires.

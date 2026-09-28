@@ -545,3 +545,13 @@ Non vérifié : avril (total seulement, 646,44), avant avril (tableaux Laura), s
   MIRAMARVEL HM9M9YX2NK (mai), HMH5C5YA98 (juin), HMA45ECZCY (juillet) → marque = effectif (écart compris dans C14).
 - Simulation refaite : **0 ligne d'ajustement/rattrapage avril-août** sur les factures FMEN de septembre.
 - Reste pour la session DCB : corriger la cause (recréation des lignes FMEN qui perd `fmen_facture`, §30).
+
+## 32. Session DCB (28/09/2026) — PALMARIA : débours DCB créé, cause §30 corrigée
+- **§30 (perte de `fmen_facture`) corrigé côté moteur** : `api/ventiler.js` et `ventilation-auto` sauvegardent/restaurent
+  `fmen_facture` comme `montant_reel` (I-178, ventilation-auto redéployée).
+- **PALMARIA 07/2026** : débours **DCB** créé dans l'app (pas d'Evoliz), **brouillon non validé** —
+  `facture_evoliz` e2c85886 (agence dcb, AIA BIARRITZ 97ab6c59, 225 €, ligne DEBP taux 0, ménage de fond Eve Vincent 30/07).
+  Il fallait d'abord relâcher l'unicité (migration 286 : `agence` ajoutée à la clé, I-179) car le débours Lauïan 0a80584d bloquait.
+- **Non fait, en attente d'Oïhan** : annulation du débours **Lauïan** 0a80584d (statut `envoye_proprio`, relances actives).
+  Tant qu'il n'est pas annulé, le proprio a deux débours de 225 € pour le même ménage.
+- Virement de 225 € à Eve depuis DCB : à faire par Oïhan.
