@@ -444,8 +444,10 @@ export async function buildRapportData(bienId, propId, mois, opts = {}) {
     // pour ne gonfler ni le brut, ni la base de commission, ni les totaux
     // (ex. Lea Coussy DUL2 juin 2026 : base comm 355 € comptée pour rien).
     if (!(STATUTS_NON_VENTILABLES.includes(r.final_status) && (r.fin_revenue || 0) === 0)) return r
+    // vent vidé aussi : le tableau de PageRapports lit HON/LOY/VIR dans vent — une ventilation
+    // restée d'avant l'annulation y affichait un LOY/VIR jamais encaissé (Hamilton AMAÏA 07/2026, 646,86 €).
     return { ...r, gross_revenue: 0, base_comm: 0, encaissement: 0, net_plateforme: 0,
-             frais_plateforme: 0, taxe: 0, menage_voyageur: 0, hon: 0, loy: 0, vir: 0, fmen: 0 }
+             frais_plateforme: 0, taxe: 0, menage_voyageur: 0, hon: 0, loy: 0, vir: 0, fmen: 0, vent: {} }
   })
 
   // ── Owner stay ménage ────────────────────────────────────────────────────

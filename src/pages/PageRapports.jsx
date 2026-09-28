@@ -1333,7 +1333,7 @@ FORMAT :
                           acc.frais_dist   += r.frais_plateforme || 0
                           acc.taxe         += r.taxe || 0
                           acc.net_plat     += r.owner_stay ? 0 : (r.net_plateforme ?? (r.fin_revenue || 0))
-                          acc.base_comm    += r.base_comm || 0
+                          acc.base_comm    += r.owner_stay ? 0 : (r.base_comm || 0) // ligne affichée « — »
                           acc.hon          += v.HON?.montant_ttc || 0
                           acc.loy          += v.LOY?.montant_ht  || 0
                           acc.menage       += r.menage_voyageur || 0
