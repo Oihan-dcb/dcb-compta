@@ -247,6 +247,7 @@ const [pushing, setPushing] = useState(false)
         { data: prestRows },
         { data: rembRows },
         { data: fraisDedRows },
+        { data: ownerStayVentRows },
       ] = await Promise.all([
         supabase
           .from('reservation_mouvement')
@@ -275,7 +276,7 @@ const [pushing, setPushing] = useState(false)
         // reservation_id + platform pour exclure les ventilations proprio_encaisse du solde tréso
         supabase
           .from('ventilation')
-          .select('bien_id, code, montant_ht, montant_ttc, montant_reel, reservation_id, reservation!inner(owner_stay, platform)')
+          .select('bien_id, code, montant_ht, montant_ttc, montant_reel, reservation_id, reservation!inner(owner_stay, platform, fin_revenue)')
           .eq('mois_comptable', mois)
           .in('bien_id', uniqueBienIds)
           .in('code', ['VIR', 'HON', 'FMEN', 'AUTO', 'COM'])
@@ -302,6 +303,16 @@ const [pushing, setPushing] = useState(false)
           .in('mode_traitement', ['deduire_loyer', 'facturer_et_deduire'])
           .neq('statut', 'brouillon')
           .in('bien_id', uniqueBienIds),
+        // Ménage des séjours propriétaires : retenu sur le reversement (rapport « Ménage séjour
+        // propriétaire », buildRapportData ownerStayList) → à déduire aussi ici, sinon le contrôle
+        // Tréso surestime ce qui peut être reversé (AMAÏA 07/2026 : 180 € — Oïhan 28/09/2026).
+        supabase
+          .from('ventilation')
+          .select('bien_id, reservation_id, code, montant_ht, montant_ttc, montant_reel, reservation!inner(owner_stay, final_status)')
+          .eq('mois_comptable', mois)
+          .in('bien_id', uniqueBienIds)
+          .in('code', ['MEN', 'FMEN', 'AUTO'])
+          .eq('reservation.owner_stay', true),
       ])
       const fraisDedByBien = {}
       for (const r of (fraisDedRows || [])) fraisDedByBien[r.bien_id] = (fraisDedByBien[r.bien_id] || 0) + (r.montant_ttc || 0)
@@ -481,6 +492,10 @@ const [pushing, setPushing] = useState(false)
       const ventByBien = {}
       for (const v of (ventRows || [])) {
         if (proprioEncaisseResaIds.has(v.reservation_id)) continue
+        // Résa sans revenu (annulée à 0 €) : ses lignes restent en ventilation mais ne sont ni
+        // facturées ni encaissées (I-168) — les compter faussait le contrôle Tréso
+        // (AMAÏA 07/2026, Hamilton : FMEN 79,54 € fantôme — Oïhan 28/09/2026).
+        if (!((v.reservation?.fin_revenue || 0) > 0)) continue
         if (!ventByBien[v.bien_id]) ventByBien[v.bien_id] = { VIR: 0, HON: 0, FMEN: 0, AUTOREEL: 0, AUTOPROV: 0, COM: 0 }
         const b = ventByBien[v.bien_id]
         if (v.code === 'VIR') b.VIR += (v.montant_ht || 0)
@@ -488,6 +503,22 @@ const [pushing, setPushing] = useState(false)
         else if (v.code === 'FMEN') b.FMEN += (v.montant_ttc || 0)
         else if (v.code === 'AUTO') { b.AUTOREEL += (v.montant_reel != null ? v.montant_reel : (v.montant_ht || 0)); b.AUTOPROV += (v.montant_ht || 0) }
         else if (v.code === 'COM') b.COM += (v.montant_ttc || 0)
+      }
+
+      // Ménage séjour propriétaire par bien : MEN saisi sinon FMEN TTC + AUTO (réel sinon provision),
+      // même règle que buildRapportData.ownerStayList. Séjour proprio annulé = sans frais.
+      const ownerStayByBien = {}
+      {
+        const parResa = {}
+        for (const v of (ownerStayVentRows || [])) {
+          if (['cancelled', 'not accepted'].includes(v.reservation?.final_status)) continue
+          const k = v.reservation_id
+          if (!parResa[k]) parResa[k] = { bien_id: v.bien_id, MEN: 0, FMEN: 0, AUTO: 0 }
+          if (v.code === 'MEN') parResa[k].MEN += v.montant_ttc || 0
+          else if (v.code === 'FMEN') parResa[k].FMEN += v.montant_ttc || 0
+          else if (v.code === 'AUTO') parResa[k].AUTO += (v.montant_reel ?? v.montant_ht ?? 0)
+        }
+        for (const x of Object.values(parResa)) ownerStayByBien[x.bien_id] = (ownerStayByBien[x.bien_id] || 0) + (x.MEN > 0 ? x.MEN : x.FMEN + x.AUTO)
       }
 
       // Prestations par bien
@@ -557,7 +588,8 @@ const [pushing, setPushing] = useState(false)
         // loyer du mois → réintégrés ici, sinon « Tréso ⚠ +1 940,59 € » à tort.
         const remboursements = bienIds.reduce((t, bid) => t + (rembByBien[bid] || 0), 0)
         const fraisDeduits = bienIds.reduce((t, bid) => t + (fraisDedByBien[bid] || 0), 0)
-        const virProprio = Math.max(0, creditsMois - hon - fmen - autoprov - prest - haowner - com) - fraisDeduits + remboursements
+        const ownerStayMenage = bienIds.reduce((t, bid) => t + (ownerStayByBien[bid] || 0), 0)
+        const virProprio = Math.max(0, creditsMois - hon - fmen - autoprov - prest - haowner - com) - fraisDeduits + remboursements - ownerStayMenage
         const surReversement = (f.montant_reversement || 0) - virProprio
         const isSafe = solde === 0 && resasAnomalie.size === 0
           && totalResas > 0 && resasProuvees.size === totalResas && payinManquant === 0 && !hasResaManquant
