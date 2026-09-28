@@ -538,3 +538,10 @@ Non vérifié : avril (total seulement, 646,44), avant avril (tableaux Laura), s
   (5218629341, HMRQCPWN9Q, HM48EDHCCW, MS42LG, HMJQZHJX5T, HOST-FJ3DGE, HMZE225AMM, HMKFBZQDB5, HMDWQK4EE5 → `montant_ttc`),
   9BSN1P 350, E2VWKM 130.
 - Écarts de marque en sens inverse (sans risque) : MIRAMARVEL mai −12,50, juin −25,00 ; ARROSA juin −150,25 (voulu, §23).
+
+## 31. Session Lauïan (28/09/2026) — marques `fmen_facture` restaurées (autorisé par Oïhan)
+- 14 lignes FMEN corrigées (journal `fmen_facture_marque_restauree`, source claude-session-lauian) :
+  avril 9 lignes → montant facturé (F-374 302,24 · F-375 344,20) ; juillet 9BSN1P 350 et E2VWKM 130 (F-303, F-302) ;
+  MIRAMARVEL HM9M9YX2NK (mai), HMH5C5YA98 (juin), HMA45ECZCY (juillet) → marque = effectif (écart compris dans C14).
+- Simulation refaite : **0 ligne d'ajustement/rattrapage avril-août** sur les factures FMEN de septembre.
+- Reste pour la session DCB : corriger la cause (recréation des lignes FMEN qui perd `fmen_facture`, §30).
