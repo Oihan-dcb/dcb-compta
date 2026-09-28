@@ -473,3 +473,16 @@ Si ces virements n'ont pas eu lieu : 16 097,68 € dus aux propriétaires.
   207,82) ; écart toujours 0.
 - **24.5 ARROSA mai 1 032,60** : compté comme remboursement déjà versé dans le justificatif Lauïan (jamais comme dû) —
   le statut du frais peut passer en `facture` sans effet.
+
+### 24.6 — Modèle de facturation FMEN DCB → propriétaires Lauïan : validé, 2 points de vigilance
+Validé sur les 26 factures mai-août (au centime) : FMEN facturé = MEN voyageur − AUTO réel (provision tant que le
+réel n'est pas connu) ; pour le propriétaire, AUTO + FMEN = MEN, jamais de surfacturation ; écart de réel après
+facturation → « Ajustement ménage » automatique sur la facture M+1 ; annulées à 0 € exclues.
+1. **ARROSA HMENAJ2SF8 (juin, Koytcha)** : la mission Manon du 08/06 (33,33 €) y est rattachée depuis le 28/09 →
+   son AUTO réel change à la prochaine ventilation → la **facture FMEN ARROSA de septembre portera une ligne
+   « Ajustement ménage HMENAJ2SF8 (2026-06) »**. Mécanique et juste si ce ménage appartient bien au séjour, mais
+   c'est la résa qui justifie les 150,25 € (§23) : à contrôler quand la ligne apparaît.
+2. **ARROSA mai (HM4ZP52FXJ, HMFY9H2KSS, HMRBQXBSMW)** : ménages faits par les propriétaires (remboursés 1 032,60 €),
+   mais `ventilation.fmen_facture` tamponné comme facturé. Sans effet aujourd'hui ; si leur `montant_reel` venait à
+   changer, un « Ajustement ménage » serait calculé sur un ménage que DCB n'a pas fait — à neutraliser si ça arrive.
+Non vérifié : avril (total seulement, 646,44), avant avril (tableaux Laura), septembre (factures à générer).
