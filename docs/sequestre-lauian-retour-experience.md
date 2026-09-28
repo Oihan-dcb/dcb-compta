@@ -522,3 +522,19 @@ Non vérifié : avril (total seulement, 646,44), avant avril (tableaux Laura), s
 - Conséquence séquestre : B10 (ménage de fond COCO 2025 en HON Lauïan) = 76,01 € au courant, G1 = 0, écart 0,00 €.
 - Larry (MIRAMARVEL, janvier) : facture HON complémentaire créée dans Evoliz Lauïan, brouillon **T-20260000193**
   (35,35 HT / 42,42 TTC, client SMANIOTTO) — à valider.
+
+## 30. Session Lauïan (28/09/2026) — correction du §29 : marques `fmen_facture` perdues, C14 rétabli
+- Les 480 € de juillet = **KOSTALDEA 9BSN1P 350 €** (F-303) + **AMAÏA E2VWKM 130 €** (séjour proprio, F-302) : facturés le
+  05/08, mais leurs lignes de ventilation ont été **recréées le 06/08** → `fmen_facture` NULL. Idem **avril** : F-374
+  MIRAMARVEL 302,24 € et F-375 ENEKO 344,20 € ont 0 € de marques (lignes recréées le 06/08 et le 13/08).
+- **Cause racine (moteur de ventilation, session DCB)** : la recréation des lignes FMEN ne reporte pas `fmen_facture`.
+  À corriger là : conserver la marque quand une ligne FMEN est supprimée puis réinsérée pour la même résa et le même mois.
+- **Effet si on ne fait rien** : la prochaine facture FMEN KOSTALDEA ajoute « Rattrapage ménage 9BSN1P (2026-07) » de
+  **+350 €, déjà payés**. E2VWKM et avril refactureraient aussi tout dès qu'un réel sera saisi.
+- Simulation des ajustements de septembre (avril-août) : +350 (9BSN1P, faux) +8,33 +6,25 −8,33 (MIRAMARVEL).
+  Les 80,84 € ne sortent pas tout seuls → **option a abandonnée : C14 = 80,84 € viré**, B10 = 0, G1 = 4,83 €.
+  Donc **aucune** ligne Ajustement/Rattrapage avril-août ne doit rester sur les factures FMEN DCB de septembre.
+- Marques à restaurer (= montants facturés), **pas encore fait** (non autorisé dans cette session) : 9 FMEN d'avril
+  (5218629341, HMRQCPWN9Q, HM48EDHCCW, MS42LG, HMJQZHJX5T, HOST-FJ3DGE, HMZE225AMM, HMKFBZQDB5, HMDWQK4EE5 → `montant_ttc`),
+  9BSN1P 350, E2VWKM 130.
+- Écarts de marque en sens inverse (sans risque) : MIRAMARVEL mai −12,50, juin −25,00 ; ARROSA juin −150,25 (voulu, §23).
