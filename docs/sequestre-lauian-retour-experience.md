@@ -552,6 +552,8 @@ Non vérifié : avril (total seulement, 646,44), avant avril (tableaux Laura), s
 - **PALMARIA 07/2026** : débours **DCB** créé dans l'app (pas d'Evoliz), **brouillon non validé** —
   `facture_evoliz` e2c85886 (agence dcb, AIA BIARRITZ 97ab6c59, 225 €, ligne DEBP taux 0, ménage de fond Eve Vincent 30/07).
   Il fallait d'abord relâcher l'unicité (migration 286 : `agence` ajoutée à la clé, I-179) car le débours Lauïan 0a80584d bloquait.
-- **Non fait, en attente d'Oïhan** : annulation du débours **Lauïan** 0a80584d (statut `envoye_proprio`, relances actives).
-  Tant qu'il n'est pas annulé, le proprio a deux débours de 225 € pour le même ménage.
+- **Débours Lauïan 0a80584d supprimé** (28/09, sur instruction d'Oïhan) — était `envoye_proprio`, 1 relance (26/09),
+  aucune clôture/loyer/facture liée. Les relances s'arrêtent. Reste un seul débours : le DCB e2c85886 (brouillon).
+- ⚠ La prestation source 6d33b5fa reste `deduction_loy` sur PALMARIA : une régénération des factures Lauïan de
+  juillet recréerait le débours Lauïan — ne pas régénérer juillet côté Lauïan.
 - Virement de 225 € à Eve depuis DCB : à faire par Oïhan.
