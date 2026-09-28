@@ -140,6 +140,12 @@ serve(async (req) => {
   const contratsAnnules = Array.from(
     new Map((contratsAnnulesRaw || []).map(c => [c.reservation_id, c])).values()
   )
+  // Contrat regénéré : la même résa a aussi un contrat signé → l'annulé n'est qu'une ancienne
+  // version (Phoebe Keen 6576088580 : signé + annulé le 08/06)
+  const { data: signesTous } = await supabase
+    .from('rental_contracts').select('reservation_id').eq('statut', 'signed')
+    .in('reservation_id', contratsAnnules.map(c => c.reservation_id))
+  const resaAvecSigne = new Set((signesTous || []).map(c => c.reservation_id))
 
   const codesAVerifier = [
     ...(contratsSignes || []).map(c => c.reservation_id),
@@ -149,7 +155,7 @@ serve(async (req) => {
 
   const { data: resas } = await supabase
     .from('reservation')
-    .select('code, guest_name, arrival_date, fin_revenue, rapprochee, final_status, owner_stay, platform, bien!inner(code, agence)')
+    .select('code, guest_name, arrival_date, departure_date, fin_revenue, rapprochee, final_status, owner_stay, platform, bien!inner(code, agence)')
     .in('code', codesAVerifier)
     .eq('bien.agence', AGENCE)
   const resaByCode = Object.fromEntries((resas || []).map(r => [r.code, r]))
@@ -186,6 +192,14 @@ serve(async (req) => {
       if (r.owner_stay) return null // séjour propriétaire — contrat auto-généré/annulé sans rapport avec un vrai locataire
       if (['cancelled', 'not accepted'].includes(r.final_status)) return null // déjà annulée, résolu
       if (!(r.fin_revenue > 0)) return null
+      if (resaAvecSigne.has(c.reservation_id)) return null // contrat regénéré : une version signée existe
+      // Airbnb / Booking : l'annulation passe par la plateforme (final_status synchronisé par
+      // Hospitable) — le contrat DCB n'y est qu'une pièce annexe, son annulation ne dit rien.
+      if (!['direct', 'manual'].includes(r.platform)) return null
+      // Encaissée (rapprochée) : payée → séjour réel (une annulation remboursée passe la résa en
+      // cancelled côté Hospitable). 12 fausses alertes Lauïan + 3 DCB au 28/09/2026, toutes payées.
+      // Reste signalé le cas visé à l'origine : contrat annulé, résa active, JAMAIS payée (HOST-TJNPFC).
+      if (r.rapprochee) return null
       return {
         guestName: r.guest_name || '—',
         bienCode: r.bien?.code || '—',
