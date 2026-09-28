@@ -557,3 +557,12 @@ Non vérifié : avril (total seulement, 646,44), avant avril (tableaux Laura), s
 - ⚠ La prestation source 6d33b5fa reste `deduction_loy` sur PALMARIA : une régénération des factures Lauïan de
   juillet recréerait le débours Lauïan — ne pas régénérer juillet côté Lauïan.
 - Virement de 225 € à Eve depuis DCB : à faire par Oïhan.
+
+## 32. Session Lauïan (28/09/2026) — Hamilton AMAÏA : ventilation restée après annulation (pour la session DCB)
+- HMSFJF3F2Y (Hamilton, 10-14/07) annulée le 26/06, remboursée 100 % : `fin_revenue` = 0, mais la ventilation du 06/08
+  porte toujours **LOY 646,86 / VIR 646,86 / FMEN 79,54 / MEN 90** (calculée sur `fin_accommodation` 706,50). C'est ce VIR
+  qui a été viré à tort le 07/08 (4 947,36 au lieu de 4 300,50) → régularisation frais 646,86 en septembre.
+- **Moteur (session DCB)** : une résa annulée à `fin_revenue` 0 ne devrait garder aucune ligne LOY/VIR/FMEN/MEN — à purger
+  à la resynchro, et vérifier que l'export SCT ne prend jamais un VIR de résa annulée sans revenu.
+- Côté Rapports (258c21d) : ces lignes sont maintenant neutralisées à l'écran (le PDF les excluait déjà). Ajustement
+  « Cancellation refund −180 » (a_qualifier) à qualifier « Sans impact ».
