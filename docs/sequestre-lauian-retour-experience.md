@@ -431,3 +431,16 @@ Si ces virements n'ont pas eu lieu : 16 097,68 € dus aux propriétaires.
   facturé F-20260000259 (décision Oïhan : les 150,25 € restent à DCB). AUTO réel = total missions →
   update-ventilation-auto renverra « unchanged », pas de recalcul FMEN ni d'ajustement M+1. journal_ops 1a43f8f5.
 - **24.2 LLD** : en attente des exports CE du compte LLD …7053744 78 et du compte cautions depuis le 01/07 (Oïhan).
+
+### 24.5 — Factures FMEN DCB → propriétaires Lauïan (vérif 28/09) — ⚠ double déduction Hamilton 79,54 €
+- État : avril F-374/F-375 (646,44) validées non payées ; mai (1 580,27) et juin (1 798,36) payées ; **juillet
+  12 factures F-301…F-320 = 4 973,04 €** marquées payées le 24/09 (retenue) ; août F-370…F-383 = 5 481,08 validées
+  non payées ; septembre à générer début octobre. Toutes finalisées (F-), totaux Evoliz = app (±0,02).
+- **F-20260000302 (AMAÏA juillet) vaut DÉJÀ 566,28 € (app) / 566,27 € (Evoliz)** = FMEN ventilé 645,82 − 79,54
+  (séjour Hamilton HMSFJF3F2Y annulé à 0 €, exclu par I-168 à la régénération du 24/09 — ses lignes FMEN 79,54 /
+  LOY 646,86 traînent encore en ventilation mais sont ignorées par la facturation).
+  → **ne PAS émettre l'avoir F1 de 79,54 € sur F-302**, et le virement **C6 « FMEN JUILLET 26 - LAUIAN » =
+  4 973,04 € (et non 4 893,50 €)**. Sinon les 79,54 € sont déduits deux fois au détriment de DCB.
+- Écarts facture ≠ FMEN ventilé (probablement « le réel prime », multiples de 25 €, non revérifiés un par un) :
+  juillet BERDEA +100, FOLLE −75,12, MIRAMARVEL +14,58 ; août AMAÏA −25, ARROSA +75, BITXI +25, COCO +50,
+  MARNEKO +50, MIRAMARVEL +18,75, OLATUA −50 ; mai ARROSA +194,90 ; juin ARROSA +150,25 (§23, connu).
