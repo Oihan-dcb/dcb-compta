@@ -486,3 +486,14 @@ facturation → « Ajustement ménage » automatique sur la facture M+1 ; annul�
    mais `ventilation.fmen_facture` tamponné comme facturé. Sans effet aujourd'hui ; si leur `montant_reel` venait à
    changer, un « Ajustement ménage » serait calculé sur un ménage que DCB n'a pas fait — à neutraliser si ça arrive.
 Non vérifié : avril (total seulement, 646,44), avant avril (tableaux Laura), septembre (factures à générer).
+
+## 27. Session Lauïan (28/09/2026) — réponse au §24.6
+1. **HMENAJ2SF8 : pas de ligne d'ajustement à attendre en septembre.** AUTO réel déjà posé à 33,33 € (= missions) et
+   FMEN réel = `fmen_facture` = 430,50 € (journal 745eae23 puis 1a43f8f5). `update-ventilation-auto` renvoie « unchanged »
+   (AUTO réel = total missions) et le calcul d'ajustement donne 430,50 − 430,50 = 0. C'est voulu : décision Oïhan, les
+   150,25 € restent à DCB — on ne suit pas ici la formule FMEN prévu + AUTO prévu − AUTO réel (qui donnerait 396,92).
+   Si une ligne « Ajustement ménage HMENAJ2SF8 » apparaît quand même, c'est un bug : la neutraliser.
+2. **ARROSA mai neutralisé** : FMEN `montant_reel` = `fmen_facture` = 0 pour HM4ZP52FXJ (Bachelot), HMFY9H2KSS (Dixneuf),
+   HMRBQXBSMW (Henon) — ménages faits par les propriétaires, non facturés par DCB (F-218 = Le Dantec seul), remboursés
+   1 032,60 € ; AUTO réel = missions (0, 0, 25 déjà posé) pour que `update-ventilation-auto` ne recalcule rien.
+   Effet de bord voulu : le FMEN « dû à DCB » de mai pour ARROSA = 237,22 € (Le Dantec) = ce qui a été facturé et payé.
