@@ -6,7 +6,7 @@ import { AGENCE } from '../lib/agence.js'
 export async function listerEtudiants(agence = AGENCE, statut = null, inclureArchives = false) {
   let q = supabase
     .from('etudiant')
-    .select('*, bien (id, code, hospitable_name), proprietaire (id, nom, prenom)')
+    .select('*, bien (id, code, hospitable_name, skip_facturation), proprietaire (id, nom, prenom)')
     .eq('agence', agence)
     .order('nom')
   if (statut) q = q.eq('statut', statut)
@@ -123,6 +123,9 @@ export function tauxCommission(e) {
 
 // Honoraires DCB = taux × CC (du mois si fourni, sinon plein)
 export function honorairesEtudiant(e, mois = null) {
+  // Bien interne / perso du gérant (LAGREOU, ASKIDA…) : aucun honoraire, le propriétaire reçoit le
+  // loyer entier (même règle que la saisonnière, facturesEvoliz skip_facturation) — I-176
+  if (e?.bien?.skip_facturation) return 0
   return Math.round(montantTotalEtudiant(e, mois) * tauxCommission(e))
 }
 

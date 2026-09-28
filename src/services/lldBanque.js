@@ -1,3 +1,4 @@
+import { extraireMois } from './lldCore.js'
 import { supabase } from '../lib/supabase.js'
 import { AGENCE } from '../lib/agence.js'
 
@@ -197,14 +198,16 @@ export async function autoMatcherVirementsProprioLLD(agence = AGENCE) {
   const [{ data: mvts }, { data: virements }] = await Promise.all([
     supabase
       .from('lld_mouvement_bancaire')
-      .select('id, libelle, detail, debit, date_operation')
+      .select('id, libelle, detail, debit, date_operation, statut')
       .eq('agence', agence)
-      .eq('statut', 'non_rapproche')
+      // + débits déjà « rapprochés » par l'ancien moteur (lien bien/étudiant, jamais le virement du
+      // mois) : repris SEULEMENT si le libellé cite le mois (« LOYER JUILLET PAITOU ») — I-176
+      .in('statut', ['non_rapproche', 'rapproche'])
       .not('debit', 'is', null)
       .gt('debit', 0),
     supabase
       .from('virement_proprio_suivi')
-      .select('id, montant, etudiant:etudiant_id(proprietaire:proprietaire_id(nom, prenom))')
+      .select('id, montant, mois, etudiant:etudiant_id(proprietaire:proprietaire_id(nom, prenom), bien:bien_id(code))')
       .eq('agence', agence)
       .eq('statut', 'a_virer'),
   ])
@@ -214,14 +217,31 @@ export async function autoMatcherVirementsProprioLLD(agence = AGENCE) {
   let lies = 0
   for (const m of mvts) {
     const haystack = norm(`${m.libelle || ''} ${m.detail || ''}`)
-    // Match : montant exact + nom du propriétaire dans le libellé
-    const candidats = virements.filter(v => {
-      if (v.montant !== m.debit) return false
-      const propNom = norm(v.etudiant?.proprietaire?.nom || '')
-      return propNom && haystack.includes(propNom)
-    })
+    // Match : montant exact + propriétaire reconnu dans le libellé — nom complet, ou début du nom
+    // coupé par la banque (« M CHARLES-ALEXANDRE NIC » = NICOLLE, libellé tronqué à 32 caractères),
+    // ou code du bien. Plusieurs mois au même montant (PAITOU 634,50 € juillet/août/septembre) :
+    // le mois cité dans le libellé (« LOYER SEPTEMBRE PAITOU »), sinon le plus ancien. I-176
+    const mots = haystack.split(/[^a-z0-9]+/).filter(Boolean)
+    const reconnu = v => {
+      const propNom = norm(v.etudiant?.proprietaire?.nom || '').replace(/[^a-z0-9 ]/g, ' ').trim()
+      const code = norm(v.etudiant?.bien?.code || '')
+      if (propNom && haystack.includes(propNom)) return true
+      // dernier mot du nom du donneur d'ordre (1re ligne, avant « (ref: ») — c'est lui que la banque coupe
+      const ligne1 = norm((m.libelle || '').split(/\n|\(ref/i)[0]).split(/[^a-z0-9]+/).filter(Boolean)
+      const dernier = ligne1[ligne1.length - 1] || ''
+      if (propNom && dernier.length >= 3 && propNom.split(' ')[0].startsWith(dernier)) return true
+      return code.length >= 3 && mots.some(w => w === code || (w.length >= 4 && code.startsWith(w)))
+    }
+    let candidats = virements.filter(v => !v._pris && v.montant === m.debit && reconnu(v))
+    const moisLib = extraireMois(`${m.libelle || ''} ${m.detail || ''}`, m.date_operation)
+    if (m.statut === 'rapproche') candidats = moisLib ? candidats.filter(v => v.mois === moisLib) : []
+    if (candidats.length > 1) {
+      const duMois = moisLib ? candidats.filter(v => v.mois === moisLib) : []
+      candidats = duMois.length === 1 ? duMois : [...candidats].sort((a, b) => a.mois.localeCompare(b.mois)).slice(0, 1)
+    }
     if (candidats.length === 1) {
       const v = candidats[0]
+      v._pris = true
       const [e1, e2] = await Promise.all([
         supabase.from('virement_proprio_suivi')
           .update({ statut: 'vire', date_virement: m.date_operation })

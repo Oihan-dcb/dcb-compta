@@ -49,7 +49,11 @@ export async function rapprocherLLD(agence = AGENCE, { dryRun = false, loyersVir
       // Uniquement à partir de la bascule : avant, le suivi était à l'arrêt ou tenu par l'ancien
       // moteur, et les loyers encore « attendus » ne sont pas fiables (traitement à la main).
       .gte('date_operation', BASCULE)
-      .or('statut.eq.non_rapproche,and(statut.eq.rapproche,loyer_suivi_id.is.null,type_mouvement.is.null,compte.eq.loyers)')
+      // + loyers rapprochés mais jamais affectés à un mois (payés AVANT que le mois soit préparé :
+      // « avance_ou_mois_non_prepare » pose type_mouvement='loyer' sans loyer_suivi_id — ils
+      // n'étaient plus jamais repris → loyer de septembre « en retard » alors que payé le 02/09 ;
+      // I-176, 28/09/2026)
+      .or('statut.eq.non_rapproche,and(statut.eq.rapproche,loyer_suivi_id.is.null,compte.eq.loyers,or(type_mouvement.is.null,type_mouvement.eq.loyer))')
       .order('date_operation'),
     supabase.from('loyer_suivi').select('id, etudiant_id, mois, montant_attendu, montant_recu, statut')
       .eq('agence', agence).in('statut', ['attendu', 'en_retard']).gte('mois', moisDe(BASCULE)),
@@ -186,7 +190,7 @@ export async function dissocierMouvementLLD(mouvementId) {
 export async function aFaireLLD(agence = AGENCE, today = new Date().toISOString().slice(0, 10)) {
   const moisCourant = moisDe(today)
   const [{ data: loyers }, { data: mvts }, { data: virements }, { data: etudiants }, { data: cautions }] = await Promise.all([
-    supabase.from('loyer_suivi').select('id, mois, statut, montant_attendu, montant_recu, nb_relances, etudiant:etudiant_id(id, nom, prenom, email, telephone, jour_paiement_attendu, archived, bien:bien_id(code))')
+    supabase.from('loyer_suivi').select('id, mois, statut, montant_attendu, montant_recu, nb_relances, etudiant:etudiant_id(id, nom, prenom, email, telephone, jour_paiement_attendu, archived, date_entree, bien:bien_id(code))')
       .eq('agence', agence).in('statut', ['attendu', 'en_retard']).lte('mois', moisCourant),
     supabase.from('lld_mouvement_bancaire').select('id, date_operation, libelle, credit, compte, match_raison, suggestion:suggestion_etudiant_id(id, nom, prenom)')
       .eq('agence', agence).eq('statut', 'non_rapproche').gt('credit', 100).gte('date_operation', BASCULE).order('date_operation', { ascending: false }),
@@ -201,7 +205,17 @@ export async function aFaireLLD(agence = AGENCE, today = new Date().toISOString(
     .eq('agence', agence).eq('statut', 'rapproche').not('etudiant_id', 'is', null).or('compte.eq.cautions,type_mouvement.eq.caution')
   const cautionVersee = new Set((versCautions || []).map(m => m.etudiant_id))
   const jour = Number(today.slice(8, 10))
-  const enRetard = (loyers || []).filter(l => !l.etudiant?.archived && (l.mois < moisCourant || jour > (l.etudiant?.jour_paiement_attendu || 5) + 5))
+  // En retard : seulement les mois suivis par le moteur (depuis la bascule), avec un montant
+  // attendu, et pendant le bail. Avant la bascule, l'ancien suivi a laissé des lignes sans montant
+  // (« 0,00 € » en février / juin pour des étudiants entrés en septembre) — non fiables, traitées
+  // à la main (cf. BASCULE). I-176.
+  const enRetard = (loyers || []).filter(l => !l.etudiant?.archived
+    && l.mois >= moisDe(BASCULE) && (l.montant_attendu || 0) > 0
+    && (!l.etudiant?.date_entree || l.mois >= moisDe(l.etudiant.date_entree))
+    && !(l.etudiant?.date_entree && l.etudiant.date_entree > today) // pas encore entré (Cottrelle, entrée le 29/09)
+    // Mois d'entrée : échéance = jour d'entrée (s'il est après le jour de paiement habituel) + 5 jours
+    && (l.mois < moisCourant || jour > Math.max(l.etudiant?.jour_paiement_attendu || 5,
+      l.etudiant?.date_entree && moisDe(l.etudiant.date_entree) === l.mois ? Number(String(l.etudiant.date_entree).slice(8, 10)) : 0) + 5))
   // Virement proprio à faire seulement si le loyer correspondant est encaissé
   const { data: recus } = await supabase.from('loyer_suivi').select('etudiant_id, mois').eq('agence', agence).eq('statut', 'recu').lte('mois', moisCourant)
   const recuSet = new Set((recus || []).map(r => `${r.etudiant_id}|${r.mois}`))
