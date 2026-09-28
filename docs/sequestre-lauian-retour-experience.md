@@ -364,3 +364,57 @@ Mail Laura (`~/Downloads/Mail_Laura_sequestre_Lauian.html`) mis à jour avec vos
   Frais `cde554ca-ce7a-48af-b507-6f9e86e11757` passé en `brouillon` (annulé, journal_ops 0a2e7f91). D1 et A5 supprimées côté Lauïan.
 - 150,25 ARROSA **justifiés en FMEN réel** : HMENAJ2SF8 AUTO réel 0 (ménage par Laura), FMEN réel = fmen_facture = 430,50
   (déjà facturé sur F-20260000259) — journal_ops 745eae23. Pas d'ajustement M+1 attendu.
+
+## 24. Session DCB (28/09/2026) — pour la session Lauïan : factures brouillon, LLD, ménages (à reprendre par vous)
+
+Oïhan a trié les mails d'alerte du lundi. Tout ce qui touche Lauïan est listé ici **sans action de ma part sur
+Evoliz Lauïan** — à reprendre par la session Lauïan.
+
+### 24.1 — 29 factures d'honoraires Lauïan restées en brouillon Evoliz (juin-août) — À VALIDER PAR VOUS
+Récap `sync-evoliz-statut` du lundi : statut app `envoye_evoliz`, numéro Evoliz provisoire `T-…` (jamais finalisées).
+Contrôles faits côté app (aucun dans Evoliz Lauïan — je n'ai pas le company_id Lauïan) :
+- ligne HON de chaque facture = HON de la ventilation du bien/mois **au centime (29/29)** ;
+- total Evoliz = total app à 0,01-0,02 € d'arrondi TVA près, **sauf SUZETTE août T-20260000189** : lignes
+  HON 1 956,77 + FRAIS « VIP2 » 65 + 65 = **2 086,78 € TTC (= Evoliz, juste)**, mais `facture_evoliz.total_ttc`
+  = 2 039,74 / `total_tva` = 300,76 (la TVA des lignes fait 347,79) → en-tête app faux, le brouillon Evoliz est bon ;
+- **À VÉRIFIER AVANT VALIDATION : qu'aucune de ces factures n'existe déjà en version finalisée (F-…) dans Evoliz
+  Lauïan** (Laura a pu les refaire à la main) — sinon doublon. Demande explicite d'Oïhan.
+
+| Mois | Brouillons | TTC |
+|---|---|---|
+| 2026-06 | T-192 ARROSA, T-184 BITXI, T-134 ENEKO, T-137 MIRAMARVEL, T-136 PALMARIA | 3 577,68 € |
+| 2026-07 | T-191 AMAÏA, T-181 ARROSA, T-177 BERDEA, T-187 BITXI, T-178 COCO, T-151 ENEKO, T-190 FOLLE, T-152 KOSTALDEA, T-145 MARNEKO, T-188 MIRAMARVEL, T-185 SUZETTE, T-147 TXORIA | 22 002,33 € |
+| 2026-08 | T-183 AMAÏA, T-180 ARROSA, T-169 BITXI, T-186 COCO, T-164 ENEA, T-179 ENEKO, T-160 FOLLE, T-163 MARNEKO, T-182 MIRAMARVEL, T-165 OASIS, T-168 OLATUA, T-189 SUZETTE | 23 280,71 € |
+
+**Reversements propriétaires à vérifier** (pas d'impact sur les factures, HON justes) — virement trouvé ≠ reversement facturé :
+- TXORIA 07/2026 : facturé 8 563,95, viré 5 563,95 le 06/08 → **3 000 € d'écart** (acompte antérieur ?) ;
+- OASIS 08/2026 : facturé 9 104,39, viré 4 604,39 le 03/08 → **4 500 € d'écart** ;
+- ENEA 08/2026 : facturé 8 597,68, **aucun virement « Dubois Visioz » trouvé** sur les mouvements importés ;
+- KOSTALDEA 07/2026 : 5 949,30 = 4 486,80 (03/08) + 1 462,50 (06/08) ✓.
+Si ces virements n'ont pas eu lieu : 16 097,68 € dus aux propriétaires.
+
+### 24.2 — LLD Lauïan (récap lld-auto du lundi) — il manque les relevés
+- Correctif commun **I-176** (commit 614b21a) : récap 19 → 6 retards (lignes « 0,00 € » d'avant la bascule
+  01/07/2026 et mois hors bail ignorés ; loyers payés avant préparation du mois repris ; virements proprio : noms
+  tronqués, mois du libellé, biens `skip_facturation` sans honoraires).
+- **`lld_mouvement_bancaire` agence lauian : aucun import depuis le 01/07/2026** (dernier import 08/07). Les loyers LLD
+  Lauïan arrivent sur le compte **…7053744 78** (les cautions en partent vers le compte cautions : « CAUTION ANNA
+  GRANGIER » 1 264,80 le 11/08, « CAUTION BITXI » 1 336 le 11/09, « CAUTION FOLLE BRISE » 1 270 le 11/08).
+- Cautions « non reçues » du récap = **reçues** : Carvalho 1 264,80 (11/08), Chaussat 1 336 (11/09), Heyberger 695
+  (05/05/2025, placée le 13/05/2025). Non vues faute d'import du compte cautions.
+- 6 retards restants (Heyberger 07-09 720 €, Carvalho 08-09, Chaussat 09) : invérifiables sans le relevé …7053744 78.
+- → Il faut les exports CE Lauïan depuis le 01/07/2026 du compte LLD …7053744 78 et du compte cautions, puis
+  import + `rapprocherLLD('lauian')`. Heyberger : pas d'e-mail sur sa fiche.
+
+### 24.3 — Ménages AE Lauïan rattachés (I-173 / I-177)
+- Bug `sync-ical-ae:matchResa` (offsets [0,+1] au lieu de [0,−1,−2,+1]) corrigé ; rattachés : COCO 11/07 (175 €,
+  Eve) → HMS53M5BCH Thijs Ivens ; MARNEKO 02/08 (37,50 €, Esteban) → M0IPZI Helmcke ; **ARROSA 08/06 (33,33 €,
+  Manon) → HMENAJ2SF8 Radj Koytcha** (ménage de préparation ; départ du 11/06 fait par Laura non rémunérée —
+  confirmé Oïhan). ⚠ HMENAJ2SF8 est la résa qui justifie les **150,25 € ARROSA « FMEN réel »** (§23) : son AUTO
+  réel passera de la provision à 33,33 € à la prochaine ventilation — à vérifier que votre justification tient.
+- Type d'intervenant `gerant` (Oïhan) traité comme `staff` partout (export débours, compta, facturation, alerte) :
+  PALMARIA 11/06 (Oïhan, 50 €) n'est plus un débours. Alerte ménages orphelins Lauïan : 0.
+
+### 24.4 — Alertes corrigées qui touchaient aussi Lauïan
+- Contrats annulés (I-175) : les 12 lignes Lauïan (séjours de l'été payés au centime) ne sont plus signalées.
+- Canal Airbnb (I-174) : un mouvement n'est « airbnb » que si « AIRBNB PAYMENTS » figure au libellé.
