@@ -590,7 +590,11 @@ const [pushing, setPushing] = useState(false)
         const fraisDeduits = bienIds.reduce((t, bid) => t + (fraisDedByBien[bid] || 0), 0)
         const ownerStayMenage = bienIds.reduce((t, bid) => t + (ownerStayByBien[bid] || 0), 0)
         const virProprio = Math.max(0, creditsMois - hon - fmen - autoprov - prest - haowner - com) - fraisDeduits + remboursements - ownerStayMenage
-        const surReversement = (f.montant_reversement || 0) - virProprio
+        // Solde négatif : montant_reversement = 0 et le manque est RÉCLAMÉ au propriétaire (montant_reclame)
+        // → position facturée = −montant_reclame, sinon « Tréso ⚠ +75,01 € » à tort sur les frais non
+        // absorbés par le loyer (B16/B24/DUL/PATXI juillet 2026 — Oïhan 28/09/2026).
+        const reverseFacture = (f.montant_reversement || 0) - (f.solde_negatif ? (f.montant_reclame || 0) : 0)
+        const surReversement = reverseFacture - virProprio
         const isSafe = solde === 0 && resasAnomalie.size === 0
           && totalResas > 0 && resasProuvees.size === totalResas && payinManquant === 0 && !hasResaManquant
           && surReversement <= 100
