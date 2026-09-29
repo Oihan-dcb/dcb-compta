@@ -339,6 +339,10 @@ async function genererFactureGroupe(proprio, biens, mois, ctx) {
     ['a_facturer', 'facture'].includes(f.statut)
   )
   const fraisDeduireTTC = (fraisDeduire || []).reduce((s, f) => s + (f.montant_ttc || 0), 0)
+  // « Régularisation virement MM/AAAA » (trop-versé récupéré sur un reversement, ex. Hamilton AMAÏA
+  // 07/2026) : RETENUE du reversement, pas une vente — jamais de ligne de facture ni de TVA
+  // (Oïhan 29/09/2026). Même convention de libellé que sequestreJustificatif (hors part agence).
+  const estRegulVirement = f => /^Régularisation virement /i.test(f.libelle || '')
 
   const remboursements = ctx.fraisGlobaux.filter(f =>
     bienIds.includes(f.bien_id) &&
@@ -639,7 +643,7 @@ async function genererFactureGroupe(proprio, biens, mois, ctx) {
   let fraisDeduitHT = 0, fraisDeduitTVA = 0
   for (const frais of (fraisDeduire || [])) {
     const montant = frais.montant_ttc || 0
-    if (montant <= 0) continue
+    if (montant <= 0 || estRegulVirement(frais)) continue
     const ht = Math.round(montant / 1.20)
     fraisDeduitHT  += ht
     fraisDeduitTVA += montant - ht
@@ -911,7 +915,7 @@ async function genererFactureGroupe(proprio, biens, mois, ctx) {
   // à hauteur de `deduit`, le reste (`reliquat`) est réclamé au propriétaire (resteAPayer).
   for (const frais of (fraisDeduire || [])) {
     const montant = frais.montant_ttc || 0
-    if (montant <= 0) continue
+    if (montant <= 0 || estRegulVirement(frais)) continue
     const { deduit = 0 } = fraisDeductionMap.get(frais.id) || {}
     const montantHT  = Math.round(montant / 1.20)
     const montantTVA = montant - montantHT
