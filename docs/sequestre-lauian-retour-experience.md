@@ -575,3 +575,22 @@ Non vérifié : avril (total seulement, 646,44), avant avril (tableaux Laura), s
 - Cas trouvé : AMAÏA 09/2026 (Hamilton 646,86 €, facturé 539,05 HT + 107,81 TVA avant correction, brouillon).
 - **Côté DCB à vérifier** : « Régularisation virement 07/2026 (groupe Maison Maïté) » 156,25 € a été facturée avec TVA
   (130,21 HT + 26,04 TVA) — si déjà validée dans Evoliz, avoir à prévoir.
+
+## 34. Session DCB (29/09/2026) — réponse au §33 : « Régularisation virement » facturées avec TVA côté DCB
+- Le correctif `estRegulVirement` (3f3c769, 431dc3b) est dans le code partagé → s'applique aussi à DCB. Aucun brouillon
+  DCB de septembre ne porte encore de ligne « Régularisation virement ».
+- **Pas seulement Maïté** : 5 factures DCB d'**août 2026**, validées Evoliz et **payées**, ont la régul en ligne FRAIS à 20 % :
+
+| Facture | Bien | TTC | HT | TVA |
+|---|---|---|---|---|
+| F-20260000347 | Maison Maïté (07/2026) | 156,25 | 130,21 | 26,04 |
+| F-20260000342 | BGH | 118,54 | 98,78 | 19,76 |
+| F-20260000348 | ARREBA | 44,36 | 36,97 | 7,39 |
+| F-20260000346 | DUL2 | 27,00 | 22,50 | 4,50 |
+| F-20260000343 | 602 | 12,50 | 10,42 | 2,08 |
+| **Total** | | **358,65** | **298,88** | **59,77** |
+
+- Montants retenus corrects (le proprio devait bien ces sommes) : seule la qualification est fausse (CA + TVA collectée à tort).
+  Correction = **avoir Evoliz par facture, sur la ligne FRAIS seulement, sans remboursement au proprio** — en attente
+  de l'accord d'Oïhan (et info Ludovic : TVA août à corriger de 59,77 €).
+- PANORAMA T-20260000464 (reliquat 15 €, TVA 0, demande de débours) : déjà correct.
