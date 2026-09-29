@@ -952,3 +952,6 @@ Annulée **avec** un montant retenu (`fin_revenue > 0`) : ventilation normale (l
   inchangé** (le propriétaire devait bien la somme). La facture baisse d'autant → la somme reste au séquestre au lieu
   de passer au courant. La TVA collectée à tort est corrigée sur la déclaration du mois de la rectification.
 - Exclu du rapport propriétaire (buildRapportData) et de l'export débours/prestations.
+- **Trop-versé retenu** (loyer versé en trop, quelle qu'en soit la cause) : toujours libellé « Régularisation virement MM/AAAA … »
+  (MM/AAAA = mois du virement trop long) → retenue sans ligne de facture ni TVA, argent du séquestre. Si la même correction
+  touche aussi des honoraires/ménage facturés, cette part passe par un frais `rectif_facture` séparé (I-183).

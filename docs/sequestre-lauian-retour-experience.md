@@ -596,3 +596,10 @@ Non vérifié : avril (total seulement, 646,44), avant avril (tableaux Laura), s
   septembre, **reversement inchangé** ; la facture baisse de 358,65 € → ces sommes restent au séquestre. TVA de
   septembre −59,77 € (info Ludovic). Si une session Lauïan a le même cas : même mécanisme.
 - PANORAMA T-20260000464 (reliquat 15 €, TVA 0, demande de débours) : déjà correct.
+
+## 35. Session DCB (29/09/2026) — trop-versés « Rectification facture » aussi facturés avec TVA (brouillons septembre)
+- DUL2 384,44 et PANTXIKA 403,80 (« Rectification facture 07/2026 … Trop-versé retenu », résas annulées à 0 € virées) et
+  les mixtes IBANETA 493,64 / CERES 90,84 sortaient en ligne FRAIS TVA 20 % : même erreur que §33.
+- Corrigé avant validation : libellés → « Régularisation virement MM/AAAA (F-…) » ; parts honoraires/ménage en
+  `rectif_facture` (IBANETA −190,36 honoraires annulés, CERES −134,08). Justificatif DCB inchangé (−0,79 €).
+- **Convention commune aux deux sessions** : un trop-versé retenu est TOUJOURS libellé « Régularisation virement MM/AAAA … ».

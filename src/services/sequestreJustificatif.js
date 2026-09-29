@@ -595,7 +595,8 @@ export async function justifierSequestre(agence = 'dcb', { date = new Date().toI
     for (const v of figees) (parResa[v.reservation_id] ||= {})[v.code] = ((parResa[v.reservation_id] || {})[v.code] || 0) + v.montant_ttc
     // Déjà rectifiée : un frais propriétaire cite le code de la résa (retenue « Rectification facture »)
     const { data: rectifs } = Object.keys(parResa).length
-      ? await supabase.from('frais_proprietaire').select('libelle').neq('statut', 'brouillon').ilike('libelle', 'Rectification facture%')
+      // (« Régularisation virement … » depuis le 29/09/2026 : un trop-versé retenu n'est pas une vente)
+      ? await supabase.from('frais_proprietaire').select('libelle').neq('statut', 'brouillon').or('libelle.ilike.Rectification facture%,libelle.ilike.Régularisation virement%')
       : { data: [] }
     for (const [id, c] of Object.entries(parResa)) {
       const r = resaAnnulee.get(id)
