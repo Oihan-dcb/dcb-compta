@@ -591,7 +591,13 @@ async function genererFactureGroupe(proprio, biens, mois, ctx) {
 
   // Totaux frais post-boucle : part effectivement déduite du LOY vs reliquat non couvert
   const fraisDeduitTotal   = [...fraisDeductionMap.values()].reduce((s, v) => s + v.deduit,   0)
-  const fraisReliquatTotal = [...fraisDeductionMap.values()].reduce((s, v) => s + v.reliquat, 0)
+  // Reliquat d'une « Régularisation virement » : argent dû au SÉQUESTRE, pas au courant → jamais
+  // réclamé par la facture d'honoraires (Evoliz) mais par la demande de débours (ligne REGUL,
+  // comme la main-d'œuvre AE) — Oïhan 29/09/2026. Transmis à genererFactureDebours via ctx.
+  ctx.regulReliquats = ctx.regulReliquats || new Map()
+  const regulIds = new Set((fraisDeduire || []).filter(estRegulVirement).map(f => f.id))
+  for (const id of regulIds) ctx.regulReliquats.set(id, (fraisDeductionMap.get(id) || {}).reliquat || 0)
+  const fraisReliquatTotal = [...fraisDeductionMap.entries()].filter(([id]) => !regulIds.has(id)).reduce((s, [, v]) => s + v.reliquat, 0)
 
   // Owner stay FMEN surplus → lignes prestation de service TVA 20% incluses dans totalHT/TTC
   let osFmenSurplusGlobalTTC = 0
@@ -1275,6 +1281,23 @@ async function genererFactureDebours(proprio, biens, mois, ctx) {
     // de gestion, VIP, achats surfacturés = prestations DCB TVA 20 %, toujours sur la facture
     // d'honoraires (y compris le reliquat non couvert par le LOY). Avant : lignes FRAIS à TVA 0 %
     // ici, jamais transmises à Evoliz pour les biens sans collecte de loyer.
+  }
+
+  // Reliquat de « Régularisation virement » non couvert par le reversement : à rembourser au
+  // séquestre (ligne REGUL, TVA 0, jamais transmise à Evoliz — cf. CODES_MEMO dans evoliz.js).
+  for (const f of (ctx.fraisGlobaux || []).filter(f => bienIds.includes(f.bien_id) && ctx.regulReliquats?.has(f.id))) {
+    const reliquat = ctx.regulReliquats.get(f.id) || 0
+    if (reliquat <= 0) continue
+    lignes.push({
+      code:        'REGUL',
+      libelle:     f.libelle,
+      description: 'Trop-versé non couvert par le reversement du mois — à rembourser au séquestre',
+      montant_ht:  reliquat,
+      taux_tva:    0,
+      montant_tva: 0,
+      montant_ttc: reliquat,
+      ordre:       ordre++,
+    })
   }
 
   const existing = ctx.facturesExistantes.get(
