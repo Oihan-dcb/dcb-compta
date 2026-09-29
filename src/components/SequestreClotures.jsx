@@ -50,8 +50,7 @@ export default function SequestreClotures({ agence, onChange }) {
   if (!compte) return null
   const moisCourant = new Date().toISOString().slice(0, 7)
   const mois = []
-  // Mois en cours affiché aussi : clôture anticipée possible (arrêté à la date du jour)
-  for (let m = compte.mois_debut; m <= moisCourant; m = moisPlus(m, 1)) mois.push(m)
+  for (let m = compte.mois_debut; m < moisCourant; m = moisPlus(m, 1)) mois.push(m)
   const prochain = mois.find(m => !clotures.some(c => c.mois === m && c.verrouille))
   const dernierClos = [...clotures].filter(c => c.verrouille).sort((a, b) => b.mois.localeCompare(a.mois))[0]
 
@@ -92,20 +91,16 @@ export default function SequestreClotures({ agence, onChange }) {
                     <td style={{ ...r, color: clos && Math.abs(c.ecart) > 100 ? '#B91C1C' : undefined }}>{clos ? eur(c.ecart) : ''}</td>
                     <td style={{ ...td, textAlign: 'right' }}>
                       {!clos && m === prochain && <button className="btn btn-primary" style={{ fontSize: 12 }} disabled={!!busy}
-                        onClick={() => {
-                          const anticipe = m === moisCourant
-                          if (anticipe && !window.confirm(`${moisLabel(m)} n'est pas terminé : le justificatif sera figé à aujourd'hui (${fmtD(new Date().toISOString())}). Les mouvements des jours suivants seront couverts par la clôture de l'exercice. Continuer ?`)) return
-                          action(m, async () => {
-                            try { return await cloturerMois(agence, m, { auteur: await auteur(), anticipe }) }
-                            catch (e) {
-                              if (!/forcer/.test(e.message)) throw e
-                              const note = window.prompt(`${e.message}\n\nMotif pour clôturer quand même :`)
-                              if (!note) throw e
-                              return await cloturerMois(agence, m, { auteur: await auteur(), forcer: true, note, anticipe })
-                            }
-                          }, x => `${moisLabel(m)} clôturé — écart figé ${eur(x.ecart)} au ${fmtD(x.dateArrete)}`)
-                        }}>
-                        {busy === m ? '⏳ Calcul…' : m === moisCourant ? 'Clôturer (anticipé)' : 'Clôturer'}</button>}
+                        onClick={() => action(m, async () => {
+                          try { return await cloturerMois(agence, m, { auteur: await auteur() }) }
+                          catch (e) {
+                            if (!/forcer/.test(e.message)) throw e
+                            const note = window.prompt(`${e.message}\n\nMotif pour clôturer quand même :`)
+                            if (!note) throw e
+                            return await cloturerMois(agence, m, { auteur: await auteur(), forcer: true, note })
+                          }
+                        }, x => `${moisLabel(m)} clôturé — écart figé ${eur(x.ecart)}`)}>
+                        {busy === m ? '⏳ Calcul…' : 'Clôturer'}</button>}
                       {clos && c.mois === dernierClos?.mois && <button className="btn" style={{ fontSize: 12 }} disabled={!!busy}
                         onClick={() => { const motif = window.prompt(`Rouvrir ${moisLabel(m)} — motif :`); if (motif) action(`r${m}`, async () => rouvrirMois(agence, m, { auteur: await auteur(), motif }), () => `${moisLabel(m)} rouvert`) }}>
                         Rouvrir</button>}
