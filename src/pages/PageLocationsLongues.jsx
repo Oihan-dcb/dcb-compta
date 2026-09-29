@@ -303,16 +303,9 @@ export default function PageLocationsLongues() {
       setLoyerModal(null)
       await chargerMensuel()
 
-      // Quittance automatique si l'étudiant a un email
-      if (hasEmail) {
-        setSuccess('Loyer reçu ✓ — envoi quittance…')
-        const { error: qErr } = await supabase.functions.invoke('generer-quittance', {
-          body: { loyer_suivi_id: loyerId, envoyer_email: true },
-        })
-        setSuccess(qErr ? 'Loyer reçu ✓ — quittance non envoyée (erreur)' : 'Loyer reçu ✓ — quittance envoyée par email')
-      } else {
-        setSuccess('Loyer reçu ✓ — pas d\'email étudiant, quittance à envoyer manuellement')
-      }
+      // Envoi automatique de la quittance au « loyer reçu » DÉSACTIVÉ (Oïhan, 29/09/2026 : système
+      // LLD pas au point). La quittance s'envoie au bouton « Envoyer la quittance », après vérification.
+      setSuccess(hasEmail ? 'Loyer reçu ✓ — quittance à envoyer au bouton (envoi automatique désactivé)' : 'Loyer reçu ✓ — pas d\'email étudiant, quittance à envoyer manuellement')
     } catch (e) {
       setError(e.message)
     } finally {

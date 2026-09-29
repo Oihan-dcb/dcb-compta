@@ -253,6 +253,8 @@ export async function aFaireLLD(agence = AGENCE, today = new Date().toISOString(
 // ── Quittances : envoyées dès que le loyer est reçu — ce que faisait déjà le portail quand
 // Laura marquait un loyer reçu, désormais sans clic. Uniquement pour un paiement reconnu avec
 // CERTITUDE (ou rattaché à la main) : jamais sur une suggestion.
+const QUITTANCES_AUTO = false
+
 export async function envoyerQuittancesAuto(agence = AGENCE, { dryRun = false } = {}) {
   const { data: loyers, error } = await supabase.from('loyer_suivi')
     .select('id, mois, etudiant:etudiant_id(email, archived)')
@@ -299,7 +301,11 @@ export async function lancerLLDAuto(agence = AGENCE, { dryRun = false, today = n
   }
   out.rapprochement = await rapprocherLLD(agence, { dryRun, loyersVirtuels })
   out.virements_proprio = dryRun ? null : await autoMatcherVirementsProprioLLD(agence)
-  out.quittances = await envoyerQuittancesAuto(agence, { dryRun })
+  // Envoi automatique des quittances DÉSACTIVÉ (Oïhan, 29/09/2026 : « le système n'est pas au
+  // point », 7 quittances de septembre parties au cron du 29/09 04:31). Simulation seule : le
+  // nombre de quittances « à envoyer » reste visible, l'envoi se fait au bouton, à la main.
+  // Réactiver : QUITTANCES_AUTO = true.
+  out.quittances = await envoyerQuittancesAuto(agence, { dryRun: dryRun || !QUITTANCES_AUTO })
   out.factures = {}
   if (!dryRun) for (const m of [moisPlus(moisCourant, -1), moisCourant]) out.factures[m] = await genererFacturesLLD(m, agence)
   const af = await aFaireLLD(agence, today)
