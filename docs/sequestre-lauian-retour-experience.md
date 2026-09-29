@@ -566,3 +566,12 @@ Non vérifié : avril (total seulement, 646,44), avant avril (tableaux Laura), s
   à la resynchro, et vérifier que l'export SCT ne prend jamais un VIR de résa annulée sans revenu.
 - Côté Rapports (258c21d) : ces lignes sont maintenant neutralisées à l'écran (le PDF les excluait déjà). Ajustement
   « Cancellation refund −180 » (a_qualifier) à qualifier « Sans impact ».
+
+## 33. Session Lauïan (29/09/2026) — « Régularisation virement » hors facture (pour la session DCB)
+- Décision Oïhan : un frais `deduire_loyer` libellé « Régularisation virement MM/AAAA » (trop-versé récupéré) est une
+  **retenue sur le reversement**, pas une vente → plus de ligne FRAIS ni de TVA sur la facture d'honoraires (commit
+  précédent, `estRegulVirement` dans facturesEvoliz.js). Il reste déduit du reversement et affiché sur le rapport ;
+  sequestreJustificatif le traitait déjà hors part agence (même convention de libellé).
+- Cas trouvé : AMAÏA 09/2026 (Hamilton 646,86 €, facturé 539,05 HT + 107,81 TVA avant correction, brouillon).
+- **Côté DCB à vérifier** : « Régularisation virement 07/2026 (groupe Maison Maïté) » 156,25 € a été facturée avec TVA
+  (130,21 HT + 26,04 TVA) — si déjà validée dans Evoliz, avoir à prévoir.
