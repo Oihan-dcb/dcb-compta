@@ -85,6 +85,27 @@ async function getAgencyBankIds() {
 // APPEL GÃÂNÃÂRIQUE
 // ============================================================
 
+// Date d'une facture = mois qu'elle concerne (Oïhan 29/09/2026) : dernier jour du mois facturé,
+// ou aujourd'hui si le mois n'est pas terminé. Si Evoliz refuse une date passée (chronologie de
+// numérotation), on retombe sur aujourd'hui plutôt que de bloquer l'envoi.
+export function dateFactureMois(mois) {
+  const today = new Date().toISOString().substring(0, 10)
+  if (!/^\d{4}-\d{2}$/.test(mois || '')) return today
+  const [y, m] = mois.split('-').map(Number)
+  const fin = new Date(Date.UTC(y, m, 0)).toISOString().substring(0, 10)
+  return fin < today ? fin : today
+}
+
+async function createInvoiceDateMois(payload) {
+  try { return { inv: await evolizCall('createInvoice', payload), date: payload.documentdate } }
+  catch (e) {
+    const today = new Date().toISOString().substring(0, 10)
+    if (payload.documentdate === today || !/date/i.test(e.message)) throw e
+    console.warn('Evoliz refuse la date', payload.documentdate, '→ date du jour', e.message)
+    return { inv: await evolizCall('createInvoice', { ...payload, documentdate: today }), date: today }
+  }
+}
+
 export async function evolizCall(action, payload = {}) {
   const { data, error } = await supabase.functions.invoke('evoliz-proxy', {
     body: { action, payload, companyId: COMPANY_ID },
@@ -299,7 +320,7 @@ export async function creerFactureEvoliz(facture) {
   const clientId = await getOuCreerClientEvoliz(proprioForEvoliz)
 
   // 2. Date d'ÃÂ©mission
-  const dateEmission = facture.date_emission || new Date().toISOString().substring(0, 10)
+  let dateEmission = facture.date_emission || dateFactureMois(facture.mois)
 
   // 3. Construire les lignes de facture
   // Evoliz attend les prix en euros HT, on convertit depuis centimes
@@ -416,7 +437,7 @@ export async function creerFactureEvoliz(facture) {
   let invoiceId, invoiceNumber
   try {
     const bankIds = await getAgencyBankIds()
-    const createdInvoice = await evolizCall('createInvoice', {
+    const { inv: createdInvoice, date: dateRetenue } = await createInvoiceDateMois({
       clientId: parseInt(clientId),
       documentdate: dateEmission,
       paytermid: 1,
@@ -428,6 +449,7 @@ export async function creerFactureEvoliz(facture) {
       ...(isDebours && bankIds.seq_lc  ? { bankAccountId: bankIds.seq_lc  } : {}),
       ...(!isDebours && bankIds.agence ? { bankAccountId: bankIds.agence } : {}),
     })
+    dateEmission = dateRetenue
     invoiceId = createdInvoice?.invoiceid
     if (!invoiceId) throw new Error('invoiceid non retourné après création')
   } catch (evolizErr) {
@@ -616,9 +638,9 @@ export async function pousserFactureCOMVersEvoliz(factureId, totals, mois) {
     const [articleIdMap, classifIdMap] = await Promise.all([getArticleIdMap(), getClassificationIdMap()])
     const comArticleId = articleIdMap['COM']
     const comClassifId = classifIdMap[CLASSIFICATION_CODE_MAP['COM']]
-    const createdInvoice = await evolizCall('createInvoice', {
+    const { inv: createdInvoice, date: dateEmission } = await createInvoiceDateMois({
       clientId: parseInt(clientId),
-      documentdate: new Date().toISOString().substring(0, 10),
+      documentdate: dateFactureMois(mois),
       paytermid: 1,
       // businessProcess : ne pas envoyer avant août 2026 (valeur rejetée par Evoliz)
       comment: `Commissions sur réservations web directes — ${mois}`,
@@ -636,8 +658,6 @@ export async function pousserFactureCOMVersEvoliz(factureId, totals, mois) {
 
     const invoiceId = createdInvoice?.invoiceid
     if (!invoiceId) throw new Error('invoiceid non retourné par Evoliz')
-
-    const dateEmission = new Date().toISOString().substring(0, 10)
 
     // Facture créée en brouillon dans Evoliz — validation manuelle intentionnelle
     await supabase.from('facture_evoliz').update({
