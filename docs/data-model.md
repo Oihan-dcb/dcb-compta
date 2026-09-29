@@ -487,7 +487,7 @@ Frais engagés pour le compte d'un propriétaire : réparations, fournitures, in
 | `date` | date | Date du frais | |
 | `libelle` | text | Description du frais | Ex: 'Réparation chauffe-eau' |
 | `montant_ttc` | integer | Montant TTC en centimes | |
-| `mode_traitement` | text | `deduire_loyer` ou `facturer_direct` | Cf. règles §14 |
+| `mode_traitement` | text | `deduire_loyer`, `facturer_direct`, `remboursement`, `facturer_et_deduire`, `rectif_facture` | Cf. règles §14. `rectif_facture` (migration 287) : requalification d'une ligne facturée à tort sur une facture validée → ligne FRAIS négative HT+TVA sur la facture de `mois_facturation`, reversement inchangé, absent du rapport propriétaire et de l'export débours. |
 | `mode_encaissement` | text | `dcb` ou `proprio` | Seul `dcb` a un effet comptable actuellement |
 | `statut` | text | `brouillon`, `a_facturer`, `facture` | Transition : brouillon → a_facturer → facture |
 | `mois_facturation` | text | Format YYYY-MM | Mois de rattachement comptable |

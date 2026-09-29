@@ -943,3 +943,12 @@ Annulée **avec** un montant retenu (`fin_revenue > 0`) : ventilation normale (l
   d'ouverture = solde du relevé). Le justificatif, lui, reste calculé sur tout l'historique du compte.
 - **Journal** (`sequestre_journal`) : calcul de nuit, variation d'écart, anomalies apparues/résolues, affectations
   et libellés mémorisés (triggers), clôtures, réouvertures, dérives.
+
+### Rectification d'une facture déjà validée — `rectif_facture` (règle Oïhan 29/09/2026, migration 287)
+- Une ligne facturée à tort (ex. « Régularisation virement » facturée comme vente TVA 20 % en août 2026) ne se corrige
+  pas par avoir Evoliz mais sur la facture du mois suivant : frais `mode_traitement='rectif_facture'`, libellé
+  « Rectification F-XXXX (MM/AAAA) : … » (vaut facture rectificative, cite la facture d'origine).
+- Effet : ligne FRAIS **négative** (HT + TVA, même arrondi que l'origine) dans le total de la facture ; **reversement
+  inchangé** (le propriétaire devait bien la somme). La facture baisse d'autant → la somme reste au séquestre au lieu
+  de passer au courant. La TVA collectée à tort est corrigée sur la déclaration du mois de la rectification.
+- Exclu du rapport propriétaire (buildRapportData) et de l'export débours/prestations.

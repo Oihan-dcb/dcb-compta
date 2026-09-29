@@ -591,6 +591,8 @@ Non vérifié : avril (total seulement, 646,44), avant avril (tableaux Laura), s
 | **Total** | | **358,65** | **298,88** | **59,77** |
 
 - Montants retenus corrects (le proprio devait bien ces sommes) : seule la qualification est fausse (CA + TVA collectée à tort).
-  Correction = **avoir Evoliz par facture, sur la ligne FRAIS seulement, sans remboursement au proprio** — en attente
-  de l'accord d'Oïhan (et info Ludovic : TVA août à corriger de 59,77 €).
+  **Décision Oïhan : régul sur septembre (pas d'avoir)** — nouveau mode `rectif_facture` (migration 287) : 5 frais
+  « Rectification F-… (08/2026) » sur `mois_facturation` 2026-09 → ligne FRAIS négative HT+TVA sur la facture de
+  septembre, **reversement inchangé** ; la facture baisse de 358,65 € → ces sommes restent au séquestre. TVA de
+  septembre −59,77 € (info Ludovic). Si une session Lauïan a le même cas : même mécanisme.
 - PANORAMA T-20260000464 (reliquat 15 €, TVA 0, demande de débours) : déjà correct.

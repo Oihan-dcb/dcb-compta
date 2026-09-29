@@ -90,6 +90,9 @@ export async function buildRapportData(bienId, propId, mois, opts = {}) {
         // dans le rapport envoyé au propriétaire (ex. ARROSA 06/2026, frais annulé encore listé
         // en « +150,25 € Crédit » alors que le total l'excluait déjà — 27/09/2026).
         .neq('statut', 'brouillon')
+        // rectif_facture : requalification comptable sur la facture (ligne négative HT+TVA), sans effet
+        // sur le reversement ni sur ce que doit le propriétaire → absente du rapport (migration 287)
+        .neq('mode_traitement', 'rectif_facture')
         .gte('date', `${mois}-01`)
         .lt('date', `${moisSuivant}-01`)
       return isGlobal ? q.in('bien_id', maiteIds) : q.eq('bien_id', bienId)

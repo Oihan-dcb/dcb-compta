@@ -230,7 +230,7 @@ async function prechargerDonneesFacturation(mois, bienIds, proprietaireIds, agen
     supabase.from('frais_proprietaire')
       .select('id, bien_id, montant_ttc, libelle, mode_traitement, mode_encaissement, statut')
       .in('bien_id', bienIds).eq('mois_facturation', mois)
-      .in('mode_traitement', ['deduire_loyer', 'remboursement', 'facturer_direct', 'facturer_et_deduire']),
+      .in('mode_traitement', ['deduire_loyer', 'remboursement', 'facturer_direct', 'facturer_et_deduire', 'rectif_facture']),
 
     supabase.from('expense')
       .select('bien_id, amount, description, type_expense')
@@ -343,6 +343,24 @@ async function genererFactureGroupe(proprio, biens, mois, ctx) {
   // 07/2026) : RETENUE du reversement, pas une vente — jamais de ligne de facture ni de TVA
   // (Oïhan 29/09/2026). Même convention de libellé que sequestreJustificatif (hors part agence).
   const estRegulVirement = f => /^Régularisation virement /i.test(f.libelle || '')
+
+  // « rectif_facture » : requalification d'une ligne facturée à tort sur une facture déjà validée
+  // (ex. « Régularisation virement » facturée comme vente avec TVA en août 2026, F-342…348) → ligne
+  // NÉGATIVE HT + TVA sur cette facture, qui cite la facture d'origine (facture rectificative).
+  // Le reversement n'est PAS modifié : le propriétaire devait bien la somme, seule sa qualification
+  // (vente) était fausse. La facture baisse donc d'autant et la somme reste au séquestre (migration 287).
+  const rectifsFacture = ctx.fraisGlobaux.filter(f =>
+    bienIds.includes(f.bien_id) &&
+    f.mode_traitement === 'rectif_facture' &&
+    ['a_facturer', 'facture'].includes(f.statut) &&
+    (f.montant_ttc || 0) > 0
+  )
+  const rectifLignes = rectifsFacture.map(f => {
+    const ht = Math.round(f.montant_ttc / 1.20)
+    return { frais: f, ht: -ht, tva: -(f.montant_ttc - ht), ttc: -f.montant_ttc }
+  })
+  const rectifHT  = rectifLignes.reduce((s, r) => s + r.ht, 0)
+  const rectifTVA = rectifLignes.reduce((s, r) => s + r.tva, 0)
 
   const remboursements = ctx.fraisGlobaux.filter(f =>
     bienIds.includes(f.bien_id) &&
@@ -654,8 +672,8 @@ async function genererFactureGroupe(proprio, biens, mois, ctx) {
     fraisDeduitHT  += ht
     fraisDeduitTVA += montant - ht
   }
-  const totalHT  = com.ht  + (inclureFMEN ? menConsolide.ht  : 0) + div.ht  + haownerHT  + (inclureFMEN ? osFmenSurplusHT  : 0) + fraisDirectHTFacture  + fraisDeduitHT  + ajustMenHT
-  const totalTVA = com.tva + (inclureFMEN ? menConsolide.tva : 0) + div.tva + haownerTVA + (inclureFMEN ? osFmenSurplusTVA : 0) + fraisDirectTVAFacture + fraisDeduitTVA + ajustMenTVA
+  const totalHT  = com.ht  + (inclureFMEN ? menConsolide.ht  : 0) + div.ht  + haownerHT  + (inclureFMEN ? osFmenSurplusHT  : 0) + fraisDirectHTFacture  + fraisDeduitHT  + ajustMenHT  + rectifHT
+  const totalTVA = com.tva + (inclureFMEN ? menConsolide.tva : 0) + div.tva + haownerTVA + (inclureFMEN ? osFmenSurplusTVA : 0) + fraisDirectTVAFacture + fraisDeduitTVA + ajustMenTVA + rectifTVA
   const totalTTC = totalHT + totalTVA
 
   // ownerStayAbsorbTotal = part couverte par LOY → réduit le reversement
@@ -940,6 +958,21 @@ async function genererFactureGroupe(proprio, biens, mois, ctx) {
     })
   }
 
+  // Rectifications de factures antérieures (mode rectif_facture) : ligne négative, sans effet reversement
+  for (const r of rectifLignes) {
+    lignes.push({
+      facture_id:  factureId,
+      code:        'FRAIS',
+      libelle:     r.frais.libelle,
+      description: 'Rectification d\'une facture antérieure — sans effet sur le reversement',
+      montant_ht:  r.ht,
+      taux_tva:    20,
+      montant_tva: r.tva,
+      montant_ttc: r.ttc,
+      ordre:       ordre++,
+    })
+  }
+
   // CF-P1 debours_proprio : lignes DEBP pour la portion absorbée sur LOY
   for (const p of (prestationsDeboursProprio || [])) {
     if (!(p.montant > 0)) continue
@@ -1053,6 +1086,12 @@ async function genererFactureGroupe(proprio, biens, mois, ctx) {
         statut_deduction:   statutDeduction,
       })
       .eq('id', frais.id)
+  }
+
+  for (const r of rectifLignes) {
+    await supabase.from('frais_proprietaire')
+      .update({ statut: 'facture', montant_deduit_loy: 0, montant_reliquat: 0, statut_deduction: 'totalement_deduit' })
+      .eq('id', r.frais.id)
   }
 
   // Marquer les frais facturer_direct comme facturés (pas de déduction LOY)

@@ -13,6 +13,7 @@ const MODES_TRAITEMENT = {
   facturer_direct:      'Refacturer au proprio',
   remboursement:        'Remboursement (+ LOY)',
   facturer_et_deduire:  'Facturer + Déduire du loyer (LAUIAN)',
+  rectif_facture:       'Rectification facture (ligne négative, reversement inchangé)',
 }
 
 const MODES_ENCAISSEMENT = {
@@ -413,6 +414,7 @@ export default function PageFraisProprietaire() {
                     <option value="deduire_loyer">Déduire du loyer</option>
                     <option value="facturer_direct">Refacturer au propriétaire</option>
                     <option value="remboursement">Remboursement (+ LOY)</option>
+                    {formEdit.mode_traitement === 'rectif_facture' && <option value="rectif_facture">Rectification facture (sans effet reversement)</option>}
                   </select>
                   {biens.find(b => b.id === formEdit.bien_id)?.mode_encaissement === 'proprio' && formEdit.mode_traitement === 'deduire_loyer' && (
                     <span style={{ fontSize: '0.8em', color: '#DC2626', marginTop: 4, display: 'block' }}>

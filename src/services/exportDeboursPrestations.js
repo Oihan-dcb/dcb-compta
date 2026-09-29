@@ -13,6 +13,7 @@ async function fetchData(mois, bienIds = null) {
     .select('*, proprietaire:proprietaire_id(nom, prenom), bien:bien_id!inner(agence)')
     .eq('mois_facturation', mois)
     .eq('bien.agence', AGENCE)
+    .neq('mode_traitement', 'rectif_facture') // requalification comptable, ni débours ni prestation
     .order('created_at', { ascending: true })
   if (bienIds) fraisQuery = fraisQuery.in('bien_id', bienIds)
   const [{ data: prestations, error: prestErr }, { data: frais, error: fraisErr }] = await Promise.all([
