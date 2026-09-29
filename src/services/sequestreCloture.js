@@ -30,11 +30,14 @@ export async function listerClotures(agence) {
   return data || []
 }
 
-export async function cloturerMois(agence, mois, { auteur, forcer = false, note = null } = {}) {
+export async function cloturerMois(agence, mois, { auteur, forcer = false, note = null, anticipe = false } = {}) {
   const compte = await compteSequestre(agence)
   const aujourdhui = new Date().toISOString().slice(0, 10)
-  const dateArrete = finDeMois(mois)
-  if (dateArrete >= aujourdhui) throw new Error(`${mois} n'est pas terminé`)
+  // Clôture anticipée (Oïhan 29/09/2026, clôture de septembre avant le 30) : mois en cours arrêté à la
+  // date du jour ; les mouvements des derniers jours restent couverts par la clôture d'exercice.
+  const enCours = finDeMois(mois) >= aujourdhui
+  if (enCours && !(anticipe && mois === aujourdhui.slice(0, 7))) throw new Error(`${mois} n'est pas terminé`)
+  const dateArrete = enCours ? aujourdhui : finDeMois(mois)
   if (mois < compte.mois_debut) throw new Error(`${mois} est antérieur au suivi (${compte.mois_debut})`)
   const clotures = await listerClotures(agence)
   const precedent = moisPlus(mois, -1)
@@ -59,7 +62,7 @@ export async function cloturerMois(agence, mois, { auteur, forcer = false, note 
     verrouille: true, verrouille_par: auteur || null, verrouille_le: new Date().toISOString(),
   }, { onConflict: 'agence,mois' })
   if (error) throw error
-  await journaliser(agence, 'cloture_mois', `Clôture de ${mois} : solde ${eur(j.solde_banque.montant)}, justifié ${eur(j.total_justifie)}, écart ${eur(j.ecart)}${forcer ? ` — forcée : ${note}` : ''}`,
+  await journaliser(agence, 'cloture_mois', `Clôture ${enCours ? `anticipée (arrêté au ${dateArrete.split('-').reverse().join('/')}) ` : ''}de ${mois} : solde ${eur(j.solde_banque.montant)}, justifié ${eur(j.total_justifie)}, écart ${eur(j.ecart)}${forcer ? ` — forcée : ${note}` : ''}`,
     { mois, montant: j.ecart, auteur, detail: { date_arrete: dateArrete, anomalies: j.anomalies.length } })
   return { mois, dateArrete, ecart: j.ecart, solde: j.solde_banque.montant }
 }
