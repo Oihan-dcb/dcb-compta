@@ -725,13 +725,27 @@ export async function justifierSequestre(agence = 'dcb', { date = new Date().toI
 
   const lignes = arr => arr.map(m => ({ date: m.date_operation, montant: m.montant ?? m.debit ?? m.credit, libelle: (m.libelle || '').replace(/\n/g, ' ').slice(0, 120), raison: m.raison }))
 
+  // Anomalies archivées (journal type « anomalie_archivee », Oïhan 30/09/2026) : information ou trace
+  // d'une décision déjà réglée (ex. ménage réel soldé en un virement C14). Archivée pour SON montant :
+  // si le montant bouge de plus d'1 €, l'anomalie redevient active (vraie dérive).
+  const { data: archivesJ } = await supabase.from('sequestre_journal').select('detail, message, auteur, cree_le').eq('agence', agence).eq('type', 'anomalie_archivee')
+  const archives = new Map((archivesJ || []).filter(x => x.detail?.cle).map(x => [x.detail.cle, x]))
+  const anomaliesArchivees = []
+  for (let i = anomalies.length - 1; i >= 0; i--) {
+    const x = archives.get(anomalies[i].cle)
+    if (x && Math.abs((anomalies[i].montant || 0) - (x.detail.montant || 0)) <= 100) {
+      anomaliesArchivees.unshift({ ...anomalies[i], raison: x.detail.raison || '', archivee_le: x.cree_le, archivee_par: x.auteur })
+      anomalies.splice(i, 1)
+    }
+  }
+
   return {
     agence, date, mois_debut: MOIS_DEBUT_,
     solde_banque: soldeBanque,
     total_justifie: totalJustifie,
     ecart: soldeBanque.montant - totalJustifie,
     ecart_import: ecartImport,
-    poches, par_mois: parMois, anomalies, sorties_anterieures_total: totalSortiesAnterieures, ecritures,
+    poches, par_mois: parMois, anomalies, anomalies_archivees: anomaliesArchivees, sorties_anterieures_total: totalSortiesAnterieures, ecritures,
     detail: {
       debours_non_rembourses: deboursOuverts.map(f => ({ mois: f.mois, bien: f.bien?.code, montant: f.total_ttc, statut: f.statut })),
       remboursements_debours: lignes(horsMois.remboursement_debours),

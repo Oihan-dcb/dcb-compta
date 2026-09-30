@@ -40,7 +40,7 @@ export default function PageSequestre() {
     if (error) setErr(error.message)
     const dernier = data?.[0]
     if (dernier) setJ({ date: dernier.date, solde_banque: { montant: dernier.solde_banque, maj: dernier.solde_maj, banque: dernier.detail?.banque }, total_justifie: dernier.total_justifie,
-      ecart: dernier.ecart, ecart_import: dernier.detail?.ecart_import, poches: dernier.poches, par_mois: dernier.par_mois, detail: dernier.detail, anomalies: dernier.detail?.anomalies || [], source: 'photo de la nuit' })
+      ecart: dernier.ecart, ecart_import: dernier.detail?.ecart_import, poches: dernier.poches, par_mois: dernier.par_mois, detail: dernier.detail, anomalies: dernier.detail?.anomalies || [], anomalies_archivees: dernier.detail?.anomalies_archivees || [], source: 'photo de la nuit' })
     setHistorique(data || [])
     setLoading(false)
   }
@@ -58,7 +58,7 @@ export default function PageSequestre() {
       const { error: e1 } = await supabase.from('sequestre_justificatif').upsert({
         agence: AGENCE, date: r.date, solde_banque: r.solde_banque.montant, solde_maj: r.solde_banque.maj,
         total_justifie: r.total_justifie, ecart: r.ecart, poches: r.poches, par_mois: r.par_mois,
-        detail: { ...r.detail, anomalies: r.anomalies, ecart_import: r.ecart_import, banque: r.solde_banque.banque },
+        detail: { ...r.detail, anomalies: r.anomalies, anomalies_archivees: r.anomalies_archivees, ecart_import: r.ecart_import, banque: r.solde_banque.banque },
       }, { onConflict: 'agence,date' })
       if (e1) throw e1
       const { error: e2 } = await supabase.from('sequestre_ecriture').delete().eq('agence', AGENCE)
@@ -73,6 +73,16 @@ export default function PageSequestre() {
     setCalcul(false)
   }
 
+
+  async function archiver(a) {
+    const raison = window.prompt(`Archiver cette anomalie (ce n'est pas une erreur) ?\n\n${a.message}\n\nPourquoi :`)
+    if (!raison) return
+    const auteur = (await supabase.auth.getUser()).data?.user?.email || null
+    const { error } = await supabase.from('sequestre_journal').insert({ agence: AGENCE, type: 'anomalie_archivee', mois: a.mois || null, montant: a.montant ?? null,
+      message: `Anomalie archivée : ${a.message} — ${raison}`, detail: { cle: a.cle, montant: a.montant ?? 0, raison }, auteur })
+    if (error) return setErr(error.message)
+    await recalculer()
+  }
 
   const th = { textAlign: 'left', padding: '8px 10px', fontSize: 11, textTransform: 'uppercase', color: 'var(--text-muted)', background: 'var(--header-bg)' }
   const td = { padding: '7px 10px', borderTop: '1px solid #F3EFE6', fontSize: 13 }
@@ -109,8 +119,17 @@ export default function PageSequestre() {
         {j.anomalies?.length > 0 && (
           <div style={{ background: '#FEF2F2', border: '1px solid #FECACA', borderRadius: 10, padding: '10px 16px', marginBottom: 18 }}>
             <div style={{ fontWeight: 700, fontSize: 14, color: '#B91C1C', marginBottom: 6 }}>Anomalies ({j.anomalies.length})</div>
-            {j.anomalies.map(a => <div key={a.cle} style={{ fontSize: 13, padding: '3px 0' }}>• {a.message}</div>)}
+            {j.anomalies.map(a => <div key={a.cle} style={{ fontSize: 13, padding: '3px 0', display: 'flex', gap: 8, alignItems: 'baseline' }}>
+              <span style={{ flex: 1 }}>• {a.message}</span>
+              <button className="btn" style={{ fontSize: 11, padding: '1px 8px' }} onClick={() => archiver(a)} title="Ce n'est pas une erreur : information ou décision déjà réglée">Archiver</button>
+            </div>)}
           </div>
+        )}
+        {j.anomalies_archivees?.length > 0 && (
+          <details style={{ marginBottom: 18, fontSize: 13 }}>
+            <summary style={{ cursor: 'pointer', color: 'var(--text-muted)' }}>Anomalies archivées ({j.anomalies_archivees.length}) — information ou décisions déjà réglées ; réactivées si leur montant bouge</summary>
+            {j.anomalies_archivees.map(a => <div key={a.cle} style={{ padding: '4px 0 4px 12px', color: 'var(--text-muted)' }}>• {a.message}{a.raison ? <div style={{ fontStyle: 'italic', paddingLeft: 10 }}>→ {a.raison}</div> : null}</div>)}
+          </details>
         )}
 
         <div style={{ background: '#fff', border: '1px solid var(--border)', borderRadius: 10, overflow: 'hidden', marginBottom: 20 }}>

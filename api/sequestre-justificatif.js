@@ -76,7 +76,7 @@ async function traiterAgence(agence, dryRun) {
     const { error } = await supabase.from('sequestre_justificatif').upsert({
       agence, date: j.date, solde_banque: j.solde_banque.montant, solde_maj: j.solde_banque.maj,
       total_justifie: j.total_justifie, ecart: j.ecart, poches: j.poches, par_mois: j.par_mois,
-      detail: { ...j.detail, anomalies: j.anomalies, ecart_import: j.ecart_import, banque: j.solde_banque.banque },
+      detail: { ...j.detail, anomalies: j.anomalies, anomalies_archivees: j.anomalies_archivees || [], ecart_import: j.ecart_import, banque: j.solde_banque.banque },
     }, { onConflict: 'agence,date' })
     if (error) throw error
     // Grand livre : recalculé intégralement (dérivé du relevé + affectations + alias)
@@ -90,7 +90,8 @@ async function traiterAgence(agence, dryRun) {
     const clesAvant = new Set((precedent?.detail?.anomalies || []).map(a => a.cle))
     const nouvelles = j.anomalies.filter(a => !clesAvant.has(a.cle))
     const clesMaintenant = new Set(j.anomalies.map(a => a.cle))
-    const resolues = (precedent?.detail?.anomalies || []).filter(a => !clesMaintenant.has(a.cle))
+    const clesArchivees = new Set((j.anomalies_archivees || []).map(a => a.cle))
+    const resolues = (precedent?.detail?.anomalies || []).filter(a => !clesMaintenant.has(a.cle) && !clesArchivees.has(a.cle))
     const aBouge = precedent && Math.abs(j.ecart - precedent.ecart) > SEUIL_VARIATION
 
     // Journal (migration 283) : photo du jour, variation, anomalies apparues / résolues
