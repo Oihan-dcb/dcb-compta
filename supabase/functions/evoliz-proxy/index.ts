@@ -299,6 +299,12 @@ serve(async (req) => {
         break
       }
 
+      case 'finalizeCredit': {
+        // Valide un avoir brouillon (filled → numéro définitif)
+        result = await evolizReq('POST', `/credits/${payload.creditId}/create`, company)
+        break
+      }
+
       case 'getCredit': {
         result = await evolizReq('GET', `/credits/${payload.creditId}`, company)
         break
