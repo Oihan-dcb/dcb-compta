@@ -91,6 +91,8 @@ async function soldeCompte(compte, date) {
 }
 
 export async function justifierSequestre(agence = 'dcb', { date = new Date().toISOString().slice(0, 10), solde = null, moisDebut = null } = {}) {
+  // Nom de l'agence dans les libellés : « part Lauïan théorique » sur lauian-compta, pas « part DCB » (Oïhan 30/09/2026)
+  const AG = { dcb: 'DCB', lauian: 'Lauïan', bdx: 'DBDX' }[agence] || agence.toUpperCase()
   const compte = await compteSequestre(agence)
   moisDebut = moisDebut || compte.mois_debut || MOIS_DEBUT
   const autreAgenceRe = compte.autres_agences_regex ? new RegExp(`\\b(${compte.autres_agences_regex})\\b`) : null
@@ -509,10 +511,10 @@ export async function justifierSequestre(agence = 'dcb', { date = new Date().toI
   const poches = [
     { cle: 'proprietaires', label: 'Propriétaires — reversements restant dus', montant: sum(facturesListe, p => p.proprietaires.reste) },
     { cle: 'ae', label: 'AE — ménages et extras non encore payés', montant: sum(facturesListe, p => p.ae.reste) },
-    { cle: 'dcb', label: 'DCB — part encore détenue au séquestre (mois facturés)', montant: sum(facturesListe, p => p.dcb.reste) },
+    { cle: 'dcb', label: `${AG} — part encore détenue au séquestre (mois facturés)`, montant: sum(facturesListe, p => p.dcb.reste) },
     { cle: 'non_factures', label: 'Mois non facturés et séjours à venir — encaissé non encore réparti', montant: sum(parMois.filter(p => !p.facture), p => p.reste) },
     { cle: 'debours_rembourses', label: 'Débours AE (biens où le propriétaire encaisse) : remboursements reçus − ménages avancés par le séquestre', montant: tot('remboursement_debours') - sum(facturesListe, p => p.dcb.debours_ae_avances || 0) },
-    { cle: 'factures_payees_sequestre', label: 'Factures d\'honoraires payées sur le séquestre (dues à DCB) − déjà virées au courant', montant: tot('paiement_facture') - viresPoche('facture') },
+    { cle: 'factures_payees_sequestre', label: `Factures d'honoraires payées sur le séquestre (dues à ${AG}) − déjà virées au courant`, montant: tot('paiement_facture') - viresPoche('facture') },
     { cle: 'stripe', label: 'Virements reçus inférieurs aux paiements reliés (frais Stripe, payout partiel Airbnb, lignes Stripe manquantes) / frais Stripe remboursés par DCB', montant: tot('frais_stripe_rembourses') },
     { cle: 'frais_bancaires', label: 'Frais bancaires (nets des remises)', montant: tot('remise_frais_bancaires') - fraisBancaires },
     { cle: 'avant_suivi', label: 'Exercice antérieur : mouvements du compte avant le 1er mois suivi − sorties réglant des dettes antérieures (à solder avec la clôture annuelle)', montant: avantSuivi },
@@ -548,8 +550,8 @@ export async function justifierSequestre(agence = 'dcb', { date = new Date().toI
       message: `${p.mois} : ${eur(-p.ae.reste)} payés aux AE au-delà des missions et extras validés` })
     if (Math.abs(p.dcb.anomalie) > 100) anomalies.push({ cle: `dcb_${p.mois}`, mois: p.mois, montant: p.dcb.anomalie,
       message: (p.dcb.anomalie < 0
-        ? `${p.mois} : il manque ${eur(-p.dcb.anomalie)} au séquestre par rapport à la part DCB théorique (virement DCB en trop, encaissement manquant ou débours non remboursé)`
-        : `${p.mois} : ${eur(p.dcb.anomalie)} de plus que la part DCB théorique (encaissement non réparti, reversement non facturé…)`) +
+        ? `${p.mois} : il manque ${eur(-p.dcb.anomalie)} au séquestre par rapport à la part ${AG} théorique (virement ${AG} en trop, encaissement manquant ou débours non remboursé)`
+        : `${p.mois} : ${eur(p.dcb.anomalie)} de plus que la part ${AG} théorique (encaissement non réparti, reversement non facturé…)`) +
         (p.dcb.anomalie_par_proprio.length ? ` — principaux : ${[...p.dcb.anomalie_par_proprio].sort((a, b) => Math.abs(b.montant) - Math.abs(a.montant)).slice(0, 4).map(x => `${x.nom} ${eur(x.montant)}`).join(', ')}` : '') })
   }
   // Propriétaire payé au-delà de son dû sur un mois (≥ 10 €) : double paiement probable

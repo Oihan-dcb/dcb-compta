@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react'
 import { supabase } from '../lib/supabase'
-import { AGENCE } from '../lib/agence'
+import { AGENCE, AGENCE_BRAND } from '../lib/agence'
+const AG = { dcb: 'DCB', lauian: 'Lauïan', bdx: 'DBDX' }[AGENCE] || AGENCE_BRAND.label
 import { justifierSequestre } from '../services/sequestreJustificatif'
 import SequestreAAffecter from '../components/SequestreAAffecter'
 import SequestreClotures from '../components/SequestreClotures'
@@ -66,7 +67,7 @@ export default function PageSequestre() {
         <button className="btn btn-primary" style={{ marginLeft: 'auto' }} onClick={recalculer} disabled={calcul}>{calcul ? '⏳ Calcul…' : '↻ Recalculer maintenant'}</button>
       </div>
       <div style={{ fontSize: 12, color: 'var(--text-muted)', marginBottom: 18 }}>
-        Chaque euro du séquestre appartient à quelqu'un : propriétaires, DCB, AE, voyageurs. Le justificatif décompose le solde bancaire réel en ces « poches » ; l'écart doit être nul.
+        Chaque euro du séquestre appartient à quelqu'un : propriétaires, {AG}, AE, voyageurs. Le justificatif décompose le solde bancaire réel en ces « poches » ; l'écart doit être nul.
       </div>
       {err && <div className="alert alert-error">{err}</div>}
       {loading && !j && <div className="loading-state"><span className="spinner" /> Chargement…</div>}
@@ -128,7 +129,7 @@ export default function PageSequestre() {
         <div style={{ background: '#fff', border: '1px solid var(--border)', borderRadius: 10, overflow: 'auto', marginBottom: 20 }}>
           <table style={{ width: '100%', borderCollapse: 'collapse', minWidth: 900 }}>
             <thead><tr>
-              {['Mois', 'Encaissé', 'Propriétaires dû / payé', 'Reste', 'AE dû / payé', 'Reste', 'DCB viré', 'DCB détenu', 'DCB théorique', 'Anomalie'].map((h, i) => <th key={h + i} style={{ ...th, textAlign: i ? 'right' : 'left' }}>{h}</th>)}
+              {['Mois', 'Encaissé', 'Propriétaires dû / payé', 'Reste', 'AE dû / payé', 'Reste', `${AG} viré`, `${AG} détenu`, `${AG} théorique`, 'Anomalie'].map((h, i) => <th key={h + i} style={{ ...th, textAlign: i ? 'right' : 'left' }}>{h}</th>)}
             </tr></thead>
             <tbody>
               {j.par_mois.map(m => m.facture ? (
@@ -157,9 +158,9 @@ export default function PageSequestre() {
           </table>
         </div>
         <div style={{ fontSize: 12, color: 'var(--text-muted)', background: 'var(--bg)', borderRadius: 8, padding: '10px 14px', marginBottom: 20, lineHeight: 1.6 }}>
-          <strong>Lecture :</strong> « DCB détenu » = encaissé du mois − reversements dus − AE dus − déjà viré à DCB : ce que le séquestre détient réellement encore pour DCB.
-          « DCB théorique » = ce qui reste à virer d'après la page Comptabilité (honoraires, ménage, commissions des résas encaissées + frais retenus).
-          Une <strong>anomalie</strong> négative = il manque de l'argent au séquestre pour ce mois (virement DCB en trop, encaissement manquant, débours non remboursé) ;
+          <strong>Lecture :</strong> « {AG} détenu » = encaissé du mois − reversements dus − AE dus − déjà viré à {AG} : ce que le séquestre détient réellement encore pour {AG}.
+          « {AG} théorique » = ce qui reste à virer d'après la page Comptabilité (honoraires, ménage, commissions des résas encaissées + frais retenus).
+          Une <strong>anomalie</strong> négative = il manque de l'argent au séquestre pour ce mois (virement {AG} en trop, encaissement manquant, débours non remboursé) ;
           positive = de l'argent en plus (encaissement non réparti, reversement non facturé…). Mois suivis à partir de la date de départ de la fiche du compte séquestre.
         </div>
 
