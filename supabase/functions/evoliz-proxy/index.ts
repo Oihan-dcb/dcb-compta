@@ -316,7 +316,8 @@ serve(async (req) => {
           paydate: payload.paydate,
           label: payload.label || 'Règlement',
           paytypeid: payload.paytypeid ?? 2, // 2 = Virement (4 = Chèque, faux défaut jusqu'au 2026-08-05)
-          amount: payload.amount,
+          // 13 = Avoir : Evoliz exige creditid et refuse amount (l'avoir est consommé en entier)
+          ...(payload.paytypeid === 13 ? { creditid: payload.creditId } : { amount: payload.amount }),
         })
         break
       }
