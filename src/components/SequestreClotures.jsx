@@ -18,7 +18,7 @@ const TYPES = {
   calcul: ['Calcul', '#6B7280'], variation_ecart: ['Écart', '#B45309'], anomalie_nouvelle: ['Anomalie', '#B91C1C'],
   anomalie_resolue: ['Résolue', '#15803D'], affectation: ['Affectation', '#1D4ED8'], alias: ['Libellé', '#1D4ED8'],
   cloture_mois: ['Clôture', '#15803D'], reouverture_mois: ['Réouverture', '#B45309'], cloture_exercice: ['Exercice', '#15803D'],
-  derive_mois_cloture: ['Dérive', '#B91C1C'], note: ['Note', '#6B7280'], anomalie_archivee: ['Archivée', '#6B7280'],
+  derive_mois_cloture: ['Dérive', '#B91C1C'], note: ['Note', '#6B7280'], anomalie_archivee: ['Classée', '#6B7280'],
 }
 
 export default function SequestreClotures({ agence, onChange }) {

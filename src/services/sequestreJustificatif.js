@@ -734,7 +734,7 @@ export async function justifierSequestre(agence = 'dcb', { date = new Date().toI
   for (let i = anomalies.length - 1; i >= 0; i--) {
     const x = archives.get(anomalies[i].cle)
     if (x && Math.abs((anomalies[i].montant || 0) - (x.detail.montant || 0)) <= 100) {
-      anomaliesArchivees.unshift({ ...anomalies[i], raison: x.detail.raison || '', archivee_le: x.cree_le, archivee_par: x.auteur })
+      anomaliesArchivees.unshift({ ...anomalies[i], raison: x.detail.raison || '', statut: x.detail.statut || 'resolue', archivee_le: x.cree_le, archivee_par: x.auteur })
       anomalies.splice(i, 1)
     }
   }

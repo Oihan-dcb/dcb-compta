@@ -75,11 +75,12 @@ export default function PageSequestre() {
 
 
   async function archiver(a) {
-    const raison = window.prompt(`Archiver cette anomalie (ce n'est pas une erreur) ?\n\n${a.message}\n\nPourquoi :`)
+    const raison = window.prompt(`Classer cette anomalie (ce n'est pas une erreur d'argent) ?\n\n${a.message}\n\nPourquoi :`)
     if (!raison) return
+    const statut = window.confirm('Déjà réglée (virement ou décision) ?\nOK = résolue hors de l\'app · Annuler = expliquée, donnée à compléter') ? 'resolue' : 'expliquee'
     const auteur = (await supabase.auth.getUser()).data?.user?.email || null
     const { error } = await supabase.from('sequestre_journal').insert({ agence: AGENCE, type: 'anomalie_archivee', mois: a.mois || null, montant: a.montant ?? null,
-      message: `Anomalie archivée : ${a.message} — ${raison}`, detail: { cle: a.cle, montant: a.montant ?? 0, raison }, auteur })
+      message: `Anomalie ${statut === 'resolue' ? 'résolue hors de l\'app' : 'expliquée'} : ${a.message} — ${raison}`, detail: { cle: a.cle, montant: a.montant ?? 0, raison, statut }, auteur })
     if (error) return setErr(error.message)
     await recalculer()
   }
@@ -121,16 +122,20 @@ export default function PageSequestre() {
             <div style={{ fontWeight: 700, fontSize: 14, color: '#B91C1C', marginBottom: 6 }}>Anomalies ({j.anomalies.length})</div>
             {j.anomalies.map(a => <div key={a.cle} style={{ fontSize: 13, padding: '3px 0', display: 'flex', gap: 8, alignItems: 'baseline' }}>
               <span style={{ flex: 1 }}>• {a.message}</span>
-              <button className="btn" style={{ fontSize: 11, padding: '1px 8px' }} onClick={() => archiver(a)} title="Ce n'est pas une erreur : information ou décision déjà réglée">Archiver</button>
+              <button className="btn" style={{ fontSize: 11, padding: '1px 8px' }} onClick={() => archiver(a)} title="Ce n'est pas une erreur : décision déjà réglée, ou donnée à compléter">Classer</button>
             </div>)}
           </div>
         )}
-        {j.anomalies_archivees?.length > 0 && (
-          <details style={{ marginBottom: 18, fontSize: 13 }}>
-            <summary style={{ cursor: 'pointer', color: 'var(--text-muted)' }}>Anomalies archivées ({j.anomalies_archivees.length}) — information ou décisions déjà réglées ; réactivées si leur montant bouge</summary>
-            {j.anomalies_archivees.map(a => <div key={a.cle} style={{ padding: '4px 0 4px 12px', color: 'var(--text-muted)' }}>• {a.message}{a.raison ? <div style={{ fontStyle: 'italic', paddingLeft: 10 }}>→ {a.raison}</div> : null}</div>)}
-          </details>
-        )}
+        {[['resolue', 'Résolues hors de l\'app', 'réglées par un virement ou une décision que l\'app ne sait pas relier au mois'],
+          ['expliquee', 'Expliquées, en attente', 'pas une erreur d\'argent, mais une donnée à compléter dans l\'app']].map(([st, titre, sous]) => {
+          const liste = (j.anomalies_archivees || []).filter(a => (a.statut || 'resolue') === st)
+          return liste.length > 0 && (
+            <details key={st} style={{ marginBottom: 10, fontSize: 13 }}>
+              <summary style={{ cursor: 'pointer', color: st === 'resolue' ? '#15803D' : '#B45309' }}>{titre} ({liste.length}) — {sous} ; réactivées si leur montant bouge</summary>
+              {liste.map(a => <div key={a.cle} style={{ padding: '4px 0 4px 12px', color: 'var(--text-muted)' }}>• {a.message}{a.raison ? <div style={{ fontStyle: 'italic', paddingLeft: 10 }}>→ {a.raison}</div> : null}</div>)}
+            </details>
+          )
+        })}
 
         <div style={{ background: '#fff', border: '1px solid var(--border)', borderRadius: 10, overflow: 'hidden', marginBottom: 20 }}>
           <table style={{ width: '100%', borderCollapse: 'collapse' }}>
