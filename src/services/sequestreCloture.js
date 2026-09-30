@@ -11,8 +11,8 @@
 //   qui bouge sur un mois clôturé (frais modifié après coup, lien changé…) doit se voir.
 // · journaliser : écrit une ligne dans sequestre_journal.
 
-import { supabase } from '../lib/supabase'
-import { justifierSequestre, compteSequestre } from './sequestreJustificatif'
+import { supabase } from '../lib/supabase.js'
+import { justifierSequestre, compteSequestre } from './sequestreJustificatif.js'
 
 const SEUIL_ECART = 100 // 1 € : au-delà, clôture refusée sauf forçage motivé
 const finDeMois = mois => { const [y, m] = mois.split('-').map(Number); return new Date(Date.UTC(y, m, 0)).toISOString().slice(0, 10) }
