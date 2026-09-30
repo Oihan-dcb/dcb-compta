@@ -46,9 +46,29 @@ export default function PageSequestre() {
   }
   useEffect(() => { charger() }, [])
 
+  // Recalculer = même enregistrement que le calcul de nuit (photo du jour + grand livre des mandants),
+  // sinon la page revenait à l'ancienne photo au rechargement et la boîte « À affecter » restait
+  // périmée (Lauïan 30/09/2026 : photo du 25/09 à −2 221,66 € alors que le calcul donnait 0,15 €).
+  const [aaKey, setAaKey] = useState(0)
   async function recalculer() {
     setCalcul(true); setErr(null)
-    try { const r = await justifierSequestre(AGENCE); setJ({ ...r, source: 'calcul à l\'instant' }) }
+    try {
+      const r = await justifierSequestre(AGENCE)
+      setJ({ ...r, source: 'calcul à l\'instant' })
+      const { error: e1 } = await supabase.from('sequestre_justificatif').upsert({
+        agence: AGENCE, date: r.date, solde_banque: r.solde_banque.montant, solde_maj: r.solde_banque.maj,
+        total_justifie: r.total_justifie, ecart: r.ecart, poches: r.poches, par_mois: r.par_mois,
+        detail: { ...r.detail, anomalies: r.anomalies, ecart_import: r.ecart_import, banque: r.solde_banque.banque },
+      }, { onConflict: 'agence,date' })
+      if (e1) throw e1
+      const { error: e2 } = await supabase.from('sequestre_ecriture').delete().eq('agence', AGENCE)
+      if (e2) throw e2
+      for (let i = 0; i < (r.ecritures || []).length; i += 500) {
+        const { error: e3 } = await supabase.from('sequestre_ecriture').insert(r.ecritures.slice(i, i + 500))
+        if (e3) throw e3
+      }
+      setAaKey(k => k + 1)
+    }
     catch (e) { setErr(e.message) }
     setCalcul(false)
   }
@@ -123,7 +143,7 @@ export default function PageSequestre() {
 
         <h2 style={{ fontSize: 16, margin: '0 0 4px' }}>À affecter</h2>
         <div style={{ fontSize: 12, color: 'var(--text-muted)', marginBottom: 8 }}>Mouvements que les règles automatiques n'ont pas su attribuer. Une affectation vaut pour ce mouvement ; « mémoriser pour ce libellé » l'applique aussi aux suivants.</div>
-        <div style={{ marginBottom: 20 }}><SequestreAAffecter agence={AGENCE} /></div>
+        <div style={{ marginBottom: 20 }}><SequestreAAffecter key={aaKey} agence={AGENCE} /></div>
 
         <h2 style={{ fontSize: 16, margin: '0 0 8px' }}>Mois par mois</h2>
         <div style={{ background: '#fff', border: '1px solid var(--border)', borderRadius: 10, overflow: 'auto', marginBottom: 20 }}>
