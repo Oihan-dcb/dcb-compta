@@ -50,12 +50,15 @@ async function fetchAllPages(queryFactory, pageSize = 1000) {
   return { data: allData, error: null }
 }
 
-export async function buildComptaMensuelle(mois, bienIds = null) {
+// `agence` : par défaut celle de l'app. Le justificatif du séquestre (calcul de nuit lancé par
+// dcb-compta pour TOUTES les agences) doit passer la sienne — sinon le séquestre Lauïan était
+// comparé à la compta DCB (« part Lauïan théorique » fausse, 22 anomalies — 30/09/2026).
+export async function buildComptaMensuelle(mois, bienIds = null, agence = AGENCE) {
   // ── Phase 1 : chargement parallèle ──────────────────────────────────────
   let biensQuery = supabase
     .from('bien')
     .select('id, code, hospitable_name, listed, proprietaire_id, groupe_facturation, gestion_loyer, mode_encaissement, skip_facturation, proprietaire:proprietaire_id(id, nom, prenom)')
-    .eq('agence', AGENCE)
+    .eq('agence', agence)
   if (bienIds) biensQuery = biensQuery.in('id', bienIds)
 
   // Missions AE du mois de réalisation (montant réel facturé, pas provision ventilation).
@@ -146,7 +149,7 @@ export async function buildComptaMensuelle(mois, bienIds = null) {
       .from('reversement_fait')
       .select('bien_id, fait_at, montant_reverse_cts, note')
       .eq('mois', mois)
-      .eq('agence', AGENCE),
+      .eq('agence', agence),
     // virements anticipés par résa (saisis depuis ModalResa, avant la clôture du mois)
     supabase
       .from('reversement_resa')
@@ -807,7 +810,7 @@ export async function buildComptaMensuelle(mois, bienIds = null) {
 
   // FMEN Lauian facturé par DCB — lignes dans le tableau + total stats
   let lauianFmenTotal = { ht: 0, tva: 0, ttc: 0 }
-  if (AGENCE === 'dcb') {
+  if (agence === 'dcb') {
     const { data: lauianFacts } = await supabase
       .from('facture_evoliz')
       .select('id, bien_id, proprietaire_id, total_ht, total_tva, total_ttc, statut, bien:bien_id(code, hospitable_name), proprietaire:proprietaire_id(nom, prenom)')
@@ -848,7 +851,7 @@ export async function buildComptaMensuelle(mois, bienIds = null) {
       .from('facture_evoliz')
       .select('id, bien_id, proprietaire_id, total_ht, total_tva, total_ttc, montant_reversement, statut, bien:bien_id(code, hospitable_name), proprietaire:proprietaire_id(nom, prenom)')
       .eq('mois', mois)
-      .eq('agence', AGENCE)
+      .eq('agence', agence)
       .eq('type_facture', 'lld')
       .eq('bloque_treso', false) // exclut les factures bloquées (loyer non encaissé) — pas du CA réel
     for (const f of (lldFacts || [])) {

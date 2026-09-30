@@ -389,7 +389,7 @@ export async function justifierSequestre(agence = 'dcb', { date = new Date().toI
     const retours = horsMois.retour_dcb.filter(e => e.mois === mois)
     const dcbPaye = sum(transferts, s => s.debit) - sum(retours, e => e.credit)
     // Part DCB théorique : page Comptabilité (TOTAL DCB − hors séquestre) + frais retenus
-    const compta = await buildComptaMensuelle(mois)
+    const compta = await buildComptaMensuelle(mois, null, agence)
     const t = compta.totals, hs = t.hors_sequestre || {}
     const virable = (t.hon_ttc - (hs.hon_ttc || 0)) + (t.fmen_ttc - (hs.fmen_ttc || 0)) + (t.com_ttc - (hs.com_ttc || 0))
     const { data: fraisTous } = await supabase.from('frais_proprietaire').select('id, montant_deduit_loy, bien:bien_id!inner(agence, proprietaire_id)')
