@@ -270,6 +270,40 @@ serve(async (req) => {
         break
       }
 
+      // ── AVOIRS ────────────────────────────────────────────
+      case 'createPartialCredit': {
+        // Avoir partiel rattaché à la facture d'origine (référence automatique, business_process
+        // recopié). Créé en BROUILLON : validation manuelle dans Evoliz (ou finalizeCredit).
+        // payload: { invoiceId, documentdate?, comment?, items: [{ designation, quantity, unitPrice (€, > 0), vatRate }] }
+        // clientid + term obligatoires (400 sinon) → repris de la facture d'origine si non fournis
+        let clientId = payload.clientId
+        if (!clientId) {
+          const src = await evolizReq('GET', `/invoices/${payload.invoiceId}`, company)
+          clientId = src.data?.client?.clientid
+        }
+        result = await evolizReq('POST', `/invoices/${payload.invoiceId}/partial-credit`, company, {
+          clientid: clientId,
+          term: { paytermid: payload.paytermid || 1, paytypeid: payload.paytypeid ?? 2 },
+          ...(payload.documentdate ? { documentdate: payload.documentdate } : {}),
+          ...(payload.object ? { object: payload.object } : {}),
+          comment: payload.comment || '',
+          items: (payload.items || []).map((l: any) => ({
+            type: 'article',
+            designation: l.designation,
+            quantity: l.quantity || 1,
+            unit_price: l.unitPrice,
+            vat_rate: l.vatRate ?? 20,
+            ...(l.classificationId ? { sale_classificationid: l.classificationId } : {}),
+          })),
+        })
+        break
+      }
+
+      case 'getCredit': {
+        result = await evolizReq('GET', `/credits/${payload.creditId}`, company)
+        break
+      }
+
       // ── PAIEMENTS ─────────────────────────────────────────
       case 'createPayment': {
         result = await evolizReq('POST', `/invoices/${payload.invoiceId}/payments`, company, {
