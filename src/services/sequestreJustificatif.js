@@ -304,7 +304,9 @@ export async function justifierSequestre(agence = 'dcb', { date = new Date().toI
   // Tous les mois du suivi jusqu'au dernier mois facturé — y compris ceux sans facture dans l'app
   // (janvier-février 2026 : factures faites à la main par Laura dans Evoliz) : le dû propriétaire
   // y est calculé en live (règle « bien sans facture »)
-  const moisAvecFacture = [...new Set(honoraires.filter(f => f.mois >= MOIS_DEBUT_ && f.statut !== 'brouillon').map(f => f.mois))].filter(m => m < moisCourant).sort()
+  const moisAvecFacture = [...new Set(honoraires.filter(f => f.mois >= MOIS_DEBUT_ && f.statut !== 'brouillon').map(f => f.mois))].filter(m => m <= moisCourant).sort()
+  // Mois en cours inclus dès qu'il a une facture émise (clôture anticipée : septembre 2026 facturé et
+  // réparti le 29/09 chez Lauïan — sinon tout septembre restait en « encaissé non réparti »)
   const dernierFacture = moisAvecFacture[moisAvecFacture.length - 1] || moisPlus(MOIS_DEBUT_, -1)
   const moisFactures = []
   for (let m = MOIS_DEBUT_; m <= dernierFacture; m = moisPlus(m, 1)) moisFactures.push(m)
