@@ -612,13 +612,13 @@ facturé (F-20260000054 du 19/03/2026, 2 579,88 € : VIP Arosteguy 972,76 · Ho
 |---|---|---|---|---|---|
 | Hospitable | oct. 2025 → sept. 2026 | prorata des biens Lauïan actifs (un bien dû le mois où il a une arrivée) | 1 650,00 | 1 980,00 | chiffré |
 | PriceLabs | 15/01 → 14/10/2026 | 8 factures au prorata des annonces Lauïan (68 annonces-mois), 0,8905 €/$ | 519,16 | 622,99 | chiffré |
-| PriceLabs | oct. → déc. 2025 | facture 2207014 + cycles oct.-nov. : listes d'annonces à retrouver | ? | ? | à chiffrer |
+| PriceLabs | 15/10/2025 → 14/01/2026 | 3 cycles estimés au prix du cycle de janvier (58,50 €) — décision Oïhan 01/10 | 175,50 | 210,60 | chiffré (estimé) |
 | SMS OTP contrats + mails PowerHouse | 2026 | 3,20 + 0,65 | 3,85 | 4,62 | chiffré |
 | Main-d'œuvre Clémence (annonces, shootings, fiches, check-in ARROSA, trajets ménages MIRAMARVEL mars, sacs/linge juin) | janv. → juin 2026 | 27 h 30 × 30 € TTC (taux Oïhan 29/09) ; temps de ménage MIRAMARVEL mars (4 h) exclu, déjà payé via C12 | 687,50 | 825,00 | chiffré |
 | Clémence : messages voyageurs, planning, coordination | oct. 2025 → sept. 2026 | clé à fixer (prorata coût employeur, 52 biens-mois) ou rien si couvert par le FMEN | ? | ? | à fixer (Oïhan) |
 | Développement lauian-compta | 17/03 → 30/09/2026 | valeur ≈ 80 h × 60 € HT = 5 000 € HT ; facturé : au minimum le coût réel des outils d'IA (Claude Code) payés en plus par DCB | ? | ? | à fixer (Oïhan) |
 | Maintenance / hébergement app | à partir d'oct. 2026 | 10 € TTC (8,33 HT) par bien actif et par mois, même règle que Hospitable | — | — | exercice suivant |
-| **Total chiffré** | | | **2 860,51** | **3 432,61** | |
+| **Total chiffré** | | | **3 036,01** | **3 643,21** | |
 
 - Facture DCB → Lauïan à émettre dans l'**Evoliz DCB**, datée au **30/09/2026** (règle : date = dernier jour du mois concerné).
   Si elle n'est pas émise avant la clôture : charges à payer chez Lauïan / produits à recevoir chez DCB (note pour Ludovic).
