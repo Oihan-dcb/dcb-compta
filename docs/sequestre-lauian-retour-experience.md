@@ -616,8 +616,9 @@ facturé (F-20260000054 du 19/03/2026, 2 579,88 € : VIP Arosteguy 972,76 · Ho
 | SMS OTP contrats + mails PowerHouse | 2026 | 3,20 + 0,65 | 3,85 | 4,62 | chiffré |
 | Main-d'œuvre Clémence — seule ligne Clémence, la coordination est couverte par le FMEN (Oïhan 01/10) (annonces, shootings, fiches, check-in ARROSA, trajets ménages MIRAMARVEL mars, sacs/linge juin) | janv. → juin 2026 | 27 h 30 × 30 € TTC (taux Oïhan 29/09) ; temps de ménage MIRAMARVEL mars (4 h) exclu, déjà payé via C12 | 687,50 | 825,00 | chiffré |
 | Développement lauian-compta (part Lauïan du hors forfait Claude Code) | mars → août 2026 | 3 024,27 € HT retrouvés (relevés DCB + factures ZCOMALTZ) × 33 % du temps de dev passé sur Lauïan (Oïhan 01/10) ; juillet/septembre à ajouter | 998,01 | 1 197,61 | chiffré |
+| Temps de travail d'Oïhan sur le dev Lauïan | mars → sept. 2026 | ≈ 659 h de dev tous projets (3 736 commits, 222 séances, 144 jours) × 33 % = 217 h 30 × 60 € HT | 13 050,00 | 15 660,00 | estimé, à valider (Oïhan) |
 | Maintenance / hébergement app | à partir d'oct. 2026 | 10 € TTC (8,33 HT) par bien actif et par mois, même règle que Hospitable | — | — | exercice suivant |
-| **Total chiffré** | | | **4 034,02** | **4 840,82** | |
+| **Total chiffré** | | | **17 084,02** | **20 500,82** | |
 
 - Facture DCB → Lauïan à émettre dans l'**Evoliz DCB**, datée au **30/09/2026** (règle : date = dernier jour du mois concerné).
   Si elle n'est pas émise avant la clôture : charges à payer chez Lauïan / produits à recevoir chez DCB (note pour Ludovic).
