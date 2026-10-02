@@ -959,3 +959,14 @@ L'obligation n'a **pas** été étendue à `avant_menage` : c'est le sujet **par
 `ecart_accepte_cts` (int), `ecart_accepte_note` (text), `ecart_accepte_par` (text), `ecart_accepte_le` (timestamptz) :
 écart virement/facture accepté par Oïhan avec justification (geste commercial, compensation hors facture). Le badge
 Virement est ✓ tant que `ecart_cts = ecart_accepte_cts`. Jamais écrits par `verify-virements-sortants` (I-171).
+
+### Fiches propriétaire / bien — identité, occupation, historique (migrations 289-290, 02/10/2026)
+- `proprietaire` : `civilite`, `date_naissance`, `lieu_naissance`, `nationalite`, `profession`, `situation_matrimoniale`,
+  `conjoint_nom` — renseignés par le lien d'onboarding mandat (dcb-contrats `mandat-onb-complete`), backfill depuis
+  `proprietaire_onboarding.reponses`. Éditables dans la fiche PowerHouse (bloc « Identité (mandat) »).
+- `bien` : `statut_occupation` (RP entière / annexe RP / secondaire / mixte étudiant+saisonnier / société),
+  `numero_enregistrement` (meublé de tourisme), `identifiant_fiscal`. Le classement n'est PAS écrasé par la réponse
+  (sert à la taxe de séjour).
+- `fiche_historique` : trigger AFTER UPDATE sur `proprietaire` et `bien` — une ligne par modification effective,
+  `avant`/`apres` = colonnes changées seulement (techniques ignorées : updated_at, derniere_sync, last_seen,
+  evoliz_snapshot, photo_url). `auteur_id` NULL = service (cron, formulaire public du lien d'onboarding). Lecture staff.
