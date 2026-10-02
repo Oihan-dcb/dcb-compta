@@ -70,6 +70,11 @@ function normalizeName(s) {
     .trim();
 }
 
+const MOTS_NOM_GENERIQUES = new Set(['villa', 'maison', 'appartement', 'appart', 'studio', 'chambre', 'loft', 'duplex', 'la', 'le', 'les', 'l', 'de', 'du', 'des', 'd'])
+function coreName(s) {
+  return normalizeName(s).split(' ').filter(w => w && !MOTS_NOM_GENERIQUES.has(w)).join(' ')
+}
+
 // Mots génériques d'annonce à ignorer : sinon "Villa Ederra", "Villa Lorea", "Villa
 // Kostaldea" produisent tous le même code "VILLA" (collision constatée 17/08/2026).
 const MOTS_GENERIQUES = new Set(['VILLA', 'MAISON', 'APPARTEMENT', 'APPART', 'STUDIO', 'CHALET', 'GITE', 'CHAMBRE']);
@@ -146,9 +151,19 @@ export default async function handler(req, res) {
     const candidatsNouveaux = toUpsert.filter(p => !existingMap.has(p.hospitable_id));
     const existants = toUpsert.filter(p => existingMap.has(p.hospitable_id));
 
+    // Fiche provisoire (onboarding / saisie manuelle, hospitable_id "manual-…") au nom plus court que
+    // l'annonce : « Cotrel » (lien d'onboarding, mandat signé) vs « Villa Cotrel » (Hospitable) →
+    // doublon sans propriétaire créé le 23/09/2026. Rapprochement par nom « cœur » (sans villa/
+    // maison/chambre…) contenu dans celui de l'annonce, limité aux fiches provisoires.
+    const manuels = (existingBiens || []).filter(b => /^manual-/i.test(b.hospitable_id || ''));
+    const matchManuel = (nom) => {
+      const n = ` ${coreName(nom)} `;
+      return manuels.find(b => { const c = coreName(b.hospitable_name); return c.length >= 4 && n.includes(` ${c} `) });
+    };
+
     const nouveaux = [];
     for (const p of candidatsNouveaux) {
-      const match = existingByName.get(normalizeName(p.hospitable_name));
+      const match = existingByName.get(normalizeName(p.hospitable_name)) || matchManuel(p.hospitable_name);
       if (match) {
         log.collisions.push({
           hospitable_name: p.hospitable_name,

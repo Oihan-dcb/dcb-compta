@@ -428,6 +428,25 @@ async function handleProperty(supabase: any, event: string, data: any): Promise<
       .single()
 
     if (!existing) {
+      // Garde-fou anti-doublon (même règle que api/sync-biens.js) : un bien déjà suivi sous un
+      // hospitable_id provisoire « manual-… » (onboarding, saisie manuelle) ne doit pas être recréé
+      // vide et sans propriétaire quand son annonce apparaît (Villa Cotrel, 23/09/2026) → collision
+      // signalée pour rattachement manuel, pas de création.
+      const norm = (s: string) => (s || '').normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase()
+        .replace(/[^a-z0-9\s]/g, ' ').replace(/\s+/g, ' ').trim()
+      const GEN = new Set(['villa', 'maison', 'appartement', 'appart', 'studio', 'chambre', 'loft', 'duplex', 'la', 'le', 'les', 'l', 'de', 'du', 'des', 'd'])
+      const core = (s: string) => norm(s).split(' ').filter(w => w && !GEN.has(w)).join(' ')
+      const { data: tous } = await supabase.from('bien').select('id, code, hospitable_name, hospitable_id')
+      const nomN = norm(data.name), nomC = ` ${core(data.name)} `
+      const doublon = (tous || []).find((b: any) => norm(b.hospitable_name) === nomN
+        || (/^manual-/i.test(b.hospitable_id || '') && core(b.hospitable_name).length >= 4 && nomC.includes(` ${core(b.hospitable_name)} `)))
+      if (doublon) {
+        await supabase.from('journal_ops').insert({
+          categorie: 'biens', action: 'collision_creation_bien', source: 'hospitable-webhook', statut: 'warning',
+          message: `Annonce Hospitable « ${data.name} » (${hospId}) non créée : correspond au bien existant « ${doublon.hospitable_name} » (${doublon.code || doublon.id}, ${doublon.hospitable_id}) — à rattacher manuellement.`,
+        })
+        return 'collision: ' + data.name
+      }
       // Créer le bien avec les infos de base
       await supabase.from('bien').insert({
         hospitable_id:   hospId,

@@ -26,6 +26,13 @@ function normalizeName(s) {
     .trim()
 }
 
+// Nom « cœur » sans mots génériques — rapproche une fiche provisoire « Cotrel » de l'annonce
+// « Villa Cotrel » (doublon du 23/09/2026). Même règle que api/sync-biens.js.
+const MOTS_NOM_GENERIQUES = new Set(['villa', 'maison', 'appartement', 'appart', 'studio', 'chambre', 'loft', 'duplex', 'la', 'le', 'les', 'l', 'de', 'du', 'des', 'd'])
+function coreName(s) {
+  return normalizeName(s).split(' ').filter(w => w && !MOTS_NOM_GENERIQUES.has(w)).join(' ')
+}
+
 /**
  * Synchronise les biens Hospitable dans la table `bien`
  * Crée les nouveaux biens, met à jour les existants
@@ -83,9 +90,14 @@ export async function syncBiens() {
     // Parmi les "nouveaux" (hospitable_id inconnu), écarter ceux dont le nom
     // matche déjà un bien existant : probable connexion Hospitable d'un bien
     // jusqu'ici suivi manuellement → collision à résoudre à la main, pas de création.
+    const manuels = (existingBiens || []).filter(b => /^manual-/i.test(b.hospitable_id || ''))
+    const matchManuel = (nom) => {
+      const n = ` ${coreName(nom)} `
+      return manuels.find(b => { const c = coreName(b.hospitable_name); return c.length >= 4 && n.includes(` ${c} `) })
+    }
     const nouveaux = []
     for (const p of candidatsNouveaux) {
-      const match = existingByName.get(normalizeName(p.hospitable_name))
+      const match = existingByName.get(normalizeName(p.hospitable_name)) || matchManuel(p.hospitable_name)
       if (match) {
         log.collisions.push({
           hospitable_name: p.hospitable_name,
