@@ -156,7 +156,9 @@ serve(async (req) => {
       case 'createContact': {
         // Crée un contact (email/phone) pour un client Evoliz
         // payload: { clientId, firstname, lastname, email, phone, is_main }
-        result = await evolizReq('POST', `/clients/${payload.clientId}/contacts`, company, {
+        // POST /clients/{id}/contacts n'existe pas (404) : la ressource est /contacts-clients (clientid dans le corps)
+        result = await evolizReq('POST', '/contacts-clients', company, {
+          clientid: payload.clientId,
           firstname: payload.firstname || '',
           lastname: payload.lastname || '',
           email: payload.email || undefined,
