@@ -61,8 +61,16 @@ Deno.serve(async (req) => {
       .replaceAll('{{prenom}}', r.prenom ?? '').replaceAll('{{nom}}', r.nom ?? '').replaceAll('{{bien}}', r.bien ?? '')
 
     const results: any[] = []
+    // Une fiche peut porter plusieurs adresses (« a@x.fr, b@y.fr » ou « a; b » : copropriétaires,
+    // conjoint) : avant, seule la 1re recevait le mail (Pia Hoffmann von Waldau, 02/10/2026 : envoyé à
+    // l'ancienne adresse de Vincent Balhadère, jamais à la sienne). Désormais un envoi + un suivi par adresse.
+    const envois: any[] = []
     for (const r of recipients) {
-      const to = String(r.email || '').split(/[,;]/)[0].trim()
+      const adresses = [...new Set(String(r.email || '').split(/[,;]/).map(a => a.trim().toLowerCase()).filter(Boolean))]
+      if (!adresses.length) envois.push({ r, to: '' })
+      for (const to of adresses) envois.push({ r, to })
+    }
+    for (const { r, to } of envois) {
       if (!to || !to.includes('@')) { results.push({ email: r.email, ok: false, err: 'email invalide' }); continue }
       const tok = crypto.randomUUID()
       const bodyHtml = esc(merge(body, r)).replace(/\n/g, '<br>')
