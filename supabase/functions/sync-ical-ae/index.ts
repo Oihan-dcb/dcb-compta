@@ -76,7 +76,7 @@ Deno.serve(async (req) => {
     // 5a. Missions de CET AE sur le périmètre — sert UNIQUEMENT à la réconciliation
     //     (cancel des missions de cet AE dont l'event a disparu de SON flux).
     const { data: existing } = await sb.from('mission_menage')
-      .select('id, ical_uid, statut, date_mission')
+      .select('id, ical_uid, statut, date_mission, duree_heures')
       .eq('ae_id', ae.id)
       .gte('date_mission', dateDebutStr)
       .not('ical_uid', 'is', null)
@@ -198,8 +198,18 @@ Deno.serve(async (req) => {
     }
 
     // 7. Réconciliation : missions en DB (périmètre) absentes du feed → cancelled
+    //    UNIQUEMENT pour les missions à venir et pas encore faites. Un event passé qui disparaît
+    //    du flux ne veut pas dire « annulé » : Hospitable retire du flux TOUTES les tâches d'un
+    //    bien archivé (02/10/2026 : Xane, 12 ménages faits + 7 extras validés de septembre sur
+    //    408P/DUL2/B16/AMAÏA/ERREGINA/XABADENIA annulés à tort → plus payés, extras « sans mission »).
     const feedUids = new Set(evs.map(e => e.uid).filter(Boolean))
-    const orphelins = (existing || []).filter(m => m.statut !== 'cancelled' && !feedUids.has(m.ical_uid)).map(m => m.id)
+    const today = new Date().toISOString().substring(0, 10)
+    const orphelins = (existing || []).filter(m =>
+      m.statut !== 'cancelled' && m.statut !== 'valide' &&
+      m.duree_heures == null &&
+      m.date_mission >= today &&
+      !feedUids.has(m.ical_uid)
+    ).map(m => m.id)
     if (orphelins.length) {
       await sb.from('mission_menage').update({ statut: 'cancelled' }).in('id', orphelins)
     }
