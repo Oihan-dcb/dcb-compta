@@ -275,79 +275,12 @@ async function handleReservation(supabase: any, event: string, data: any): Promi
 
   console.log('Upserted:', data.code, event)
 
-  // Génération contrat (draft) sur réservation acceptée. On déclenche aussi sur les updates
-  // (changed/updated/modified) car un booking direct arrive souvent en 'request' via
-  // reservation.created PUIS passe 'accepted' via reservation.changed : sans ça, le contrat
-  // n'était jamais généré en temps réel. Idempotent : le garde "contrat déjà existant" ci-dessous
-  // (y compris cancelled) empêche tout doublon / recréation d'un contrat annulé par le staff.
-  if (['reservation.created', 'reservation.changed', 'reservation.updated', 'reservation.modified'].includes(event) && finalStatus === 'accepted' && upserted?.id) {
-    try {
-      const guestLocale: string = data.guest?.locale || data.guest?.language || ''
-      const langue = guestLocale.startsWith('en') ? 'en' : guestLocale.startsWith('es') ? 'es' : 'fr'
-
-      const { data: template } = await supabase
-        .from('contract_templates')
-        .select('id, version')
-        .eq('agence', agenceBien)
-        .eq('langue', langue)
-        .order('version', { ascending: false })
-        .limit(1)
-        .single()
-
-      if (template) {
-        const hospCode = data.code as string  // code Hospitable (ex: "6407282079")
-        const { data: existing } = await supabase
-          .from('rental_contracts')
-          .select('id')
-          .eq('reservation_id', hospCode)
-          .maybeSingle()
-
-        if (!existing) {
-          const { data: inserted, error: contractErr } = await supabase
-            .from('rental_contracts')
-            .insert({
-              agence:           agenceBien,
-              reservation_id:   hospCode,
-              bien_id:          bien.id,
-              proprietaire_id:  bien.proprietaire_id,
-              template_id:      template.id,
-              template_version: template.version,
-              langue,
-              statut:           'draft',
-              distribution_channel: platform,
-            })
-            .select('id')
-            .single()
-
-          if (contractErr) {
-            console.error('Contrat insert error:', contractErr.message)
-          } else {
-            console.log('Contrat généré (draft):', hospCode, langue, template.version)
-            // Appel fire-and-forget à generate-contract pour rendre le HTML + PDF
-            const powerHouseUrl = Deno.env.get('POWERHOUSE_URL') || 'https://dcb-planning.vercel.app'
-            fetch(`${powerHouseUrl}/api/generate-contract`, {
-              method: 'POST',
-              headers: {
-                'Content-Type': 'application/json',
-                'Authorization': `Bearer ${SUPABASE_SERVICE_KEY}`,
-              },
-              body: JSON.stringify({
-                reservation_id: hospCode,
-                contract_id:    inserted.id,
-                agence:         agenceBien,
-                langue,
-              }),
-              signal: AbortSignal.timeout(60000),
-            }).catch((e: any) => console.error('generate-contract render error (non-fatal):', e?.message))
-          }
-        }
-      } else {
-        console.warn('Aucun template contrat pour agence:', agenceBien, 'langue:', langue)
-      }
-    } catch (e: any) {
-      console.error('Contrat génération error (non-fatal):', e?.message)
-    }
-  }
+  // Contrats de location : PLUS générés ici (04/10/2026). Ce bloc insérait un brouillon « nu »
+  // (toutes plateformes, Airbnb compris ; langue = locale du compte voyageur ; sans mode de
+  // paiement ni politique d'annulation ; jamais envoyé) qui devançait PowerHouse sur les résas
+  // passées « request » → « accepted » : le cron PowerHouse trouvait alors un contrat existant,
+  // le regénérait seulement et ne l'envoyait jamais. Source unique désormais : PowerHouse
+  // (api/webhook-hospitable.js temps réel + api/cron-auto-contracts.js toutes les 30 min).
 
   // Push notification "Nouvelle réservation" au proprio (reservation.created uniquement)
   if (event === 'reservation.created' && finalStatus === 'accepted' && bien?.id) {
