@@ -95,9 +95,12 @@ export function listeProprioEnAttente(propsFiltres, biensEnvoyes, bienIdsActifs,
       }
       continue
     }
-    const bien = biens.find(b => bienIdsActifs?.has(b.id) && b.agence === agence)
-    if (bien && !biensEnvoyes.has(bien.id)) {
-      items.push({ proprio: p, bienId: bien.id, isGlobal: false, maiteIds: [], label: bien.hospitable_name || bien.code })
+    // Un rapport PAR bien actif — avant (find) seul le 1er bien du propriétaire partait : 602 (BURGY,
+    // avec 416), DUL2, ERDIGUNEA absents du « Télécharger tout » de septembre 2026 (04/10/2026).
+    for (const bien of biens.filter(b => bienIdsActifs?.has(b.id) && b.agence === agence)) {
+      if (!biensEnvoyes.has(bien.id)) {
+        items.push({ proprio: p, bienId: bien.id, isGlobal: false, maiteIds: [], label: bien.hospitable_name || bien.code })
+      }
     }
   }
   return items
