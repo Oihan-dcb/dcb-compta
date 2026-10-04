@@ -88,6 +88,15 @@ function renderMarkdown(text) {
     .replace(/\n/g, '<br/>')
 }
 
+const STATUT_NON_ACTIF = /^(cancelled|not[ _]accepted|declined|expired)/i
+function estActiviteRapport(r) {
+  const revenu = (r.fin_revenue || 0) > 0
+  if (revenu && !r.owner_stay) return true
+  if (STATUT_NON_ACTIF.test(r.final_status || '')) return false
+  const nuits = (new Date(r.departure_date) - new Date(r.arrival_date)) / 86400000
+  return !(nuits > 60)
+}
+
 export default function PageRapports() {
   const [mois, setMois] = useMoisPersisted()
   const [moisDispos, setMoisDispos] = useState([moisCourant])
@@ -227,12 +236,15 @@ export default function PageRapports() {
     setPreviewOpen(false)
     setBienIdsActifs(null)
     Promise.all([
-      supabase.from('reservation').select('bien_id').eq('mois_comptable', mois)
-        .or('fin_revenue.gt.0,final_status.not.in.("cancelled","not_accepted","not accepted","declined","expired")'),
+      supabase.from('reservation').select('bien_id, final_status, owner_stay, fin_revenue, arrival_date, departure_date').eq('mois_comptable', mois),
       supabase.from('bien_notes').select('bien_id').eq('mois', mois).not('rapport_envoye_at', 'is', null),
       supabase.from('prestation_hors_forfait').select('bien_id').eq('mois', mois).eq('statut', 'valide'),
     ]).then(([{ data: resasBiens }, { data: rapports }, { data: prestBiens }]) => {
-      const ids = new Set((resasBiens || []).map(r => r.bien_id))
+      // Activité réelle seulement (04/10/2026, Oïhan : FOLLE, NEREA, LAGREOU, EGIN… sortaient en
+      // rapport vide) : un bloc étudiant LLD (résa manuelle de plusieurs mois, sans revenu) n'est
+      // pas une activité saisonnière — il a sa facture LLD à part ; une demande expirée
+      // ("not accepted expired") ni un séjour proprio annulé non plus.
+      const ids = new Set((resasBiens || []).filter(estActiviteRapport).map(r => r.bien_id))
       ;(prestBiens || []).forEach(p => ids.add(p.bien_id))
       setBienIdsActifs(ids)
       setBiensEnvoyes(new Set((rapports || []).map(r => r.bien_id)))
@@ -245,7 +257,7 @@ export default function PageRapports() {
   // Ce guard resélectionne le premier proprio valide (MAITE en priorité).
   useEffect(() => {
     if (bienIdsActifs === null || !proprietaires.length) return
-    const filtered = proprietaires.filter(p => (p.bien || []).some(b => bienIdsActifs.has(b.id)))
+    const filtered = proprietaires.filter(p => (p.bien || []).some(b => bienIdsActifs.has(b.id) && b.agence === AGENCE))
     if (!filtered.length || filtered.some(p => p.id === selectedPropId)) return
     const maiteFirst = filtered.find(p => (p.bien || []).some(b => b.groupe_facturation === 'MAITE'))
     setSelectedPropId((maiteFirst || filtered[0]).id)
@@ -953,7 +965,7 @@ FORMAT :
   // apparaître un bien listé même sans la moindre résa/prestation).
   const propsFiltres = (bienIdsActifs === null
     ? proprietaires
-    : proprietaires.filter(p => (p.bien || []).some(b => bienIdsActifs.has(b.id)))
+    : proprietaires.filter(p => (p.bien || []).some(b => bienIdsActifs.has(b.id) && b.agence === AGENCE))
   ).map(p => ({
     ...p,
     bien: [...(p.bien || [])].sort((a, b) => (a.code || '').localeCompare(b.code || '')),

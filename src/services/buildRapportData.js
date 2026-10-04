@@ -455,8 +455,10 @@ export async function buildRapportData(bienId, propId, mois, opts = {}) {
 
   // ── Owner stay ménage ────────────────────────────────────────────────────
   // ownerStayList : une ligne par résa proprio (pour affichage dans charges)
+  // Séjour proprio annulé exclu : sans frais (règle 24/09/2026) — AUREAN 09/2026 affichait 100 € de
+  // trop (fallback fin_revenue de la résa annulée), la facture ne le comptait déjà pas.
   const ownerStayList = resasEnrichies
-    .filter(r => r.owner_stay)
+    .filter(r => r.owner_stay && !STATUTS_NON_VENTILABLES.includes(r.final_status))
     .map(r => {
       const vent = ventByResa[r.id] || {}
       // MEN saisi manuellement (PageRapports) = total ménage refacturé au proprio.
@@ -464,7 +466,10 @@ export async function buildRapportData(bienId, propId, mois, opts = {}) {
       // FMEN.montant_ttc car TVA incluse → 6000 + AUTO 2500 = 8500 cts = 85 €
       const men  = vent.MEN?.montant_ttc || 0
       const fmen = vent.FMEN?.montant_ttc || 0
-      const auto = vent.AUTO?.montant_reel ?? vent.AUTO?.montant_ht ?? 0
+      // AUTO PRÉVU : le proprio paie un ménage fixe (FMEN + AUTO prévus) ; l'écart réel ne fait
+      // que déplacer la part entre DCB (FMEN réel) et l'AE — même total que la facture.
+      // Avec AUTO réel + FMEN prévu, MUNDUZ 09/2026 affichait 62,50 € au lieu de 50 €.
+      const auto = vent.AUTO?.montant_ht ?? 0
       const montantVentile = men > 0 ? men : fmen + auto
       // Fallback si pas encore ventilé : fin_accommodation > fin_revenue > forfait_menage_proprio
       // Tous en centimes — fmt() divise par 100
@@ -576,10 +581,13 @@ export async function buildRapportData(bienId, propId, mois, opts = {}) {
   // → immunisé contre les lignes HON en doublon dans la table ventilation
   // honTotalVent (somme brute toutes lignes) est conservé pour _debug uniquement
   const honTotal  = resasGuest.reduce((s, r) => s + (r.hon || 0), 0)
-  const fmenTotal = resasEnrichies.reduce((s, r) => s + (r.fmen || 0), 0)
-  const autoTotal = resasEnrichies.reduce((s, r) => s + (ventByResa[r.id]?.AUTO?.montant_ht || 0), 0)
+  // Séjours proprio exclus : déjà portés par la ligne « Ménage(s) séjour propriétaire »
+  // (ownerStayMenageTotal) — sinon comptés deux fois dans le total dû (408P 09/2026 : +73,75 €).
+  const resasHorsOwner = resasEnrichies.filter(r => !r.owner_stay)
+  const fmenTotal = resasHorsOwner.reduce((s, r) => s + (r.fmen || 0), 0)
+  const autoTotal = resasHorsOwner.reduce((s, r) => s + (ventByResa[r.id]?.AUTO?.montant_ht || 0), 0)
   // AUTO réel : coût AE réel saisi au Portail AE (montant_reel), fallback provision (montant_ht)
-  const autoReelTotal = resasEnrichies.reduce((s, r) => {
+  const autoReelTotal = resasHorsOwner.reduce((s, r) => {
     const a = ventByResa[r.id]?.AUTO
     return s + (a ? (a.montant_reel ?? a.montant_ht ?? 0) : 0)
   }, 0)
