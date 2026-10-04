@@ -272,6 +272,9 @@ async function generatePreviewBody(
   agenceLabel = 'Destination Côte Basque', propertyZone: string | null = null
 ): Promise<string> {
   const firstName = (guestName || 'cher client').split(' ')[0]
+  // Langue : celle du commentaire (le LLM s'y cale, cf. prompt) ; pays/téléphone presque toujours vides
+  // côté Hospitable → tout partait en français (Simon Ghose, Irlandais, 03/10/2026). Fallback sans
+  // commentaire : pays/téléphone, sinon français.
   const lang = detectSmsLang(guestCountry, guestPhone)
   const anthropicKey = Deno.env.get('ANTHROPIC_API_KEY')
   const langLabel = lang === 'FR' ? 'français' : lang === 'EN' ? 'anglais' : 'espagnol'
@@ -287,7 +290,7 @@ async function generatePreviewBody(
         body: JSON.stringify({
           model: 'claude-haiku-4-5-20251001',
           max_tokens: 150,
-          messages: [{ role: 'user', content: `Tu es l'assistant de ${agenceLabel}. Un voyageur vient de laisser un avis 5⭐ sur Airbnb pour "${propertyName}". Son commentaire : "${comment}"\nRédige un message de remerciement en ${langLabel} (160-220 caractères). Règles STRICTES :\n- N'inclus AUCUNE URL, AUCUN lien, AUCUN placeholder dans le texte\n${zoneRule}\n- La signature est "— ${agenceLabel}"\n- Invite à laisser un avis sur la fiche Google "${agenceLabel}" en citant uniquement le nom (pas d'URL)\n- Sans mention STOP\nRéponds uniquement avec le texte du message.` }],
+          messages: [{ role: 'user', content: `Tu es l'assistant de ${agenceLabel}. Un voyageur vient de laisser un avis 5⭐ sur Airbnb pour "${propertyName}". Son commentaire : "${comment}"\nRédige un message de remerciement (160-220 caractères) DANS LA MÊME LANGUE QUE SON COMMENTAIRE (avis en anglais → réponse en anglais, en espagnol → espagnol, en allemand → allemand, etc.). Règles STRICTES :\n- N'inclus AUCUNE URL, AUCUN lien, AUCUN placeholder dans le texte\n${zoneRule}\n- La signature est "— ${agenceLabel}"\n- Invite à laisser un avis sur la fiche Google "${agenceLabel}" en citant uniquement le nom (pas d'URL)\n- Sans mention STOP\nRéponds uniquement avec le texte du message.` }],
         }),
       })
       if (res.ok) {

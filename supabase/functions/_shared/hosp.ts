@@ -129,7 +129,7 @@ export async function generateMessage(opts: {
 
 ${reviewPart}${histoPart}
 
-Rédige un message de remerciement naturel et chaleureux en ${langLabel}, comme si l'hôte écrivait directement à son voyageur via la messagerie de la plateforme.
+Rédige un message de remerciement naturel et chaleureux ${review ? `dans la même langue que son avis (s'il a écrit en anglais, réponds en anglais ; en espagnol, en espagnol ; etc.)` : `en ${langLabel}`}, comme si l'hôte écrivait directement à son voyageur via la messagerie de la plateforme.
 
 Règles STRICTES :
 - Commence par "Bonjour ${firstName}," (ou équivalent dans la langue)
