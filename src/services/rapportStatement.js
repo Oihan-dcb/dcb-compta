@@ -564,6 +564,12 @@ export function genererMailStatementHTML(proprio, mois, data) {
   ${llmBlock('Perspectives', safeTendances)}
   ${reviewsBlock}
 
+  <!-- Lien portail : un seul mail par rapport (04/10/2026) — la notification du portail
+       n'envoie plus son propre mail quand celui-ci part. -->
+  <div style="text-align:center;padding:18px 24px 22px;">
+    <a href="https://portail-owner.destinationcotebasque.com/releve" style="display:inline-block;background:#CC9933;color:#fff;text-decoration:none;font-weight:600;font-size:14px;padding:10px 22px;border-radius:8px;">Voir mes relevés sur mon espace propriétaire</a>
+  </div>
+
   <!-- Footer -->
   <div style="text-align:center;padding:12px 24px;font-size:0.75em;color:#9C8E7D;background:#F7F4EF;border-top:2px solid #CC9933;">
     ${AGENCE_BRAND.label} · ${AGENCE_BRAND.email}<br>

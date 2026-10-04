@@ -47,7 +47,7 @@ export default async function handler(req, res) {
   if (!ALLOWED_EMAILS.length) return res.status(500).json({ error: 'ALLOWED_ADMIN_EMAILS non configuré' })
   if (!ALLOWED_EMAILS.includes((email || '').toLowerCase())) return res.status(403).json({ error: 'Accès refusé' })
 
-  const { html, orientation = 'landscape', proprio_id, bien_id, mois, bien_name = '', agence = null, notify = true } = req.body || {}
+  const { html, orientation = 'landscape', proprio_id, bien_id, mois, bien_name = '', agence = null, notify = true, sans_email = false } = req.body || {}
   if (!html || typeof html !== 'string' || html.length < 100) return res.status(400).json({ error: 'html invalide' })
   if (!proprio_id || !bien_id || !mois) return res.status(400).json({ error: 'proprio_id, bien_id, mois requis' })
 
@@ -151,7 +151,8 @@ export default async function handler(req, res) {
     const notifRes = await fetch(`${PORTAIL_URL}/api/notify-proprio`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
-      body: JSON.stringify({ proprio_id, bien_id, mois, type: 'releve', extra: { bienName: bienLabel } }),
+      // sans_email : le rapport vient de partir par mail (PDF joint) → push seulement, pas de 2e mail
+      body: JSON.stringify({ proprio_id, bien_id, mois, type: 'releve', extra: { bienName: bienLabel }, sans_email: !!sans_email }),
     })
     const j = await notifRes.json().catch(() => ({}))
     sent = notifRes.ok && !!j.sent

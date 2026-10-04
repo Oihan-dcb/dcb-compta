@@ -46,6 +46,7 @@ export default function ModalRapportsGroupes({ mode, mois, moisLabel, propsFiltr
   const [zipReady, setZipReady] = useState(null) // { blob, filename }
   const waitResolveRef = useRef(null)
   const stopRef = useRef(false)
+  const [arretDemande, setArretDemande] = useState(false)
 
   useEffect(() => () => { stopRef.current = true }, [])
 
@@ -135,7 +136,7 @@ export default function ModalRapportsGroupes({ mode, mois, moisLabel, propsFiltr
   // échec ici (log console) ne doit pas faire remonter 'erreur' sur l'item.
   // notify=false : « Télécharger tout » remplace aussi les rapports du portail, sans mail ni
   // notification (demande Oïhan 27/09/2026, même comportement que le téléchargement unitaire).
-  async function pousserAuPortail(item, notify = true) {
+  async function pousserAuPortail(item, notify = true, sansEmail = false) {
     try {
       const rapportData = buildRendererPayloadFrom(item)
       const statementHtml = genererStatementHTML(item.proprio, mois, rapportData)
@@ -149,6 +150,7 @@ export default function ModalRapportsGroupes({ mode, mois, moisLabel, propsFiltr
         bien_name: bienName,
         agence: item.bien?.agence || AGENCE,
         notify,
+        sans_email: sansEmail,
       })
       if (!res.ok) console.warn(`[portail] échec ${item.bien?.code || item.bienId} ${mois} :`, res.data?.error)
     } catch (e) {
@@ -157,6 +159,13 @@ export default function ModalRapportsGroupes({ mode, mois, moisLabel, propsFiltr
   }
 
   async function demarrer() {
+    // Confirmation avant un envoi groupé (04/10/2026 : « Envoyer à tous » cliqué par erreur
+    // au lieu de « Télécharger tout » — Maison Maïté parti avant qu'on puisse l'arrêter).
+    if (mode !== 'download') {
+      const nbProprios = new Set(items.map(it => it.proprio.id)).size
+      if (!window.confirm(`Envoyer ${items.length} rapport(s) par mail à ${nbProprios} propriétaire(s) ?`)) return
+    }
+    setArretDemande(false)
     setRunning(true)
     setGlobalError(null)
     stopRef.current = false
@@ -187,7 +196,7 @@ export default function ModalRapportsGroupes({ mode, mois, moisLabel, propsFiltr
           patchItem(idx, { statut: 'fait_pdf' })
         } else {
           await envoyerUnRapport(item)
-          await pousserAuPortail(item)
+          await pousserAuPortail(item, true, true)
           onEnvoye?.(item.bienId)
           patchItem(idx, { statut: 'fait_envoye' })
         }
@@ -297,6 +306,12 @@ export default function ModalRapportsGroupes({ mode, mois, moisLabel, propsFiltr
           <span style={{ fontSize: '0.8em', color: '#9C8E7D', flex: 1 }}>
             {nbFait}/{items.length} traité(s){nbErreur > 0 ? ` · ${nbErreur} erreur(s)` : ''}
           </span>
+          {running && (
+            <button onClick={() => { stopRef.current = true; setArretDemande(true) }} disabled={arretDemande}
+              style={{ padding: '8px 16px', fontWeight: 600, borderRadius: 8, border: '1px solid #DC2626', background: '#FEE2E2', color: '#DC2626', cursor: arretDemande ? 'default' : 'pointer' }}>
+              {arretDemande ? 'Arrêt après le rapport en cours…' : '⏹ Arrêter'}
+            </button>
+          )}
           {!zipReady && (
             <button onClick={demarrer} disabled={running || items.length === 0} className="btn btn-secondary"
               style={{ padding: '8px 16px', fontWeight: 600, opacity: (running || items.length === 0) ? .5 : 1 }}>

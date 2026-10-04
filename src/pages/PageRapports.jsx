@@ -137,7 +137,7 @@ export default function PageRapports() {
   const [modeGroupe, setModeGroupe] = useState(null) // null | 'download' | 'send' — ouvre ModalRapportsGroupes
   const reqRef = useRef(0)
 
-  async function envoyerAuPortail() {
+  async function envoyerAuPortail(sansEmail = false) {
     if (!selectedPropId || !selectedBienId || !mois || !data) return
     setStatutPortail('sending')
     try {
@@ -154,6 +154,7 @@ export default function PageRapports() {
         mois,
         bien_name: bienName,
         agence: data.bien?.agence || AGENCE,
+        sans_email: sansEmail,
       })
       if (!portailRes.ok) {
         setStatutPortail('error')
@@ -938,7 +939,7 @@ FORMAT :
       // envoyerAuPortail() gère déjà ses propres erreurs (statutPortail/portailErrDetail,
       // affichées ci-dessous) sans jamais lever — l'échec du push ne doit pas faire
       // passer l'email, déjà parti, pour un échec.
-      envoyerAuPortail()
+      envoyerAuPortail(true) // le mail du rapport vient de partir → push seulement
     } catch (e) {
       console.error('ERREUR ENVOI STATEMENT:', e)
       if (e?.uncertainSend) {
