@@ -10,6 +10,7 @@ import {
   envoyerEmailChargesProprio,
   reouvrirClotureFacture,
 } from '../services/facturesEvoliz'
+import { calculerRegulFmenInterne, validerRegulFmenInterne } from '../services/ajustementsMenage'
 import { pousserFacturesMoisVersEvoliz, pingEvoliz, pousserFactureCOMVersEvoliz, syncNumerosEvoliz, refreshFacturesBrouillonsEvoliz, creerArticlesManquantsEvoliz, setupEvolizComplet } from '../services/evoliz'
 import { genererFacturesLLD } from '../services/facturesLLD'
 import { formatMontant } from '../lib/hospitable'
@@ -131,6 +132,34 @@ const [pushing, setPushing] = useState(false)
   async function chargerCOM() {
     const f = await getFactureCOM(mois)
     setComFacture(f)
+  }
+
+  // Régul FMEN interne (biens où DCB encaisse) — 05/10/2026 : les écarts « FMEN réel − déjà
+  // régularisé » ne vont plus sur les factures des propriétaires (le MEN vient des voyageurs via le
+  // séquestre) : une seule régul interne par mois, validée ici (services/ajustementsMenage.js).
+  const [regulFmen, setRegulFmen] = useState(null)
+  const [regulOuverte, setRegulOuverte] = useState(false)
+  const [validantRegul, setValidantRegul] = useState(false)
+  async function chargerRegulFmen() {
+    try { setRegulFmen(await calculerRegulFmenInterne(mois)) } catch (e) { setRegulFmen({ lignes: [], total: 0, erreur: e.message }) }
+  }
+  useEffect(() => { chargerRegulFmen() }, [mois])
+  function telechargerRegulFmen() {
+    const rows = [['Bien', 'Mois', 'Réservation', 'Écart FMEN TTC (€)'], ...(regulFmen?.lignes || []).map(l => [l.bien_code, l.mois_comptable, l.resa_code, (l.ttc / 100).toFixed(2).replace('.', ',')]),
+      ['TOTAL', '', '', ((regulFmen?.total || 0) / 100).toFixed(2).replace('.', ',')]]
+    const csv = rows.map(r => r.map(c => `"${String(c).replace(/"/g, '""')}"`).join(';')).join('\n')
+    const a = document.createElement('a'); a.href = URL.createObjectURL(new Blob(['\ufeff' + csv], { type: 'text/csv;charset=utf-8' }))
+    a.download = `regul-fmen-interne-${mois}.csv`; a.click()
+  }
+  async function validerRegulFmen() {
+    if (!regulFmen?.lignes?.length) return
+    if (!window.confirm(`Valider la régul FMEN interne de ${mois} : ${regulFmen.lignes.length} écart(s), net ${formatMontant(regulFmen.total)} TTC ?\n\nLes écarts seront marqués comme régularisés et ne reviendront plus. Télécharge d'abord le détail pour ta comptable.`)) return
+    setValidantRegul(true); setError(null)
+    try {
+      const r = await validerRegulFmenInterne(mois)
+      setSuccess(`Régul FMEN interne validée — ${r.nb} écart(s), net ${formatMontant(r.total)} TTC`)
+      await chargerRegulFmen()
+    } catch (e) { setError('Régul FMEN : ' + e.message) } finally { setValidantRegul(false) }
   }
 
   async function genererCOM() {
@@ -1023,6 +1052,42 @@ const [pushing, setPushing] = useState(false)
       {warning && (
         <div className="alert alert-warning">
           {warning}
+        </div>
+      )}
+
+      {/* ── Régul FMEN interne (biens où DCB encaisse) ── */}
+      {regulFmen && (regulFmen.lignes.length > 0 || regulFmen.erreur) && (
+        <div style={{ border: '1px solid var(--border)', borderRadius: 'var(--radius)', background: 'var(--white)', marginBottom: 16, overflow: 'hidden' }}>
+          <div style={{ padding: '14px 18px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 12, background: '#F0EBE1', borderBottom: '2px solid var(--brand)' }}>
+            <div>
+              <div style={{ fontWeight: 700, fontSize: 15 }}>Régul FMEN interne — biens où DCB encaisse</div>
+              <div style={{ fontSize: 12, color: 'var(--text-muted)', marginTop: 2 }}>
+                Écart coût réel de l'aide-ménage vs FMEN déjà facturé (mois envoyés) · règlement interne, rien sur les factures des propriétaires
+              </div>
+              {regulFmen.erreur && <div style={{ fontSize: 12, color: '#B91C1C', marginTop: 4 }}>{regulFmen.erreur}</div>}
+            </div>
+            <div style={{ display: 'flex', gap: 12, alignItems: 'center', flexWrap: 'wrap' }}>
+              <div style={{ textAlign: 'right' }}>
+                <div style={{ fontSize: 11, color: 'var(--text-muted)', textTransform: 'uppercase' }}>{regulFmen.lignes.length} écart(s) · net TTC</div>
+                <div style={{ fontWeight: 700, fontSize: 16 }}>{formatMontant(regulFmen.total)}</div>
+              </div>
+              <button className="btn btn-secondary" style={{ fontSize: 13 }} onClick={() => setRegulOuverte(v => !v)}>{regulOuverte ? 'Masquer' : 'Détail'}</button>
+              <button className="btn btn-secondary" style={{ fontSize: 13 }} onClick={telechargerRegulFmen}>⬇ CSV</button>
+              <button className="btn btn-primary" style={{ fontSize: 13 }} onClick={validerRegulFmen} disabled={validantRegul}>
+                {validantRegul ? <><span className="spinner" /> Validation…</> : '✓ Valider la régul'}
+              </button>
+            </div>
+          </div>
+          {regulOuverte && (
+            <div style={{ padding: '10px 18px', maxHeight: 320, overflowY: 'auto', fontSize: 12 }}>
+              {Object.entries(regulFmen.lignes.reduce((acc, l) => { (acc[l.bien_code] = acc[l.bien_code] || []).push(l); return acc }, {})).map(([code, ls]) => (
+                <div key={code} style={{ display: 'flex', justifyContent: 'space-between', padding: '4px 0', borderBottom: '1px solid #F0EBE1' }}>
+                  <span><b>{code}</b> <span style={{ color: 'var(--text-muted)' }}>· {ls.length} séjour(s) · {[...new Set(ls.map(l => l.mois_comptable))].join(', ')}</span></span>
+                  <span style={{ fontWeight: 600, color: ls.reduce((s, l) => s + l.ttc, 0) < 0 ? '#B91C1C' : '#15803D' }}>{formatMontant(ls.reduce((s, l) => s + l.ttc, 0))}</span>
+                </div>
+              ))}
+            </div>
+          )}
         </div>
       )}
 

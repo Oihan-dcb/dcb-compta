@@ -462,6 +462,15 @@ Sur la facture de M+1 (uniquement pour les mois dont la facture est `envoye_evol
 Traçabilité : `journal_ops` (`fmen_lauian_reporte`, `fmen_lauian_ajustement`) + une ligne facture par résa.
 Cas neutralisés au backfill : ARROSA (cas particulier), BITXI juin 2026 (avoir manuel).
 
+**Régul FMEN : facture du propriétaire OU régul interne (05/10/2026, décision Oïhan)** : MEN (payé par le
+voyageur) = AUTO réel (AE) + FMEN (DCB) ; rien du MEN ne revient au propriétaire. Écart « FMEN réel − déjà
+régularisé » d'un mois envoyé : bien `mode_encaissement='proprio'` (le propriétaire paie la facture FMEN) →
+ligne « Ajustement ménage » sur SA facture ; bien où DCB encaisse → AUCUNE ligne sur la facture du
+propriétaire, l'écart va dans la **régul FMEN interne** du mois (PageFactures, bloc « Régul FMEN interne » :
+détail, CSV pour la comptable, bouton « Valider la régul » qui avance `fmen_facture` et trace dans
+`journal_ops` action `regul_fmen_interne`). Septembre 2026 : interne +33,02 € net (Maïté +749,97,
+ONTZI −675…), factures proprio +81,25 € (DUL, 506P, B24, 408P).
+
 **Ajustements ménage DCB dans le rapport propriétaire (05/10/2026)** : les lignes « Ajustement ménage
 {resa} ({mois}) » de la facture honoraires DCB (I-155) portent sur des résas de mois précédents, hors
 périmètre du rapport du mois. Le calcul est **unique** (`src/services/ajustementsMenage.js`,
