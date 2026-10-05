@@ -28,6 +28,9 @@ const STATUTS = {
   payee: { label: 'Payée', color: '#059669', bg: '#D1FAE5' },
   solde_negatif: { label: 'Solde négatif', color: '#DC2626', bg: '#FEE2E2' },
   a_reporter: { label: 'À reporter', color: '#DC2626', bg: '#FEE2E2' },
+  // Débours marqué « traité » sans facture Evoliz (id_evoliz 'N/A') : jamais dans Evoliz — reste à
+  // l'envoyer au propriétaire par mail. Avant : libellé « Envoyée Evoliz » trompeur (VIKY 09/2026).
+  hors_evoliz_a_envoyer: { label: 'Hors Evoliz — à envoyer au proprio', color: '#B45309', bg: '#FEF3C7' },
 }
 
 export default function PageFactures() {
@@ -1157,7 +1160,9 @@ const [pushing, setPushing] = useState(false)
       ) : (
         <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
           {facturesTries.map((f, _i) => {
-            const statutInfo = f.a_reporter ? STATUTS.a_reporter : f.solde_negatif ? STATUTS.solde_negatif : (STATUTS[f.statut] || STATUTS.brouillon)
+            const statutInfo = f.a_reporter ? STATUTS.a_reporter : f.solde_negatif ? STATUTS.solde_negatif
+              : (f.type_facture === 'debours' && f.statut === 'envoye_evoliz') ? STATUTS.hors_evoliz_a_envoyer
+              : (STATUTS[f.statut] || STATUTS.brouillon)
             const isExpanded = expanded === f.id
             const proprio = f.proprietaire
             // En-tête de section avant la 1ʳᵉ facture de chaque groupe (cf. groupeFacture)
@@ -1207,7 +1212,7 @@ const [pushing, setPushing] = useState(false)
                         {proprio?.nom} {proprio?.prenom || ''}
                       </div>
                       <div style={{ fontSize: 12, color: 'var(--text-muted)' }}>
-                        {f.numero_facture || `Brouillon — ${mois}`}
+                        {f.numero_facture === 'N/A' ? `Hors Evoliz — ${mois}` : (f.numero_facture || `Brouillon — ${mois}`)}
                         {proprio?.iban && <span> · IBAN : {proprio.iban.substring(0, 12)}…</span>}
                         {f.type_facture === 'debours' && (
                           <span style={{ fontSize: 10, fontWeight: 700, background: '#e8f4f8',
