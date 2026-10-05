@@ -566,7 +566,10 @@ const [pushing, setPushing] = useState(false)
           if (!parResa[k]) parResa[k] = { bien_id: v.bien_id, MEN: 0, FMEN: 0, AUTO: 0 }
           if (v.code === 'MEN') parResa[k].MEN += v.montant_ttc || 0
           else if (v.code === 'FMEN') parResa[k].FMEN += v.montant_ttc || 0
-          else if (v.code === 'AUTO') parResa[k].AUTO += (v.montant_reel ?? v.montant_ht ?? 0)
+          // AUTO PRÉVU : le propriétaire paie un ménage fixe (FMEN + AUTO prévus), même règle que la
+          // facture et le rapport (buildRapportData ownerStayList) — avec l'AUTO réel, MUNDUZ 09/2026
+          // affichait « Tréso ⚠ +12,50 € » à tort.
+          else if (v.code === 'AUTO') parResa[k].AUTO += (v.montant_ht ?? 0)
         }
         for (const x of Object.values(parResa)) ownerStayByBien[x.bien_id] = (ownerStayByBien[x.bien_id] || 0) + (x.MEN > 0 ? x.MEN : x.FMEN + x.AUTO)
       }
