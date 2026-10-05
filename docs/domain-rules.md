@@ -471,6 +471,8 @@ détail, CSV pour la comptable, bouton « Valider la régul » qui avance `fmen_
 `journal_ops` action `regul_fmen_interne`). Septembre 2026 : interne +33,02 € net (Maïté +749,97,
 ONTZI −675…). Biens proprio (DUL, 506P, B24, 408P, +81,25 €) : rattrapage mai→août **non refacturé**, coût assumé par DCB (Oïhan 05/10) — exclu des factures (mois < 2026-09) et fermé par la validation de la régul ; à partir de septembre 2026, leurs écarts restent sur leur facture.
 
+**Factures FMEN Lauïan (05/10/2026)** : même règle — un *ajustement* (écart réel / déjà facturé) d'un bien où l'agence encaisse sort de la facture du propriétaire (régul interne tracée dans `journal_ops` action `regul_fmen_interne`, meta.agence='lauian', marqueur avancé à la génération comme le reste du circuit Lauïan) ; un *rattrapage* (FMEN jamais facturé, résa reportée) reste facturé. Brouillon devenu vide supprimé (MARNEKO 09/2026).
+
 **Ajustements ménage DCB dans le rapport propriétaire (05/10/2026)** : les lignes « Ajustement ménage
 {resa} ({mois}) » de la facture honoraires DCB (I-155) portent sur des résas de mois précédents, hors
 périmètre du rapport du mois. Le calcul est **unique** (`src/services/ajustementsMenage.js`,

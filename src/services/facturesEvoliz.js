@@ -1442,6 +1442,13 @@ async function genererFactureLauianFMEN(proprio, biens, mois, ctx) {
     .filter(function(f) { return ['envoye_evoliz', 'payee'].includes(f.statut) })
     .map(function(f) { return f.mois }))
   const ajustements = [] // { id, ttc, effectif, libelle }
+  // Règle Oïhan (05/10/2026) : MEN = AUTO réel + FMEN, payé par le voyageur, jamais au propriétaire.
+  // Un AJUSTEMENT (écart réel / déjà facturé) d'un bien où l'agence encaisse est du règlement
+  // interne → pas de ligne sur la facture du propriétaire (MARNEKO 09/2026 : +12,50 €). Le
+  // RATTRAPAGE (FMEN jamais facturé, résa reportée) reste facturé : c'est sa première facturation.
+  const { data: biensMode } = await supabase.from('bien').select('id, code, mode_encaissement').in('id', bienIds)
+  const modeParBien = new Map((biensMode || []).map(function(b) { return [b.id, b] }))
+  const ajustementsInternes = [] // { id, ttc, effectif, libelle, bien_code }
   for (const v of (pastFmen || [])) {
     if (!moisEnvoyes.has(v.mois_comptable)) continue // mois pas encore facturé → sa propre facture s'en charge
     const resaCode = v.reservation?.code || ''
@@ -1455,8 +1462,10 @@ async function genererFactureLauianFMEN(proprio, biens, mois, ctx) {
     const effectif = v.montant_reel != null ? v.montant_reel : (v.montant_ttc || 0)
     const delta = effectif - v.fmen_facture
     if (delta !== 0) {
-      ajustements.push({ id: v.id, ttc: delta, effectif: effectif,
-        libelle: `Ajustement ménage ${resaCode} (${v.mois_comptable})` })
+      const ajust = { id: v.id, ttc: delta, effectif: effectif,
+        libelle: `Ajustement ménage ${resaCode} (${v.mois_comptable})`, bien_code: modeParBien.get(v.bien_id)?.code || '' }
+      if (modeParBien.get(v.bien_id)?.mode_encaissement === 'proprio') ajustements.push(ajust)
+      else ajustementsInternes.push(ajust)
     }
   }
   const ajustHT  = ajustements.reduce(function(s, a) { return s + Math.round(a.ttc / 1.20) }, 0)
@@ -1474,7 +1483,26 @@ async function genererFactureLauianFMEN(proprio, biens, mois, ctx) {
   const fraisDirectHT  = Math.round(fraisDirectTTC / 1.20)
   const fraisDirectTVA = fraisDirectTTC - fraisDirectHT
 
-  if (fmenHT === 0 && fraisDirect.length === 0 && ajustements.length === 0) return null
+  if (fmenHT === 0 && fraisDirect.length === 0 && ajustements.length === 0) {
+    // Rien à facturer, mais les ajustements internes doivent quand même être marqués et tracés
+    for (const a of ajustementsInternes) await supabase.from('ventilation').update({ fmen_facture: a.effectif }).eq('id', a.id)
+    if (ajustementsInternes.length > 0) {
+      const totInt = ajustementsInternes.reduce(function(s, a) { return s + a.ttc }, 0)
+      await supabase.from('journal_ops').insert({
+        categorie: 'facture', action: 'regul_fmen_interne', source: 'app', statut: 'ok',
+        mois_comptable: mois, proprietaire_id: proprio.id,
+        message: `Régul FMEN interne Lauïan ${mois} : ${ajustementsInternes.length} ajustement(s) hors facture propriétaire (${(totInt / 100).toFixed(2)} € TTC)`,
+        meta: { agence: 'lauian', total_ttc: totInt, lignes: ajustementsInternes.map(function(a) { return { ventilation_id: a.id, ttc: a.ttc, libelle: a.libelle, bien_code: a.bien_code } }) },
+      }).then(null, function() {})
+    }
+    // Brouillon devenu sans objet (ex. MARNEKO 09/2026 : seul un ajustement, désormais interne) → supprimé
+    const brouillonVide = ctx.facturesExistantes.get(`${proprio.id}__${bienId ?? 'null'}__lauian_fmen`)
+    if (brouillonVide && ['brouillon', 'calcul_en_cours', 'valide'].includes(brouillonVide.statut) && !brouillonVide.id_evoliz) {
+      await supabase.from('facture_evoliz_ligne').delete().eq('facture_id', brouillonVide.id)
+      await supabase.from('facture_evoliz').delete().eq('id', brouillonVide.id)
+    }
+    return null
+  }
 
   const existing = ctx.facturesExistantes.get(
     `${proprio.id}__${bienId ?? 'null'}__lauian_fmen`
@@ -1581,8 +1609,17 @@ async function genererFactureLauianFMEN(proprio, biens, mois, ctx) {
   for (const l of fmenInclus) {
     await supabase.from('ventilation').update({ fmen_facture: l.ttc }).eq('id', l.id)
   }
-  for (const a of ajustements) {
+  for (const a of [...ajustements, ...ajustementsInternes]) {
     await supabase.from('ventilation').update({ fmen_facture: a.effectif }).eq('id', a.id)
+  }
+  if (ajustementsInternes.length > 0) {
+    const totInt = ajustementsInternes.reduce(function(s, a) { return s + a.ttc }, 0)
+    supabase.from('journal_ops').insert({
+      categorie: 'facture', action: 'regul_fmen_interne', source: 'app', statut: 'ok',
+      mois_comptable: mois, proprietaire_id: proprio.id,
+      message: `Régul FMEN interne Lauïan ${mois} : ${ajustementsInternes.length} ajustement(s) hors facture propriétaire (${(totInt / 100).toFixed(2)} € TTC, bien où l'agence encaisse)`,
+      meta: { agence: 'lauian', total_ttc: totInt, lignes: ajustementsInternes.map(function(a) { return { ventilation_id: a.id, ttc: a.ttc, libelle: a.libelle, bien_code: a.bien_code } }) },
+    }).then(null, function() {})
   }
   if (fmenReporte.length > 0) {
     supabase.from('journal_ops').insert({
