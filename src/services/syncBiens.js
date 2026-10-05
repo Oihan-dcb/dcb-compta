@@ -75,6 +75,10 @@ export async function syncBiens() {
       code: extractCode(prop.name),
       adresse: prop.address?.display,
       ville: prop.address?.city,
+      // Même mapping que api/sync-biens.js (migration 312)
+      geo_lat: prop.address?.coordinates?.latitude != null ? parseFloat(prop.address.coordinates.latitude) : null,
+      geo_lng: prop.address?.coordinates?.longitude != null ? parseFloat(prop.address.coordinates.longitude) : null,
+      hospitable_amenities: Array.isArray(prop.amenities) ? prop.amenities : null,
       timezone: prop.timezone,
       currency: prop.currency || 'EUR',
       listed: prop.listed !== false,
