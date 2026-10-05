@@ -469,7 +469,7 @@ ligne « Ajustement ménage » sur SA facture ; bien où DCB encaisse → AUCUNE
 propriétaire, l'écart va dans la **régul FMEN interne** du mois (PageFactures, bloc « Régul FMEN interne » :
 détail, CSV pour la comptable, bouton « Valider la régul » qui avance `fmen_facture` et trace dans
 `journal_ops` action `regul_fmen_interne`). Septembre 2026 : interne +33,02 € net (Maïté +749,97,
-ONTZI −675…), factures proprio +81,25 € (DUL, 506P, B24, 408P).
+ONTZI −675…). Biens proprio (DUL, 506P, B24, 408P, +81,25 €) : rattrapage mai→août **non refacturé**, coût assumé par DCB (Oïhan 05/10) — exclu des factures (mois < 2026-09) et fermé par la validation de la régul ; à partir de septembre 2026, leurs écarts restent sur leur facture.
 
 **Ajustements ménage DCB dans le rapport propriétaire (05/10/2026)** : les lignes « Ajustement ménage
 {resa} ({mois}) » de la facture honoraires DCB (I-155) portent sur des résas de mois précédents, hors

@@ -145,19 +145,23 @@ const [pushing, setPushing] = useState(false)
   }
   useEffect(() => { chargerRegulFmen() }, [mois])
   function telechargerRegulFmen() {
-    const rows = [['Bien', 'Mois', 'Réservation', 'Écart FMEN TTC (€)'], ...(regulFmen?.lignes || []).map(l => [l.bien_code, l.mois_comptable, l.resa_code, (l.ttc / 100).toFixed(2).replace('.', ',')]),
-      ['TOTAL', '', '', ((regulFmen?.total || 0) / 100).toFixed(2).replace('.', ',')]]
+    const f = c => (c / 100).toFixed(2).replace('.', ',')
+    const rows = [['Type', 'Bien', 'Mois', 'Réservation', 'Écart FMEN TTC (€)'],
+      ...(regulFmen?.lignes || []).map(l => ['Régul interne (DCB encaisse)', l.bien_code, l.mois_comptable, l.resa_code, f(l.ttc)]),
+      ['TOTAL régul interne', '', '', '', f(regulFmen?.total || 0)],
+      ...(regulFmen?.lignesNonRefacturees || []).map(l => ['Non refacturé au proprio (coût DCB)', l.bien_code, l.mois_comptable, l.resa_code, f(l.ttc)]),
+      ...((regulFmen?.lignesNonRefacturees || []).length ? [['TOTAL non refacturé', '', '', '', f(regulFmen.totalNonRefacture)]] : [])]
     const csv = rows.map(r => r.map(c => `"${String(c).replace(/"/g, '""')}"`).join(';')).join('\n')
     const a = document.createElement('a'); a.href = URL.createObjectURL(new Blob(['\ufeff' + csv], { type: 'text/csv;charset=utf-8' }))
     a.download = `regul-fmen-interne-${mois}.csv`; a.click()
   }
   async function validerRegulFmen() {
-    if (!regulFmen?.lignes?.length) return
-    if (!window.confirm(`Valider la régul FMEN interne de ${mois} : ${regulFmen.lignes.length} écart(s), net ${formatMontant(regulFmen.total)} TTC ?\n\nLes écarts seront marqués comme régularisés et ne reviendront plus. Télécharge d'abord le détail pour ta comptable.`)) return
+    if (!regulFmen?.lignes?.length && !regulFmen?.lignesNonRefacturees?.length) return
+    if (!window.confirm(`Valider la régul FMEN interne de ${mois} : ${regulFmen.lignes.length} écart(s), net ${formatMontant(regulFmen.total)} TTC ?\n\n${regulFmen.lignesNonRefacturees?.length ? `+ ${regulFmen.lignesNonRefacturees.length} écart(s) biens proprio non refacturés (${formatMontant(regulFmen.totalNonRefacture)}).\n` : ''}\nLes écarts seront marqués comme régularisés et ne reviendront plus. Télécharge d'abord le détail pour ta comptable.`)) return
     setValidantRegul(true); setError(null)
     try {
       const r = await validerRegulFmenInterne(mois)
-      setSuccess(`Régul FMEN interne validée — ${r.nb} écart(s), net ${formatMontant(r.total)} TTC`)
+      setSuccess(`Régul FMEN interne validée — ${r.nb} écart(s), net ${formatMontant(r.total)} TTC` + (r.nbNonRefacture ? ` · ${r.nbNonRefacture} écart(s) biens proprio fermés sans refacturation (${formatMontant(r.totalNonRefacture)})` : ''))
       await chargerRegulFmen()
     } catch (e) { setError('Régul FMEN : ' + e.message) } finally { setValidantRegul(false) }
   }
@@ -1056,7 +1060,7 @@ const [pushing, setPushing] = useState(false)
       )}
 
       {/* ── Régul FMEN interne (biens où DCB encaisse) ── */}
-      {regulFmen && (regulFmen.lignes.length > 0 || regulFmen.erreur) && (
+      {regulFmen && (regulFmen.lignes.length > 0 || regulFmen.lignesNonRefacturees?.length > 0 || regulFmen.erreur) && (
         <div style={{ border: '1px solid var(--border)', borderRadius: 'var(--radius)', background: 'var(--white)', marginBottom: 16, overflow: 'hidden' }}>
           <div style={{ padding: '14px 18px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 12, background: '#F0EBE1', borderBottom: '2px solid var(--brand)' }}>
             <div>
@@ -1065,6 +1069,9 @@ const [pushing, setPushing] = useState(false)
                 Écart coût réel de l'aide-ménage vs FMEN déjà facturé (mois envoyés) · règlement interne, rien sur les factures des propriétaires
               </div>
               {regulFmen.erreur && <div style={{ fontSize: 12, color: '#B91C1C', marginTop: 4 }}>{regulFmen.erreur}</div>}
+              {regulFmen.lignesNonRefacturees?.length > 0 && <div style={{ fontSize: 12, color: '#8C7B65', marginTop: 4 }}>
+                + {regulFmen.lignesNonRefacturees.length} écart(s) sur biens où le proprio encaisse, rattrapage mai→août non refacturé (coût assumé par DCB) : {formatMontant(regulFmen.totalNonRefacture)} — fermés à la validation
+              </div>}
             </div>
             <div style={{ display: 'flex', gap: 12, alignItems: 'center', flexWrap: 'wrap' }}>
               <div style={{ textAlign: 'right' }}>

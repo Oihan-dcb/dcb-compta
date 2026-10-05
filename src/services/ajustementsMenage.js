@@ -18,6 +18,7 @@ import { supabase } from '../lib/supabase'
 import { logOp } from './journal'
 
 const DEBUT_AJUSTEMENTS = '2026-05'
+const FIN_RATTRAPAGE_NON_REFACTURE = '2026-09'
 
 // Écarts FMEN réel − déjà régularisé des mois dont la facture honoraires est envoyée.
 // perimetre : 'facture' → seulement les biens où le propriétaire encaisse ; 'interne' → seulement
@@ -64,23 +65,37 @@ async function ecartsFmen({ proprioId = null, bienIds, mois, perimetre }) {
 // Lignes « Ajustement ménage » de la facture (et du rapport) d'un propriétaire : biens où il encaisse.
 export async function calculerAjustementsMenage(proprioId, bienIds, mois) {
   if (!proprioId) return []
-  return ecartsFmen({ proprioId, bienIds, mois, perimetre: 'facture' })
+  const ecarts = await ecartsFmen({ proprioId, bienIds, mois, perimetre: 'facture' })
+  // Rattrapage mai→août 2026 non refacturé (coût assumé par DCB, cf. calculerRegulFmenInterne)
+  return ecarts.filter(e => e.mois_comptable >= FIN_RATTRAPAGE_NON_REFACTURE)
 }
 
 // Régul FMEN interne du mois : tous les biens DCB où DCB encaisse.
+// Rattrapage mai→août 2026 (décision Oïhan 05/10/2026 : « pour les biens où les proprios sont facturés
+// je vais assumer le coût ») : les écarts des biens où le PROPRIÉTAIRE encaisse antérieurs à septembre
+// 2026 ne sont pas refacturés — ils sont listés à part (lignesNonRefacturees) et fermés à la validation,
+// sans chiffre d'affaires. À partir des mois ≥ 2026-09, ils restent facturés au propriétaire.
+const sortLignes = ls => ls.sort((a, b) => a.bien_code.localeCompare(b.bien_code) || a.mois_comptable.localeCompare(b.mois_comptable))
 export async function calculerRegulFmenInterne(mois, agence = 'dcb') {
-  const { data: biens } = await supabase.from('bien').select('id').eq('agence', agence).neq('mode_encaissement', 'proprio')
-  const lignes = await ecartsFmen({ bienIds: (biens || []).map(b => b.id), mois, perimetre: 'interne' })
-  lignes.sort((a, b) => a.bien_code.localeCompare(b.bien_code) || a.mois_comptable.localeCompare(b.mois_comptable))
-  return { lignes, total: lignes.reduce((s, l) => s + l.ttc, 0) }
+  const { data: biens } = await supabase.from('bien').select('id, mode_encaissement').eq('agence', agence)
+  const ids = (biens || []).map(b => b.id)
+  const [lignes, lignesProprio] = await Promise.all([
+    ecartsFmen({ bienIds: ids, mois, perimetre: 'interne' }),
+    ecartsFmen({ bienIds: ids, mois, perimetre: 'facture' }),
+  ])
+  const lignesNonRefacturees = lignesProprio.filter(l => l.mois_comptable < FIN_RATTRAPAGE_NON_REFACTURE)
+  return {
+    lignes: sortLignes(lignes), total: lignes.reduce((s, l) => s + l.ttc, 0),
+    lignesNonRefacturees: sortLignes(lignesNonRefacturees), totalNonRefacture: lignesNonRefacturees.reduce((s, l) => s + l.ttc, 0),
+  }
 }
 
 // Validation : les écarts sont considérés comme régularisés (marqueur avancé) et tracés dans
 // journal_ops (détail complet pour la comptable). Recalcule au moment de valider pour ne
 // jamais marquer un écart qui aurait changé entre l'affichage et le clic.
 export async function validerRegulFmenInterne(mois, agence = 'dcb') {
-  const { lignes, total } = await calculerRegulFmenInterne(mois, agence)
-  for (const l of lignes) {
+  const { lignes, total, lignesNonRefacturees, totalNonRefacture } = await calculerRegulFmenInterne(mois, agence)
+  for (const l of [...lignes, ...lignesNonRefacturees]) {
     const { data: v } = await supabase.from('ventilation').select('fmen_facture').eq('id', l.ventilation_id).maybeSingle()
     if (!v) continue
     const { error } = await supabase.from('ventilation').update({ fmen_facture: (v.fmen_facture || 0) + l.ttc }).eq('id', l.ventilation_id)
@@ -88,8 +103,9 @@ export async function validerRegulFmenInterne(mois, agence = 'dcb') {
   }
   await logOp({
     categorie: 'facture', action: 'regul_fmen_interne', statut: 'ok', source: 'app', mois_comptable: mois,
-    message: `Régul FMEN interne ${mois} validée — ${lignes.length} écart(s), net ${(total / 100).toFixed(2)} € TTC (biens où DCB encaisse)`,
-    meta: { mois, agence, total_ttc: total, lignes },
+    message: `Régul FMEN interne ${mois} validée — ${lignes.length} écart(s), net ${(total / 100).toFixed(2)} € TTC (biens où DCB encaisse)`
+      + (lignesNonRefacturees.length ? ` ; ${lignesNonRefacturees.length} écart(s) biens proprio non refacturés (${(totalNonRefacture / 100).toFixed(2)} €, coût assumé par DCB)` : ''),
+    meta: { mois, agence, total_ttc: total, lignes, non_refacture_ttc: totalNonRefacture, lignes_non_refacturees: lignesNonRefacturees },
   })
-  return { nb: lignes.length, total }
+  return { nb: lignes.length, total, nbNonRefacture: lignesNonRefacturees.length, totalNonRefacture }
 }
