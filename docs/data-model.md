@@ -970,3 +970,15 @@ Virement est ✓ tant que `ecart_cts = ecart_accepte_cts`. Jamais écrits par `v
 - `fiche_historique` : trigger AFTER UPDATE sur `proprietaire` et `bien` — une ligne par modification effective,
   `avant`/`apres` = colonnes changées seulement (techniques ignorées : updated_at, derniere_sync, last_seen,
   evoliz_snapshot, photo_url). `auteur_id` NULL = service (cron, formulaire public du lien d'onboarding). Lecture staff.
+
+## Ajout 2026-10-05 — Workflow terrain Portail AE : `mission_terrain`, `bien_particularite` (migrations 301-302)
+
+**`mission_terrain`** (1 ligne par `mission_menage`, PK `mission_id`) : session terrain de l'AE dans « Ma journée » (`dcb-portail-ae/src/pages/MaJournee.jsx`).
+`started_at` / `ended_at` horodatés **côté serveur** (`now()` dans les RPC), position ponctuelle début/fin (`start_*`/`end_*`, jamais de suivi continu), `etat_arrivee` (`ok`/`probleme`), `duree_minutes` (mesurée, arrondie 5 min), `duree_corrigee_minutes` + `motif_correction` (correction déclarée par l'AE), `duree_appliquee_at` (durée confirmée et recopiée dans `mission_menage.duree_heures`), `video_media_id` → `media_library`. `statut` : `en_cours` → `video_attendue` → `terminee`.
+Table **séparée** de `mission_menage` car `sync-ical-ae` réécrit cette dernière. **Aucune écriture directe** (RLS select seulement : AE propriétaire, bureau, managers scopés) — tout passe par les RPC `SECURITY DEFINER` : `terrain_demarrer`, `terrain_etat_arrivee`, `terrain_terminer`, `terrain_corriger_duree`, `terrain_marquer_duree_appliquee`, `terrain_attacher_video` (garde commune `_terrain_mission_check` : mission de l'appelant via `auth_user_owns_ae`, non annulée/refusée).
+La durée est écrite dans `mission_menage` par `dcb-portail-ae/src/lib/missionDuree.js` (même règle que la saisie manuelle : forfait ou taux, MFC 20 €/h, auto-validation si ≤ `duree_prevue`) **seulement après confirmation** par l'AE — une mission auto-validée n'est plus modifiable par l'AE (RLS `mission_update`). Missions « Maintenance » (hors séjour) : aucune durée écrite.
+
+**`media_library.mission_id`** : la vidéo « après ménage » envoyée depuis Ma journée est rattachée à sa mission (vérifié par `terrain_attacher_video` : même bien, `subject='apres_menage'`, `sender_id = auth.uid()`). Le flux `bien-pret` (badge PowerHouse + push managers) est déclenché comme depuis la messagerie, `source='workflow_terrain'`.
+
+**`bien_particularite`** (bien_id = **`bien.id`**) : fiches « Particularités du bien » (spa, lave-vaisselle, alarme…) — `categorie`, `titre`, `contenu` (étapes, une par ligne), `medias` jsonb `[{url,is_video}]` (B2), `importance` `info`/`important`/`critique` (une fiche critique non lue bloque le bouton Démarrer), `actif` (retrait = `false`). Lecture : interne scopé secteur (comme `memo_bien`) ; écriture : `auth_user_peut_editer_fiches()` = bureau ou AE actif `is_chat_manager`/`acces_admin`.
+**`bien_particularite_lecture`** (`particularite_id`, `ae_id`, `lu_at`) : badge « NOUVEAU » quand la fiche a été modifiée après la dernière lecture de l'AE.
