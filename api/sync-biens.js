@@ -141,6 +141,11 @@ export default async function handler(req, res) {
       code: extractCode(prop.name),
       adresse: prop.address?.display,
       ville: prop.address?.city,
+      // Coordonnées + équipements (migration 312) : distance au bien dans le workflow terrain,
+      // détection des équipements pour les suggestions d'entretien.
+      geo_lat: prop.address?.coordinates?.latitude != null ? parseFloat(prop.address.coordinates.latitude) : null,
+      geo_lng: prop.address?.coordinates?.longitude != null ? parseFloat(prop.address.coordinates.longitude) : null,
+      hospitable_amenities: Array.isArray(prop.amenities) ? prop.amenities : null,
       timezone: prop.timezone,
       currency: prop.currency || 'EUR',
       listed: prop.listed !== false,
