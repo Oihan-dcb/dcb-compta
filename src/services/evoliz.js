@@ -269,6 +269,12 @@ async function cloturerCOM(mois, agence) {
 }
 
 export async function creerFactureEvoliz(facture) {
+  // Règle Oïhan (05/10/2026) : on ne crée JAMAIS de facture Evoliz pour un débours (frais avancé
+  // pour le propriétaire, refacturé à l'euro, sans TVA) — il est envoyé au propriétaire par mail
+  // (« Envoyer au proprio ») puis suivi jusqu'au remboursement, hors Evoliz.
+  if (facture.type_facture === 'debours') {
+    throw new Error('Facture de débours : jamais envoyée dans Evoliz — utiliser « Envoyer au proprio ».')
+  }
   // CF-F2 niveau 1 - guard idempotence : ne pas recreer si deja envoye vers Evoliz
   if (facture.id_evoliz) {
     throw new Error(
@@ -561,6 +567,7 @@ export async function pousserFacturesMoisVersEvoliz(mois) {
     .eq('statut', 'valide')
     .eq('agence', AGENCE)
     .neq('type_facture', 'com') // la facture COM a son flux dédié (pousserFactureCOMVersEvoliz, client fixe, pas de proprio)
+    .neq('type_facture', 'debours') // débours : jamais dans Evoliz (envoi au propriétaire par mail)
     .eq('bloque_treso', false) // factures LLD bloquées (loyer non encaissé) → jamais poussées
 
   if (error) throw error
