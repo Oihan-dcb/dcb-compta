@@ -24,6 +24,9 @@ export function genererStatementHTML(proprio, mois, data) {
   const haownerList = data.haownerList || []
   const assuranceList = data.assuranceList || []
   const ownerStayMenageList = data.ownerStayMenageList || []
+  // Ajustements ménage de mois précédents repris de la facture du mois (I-155, buildRapportData)
+  const ajustementMenageList = data.ajustementMenageList || []
+  const ajustementMenageTotal = ajustementMenageList.reduce((s, a) => s + (a.montant_ttc || 0), 0)
   const fraisProprietaire = data.fraisProprietaire || []
   const modeEncaissement = data.kpis?.modeEncaissement || 'dcb'
   const virTotalProprioEncaisse = data.kpis?.virTotalProprioEncaisse || 0
@@ -114,7 +117,7 @@ export function genererStatementHTML(proprio, mois, data) {
   const fraisFacturesDirectTotal = fraisFacturesDirectList.reduce((s, f) => s + (f.montant_ttc || 0), 0)
   // ownerStayMenageTotal a sa propre ligne d'affichage — ne pas l'inclure dans « Débours / Achats »
   const deboursTotal  = deboursSeuls + haownerTotal
-  const totalManager  = honTotal + (sansGestionLoyer ? fmenTotalK + autoReelTotalK : (showMenage ? menageTotal : 0)) + deboursTotal + ownerStayMenageTotal + fraisDeductionLoyTotal + fraisReliquatTotal + fraisFacturesDirectTotal
+  const totalManager  = honTotal + (sansGestionLoyer ? fmenTotalK + autoReelTotalK : (showMenage ? menageTotal : 0)) + deboursTotal + ownerStayMenageTotal + fraisDeductionLoyTotal + fraisReliquatTotal + fraisFacturesDirectTotal + ajustementMenageTotal
   // virementNet calculé depuis les totaux du tableau pour garantir la cohérence :
   // tout changement dans les règles de calcul des lignes se répercute automatiquement dans le bloc
   const virementNet   = Math.max(0, virTotal - fraisDeductionLoyTotal + remboursementsTotal - deboursSeuls - haownerTotal - ownerStayMenageTotal)
@@ -299,6 +302,9 @@ export function genererStatementHTML(proprio, mois, data) {
     </div>` : ''}
     ${ownerStayMenageTotal > 0 ? `<div style="display:flex;justify-content:space-between;padding:3px 0;border-bottom:1px solid #ece8e2;font-size:10px">
       <span style="color:#9c8c7a">Ménage(s) séjour propriétaire</span><span>${fmt(ownerStayMenageTotal)}</span>
+    </div>` : ''}
+    ${ajustementMenageList.length ? `<div style="display:flex;justify-content:space-between;padding:3px 0;border-bottom:1px solid #ece8e2;font-size:10px">
+      <span style="color:#9c8c7a">Ajustement ménage (coût réel, mois précédents)<br><span style="font-size:8px;font-style:italic">${ajustementMenageList.map(a => escapeNonAscii(a.libelle.replace(/^Ajustement ménage\s*/, '')) + ' : ' + (a.montant_ttc > 0 ? '+' : '−') + ' ' + fmt(Math.abs(a.montant_ttc))).join(' · ')}</span></span><span>${ajustementMenageTotal < 0 ? '− ' + fmt(-ajustementMenageTotal) : fmt(ajustementMenageTotal)}</span>
     </div>` : ''}
     <div style="display:flex;justify-content:space-between;padding:3px 0;border-bottom:1px solid #ece8e2;font-size:10px">
       <span style="color:#9c8c7a">Débours / Achats</span><span>${deboursTotal > 0 ? fmt(deboursTotal) : '—'}</span>

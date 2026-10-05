@@ -462,6 +462,16 @@ Sur la facture de M+1 (uniquement pour les mois dont la facture est `envoye_evol
 Traçabilité : `journal_ops` (`fmen_lauian_reporte`, `fmen_lauian_ajustement`) + une ligne facture par résa.
 Cas neutralisés au backfill : ARROSA (cas particulier), BITXI juin 2026 (avoir manuel).
 
+**Ajustements ménage DCB dans le rapport propriétaire (05/10/2026)** : les lignes « Ajustement ménage
+{resa} ({mois}) » de la facture honoraires DCB (I-155) portent sur des résas de mois précédents, hors
+périmètre du rapport du mois. Le calcul est **unique** (`src/services/ajustementsMenage.js`,
+`calculerAjustementsMenage`) et partagé par la facture (`facturesEvoliz.js`) et le rapport
+(`buildRapportData.js` → `ajustementMenageList`, ligne « Ajustement ménage » dans les charges du statement,
+incluse dans le « Total dû à DCB », sans effet sur le reversement). Facture du mois déjà envoyée → le
+rapport relit ses lignes `code='FMEN'` avec `ventilation_id` (les marqueurs ont avancé à l'envoi) ; sinon il
+recalcule → rapport = facture **quel que soit l'ordre de génération** (rapports avant ou après factures).
+Les frais manuels « Ajustement ménage … » (code FRAIS) restent dans les frais du rapport, jamais comptés ici.
+
 **Avant** (comportement incorrect supprimé) : AUTO absorbait du LOY même quand MEN le couvrait → DEB_AE fantôme et double-déduction du proprio.
 
 ### 12.2 Prestations hors forfait validées (code EXTRA)

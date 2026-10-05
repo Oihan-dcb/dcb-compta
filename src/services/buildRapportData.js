@@ -18,6 +18,8 @@
 
 import { supabase } from '../lib/supabase'
 import { STATUTS_NON_VENTILABLES } from '../lib/constants'
+import { AGENCE } from '../lib/agence'
+import { calculerAjustementsMenage } from './ajustementsMenage'
 
 const nextMonthStr = (ym) => {
   const [yy, mm] = ym.split('-').map(Number)
@@ -487,6 +489,35 @@ export async function buildRapportData(bienId, propId, mois, opts = {}) {
     })
   const ownerStayMenageTotal = ownerStayList.reduce((s, r) => s + r.montant, 0)
 
+  // ── Ajustements ménage des mois précédents (I-155) ────────────────────────
+  // La facture du mois rattrape l'écart « coût réel de l'aide-ménage − forfait déjà facturé » sur
+  // des résas de mois DÉJÀ envoyés (lignes « Ajustement ménage <resa> (<mois>) »). Ces résas ne sont
+  // pas dans le périmètre du rapport (résas du mois) : sans cette liste, le « Total dû » du rapport
+  // différait de la facture (506P 09/2026 : 43,75 € vs 68,75 €). N'affecte pas le reversement.
+  //  - facture du mois DÉJÀ envoyée → on relit ses lignes (les marqueurs ont été avancés à l'envoi,
+  //    un recalcul ne redonnerait plus rien) ;
+  //  - sinon (rapport généré AVANT ou PENDANT les factures) → même calcul que la facture
+  //    (services/ajustementsMenage.js) : rapport = facture quel que soit l'ordre de génération.
+  let ajustementMenageList = []
+  if (facture?.id && ['envoye_evoliz', 'payee'].includes(facture.statut)) {
+    const { data: ajLignes } = await supabase
+      .from('facture_evoliz_ligne')
+      .select('id, libelle, montant_ttc, ordre')
+      .eq('facture_id', facture.id)
+      .eq('code', 'FMEN')                 // lignes automatiques I-155 uniquement : les frais manuels
+      .not('ventilation_id', 'is', null)  // « Ajustement ménage … » (code FRAIS) sont déjà dans les frais du rapport
+      .ilike('libelle', 'Ajustement ménage%')
+      .order('ordre')
+    ajustementMenageList = (ajLignes || []).map(l => ({ id: l.id, libelle: l.libelle, montant_ttc: l.montant_ttc }))
+  } else if (AGENCE !== 'lauian') {
+    const calc = await calculerAjustementsMenage(propId, isGlobal ? maiteIds : [bienId], mois)
+    ajustementMenageList = calc.map(a => ({ id: a.ventilation_id, libelle: a.libelle, montant_ttc: a.ttc }))
+  }
+  ajustementMenageList = ajustementMenageList
+    .filter(a => (a.montant_ttc || 0) !== 0)
+    .map(a => ({ ...a, libelle: (a.libelle || '').replace(/\s+—\s+coût réel.*$/, '') }))
+  const ajustementMenageTotal = ajustementMenageList.reduce((s, a) => s + a.montant_ttc, 0)
+
   // ── fraisDeductionLoy — règle unique ─────────────────────────────────────
   const fraisDeductionLoy = (fraisData || []).reduce((s, f) => {
     if (f.mode_traitement === 'deduire_loyer' || f.mode_traitement === 'facturer_et_deduire') {
@@ -643,6 +674,7 @@ export async function buildRapportData(bienId, propId, mois, opts = {}) {
     haownerList,
     assuranceList,
     ownerStayList,
+    ajustementMenageList,
     virementResaList,
     virementResaTotal,
     ventByResa,
@@ -660,6 +692,7 @@ export async function buildRapportData(bienId, propId, mois, opts = {}) {
       // Debug interne
       _virTotal: virTotal, _totalDebours: totalDebours, _totalHaowner: totalHaowner,
       _fraisDeductionLoy: fraisDeductionLoy, _ownerStayMenageTotal: ownerStayMenageTotal,
+      ajustementMenageTotal,
     },
     kpisN1: {
       nbResas: resaN1Guest.length, caHeb: caHebN1,

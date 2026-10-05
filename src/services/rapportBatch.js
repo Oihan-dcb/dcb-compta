@@ -57,6 +57,7 @@ export function buildRendererPayloadFrom({ result, bien, notesRow }) {
     haownerList: result.haownerList || [],
     assuranceList: result.assuranceList || [],
     ownerStayMenageList: result.ownerStayList || [],
+    ajustementMenageList: result.ajustementMenageList || [],
     fraisProprietaire: result.frais || [],
     colonnes: bien?.rapport_config?.colonnes || {},
   }

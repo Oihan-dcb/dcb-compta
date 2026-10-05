@@ -20,6 +20,7 @@ import { AGENCE, AGENCE_BRAND } from '../lib/agence'
 import { logOp } from './journal'
 import { STATUTS_NON_VENTILABLES } from '../lib/constants'
 import { evolizCall, appliquerMarqueursAjustementMenage } from './evoliz'
+import { calculerAjustementsMenage } from './ajustementsMenage'
 
 const MENTION_MANDAT = "Conformément au mandat de gestion, les honoraires de gestion sont directement prélevés sur le loyer encaissé avant reversement au propriétaire."
 
@@ -633,27 +634,8 @@ async function genererFactureGroupe(proprio, biens, mois, ctx) {
   // différence sur un mois déjà envoyé sort ici en ligne « Ajustement ménage » (+/-). Le marqueur des
   // mois passés n'est avancé qu'à l'ENVOI Evoliz (appliquerMarqueursAjustementMenage) : une
   // régénération du brouillon recalcule donc l'ajustement sans jamais le perdre.
-  const ajustementsMenage = []
-  if (inclureFMEN) {
-    const [{ data: pastFact }, { data: pastFmen }] = await Promise.all([
-      supabase.from('facture_evoliz').select('mois, statut')
-        .eq('proprietaire_id', proprio.id).eq('type_facture', 'honoraires').lt('mois', mois),
-      supabase.from('ventilation')
-        .select('id, mois_comptable, montant_ttc, montant_reel, fmen_facture, reservation:reservation_id(code, owner_stay, ventilation_manuelle)')
-        .in('bien_id', bienIds).eq('code', 'FMEN')
-        .gte('mois_comptable', '2026-05').lt('mois_comptable', mois)
-        .not('fmen_facture', 'is', null),
-    ])
-    const moisEnvoyes = new Set((pastFact || []).filter(f => ['envoye_evoliz', 'payee'].includes(f.statut)).map(f => f.mois))
-    for (const v of (pastFmen || [])) {
-      if (!moisEnvoyes.has(v.mois_comptable)) continue // mois pas encore envoyé → sa propre facture s'en charge
-      if (v.reservation?.owner_stay || v.reservation?.ventilation_manuelle) continue
-      const effectif = v.montant_reel != null ? v.montant_reel : (v.montant_ttc || 0)
-      const delta = effectif - v.fmen_facture
-      if (delta === 0) continue
-      ajustementsMenage.push({ ventilation_id: v.id, ttc: delta, libelle: `Ajustement ménage ${v.reservation?.code || ''} (${v.mois_comptable}) — coût réel de l'aide-ménage` })
-    }
-  }
+  // Calcul partagé avec le rapport propriétaire (services/ajustementsMenage.js).
+  const ajustementsMenage = inclureFMEN ? await calculerAjustementsMenage(proprio.id, bienIds, mois) : []
   const ajustMenHT  = ajustementsMenage.reduce((s, a) => s + Math.round(a.ttc / 1.20), 0)
   const ajustMenTTC = ajustementsMenage.reduce((s, a) => s + a.ttc, 0)
   const ajustMenTVA = ajustMenTTC - ajustMenHT

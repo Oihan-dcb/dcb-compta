@@ -821,6 +821,7 @@ FORMAT :
       haownerList: data?.haownerList || [],
       assuranceList: data?.assuranceList || [],
       ownerStayMenageList: data?.ownerStayList || [],
+      ajustementMenageList: data?.ajustementMenageList || [],
       fraisProprietaire: data?.frais || [],
       colonnes: colsConfig,
     }
