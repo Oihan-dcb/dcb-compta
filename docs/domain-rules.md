@@ -471,6 +471,7 @@ incluse dans le « Total dû à DCB », sans effet sur le reversement). Facture 
 rapport relit ses lignes `code='FMEN'` avec `ventilation_id` (les marqueurs ont avancé à l'envoi) ; sinon il
 recalcule → rapport = facture **quel que soit l'ordre de génération** (rapports avant ou après factures).
 Les frais manuels « Ajustement ménage … » (code FRAIS) restent dans les frais du rapport, jamais comptés ici.
+**Jamais d'ajustement ménage négatif (Oïhan 05/10/2026, « on rembourse pas »)** : seul un coût réel SUPÉRIEUR au FMEN déjà facturé génère une ligne ; un coût réel inférieur ne crée ni avoir ni facture négative (avant : ONTZI −675, ARREBA −46,44, EGIN −25 en 09/2026).
 
 **Avant** (comportement incorrect supprimé) : AUTO absorbait du LOY même quand MEN le couvrait → DEB_AE fantôme et double-déduction du proprio.
 
