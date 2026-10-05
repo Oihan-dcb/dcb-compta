@@ -992,3 +992,15 @@ La durée est écrite dans `mission_menage` par `dcb-portail-ae/src/lib/missionD
 - **307** `checklist_item` (générique par type ou propre à un bien) ; coches dans `mission_terrain.checklist` via RPC `terrain_cocher`.
 - **308-311** Entretien périodique **hors forfait** (doc DCB « Détail forfait / hors forfait ») : `entretien_type` (catalogue, `prestation_type_id`, `equipement`), `bien_entretien_plan` (activation **bureau uniquement**, RLS 311 ; `reference_initiale` étalée par trigger), `bien_entretien_fait` (journal, `prestation_id`). RPC `entretien_statut(bien_ids)` (rouge/orange/vert, jours OU séjours) et `entretien_suggestions(bien_id)`. Un « Fait » crée une `prestation_hors_forfait` en attente `deduction_loy` ; l'« Extra constaté » crée `deduction_loy` (propriétaire) ou « Ménage poussé client sale » `dcb_direct` + signalement (voyageur). Le temps des extras créés pendant la mission est retiré du chrono avant écriture de `mission_menage.duree_heures`.
 - **312** `bien.geo_lat` / `geo_lng` / `hospitable_amenities` (recopiés par `api/sync-biens.js` et `src/services/syncBiens.js` depuis Hospitable) ; `mission_terrain.start_distance_m` / `end_distance_m` (fonction `distance_m`, alerte « hors zone » > 500 m dans PowerHouse → Planning → 📍 Terrain).
+
+## Ajout 2026-10-05 — Workflow terrain, fin (migrations 314-323)
+
+- **314** `bien_entretien_proposition` (l'AE propose un entretien du catalogue) + RPC `traiter_proposition_entretien` (bureau : valider = active le plan).
+- **315** RPC `entretien_vue_ensemble`, `entretien_activer_suggestions` (PowerHouse Biens → 🧽 Plans d'entretien).
+- **316** `ae_proprete_synthese` (cache du résumé IA des commentaires ménage, `dcb-planning/api/proprete-synthesis.js`).
+- **317** `manual_missions.hospitable_task_id` / `hospitable_sync_error` (mission manuelle PowerHouse → tâche Hospitable POST /v2/tasks).
+- **318-319** Durcissement sécurité (media_library, propreté scopée, besoin_sac par AE…) ; RPC `terrain_contexte_sejours` (les AE ne lisent pas `reservation`) ; horodatage serveur.
+- **320** RPC `terrain_ajuster_extras_forfait` : seuls les extras qui DÉPASSENT la durée prévue sont payés/facturés.
+- **321** `mission_terrain` dans la publication realtime.
+- **322** Anti-oubli : `mission_terrain.start_declare` / `declare_motif` / `video_absente_motif`, `mission_menage.saisie_manuelle_motif`, table `terrain_rappel (mission_id, type 'demarrage'|'soir')` (dédoublonnage du cron `dcb-planning/api/cron-terrain-rappels.js`), RPC `terrain_declarer`, `terrain_sans_video`, `stats_conformite_terrain(p_depuis default '2026-10-06')`.
+- **323** `mission_terrain.duree_declaree_minutes` + RPC `terrain_declarer_duree` : l'AE déclare son temps sur place (base de paie plafonnée au prévu) ; le chrono (`duree_minutes`) reste un contrôle bureau.
