@@ -94,6 +94,9 @@ export function classerEntree(mvt, factures = [], ctx = {}) {
   // REVERSEMENT STRIPE RESAS LAUIAN 2026 » (26/09/2026) n'est pas un versement Stripe
   if (ctx.autreAgenceRe && ctx.autreAgenceRe.test(t) && /\b(airbnb|booking|stripe|hospitable)\b/.test(t)
       && !/\b(stripe technology|airbnb payments|booking com b v)\b/.test(t)) return { type: 'inter_agence' }
+  // Virement de test du RIB par Airbnb (0,01 €, ~1/mois) : ne correspond à aucune résa, reste à
+  // l'agence (06/10/2026 — 13 centimes restaient « à affecter » depuis janvier)
+  if (/\bairbnb\b/.test(t) && (mvt.credit || 0) <= 1) return { type: 'prime_plateforme' }
   if (/\b(airbnb|booking|stripe|hospitable)\b/.test(t)) return { type: 'plateforme_non_rapprochee' }
   // Retour d'un virement DCB trop versé (courant → séquestre) : « RETOUR COM AOUT », « HON JUILLET »…
   // Libellé qui commence par la convention interne, ou émis par DCB avec un mot HON/FMEN/COM.
