@@ -1000,5 +1000,6 @@ Annulée **avec** un montant retenu (`fin_revenue > 0`) : ventilation normale (l
   mode d'encaissement non historisé (ITS juin 2026).
 - **Ménages (06/10/2026)** : la part DCB théorique rattache le coût AE au mois du SÉJOUR (mission d'une
   résa de M faite en M+1), rend à l'agence les ménages faits par une salariée / le gérant / couverts par un
-  salaire (déduits du FMEN réel mais payés hors séquestre), et retire les extras AE « dcb_direct » payés par
-  le séquestre (coût agence). N'agit que sur la part théorique : restes et écart global inchangés.
+  salaire (déduits du FMEN réel mais payés hors séquestre). Les extras « dcb_direct » ne sont PAS retirés :
+  « à la charge de DCB » = non refacturé au propriétaire, le plus souvent financé par la provision ménage
+  (ménages de chambres Maison Maïté saisis en prestation). N'agit que sur la part théorique : restes et écart global inchangés.
