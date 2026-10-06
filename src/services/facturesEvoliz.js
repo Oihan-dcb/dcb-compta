@@ -213,7 +213,9 @@ async function prechargerDonneesFacturation(mois, bienIds, proprietaireIds, agen
     supabase.from('reservation')
       .select('id, bien_id, fin_revenue')
       .in('bien_id', bienIds).eq('mois_comptable', mois)
-      .eq('owner_stay', true).eq('platform', 'manual'),
+      .eq('owner_stay', true).eq('platform', 'manual')
+      // Séjour propriétaire dont tous les ménages ont été annulés = sans frais (migration 334, AUREAN 09/2026)
+      .eq('menage_proprio_annule', false),
 
     // Résas verrouillées (ajustement manuel, migration 226) : leur coût ménage est déjà
     // déduit du LOY/VIR par construction (ventilation.js:172, total conservé). Les inclure
@@ -268,6 +270,13 @@ async function prechargerDonneesFacturation(mois, bienIds, proprietaireIds, agen
   if (annulees0.size) {
     logOp({ categorie: 'facture', action: 'annulee_0_ignoree', statut: 'warning', mois_comptable: mois,
       message: `${annulees0.size} réservation(s) annulée(s) à 0 € encore ventilée(s) — ignorée(s) dans la facture`, meta: { reservation_ids: [...annulees0] } })
+  }
+  // Séjour propriétaire dont tous les ménages ont été annulés (migration 334) : sans frais — ses lignes
+  // FMEN/AUTO ne doivent alimenter NI la facture honoraires NI le DEB_AE de la facture de débours.
+  for (let i = 0; i < idsVent.length; i += 200) {
+    const { data: rs } = await supabase.from('reservation').select('id')
+      .in('id', idsVent.slice(i, i + 200)).eq('owner_stay', true).eq('menage_proprio_annule', true)
+    for (const r of rs || []) annulees0.add(r.id)
   }
   const ventilPropre = (ventilData || []).filter(v => !annulees0.has(v.reservation_id))
 

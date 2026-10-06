@@ -67,7 +67,7 @@ export async function buildRapportData(bienId, propId, mois, opts = {}) {
     (() => {
       let q = supabase
         .from('reservation')
-        .select('id, bien_id, code, fin_revenue, fin_accommodation, fin_host_service_fee, fin_gross_revenue, fin_discount, nights, arrival_date, departure_date, final_status, platform, owner_stay, guest_name, hospitable_raw, bien:bien_id(hospitable_name, code, forfait_menage_proprio), reservation_fee(fee_type, label, amount), reservation_ajustement(id, montant, label, statut, type, qualifie_par, montant_fmen, montant_auto)')
+        .select('id, bien_id, code, fin_revenue, fin_accommodation, fin_host_service_fee, fin_gross_revenue, fin_discount, nights, arrival_date, departure_date, final_status, platform, owner_stay, menage_proprio_annule, guest_name, hospitable_raw, bien:bien_id(hospitable_name, code, forfait_menage_proprio), reservation_fee(fee_type, label, amount), reservation_ajustement(id, montant, label, statut, type, qualifie_par, montant_fmen, montant_auto)')
         .eq('mois_comptable', mois)
         .order('arrival_date')
       return isGlobal ? q.in('bien_id', maiteIds) : q.eq('bien_id', bienId)
@@ -460,7 +460,8 @@ export async function buildRapportData(bienId, propId, mois, opts = {}) {
   // Séjour proprio annulé exclu : sans frais (règle 24/09/2026) — AUREAN 09/2026 affichait 100 € de
   // trop (fallback fin_revenue de la résa annulée), la facture ne le comptait déjà pas.
   const ownerStayList = resasEnrichies
-    .filter(r => r.owner_stay && !STATUTS_NON_VENTILABLES.includes(r.final_status))
+    // Séjour proprio dont tous les ménages ont été annulés : sans frais (migration 334, AUREAN 09/2026)
+    .filter(r => r.owner_stay && !STATUTS_NON_VENTILABLES.includes(r.final_status) && !r.menage_proprio_annule)
     .map(r => {
       const vent = ventByResa[r.id] || {}
       // MEN saisi manuellement (PageRapports) = total ménage refacturé au proprio.

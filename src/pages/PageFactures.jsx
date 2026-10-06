@@ -344,11 +344,12 @@ const [pushing, setPushing] = useState(false)
         // Tréso surestime ce qui peut être reversé (AMAÏA 07/2026 : 180 € — Oïhan 28/09/2026).
         supabase
           .from('ventilation')
-          .select('bien_id, reservation_id, code, montant_ht, montant_ttc, montant_reel, reservation!inner(owner_stay, final_status)')
+          .select('bien_id, reservation_id, code, montant_ht, montant_ttc, montant_reel, reservation!inner(owner_stay, final_status, menage_proprio_annule)')
           .eq('mois_comptable', mois)
           .in('bien_id', uniqueBienIds)
           .in('code', ['MEN', 'FMEN', 'AUTO'])
-          .eq('reservation.owner_stay', true),
+          .eq('reservation.owner_stay', true)
+          .eq('reservation.menage_proprio_annule', false), // séjour proprio sans ménage = sans frais (migration 334)
       ])
       const fraisDedByBien = {}
       for (const r of (fraisDedRows || [])) fraisDedByBien[r.bien_id] = (fraisDedByBien[r.bien_id] || 0) + (r.montant_ttc || 0)

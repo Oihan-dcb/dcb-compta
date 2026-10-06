@@ -90,7 +90,7 @@ export async function buildComptaMensuelle(mois, bienIds = null, agence = AGENCE
     biensQuery,
     supabase
       .from('reservation')
-      .select('id, bien_id, final_status, ventilation_calculee, rapprochee, owner_stay, fin_revenue, code, arrival_date, departure_date, guest_name, platform')
+      .select('id, bien_id, final_status, ventilation_calculee, rapprochee, owner_stay, menage_proprio_annule, fin_revenue, code, arrival_date, departure_date, guest_name, platform')
       .eq('mois_comptable', mois),
     fetchAllPages(() => supabase
       .from('ventilation')
@@ -193,7 +193,8 @@ export async function buildComptaMensuelle(mois, bienIds = null, agence = AGENCE
   // Ces lignes ne doivent ni contribuer aux totaux ni faire apparaître le bien dans la liste
   const cancelledNoFeeIds = new Set(
     resas
-      .filter(r => STATUTS_NON_VENTILABLES.includes(r.final_status) && (r.fin_revenue || 0) === 0)
+      // + séjour propriétaire dont tous les ménages ont été annulés : sans frais (migration 334, AUREAN 09/2026)
+      .filter(r => (STATUTS_NON_VENTILABLES.includes(r.final_status) && (r.fin_revenue || 0) === 0) || (r.owner_stay && r.menage_proprio_annule))
       .map(r => r.id)
   )
   const ventils = (ventilData || []).filter(v => !v.reservation_id || !cancelledNoFeeIds.has(v.reservation_id))
