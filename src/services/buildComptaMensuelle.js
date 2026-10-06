@@ -244,6 +244,30 @@ export async function buildComptaMensuelle(mois, bienIds = null, agence = AGENCE
     }
     ventilAggHS[key].ht += v.montant_ht || 0; ventilAggHS[key].tva += v.montant_tva || 0; ventilAggHS[key].ttc += v.montant_ttc || 0
   }
+  // Ménage des SÉJOURS PROPRIÉTAIRE (bien où DCB encaisse) : aucun voyageur ne l'a payé, il n'est dans le
+  // séquestre que s'il est retenu sur un loyer du mois. Sinon le propriétaire le paie par facture → hors
+  // séquestre (AUREAN 09/2026 : FMEN 75 € compté « à virer » alors qu'aucun loyer ne le couvrait —
+  // Oïhan 06/10/2026 : « il ne faut pas que ce FMEN apparaisse dans le total à virer »).
+  const ownerStayParResa = new Map(resas.map(r => [r.id, !!r.owner_stay]))
+  const fmenOwnerParBien = {}, loyParBien = {}
+  for (const v of ventils) {
+    // Loyer réellement dans le séquestre : tout LOY d'un bien où DCB encaisse ; pour un bien où le
+    // propriétaire encaisse, seulement celui des résas directes/manuelles (encaissées par DCB).
+    const loyEnSequestre = modeParBien.get(v.bien_id) !== 'proprio' || PLATEFORMES_ENCAISSEES_DCB.includes(platParResa.get(v.reservation_id) || '')
+    if (v.code === 'LOY' && loyEnSequestre && !ownerStayParResa.get(v.reservation_id)) loyParBien[v.bien_id] = (loyParBien[v.bien_id] || 0) + (v.montant_ttc || v.montant_ht || 0)
+    if (v.code === 'FMEN' && ownerStayParResa.get(v.reservation_id)) {
+      const ttc = v.montant_reel != null ? v.montant_reel : (v.montant_ttc || 0)
+      fmenOwnerParBien[v.bien_id] = (fmenOwnerParBien[v.bien_id] || 0) + ttc
+    }
+  }
+  for (const [bienId, fmenTtc] of Object.entries(fmenOwnerParBien)) {
+    const nonCouvert = Math.max(0, fmenTtc - (loyParBien[bienId] || 0))
+    if (!nonCouvert) continue
+    const key = `${bienId}::FMEN`
+    if (!ventilAggHS[key]) ventilAggHS[key] = { ht: 0, tva: 0, ttc: 0 }
+    const ht = Math.round(nonCouvert / 1.20)
+    ventilAggHS[key].ht += ht; ventilAggHS[key].tva += nonCouvert - ht; ventilAggHS[key].ttc += nonCouvert
+  }
   const ventHS = (bienId, code) => ventilAggHS[`${bienId}::${code}`] || { ht: 0, tva: 0, ttc: 0 }
 
   // AUTO HT par bien — calculé depuis mission_menage.montant par mois de réalisation

@@ -703,6 +703,7 @@ export default function PageComptabilite() {
                         {r.is_lauian_client && <span style={{ fontSize: '0.7em', fontWeight: 700, padding: '1px 5px', borderRadius: 4, background: '#fef3c7', color: '#92400e', marginLeft: 5, verticalAlign: 'middle' }}>client Lauian</span>}
                         {r.is_lld && <span style={{ fontSize: '0.7em', fontWeight: 700, padding: '1px 5px', borderRadius: 4, background: '#dcfce7', color: '#166534', marginLeft: 5, verticalAlign: 'middle' }}>LLD</span>}
                         {r.hors_sequestre && <span title="Propriétaire encaisse directement — HON/FMEN/COM à facturer, jamais en séquestre" style={{ fontSize: '0.7em', fontWeight: 700, padding: '1px 5px', borderRadius: 4, background: '#EDE9FE', color: '#5B21B6', marginLeft: 5, verticalAlign: 'middle' }}>hors séquestre</span>}
+                        {!r.hors_sequestre && ((r.hs?.hon_ttc || 0) + (r.hs?.fmen_ttc || 0) + (r.hs?.com_ttc || 0)) > 0 && <span title="Ménage de séjour propriétaire non couvert par un loyer du mois : payé par le propriétaire (facture), pas dans le séquestre — exclu du total à virer" style={{ fontSize: '0.7em', fontWeight: 700, padding: '1px 5px', borderRadius: 4, background: '#EDE9FE', color: '#5B21B6', marginLeft: 5, verticalAlign: 'middle' }}>{fmtN((r.hs?.hon_ttc || 0) + (r.hs?.fmen_ttc || 0) + (r.hs?.com_ttc || 0))} hors séquestre</span>}
                         {biensMasques.has(r.bien_id) && <span style={{ fontSize: '0.7em', fontWeight: 700, padding: '1px 5px', borderRadius: 4, background: '#F3F4F6', color: '#6B7280', marginLeft: 5, verticalAlign: 'middle' }}>masqué</span>}
                         <button
                           onClick={e => { e.stopPropagation(); toggleMasque(r.bien_id) }}
@@ -820,6 +821,46 @@ export default function PageComptabilite() {
                       {col('fmen_ht')     && <td style={{ ...td, textAlign: 'right' }}>{fmtN(tsum(actifsHorsSeq, 'fmen_ht'))}</td>}
                       {col('fmen_tva')    && <td style={{ ...td, textAlign: 'right' }}>{fmtN(tsum(actifsHorsSeq, 'fmen_tva'))}</td>}
                       {col('fmen_ttc')    && <td style={{ ...td, textAlign: 'right' }}>{fmtN(tsum(actifsHorsSeq, 'fmen_ttc'))}</td>}
+                      {col('auto_ht')     && <td style={td} />}
+                      {col('loy_ht')              && <td style={td} />}
+                      {col('frais_loy')           && <td style={td} />}
+                      {col('prest_deduct')        && <td style={td} />}
+                      {col('total_auto_ht')       && <td style={td} />}
+                      {col('taxe')                && <td style={td} />}
+                      {col('reversement_calcule') && <td style={td} />}
+                      {col('fait')               && <td style={td} />}
+                      {col('virement_resa')      && <td style={td} />}
+                      {col('facture')             && <td style={td} />}
+                      {col('reversement_facture') && <td style={td} />}
+                      {col('ecart_facture')       && <td style={td} />}
+                      <td style={td} />
+                    </tr>
+                  )
+                })()}
+                {/* Ligne « À VIRER séquestre → courant » (06/10/2026, Oïhan : « j'utilise cette page pour faire
+                    les virements, il ne faut pas que ce FMEN et ce HON apparaissent dans le total à virer ») :
+                    TOTAL DCB − hors séquestre, calculé ici pour ne plus avoir à soustraire à la main. */}
+                {(() => {
+                  const hs = actifsDCB.map(r => r.hs || {})
+                  const v = k => tsum(actifsDCB, k) - tsum(hs, k)
+                  const total = v('hon_ttc') + v('fmen_ttc') + v('com_ttc')
+                  return (
+                    <tr style={{ background: '#ECFDF5', borderTop: '2px solid #15803D', fontWeight: 800, color: '#166534' }}>
+                      <td style={td} />
+                      <td style={{ ...td, whiteSpace: 'nowrap' }} title="TOTAL DCB moins la part hors séquestre (biens où le propriétaire encaisse, séjours propriétaire non couverts par un loyer) : ce que DCB peut virer du séquestre vers le compte courant">
+                        💶 À VIRER séquestre → courant : {fmtN(total)}
+                      </td>
+                      <td style={td} />
+                      {col('resas')       && <td style={td} />}
+                      {col('rappr')       && <td style={td} />}
+                      {col('non_vent')    && <td style={td} />}
+                      {col('hon_ht')      && <td style={{ ...td, textAlign: 'right' }}>{fmtN(v('hon_ht'))}</td>}
+                      {col('hon_tva')     && <td style={{ ...td, textAlign: 'right' }}>{fmtN(v('hon_tva'))}</td>}
+                      {col('hon_ttc')     && <td style={{ ...td, textAlign: 'right' }}>{fmtN(v('hon_ttc'))}</td>}
+                      {col('com_ttc')     && <td style={{ ...td, textAlign: 'right' }}>{fmtN(v('com_ttc'))}</td>}
+                      {col('fmen_ht')     && <td style={{ ...td, textAlign: 'right' }}>{fmtN(v('fmen_ht'))}</td>}
+                      {col('fmen_tva')    && <td style={{ ...td, textAlign: 'right' }}>{fmtN(v('fmen_tva'))}</td>}
+                      {col('fmen_ttc')    && <td style={{ ...td, textAlign: 'right' }}>{fmtN(v('fmen_ttc'))}</td>}
                       {col('auto_ht')     && <td style={td} />}
                       {col('loy_ht')              && <td style={td} />}
                       {col('frais_loy')           && <td style={td} />}
