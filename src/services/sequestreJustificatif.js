@@ -163,10 +163,10 @@ export async function justifierSequestre(agence = 'dcb', { date = new Date().toI
   // Preuves de paiement : encaissement de chaque réservation (toutes dates ≤ date du justificatif)
   const resaIds = [...resaDCB.keys()]
   const preuves = []
-  for (let i = 0; i < resaIds.length; i += 200) {
+  for (let i = 0; i < resaIds.length; i += 100) {
     const { data, error: ePrv } = await supabase.from('reservation_paiement')
       .select('reservation_id, mouvement_id, montant, mouvement:mouvement_id(date_operation, source, agence)')
-      .in('reservation_id', resaIds.slice(i, i + 200))
+      .in('reservation_id', resaIds.slice(i, i + 100))
     if (ePrv) throw ePrv
     preuves.push(...(data || []))
   }
@@ -215,9 +215,9 @@ export async function justifierSequestre(agence = 'dcb', { date = new Date().toI
       ((p.mouvement.agence && p.mouvement.agence !== agence) ? p.mouvement.date_operation >= DEBUT_ : dansCompte(compte, p.mouvement.source, p.mouvement.date_operation)))
     const ids = [...new Set(comptes.map(p => p.mouvement_id))]
     const parCle = new Map()
-    for (let i = 0; i < ids.length; i += 200) {
+    for (let i = 0; i < ids.length; i += 100) {
       const { data, error: eSt } = await supabase.from('stripe_payout_line').select('mouvement_id, reservation_code, montant_brut, montant_net')
-        .in('mouvement_id', ids.slice(i, i + 200)).in('type_ligne', ['reservation', 'paiement_partiel'])
+        .in('mouvement_id', ids.slice(i, i + 100)).in('type_ligne', ['reservation', 'paiement_partiel'])
       if (eSt) throw eSt
       for (const l of data || []) {
         const k = `${l.mouvement_id}|${l.reservation_code}`
@@ -254,8 +254,12 @@ export async function justifierSequestre(agence = 'dcb', { date = new Date().toI
   // séquestre Lauïan, à lui reverser
   const autreAgenceLiens = []
   const mvtIds = mvts.map(m => m.id)
-  for (let i = 0; i < mvtIds.length; i += 200) {
-    const { data } = await supabase.from('reservation_paiement').select('mouvement_id, montant, reservation_id, reservation:reservation_id(code, mois_comptable, final_status, bien:bien_id(agence))').in('mouvement_id', mvtIds.slice(i, i + 200))
+  // Lots de 100 (URL ≈ 4 Ko) : à 200 identifiants l'URL frôlait 8 Ko — depuis le navigateur la requête
+  // pouvait échouer et, l'erreur étant ignorée, les paiements des résas Lauïan disparaissaient (8 063,58 €
+  // « à affecter » après un recalcul du 06/10/2026). Toute erreur interrompt désormais le calcul.
+  for (let i = 0; i < mvtIds.length; i += 100) {
+    const { data, error: eLie } = await supabase.from('reservation_paiement').select('mouvement_id, montant, reservation_id, reservation:reservation_id(code, mois_comptable, final_status, bien:bien_id(agence))').in('mouvement_id', mvtIds.slice(i, i + 100))
+    if (eLie) throw eLie
     for (const l of data || []) if (!resaDCB.has(l.reservation_id)) {
       lieParMvt.set(l.mouvement_id, (lieParMvt.get(l.mouvement_id) || 0) + (l.montant || 0))
       if (resaAnnulee.has(l.reservation_id)) annuleesLiens.push({ ...l, code: resaAnnulee.get(l.reservation_id).code })
@@ -274,8 +278,9 @@ export async function justifierSequestre(agence = 'dcb', { date = new Date().toI
   // −23,81 € de frais Stripe perdus, remboursés par le Stripe DCB) : font partie de ce que l'autre agence
   // nous reverse (net) ET de la poche « annulées » (frais perdus à notre charge)
   const annuleesIds = [...resaAnnulee.keys()]
-  for (let i = 0; i < annuleesIds.length; i += 200) {
-    const { data } = await supabase.from('reservation_paiement').select('reservation_id, montant, mouvement:mouvement_id(date_operation, agence)').in('reservation_id', annuleesIds.slice(i, i + 200))
+  for (let i = 0; i < annuleesIds.length; i += 100) {
+    const { data, error: eAnn } = await supabase.from('reservation_paiement').select('reservation_id, montant, mouvement:mouvement_id(date_operation, agence)').in('reservation_id', annuleesIds.slice(i, i + 100))
+    if (eAnn) throw eAnn
     for (const l of data || []) if (l.mouvement?.agence && l.mouvement.agence !== agence && l.mouvement.date_operation >= DEBUT_ && l.mouvement.date_operation <= date) {
       creanceAutreAgence.push({ agence: l.mouvement.agence, reservation_id: l.reservation_id, montant: l.montant || 0, date: l.mouvement.date_operation })
       annuleesLiens.push({ ...l, code: resaAnnulee.get(l.reservation_id).code })
@@ -461,7 +466,7 @@ export async function justifierSequestre(agence = 'dcb', { date = new Date().toI
     const t = compta.totals, hs = t.hors_sequestre || {}
     // + rattrapages COM (migration 336) : commission d'une résa de CE mois, facturée sur un mois
     // ultérieur parce que la facture COM du mois était déjà validée (PATXI L2K15B août 2026, 350 €)
-    const { data: rattrapCOM } = await supabase.from('com_rattrapage').select('montant_ttc').eq('agence', agence).eq('mois_origine', mois)
+    const { data: rattrapCOM } = await supabase.from('com_rattrapage').select('montant_ttc, bien:bien_id(proprietaire_id)').eq('agence', agence).eq('mois_origine', mois)
     const virable = (t.hon_ttc - (hs.hon_ttc || 0)) + (t.fmen_ttc - (hs.fmen_ttc || 0)) + (t.com_ttc - (hs.com_ttc || 0))
       + sum(rattrapCOM || [], r => r.montant_ttc)
     const { data: fraisTous } = await supabase.from('frais_proprietaire').select('id, montant_deduit_loy, bien:bien_id!inner(agence, proprietaire_id)')
@@ -539,6 +544,7 @@ export async function justifierSequestre(agence = 'dcb', { date = new Date().toI
     }
     for (const f of frais || []) add(f.bien?.proprietaire_id, -(f.montant_deduit_loy || 0))
     for (const [id, v] of Object.entries(fraisPaiementProprio[mois] || {})) add(id, v)
+    for (const r of rattrapCOM || []) add(r.bien?.proprietaire_id, -r.montant_ttc) // part DCB théorique (migration 336)
     // Reste dû par propriétaire : dû (factures + hors facture + sans facture − régul. réglées ici)
     // − payé (lignes des remises groupées de ce mois + virements individuels + régul. du mois d'origine)
     function resteParProprio() {
@@ -699,8 +705,9 @@ export async function justifierSequestre(agence = 'dcb', { date = new Date().toI
   {
     const annulees0 = [...resaAnnulee.values()].filter(r => !(r.fin_revenue > 0))
     const figees = []
-    for (let i = 0; i < annulees0.length; i += 200) {
-      const { data } = await supabase.from('ventilation').select('reservation_id, code, montant_ttc').in('reservation_id', annulees0.slice(i, i + 200).map(r => r.id)).in('code', ['VIR', 'HON', 'FMEN', 'COM'])
+    for (let i = 0; i < annulees0.length; i += 100) {
+      const { data, error: eFig } = await supabase.from('ventilation').select('reservation_id, code, montant_ttc').in('reservation_id', annulees0.slice(i, i + 100).map(r => r.id)).in('code', ['VIR', 'HON', 'FMEN', 'COM'])
+      if (eFig) throw eFig
       for (const v of data || []) if (v.montant_ttc) figees.push(v)
     }
     const parResa = {}
@@ -732,8 +739,9 @@ export async function justifierSequestre(agence = 'dcb', { date = new Date().toI
   const candidatsDouble = Object.keys(liensParResa).filter(id => liensParResa[id].length >= 2)
   const encParResa = Object.fromEntries(candidatsDouble.map(id => [id, sum(liensParResa[id], p => p.montant)]))
   const revs = []
-  for (let i = 0; i < candidatsDouble.length; i += 200) {
-    const { data } = await supabase.from('reservation').select('id, code, fin_revenue').in('id', candidatsDouble.slice(i, i + 200))
+  for (let i = 0; i < candidatsDouble.length; i += 100) {
+    const { data, error: eRev } = await supabase.from('reservation').select('id, code, fin_revenue').in('id', candidatsDouble.slice(i, i + 100))
+    if (eRev) throw eRev
     revs.push(...(data || []))
   }
   const surPayees = revs.filter(r => r.fin_revenue > 0 && liensParResa[r.id].filter(p => Math.abs((p.montant || 0) - r.fin_revenue) <= 100).length >= 2)
@@ -744,19 +752,21 @@ export async function justifierSequestre(agence = 'dcb', { date = new Date().toI
   // demande Booking pré-approuvée, visible dans l'interface Hospitable, absente de l'API) → jamais
   // synchronisé, part propriétaire jamais reversée.
   const orphelins = []
-  for (let i = 0; i < mvtIds.length; i += 200) {
-    const lot = mvtIds.slice(i, i + 200)
-    const [{ data: bk }, { data: ab }] = await Promise.all([
+  for (let i = 0; i < mvtIds.length; i += 100) {
+    const lot = mvtIds.slice(i, i + 100)
+    const [{ data: bk, error: eBk }, { data: ab, error: eAb }] = await Promise.all([
       supabase.from('booking_payout_line').select('booking_ref, guest_name, checkin, amount_cents').in('mouvement_id', lot),
       supabase.from('airbnb_payout_line').select('confirmation_code, guest_name, checkin, amount_cents').in('mouvement_id', lot),
     ])
+    if (eBk || eAb) throw eBk || eAb
     for (const l of bk || []) orphelins.push({ code: l.booking_ref, guest: l.guest_name, checkin: l.checkin, montant: l.amount_cents })
     for (const l of ab || []) if (l.confirmation_code) orphelins.push({ code: l.confirmation_code, guest: l.guest_name, checkin: l.checkin, montant: l.amount_cents })
   }
   const codesConnus = new Set()
   const codesPayout = [...new Set(orphelins.map(o => o.code))]
-  for (let i = 0; i < codesPayout.length; i += 200) {
-    const { data } = await supabase.from('reservation').select('code').in('code', codesPayout.slice(i, i + 200))
+  for (let i = 0; i < codesPayout.length; i += 100) {
+    const { data, error: eCodes } = await supabase.from('reservation').select('code').in('code', codesPayout.slice(i, i + 100))
+    if (eCodes) throw eCodes
     for (const r of data || []) codesConnus.add(r.code)
   }
   const sejoursInconnus = orphelins.filter(o => !codesConnus.has(o.code))
