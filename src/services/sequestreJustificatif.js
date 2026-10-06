@@ -438,6 +438,39 @@ export async function justifierSequestre(agence = 'dcb', { date = new Date().toI
   }).filter(Boolean)
   const idsRetRegul = new Set(retRegul.map(f => f.id))
 
+  // Ménages : coût rattaché au mois du SÉJOUR (06/10/2026). Le forfait ménage réel (FMEN.montant_reel,
+  // update-ventilation-auto) déduit du ménage voyageur TOUTES les missions liées à la résa, alors que
+  // « AE dû » compte les missions AE validées par mois de MISSION. Deux faux écarts en découlaient :
+  //  • ménage d'une résa de M fait en M+1 (ou l'inverse) : −x sur le mois de la mission, +x sur celui de
+  //    la résa → le coût passe dans la part théorique du mois de la mission, sorti de celui de la résa ;
+  //  • ménage fait par une salariée / le gérant / couvert par un salaire : déduit du FMEN réel mais payé
+  //    par le salaire (compte courant), jamais par le séquestre → l'argent reste à l'agence (+262,50 € en
+  //    mars 2026) → rendu à la part théorique du mois de la résa.
+  // N'agit que sur la part THÉORIQUE (diagnostic mensuel) : restes et écart global inchangés.
+  // Biens « le propriétaire encaisse » (débours avancés) et skip_facturation : déjà traités à part.
+  const ajustMenage = {}, ajustMenageProprio = {}
+  {
+    const ajuste = (mois, pid, v) => {
+      if (!mois || !v) return
+      ajustMenage[mois] = (ajustMenage[mois] || 0) + v
+      const o = (ajustMenageProprio[mois] ||= {}); o[pid] = (o[pid] || 0) + v
+    }
+    const lignesM = await toutes(() => supabase.from('mission_menage')
+      .select('montant, statut, mois, impute_salaire, ventilation_auto_id, ae:ae_id(type), reservation:reservation_id!inner(mois_comptable), bien:bien_id!inner(agence, proprietaire_id, skip_facturation, mode_encaissement)')
+      .eq('bien.agence', agence).not('montant', 'is', null).gte('mois', MOIS_DEBUT_))
+    for (const m of lignesM) {
+      if (m.bien?.skip_facturation || m.bien?.mode_encaissement === 'proprio' || !m.montant) continue
+      const moisResa = m.reservation?.mois_comptable
+      const pid = m.bien?.proprietaire_id
+      const salarie = m.impute_salaire || ['staff', 'gerant'].includes(m.ae?.type)
+      if (salarie) {
+        if (m.ventilation_auto_id && !['cancelled', 'refuse'].includes(m.statut)) ajuste(moisResa, pid, m.montant)
+      } else if (m.ae?.type === 'ae' && m.statut === 'valide' && m.mois && moisResa && m.mois !== moisResa) {
+        ajuste(m.mois, pid, -m.montant); ajuste(moisResa, pid, m.montant)
+      }
+    }
+  }
+
   const { data: relevesProprio } = await supabase.from('sequestre_releve_proprio').select('mois, bien_id, montant').eq('agence', agence)
   const parMois = []
   for (const mois of moisFactures) {
@@ -453,7 +486,7 @@ export async function justifierSequestre(agence = 'dcb', { date = new Date().toI
       + sum(retRegul.filter(f => f.mois_facturation === mois), f => f.recupere)
     const { data: missions } = await supabase.from('mission_menage').select('montant, impute_salaire, ae:ae_id!inner(type), bien:bien_id!inner(id, agence, proprietaire_id, skip_facturation, mode_encaissement)')
       .eq('mois', mois).eq('statut', 'valide').eq('bien.agence', agence).eq('ae.type', 'ae')
-    const { data: prestas } = await supabase.from('prestation_hors_forfait').select('montant, impute_salaire, ae:ae_id!inner(type), bien:bien_id!inner(id, agence, proprietaire_id, skip_facturation, mode_encaissement)')
+    const { data: prestas } = await supabase.from('prestation_hors_forfait').select('montant, impute_salaire, type_imputation, ae:ae_id!inner(type), bien:bien_id!inner(id, agence, proprietaire_id, skip_facturation, mode_encaissement)')
       .eq('mois', mois).eq('statut', 'valide').eq('bien.agence', agence).eq('ae.type', 'ae')
     const aeDu = sum((missions || []).filter(x => !x.impute_salaire), x => x.montant) + sum((prestas || []).filter(x => !x.impute_salaire), x => x.montant)
     const aePaye = sum(sortiesMois(['paiement_ae'], mois), s => s.debit)
@@ -493,8 +526,13 @@ export async function justifierSequestre(agence = 'dcb', { date = new Date().toI
     // facture de débours (poche « débours remboursés ») — normal, pas une anomalie du mois
     const aeAvance = [...(missions || []), ...(prestas || [])].filter(x => !x.impute_salaire && !x.bien?.skip_facturation && x.bien?.mode_encaissement === 'proprio')
     const fraisPaiement = fraisPaiementMois[mois] || 0
+    // Extras AE « à la charge de DCB » (dcb_direct : linge, ménage supplémentaire non refacturé…) payés par
+    // le séquestre : coût de l'agence, à retirer de sa part théorique (06/10/2026 — Villa Bacalan août)
+    const extrasDcb = (prestas || []).filter(x => x.type_imputation === 'dcb_direct' && !x.impute_salaire && !x.bien?.skip_facturation && x.bien?.mode_encaissement !== 'proprio')
     const dcbTheorique = virable + sum(frais || [], f => f.montant_deduit_loy) - sum(aeSkip, x => x.montant) - fraisPaiement
       + sum(partDcbOrigine, f => f.montant_deduit_loy)
+      + (ajustMenage[mois] || 0)
+      - sum(extrasDcb, x => x.montant)
     const aeAvanceTotal = sum(aeAvance, x => x.montant)
     const regulRegleesIci = regulVir.filter(f => f.versee && f.mois_facturation === mois)
     // Retenue de rattrapage prélevée ce mois-ci (miroir de regulRegleesIci) : la facture du mois est
@@ -545,6 +583,8 @@ export async function justifierSequestre(agence = 'dcb', { date = new Date().toI
     for (const f of frais || []) add(f.bien?.proprietaire_id, -(f.montant_deduit_loy || 0))
     for (const [id, v] of Object.entries(fraisPaiementProprio[mois] || {})) add(id, v)
     for (const r of rattrapCOM || []) add(r.bien?.proprietaire_id, -r.montant_ttc) // part DCB théorique (migration 336)
+    for (const [id, v] of Object.entries(ajustMenageProprio[mois] || {})) add(id, -v)
+    for (const x of extrasDcb) add(x.bien?.proprietaire_id, x.montant)
     // Reste dû par propriétaire : dû (factures + hors facture + sans facture − régul. réglées ici)
     // − payé (lignes des remises groupées de ce mois + virements individuels + régul. du mois d'origine)
     function resteParProprio() {
@@ -585,7 +625,7 @@ export async function justifierSequestre(agence = 'dcb', { date = new Date().toI
       dcb: { reste: dcbReste + aeAvanceTotal, paye: dcbPaye, theorique: dcbTheorique, reste_theorique: dcbTheorique - dcbPaye,
         anomalie: (dcbReste + aeAvanceTotal) - (dcbTheorique - dcbPaye), anomalie_par_proprio: anomaliesProprio,
         anomalie_par_proprio_complet: Object.entries(parP).filter(([, v]) => Math.abs(v) >= 100).map(([id, v]) => ({ proprietaire_id: id, nom: nomP(id), montant: v })),
-        debours_ae_avances: aeAvanceTotal, frais_paiement: fraisPaiement,
+        debours_ae_avances: aeAvanceTotal, frais_paiement: fraisPaiement, ajustement_menage: ajustMenage[mois] || 0,
         virements: [...transferts.map(s => ({ date: s.date_operation, montant: s.debit, libelle: s.libelle, sous: s.sous, note: s.note })),
           ...retours.map(e => ({ date: e.date_operation, montant: -e.credit, libelle: e.libelle, sous: e.sous, note: e.note }))] },
     })

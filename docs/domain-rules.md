@@ -998,3 +998,7 @@ Annulée **avec** un montant retenu (`fin_revenue > 0`) : ventilation normale (l
 - Défauts connus non corrigés (alertes résiduelles à classer à la main) : ménages rattachés au mois de
   mission et non au mois comptable de la résa, ménages faits par une salariée (forfait sans AE à payer),
   mode d'encaissement non historisé (ITS juin 2026).
+- **Ménages (06/10/2026)** : la part DCB théorique rattache le coût AE au mois du SÉJOUR (mission d'une
+  résa de M faite en M+1), rend à l'agence les ménages faits par une salariée / le gérant / couverts par un
+  salaire (déduits du FMEN réel mais payés hors séquestre), et retire les extras AE « dcb_direct » payés par
+  le séquestre (coût agence). N'agit que sur la part théorique : restes et écart global inchangés.
