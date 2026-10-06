@@ -391,7 +391,11 @@ export async function justifierSequestre(agence = 'dcb', { date = new Date().toI
     // Part DCB théorique : page Comptabilité (TOTAL DCB − hors séquestre) + frais retenus
     const compta = await buildComptaMensuelle(mois, null, agence)
     const t = compta.totals, hs = t.hors_sequestre || {}
+    // + rattrapages COM (migration 336) : commission d'une résa de CE mois, facturée sur un mois
+    // ultérieur parce que la facture COM du mois était déjà validée (PATXI L2K15B août 2026, 350 €)
+    const { data: rattrapCOM } = await supabase.from('com_rattrapage').select('montant_ttc').eq('agence', agence).eq('mois_origine', mois)
     const virable = (t.hon_ttc - (hs.hon_ttc || 0)) + (t.fmen_ttc - (hs.fmen_ttc || 0)) + (t.com_ttc - (hs.com_ttc || 0))
+      + sum(rattrapCOM || [], r => r.montant_ttc)
     const { data: fraisTous } = await supabase.from('frais_proprietaire').select('id, montant_deduit_loy, bien:bien_id!inner(agence, proprietaire_id)')
       .eq('bien.agence', agence).eq('mois_facturation', mois).in('mode_traitement', ['deduire_loyer', 'facturer_et_deduire'])
     const frais = (fraisTous || []).filter(f => !idsRetRegul.has(f.id))

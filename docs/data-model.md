@@ -1004,3 +1004,18 @@ La durée est écrite dans `mission_menage` par `dcb-portail-ae/src/lib/missionD
 - **321** `mission_terrain` dans la publication realtime.
 - **322** Anti-oubli : `mission_terrain.start_declare` / `declare_motif` / `video_absente_motif`, `mission_menage.saisie_manuelle_motif`, table `terrain_rappel (mission_id, type 'demarrage'|'soir')` (dédoublonnage du cron `dcb-planning/api/cron-terrain-rappels.js`), RPC `terrain_declarer`, `terrain_sans_video`, `stats_conformite_terrain(p_depuis default '2026-10-06')`.
 - **323** `mission_terrain.duree_declaree_minutes` + RPC `terrain_declarer_duree` : l'AE déclare son temps sur place (base de paie plafonnée au prévu) ; le chrono (`duree_minutes`) reste un contrôle bureau.
+
+## Ajout 2026-10-06 — `com_rattrapage` (migration 336)
+
+Commission COM d'une résa dont le mois est verrouillé (facture COM déjà validée dans Evoliz,
+réouverture impossible sans avoir), facturée sur la facture COM d'un mois ultérieur.
+
+| Champ | Rôle |
+|---|---|
+| `reservation_id` | résa concernée |
+| `mois_origine` | mois de la résa — compté dans la part agence de ce mois par le justificatif séquestre |
+| `mois_facturation` | mois dont la facture COM reprend la ligne (`genererFactureCOM`, ligne Evoliz séparée) et dont la ligne « À VIRER » de la page Comptabilité l'inclut |
+| `montant_ttc` | centimes TTC (HT = TTC/1,2) |
+
+RLS : bureau uniquement. 1er cas : PATXI HOST-L2K15B (août 2026), « Extra guest fee » 350 € rangé
+à tort dans MEN → COM DCB facturée en octobre 2026 (décision Oïhan 06/10/2026).

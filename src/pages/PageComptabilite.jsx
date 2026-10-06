@@ -47,6 +47,7 @@ export default function PageComptabilite() {
 
   // Reversements faits (bien_id → { fait_at, montant_reverse_cts, note })
   const [reversementsFaits, setReversementsFaits] = useState({})
+  const [rattrapagesCOM, setRattrapagesCOM] = useState([]) // migration 336 : COM d'un mois verrouillé facturée ce mois-ci
   // Modal de saisie montant/note à l'ouverture d'un "Fait" (bien simple, hors groupe)
   const [modalFait, setModalFait] = useState(null) // { bienId, bienNom, montantSuggere } | null
 
@@ -160,11 +161,13 @@ export default function PageComptabilite() {
     setLoading(true)
     setError(null)
     try {
-      const [result, { data: faits }] = await Promise.all([
+      const [result, { data: faits }, { data: rattrap }] = await Promise.all([
         buildComptaMensuelle(mois),
         supabase.from('reversement_fait').select('bien_id, fait_at, montant_reverse_cts, note').eq('mois', mois).eq('agence', AGENCE),
+        supabase.from('com_rattrapage').select('montant_ttc, libelle').eq('mois_facturation', mois).eq('agence', AGENCE),
       ])
       setData(result)
+      setRattrapagesCOM(rattrap || [])
       setReversementsFaits(Object.fromEntries((faits || []).map(f => [f.bien_id, { fait_at: f.fait_at, montant_reverse_cts: f.montant_reverse_cts, note: f.note }])))
     } catch (e) {
       setError(e.message)
@@ -843,12 +846,18 @@ export default function PageComptabilite() {
                 {(() => {
                   const hs = actifsDCB.map(r => r.hs || {})
                   const v = k => tsum(actifsDCB, k) - tsum(hs, k)
-                  const total = v('hon_ttc') + v('fmen_ttc') + v('com_ttc')
+                  const rattrap = rattrapagesCOM.reduce((s, r) => s + r.montant_ttc, 0)
+                  const total = v('hon_ttc') + v('fmen_ttc') + v('com_ttc') + rattrap
                   return (
                     <tr style={{ background: '#ECFDF5', borderTop: '2px solid #15803D', fontWeight: 800, color: '#166534' }}>
                       <td style={td} />
                       <td style={{ ...td, whiteSpace: 'nowrap' }} title="TOTAL DCB moins la part hors séquestre (biens où le propriétaire encaisse, séjours propriétaire non couverts par un loyer) : ce que DCB peut virer du séquestre vers le compte courant">
                         💶 À VIRER séquestre → courant : {fmtN(total)}
+                        {rattrap !== 0 && (
+                          <span style={{ fontWeight: 600, fontSize: 11, marginLeft: 6 }} title={rattrapagesCOM.map(r => `${r.libelle} : ${fmtN(r.montant_ttc)}`).join('\n')}>
+                            (dont rattrapage COM {fmtN(rattrap)})
+                          </span>
+                        )}
                       </td>
                       <td style={td} />
                       {col('resas')       && <td style={td} />}

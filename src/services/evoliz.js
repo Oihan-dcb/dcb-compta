@@ -645,22 +645,27 @@ export async function pousserFactureCOMVersEvoliz(factureId, totals, mois) {
     const [articleIdMap, classifIdMap] = await Promise.all([getArticleIdMap(), getClassificationIdMap()])
     const comArticleId = articleIdMap['COM']
     const comClassifId = classifIdMap[CLASSIFICATION_CODE_MAP['COM']]
+    const itemCOM = (designation, ht) => ({
+      designation, reference: 'COM', quantity: 1, unitPrice: ht / 100, vatRate: 20,
+      accountingAccountId: 8677893, // 7063 — Commission
+      ...(comArticleId ? { articleId: comArticleId } : {}),
+      ...(comClassifId ? { classificationId: comClassifId } : {}),
+    })
+    // Rattrapages COM (migration 336) : une ligne chacun, détachée de la commission du mois
+    const { data: rattrapages } = await supabase.from('com_rattrapage')
+      .select('montant_ttc, libelle').eq('agence', AGENCE).eq('mois_facturation', mois)
+    const itemsRattrapage = (rattrapages || []).map(r => itemCOM(r.libelle, Math.round(r.montant_ttc / 1.2)))
+    const htRattrapage = itemsRattrapage.reduce((s, it) => s + Math.round(it.unitPrice * 100), 0)
     const { inv: createdInvoice, date: dateEmission } = await createInvoiceDateMois({
       clientId: parseInt(clientId),
       documentdate: dateFactureMois(mois),
       paytermid: 1,
       // businessProcess : ne pas envoyer avant août 2026 (valeur rejetée par Evoliz)
       comment: `Commissions sur réservations web directes — ${mois}`,
-      items: [{
-        designation: 'Commission gestion réservations directes',
-        reference: 'COM',
-        quantity: 1,
-        unitPrice: totals.ht / 100,
-        vatRate: 20,
-        accountingAccountId: 8677893, // 7063 — Commission
-        ...(comArticleId ? { articleId: comArticleId } : {}),
-        ...(comClassifId ? { classificationId: comClassifId } : {}),
-      }],
+      items: [
+        ...(totals.ht - htRattrapage !== 0 ? [itemCOM('Commission gestion réservations directes', totals.ht - htRattrapage)] : []),
+        ...itemsRattrapage,
+      ],
     })
 
     const invoiceId = createdInvoice?.invoiceid

@@ -2057,6 +2057,14 @@ export async function getFactureCOM(mois) {
   return data
 }
 
+export async function getRattrapagesCOM(mois, champ = 'mois_facturation') {
+  const { data, error } = await supabase.from('com_rattrapage')
+    .select('id, reservation_id, mois_origine, mois_facturation, montant_ttc, libelle')
+    .eq('agence', AGENCE).eq(champ, mois)
+  if (error) throw error
+  return data || []
+}
+
 export async function genererFactureCOM(mois) {
   const { data: comLines, error } = await supabase
     .from('ventilation')
@@ -2071,6 +2079,13 @@ export async function genererFactureCOM(mois) {
     tva: acc.tva + (l.montant_tva || 0),
     ttc: acc.ttc + (l.montant_ttc || 0),
   }), { ht: 0, tva: 0, ttc: 0 })
+
+  // Rattrapages COM (migration 336) : commission d'une résa d'un mois verrouillé, facturée ce mois-ci
+  const rattrapages = await getRattrapagesCOM(mois)
+  for (const r of rattrapages) {
+    const ht = Math.round(r.montant_ttc / 1.2)
+    totals.ht += ht; totals.tva += r.montant_ttc - ht; totals.ttc += r.montant_ttc
+  }
 
   if (totals.ttc === 0) throw new Error('Aucune commission directe (COM) ce mois — vérifier la ventilation.')
 
