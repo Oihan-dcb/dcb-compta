@@ -978,3 +978,23 @@ Annulée **avec** un montant retenu (`fin_revenue > 0`) : ventilation normale (l
 - **Trop-versé retenu** (loyer versé en trop, quelle qu'en soit la cause) : toujours libellé « Régularisation virement MM/AAAA … »
   (MM/AAAA = mois du virement trop long) → retenue sans ligne de facture ni TVA, argent du séquestre. Si la même correction
   touche aussi des honoraires/ménage facturés, cette part passe par un frais `rectif_facture` séparé (I-183).
+
+### Justificatif séquestre — part DCB mensuelle : frais de paiement et régularisations (06/10/2026)
+- **Frais Stripe** : `reservation_paiement` porte le NET Stripe (frais Stripe + commission Hospitable
+  Direct retenus) alors que la ventilation répartit le revenu (brut − commission Hospitable). L'écart
+  (frais Stripe, `stripe_payout_line` brut − net, moins la part commission Hospitable) est à la charge de
+  l'agence : déduit de la part DCB théorique du mois de la résa (`frais_paiement` par mois). Les virements
+  « FRAIS STRIPE » du courant restent une poche hors mois.
+- **Preuve de versement** : un reversement coché « Fait » (`reversement_fait`, page Comptabilité) vaut
+  versement de la facture du mois, même sans fichier de remise enregistré (`sct_export`).
+- **Libellés de régularisation** (convention de saisie, mois d'origine lu dans le libellé) :
+  - « Régularisation virement MM/AAAA » : facture d'origine JUSTE, virement trop court (remboursement) ou
+    trop long (retenue). Si la retenue concerne un propriétaire qui a reçu exactement sa facture d'origine,
+    c'est la facture qui était trop haute (résa annulée/remboursée après facture : DUL2 Peterfy, IBANETA) →
+    le dû du mois d'origine est diminué de la retenue.
+  - « Régularisation <mois> AAAA » : somme ABSENTE de la facture d'origine (séjour absent de Hospitable :
+    TXOMIN Mirith Rast juillet). Remboursement → ajouté au dû du mois d'origine ; retenue (honoraires,
+    forfait ménage) → part DCB théorique du mois d'origine, réintégrée au dû du mois de la retenue.
+- Défauts connus non corrigés (alertes résiduelles à classer à la main) : ménages rattachés au mois de
+  mission et non au mois comptable de la résa, ménages faits par une salariée (forfait sans AE à payer),
+  mode d'encaissement non historisé (ITS juin 2026).
