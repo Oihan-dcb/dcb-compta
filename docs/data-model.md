@@ -1019,3 +1019,12 @@ réouverture impossible sans avoir), facturée sur la facture COM d'un mois ult�
 
 RLS : bureau uniquement. 1er cas : PATXI HOST-L2K15B (août 2026), « Extra guest fee » 350 € rangé
 à tort dans MEN → COM DCB facturée en octobre 2026 (décision Oïhan 06/10/2026).
+
+## Ajout 2026-10-06 — `reservation.sans_menage_motif` (migration 338)
+Soupape de l'alerte quotidienne `alerte-sejour-sans-menage` (Edge Function, cron 8h25/8h27 UTC
+dcb/lauian) : séjour accepté dont le départ (aujourd'hui → J+2, ou 45 derniers jours ≥ 2026-09-01)
+n'a aucune mission_menage active sur le bien (rattachée à la résa ou datée du départ à J+2).
+Renseigner un motif (ménage fait par le propriétaire, bien rendu…) = séjour ignoré. Exclus aussi :
+`menage_proprio_annule`, prolongations (même voyageur, arrivée suivante le jour du départ).
+Incident d'origine : VILLA BACALAN août 2026, aucune tâche Cleaning dans Hospitable → ménages de Léa
+jamais saisis, facture n°168 (700 €) payée par le séquestre sans mission.
