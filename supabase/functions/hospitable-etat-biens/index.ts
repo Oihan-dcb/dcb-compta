@@ -43,7 +43,10 @@ Deno.serve(async (req) => {
     const etat = r.status === 200 ? 'actif' : r.status === 422 ? 'muted' : r.status === 404 ? 'introuvable' : 'erreur_' + r.status
     const p = r.status === 200 ? (await r.json().catch(() => ({})))?.data : null
     const tags: string[] = p?.tags || []
-    if (etat !== 'actif' && b.hospitable_etat !== etat) {
+    // Bien en location dont l'identifiant Hospitable n'existe plus (404) : fiche rattachée à une ancienne annonce
+    // (cas BORDEZIA 08/10/2026 → plus de tarifs ni de réservations) — alerte au premier constat.
+    if (etat === 'introuvable' && b.statut_location === 'saisonnier' && b.hospitable_etat !== etat) nouveauxMuets.push({ ...b, etat, a_venir: 0, introuvable: true })
+    else if (etat !== 'actif' && b.hospitable_etat !== etat) {
       const { count } = await sb.from('reservation').select('id', { count: 'exact', head: true })
         .eq('bien_id', b.id).eq('final_status', 'accepted').gte('departure_date', new Date().toISOString().slice(0, 10))
       if (count) nouveauxMuets.push({ ...b, etat, a_venir: count })
@@ -67,9 +70,9 @@ Deno.serve(async (req) => {
   if (!dry && (nouveauxMuets.length || tagsFaux.length)) {
     const libSt = (s: string) => s === 'lld' ? 'location étudiante' : 'en location'
     const html = `<div style="font-family:Arial,sans-serif;color:#2C2416;font-size:14px">
-      ${nouveauxMuets.length ? `<h3 style="color:#B91C1C">🔇 ${nouveauxMuets.length} bien(s) mis en sourdine avec des réservations à venir</h3>
+      ${nouveauxMuets.length ? `<h3 style="color:#B91C1C">🔇 ${nouveauxMuets.length} bien(s) à vérifier dans Hospitable</h3>
       <p>Hospitable ne rend plus ces biens à l'API : une modification ou une annulation de ces réservations n'arrivera plus chez nous (contrat, ménage, compta).</p>
-      <ul>${nouveauxMuets.map(b => `<li><b>${b.code}</b> (${b.agence}) — ${b.a_venir} réservation(s) à venir — ${b.etat === 'muted' ? 'en sourdine' : b.etat}</li>`).join('')}</ul>
+      <ul>${nouveauxMuets.map(b => b.introuvable ? `<li><b>${b.code}</b> (${b.agence}) — en location chez nous mais <b>annonce Hospitable introuvable</b> : identifiant à rattacher (PowerHouse → Biens → 🔄 Sync Hospitable → Rattacher)</li>` : `<li><b>${b.code}</b> (${b.agence}) — ${b.a_venir} réservation(s) à venir — ${b.etat === 'muted' ? 'en sourdine' : b.etat}</li>`).join('')}</ul>
       <p>➡️ Le réactiver jusqu'au départ du dernier voyageur, ou surveiller ces séjours à la main.</p>` : ''}
       ${tagsFaux.length ? `<h3>🏷 Étiquette Hospitable à retirer à la main</h3><ul>${tagsFaux.map(b => `<li><b>${b.code}</b> : retirer « ${b.faux.join(' », « ')} » (statut actuel : ${b.statut_location === 'hors_location' ? 'hors location' : libSt(b.statut_location)})</li>`).join('')}</ul>
       <p>L'API Hospitable sait ajouter une étiquette mais pas l'enlever.</p>` : ''}
