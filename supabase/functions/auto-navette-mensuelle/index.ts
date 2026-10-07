@@ -241,7 +241,7 @@ Deno.serve(async (req) => {
     const moisLabelCap = moisLabel.charAt(0).toUpperCase() + moisLabel.slice(1)
 
     // Envoyer via smtp-send
-    const destinataire = body.to || 'anne@compact.fr'  // body.to = preview (ex. vers Oïhan) avant envoi cabinet
+    const destinataire = body.to || 'marie@payeetconseil.com'  // body.to = preview (ex. vers Oïhan) avant envoi cabinet
     const { data: r, error: e } = await sb.functions.invoke('smtp-send', {
       body: {
         to: destinataire,

@@ -409,11 +409,11 @@ export default function PageAutoEntrepreneurs() {
     setError(null)
     try {
       const { data: r, error: e } = await supabase.functions.invoke('smtp-send', {
-        body: { to: 'anne@compact.fr', subject: `Navette paie ${ae.prenom} ${ae.nom} — ${moisLabelCap}`, html }
+        body: { to: 'marie@payeetconseil.com', subject: `Navette paie ${ae.prenom} ${ae.nom} — ${moisLabelCap}`, html }
       })
       if (e) throw e
       if (!r?.ok) throw new Error(r?.error || 'Erreur envoi')
-      setSuccess(`Navette envoyée à anne@compact.fr`)
+      setSuccess(`Navette envoyée à marie@payeetconseil.com`)
     } catch (e) {
       setError('Navette : ' + e.message)
     } finally {
@@ -1394,7 +1394,7 @@ export default function PageAutoEntrepreneurs() {
                       </button>
                       <button onClick={envoyerNavette} disabled={sendingNavette}
                         style={{ padding: '8px 18px', borderRadius: 8, background: '#1a3a6e', color: '#fff', border: 'none', cursor: 'pointer', fontSize: 13, fontWeight: 600 }}>
-                        {sendingNavette ? 'Envoi…' : '📤 Navette Compact'}
+                        {sendingNavette ? 'Envoi…' : '📤 Navette Paye et Conseil'}
                       </button>
                     </div>
                   )}
@@ -1530,7 +1530,7 @@ export default function PageAutoEntrepreneurs() {
                       onClick={e => { if (e.target === e.currentTarget) setShowAperçuNavette(false) }}>
                       <div style={{ background: '#fff', borderRadius: 12, border: '2px solid #D9CEB8', maxWidth: 960, width: '100%', overflow: 'hidden', boxShadow: '0 8px 32px rgba(0,0,0,0.18)' }}>
                         <div style={{ background: '#EAE3D4', padding: '10px 18px', fontSize: 12, fontWeight: 600, color: '#2C2416', borderBottom: '1px solid #D9CEB8', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                          <span>👁 Aperçu — email vers anne@compact.fr</span>
+                          <span>👁 Aperçu — email vers marie@payeetconseil.com</span>
                           <button onClick={() => setShowAperçuNavette(false)} style={{ background: 'none', border: 'none', fontSize: 18, cursor: 'pointer', color: '#2C2416', lineHeight: 1 }}>✕</button>
                         </div>
                         <div style={{ padding: 20, background: '#fff', overflowX: 'auto' }}
