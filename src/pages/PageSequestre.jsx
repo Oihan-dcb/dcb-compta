@@ -2,7 +2,6 @@ import { useState, useEffect } from 'react'
 import { supabase } from '../lib/supabase'
 import { AGENCE, AGENCE_BRAND } from '../lib/agence'
 const AG = { dcb: 'DCB', lauian: 'Lauïan', bdx: 'DBDX' }[AGENCE] || AGENCE_BRAND.label
-import { justifierSequestre } from '../services/sequestreJustificatif'
 import SequestreAAffecter from '../components/SequestreAAffecter'
 import SequestreClotures from '../components/SequestreClotures'
 
@@ -53,20 +52,14 @@ export default function PageSequestre() {
   async function recalculer() {
     setCalcul(true); setErr(null)
     try {
-      const r = await justifierSequestre(AGENCE)
-      setJ({ ...r, source: 'calcul à l\'instant' })
-      const { error: e1 } = await supabase.from('sequestre_justificatif').upsert({
-        agence: AGENCE, date: r.date, solde_banque: r.solde_banque.montant, solde_maj: r.solde_banque.maj,
-        total_justifie: r.total_justifie, ecart: r.ecart, poches: r.poches, par_mois: r.par_mois,
-        detail: { ...r.detail, anomalies: r.anomalies, anomalies_archivees: r.anomalies_archivees, ecart_import: r.ecart_import, banque: r.solde_banque.banque },
-      }, { onConflict: 'agence,date' })
-      if (e1) throw e1
-      const { error: e2 } = await supabase.from('sequestre_ecriture').delete().eq('agence', AGENCE)
-      if (e2) throw e2
-      for (let i = 0; i < (r.ecritures || []).length; i += 500) {
-        const { error: e3 } = await supabase.from('sequestre_ecriture').insert(r.ecritures.slice(i, i + 500))
-        if (e3) throw e3
-      }
+      // Calcul côté serveur (même code et mêmes droits que le calcul de nuit) — exécuté dans le
+      // navigateur il perdait des liens de paiement (07/10/2026). Enregistre la photo + le grand livre.
+      const { data: { session } } = await supabase.auth.getSession()
+      const r = await fetch(`/api/sequestre-justificatif?agence=${AGENCE}`, { headers: { Authorization: `Bearer ${session?.access_token || ''}` } })
+      const out = await r.json().catch(() => ({}))
+      if (!r.ok || out.ok === false) throw new Error(out.error || out.resultats?.find(x => x.error)?.error || `Erreur ${r.status}`)
+      await charger()
+      setJ(prev => prev ? { ...prev, source: 'calcul à l\'instant' } : prev)
       setAaKey(k => k + 1)
     }
     catch (e) { setErr(e.message) }

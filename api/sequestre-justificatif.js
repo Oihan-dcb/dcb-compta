@@ -17,6 +17,22 @@ const SUPABASE_URL = process.env.SUPABASE_URL || process.env.VITE_SUPABASE_URL |
 const SUPABASE_SRK = process.env.SUPABASE_SERVICE_ROLE_KEY
 const CRON_SECRET = process.env.CRON_SECRET
 const HOSPITABLE_WEBHOOK_SECRET = process.env.HOSPITABLE_WEBHOOK_SECRET
+const SUPABASE_ANON_KEY = process.env.SUPABASE_ANON_KEY || process.env.VITE_SUPABASE_ANON_KEY
+
+// Bouton « Recalculer maintenant » (page Séquestre, 07/10/2026) : le calcul tourne ICI, comme celui de la
+// nuit, et plus dans le navigateur — exécuté côté client il donnait d'autres résultats que le serveur
+// (liens de paiement perdus : 8 063,58 € puis 44 935,43 € « à affecter », septembre à −42 k€) alors que
+// le calcul serveur était juste. Accès : utilisateur bureau (JWT Supabase vérifié par auth_user_is_bureau).
+async function estBureau(token) {
+  if (!token || !SUPABASE_ANON_KEY) return null
+  const r = await fetch(`${SUPABASE_URL}/rest/v1/rpc/auth_user_is_bureau`, {
+    method: 'POST', headers: { apikey: SUPABASE_ANON_KEY, Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' }, body: '{}',
+  })
+  if (!r.ok) return null
+  if ((await r.json()) !== true) return null
+  const u = await fetch(`${SUPABASE_URL}/auth/v1/user`, { headers: { apikey: SUPABASE_ANON_KEY, Authorization: `Bearer ${token}` } })
+  return u.ok ? ((await u.json())?.email || 'bureau') : 'bureau'
+}
 const ALERTE_TO = ['oihan@destinationcotebasque.com']
 const SEUIL_VARIATION = 2000 // 20 € : au-delà, l'écart a bougé depuis la veille
 
@@ -47,16 +63,18 @@ function htmlAlerte(j, precedent, nouvelles) {
 export default async function handler(req, res) {
   if (req.method !== 'GET' && req.method !== 'POST') return res.status(405).end()
   const token = req.query?.token || (req.headers.authorization || '').replace(/^Bearer\s+/i, '').trim()
-  const autorise = (CRON_SECRET && token === CRON_SECRET) || (HOSPITABLE_WEBHOOK_SECRET && token === HOSPITABLE_WEBHOOK_SECRET)
-  if (!autorise) return res.status(401).json({ error: 'Non autorisé' })
-  if (AGENCE !== 'dcb') return res.status(200).json({ ok: true, skipped: 'execute_par_dcb_compta', agence: AGENCE })
+  const parCron = (CRON_SECRET && token === CRON_SECRET) || (HOSPITABLE_WEBHOOK_SECRET && token === HOSPITABLE_WEBHOOK_SECRET)
+  const auteurManuel = parCron ? null : await estBureau(token)
+  if (!parCron && !auteurManuel) return res.status(401).json({ error: 'Non autorisé' })
+  // Cron : exécuté une seule fois, par dcb-compta. Recalcul manuel : l'agence de la page appelante.
+  if (parCron && AGENCE !== 'dcb') return res.status(200).json({ ok: true, skipped: 'execute_par_dcb_compta', agence: AGENCE })
 
   const dryRun = req.query?.dry_run === '1'
   const { data: comptes } = await supabase.from('sequestre_compte').select('agence').eq('actif', true)
-  const agences = req.query?.agence ? [req.query.agence] : (comptes || []).map(c => c.agence)
+  const agences = req.query?.agence ? [req.query.agence] : auteurManuel ? [AGENCE] : (comptes || []).map(c => c.agence)
   const resultats = []
   for (const agence of agences) {
-    try { resultats.push(await traiterAgence(agence, dryRun)) }
+    try { resultats.push(await traiterAgence(agence, dryRun, auteurManuel)) }
     catch (err) {
       console.error('[sequestre-justificatif]', agence, err.message)
       await supabase.from('journal_ops').insert({ categorie: 'banque', action: 'sequestre_justificatif', source: 'cron', statut: 'error', message: `${agence} : ${err.message}` }).then(() => {}, () => {})
@@ -66,7 +84,7 @@ export default async function handler(req, res) {
   return res.status(resultats.some(r => r.error) ? 500 : 200).json({ ok: !resultats.some(r => r.error), resultats })
 }
 
-async function traiterAgence(agence, dryRun) {
+async function traiterAgence(agence, dryRun, auteurManuel = null) {
   {
     const j = await justifierSequestre(agence)
     if (dryRun) return { agence, dry_run: true, ecart: j.ecart, ecart_import: j.ecart_import, a_affecter: j.ecritures.filter(x => x.ayant_droit === 'a_affecter').length }
@@ -95,8 +113,8 @@ async function traiterAgence(agence, dryRun) {
     const aBouge = precedent && Math.abs(j.ecart - precedent.ecart) > SEUIL_VARIATION
 
     // Journal (migration 283) : photo du jour, variation, anomalies apparues / résolues
-    await journaliser(agence, 'calcul', `Calcul de nuit : solde ${eur(j.solde_banque.montant)}, justifié ${eur(j.total_justifie)}, écart ${eur(j.ecart)}, ${j.anomalies.length} anomalie(s)`,
-      { montant: j.ecart, auteur: 'cron', detail: { ecart_import: j.ecart_import, a_affecter: j.ecritures.filter(x => x.ayant_droit === 'a_affecter').length } })
+    await journaliser(agence, 'calcul', `${auteurManuel ? `Recalcul manuel (${auteurManuel})` : 'Calcul de nuit'} : solde ${eur(j.solde_banque.montant)}, justifié ${eur(j.total_justifie)}, écart ${eur(j.ecart)}, ${j.anomalies.length} anomalie(s)`,
+      { montant: j.ecart, auteur: auteurManuel || 'cron', detail: { ecart_import: j.ecart_import, a_affecter: j.ecritures.filter(x => x.ayant_droit === 'a_affecter').length } })
     if (aBouge) await journaliser(agence, 'variation_ecart', `L'écart a bougé de ${j.ecart - precedent.ecart > 0 ? '+' : ''}${eur(j.ecart - precedent.ecart)} depuis le ${String(precedent.date).split('-').reverse().join('/')} (${eur(precedent.ecart)} → ${eur(j.ecart)})`,
       { montant: j.ecart - precedent.ecart, auteur: 'cron' })
     for (const a of nouvelles) await journaliser(agence, 'anomalie_nouvelle', a.message, { mois: a.mois || null, montant: a.montant ?? null, auteur: 'cron', detail: { cle: a.cle } })
@@ -110,7 +128,8 @@ async function traiterAgence(agence, dryRun) {
     for (const d of derives) nouvelles.push({ cle: `derive_${d.mois}_${d.champ}`, message: `⚠ Mois clôturé ${d.mois} modifié après coup : ${d.champ} ${eur(d.avant)} → ${eur(d.apres)}` })
 
     let alerte = { envoyee: false }
-    if (aBouge || nouvelles.length || !precedent) {
+    // Recalcul manuel : pas de mail (la personne regarde la page) — la nuit garde son alerte
+    if (!auteurManuel && (aBouge || nouvelles.length || !precedent)) {
       const r = await fetch(`${SUPABASE_URL}/functions/v1/smtp-send`, {
         method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${SUPABASE_SRK}` },
         body: JSON.stringify({ to: ALERTE_TO, subject: `Séquestre ${agence === 'dcb' ? 'DCB' : agence === 'lauian' ? 'Lauïan' : agence} : écart ${eur(j.ecart)}${aBouge ? ` (${j.ecart - precedent.ecart > 0 ? '+' : ''}${eur(j.ecart - precedent.ecart)})` : ''}${nouvelles.length ? ` — ${nouvelles.length} nouvelle(s) anomalie(s)` : ''}`, html: htmlAlerte(j, precedent, nouvelles) }),
