@@ -503,7 +503,7 @@ export async function justifierSequestre(agence = 'dcb', { date = new Date().toI
       + sum(retRegul.filter(f => f.mois_facturation === mois), f => f.recupere)
     const { data: missions } = await supabase.from('mission_menage').select('montant, impute_salaire, ae:ae_id!inner(type), bien:bien_id!inner(id, agence, proprietaire_id, skip_facturation, mode_encaissement)')
       .eq('mois', mois).eq('statut', 'valide').eq('bien.agence', agence).eq('ae.type', 'ae')
-    const { data: prestas } = await supabase.from('prestation_hors_forfait').select('montant, impute_salaire, ae:ae_id!inner(type), bien:bien_id!inner(id, agence, proprietaire_id, skip_facturation, mode_encaissement)')
+    const { data: prestas } = await supabase.from('prestation_hors_forfait').select('montant, impute_salaire, type_imputation, ae:ae_id!inner(type), bien:bien_id!inner(id, agence, proprietaire_id, skip_facturation, mode_encaissement)')
       .eq('mois', mois).eq('statut', 'valide').eq('bien.agence', agence).eq('ae.type', 'ae')
     const aeDu = sum((missions || []).filter(x => !x.impute_salaire), x => x.montant) + sum((prestas || []).filter(x => !x.impute_salaire), x => x.montant)
     const aePaye = sum(sortiesMois(['paiement_ae'], mois), s => s.debit)
@@ -543,9 +543,15 @@ export async function justifierSequestre(agence = 'dcb', { date = new Date().toI
     // facture de débours (poche « débours remboursés ») — normal, pas une anomalie du mois
     const aeAvance = [...(missions || []), ...(prestas || [])].filter(x => !x.impute_salaire && !x.bien?.skip_facturation && x.bien?.mode_encaissement === 'proprio')
     const fraisPaiement = fraisPaiementMois[mois] || 0
+    // Ménage des communs Maison Maïté (type_imputation 'communs_provision', portail AE) : financé par la
+    // provision de 15 min/résa comprise dans le forfait ménage, jamais facturé au propriétaire — le FMEN
+    // réel l'attribue entièrement à l'agence, alors que le séquestre paie l'AE → coût agence (≈ 590 €
+    // mai-sept 2026). À distinguer des extras 'dcb_direct', souvent financés par la provision AUTO.
+    const communs = (prestas || []).filter(x => x.type_imputation === 'communs_provision' && !x.impute_salaire)
     const dcbTheorique = virable + sum(frais || [], f => f.montant_deduit_loy) - sum(aeSkip, x => x.montant) - fraisPaiement
       + sum(partDcbOrigine, f => f.montant_deduit_loy)
       + (ajustMenage[mois] || 0)
+      - sum(communs, x => x.montant)
     const aeAvanceTotal = sum(aeAvance, x => x.montant)
     const regulRegleesIci = regulVir.filter(f => f.versee && f.mois_facturation === mois)
     // Retenue de rattrapage prélevée ce mois-ci (miroir de regulRegleesIci) : la facture du mois est
@@ -598,6 +604,7 @@ export async function justifierSequestre(agence = 'dcb', { date = new Date().toI
     for (const [id, v] of Object.entries(fraisPaiementProprio[mois] || {})) add(id, v)
     for (const r of rattrapCOM || []) add(r.bien?.proprietaire_id, -r.montant_ttc) // part DCB théorique (migration 336)
     for (const [id, v] of Object.entries(ajustMenageProprio[mois] || {})) add(id, -v)
+    for (const x of communs) add(x.bien?.proprietaire_id, x.montant)
     // Reste dû par propriétaire : dû (factures + hors facture + sans facture − régul. réglées ici)
     // − payé (lignes des remises groupées de ce mois + virements individuels + régul. du mois d'origine)
     function resteParProprio() {
