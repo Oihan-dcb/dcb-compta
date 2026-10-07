@@ -90,6 +90,23 @@ function extractCode(name) {
   return firstMeaningful?.toUpperCase() || null;
 }
 
+// Géocodage BAN (api-adresse.data.gouv.fr) d'une adresse Hospitable « 23 Avenue X, Ville, Région, CP, FR » :
+// on retire région / pays / mentions d'appartement, et on n'accepte qu'un résultat fiable (score ≥ 0,5).
+async function geocoderAdresse(adresse) {
+  if (!adresse) return null
+  const q = adresse.split(',').map(x => x.trim())
+    .filter(x => x && !/^(FR|France|Nouvelle[- ]Aquitaine|Pays Basque)$/i.test(x) && !/^(appartement|appt|bâtiment|batiment|résidence|residence)\b/i.test(x))
+    .join(' ').replace(/^\d+\s+(?=\d+\s)/, '')
+  try {
+    const r = await fetch(`https://api-adresse.data.gouv.fr/search/?q=${encodeURIComponent(q)}&limit=1`)
+    if (!r.ok) return null
+    const f = (await r.json())?.features?.[0]
+    if (!f || (f.properties?.score || 0) < 0.5) return null
+    const [lng, lat] = f.geometry.coordinates
+    return { lat, lng }
+  } catch { return null }
+}
+
 export default async function handler(req, res) {
   if (skipDuplicateCron(req, res)) return; // cf. api/_cronGuard.js — crons exécutés par dcb-compta seulement
   // CORS : appelable depuis PowerHouse (dcb-planning.vercel.app), même Supabase Auth
@@ -131,7 +148,7 @@ export default async function handler(req, res) {
     // agence comme "nouveaux" → INSERT → 409 (hospitable_id unique) → le cron entier échouait,
     // mises à jour comprises, toutes les nuits depuis le 10/09/2026 (Villa Coco côté dcb,
     // XABADENIA côté lauian — 58 erreurs import_log). `agence` ne sert plus qu'aux créations.
-    const existingBiens = await sb(`bien?select=id,code,hospitable_name,hospitable_id,listed,agence`);
+    const existingBiens = await sb(`bien?select=id,code,hospitable_name,hospitable_id,listed,agence,adresse,geo_lat,geo_lng`);
     const existingMap = new Map((existingBiens || []).map(b => [b.hospitable_id, b]));
     const existingByName = new Map((existingBiens || []).map(b => [normalizeName(b.hospitable_name), b]));
 
@@ -152,6 +169,19 @@ export default async function handler(req, res) {
       photo_url: prop.picture?.replace('?aki_policy=small', '?aki_policy=large') || null,
       derniere_sync: new Date().toISOString(),
     }));
+
+    // Coordonnées absentes chez Hospitable (51 biens sur 75 au 07/10/2026 → pas de contrôle de présence
+    // dans Ma journée) : géocodage de l'adresse par l'API Adresse de l'État (BAN, gratuite, adresse seule).
+    // On garde les coordonnées déjà calculées tant que l'adresse ne change pas (pas d'appel inutile, et
+    // la synchro ne les remet plus à vide chaque nuit).
+    for (const p of toUpsert) {
+      if (p.geo_lat != null) continue
+      const ex = existingMap.get(p.hospitable_id)
+      if (ex?.geo_lat != null && (ex.adresse || '') === (p.adresse || '')) { p.geo_lat = ex.geo_lat; p.geo_lng = ex.geo_lng; continue }
+      const g = await geocoderAdresse(p.adresse)
+      if (g) { p.geo_lat = g.lat; p.geo_lng = g.lng }
+      else if (ex?.geo_lat != null) { p.geo_lat = ex.geo_lat; p.geo_lng = ex.geo_lng }
+    }
 
     const candidatsNouveaux = toUpsert.filter(p => !existingMap.has(p.hospitable_id));
     const existants = toUpsert.filter(p => existingMap.has(p.hospitable_id));
