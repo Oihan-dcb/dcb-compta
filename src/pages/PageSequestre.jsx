@@ -25,11 +25,28 @@ const DETAIL_POCHE = {
   sorties_non_affectees: 'sorties_a_identifier',
 }
 
+// Anomalies en tableau (07/10/2026) : type lisible + détail sans répéter mois et montant
+const TYPES_ANOMALIE = [
+  ['dcb_', 'Part agence du mois'], ['proprio_trop_verse_', 'Reversé en trop'], ['ae_trop_paye_', 'AE payés en trop'],
+  ['proprio_paye_2x_', 'Double paiement ?'], ['regul_non_versee_', 'Régularisation non versée'], ['a_affecter_', 'Mouvements à affecter'],
+  ['remise_sans_detail_', 'Remise sans détail'], ['remboursement_deja_vire_', 'Remboursement déjà viré'], ['annulee_0_ventilee_', 'Résa annulée ventilée'],
+  ['paiement_resa_annulee_', 'Paiement sur résa annulée'], ['resa_sur_encaissee_', 'Résa encaissée 2×'], ['sejour_payout_sans_resa_', 'Séjour payé sans résa'],
+  ['sorties_a_identifier', 'Sorties à identifier'], ['ecart_import_', 'Relevé pas à jour'],
+]
+function decrireAnomalie(a) {
+  const type = (TYPES_ANOMALIE.find(([p]) => (a.cle || '').startsWith(p)) || [null, 'Autre'])[1]
+  const msg = a.message || ''
+  const principaux = msg.split(' — principaux : ')[1]
+  const detail = principaux ? `Principaux : ${principaux}` : msg.replace(/^\d{4}-\d{2} : /, '')
+  return { type, detail }
+}
+
 export default function PageSequestre() {
   const [j, setJ] = useState(null)
   const [historique, setHistorique] = useState([])
   const [loading, setLoading] = useState(true)
   const [calcul, setCalcul] = useState(false)
+  const [progres, setProgres] = useState(null) // { pct, etape } — écrit par le serveur (migration 339)
   const [err, setErr] = useState(null)
   const [ouvert, setOuvert] = useState({})
 
@@ -50,7 +67,12 @@ export default function PageSequestre() {
   // périmée (Lauïan 30/09/2026 : photo du 25/09 à −2 221,66 € alors que le calcul donnait 0,15 €).
   const [aaKey, setAaKey] = useState(0)
   async function recalculer() {
-    setCalcul(true); setErr(null)
+    setCalcul(true); setErr(null); setProgres({ pct: 0, etape: 'Démarrage' })
+    const depart = Date.now()
+    const suivi = setInterval(async () => {
+      const { data } = await supabase.from('sequestre_calcul_progres').select('pct, etape, maj').eq('agence', AGENCE).maybeSingle()
+      if (data && Date.parse(data.maj) >= depart - 2000) setProgres({ pct: data.pct, etape: data.etape })
+    }, 1000)
     try {
       // Calcul côté serveur (même code et mêmes droits que le calcul de nuit) — exécuté dans le
       // navigateur il perdait des liens de paiement (07/10/2026). Enregistre la photo + le grand livre.
@@ -63,6 +85,8 @@ export default function PageSequestre() {
       setAaKey(k => k + 1)
     }
     catch (e) { setErr(e.message) }
+    clearInterval(suivi)
+    setProgres(null)
     setCalcul(false)
   }
 
@@ -93,6 +117,16 @@ export default function PageSequestre() {
       <div style={{ fontSize: 12, color: 'var(--text-muted)', marginBottom: 18 }}>
         Chaque euro du séquestre appartient à quelqu'un : propriétaires, {AG}, AE, voyageurs. Le justificatif décompose le solde bancaire réel en ces « poches » ; l'écart doit être nul.
       </div>
+      {calcul && progres && (
+        <div style={{ background: '#fff', border: '1px solid var(--border)', borderRadius: 10, padding: '10px 16px', marginBottom: 14 }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 12, marginBottom: 6 }}>
+            <span>⏳ {progres.etape || 'Calcul en cours'}…</span><strong>{progres.pct || 0} %</strong>
+          </div>
+          <div style={{ height: 8, background: '#F3EFE6', borderRadius: 4, overflow: 'hidden' }}>
+            <div style={{ width: `${Math.max(2, Math.min(100, progres.pct || 0))}%`, height: '100%', background: 'var(--brand, #CC9933)', transition: 'width .6s ease' }} />
+          </div>
+        </div>
+      )}
       {err && <div className="alert alert-error">{err}</div>}
       {loading && !j && <div className="loading-state"><span className="spinner" /> Chargement…</div>}
       {!loading && !j && <div className="empty-state">Pas encore de justificatif enregistré — « Recalculer maintenant » ou attendre le calcul de la nuit.</div>}
@@ -111,12 +145,29 @@ export default function PageSequestre() {
         </div>
 
         {j.anomalies?.length > 0 && (
-          <div style={{ background: '#FEF2F2', border: '1px solid #FECACA', borderRadius: 10, padding: '10px 16px', marginBottom: 18 }}>
-            <div style={{ fontWeight: 700, fontSize: 14, color: '#B91C1C', marginBottom: 6 }}>Anomalies ({j.anomalies.length})</div>
-            {j.anomalies.map(a => <div key={a.cle} style={{ fontSize: 13, padding: '3px 0', display: 'flex', gap: 8, alignItems: 'baseline' }}>
-              <span style={{ flex: 1 }}>• {a.message}</span>
-              <button className="btn" style={{ fontSize: 11, padding: '1px 8px' }} onClick={() => archiver(a)} title="Ce n'est pas une erreur : décision déjà réglée, ou donnée à compléter">Classer</button>
-            </div>)}
+          <div style={{ background: '#fff', border: '1px solid #FECACA', borderRadius: 10, overflow: 'hidden', marginBottom: 18 }}>
+            <div style={{ fontWeight: 700, fontSize: 14, color: '#B91C1C', padding: '10px 14px', background: '#FEF2F2' }}>Anomalies ({j.anomalies.length})</div>
+            <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+              <thead><tr>
+                <th style={th}>Mois</th><th style={th}>Type</th><th style={{ ...th, textAlign: 'right' }}>Montant</th><th style={th}>Détail</th><th style={th} />
+              </tr></thead>
+              <tbody>
+                {[...j.anomalies].sort((a, b) => (a.mois || '9999').localeCompare(b.mois || '9999')).map(a => {
+                  const { type, detail } = decrireAnomalie(a)
+                  return (
+                    <tr key={a.cle}>
+                      <td style={{ ...td, whiteSpace: 'nowrap' }}>{a.mois ? `${a.mois.slice(5)}/${a.mois.slice(0, 4)}` : '—'}</td>
+                      <td style={{ ...td, whiteSpace: 'nowrap', fontWeight: 600 }}>{type}</td>
+                      <td style={{ ...r, color: (a.montant || 0) < 0 ? '#B91C1C' : '#15803D', fontWeight: 600 }}>{a.montant != null ? eur(a.montant) : '—'}</td>
+                      <td style={{ ...td, fontSize: 12, color: 'var(--text-muted)' }}>{detail}</td>
+                      <td style={{ ...td, textAlign: 'right' }}>
+                        <button className="btn" style={{ fontSize: 11, padding: '1px 8px' }} onClick={() => archiver(a)} title="Ce n'est pas une erreur : décision déjà réglée, ou donnée à compléter">Classer</button>
+                      </td>
+                    </tr>
+                  )
+                })}
+              </tbody>
+            </table>
           </div>
         )}
         {[['resolue', 'Résolues hors de l\'app', 'réglées par un virement ou une décision que l\'app ne sait pas relier au mois'],

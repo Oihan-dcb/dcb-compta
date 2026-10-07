@@ -90,7 +90,10 @@ async function soldeCompte(compte, date) {
   return { montant: releve, maj: (compte.pennylane_account_id && banque?.maj) || new Date().toISOString(), banque }
 }
 
-export async function justifierSequestre(agence = 'dcb', { date = new Date().toISOString().slice(0, 10), solde = null, moisDebut = null } = {}) {
+export async function justifierSequestre(agence = 'dcb', { date = new Date().toISOString().slice(0, 10), solde = null, moisDebut = null, onProgress = null } = {}) {
+  // Progression (bouton « Recalculer maintenant », 07/10/2026) : pct 0-90 ici, l'enregistrement fait le reste
+  const progres = (pct, etape) => { try { onProgress?.(pct, etape) } catch { /* jamais bloquant */ } }
+  progres(2, 'Chargement du relevé, des factures et des réservations')
   // Nom de l'agence dans les libellés : « part Lauïan théorique » sur lauian-compta, pas « part DCB » (Oïhan 30/09/2026)
   const AG = { dcb: 'DCB', lauian: 'Lauïan', bdx: 'DBDX' }[agence] || agence.toUpperCase()
   const compte = await compteSequestre(agence)
@@ -161,6 +164,7 @@ export async function justifierSequestre(agence = 'dcb', { date = new Date().toI
     .map(r => [r.id, r]))
 
   // Preuves de paiement : encaissement de chaque réservation (toutes dates ≤ date du justificatif)
+  progres(20, 'Rapprochement des paiements des réservations')
   const resaIds = [...resaDCB.keys()]
   const preuves = []
   for (let i = 0; i < resaIds.length; i += 100) {
@@ -288,6 +292,7 @@ export async function justifierSequestre(agence = 'dcb', { date = new Date().toI
   }
 
   // ── Classement des mouvements ─────────────────────────────────────────────
+  progres(35, 'Classement des mouvements bancaires')
   // Sortie rattachée à une réservation (remboursement voyageur prélevé par Stripe…) : déjà
   // déduite de l'encaissé de la résa (paiement négatif) — ni sortie à identifier, ni double compte
   const sorties = mvts.filter(m => m.debit > 0).map(m => ({ ...m, ...(lieParMvt.has(m.id) ? { type: 'lie_resa', mois: moisDe(m.date_operation) } : forcer(m, classerSortie(m, ctx), 'sortie')) }))
@@ -490,7 +495,8 @@ export async function justifierSequestre(agence = 'dcb', { date = new Date().toI
 
   const { data: relevesProprio } = await supabase.from('sequestre_releve_proprio').select('mois, bien_id, montant').eq('agence', agence)
   const parMois = []
-  for (const mois of moisFactures) {
+  for (const [iMois, mois] of moisFactures.entries()) {
+    progres(45 + Math.round(40 * iMois / Math.max(1, moisFactures.length)), `Contrôle du mois ${mois.slice(5)}/${mois.slice(0, 4)}`)
     const encaisse = encaisseParMois[mois] || 0
     // Reversement hors facture (réaffectation manuelle) : loyer dû au propriétaire que la facture
     // ne porte pas (ITS juillet-août 2026 : ventilé sans VIRProprio, reversé à la main) — dû ET payé
@@ -718,6 +724,7 @@ export async function justifierSequestre(agence = 'dcb', { date = new Date().toI
 
   // Anomalies lisibles (servent aussi à l'alerte) — seuil 1 € pour les arrondis
   const eur = c => (c / 100).toLocaleString('fr-FR', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) + ' €'
+  progres(86, 'Recherche des anomalies')
   const anomalies = []
   for (const p of facturesListe) {
     if (p.proprietaires.reste < -100) anomalies.push({ cle: `proprio_trop_verse_${p.mois}`, mois: p.mois, montant: p.proprietaires.reste,
@@ -845,6 +852,7 @@ export async function justifierSequestre(agence = 'dcb', { date = new Date().toI
   }
 
   // ── Grand livre des mandants : chaque mouvement attribué à un ayant droit et à un mois ──────
+  progres(88, 'Grand livre des mandants')
   const ecritures = []
   const ec = (m, ligne, montant, ayant_droit, nature, extra = {}) => ecritures.push({ agence, mouvement_id: m.id, ligne, date_operation: m.date_operation, montant,
     ayant_droit, nature, mois: extra.mois || null, tiers_id: extra.tiers_id || null, tiers_nom: extra.tiers_nom || null, regle: extra.regle || 'auto', detail: extra.detail || null })

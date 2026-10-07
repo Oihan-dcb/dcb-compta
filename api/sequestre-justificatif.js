@@ -84,9 +84,31 @@ export default async function handler(req, res) {
   return res.status(resultats.some(r => r.error) ? 500 : 200).json({ ok: !resultats.some(r => r.error), resultats })
 }
 
+// Progression lue par la page (migration 339) : écrite au plus toutes les 700 ms, jamais bloquante
+function suiviProgres(agence, auteur) {
+  let dernier = 0
+  const ecrire = (champs) => supabase.from('sequestre_calcul_progres').upsert({ agence, maj: new Date().toISOString(), ...champs }, { onConflict: 'agence' }).then(() => {}, () => {})
+  return {
+    debut: () => ecrire({ pct: 0, etape: 'Démarrage', auteur, debut: new Date().toISOString(), termine: false, erreur: null }),
+    maj: (pct, etape) => { const t = Date.now(); if (t - dernier < 700 && pct < 100) return; dernier = t; ecrire({ pct, etape }) },
+    fin: (erreur = null) => ecrire({ pct: 100, etape: erreur ? 'Erreur' : 'Terminé', termine: true, erreur }),
+  }
+}
+
 async function traiterAgence(agence, dryRun, auteurManuel = null) {
+  const suivi = suiviProgres(agence, auteurManuel || 'cron')
+  await suivi.debut()
+  try {
+    const r = await traiterAgenceCalcul(agence, dryRun, auteurManuel, suivi)
+    await suivi.fin()
+    return r
+  } catch (e) { await suivi.fin(e.message); throw e }
+}
+
+async function traiterAgenceCalcul(agence, dryRun, auteurManuel, suivi) {
   {
-    const j = await justifierSequestre(agence)
+    const j = await justifierSequestre(agence, { onProgress: suivi.maj })
+    suivi.maj(92, 'Enregistrement de la photo du jour')
     if (dryRun) return { agence, dry_run: true, ecart: j.ecart, ecart_import: j.ecart_import, a_affecter: j.ecritures.filter(x => x.ayant_droit === 'a_affecter').length }
 
     const { data: precedent } = await supabase.from('sequestre_justificatif')
@@ -98,6 +120,7 @@ async function traiterAgence(agence, dryRun, auteurManuel = null) {
     }, { onConflict: 'agence,date' })
     if (error) throw error
     // Grand livre : recalculé intégralement (dérivé du relevé + affectations + alias)
+    suivi.maj(95, 'Enregistrement du grand livre')
     const { error: eDel } = await supabase.from('sequestre_ecriture').delete().eq('agence', agence)
     if (eDel) throw eDel
     for (let i = 0; i < j.ecritures.length; i += 500) {
@@ -121,6 +144,7 @@ async function traiterAgence(agence, dryRun, auteurManuel = null) {
     for (const a of resolues) await journaliser(agence, 'anomalie_resolue', `Résolue : ${a.message}`, { mois: a.mois || null, montant: a.montant ?? null, auteur: 'cron', detail: { cle: a.cle } })
 
     // Dérive des mois clôturés (recalcul à la date d'arrêté des 3 derniers mois clôturés)
+    suivi.maj(97, 'Vérification des mois clôturés')
     let derives = []
     try { derives = await verifierClotures(agence, await listerClotures(agence), { max: 3 }) } catch (e) { console.error('[verifierClotures]', e.message) }
     for (const d of derives) await journaliser(agence, 'derive_mois_cloture', `Mois clôturé ${d.mois} modifié après coup : ${d.champ} ${eur(d.avant)} → ${eur(d.apres)} (${d.delta > 0 ? '+' : ''}${eur(d.delta)})`,
