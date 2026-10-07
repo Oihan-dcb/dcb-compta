@@ -421,7 +421,12 @@ async function genererFactureGroupe(proprio, biens, mois, ctx) {
   // (ligne MEN posée depuis PageRapports — le proprio paie même si fin_revenue est null).
   const osAllIds = new Set((ownerStayResas || []).map(r => r.id))
   const osMenSaisiIds = new Set(ventilation.filter(l => l.code === 'MEN' && osAllIds.has(l.reservation_id)).map(l => l.reservation_id))
-  const osResaIds = new Set((ownerStayResas || []).filter(r => (r.fin_revenue || 0) > 0 || osMenSaisiIds.has(r.id)).map(r => r.id))
+  // + séjour dont le ménage est ventilé (FMEN/AUTO) même si fin_revenue est vide : les séjours proprio
+  // de mai 2026 n'ont reçu leur fin_revenue que le 13/08 (reprise) — ventilés dès le 07/06 mais jugés
+  // « gratuits » à la facturation, leur ménage n'a jamais été retenu (455 € + CERES juin 190 €, vu le
+  // 07/10/2026). Le « sans frais » est désormais porté par menage_proprio_annule (exclu en amont).
+  const osVentileIds = new Set(ventilation.filter(l => (l.code === 'FMEN' || l.code === 'AUTO') && osAllIds.has(l.reservation_id) && (l.montant_ttc || 0) > 0).map(l => l.reservation_id))
+  const osResaIds = new Set((ownerStayResas || []).filter(r => (r.fin_revenue || 0) > 0 || osMenSaisiIds.has(r.id) || osVentileIds.has(r.id)).map(r => r.id))
 
   const osVentByBien = new Map()
   if (osResaIds.size > 0) {
@@ -433,6 +438,14 @@ async function genererFactureGroupe(proprio, biens, mois, ctx) {
       // MEN saisi manuellement = coût AE refacturé au proprio, hors TVA → canal AUTO (débours),
       // jamais canal FMEN (qui part en prestation TVA 20% sur la facture en cas de surplus)
       if (v.code === 'MEN')  e.autoHT += (v.montant_ht || 0)
+    }
+    // Séjour proprio sans aucune ligne ménage ventilée : même repli que le rapport (buildRapportData
+    // ownerStayList : fin_revenue) — sinon le rapport affichait la retenue et la facture/le virement ne
+    // la faisaient pas (CERES VMGKM0 juin 2026 : rapport −190 €, virement versé sans). Canal AUTO (hors TVA).
+    const osAvecLignes = new Set(ventilation.filter(l => ['FMEN', 'AUTO', 'MEN'].includes(l.code) && osResaIds.has(l.reservation_id)).map(l => l.reservation_id))
+    for (const r of (ownerStayResas || []).filter(r => osResaIds.has(r.id) && !osAvecLignes.has(r.id) && (r.fin_revenue || 0) > 0)) {
+      if (!osVentByBien.has(r.bien_id)) osVentByBien.set(r.bien_id, { fmenTTC: 0, autoHT: 0 })
+      osVentByBien.get(r.bien_id).autoHT += r.fin_revenue
     }
   }
 
