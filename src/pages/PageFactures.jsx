@@ -652,9 +652,13 @@ const [pushing, setPushing] = useState(false)
         // absorbés par le loyer (B16/B24/DUL/PATXI juillet 2026 — Oïhan 28/09/2026).
         const reverseFacture = (f.montant_reversement || 0) - (f.solde_negatif ? (f.montant_reclame || 0) : 0)
         const surReversement = reverseFacture - virProprio
-        const isSafe = solde === 0 && resasAnomalie.size === 0
+        // Mois sans aucun séjour voyageur ni encaissement (séjour propriétaire seul, prestations seules :
+        // AUREAN 09/2026) et rien reversé : aucun risque de reverser plus qu'encaissé — le propriétaire est
+        // facturé à part (débours / solde réclamé). Avant : solde négatif des prestations → « Tréso ⚠ » à tort.
+        const sansEncaissement = totalResas === 0 && creditsProuves === 0 && reverseFacture <= 0
+        const isSafe = sansEncaissement || (solde === 0 && resasAnomalie.size === 0
           && totalResas > 0 && resasProuvees.size === totalResas && payinManquant === 0 && !hasResaManquant
-          && surReversement <= 100
+          && surReversement <= 100)
 
         const regulVirement = bienIds.reduce((t, bid) => t + (regulVirByBien[bid]?.montant || 0), 0)
         const regulVirementLignes = bienIds.flatMap(bid => regulVirByBien[bid]?.lignes || [])
@@ -671,7 +675,7 @@ const [pushing, setPushing] = useState(false)
           countAnomalies: resasAnomalie.size,
           surReversement,
           ajustCroises,
-          isSafe,
+          isSafe, sansEncaissement,
           notComputed: (allocRows || []).length === 0 && (resasRows || []).length > 0,
         }
       }
@@ -1285,7 +1289,7 @@ const [pushing, setPushing] = useState(false)
                       if (sc.isSafe) return (
                         <span title={sc.ajustCroises < 0 ? `Dont ${(-sc.ajustCroises / 100).toFixed(2)} € retenus par la plateforme sur ces versements pour une autre réservation (remboursement / résolution) — traités sur la réservation d'origine` : undefined}
                           style={{ padding: '4px 10px', borderRadius: 100, fontSize: 11, fontWeight: 600, background: '#DCFCE7', color: '#15803D' }}>
-                          Tréso ✓{sc.ajustCroises < 0 ? ' · ajust.' : ''}
+                          Tréso ✓{sc.sansEncaissement ? ' · rien à reverser' : sc.ajustCroises < 0 ? ' · ajust.' : ''}
                         </span>
                       )
                       // Trop-versé déjà retenu (ou complément versé) sur une facture ultérieure
