@@ -367,6 +367,9 @@ export async function justifierSequestre(agence = 'dcb', { date = new Date().toI
   //    de Hospitable : TXOMIN Mirith Rast juillet 2026) — part propriétaire versée (remboursement) ou
   //    part agence retenue (honoraires / forfait ménage) dans un mois ultérieur. { nom: true }
   const MOIS_NOM = ['janvier', 'fevrier', 'mars', 'avril', 'mai', 'juin', 'juillet', 'aout', 'septembre', 'octobre', 'novembre', 'decembre']
+  // L'année est OBLIGATOIRE : « Régularisation juin — … » (sans année) désigne des retenues / compléments
+  // côté propriétaire (ALAIA AirCover compté 2×, DUL2 / 416 remboursements comptés 2×), pas une part
+  // agence — les rattacher faussait juin de −338 € (essai du 07/10/2026, annulé).
   const moisOrigineRegul = lib => {
     const v = (lib || '').match(/Régularisation virement (\d{2})\/(\d{4})/)
     if (v) return { mois: `${v[2]}-${v[1]}`, nom: false }
@@ -421,7 +424,8 @@ export async function justifierSequestre(agence = 'dcb', { date = new Date().toI
   const regulVir = (regulsVirement || []).map(f => {
     const mo = moisOrigineRegul(f.libelle)
     if (!mo) return null
-    const fac = factures.find(x => x.type_facture === 'honoraires' && x.mois === f.mois_facturation &&
+    // facture ÉMISE uniquement (pas « calcul_en_cours » : LALANDE/BDX septembre 2026, jamais émise)
+    const fac = honoraires.find(x => x.mois === f.mois_facturation &&
       (x.bien_id === f.bien_id || (!x.bien_id && f.bien?.groupe_facturation && x.proprietaire_id === f.bien?.proprietaire_id)))
     const virIndiv = sorties.some(s => ['reversement', 'reversement_hors_facture'].includes(s.type) && s.mois === f.mois_facturation && s.tiers_id === f.bien?.proprietaire_id)
     const versee = !!fac && (facturesVersees.has(fac.id) || virIndiv || factureFaite(fac))
@@ -446,7 +450,8 @@ export async function justifierSequestre(agence = 'dcb', { date = new Date().toI
       (x.bien_id === f.bien_id || (!x.bien_id && x.proprietaire_id === f.bien?.proprietaire_id)))
     const retenueVersee = !!facR && (facturesVersees.has(facR.id) || factureFaite(facR) || sorties.some(s => ['reversement', 'reversement_hors_facture'].includes(s.type) && s.mois === f.mois_facturation && s.tiers_id === f.bien?.proprietaire_id))
     const recupere = (retenueVersee ? (f.montant_deduit_loy || 0) : 0) + (debRecu ? Math.max(0, f.montant_ttc - (f.montant_deduit_loy || 0)) : 0)
-    return recupere ? { ...f, mois_origine: `${m[2]}-${m[1]}`, recupere } : null
+    // recupere_loy : seule part dont la facture du mois est nette (la part réglée par débours n'y est pas)
+    return recupere ? { ...f, mois_origine: `${m[2]}-${m[1]}`, recupere, recupere_loy: retenueVersee ? (f.montant_deduit_loy || 0) : 0 } : null
   }).filter(Boolean)
   const idsRetRegul = new Set(retRegul.map(f => f.id))
 
@@ -563,7 +568,7 @@ export async function justifierSequestre(agence = 'dcb', { date = new Date().toI
       }
       return payeP - duP < f.recupere - 100 // pas de sur-virement par rapport à la facture
     })
-    const proprioDuTotal = proprioDu + proprioDuSansFacture - sum(regulRegleesIci, f => f.montant_ttc) + sum(retRegulIci, f => f.recupere)
+    const proprioDuTotal = proprioDu + proprioDuSansFacture - sum(regulRegleesIci, f => f.montant_ttc) + sum(retRegulIci, f => f.recupere_loy)
       - sum(factureTropHaute, f => f.recupere)
       + sum(partDcbIci, f => f.montant_deduit_loy)
       + sum(regulNomOrigine, f => f.montant_ttc) - sum(regulNomIciNonVersee, f => f.montant_ttc)
@@ -577,7 +582,8 @@ export async function justifierSequestre(agence = 'dcb', { date = new Date().toI
     for (const r of sansFacture) add(r.proprietaire_id, -r.reversement_calcule)
     for (const f of regulRegleesIci) add(f.bien?.proprietaire_id, f.montant_ttc)
     for (const f of factureTropHaute) add(f.bien?.proprietaire_id, f.recupere)
-    for (const f of retRegulIci) add(f.bien?.proprietaire_id, -f.recupere) // miroir de proprioDuTotal (détail par propriétaire)
+    for (const f of retRegulIci) add(f.bien?.proprietaire_id, -f.recupere_loy) // miroir de proprioDuTotal (détail par propriétaire)
+    for (const f of partDcbIci) add(f.bien?.proprietaire_id, -f.montant_deduit_loy)
     for (const f of partDcbOrigine) add(f.bien?.proprietaire_id, -f.montant_deduit_loy)
     for (const f of regulNomOrigine) add(f.bien?.proprietaire_id, -f.montant_ttc)
     for (const f of regulNomIciNonVersee) add(f.bien?.proprietaire_id, f.montant_ttc)
