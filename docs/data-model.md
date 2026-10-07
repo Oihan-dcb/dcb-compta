@@ -1028,3 +1028,14 @@ Renseigner un motif (ménage fait par le propriétaire, bien rendu…) = séjour
 `menage_proprio_annule`, prolongations (même voyageur, arrivée suivante le jour du départ).
 Incident d'origine : VILLA BACALAN août 2026, aucune tâche Cleaning dans Hospitable → ménages de Léa
 jamais saisis, facture n°168 (700 €) payée par le séquestre sans mission.
+
+## Ajout 2026-10-07 — Points d'attention par AE : `ae_point_attention`, `ae_point_attention_avis` (migrations 342-343)
+
+**`ae_point_attention`** : points faibles d'une AE, affichés en tête de sa checklist dans Ma journée (« 🎯 Tes points d'attention », 5 max : bien de la mission + généraux, récurrents puis récents) et gérés dans la fiche Staff PowerHouse.
+- Colonnes : `ae_id`, `bien_id` (NULL = toutes ses missions), `libelle` (≤ 140 car.), `source` (`video` carte « 🔧 à corriger » / `controle` contrôle bureau « à reprendre » / `avis` consigne IA tirée d'un avis propreté / `manuel`), `source_ref` (id annotation / mission / review), `occurrences`, `missions_ok` (0-5), `statut` (`actif`/`acquis`/`retire`), `dernier_reproche`, `cree_le`, `cree_par`, `maj`, `acquis_le`, `acquis_par` (NULL = acquis automatique).
+- Création : triggers `trg_pa_depuis_video` (insert `video_annotation` type `corriger`) et `trg_pa_depuis_controle` (transition `mission_terrain.controle_statut` → `a_reprendre`, libellé = `controle_note`) ; edge function `points-attention-avis` (cron `points-attention-avis` 7h41 UTC) ; RPC `point_attention_ajouter_manuel`. Toutes passent par `_point_attention_ajouter` : même AE + même bien + libellé proche (`pg_trgm` similarity ≥ 0,5 sur `_pa_norm`) → `occurrences + 1`, `missions_ok = 0`, réactivé si acquis ; un point `retire` n'est jamais réactivé.
+- Sortie : trigger `trg_pa_mission_terminee` (transition `mission_terrain.statut` → `terminee`, hors `technique`) incrémente `missions_ok` des points actifs de l'AE (même bien ou généraux) dont `dernier_reproche` < début de mission ; 5 → `acquis`. Ou RPC `point_attention_statut(id, 'acquis'|'retire'|'actif')` (bureau / staff).
+- RLS : lecture bureau / staff / l'AE elle-même (`auth_user_owns_ae`) ; aucune écriture directe (RPC / triggers seulement).
+- Coches de l'AE pendant la mission : `mission_terrain.points_coches` (jsonb `{point_id: horodatage}`, non bloquant) via RPC `point_attention_cocher` ; lecture des points d'une mission : RPC `points_attention_mission`.
+
+**`ae_point_attention_avis`** (PK `review_id`) : avis déjà passés à l'IA (`statut` `ok`/`vide`/`erreur`, `consignes` jsonb, `modele`) → un seul appel Haiku par avis. Lecture bureau. RPC service_role : `points_attention_avis_a_traiter(p_limit)` (avis attribués `_avis_proprete_attribues`, note propreté < 5, commentaire public ou privé, reçus depuis le 01/09/2026, non traités) et `points_attention_avis_enregistrer(...)`. Edge function : 30 appels max par passage, `dry_run`, désactivable par le secret `POINTS_ATTENTION_AVIS=off`.
