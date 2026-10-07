@@ -39,6 +39,11 @@ const nightsInRange = (r, debut, finExclusive) => {
   return Math.max(0, diff)
 }
 
+// Libellé d'une prestation dans le rapport propriétaire : sans la ligne « 📷 <lien photo> » ajoutée par
+// l'entretien périodique du portail AE (« Entretien périodique : Frigo à fond\n📷 https://… ») — 07/10/2026
+const libellePrestation = p => ((p.description || '').split('\n').map(l => l.trim())
+  .filter(l => l && !l.startsWith('📷') && !/^https?:\/\//.test(l)).join(' — ') || p.prestation_type?.nom || '—')
+
 export async function buildRapportData(bienId, propId, mois, opts = {}) {
   const { isGlobal = false, maiteIds = [] } = opts
   const [y, m] = mois.split('-').map(Number)
@@ -243,7 +248,7 @@ export async function buildRapportData(bienId, propId, mois, opts = {}) {
       const isStaff = p.type_imputation === 'deduction_loy' && p.ae?.type === 'staff'
       const montantEffectif = isStaff ? Math.round((p.montant || 0) * 1.20) : (p.montant || 0)
       extraByResa[p.reservation_id] = (extraByResa[p.reservation_id] || 0) + montantEffectif
-      extrasParResa.push({ ...p, libelle: p.description || p.prestation_type?.nom || '—', isStaff, montant_ht: p.montant, montant_ttc: montantEffectif })
+      extrasParResa.push({ ...p, libelle: libellePrestation(p), isStaff, montant_ht: p.montant, montant_ttc: montantEffectif })
     })
 
   const extrasGlobaux = (prestations || [])
@@ -252,13 +257,13 @@ export async function buildRapportData(bienId, propId, mois, opts = {}) {
     .map(p => {
       const isStaff = p.type_imputation === 'deduction_loy' && p.ae?.type === 'staff'
       const montantEffectif = isStaff ? Math.round((p.montant || 0) * 1.20) : (p.montant || 0)
-      return { ...p, libelle: p.description || p.prestation_type?.nom || '—', isStaff, montant_ht: p.montant, montant_ttc: montantEffectif }
+      return { ...p, libelle: libellePrestation(p), isStaff, montant_ht: p.montant, montant_ttc: montantEffectif }
     })
 
   const haownerList = (prestations || [])
     .filter(p => p.type_imputation === 'haowner')
     .sort((a, b) => (a.date_prestation || '').localeCompare(b.date_prestation || ''))
-    .map(p => ({ ...p, montant_ttc: Math.round((p.montant || 0) * 1.20), libelle: p.description || p.prestation_type?.nom || '—' }))
+    .map(p => ({ ...p, montant_ttc: Math.round((p.montant || 0) * 1.20), libelle: libellePrestation(p) }))
 
   const totalDebours = (prestations || [])
     .filter(p => p.regime !== 'sap' && ['deduction_loy', 'debours_proprio'].includes(p.type_imputation))
