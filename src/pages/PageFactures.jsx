@@ -14,6 +14,7 @@ import { calculerRegulFmenInterne, validerRegulFmenInterne } from '../services/a
 import { pousserFacturesMoisVersEvoliz, pingEvoliz, pousserFactureCOMVersEvoliz, syncNumerosEvoliz, refreshFacturesBrouillonsEvoliz, creerArticlesManquantsEvoliz, setupEvolizComplet } from '../services/evoliz'
 import { genererFacturesLLD } from '../services/facturesLLD'
 import { formatMontant } from '../lib/hospitable'
+import { frMois } from '../utils/dateFr'
 
 const moisCourant = new Date().toISOString().substring(0, 7)
 
@@ -160,7 +161,7 @@ const [pushing, setPushing] = useState(false)
   }
   async function validerRegulFmen() {
     if (!regulFmen?.lignes?.length && !regulFmen?.lignesNonRefacturees?.length) return
-    if (!window.confirm(`Valider la régul FMEN interne de ${mois} : ${regulFmen.lignes.length} écart(s), net ${formatMontant(regulFmen.total)} TTC ?\n\n${regulFmen.lignesNonRefacturees?.length ? `+ ${regulFmen.lignesNonRefacturees.length} écart(s) biens proprio non refacturés (${formatMontant(regulFmen.totalNonRefacture)}).\n` : ''}\nLes écarts seront marqués comme régularisés et ne reviendront plus. Télécharge d'abord le détail pour ta comptable.`)) return
+    if (!window.confirm(`Valider la régul FMEN interne de ${frMois(mois)} : ${regulFmen.lignes.length} écart(s), net ${formatMontant(regulFmen.total)} TTC ?\n\n${regulFmen.lignesNonRefacturees?.length ? `+ ${regulFmen.lignesNonRefacturees.length} écart(s) biens proprio non refacturés (${formatMontant(regulFmen.totalNonRefacture)}).\n` : ''}\nLes écarts seront marqués comme régularisés et ne reviendront plus. Télécharge d'abord le détail pour ta comptable.`)) return
     setValidantRegul(true); setError(null)
     try {
       const r = await validerRegulFmenInterne(mois)
@@ -373,7 +374,7 @@ const [pushing, setPushing] = useState(false)
         const signe = r.mode_traitement === 'remboursement' ? 1 : -1
         const b = regulVirByBien[r.bien_id] || (regulVirByBien[r.bien_id] = { montant: 0, lignes: [] })
         b.montant += signe * (r.montant_ttc || 0)
-        b.lignes.push(`${r.mois_facturation} : ${signe > 0 ? '+' : '−'}${((r.montant_ttc || 0) / 100).toFixed(2)} € ${r.libelle}`)
+        b.lignes.push(`${frMois(r.mois_facturation)} : ${signe > 0 ? '+' : '−'}${((r.montant_ttc || 0) / 100).toFixed(2)} € ${r.libelle}`)
       }
       // Rectifications de la FACTURE de ce mois (« Rectification facture MM/AAAA … ») : trop-versé
       // retenu / complément sur une facture ultérieure → le badge Tréso reconnaît l'écart régularisé
@@ -390,7 +391,7 @@ const [pushing, setPushing] = useState(false)
         const signe = r.mode_traitement === 'remboursement' ? 1 : -1
         const b = regulTresoByBien[r.bien_id] || (regulTresoByBien[r.bien_id] = { montant: 0, lignes: [] })
         b.montant += signe * (r.montant_ttc || 0)
-        b.lignes.push(`${r.mois_facturation} : ${signe > 0 ? '+' : '−'}${((r.montant_ttc || 0) / 100).toFixed(2)} € ${r.libelle}`)
+        b.lignes.push(`${frMois(r.mois_facturation)} : ${signe > 0 ? '+' : '−'}${((r.montant_ttc || 0) / 100).toFixed(2)} € ${r.libelle}`)
       }
 
       // ── Ajustements de résolution croisés ───────────────────────────────────
@@ -836,7 +837,7 @@ const [pushing, setPushing] = useState(false)
   async function validerTout() {
     const brouillons = factures.filter(f => f.statut === 'brouillon' && f.total_ttc > 0 && !f.bloque_treso)
     if (brouillons.length === 0) return
-    if (!confirm(`Valider ${brouillons.length} facture(s) pour ${mois} ?`)) return
+    if (!confirm(`Valider ${brouillons.length} facture(s) pour ${frMois(mois)} ?`)) return
     setError(null)
     setSuccess(null)
     let ok = 0, ko = 0
@@ -1100,7 +1101,7 @@ const [pushing, setPushing] = useState(false)
             <div style={{ padding: '10px 18px', maxHeight: 320, overflowY: 'auto', fontSize: 12 }}>
               {Object.entries(regulFmen.lignes.reduce((acc, l) => { (acc[l.bien_code] = acc[l.bien_code] || []).push(l); return acc }, {})).map(([code, ls]) => (
                 <div key={code} style={{ display: 'flex', justifyContent: 'space-between', padding: '4px 0', borderBottom: '1px solid #F0EBE1' }}>
-                  <span><b>{code}</b> <span style={{ color: 'var(--text-muted)' }}>· {ls.length} séjour(s) · {[...new Set(ls.map(l => l.mois_comptable))].join(', ')}</span></span>
+                  <span><b>{code}</b> <span style={{ color: 'var(--text-muted)' }}>· {ls.length} séjour(s) · {[...new Set(ls.map(l => l.mois_comptable))].map(frMois).join(', ')}</span></span>
                   <span style={{ fontWeight: 600, color: ls.reduce((s, l) => s + l.ttc, 0) < 0 ? '#B91C1C' : '#15803D' }}>{formatMontant(ls.reduce((s, l) => s + l.ttc, 0))}</span>
                 </div>
               ))}
@@ -1217,7 +1218,7 @@ const [pushing, setPushing] = useState(false)
                         {proprio?.nom} {proprio?.prenom || ''}
                       </div>
                       <div style={{ fontSize: 12, color: 'var(--text-muted)' }}>
-                        {f.numero_facture === 'N/A' ? `Hors Evoliz — ${mois}` : (f.numero_facture || `Brouillon — ${mois}`)}
+                        {f.numero_facture === 'N/A' ? `Hors Evoliz — ${frMois(mois)}` : (f.numero_facture || `Brouillon — ${frMois(mois)}`)}
                         {proprio?.iban && <span> · IBAN : {proprio.iban.substring(0, 12)}…</span>}
                         {f.type_facture === 'debours' && (
                           <span style={{ fontSize: 10, fontWeight: 700, background: '#e8f4f8',
@@ -1718,7 +1719,7 @@ const [pushing, setPushing] = useState(false)
               <div>
                 <div style={{ fontWeight: 700, fontSize: 15 }}>Contrôle virements propriétaires</div>
                 <div style={{ fontSize: 12, color: 'var(--text-muted)', marginTop: 2 }}>
-                  Rapprochement sorties de compte vs réversements attendus — {mois}
+                  Rapprochement sorties de compte vs réversements attendus — {frMois(mois)}
                   {loadingVirements && <span style={{ marginLeft: 8 }}><span className="spinner" /></span>}
                 </div>
               </div>
@@ -1968,7 +1969,7 @@ const [pushing, setPushing] = useState(false)
               <strong style={{ color: 'var(--text, #2C2416)' }}>
                 {stats?.valides ?? 0} facture{(stats?.valides ?? 0) > 1 ? 's' : ''} validée{(stats?.valides ?? 0) > 1 ? 's' : ''}
               </strong>{' '}
-              vers Evoliz pour le mois de <strong style={{ color: 'var(--text, #2C2416)' }}>{mois}</strong>.
+              vers Evoliz pour <strong style={{ color: 'var(--text, #2C2416)' }}>{frMois(mois)}</strong>.
               <br /><br />
               <span style={{ color: '#B45309', fontWeight: 600 }}>⚠ Cette action est irréversible</span> — les factures seront créées dans Evoliz.
             </p>

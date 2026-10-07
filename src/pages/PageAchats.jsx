@@ -2,6 +2,7 @@ import React, { useState, useEffect, useCallback } from 'react'
 import { supabase } from '../lib/supabase'
 import { AGENCE } from '../lib/agence'
 import { parserCSVCaisseEpargne } from '../services/lldBanque'
+import { frDate } from '../utils/dateFr'
 
 
 const MOIS_COURANT = new Date().toISOString().slice(0, 7)
@@ -779,7 +780,7 @@ ${mvts.map(m => `${m.id} | ${m.libelle} | ${(Number(m.debit) / 100).toFixed(2)}�
               <tbody>
                 {mouvementsCourant.map(m => (
                   <tr key={m.id}>
-                    <td style={{ whiteSpace: 'nowrap' }}>{m.date_operation}</td>
+                    <td style={{ whiteSpace: 'nowrap' }}>{frDate(m.date_operation)}</td>
                     <td><div>{m.libelle}</div>{m.detail && <div style={{ color: '#888', fontSize: 11 }}>{m.detail}</div>}</td>
                     <td className="right montant montant-positif">{m.credit ? (m.credit / 100).toFixed(2) + ' €' : '—'}</td>
                     <td className="right montant montant-negatif">{m.debit ? (m.debit / 100).toFixed(2) + ' €' : '—'}</td>

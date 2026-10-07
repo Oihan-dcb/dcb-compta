@@ -7,6 +7,7 @@ import {
 } from '../services/cloture'
 import { format } from 'date-fns'
 import { fr } from 'date-fns/locale'
+import { frMois } from '../utils/dateFr'
 
 const AGENCES = ['dcb', 'lauian']
 const AGENCE_LABELS = { dcb: 'DCB', lauian: 'Lauian' }
@@ -216,7 +217,7 @@ export default function PageCloture() {
               <div key={w.id} style={{ background: '#FFF8EC', border: '1.5px solid #E4A853', borderRadius: 10, padding: '12px 14px', display: 'flex', alignItems: 'flex-start', gap: 12 }}>
                 <div style={{ flex: 1 }}>
                   <div style={{ fontWeight: 600, fontSize: 13, color: 'var(--text)' }}>
-                    {w.event} — {w.mois} / {AGENCE_LABELS[w.agence] || w.agence}
+                    {w.event} — {frMois(w.mois)} / {AGENCE_LABELS[w.agence] || w.agence}
                   </div>
                   <div style={{ fontSize: 12, color: '#8C7B65', marginTop: 2 }}>
                     Reçu le {formatDt(w.received_at)} · Raison : {w.reason}

@@ -4,6 +4,7 @@ import { AGENCE } from '../lib/agence'
 import { formatMontant } from '../lib/hospitable'
 import { aFaireLLD, lancerLLDAuto, rattacherMouvementLLD } from '../services/lldAuto'
 import { listerLoyersMois, listerEtudiants } from '../services/locationsLongues'
+import { frMois } from '../utils/dateFr'
 
 // « LLD — ce mois-ci » (I-159) : une seule page pour Laura. En haut, UNIQUEMENT ce qui demande
 // une action ; en dessous, les loyers du mois. Le reste (rapprochement, loyers attendus,
@@ -163,7 +164,7 @@ export default function LLDCeMois() {
             <div key={l.id} style={row}>
               <strong style={{ minWidth: 180 }}>{nom(l.etudiant)}</strong>
               <span style={{ minWidth: 70, color: 'var(--text-muted)' }}>{l.etudiant?.bien?.code}</span>
-              <span style={{ minWidth: 70 }}>{l.mois}</span>
+              <span style={{ minWidth: 70 }}>{frMois(l.mois)}</span>
               <strong style={{ minWidth: 90 }}>{formatMontant((l.montant_attendu || 0) - (l.montant_recu || 0))}</strong>
               <span style={{ fontSize: 12, color: 'var(--text-muted)', flex: 1 }}>{l.nb_relances || 0} relance(s){l.etudiant?.telephone ? ` · ${l.etudiant.telephone}` : ''}</span>
               {(l.etudiant?.email || l.etudiant?.telephone) ? btn('📨 Relancer', () => relancer(l.id), '#B91C1C') : <span style={{ fontSize: 12, color: '#B91C1C' }}>ni e-mail ni téléphone</span>}
@@ -186,7 +187,7 @@ export default function LLDCeMois() {
 
         <Bloc titre="Virements propriétaires à faire (loyer encaissé)" n={af.virements_proprio_a_faire.length} note="Pointés automatiquement dès que le virement apparaît sur le relevé.">
           {af.virements_proprio_a_faire.map(v => (
-            <div key={v.id} style={row}><strong style={{ minWidth: 180 }}>{nom(v.etudiant?.proprietaire)}</strong><span style={{ minWidth: 70 }}>{v.etudiant?.bien?.code}</span><span style={{ minWidth: 70 }}>{v.mois}</span><strong>{formatMontant(v.montant)}</strong><span style={{ color: 'var(--text-muted)', fontSize: 12 }}>loyer de {nom(v.etudiant)}</span></div>
+            <div key={v.id} style={row}><strong style={{ minWidth: 180 }}>{nom(v.etudiant?.proprietaire)}</strong><span style={{ minWidth: 70 }}>{v.etudiant?.bien?.code}</span><span style={{ minWidth: 70 }}>{frMois(v.mois)}</span><strong>{formatMontant(v.montant)}</strong><span style={{ color: 'var(--text-muted)', fontSize: 12 }}>loyer de {nom(v.etudiant)}</span></div>
           ))}
         </Bloc>
 

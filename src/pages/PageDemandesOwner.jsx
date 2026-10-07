@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react'
 import { supabase } from '../lib/supabase'
 import { AGENCE } from '../lib/agence'
+import { frDate } from '../utils/dateFr'
 
 const PORTAIL_OWNER_API = import.meta.env.VITE_PORTAIL_OWNER_URL || 'https://dcb-portail-owner.vercel.app'
 
@@ -250,7 +251,7 @@ function PanneauReponse({ demande, onUpdated, onClose }) {
           )}
           {(demande.date_debut || demande.date_fin) && (
             <div style={{ fontSize: 12, color: 'var(--text-muted)', marginBottom: 6 }}>
-              Dates : {demande.date_debut} → {demande.date_fin}
+              Dates : {frDate(demande.date_debut)} → {frDate(demande.date_fin)}
             </div>
           )}
           <div style={{ fontSize: 13, color: 'var(--text)', lineHeight: 1.6, background: 'var(--cream, #F7F3EC)', borderRadius: 8, padding: '10px 12px' }}>

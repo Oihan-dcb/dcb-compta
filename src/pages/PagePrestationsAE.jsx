@@ -4,6 +4,7 @@ import { supabase } from '../lib/supabase'
 import { useMoisPersisted } from '../hooks/useMoisPersisted'
 import { useMoisCloture, BanniereCloture } from '../hooks/useMoisCloture'
 import { isMoisCloture } from '../services/cloture'
+import { frMois } from '../utils/dateFr'
 
 const STATUT_LABEL = { en_attente: 'En attente', valide: 'Validé', annule: 'Annulé' }
 const STATUT_COLOR = { en_attente: '#f59e0b', valide: '#16a34a', annule: '#dc2626' }
@@ -154,7 +155,7 @@ export default function PagePrestationsAE() {
       // Déplacer la prestation vers un autre mois : ce mois-là ne doit pas être clôturé non plus
       // (le contrôle moisBloque ne porte que sur le mois affiché).
       if (updates.mois && updates.mois !== mois && await isMoisCloture(updates.mois, AGENCE, 'facturat')) {
-        throw new Error(`🔒 ${updates.mois} est clôturé (Facturation) — déplacement impossible.`)
+        throw new Error(`🔒 ${frMois(updates.mois)} est clôturé (Facturation) — déplacement impossible.`)
       }
       // .select() : un refus RLS / clôture en base (0 ligne modifiée) ne renvoie pas d'erreur —
       // l'écran affichait « enregistré » sans que rien n'ait changé.

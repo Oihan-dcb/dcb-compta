@@ -15,6 +15,7 @@ import LastSyncBadge from '../components/LastSyncBadge'
 import { formatMontant } from '../lib/hospitable'
 import { format } from 'date-fns'
 import { fr } from 'date-fns/locale'
+import { frDate, frMois } from '../utils/dateFr'
 
 const moisCourant = new Date().toISOString().substring(0, 7)
 
@@ -335,7 +336,7 @@ export default function PageBanque() {
             value={suppression.mois}
             onChange={e => setSuppression({ ...suppression, mois: e.target.value })}
             style={{ border: '1px solid #FCA5A5', borderRadius: 6, padding: '4px 8px', fontSize: 13 }}>
-            {moisDispos.map(m => <option key={m} value={m}>{m}</option>)}
+            {moisDispos.map(m => <option key={m} value={m}>{frMois(m)}</option>)}
           </select>
           <button onClick={supprimerMois} disabled={supprimant}
             style={{ background: '#B91C1C', color: '#fff', border: 'none', borderRadius: 6, padding: '5px 14px', fontWeight: 700, cursor: 'pointer', fontSize: 13 }}>
@@ -386,7 +387,7 @@ export default function PageBanque() {
               {preview.mois_disponibles?.length > 0 && (
                 <span style={{ marginLeft: 8, color: '#666', fontSize: 13 }}>
                   {preview.mois_disponibles.length} mois
-                  {' '}({preview.mois_disponibles[0].mois} a {preview.mois_disponibles[preview.mois_disponibles.length-1].mois})
+                  {' '}({frMois(preview.mois_disponibles[0].mois)} a {frMois(preview.mois_disponibles[preview.mois_disponibles.length-1].mois)})
                 </span>
               )}
             </div>
@@ -403,7 +404,7 @@ export default function PageBanque() {
               <tbody>
                 {preview.rows.slice(0, 20).map((m, i) => (
                   <tr key={i}>
-                    <td>{m.date_operation}</td>
+                    <td>{frDate(m.date_operation)}</td>
                     <td>{m.libelle}</td>
                     <td><span className={'badge ' + (CANAUX[m.canal]?.cls || 'badge-neutral')}>{CANAUX[m.canal]?.label || m.canal}</span></td>
                     <td className='right montant montant-positif'>{m.credit ? formatMontant(m.credit) : '--'}</td>

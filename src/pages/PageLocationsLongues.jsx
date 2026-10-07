@@ -47,6 +47,7 @@ import {
   controleTresorerieLLD,
 } from '../services/lldBanque'
 import { rapprocherLLD, rattacherMouvementLLD, dissocierMouvementLLD } from '../services/lldAuto'
+import { frMois } from '../utils/dateFr'
 
 const moisCourant = new Date().toISOString().slice(0, 7)
 const RELANCES_ACTIVES_DEPUIS = '2026-05'
@@ -268,7 +269,7 @@ export default function PageLocationsLongues() {
       setLoyers(result)
       const v = await listerVirementsMois(mois)
       setVirements(v)
-      setSuccess(`Mois ${mois} initialisé — ${result.length} étudiant(s)`)
+      setSuccess(`Mois ${frMois(mois)} initialisé — ${result.length} étudiant(s)`)
     } catch (e) {
       setError(e.message)
     } finally {
@@ -444,7 +445,7 @@ export default function PageLocationsLongues() {
     setBanqueImporting(true); setError(null)
     try {
       const n = await importerMouvementsLLD(banqueParsed.rows, banqueCompte)
-      const moisStr = banqueParsed.moisDispos.join(', ')
+      const moisStr = banqueParsed.moisDispos.map(frMois).join(', ')
       const dernierMois = banqueParsed.moisDispos[banqueParsed.moisDispos.length - 1] || banqueMois
       setBanqueParsed(null)
       // Rapprochement v2 (même moteur que la nuit : parents, plateformes, payeurs mémorisés,
@@ -770,7 +771,7 @@ export default function PageLocationsLongues() {
         <>
           {loyers.length === 0 ? (
             <div className="empty-state">
-              Aucune donnée pour {mois}.<br />
+              Aucune donnée pour {frMois(mois)}.<br />
               <button className="btn btn-primary" style={{ marginTop: 12 }} onClick={initialiserMois}>
                 Initialiser le mois
               </button>
@@ -789,7 +790,7 @@ export default function PageLocationsLongues() {
                   }}>
                     <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap', fontSize: 13, fontWeight: 600, color: 'var(--text)' }}>
                       <span style={{ fontSize: 15 }}>{ok ? '🏦✓' : '⚠'}</span>
-                      <span>Tréso loyers {mois} :</span>
+                      <span>Tréso loyers {frMois(mois)} :</span>
                       <span>{ct.nbRecus} reçu{ct.nbRecus > 1 ? 's' : ''} ({formatMontant(ct.montantRecu)})</span>
                       <span style={{ color: '#059669' }}>· {ct.nbProuves} prouvé{ct.nbProuves > 1 ? 's' : ''} en banque ({formatMontant(ct.montantProuve)})</span>
                       {ct.nbSansPreuve > 0 && (
@@ -1189,7 +1190,7 @@ export default function PageLocationsLongues() {
                               const st = STATUT_LOYER[l.statut] || {}
                               return (
                                 <tr key={l.id}>
-                                  <td style={{ fontWeight: 600 }}>{l.mois}</td>
+                                  <td style={{ fontWeight: 600 }}>{frMois(l.mois)}</td>
                                   <td><span style={{ display: 'inline-block', padding: '2px 8px', borderRadius: 10, fontSize: 12, fontWeight: 600, color: st.color, background: st.bg }}>{st.label}</span></td>
                                   <td style={{ textAlign: 'right', fontWeight: 600 }}>{l.montant_recu ? formatMontant(l.montant_recu) : '—'}</td>
                                   <td style={{ fontSize: 13, color: 'var(--text-muted)' }}>{fmtDate(l.date_reception)}</td>
@@ -1269,7 +1270,7 @@ export default function PageLocationsLongues() {
                               const st = STATUT_VIREMENT[v.statut] || {}
                               return (
                                 <tr key={v.id}>
-                                  <td style={{ fontWeight: 600 }}>{v.mois}</td>
+                                  <td style={{ fontWeight: 600 }}>{frMois(v.mois)}</td>
                                   <td style={{ textAlign: 'right', fontWeight: 600 }}>{v.montant ? formatMontant(v.montant) : '—'}</td>
                                   <td><span style={{ display: 'inline-block', padding: '2px 8px', borderRadius: 10, fontSize: 12, fontWeight: 600, color: st.color, background: st.bg }}>{st.label}</span></td>
                                   <td style={{ fontSize: 13, color: 'var(--text-muted)' }}>{fmtDate(v.date_virement)}</td>
@@ -1317,7 +1318,7 @@ export default function PageLocationsLongues() {
                                 <span style={{ fontSize: 11, color: 'var(--text-muted)', whiteSpace: 'nowrap' }}>{date}</span>
                               </div>
                               <div style={{ color: '#555', fontSize: 12, marginTop: 2 }}>
-                                {log.mois && <span style={{ marginRight: 8 }}>Mois : <strong>{log.mois}</strong></span>}
+                                {log.mois && <span style={{ marginRight: 8 }}>Mois : <strong>{frMois(log.mois)}</strong></span>}
                                 {log.canal && <span style={{ marginRight: 8 }}>Canal : {log.canal}</span>}
                                 {log.destinataire && <span style={{ marginRight: 8 }}>→ {log.destinataire}</span>}
                                 {log.details?.montant && <span>Montant : {formatMontant(log.details.montant)}</span>}
@@ -1736,8 +1737,8 @@ export default function PageLocationsLongues() {
                     value={banqueMois}
                     onChange={e => setBanqueMois(e.target.value)}>
                     {banqueMoisDispos.length === 0
-                      ? <option value={moisCourant}>{moisCourant}</option>
-                      : banqueMoisDispos.map(m => <option key={m} value={m}>{m}</option>)
+                      ? <option value={moisCourant}>{frMois(moisCourant)}</option>
+                      : banqueMoisDispos.map(m => <option key={m} value={m}>{frMois(m)}</option>)
                     }
                   </select>
                   <button className="btn btn-secondary" onClick={() => chargerBanque(banqueCompte, banqueMois)} disabled={banqueLoading}>↺</button>
@@ -1782,7 +1783,7 @@ export default function PageLocationsLongues() {
                 </div>
                 <div style={{ display: 'flex', gap: 12, alignItems: 'center', flexWrap: 'wrap' }}>
                   <div style={{ fontSize: 13, color: 'var(--text-muted)' }}>
-                    Mois détectés : <strong style={{ color: 'var(--text)' }}>{banqueParsed.moisDispos.join(', ')}</strong>
+                    Mois détectés : <strong style={{ color: 'var(--text)' }}>{banqueParsed.moisDispos.map(frMois).join(', ')}</strong>
                   </div>
                   <div style={{ fontSize: 13, color: 'var(--text-muted)' }}>
                     Compte cible : <strong style={{ color: 'var(--text)' }}>{banqueCompte}</strong>
@@ -1799,7 +1800,7 @@ export default function PageLocationsLongues() {
 
             {!banqueLoading && banqueMouvements.length === 0 && (
               <div className="empty-state">
-                Aucun mouvement pour {banqueCompte} — {banqueMois}.<br />
+                Aucun mouvement pour {banqueCompte} — {frMois(banqueMois)}.<br />
                 <span style={{ fontSize: 13, color: 'var(--text-muted)' }}>
                   {banqueCompte === 'loyers' ? 'Synchronisé automatiquement depuis Pennylane chaque nuit.' : "Importez un relevé CSV Caisse d'Épargne."}
                 </span>

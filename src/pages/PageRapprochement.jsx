@@ -15,6 +15,7 @@ import { useMoisPersisted } from '../hooks/useMoisPersisted'
 import { useMoisCloture, BanniereCloture } from '../hooks/useMoisCloture'
 import { format } from 'date-fns'
 import { fr } from 'date-fns/locale'
+import { frMois, frDateCourte } from '../utils/dateFr'
 const moisCourant = new Date().toISOString().substring(0, 7)
 
 const CANAL_LABEL = {
@@ -514,7 +515,7 @@ export default function PageRapprochement() {
           <button onClick={() => setResasNonRapprOpen(o => !o)}
             style={{ width: '100%', display: 'flex', alignItems: 'center', gap: 10, padding: '12px 16px', background: 'none', border: 'none', cursor: 'pointer', textAlign: 'left' }}>
             <span style={{ fontSize: 15, fontWeight: 700, color: '#DC2626' }}>
-              🔴 {resasNonRappr.length} réservation{resasNonRappr.length > 1 ? 's' : ''} sans virement — {mois}
+              🔴 {resasNonRappr.length} réservation{resasNonRappr.length > 1 ? 's' : ''} sans virement — {frMois(mois)}
             </span>
             <span style={{ marginLeft: 'auto', fontSize: 12, color: '#DC2626' }}>{resasNonRapprOpen ? '▲' : '▼'}</span>
           </button>
@@ -621,7 +622,7 @@ export default function PageRapprochement() {
               {m._resa.bien_name && <span style={{fontWeight:600,color:'#CC9933'}}>{m._resa.bien_name}</span>}
               {m._resa.agence === 'lauian' && <span style={{background:'#FEF3C7',color:'#B45309',fontSize:10,padding:'1px 4px',borderRadius:3,fontWeight:700}}>Lauian</span>}
               {m._resa.guest_name && <span style={{color:'#555'}}>· {m._resa.guest_name}</span>}
-              {m._resa.arrival_date && <span style={{color:'#888'}}>· {m._resa.arrival_date?.slice(5,10).replace('-','/')}</span>}
+              {m._resa.arrival_date && <span style={{color:'#888'}}>· {frDateCourte(m._resa.arrival_date)}</span>}
               {m._resa.platform && <span style={{background:'#F3F4F6',color:'#374151',fontSize:10,padding:'1px 5px',borderRadius:3,fontWeight:600,textTransform:'uppercase'}}>{m._resa.platform}</span>}
               {m._resa.fin_revenue > 0 && <span style={{color:'#2E7D32',fontWeight:700}}>· {(m._resa.fin_revenue/100).toLocaleString('fr-FR',{minimumFractionDigits:2})} €</span>}
             </div>
@@ -822,7 +823,7 @@ export default function PageRapprochement() {
                       {r.mois_comptable !== mois && (
                         <div style={{ marginTop: 3 }}>
                           <span style={{ fontSize: 10, background: '#FEF3C7', color: '#D97706', borderRadius: 4, padding: '1px 6px', fontWeight: 700 }}>
-                            Séjour {r.mois_comptable}
+                            Séjour {frMois(r.mois_comptable)}
                           </span>
                         </div>
                       )}

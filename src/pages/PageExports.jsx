@@ -12,6 +12,7 @@ import { buildComptaMensuelle, downloadComptaCSV, exportComptaCSV } from '../ser
 import { envoyerExportsComptable } from '../services/envoyerExportsComptable'
 import { genererSCTVirementsProprios, genererSCTHonorairesDCB, genererSCTVirementsPropriosLC, genererSCTInternesLC } from '../services/exportSCT'
 import { exportSequestreAnnuel } from '../services/exportSequestreAnnuel'
+import { frMois } from '../utils/dateFr'
 
 const moisCourant = new Date().toISOString().slice(0, 7)
 
@@ -256,7 +257,7 @@ export default function PageExports() {
     try {
       const csv = await generator(mois, bienIds)
       setPreview({
-        titre: `${titre} — ${mois}`,
+        titre: `${titre} — ${frMois(mois)}`,
         csv,
         downloadFn: () => downloadCSVBlob(csv, filename.replace('{mois}', mois)),
       })
@@ -276,7 +277,7 @@ export default function PageExports() {
       try { bienActif = JSON.parse(localStorage.getItem(`compta_bien_actif_${mois}`) || '{}') } catch {}
       const csv = exportComptaCSV(data, bienActif)
       setPreview({
-        titre: `Comptabilité mensuelle — ${mois}`,
+        titre: `Comptabilité mensuelle — ${frMois(mois)}`,
         csv,
         downloadFn: () => downloadCSVBlob(csv, `DCB_Comptabilite_${mois}.csv`),
       })

@@ -11,6 +11,7 @@ import { formatMontant } from '../lib/hospitable'
 import ModalResa from '../components/ModalResa'
 import TableReservations from '../components/TableReservations'
 import TableVentilation from '../components/TableVentilation'
+import { frMois } from '../utils/dateFr'
 
 export default function PageReservations() {
   const [mois, setMois] = useMoisPersisted()
@@ -289,7 +290,7 @@ export default function PageReservations() {
 
       {syncResult && (
         <div className={`alert ${syncResult.errors > 0 ? 'alert-warning' : 'alert-success'}`}>
-          <div>✓ Sync {mois} — {syncResult.created} créées, {syncResult.updated} mises à jour{syncResult.errors > 0 && ` — ⚠ ${syncResult.errors} erreur${syncResult.errors > 1 ? 's' : ''}`}</div>
+          <div>✓ Sync {frMois(mois)} — {syncResult.created} créées, {syncResult.updated} mises à jour{syncResult.errors > 0 && ` — ⚠ ${syncResult.errors} erreur${syncResult.errors > 1 ? 's' : ''}`}</div>
           {syncResult.errorDetails?.length > 0 && (
             <ul style={{ margin: '6px 0 0', paddingLeft: 18, fontSize: '0.82em', opacity: 0.85 }}>
               {syncResult.errorDetails.map((e, i) => (
@@ -302,7 +303,7 @@ export default function PageReservations() {
       {ventilResult && (
         <div className={`alert ${ventilResult.errors > 0 ? 'alert-error' : 'alert-success'}`}>
           <div>
-            ⚡ Ventilation {mois} — {ventilResult.total} calculée{ventilResult.total > 1 ? 's' : ''}
+            ⚡ Ventilation {frMois(mois)} — {ventilResult.total} calculée{ventilResult.total > 1 ? 's' : ''}
             {ventilResult.skipped > 0 && ` · ${ventilResult.skipped} verrouillée${ventilResult.skipped > 1 ? 's' : ''}`}
             {ventilResult.errors > 0 && ` · ⚠ ${ventilResult.errors} erreur${ventilResult.errors > 1 ? 's' : ''}`}
           </div>

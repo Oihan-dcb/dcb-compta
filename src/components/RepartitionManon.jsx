@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback } from 'react'
 import { chargerRepartitionManon, appliquerImputationManon } from '../services/repartitionManon'
+import { frMois } from '../utils/dateFr'
 
 // Suivi mensuel de la répartition hybride de Manon (CDI 15h + AE + SAP).
 // Lecture : chargerRepartitionManon. Action : appliquerImputationManon (fige impute_salaire → compta).
@@ -31,7 +32,7 @@ export default function RepartitionManon() {
   useEffect(() => { charger() }, [charger])
 
   async function appliquer() {
-    if (!window.confirm(`Figer l'imputation salaire des ménages couverts de ${mois} ? (impacte le débours AUTO en compta)`)) return
+    if (!window.confirm(`Figer l'imputation salaire des ménages couverts de ${frMois(mois)} ? (impacte le débours AUTO en compta)`)) return
     setApplying(true)
     try {
       const r = await appliquerImputationManon(mois)

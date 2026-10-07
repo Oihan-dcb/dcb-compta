@@ -9,6 +9,7 @@ import { getAllClotures } from '../services/cloture'
 import { resetEtRematcher } from '../services/rapprochement'
 import { format } from 'date-fns'
 import { fr } from 'date-fns/locale'
+import { frMois } from '../utils/dateFr'
 
 export default function PageConfig() {
   const [testing, setTesting] = useState(false)
@@ -501,7 +502,7 @@ export default function PageConfig() {
                 background: s.status==='ok' ? '#F0FDF4' : s.status==='error' ? '#FEF2F2' : s.status==='running' ? '#FFF5F5' : '#F9FAFB',
                 border: `1px solid ${s.status==='ok'?'#86EFAC':s.status==='error'?'#FCA5A5':s.status==='running'?'#DC2626':'#E5E7EB'}` }}>
                 <span>{s.status==='ok'?'✅':s.status==='error'?'❌':s.status==='running'?'⏳':'⏸'}</span>
-                <span style={{ fontWeight: 600, minWidth: 70 }}>{s.mois}</span>
+                <span style={{ fontWeight: 600, minWidth: 70 }}>{frMois(s.mois)}</span>
                 {s.status==='ok' && <span style={{ color:'#15803D' }}>{s.reset} reset → {s.matched} matchés</span>}
                 {s.status==='running' && <span style={{ color:'#DC2626' }}>En cours...</span>}
                 {s.status==='error' && <span style={{ color:'#DC2626' }}>{s.msg}</span>}

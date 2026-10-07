@@ -5,6 +5,7 @@ import { supabase } from '../lib/supabase'
 import { buildComptaMensuelle } from '../services/buildComptaMensuelle'
 import { syncStripeAcomptesSequestre, HAS_STRIPE_SEQUESTRE } from '../services/syncStripeAcomptesSequestre'
 import { AGENCE } from '../lib/agence'
+import { frMois } from '../utils/dateFr'
 
 const moisCourant = new Date().toISOString().slice(0, 7)
 const NF  = new Intl.NumberFormat('fr-FR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
@@ -1002,7 +1003,7 @@ export default function PageComptabilite() {
               ✅ Marquer le VIRProprio comme reversé
             </h3>
             <p style={{ color: '#8C7B65', fontSize: 13, margin: '0 0 16px' }}>
-              {modalFait.bienNom} · {mois}
+              {modalFait.bienNom} · {frMois(mois)}
             </p>
 
             <label style={{ display: 'block', fontSize: 12, fontWeight: 600, color: 'var(--text)', marginBottom: 4 }}>
@@ -1372,7 +1373,7 @@ function BilanSequestre({ items }) {
               <tbody>
                 {shineData.map((row, i) => (
                   <tr key={row.mois} style={{ background: i % 2 === 0 ? '#fff' : '#FDFAF4', borderTop: '1px solid var(--border)' }}>
-                    <td style={{ padding: '7px 16px', fontWeight: 600, whiteSpace: 'nowrap' }}>{MOIS_LABELS[row.mois] || row.mois}</td>
+                    <td style={{ padding: '7px 16px', fontWeight: 600, whiteSpace: 'nowrap' }}>{MOIS_LABELS[row.mois] || frMois(row.mois)}</td>
                     <td style={{ ...tdNumS, color: '#065F46' }}>+{fmtE(row.credits)}</td>
                     <td style={{ ...tdNumS, color: '#B91C1C' }}>−{fmtE(row.debits)}</td>
                     <td style={{ ...tdNumS, fontWeight: 700 }}>{fmtE(row.solde_fin)}</td>

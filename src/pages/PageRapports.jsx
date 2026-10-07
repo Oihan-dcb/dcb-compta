@@ -12,6 +12,7 @@ import { qualifierAjustement } from '../services/ventilation'
 import { STATUTS_NON_VENTILABLES } from '../lib/constants'
 import { AGENCE, AGENCE_BRAND } from '../lib/agence'
 import ModalRapportsGroupes from '../components/ModalRapportsGroupes'
+import { frDate } from '../utils/dateFr'
 
 const moisCourant = new Date().toISOString().substring(0, 7)
 const fmt = c => ((c || 0) / 100).toFixed(2).replace('.', ',') + ' €'
@@ -614,7 +615,7 @@ ${isGlobalMaite && resasGuest.length > 0 ? `Répartition des réservations :
 ${resasGuest.map(r => {
   const isPrivat = r.platform === 'manual' && (r.nights || 0) >= 7
   const chambre = r.bien?.hospitable_name ? ` [${r.bien.hospitable_name}]` : ''
-  return `- ${r.arrival_date} → ${r.departure_date} (${r.nights}n, ${r.platform}${chambre}${isPrivat ? ', PRIVATISATION MAISON ENTIÈRE' : ''}) : ${fmt(r.fin_revenue || 0)}`
+  return `- ${frDate(r.arrival_date)} → ${frDate(r.departure_date)} (${r.nights}n, ${r.platform}${chambre}${isPrivat ? ', PRIVATISATION MAISON ENTIÈRE' : ''}) : ${fmt(r.fin_revenue || 0)}`
 }).join('\n')}
 ${privatisations.length > 0 ? `→ Ce mois contient ${privatisations.length} privatisation(s) représentant ${fmt(privatisations.reduce((s,r) => s+(r.fin_revenue||0),0))} du revenu total.` : '→ Ce mois, aucune privatisation : uniquement des chambres louées séparément.'}` : ''}
 
@@ -714,7 +715,7 @@ FORMAT :
 Données disponibles :
 Réservations en portefeuille (M+1/M+2) :
 ${resasFutures?.length > 0
-  ? resasFutures.map(r => '- ' + r.arrival_date + ' → ' + r.departure_date + ' (' + r.nights + 'n, ' + r.platform + ')').join('\n')
+  ? resasFutures.map(r => '- ' + frDate(r.arrival_date) + ' → ' + frDate(r.departure_date) + ' (' + r.nights + 'n, ' + r.platform + ')').join('\n')
   : 'Aucune réservation enregistrée pour les 2 prochains mois'}
 Total : ${resasFutures?.length || 0} réservation(s), ${totalNuitsFutures} nuits couvertes
 

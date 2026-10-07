@@ -5,6 +5,7 @@ import MoisSelector from '../components/MoisSelector'
 import { formatMontant } from '../lib/hospitable'
 import { creerFrais, modifierFrais, supprimerFrais, changerStatut, annulerFacturationFrais } from '../services/fraisProprietaire'
 import { useMoisPersisted } from '../hooks/useMoisPersisted'
+import { frDate } from '../utils/dateFr'
 
 const moisCourant = new Date().toISOString().slice(0, 7)
 
@@ -299,7 +300,7 @@ export default function PageFraisProprietaire() {
                       )}
                     </td>
                     <td style={{ color: 'var(--text-muted)', fontSize: 13 }}>{proprio}</td>
-                    <td style={{ whiteSpace: 'nowrap' }}>{f.date}</td>
+                    <td style={{ whiteSpace: 'nowrap' }}>{frDate(f.date)}</td>
                     <td>{f.libelle}</td>
                     <td style={{ textAlign: 'right', fontWeight: 600 }}>{formatMontant(f.montant_ttc)}</td>
                     <td style={{ textAlign: 'right', color: '#059669', fontWeight: f.statut === 'facture' ? 600 : 400 }}>
