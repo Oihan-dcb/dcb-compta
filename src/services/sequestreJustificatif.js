@@ -387,7 +387,19 @@ export async function justifierSequestre(agence = 'dcb', { date = new Date().toI
 
   // Composition des remises groupées (« REM VIR SEPA ») : fichiers générés par l'app (proprios_lc)
   // ou PDF « Détail Remise » de la banque importés (detail_remise_ce, scripts/import-detail-remise.mjs)
-  const { data: compoRemises } = await supabase.from('sct_export').select('mois, type_export, total_cts, lignes').eq('agence', agence)
+  const { data: compoEnregistrees } = await supabase.from('sct_export').select('mois, type_export, total_cts, lignes').eq('agence', agence)
+  // Remise groupée sans composition enregistrée (virements faits depuis la banque, sans fichier généré
+  // par l'app ni PDF « Détail Remise » importé) : si son montant est EXACTEMENT la somme des reversements
+  // des factures d'honoraires émises du mois, la composition est déduite de ces factures (06/10/2026 —
+  // remise de septembre 37 478,94 € = 18 factures). Sinon l'alerte « remise sans détail » reste.
+  const compoRemises = [...(compoEnregistrees || [])]
+  for (const sRem of sorties.filter(x => x.type === 'reversement_groupe' && x.mois)) {
+    if (compoRemises.some(c => c.mois === sRem.mois && c.total_cts === sRem.debit)) continue
+    const fac = factures.filter(f => f.type_facture === 'honoraires' && f.mois === sRem.mois && ['envoye_evoliz', 'payee'].includes(f.statut) && (f.montant_reversement || 0) > 0)
+    if (fac.length && sum(fac, f => f.montant_reversement) === sRem.debit)
+      compoRemises.push({ mois: sRem.mois, type_export: 'deduite_factures', total_cts: sRem.debit,
+        lignes: fac.map(f => ({ cle: f.id, proprietaire_id: f.proprietaire_id, nom: f.proprietaire?.nom, montant_cts: f.montant_reversement, rattachement: 'facture (composition déduite)' })) })
+  }
   const factureProprio = new Map(factures.map(f => [f.id, f.proprietaire_id]))
   // Remises réellement débitées à la date du justificatif (sorties ≤ date) : une facture n'est « versée »
   // que si sa remise est passée — sinon, recalculé à une date passée (clôture de juillet au 31/07), une
