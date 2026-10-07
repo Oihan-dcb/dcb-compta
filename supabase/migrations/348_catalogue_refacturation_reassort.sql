@@ -136,3 +136,11 @@ revoke all on function public.catalogue_items_garde_refacturation() from public,
 update public.entretien_type
    set consigne = coalesce(consigne || ' ', '') || 'Vérifier le niveau de sel et de liquide de rinçage : s''il est bas, le passer en « faible » dans l''inventaire du bien (réassort automatique au prochain sac).'
  where nom = 'Lave-vaisselle : filtres à la brosse et grande eau' and coalesce(consigne, '') not ilike '%liquide de rinçage%';
+
+-- 348c : inventaire_bien_config.added_by accepte 'hospitable' (articles ajoutés par la sync des équipements)
+do $$ declare c text; begin
+  select conname into c from pg_constraint where conrelid='public.inventaire_bien_config'::regclass and contype='c' and pg_get_constraintdef(oid) ilike '%added_by%';
+  execute format('alter table public.inventaire_bien_config drop constraint %I', c);
+end $$;
+alter table public.inventaire_bien_config add constraint inventaire_bien_config_added_by_check
+  check (added_by = any (array['manuel', 'auto_dependance', 'init', 'migration', 'hospitable']));
