@@ -489,7 +489,8 @@ Message (${senderType}) : "${body.trim()}"`
         'anthropic-version': '2023-06-01',
       },
       body: JSON.stringify({
-        model: 'claude-haiku-4-5-20251001',
+        model: 'claude-haiku-5-5',
+        thinking: { type: 'disabled' },
         max_tokens: 512,
         system: GUEST_MSG_SYSTEM_PROMPT,
         messages: [{ role: 'user', content: userPrompt }],
@@ -689,8 +690,9 @@ Réponds uniquement avec le texte du SMS, sans guillemets ni balises.`
           'anthropic-version': '2023-06-01',
         },
         body: JSON.stringify({
-          model: 'claude-haiku-4-5-20251001',
-          max_tokens: 150,
+          model: 'claude-haiku-5-5',
+          thinking: { type: 'disabled' },
+          max_tokens: 250,
           messages: [{ role: 'user', content: prompt }],
         }),
       })

@@ -288,8 +288,9 @@ async function generatePreviewBody(
         method: 'POST',
         headers: { 'Content-Type': 'application/json', 'x-api-key': anthropicKey, 'anthropic-version': '2023-06-01' },
         body: JSON.stringify({
-          model: 'claude-haiku-4-5-20251001',
-          max_tokens: 150,
+          model: 'claude-haiku-5-5',
+          thinking: { type: 'disabled' },
+          max_tokens: 250,
           messages: [{ role: 'user', content: `Tu es l'assistant de ${agenceLabel}. Un voyageur vient de laisser un avis 5⭐ sur Airbnb pour "${propertyName}". Son commentaire : "${comment}"\nRédige un message de remerciement (160-220 caractères) DANS LA MÊME LANGUE QUE SON COMMENTAIRE (avis en anglais → réponse en anglais, en espagnol → espagnol, en allemand → allemand, etc.). Règles STRICTES :\n- N'inclus AUCUNE URL, AUCUN lien, AUCUN placeholder dans le texte\n${zoneRule}\n- La signature est "— ${agenceLabel}"\n- Invite à laisser un avis sur la fiche Google "${agenceLabel}" en citant uniquement le nom (pas d'URL)\n- Sans mention STOP\nRéponds uniquement avec le texte du message.` }],
         }),
       })

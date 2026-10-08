@@ -24,8 +24,8 @@ Deno.serve(async (req) => {
     })
   }
 
-  const ALLOWED_MODELS = ['claude-haiku-4-5-20251001', 'claude-sonnet-4-6', 'claude-opus-4-6']
-  const selectedModel = ALLOWED_MODELS.includes(model) ? model : 'claude-haiku-4-5-20251001'
+  const ALLOWED_MODELS = ['claude-haiku-5-5', 'claude-sonnet-4-6', 'claude-opus-4-6']
+  const selectedModel = ALLOWED_MODELS.includes(model) ? model : 'claude-haiku-5-5'
 
   const apiKey = Deno.env.get('ANTHROPIC_API_KEY') ?? ''
 
@@ -35,6 +35,8 @@ Deno.serve(async (req) => {
     messages: [{ role: 'user', content: prompt }],
   }
   if (system) body.system = system
+  // Haiku 5.5 : thinking adaptatif par défaut → on le coupe (content[0] = texte, coût minimal)
+  if (selectedModel === 'claude-haiku-5-5') body.thinking = { type: 'disabled' }
 
   const res = await fetch('https://api.anthropic.com/v1/messages', {
     method: 'POST',

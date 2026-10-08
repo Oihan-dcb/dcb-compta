@@ -150,7 +150,8 @@ Réponds uniquement avec le texte du message.`
           'anthropic-version': '2023-06-01',
         },
         body: JSON.stringify({
-          model: 'claude-haiku-4-5-20251001',
+          model: 'claude-haiku-5-5',
+          thinking: { type: 'disabled' },
           max_tokens: 500,
           messages: [{ role: 'user', content: prompt }],
         }),

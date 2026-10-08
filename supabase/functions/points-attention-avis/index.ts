@@ -28,7 +28,7 @@ import { logError } from '../_shared/logError.ts'
 
 const SUPABASE_URL = Deno.env.get('SUPABASE_URL') ?? ''
 const SERVICE_KEY  = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? ''
-const MODELE       = 'claude-haiku-4-5-20251001'
+const MODELE       = 'claude-haiku-5-5'
 const MAX_APPELS   = 30
 
 const json = (data: unknown, status = 200) =>
@@ -55,7 +55,7 @@ async function genererConsignes(apiKey: string, note: number, texte: string): Pr
     res = await fetch('https://api.anthropic.com/v1/messages', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', 'x-api-key': apiKey, 'anthropic-version': '2023-06-01' },
-      body: JSON.stringify({ model: MODELE, max_tokens: 200, messages: [{ role: 'user', content: PROMPT(note, texte) }] }),
+      body: JSON.stringify({ model: MODELE, max_tokens: 300, thinking: { type: 'disabled' }, messages: [{ role: 'user', content: PROMPT(note, texte) }] }),
     })
   } catch (e) {
     return { ok: false, reessayer: true, erreur: 'réseau : ' + (e as Error).message }
