@@ -42,3 +42,14 @@ select su.auth_user_id, '{fr,es}'
 from public.staff_users su
 where su.email = 'oihan@destinationcotebasque.com' and su.auth_user_id is not null
 on conflict (auth_user_id) do nothing;
+
+-- 363b (appliquée à part le même jour) — langues de l'équipe précisées par Oïhan :
+-- Oïhan fr/es/en, Clémence fr/en, Laura fr (ses deux comptes) ; tous les autres : fr par défaut.
+insert into public.staff_langue_pref (auth_user_id, langues)
+select u.id, v.langues::text[]
+from (values ('oihan@destinationcotebasque.com','{fr,es,en}'),
+             ('c.ploquin@icloud.com','{fr,en}'),
+             ('laura@destinationcotebasque.com','{fr}'),
+             ('lauracoursan@hotmail.fr','{fr}')) v(email, langues)
+join auth.users u on lower(u.email) = v.email
+on conflict (auth_user_id) do update set langues = excluded.langues, updated_at = now();
