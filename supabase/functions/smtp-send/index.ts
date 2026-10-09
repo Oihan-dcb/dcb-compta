@@ -35,20 +35,22 @@ serve(async (req) => {
           .map((e: string) => (e || '').trim()).filter((e: string) => e.includes('@'))
       : to.split(/[,;]/).map((e: string) => e.trim()).filter((e: string) => e.includes('@'))
 
-    // CC : oihan@ toujours en copie, fusionné avec cc éventuel du payload
-    const CC_FIXED = 'oihan@destinationcotebasque.com'
-    const ccFromPayload = cc
-      ? (Array.isArray(cc) ? cc : cc.split(',').map((e: string) => e.trim()).filter((e: string) => e.includes('@')))
+    // CC : uniquement celui demandé par l'appelant. Jusqu'au 09/10/2026, oihan@ était ajouté en copie
+    // de TOUT envoi (≈ 135 copies/mois de relances, rapports, quittances… sans action attendue) —
+    // supprimé (audit des mails) : chaque envoi reste tracé dans journal_ops / facture_evoliz.
+    const ccFromPayload: string[] = cc
+      ? (Array.isArray(cc) ? cc : String(cc).split(/[,;]/)).map((e: string) => (e || '').trim()).filter((e: string) => e.includes('@'))
       : []
-    const ccArray = [...new Set([CC_FIXED, ...ccFromPayload])]
+    const toLower = new Set(toArray.map((e: string) => e.toLowerCase()))
+    const ccArray = [...new Set(ccFromPayload)].filter(e => !toLower.has(e.toLowerCase()))
 
     const payload: any = {
       from: 'Destination Cote Basque <rapports@mail.destinationcotebasque.com>',
       to: toArray,
-      cc: ccArray,
       subject,
       html,
     }
+    if (ccArray.length) payload.cc = ccArray
 
     if (attachments && attachments.length > 0) {
       payload.attachments = attachments.map((a: any) => ({
