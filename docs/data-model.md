@@ -1004,6 +1004,8 @@ La durée est écrite dans `mission_menage` par `dcb-portail-ae/src/lib/missionD
 - **321** `mission_terrain` dans la publication realtime.
 - **322** Anti-oubli : `mission_terrain.start_declare` / `declare_motif` / `video_absente_motif`, `mission_menage.saisie_manuelle_motif`, table `terrain_rappel (mission_id, type 'demarrage'|'soir')` (dédoublonnage du cron `dcb-planning/api/cron-terrain-rappels.js`), RPC `terrain_declarer`, `terrain_sans_video`, `stats_conformite_terrain(p_depuis default '2026-10-06')`.
 - **323** `mission_terrain.duree_declaree_minutes` + RPC `terrain_declarer_duree` : l'AE déclare son temps sur place (base de paie plafonnée au prévu) ; le chrono (`duree_minutes`) reste un contrôle bureau.
+- **375** `mission_terrain.start_geo_statut` / `end_geo_statut` (`ok`/`refusee`/`delai`/`indisponible`/`non_supporte`/`ignoree`, NULL = ancienne app) : raison d'une position GPS absente, paramètre `p_geo_statut` (défaut NULL, rétrocompatible) de `terrain_demarrer` / `terrain_terminer` ; vue `terrain_geo_refus_ae` (security_invoker, 30 j) pour signaler les refus répétés dans PowerHouse.
+- **376** `mission_terrain.start_position_approx` / `end_position_approx` (jsonb `{source:'ip', lat, lng, ville, region, pays, at}`) : repli APPROXIMATIF réseau écrit par `dcb-portail-ae/api/terrain-geo-ip.js` (en-têtes `x-vercel-ip-*`) seulement si la position GPS correspondante est NULL, dans les 15 min. Jamais mélangé au GPS ; indicatif (IP mobile = souvent la ville de l'opérateur), jamais de contrôle de présence automatique.
 
 ## Ajout 2026-10-06 — `com_rattrapage` (migration 336)
 

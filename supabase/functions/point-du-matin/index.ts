@@ -19,13 +19,20 @@
  * (500 €) ou est marquée urgente (relevé bancaire muet, départ imminent sans ménage) ; le reste attend
  * lundi (non marqué comme présenté).
  *
+ * Missions AE (« Mes missions », 09/10/2026) : la vue missions_acceptation_a_signaler (migration 374) est
+ * publiée ici même dans alerte_etat (source 'mission_acceptation', liste complète par agence → mêmes
+ * règles : nouveau, rappels, clôture auto quand la mission est acceptée / réattribuée / passée).
+ * Urgent (passe le week-end) : mission de dernière minute non acceptée, ou refus à réattribuer dont
+ * la mission commence dans moins de 48 h.
+ *
  * Body : { agence?: 'dcb'|'lauian', dry_run?: true (rendu HTML renvoyé, aucune écriture),
  *          force?: true (ignore l'heure et l'anti-doublon), to?: string[] (test : remplace les
- *          destinataires, n'écrit rien en base — l'alerte reste « nouvelle » pour le vrai envoi) }
+ *          destinataires, n'écrit rien en base — l'alerte reste « nouvelle » pour le vrai envoi),
+ *          simuler_missions?: lignes de la vue ajoutées au rendu (dry_run uniquement, pour tester) }
  */
 import { serve } from 'https://deno.land/std@0.168.0/http/server.ts'
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
-import { destinataires, fmtEur } from '../_shared/alertes.ts'
+import { destinataires, fmtEur, signaler, type ItemAlerte } from '../_shared/alertes.ts'
 
 const SUPABASE_URL = Deno.env.get('SUPABASE_URL') ?? ''
 const SERVICE_KEY  = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? ''
@@ -36,7 +43,9 @@ const ECARTS_RAPPEL = [3, 4]         // 1er rappel J+3, 2e J+7 (3+4), puis tous 
 const ECART_RAPPEL_ENSUITE = 7
 const MARGE_MS = 2 * 3600 * 1000     // tolérance d'horaire du cron
 
+const SOURCE_MISSIONS = 'mission_acceptation'
 const LIBELLES: Record<string, string> = {
+  mission_acceptation: 'Missions AE à accepter ou à réattribuer',
   paiement_honoraires: 'Paiements reçus non enregistrés dans Evoliz',
   fraicheur_banque: 'Relevés bancaires muets',
   sequestre: 'Séquestre',
@@ -75,13 +84,76 @@ const parSource = (l: any[]) => {
   return [...m.entries()].sort((x, y) => (ORDRE.indexOf(x[0]) + 99) % 99 - (ORDRE.indexOf(y[0]) + 99) % 99)
 }
 
+// ── Missions AE à accepter (vue missions_acceptation_a_signaler, migration 374) ──────────────
+const H48 = 48 * 3600 * 1000
+const JOURS_FR = ['dim.', 'lun.', 'mar.', 'mer.', 'jeu.', 'ven.', 'sam.']
+const MOTIFS: Record<string, string> = { indisponible: 'indisponible', horaire: 'horaire impossible', trop_loin: 'trop loin', autre: 'autre', hospitable: 'refusée dans Hospitable' }
+const fmtH = (h: string | null) => { if (!h) return ''; const [hh, mm] = h.split(':'); return `${Number(hh)}h${mm && mm !== '00' ? mm : ''}` }
+// Heure de Paris (date + heure locale) → instant UTC
+function parisVersUtc(date: string, heure: string | null) {
+  const naif = new Date(`${date}T${(heure || '08:00').slice(0, 5)}:00Z`)
+  const p = Object.fromEntries(new Intl.DateTimeFormat('en-GB', { timeZone: 'Europe/Paris', year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', hour12: false })
+    .formatToParts(naif).map(x => [x.type, x.value]))
+  const vuParis = Date.UTC(+p.year, +p.month - 1, +p.day, +p.hour % 24, +p.minute)
+  return new Date(naif.getTime() - (vuParis - naif.getTime()))
+}
+const quandMission = (date: string, heure: string | null) => {
+  const d = new Date(date + 'T12:00:00Z')
+  return `${JOURS_FR[d.getUTCDay()]} ${date.slice(8, 10)}/${date.slice(5, 7)}${heure ? ' à ' + fmtH(heure) : ''}`
+}
+const leFr = (iso: string | null) => iso ? new Date(iso).toLocaleString('fr-FR', { timeZone: 'Europe/Paris', day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' }).replace(' ', ' à ').replace(':', 'h') : '?'
+
+// deno-lint-ignore no-explicit-any
+function itemsMissions(rows: any[]): Record<string, ItemAlerte[]> {
+  const out: Record<string, ItemAlerte[]> = { dcb: [], lauian: [] }
+  for (const r of rows) {
+    const ag = r.agence === 'lauian' ? 'lauian' : 'dcb'
+    const debut = parisVersUtc(r.date_mission, r.heure_mission)
+    const moins48 = debut.getTime() - Date.now() <= H48
+    const bien = r.bien_code || r.bien_nom || 'bien ?'
+    const quand = quandMission(r.date_mission, r.heure_mission)
+    const ae = r.ae_prenom || 'AE ?'
+    let libelle: string, urgentM: boolean
+    if (r.categorie === 'refus_a_reattribuer') {
+      libelle = `✕ Refus à réattribuer — ${bien}, ${quand} — ${ae} (${MOTIFS[r.refus_motif] || 'sans motif'}${r.refus_precision ? ' : ' + r.refus_precision : ''})`
+        + (r.refus_apres_acceptation ? ' · après l\'avoir acceptée' : '')
+        + (r.hospitable_desassignee ? ' · retirée d\'Hospitable' : r.hospitable_erreur ? ' · ⚠️ toujours assignée dans Hospitable' : '')
+      urgentM = moins48
+    } else if (r.categorie === 'derniere_minute_en_retard') {
+      libelle = `⏰ Dernière minute pas acceptée — ${bien}, ${quand} — ${ae} (attribuée le ${leFr(r.depuis)})`
+      urgentM = true
+    } else {
+      libelle = `⏳ Pas encore acceptée, mission dans moins de 48 h — ${bien}, ${quand} — ${ae} (attribuée le ${leFr(r.depuis)})`
+      urgentM = false
+    }
+    out[ag].push({ cle: `${r.categorie}:${r.mission_id}`, libelle, montant_cts: null,
+      detail: { urgent: urgentM, categorie: r.categorie, mission_id: r.mission_id, debut: debut.toISOString(), bien, ae } })
+  }
+  return out
+}
+// Sans écriture (dry_run / test) : ce que alerte_signaler() produirait, appliqué en mémoire
+// deno-lint-ignore no-explicit-any
+function simulerSignalement(toutes: any[], items: Record<string, ItemAlerte[]>, agences: string[]) {
+  const garde = toutes.filter(a => a.source !== SOURCE_MISSIONS || !agences.includes(a.agence))
+  for (const ag of agences) {
+    const existants = new Map(toutes.filter(a => a.source === SOURCE_MISSIONS && a.agence === ag).map(a => [a.cle, a]))
+    for (const it of items[ag] || []) {
+      const ex = existants.get(it.cle)
+      garde.push(ex ? { ...ex, libelle: it.libelle, detail: it.detail }
+        : { id: 'sim:' + ag + ':' + it.cle, source: SOURCE_MISSIONS, agence: ag, cle: it.cle, libelle: it.libelle, montant_cts: null, detail: it.detail,
+            first_seen: new Date().toISOString(), last_seen: new Date().toISOString(), resolved_at: null, last_notified_at: null, nb_notifications: 0 })
+    }
+  }
+  return garde
+}
+
 function rendu(agence: string, jour: string, nouveaux: any[], rappels: any[], ouverts: any[], clos: number, infos: string[], autre: string | null) {
   const td = 'padding:7px 14px;border-bottom:1px solid #EDE6D8;font-size:13px;color:#2C2416;vertical-align:top'
   const titreSec = (t: string, c = '#2C2416') => `<tr><td style="padding:18px 24px 6px;font-size:15px;font-weight:bold;color:${c}">${t}</td></tr>`
   const ligne = (a: any, suffixe = '') => `<tr><td style="${td}">${esc(a.libelle)}${suffixe}</td><td style="${td};text-align:right;white-space:nowrap;font-weight:bold;color:#CC9933">${a.montant_cts ? fmtEur(a.montant_cts) : ''}</td></tr>`
   const bloc = (l: any[], suff: (a: any) => string = () => '') => parSource(l).map(([src, items]) =>
     `<tr><td style="padding:8px 24px 2px;font-size:12px;color:#9C8E7D;text-transform:uppercase;letter-spacing:.5px">${esc(LIBELLES[src] || src)}</td></tr>
-     <tr><td style="padding:0 10px"><table width="100%" cellpadding="0" cellspacing="0">${items.sort((a, b) => (b.montant_cts || 0) - (a.montant_cts || 0)).map(a => ligne(a, suff(a))).join('')}</table></td></tr>`).join('')
+     <tr><td style="padding:0 10px"><table width="100%" cellpadding="0" cellspacing="0">${items.sort((a, b) => (b.montant_cts || 0) - (a.montant_cts || 0) || String(a.detail?.debut || '').localeCompare(String(b.detail?.debut || ''))).map(a => ligne(a, suff(a))).join('')}</table></td></tr>`).join('')
   const sNouveau = nouveaux.length ? titreSec(`🆕 Nouveau (${nouveaux.length})`, '#B91C1C') + bloc(nouveaux) : ''
   const sRappel = rappels.length ? titreSec(`🔁 Rappel (${rappels.length})`) + bloc(rappels, a =>
     `<br><span style="font-size:11px;color:#9C8E7D">signalé il y a ${jours(a.first_seen)} j — rappel n° ${a.nb_notifications}</span>`) : ''
@@ -112,7 +184,8 @@ function rendu(agence: string, jour: string, nouveaux: any[], rappels: any[], ou
 serve(async (req) => {
   if (req.method === 'OPTIONS') return new Response('ok')
   const supabase = createClient(SUPABASE_URL, SERVICE_KEY)
-  let body: { agence?: string; dry_run?: boolean; force?: boolean; to?: string[] } = {}
+  // deno-lint-ignore no-explicit-any
+  let body: { agence?: string; dry_run?: boolean; force?: boolean; to?: string[]; simuler_missions?: any[] } = {}
   try { body = await req.json() } catch { /* cron */ }
   const dryRun = body.dry_run === true
   const test = Array.isArray(body.to) && body.to.length > 0
@@ -123,9 +196,25 @@ serve(async (req) => {
   const agences = body.agence ? [body.agence] : ['dcb', 'lauian']
   const resultats: unknown[] = []
 
+  // Missions AE à accepter / réattribuer → alerte_etat (liste complète par agence). En dry_run / test :
+  // rien n'est écrit, le résultat de alerte_signaler() est simulé en mémoire.
+  const ecrire = !dryRun && !test
+  const { data: rowsMissions, error: errMissions } = await supabase.from('missions_acceptation_a_signaler').select('*').order('date_mission')
+  const lignesMissions = [...(rowsMissions || []), ...(dryRun && Array.isArray(body.simuler_missions) ? body.simuler_missions : [])]
+  const itemsM = itemsMissions(lignesMissions)
+  if (errMissions) {
+    await supabase.from('journal_ops').insert({ categorie: 'alerte', action: 'point_du_matin', source: 'cron', statut: 'error', message: `missions_acceptation_a_signaler illisible : ${errMissions.message}` })
+  } else if (ecrire) {
+    for (const ag of agences) {
+      try { await signaler(supabase, SOURCE_MISSIONS, ag, itemsM[ag] || []) }
+      catch (e) { await supabase.from('journal_ops').insert({ categorie: 'alerte', action: 'point_du_matin', source: 'cron', statut: 'error', message: String((e as Error).message || e).slice(0, 300) }) }
+    }
+  }
+
   // Ouvertes de toutes les agences (ligne de synthèse Lauïan dans le point DCB)
-  const { data: toutes, error } = await supabase.from('alerte_etat').select('*').is('resolved_at', null)
+  const { data: lues, error } = await supabase.from('alerte_etat').select('*').is('resolved_at', null)
   if (error) return json({ error: error.message }, 500)
+  const toutes = !ecrire && !errMissions ? simulerSignalement(lues || [], itemsM, agences) : (lues || [])
 
   for (const agence of agences) {
     if (!dryRun && !body.force && !test) {
@@ -146,6 +235,7 @@ serve(async (req) => {
 
     // Pour info (n'entraîne pas d'envoi)
     const infos: string[] = []
+    if (errMissions) infos.push(`⚠️ Missions AE à accepter : lecture impossible ce matin (${errMissions.message}).`)
     const hier = new Date(Date.now() - 86400000).toISOString()
     const { data: envois } = await supabase.from('contract_events').select('contract_id, rental_contracts!inner(agence)')
       .eq('event_type', 'sent_email').eq('actor', 'auto_send').gte('created_at', hier).eq('rental_contracts.agence', agence)

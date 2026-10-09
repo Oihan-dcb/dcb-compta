@@ -1032,3 +1032,9 @@ alertes Lauïan sur une boîte perso). Règles en vigueur :
   `accepted`) ni tracé ni signalé ; séquestre : dérive des mois clôturés avant facturation = reclassement,
   pas une dérive ; régularisation déjà virée = une seule anomalie ; paiement reçu sur une facture Evoliz
   BROUILLON = alerte « valider la facture » (Evoliz refuse tout paiement sur un brouillon).
+- **Missions AE à accepter** (source `mission_acceptation`, 09/10/2026) : `point-du-matin` publie lui-même
+  la vue `missions_acceptation_a_signaler` (migration 374) par agence via `alerte_signaler` avant de lire
+  `alerte_etat` (clé `categorie:mission_id`) — refus à réattribuer, dernière minute pas acceptée, en
+  attente à moins de 48 h ; clôture auto quand la mission est acceptée, réattribuée, traitée ou passée.
+  Urgent (week-end) : dernière minute non acceptée, ou refus à réattribuer d'une mission qui commence
+  dans moins de 48 h. En `dry_run` / test (`to`) rien n'est écrit : le signalement est simulé en mémoire.
