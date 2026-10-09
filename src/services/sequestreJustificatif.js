@@ -740,7 +740,7 @@ export async function justifierSequestre(agence = 'dcb', { date = new Date().toI
   // Propriétaire payé au-delà de son dû sur un mois (≥ 10 €) : double paiement probable
   // (CAROSSIO/VIKY juin 2026 : taxe de séjour 28,31 € versée dans la remise du 07/09 ET à la main le 24/09)
   for (const p of facturesListe) for (const x of (Array.isArray(p.proprietaires.par_proprio) ? p.proprietaires.par_proprio : []))
-    if (x.reste <= -1000 && x.nom !== 'inconnu') anomalies.push({ cle: `proprio_paye_2x_${p.mois}_${x.proprietaire_id}_${x.reste}`, mois: p.mois, montant: x.reste,
+    if (x.reste <= -1000 && x.nom !== 'inconnu') anomalies.push({ cle: `proprio_paye_2x_${p.mois}_${x.proprietaire_id}`, mois: p.mois, montant: x.reste,
       message: `${p.mois} : ${x.nom} a reçu ${eur(-x.reste)} de plus que son dû (${eur(x.du)} dû, ${eur(x.paye)} versés) — double paiement ?` })
   // Régularisation « remboursement » d'un mois passé jamais versée (facture non finalisée / hors fichier de virements)
   for (const f of regulsNonVersees) anomalies.push({ cle: `regul_non_versee_${f.bien_id}_${f.mois_facturation}`, mois: f.mois_origine, montant: f.montant_ttc,
@@ -847,7 +847,7 @@ export async function justifierSequestre(agence = 'dcb', { date = new Date().toI
     const refDate = soldeBanque.banque.date || date
     const releveRef = refDate === date ? soldeBanque.montant : await soldeReleve(compte, refDate)
     ecartImport = soldeBanque.banque.montant - releveRef
-    if (Math.abs(ecartImport) > 100) anomalies.push({ cle: `ecart_import_${refDate}`, montant: ecartImport,
+    if (Math.abs(ecartImport) > 100) anomalies.push({ cle: 'ecart_import', montant: ecartImport,
       message: `Relevé importé pas à jour : solde banque ${eur(soldeBanque.banque.montant)} (${soldeBanque.banque.maj}) ≠ ouverture + mouvements importés ${eur(releveRef)} — mouvements pas encore importés, ou importés en double` })
   }
 
@@ -906,8 +906,21 @@ export async function justifierSequestre(agence = 'dcb', { date = new Date().toI
     message: `Remise(s) groupée(s) sans détail des bénéficiaires : ${sansDetail.map(x => `${x.date_operation} ${eur(-x.montant)}`).join(', ')} — importer le PDF « Détail Remise » de la banque (scripts/import-detail-remise.mjs)` })
   const limite = new Date(Date.parse(date) - 2 * 86400000).toISOString().slice(0, 10)
   const enAttente = ecritures.filter(x => x.ayant_droit === 'a_affecter' && x.date_operation <= limite && x.nature !== 'remise_groupee_sans_detail')
-  if (enAttente.length) anomalies.push({ cle: `a_affecter_${enAttente.length}_${enAttente[0].date_operation}`, montant: sum(enAttente, x => x.montant),
+  if (enAttente.length) anomalies.push({ cle: 'a_affecter', montant: sum(enAttente, x => x.montant),
     message: `${enAttente.length} mouvement(s) du séquestre sans ayant droit depuis plus de 48 h (${eur(sum(enAttente, x => x.montant))}) — page Séquestre, boîte « À affecter »` })
+
+  // Clés STABLES (audit des mails 09/10/2026) : une clé qui contenait un compteur, une date de relevé ou
+  // un montant changeait chaque jour → « nouvelle anomalie » et mail quotidien pour la même situation.
+  // Un même fait ne compte qu'une fois : une régularisation déjà virée à la main (remboursement_deja_vire)
+  // apparaissait AUSSI en « régularisation jamais versée » et en « propriétaire payé 2× » (BDX/LALANDE
+  // 70,60 €, 07-08/10/2026) — on garde la seule anomalie actionnable (désactiver la ligne).
+  for (const d of anomalies.filter(a => a.cle.startsWith('remboursement_deja_vire_'))) {
+    for (let i = anomalies.length - 1; i >= 0; i--) {
+      const a = anomalies[i]
+      if ((a.cle.startsWith('regul_non_versee_') && a.cle.endsWith(`_${d.mois}`) && a.montant === d.montant) ||
+          (a.cle.startsWith('proprio_paye_2x_') && a.mois === d.mois && a.montant === -d.montant)) anomalies.splice(i, 1)
+    }
+  }
 
   const lignes = arr => arr.map(m => ({ date: m.date_operation, montant: m.montant ?? m.debit ?? m.credit, libelle: (m.libelle || '').replace(/\n/g, ' ').slice(0, 120), raison: m.raison }))
 
@@ -918,7 +931,8 @@ export async function justifierSequestre(agence = 'dcb', { date = new Date().toI
   const archives = new Map((archivesJ || []).filter(x => x.detail?.cle).map(x => [x.detail.cle, x]))
   const anomaliesArchivees = []
   for (let i = anomalies.length - 1; i >= 0; i--) {
-    const x = archives.get(anomalies[i].cle)
+    // Repli sur l'ancien format de clé (montant en suffixe, avant le 09/10/2026) — le montant est de toute façon revérifié
+    const x = archives.get(anomalies[i].cle) || archives.get(`${anomalies[i].cle}_${anomalies[i].montant}`)
     if (x && Math.abs((anomalies[i].montant || 0) - (x.detail.montant || 0)) <= 100) {
       anomaliesArchivees.unshift({ ...anomalies[i], raison: x.detail.raison || '', statut: x.detail.statut || 'resolue', archivee_le: x.cree_le, archivee_par: x.auteur })
       anomalies.splice(i, 1)

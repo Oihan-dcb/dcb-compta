@@ -121,7 +121,13 @@ export async function verifierClotures(agence, clotures, { max = 3 } = {}) {
       ['encaissé du mois', f.encaisse, now?.encaisse],
       ['propriétaires restant dus', f.proprietaires?.reste, now?.proprietaires?.reste],
       ['AE restant dus', f.ae?.reste, now?.ae?.reste], ['part agence détenue', f.dcb?.reste, now?.dcb?.reste]]
-    for (const p of c.poches || []) champs.push([`poche « ${p.label.slice(0, 60)} »`, p.montant, (j.poches.find(x => x.cle === p.cle) || {}).montant])
+    // Mois clôturé AVANT d'être facturé (photo facture=false), facturé depuis : l'argent passe de la poche
+    // « non facturés » aux poches propriétaires / AE / agence — simple reclassement, total justifié et écart
+    // inchangés. Comparer les poches signalait chaque nuit ±126 k€ de « dérive » sur juillet-août DCB
+    // (audit des mails 09/10/2026) : poches ignorées dans ce cas, écart / total / encaissé restent contrôlés.
+    const reclassement = f.facture === false && now?.facture === true
+    if (!reclassement)
+      for (const p of c.poches || []) champs.push([`poche « ${p.label.slice(0, 60)} »`, p.montant, (j.poches.find(x => x.cle === p.cle) || {}).montant])
     for (const [nom, avant, apres] of champs) if (avant != null && Math.abs((apres || 0) - (avant || 0)) > 100)
       derives.push({ mois: c.mois, champ: nom, avant, apres: apres || 0, delta: (apres || 0) - (avant || 0) })
   }

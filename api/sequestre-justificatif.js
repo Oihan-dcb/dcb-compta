@@ -1,8 +1,8 @@
 // api/sequestre-justificatif.js — DCB Compta
 // Cron quotidien (05:20, après imports bancaires, ventilation et rapprochements de la nuit) :
 // justificatif du séquestre location saisonnière (I-161) — photo du jour dans
-// sequestre_justificatif + alerte si l'écart bouge ou si une anomalie nouvelle apparaît.
-//   GET /api/sequestre-justificatif            → calcul + enregistrement + alerte
+// sequestre_justificatif + publication des anomalies dans alerte_etat (source 'sequestre') → Point du matin.
+//   GET /api/sequestre-justificatif            → calcul + enregistrement + publication
 //   GET /api/sequestre-justificatif?dry_run=1  → calcul seul
 // Multi-agence (migration 278) : chaque agence ayant une fiche sequestre_compte active. Exécuté une
 // seule fois, par le projet dcb-compta (lauian-compta déploie le même vercel.json : ignoré là-bas).
@@ -33,32 +33,22 @@ async function estBureau(token) {
   const u = await fetch(`${SUPABASE_URL}/auth/v1/user`, { headers: { apikey: SUPABASE_ANON_KEY, Authorization: `Bearer ${token}` } })
   return u.ok ? ((await u.json())?.email || 'bureau') : 'bureau'
 }
-const ALERTE_TO = ['oihan@destinationcotebasque.com']
-const SEUIL_VARIATION = 2000 // 20 € : au-delà, l'écart a bougé depuis la veille
+// Seuils (audit des mails 09/10/2026 — le mail partait presque chaque jour) :
+// · SEUIL_VARIATION 50 € : en dessous, une variation d'écart d'un jour à l'autre vient des arrondis / frais
+//   Stripe en cours d'import (écart DCB stable entre 0 et -0,79 € du 01 au 09/10) ; journalisée au-delà.
+// · SEUIL_ECART_ALERTE 50 € : un écart absolu au-delà est publié ; il redevient « nouveau » à chaque
+//   franchissement d'une tranche de 50 € (clé ecart:<tranche>), sinon il reste une ligne « toujours ouvert ».
+// · SEUIL_PART_AGENCE 50 € : écart mensuel de part agence publié seulement au-delà (Lauïan août -5,10 €,
+//   février +48,87 € : bruit d'arrondi, toujours visible sur la page Séquestre).
+// La vraie cause du mail quotidien n'était pas ce seuil mais (1) des clés d'anomalie qui changeaient chaque
+// jour (date de relevé, compteur, montant) et (2) les « dérives » des mois clôturés renvoyées chaque nuit à
+// l'identique — corrigés dans sequestreJustificatif.js / sequestreCloture.js ; ici la mémoire alerte_etat
+// ne re-signale que le nouveau.
+const SEUIL_VARIATION = 5000
+const SEUIL_ECART_ALERTE = 5000
+const SEUIL_PART_AGENCE = 5000
 
 const eur = c => ((c || 0) / 100).toLocaleString('fr-FR', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) + ' €'
-
-function htmlAlerte(j, precedent, nouvelles) {
-  const td = 'padding:7px 12px;border-bottom:1px solid #EDE6D8;font-size:13px;color:#2C2416'
-  const variation = precedent ? j.ecart - precedent.ecart : null
-  return `<!DOCTYPE html><html><head><meta charset="utf-8"></head><body style="margin:0;background:#f5f0e8;font-family:Arial,sans-serif">
-  <table width="100%" cellpadding="0" cellspacing="0" style="padding:28px 14px"><tr><td align="center">
-  <table width="680" cellpadding="0" cellspacing="0" style="background:#fff;border-radius:10px;overflow:hidden;max-width:680px;width:100%">
-    <tr><td style="background:#CC9933;padding:20px 24px;color:#fff;text-align:center">
-      <div style="font-size:11px;letter-spacing:2px;text-transform:uppercase;opacity:.85">Destination Côte Basque</div>
-      <div style="font-size:18px;font-weight:bold;margin-top:6px">Séquestre ${j.agence === 'dcb' ? 'DCB' : j.agence === 'lauian' ? 'Lauïan' : j.agence} — justificatif du ${j.date.split('-').reverse().join('/')}</div></td></tr>
-    <tr><td style="padding:16px 24px;font-size:14px;color:#2C2416">
-      Solde bancaire <strong>${eur(j.solde_banque.montant)}</strong> · justifié <strong>${eur(j.total_justifie)}</strong> ·
-      écart <strong style="color:${Math.abs(j.ecart) > 100 ? '#B91C1C' : '#059669'}">${eur(j.ecart)}</strong>
-      ${variation != null ? `<br><span style="font-size:12px;color:#666">Variation depuis le ${String(precedent.date).split('-').reverse().join('/')} : <strong>${variation > 0 ? '+' : ''}${eur(variation)}</strong></span>` : ''}
-    </td></tr>
-    ${nouvelles.length ? `<tr><td style="padding:4px 24px 6px;font-size:14px;font-weight:bold;color:#B91C1C">Nouvelles anomalies</td></tr>
-    <tr><td style="padding:0 14px"><table width="100%" cellpadding="0" cellspacing="0">${nouvelles.map(a => `<tr><td style="${td}">${a.message}</td></tr>`).join('')}</table></td></tr>` : ''}
-    <tr><td style="padding:14px 24px 4px;font-size:14px;font-weight:bold;color:#2C2416">Poches</td></tr>
-    <tr><td style="padding:0 14px 14px"><table width="100%" cellpadding="0" cellspacing="0">${j.poches.filter(p => p.montant).map(p => `<tr><td style="${td}">${p.label}</td><td style="${td};text-align:right;white-space:nowrap">${eur(p.montant)}</td></tr>`).join('')}</table></td></tr>
-    <tr><td style="padding:14px 24px;font-size:11px;color:#9C8E7D;text-align:center;background:#f9f6f0">Détail dans dcb-compta → Séquestre — calcul automatique chaque nuit.</td></tr>
-  </table></td></tr></table></body></html>`
-}
 
 export default async function handler(req, res) {
   if (req.method !== 'GET' && req.method !== 'POST') return res.status(405).end()
@@ -149,16 +139,26 @@ async function traiterAgenceCalcul(agence, dryRun, auteurManuel, suivi) {
     try { derives = await verifierClotures(agence, await listerClotures(agence), { max: 3 }) } catch (e) { console.error('[verifierClotures]', e.message) }
     for (const d of derives) await journaliser(agence, 'derive_mois_cloture', `Mois clôturé ${d.mois} modifié après coup : ${d.champ} ${eur(d.avant)} → ${eur(d.apres)} (${d.delta > 0 ? '+' : ''}${eur(d.delta)})`,
       { mois: d.mois, montant: d.delta, auteur: 'cron', detail: d })
-    for (const d of derives) nouvelles.push({ cle: `derive_${d.mois}_${d.champ}`, message: `⚠ Mois clôturé ${d.mois} modifié après coup : ${d.champ} ${eur(d.avant)} → ${eur(d.apres)}` })
 
-    let alerte = { envoyee: false }
-    // Recalcul manuel : pas de mail (la personne regarde la page) — la nuit garde son alerte
-    if (!auteurManuel && (aBouge || nouvelles.length || !precedent)) {
-      const r = await fetch(`${SUPABASE_URL}/functions/v1/smtp-send`, {
-        method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${SUPABASE_SRK}` },
-        body: JSON.stringify({ to: ALERTE_TO, subject: `Séquestre ${agence === 'dcb' ? 'DCB' : agence === 'lauian' ? 'Lauïan' : agence} : écart ${eur(j.ecart)}${aBouge ? ` (${j.ecart - precedent.ecart > 0 ? '+' : ''}${eur(j.ecart - precedent.ecart)})` : ''}${nouvelles.length ? ` — ${nouvelles.length} nouvelle(s) anomalie(s)` : ''}`, html: htmlAlerte(j, precedent, nouvelles) }),
+    // Publication pour le Point du matin (la nuit seulement — un recalcul manuel ne doit pas clôturer/ouvrir)
+    let alerte = { publie: false }
+    if (!auteurManuel) {
+      const AG = agence === 'dcb' ? 'DCB' : agence === 'lauian' ? 'Lauïan' : agence
+      const items = j.anomalies
+        .filter(a => !(a.cle.startsWith('dcb_') && Math.abs(a.montant || 0) < SEUIL_PART_AGENCE))
+        .map(a => ({ cle: a.cle, libelle: `Séquestre ${AG} — ${a.message}`, montant_cts: Math.abs(a.montant || 0), detail: { mois: a.mois || null } }))
+      if (Math.abs(j.ecart) > SEUIL_ECART_ALERTE) items.push({
+        cle: `ecart:${Math.sign(j.ecart)}${Math.floor(Math.abs(j.ecart) / SEUIL_ECART_ALERTE)}`,
+        libelle: `Séquestre ${AG} — écart de ${eur(j.ecart)} entre le solde bancaire (${eur(j.solde_banque.montant)}) et le justifié (${eur(j.total_justifie)})`,
+        montant_cts: Math.abs(j.ecart),
       })
-      alerte = { envoyee: r.ok, nouvelles: nouvelles.length, variation: precedent ? j.ecart - precedent.ecart : null }
+      for (const d of derives) items.push({
+        cle: `derive_${d.mois}_${d.champ}_${d.apres}`,
+        libelle: `Séquestre ${AG} — mois clôturé ${d.mois} modifié après coup : ${d.champ} ${eur(d.avant)} → ${eur(d.apres)} (${d.delta > 0 ? '+' : ''}${eur(d.delta)})`,
+        montant_cts: Math.abs(d.delta), detail: { mois: d.mois },
+      })
+      const { data: pub, error: ePub } = await supabase.rpc('alerte_signaler', { p_source: 'sequestre', p_agence: agence, p_items: items, p_complet: true })
+      alerte = ePub ? { publie: false, erreur: ePub.message } : { publie: true, ...pub, variation: precedent ? j.ecart - precedent.ecart : null }
     }
     await supabase.from('journal_ops').insert({ categorie: 'banque', action: 'sequestre_justificatif', source: 'cron', statut: Math.abs(j.ecart) > 100 ? 'warning' : 'ok',
       message: `Séquestre ${agence} ${j.date} : solde ${eur(j.solde_banque.montant)}, justifié ${eur(j.total_justifie)}, écart ${eur(j.ecart)}, ${j.anomalies.length} anomalie(s)` })
