@@ -1003,3 +1003,32 @@ Annulée **avec** un montant retenu (`fin_revenue > 0`) : ventilation normale (l
   salaire (déduits du FMEN réel mais payés hors séquestre). Les extras « dcb_direct » ne sont PAS retirés :
   « à la charge de DCB » = non refacturé au propriétaire, le plus souvent financé par la provision ménage
   (ménages de chambres Maison Maïté saisis en prestation). N'agit que sur la part théorique : restes et écart global inchangés.
+
+## 20. Alertes compta : Point du matin et mémoire `alerte_etat` (09/10/2026)
+
+Audit des mails automatiques (≈ 110 mails/semaine pour Oïhan, mêmes listes renvoyées chaque matin,
+alertes Lauïan sur une boîte perso). Règles en vigueur :
+
+- **Un seul mail par agence et par jour**, `point-du-matin` à 08:00 Paris (pg_cron 06:00 et 07:00 UTC,
+  un seul passage actif selon l'heure d'été/hiver, `point_du_matin_envoi` empêche un 2e envoi).
+  Envoyé **seulement** s'il y a une nouveauté ou un rappel dû. Destinataires : rôle `point_du_matin`
+  de `notification_destinataire` (DCB → Oïhan, Lauïan → Laura).
+- **Mémoire** : chaque contrôle de nuit (alerte-*, sync-evoliz-statut, fraîcheur banque, séquestre,
+  rapprochement honoraires) publie sa liste COMPLÈTE via `alerte_signaler(source, agence, items)` —
+  nouvelle anomalie → ligne, toujours présente → `last_seen`, disparue → `resolved_at` (clôture auto).
+  Clé `cle` STABLE obligatoire (jamais de date du jour, compteur ou montant variable dans la clé).
+- **Présentation** : nouveau (avec montants) en tête ; rappel à J+3, puis J+7, puis chaque semaine ;
+  le reste sur une ligne « toujours ouvert » par type, avec l'ancienneté du plus ancien.
+- **Week-end** : seulement les nouveautés ≥ 500 € ou marquées `detail.urgent` (relevé bancaire muet,
+  départ imminent sans ménage) ; le reste attend lundi.
+- **Seuils séquestre** : variation d'écart journalisée au-delà de 50 € ; écart absolu publié au-delà de
+  50 € (re-signalé à chaque tranche de 50 €) ; écart mensuel de part agence publié au-delà de 50 €.
+- `smtp-send` n'ajoute plus Oïhan en copie : CC uniquement s'il est demandé (navette paie → rôle `paie`).
+- **Adresses** : aucune adresse interne codée en dur dans les fonctions d'alerte ; tout passe par
+  `destinataires(role, agence)` (`_shared/alertes.ts`).
+- Règles corrigées lors de la vérification des alertes (09/10/2026) : bail mobilité exclu des soldes
+  booking_platform / manuels (échéancier contrôlé sur le compte loyers) ; contrat annulé jamais envoyé
+  ignoré ; post-facture : changement sans effet financier (revenu < 1 €, sans entrée/sortie de
+  `accepted`) ni tracé ni signalé ; séquestre : dérive des mois clôturés avant facturation = reclassement,
+  pas une dérive ; régularisation déjà virée = une seule anomalie ; paiement reçu sur une facture Evoliz
+  BROUILLON = alerte « valider la facture » (Evoliz refuse tout paiement sur un brouillon).

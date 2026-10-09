@@ -1039,3 +1039,15 @@ jamais saisis, facture n°168 (700 €) payée par le séquestre sans mission.
 - Coches de l'AE pendant la mission : `mission_terrain.points_coches` (jsonb `{point_id: horodatage}`, non bloquant) via RPC `point_attention_cocher` ; lecture des points d'une mission : RPC `points_attention_mission`.
 
 **`ae_point_attention_avis`** (PK `review_id`) : avis déjà passés à l'IA (`statut` `ok`/`vide`/`erreur`, `consignes` jsonb, `modele`) → un seul appel Haiku par avis. Lecture bureau. RPC service_role : `points_attention_avis_a_traiter(p_limit)` (avis attribués `_avis_proprete_attribues`, note propreté < 5, commentaire public ou privé, reçus depuis le 01/09/2026, non traités) et `points_attention_avis_enregistrer(...)`. Edge function : 30 appels max par passage, `dry_run`, désactivable par le secret `POINTS_ATTENTION_AVIS=off`.
+
+
+## Alertes et destinataires (migrations 371-373, 09/10/2026)
+
+- `notification_destinataire (role, agence, email, actif, note)` — PK (role, agence, email). agence `*` =
+  toutes. Rôles : `point_du_matin`, `responsable`, `conciergerie`, `paie`, `cabinet_paie`. Lecture :
+  `destinataires(role, agence) → text[]` (service_role).
+- `alerte_etat (id, source, agence, cle, libelle, montant_cts, detail, first_seen, last_seen, resolved_at,
+  last_notified_at, nb_notifications)` — index unique (source, agence, cle) sur les lignes ouvertes.
+  Écriture : `alerte_signaler(source, agence, items jsonb, complet bool)`.
+- `point_du_matin_envoi (agence, jour)` — un envoi par agence et par jour.
+- `famille_statut_resa(text)` — accepted / cancelled / nul, utilisé par `trace_changement_post_facture`.
