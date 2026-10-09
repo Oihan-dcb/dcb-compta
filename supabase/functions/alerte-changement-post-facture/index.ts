@@ -38,6 +38,11 @@ const SUPABASE_URL = Deno.env.get('SUPABASE_URL') ?? ''
 const SERVICE_KEY  = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? ''
 const STATUTS_REGENERABLES = ['brouillon', 'valide']
 const famille = (s: string | null) => s === 'accepted' ? 'accepted' : s === 'cancelled' ? 'cancelled' : 'nul'
+// Sans effet financier : revenu net inchangé (< 1 €) ET pas d'entrée/sortie de l'état « accepted »
+// (annulée à 0 € → supprimée, demande expirée… : ARREBA ×4, 09/10/2026). accepted ↔ cancelled reste
+// signalé : une annulation peut garder tout ou partie du revenu.
+const sansEffet = (ancien: string | null, nouveau: string | null, delta: number) =>
+  Math.abs(delta) < 100 && (famille(ancien) === famille(nouveau) || (famille(ancien) !== 'accepted' && famille(nouveau) !== 'accepted'))
 
 serve(async (req) => {
   if (req.method === 'OPTIONS') return new Response('ok')
@@ -59,7 +64,7 @@ serve(async (req) => {
   const limite = new Date(Date.now() - 7 * 86400000).toISOString()
   const d12 = new Date(); d12.setUTCMonth(d12.getUTCMonth() - 12)
   const { data: aq } = await supabase.from('reservation_ajustement')
-    .select('id, montant, label, created_at, mois_comptable, reservation:reservation_id!inner(code, bien:bien_id!inner(code, hospitable_name, agence))')
+    .select('id, montant, label, created_at, mois_comptable, reservation_id, reservation:reservation_id!inner(code, bien:bien_id!inner(code, hospitable_name, agence))')
     .eq('statut', 'a_qualifier').lt('created_at', limite).gte('mois_comptable', d12.toISOString().slice(0, 7))
     .eq('reservation.bien.agence', AGENCE)
     .order('created_at')
@@ -89,7 +94,7 @@ serve(async (req) => {
   for (const grp of parResa.values()) {
     const first = grp[0], last = grp[grp.length - 1]
     const delta = (last.nouveau_fin_revenue ?? 0) - (first.ancien_fin_revenue ?? 0)
-    const neutre = famille(first.ancien_statut) === famille(last.nouveau_statut) && Math.abs(delta) < 100 && !grp.some((r: any) => r.motif)
+    const neutre = sansEffet(first.ancien_statut, last.nouveau_statut, delta) && !grp.some((r: any) => r.motif)
     if (neutre) resolusNeutres.push(...grp.map((r: any) => r.id))
     else groupes.push(grp)
   }
@@ -106,7 +111,8 @@ serve(async (req) => {
     const statut = (last.facture as any)?.statut ?? last.facture_statut
     const delta = (last.nouveau_fin_revenue ?? 0) - (first.ancien_fin_revenue ?? 0)
     const st = first.ancien_statut !== last.nouveau_statut ? `, ${first.ancien_statut} → ${last.nouveau_statut}` : ''
-    const motifs = grp.map((r: any) => r.motif).filter(Boolean)
+    const motifs = [...grp.map((r: any) => r.motif).filter(Boolean),
+      ...(aq || []).filter((a: any) => a.reservation_id === last.reservation_id).map((a: any) => `ajustement à qualifier : ${a.label || '—'}`)]
     return {
       cle: `resa:${last.reservation_id}`,
       libelle: `${last.bien?.hospitable_name || last.bien?.code || '—'} ${last.mois_comptable} — ${last.reservation?.guest_name || last.reservation?.code || '—'} (${last.reservation?.platform || '—'}) modifiée après facture : revenu ${fmtEur(first.ancien_fin_revenue)} → ${fmtEur(last.nouveau_fin_revenue)}${st}${motifs.length ? ` (${motifs.join(' ; ')})` : ''} — facture ${statut}${STATUTS_REGENERABLES.includes(statut) ? ' : régénérer le brouillon' : ' : avoir ou régularisation M+1'}`,
@@ -114,7 +120,10 @@ serve(async (req) => {
       detail: { reservation_id: last.reservation_id, facture_id: last.facture_id, ids: grp.map((r: any) => r.id) },
     }
   })
-  const itemsAjust: ItemAlerte[] = (aq || []).map((a: any) => ({
+  // Un ajustement à qualifier sur une résa déjà signalée « modifiée après facture » = le même fait
+  // (Cancellation refund -188 € ↔ revenu -188 → 0 € : Pantxika, DUL2, Amaïa) → une seule ligne.
+  const resasSignalees = new Set(groupes.map(g => g[g.length - 1].reservation_id))
+  const itemsAjust: ItemAlerte[] = (aq || []).filter((a: any) => !resasSignalees.has(a.reservation_id)).map((a: any) => ({
     cle: `ajust:${a.id}`,
     libelle: `Ajustement Hospitable à qualifier — ${a.reservation?.bien?.hospitable_name || a.reservation?.bien?.code || '—'} ${a.reservation?.code || ''} (${a.mois_comptable}) : ${a.label || '—'} ${fmtEur(Math.round((a.montant || 0)))}`,
     montant_cts: Math.abs(Math.round(a.montant || 0)),
