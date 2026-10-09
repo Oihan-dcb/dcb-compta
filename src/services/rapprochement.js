@@ -1623,6 +1623,18 @@ const EVOLIZ_COMPANY_ID = { dcb: '114158', lauian: '115576' }
  *   3. mouvement_bancaire.statut_matching → 'matche_auto'.
  * Loggé dans journal_ops (action='paiement_honoraires_auto') — création réelle d'un paiement
  * chez un tiers, traçabilité obligatoire.
+ *
+ * Audit des mails 09/10/2026 — 17 erreurs en 16 jours sans aucune alerte : Evoliz répondait
+ * « Forbidden — This invoice is not payable » parce que la facture était encore un BROUILLON
+ * (statut 'filled', numéro T-…) : 408P août T-20260000431 retentée chaque nuit du 08 au 24/09,
+ * puis 408P et B16 septembre (T-492, T-499) payées le 08/10. Un brouillon n'accepte aucun
+ * paiement : il faut d'abord VALIDER la facture dans Evoliz (numéro définitif F-…), décision
+ * humaine (numérotation légale) que ce rapprochement ne prend pas seul.
+ * Désormais : statut Evoliz lu AVANT createPayment ; brouillon → pas d'appel, alerte
+ * « paiement reçu sur une facture brouillon » publiée dans alerte_etat (Point du matin) ;
+ * autre échec → alerte « paiement non enregistré ». Dès que la facture est validée, le passage
+ * suivant enregistre le paiement tout seul (le virement reste 'en_attente' jusque-là) et
+ * l'alerte se clôt d'elle-même.
  */
 export async function matcherHonorairesProprietaires(agence = AGENCE) {
   const norm = s => (s || '').toUpperCase().normalize('NFD').replace(/[̀-ͯ]/g, '')
@@ -1643,7 +1655,13 @@ export async function matcherHonorairesProprietaires(agence = AGENCE) {
       .gt('credit', 0),
   ])
 
-  if (!factures?.length || !mvts?.length) return { lies: 0, errors: [] }
+  // Alertes publiées à chaque passage (liste complète : se clôturent quand le cas disparaît)
+  const alertes = []
+  const publier = async () => {
+    const { error } = await supabase.rpc('alerte_signaler', { p_source: 'paiement_honoraires', p_agence: agence, p_items: alertes, p_complet: true })
+    if (error) console.warn('[matcherHonorairesProprietaires] alerte_signaler :', error.message) // ex. appel depuis le navigateur (droits service_role)
+  }
+  if (!factures?.length || !mvts?.length) { await publier(); return { lies: 0, errors: [] } }
 
   const disponibles = [...(mvts || [])]
   const companyId = EVOLIZ_COMPANY_ID[agence] || EVOLIZ_COMPANY_ID.dcb
@@ -1665,7 +1683,24 @@ export async function matcherHonorairesProprietaires(agence = AGENCE) {
     if (candidats.length !== 1) continue
     const m = candidats[0]
 
+    const bienNom = f.bien?.code || f.proprietaire?.nom || '?'
+    const montantTxt = `${(m.credit / 100).toLocaleString('fr-FR', { minimumFractionDigits: 2 })} €`
     try {
+      // Statut réel chez Evoliz : un brouillon ('filled') refuse tout paiement → ne pas appeler createPayment
+      const { data: inv } = await supabase.functions.invoke('evoliz-proxy', {
+        body: { action: 'getInvoice', companyId, payload: { invoiceId: f.id_evoliz } },
+      })
+      const statutEvoliz = inv?.data?.status
+      if (statutEvoliz === 'filled') {
+        alertes.push({
+          cle: `brouillon:${f.id}`,
+          libelle: `Paiement reçu (${montantTxt} le ${(m.date_operation || '').split('-').reverse().join('/')}, ${f.proprietaire?.nom || '?'}) sur la facture ${f.type_facture} ${bienNom} ${f.mois} ${inv?.data?.document_number || f.numero_facture || ''} encore en BROUILLON dans Evoliz : la valider dans Evoliz — le paiement sera enregistré automatiquement la nuit suivante`,
+          montant_cts: m.credit,
+          detail: { facture_id: f.id, mouvement_id: m.id, id_evoliz: f.id_evoliz },
+        })
+        disponibles.splice(disponibles.indexOf(m), 1) // ce virement est pris : ne pas le proposer à une autre facture
+        continue
+      }
       const { data: payRes, error: payErr } = await supabase.functions.invoke('evoliz-proxy', {
         body: {
           action: 'createPayment',
@@ -1692,7 +1727,6 @@ export async function matcherHonorairesProprietaires(agence = AGENCE) {
 
       lies++
       disponibles.splice(disponibles.indexOf(m), 1)
-      const bienNom = f.bien?.code || f.proprietaire?.nom || '?'
       await logOp({
         categorie: 'facture', action: 'paiement_honoraires_auto', source: 'cron', statut: 'ok',
         mois_comptable: f.mois,
@@ -1700,6 +1734,12 @@ export async function matcherHonorairesProprietaires(agence = AGENCE) {
       })
     } catch (err) {
       errors.push({ id: f.id, error: err.message })
+      alertes.push({
+        cle: `echec:${f.id}`,
+        libelle: `Paiement reçu (${montantTxt}, ${f.proprietaire?.nom || '?'}) pour la facture ${f.type_facture} ${bienNom} ${f.mois} ${f.numero_facture || ''} NON enregistré dans Evoliz : ${String(err.message).slice(0, 160)}`,
+        montant_cts: m.credit,
+        detail: { facture_id: f.id, mouvement_id: m.id },
+      })
       await logOp({
         categorie: 'facture', action: 'paiement_honoraires_auto', source: 'cron', statut: 'error',
         mois_comptable: f.mois,
@@ -1708,7 +1748,8 @@ export async function matcherHonorairesProprietaires(agence = AGENCE) {
     }
   }
 
-  return { lies, errors }
+  await publier()
+  return { lies, errors, brouillons: alertes.filter(a => a.cle.startsWith('brouillon:')).length }
 }
 
 /**
