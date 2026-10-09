@@ -2,8 +2,16 @@
  * auto-navette-mensuelle
  * Appelée par pg_cron le dernier jour de chaque mois.
  * Génère et envoie la fiche navette pour chaque staff avec auto_send_navette = true.
+ *
+ * { mode: 'rappel' } (job pg_cron rappel-navette-paie, le 28) : rappel au rôle 'paie' SEULEMENT
+ * s'il reste des salariés à navette MANUELLE ayant des heures ce mois-ci. Avant le 09/10/2026, ce
+ * job postait {"type":"rappel_navette"} à smtp-send sans destinataire ni sujet → 400, rappel
+ * jamais reçu (audit des mails).
+ * Destinataires : notification_destinataire ('cabinet_paie' pour la navette, 'paie' en copie de
+ * l'envoi réel au cabinet et pour le rappel) — plus d'adresse codée en dur.
  */
 import { createClient } from 'npm:@supabase/supabase-js@2'
+import { destinataires } from '../_shared/alertes.ts'
 
 const SUPABASE_URL  = Deno.env.get('SUPABASE_URL')!
 const SERVICE_KEY   = Deno.env.get('SERVICE_ROLE_KEY')!
@@ -201,6 +209,33 @@ Deno.serve(async (req) => {
   const now  = new Date()
   const mois = body.mois || now.toISOString().slice(0, 7)
 
+  // ── Rappel du 28 : navettes à envoyer à la main ─────────────────────────────
+  if (body.mode === 'rappel') {
+    const { data: manuels } = await sb.from('auto_entrepreneur').select('id, nom, prenom')
+      .eq('type', 'staff').eq('actif', true).eq('auto_send_navette', false)
+    const { data: autos } = await sb.from('auto_entrepreneur').select('nom, prenom')
+      .eq('type', 'staff').eq('actif', true).eq('auto_send_navette', true)
+    const aFaire: string[] = []
+    for (const ae of manuels || []) {
+      const { count } = await sb.from('staff_heures_jour').select('id', { count: 'exact', head: true }).eq('ae_id', ae.id).eq('mois', mois)
+      if (count) aFaire.push(`${ae.prenom} ${ae.nom}`.trim())
+    }
+    if (!aFaire.length) return json({ ok: true, mode: 'rappel', envoye: false, raison: 'aucune navette manuelle ce mois-ci' })
+    const moisLabel = new Date(mois + '-02').toLocaleDateString('fr-FR', { month: 'long', year: 'numeric' })
+    const html = `<div style="font-family:Arial,sans-serif;max-width:520px;margin:0 auto;padding:24px;color:#2C2416">
+      <div style="background:#EAE3D4;border-bottom:2px solid #CC9933;padding:14px 20px;border-radius:8px 8px 0 0"><h2 style="margin:0;font-size:17px">📋 Navette paie — ${moisLabel}</h2></div>
+      <div style="background:#fff;padding:20px;border:1px solid #D9CEB8;border-top:none;border-radius:0 0 8px 8px">
+        <p style="margin-top:0">Navette à envoyer à la main au cabinet pour : <strong>${aFaire.join(', ')}</strong>.</p>
+        <p>dcb-compta → Auto-Entrepreneurs → onglet <strong>⏱ Heures staff</strong> → salarié + mois → <strong>📤 Navette</strong>.</p>
+        ${(autos || []).length ? `<p style="font-size:12px;color:#8C7B65">Envoi automatique le dernier jour du mois : ${(autos || []).map(a => `${a.prenom} ${a.nom}`.trim()).join(', ')}.</p>` : ''}
+      </div></div>`
+    const to = await destinataires(sb, 'paie')
+    const { data: r, error: e } = await sb.functions.invoke('smtp-send', {
+      body: { to, subject: `📋 Rappel — navette paie ${moisLabel} à envoyer (${aFaire.length})`, html },
+    })
+    return json({ ok: !e && r?.ok, mode: 'rappel', envoye: !e && r?.ok, a_faire: aFaire, error: e?.message || r?.error || null })
+  }
+
   // Sélection des staff :
   //  - envoi ciblé (body.ae_id) : ce staff précis, peu importe son flag auto_send_navette (envoi manuel) ;
   //  - sinon (cron) : tous les staff avec auto_send_navette activé.
@@ -241,10 +276,14 @@ Deno.serve(async (req) => {
     const moisLabelCap = moisLabel.charAt(0).toUpperCase() + moisLabel.slice(1)
 
     // Envoyer via smtp-send
-    const destinataire = body.to || 'marie@payeetconseil.com'  // body.to = preview (ex. vers Oïhan) avant envoi cabinet
+    // body.to = preview (ex. vers Oïhan) avant envoi cabinet ; envoi réel : cabinet + copie 'paie'
+    // (seule copie volontaire depuis la suppression du CC forcé de smtp-send, 09/10/2026)
+    const destinataire = body.to || await destinataires(sb, 'cabinet_paie')
+    const copie = body.to ? undefined : await destinataires(sb, 'paie')
     const { data: r, error: e } = await sb.functions.invoke('smtp-send', {
       body: {
         to: destinataire,
+        cc: copie,
         subject: `${body.to ? '[PREVIEW] ' : ''}Navette paie ${ae.prenom} ${ae.nom} — ${moisLabelCap}`,
         html,
       },
