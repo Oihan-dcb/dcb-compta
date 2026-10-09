@@ -25,6 +25,7 @@
  */
 import { serve } from 'https://deno.land/std@0.168.0/http/server.ts'
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
+import { signaler, type ItemAlerte } from '../_shared/alertes.ts'
 
 const SUPABASE_URL = Deno.env.get('SUPABASE_URL') ?? ''
 const SERVICE_KEY  = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? ''
@@ -32,49 +33,13 @@ const SERVICE_KEY  = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? ''
 const CANAUX_OTA = ['airbnb', 'booking']
 const SEUIL_CTS = 100 // 1€ — exclut les virements-test Airbnb à 0,01€
 
-const STAFF_EMAIL: Record<string, string> = {
-  dcb: 'oihan@destinationcotebasque.com',
-  lauian: 'lauracoursan@hotmail.fr',
-}
+const SOURCE = 'virement_orphelin'
 
 function fmtEur(cts: number) {
   return (cts / 100).toLocaleString('fr-FR', { minimumFractionDigits: 2 }) + ' €'
 }
 function fmtDate(iso: string) {
   return new Date(iso + 'T00:00:00').toLocaleDateString('fr-FR', { day: 'numeric', month: 'long', year: 'numeric' })
-}
-
-function htmlRecap(rows: { date: string; libelle: string; canal: string; montant: string }[]) {
-  const lignes = rows.map(r => `
-    <tr>
-      <td style="padding:10px 14px;border-bottom:1px solid #EDE6D8;font-size:13px;color:#2C2416">${r.date}<br><span style="color:#9C8E7D;font-size:11px;text-transform:uppercase">${r.canal}</span></td>
-      <td style="padding:10px 14px;border-bottom:1px solid #EDE6D8;font-size:12px;color:#2C2416">${r.libelle}</td>
-      <td style="padding:10px 14px;border-bottom:1px solid #EDE6D8;font-size:13px;color:#CC9933;font-weight:bold">${r.montant}</td>
-    </tr>`).join('')
-  return `<!DOCTYPE html><html><head><meta charset="utf-8"></head>
-<body style="margin:0;padding:0;background:#f5f0e8;font-family:Arial,sans-serif">
-  <table width="100%" cellpadding="0" cellspacing="0" style="background:#f5f0e8;padding:40px 20px"><tr><td align="center">
-    <table width="640" cellpadding="0" cellspacing="0" style="background:#fff;border-radius:10px;overflow:hidden;max-width:640px;width:100%">
-      <tr><td style="background:#CC9933;padding:26px 40px;text-align:center">
-        <p style="margin:0;color:#fff;font-size:11px;letter-spacing:2px;text-transform:uppercase;opacity:0.85">Destination Côte Basque</p>
-        <p style="margin:8px 0 0;color:#fff;font-size:19px;font-weight:bold">⚠ Virement(s) OTA sans réservation associée</p>
-        <p style="margin:6px 0 0;color:rgba(255,255,255,0.75);font-size:13px">${rows.length} mouvement${rows.length > 1 ? 's' : ''} entrant${rows.length > 1 ? 's' : ''} · aucun rapprochement trouvé</p>
-      </td></tr>
-      <tr><td style="padding:24px 0">
-        <table width="100%" cellpadding="0" cellspacing="0">
-          <tr style="background:#FBF5E6"><th style="padding:8px 14px;font-size:10px;color:#9C8E7D;text-transform:uppercase;text-align:left">Date / canal</th><th style="padding:8px 14px;font-size:10px;color:#9C8E7D;text-transform:uppercase;text-align:left">Libellé</th><th style="padding:8px 14px;font-size:10px;color:#9C8E7D;text-transform:uppercase;text-align:left">Montant</th></tr>
-          ${lignes}
-        </table>
-      </td></tr>
-      <tr><td style="padding:16px 40px;font-size:12px;color:#666;line-height:1.5">
-        Cas fréquent : un propriétaire passé de "gestion loyer déléguée à DCB" à "non" (ou l'inverse) après que ses réservations aient déjà été synchronisées — le virement Airbnb/Booking arrive alors sans réservation à laquelle se rattacher. Vérifier dans Facturation → Contrôle virements propriétaires, ou relancer une synchro/ventilation du bien concerné.
-      </td></tr>
-      <tr><td style="background:#f9f6f0;padding:16px 40px;text-align:center;font-size:11px;color:#9C8E7D">
-        Généré automatiquement chaque matin tant qu'un mouvement reste non identifié — s'arrête dès rapprochement.
-      </td></tr>
-    </table>
-  </td></tr></table>
-</body></html>`
 }
 
 serve(async (req) => {
@@ -95,7 +60,10 @@ serve(async (req) => {
     .order('date_operation')
   if (error) return json({ error: error.message }, 500)
 
-  if (!mouvements?.length) return json({ ok: true, agence: AGENCE, total: 0 })
+  if (!mouvements?.length) {
+    if (!dryRun) await signaler(supabase, SOURCE, AGENCE, [])
+    return json({ ok: true, agence: AGENCE, total: 0 })
+  }
 
   const rows = mouvements.map(m => ({
     date: fmtDate(m.date_operation),
@@ -104,21 +72,17 @@ serve(async (req) => {
     montant: fmtEur(m.credit),
   }))
 
-  const to = STAFF_EMAIL[AGENCE] || STAFF_EMAIL.dcb
+  const items: ItemAlerte[] = mouvements.map(m => ({
+    cle: `mvt:${m.id}`,
+    libelle: `Virement ${m.canal} du ${m.date_operation.split('-').reverse().join('/')} (${(m.libelle || m.detail || '—').slice(0, 60)}) sans réservation associée`,
+    montant_cts: m.credit,
+    detail: { mouvement_id: m.id },
+  }))
   if (!dryRun) {
-    const res = await fetch(`${SUPABASE_URL}/functions/v1/smtp-send`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${SERVICE_KEY}` },
-      body: JSON.stringify({
-        to: [to],
-        subject: `⚠ ${mouvements.length} virement${mouvements.length > 1 ? 's' : ''} OTA sans réservation associée`,
-        html: htmlRecap(rows),
-      }),
-    })
-    if (!res.ok) return json({ error: 'erreur_smtp', detail: await res.text() }, 500)
+    const res = await signaler(supabase, SOURCE, AGENCE, items)
     await supabase.from('journal_ops').insert({
       categorie: 'rapprochement', action: 'alerte_virement_orphelin', source: 'cron', statut: 'ok',
-      message: `${mouvements.length} virement(s) OTA non identifié(s) (agence ${AGENCE}), alerte envoyée à ${to}`,
+      message: `${mouvements.length} virement(s) OTA non identifié(s) (agence ${AGENCE}) — ${res.nouveaux} nouveau(x), publié(s) pour le Point du matin`,
     })
   }
 

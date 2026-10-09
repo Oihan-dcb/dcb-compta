@@ -8,20 +8,20 @@
  * propriétaires jamais rapprochés, relances envoyées à des propriétaires qui avaient payé.
  *
  * Ce contrôle regarde, pour chaque compte suivi, la date de la DERNIÈRE opération en base et
- * alerte si elle dépasse le seuil. Mail répété chaque matin tant que le compte reste muet :
- * voulu pour une panne de flux. Lecture seule (seule écriture : journal_ops).
+ * alerte si elle dépasse le seuil. Lecture seule (écritures : alerte_etat + journal_ops).
+ *
+ * Depuis l'audit des mails (09/10/2026) : plus de mail direct. Les comptes muets sont publiés dans
+ * alerte_etat (source 'fraicheur_banque', une ligne par compte et par agence, marquée urgente :
+ * remonte aussi le week-end) et apparaissent dans le Point du matin de l'agence du compte.
  */
 import { serve } from 'https://deno.land/std@0.168.0/http/server.ts'
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
 import { COMPTES_SUIVIS, etatCompte } from '../_shared/fraicheurBanque.ts'
+import { signaler, fmtDateFr, type ItemAlerte } from '../_shared/alertes.ts'
 
 const SUPABASE_URL = Deno.env.get('SUPABASE_URL') ?? ''
 const SERVICE_KEY  = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? ''
-const DESTINATAIRE = 'oihan@destinationcotebasque.com'
-
-function fmtDate(iso: string) {
-  return new Date(iso + 'T12:00:00Z').toLocaleDateString('fr-FR', { day: 'numeric', month: 'long', year: 'numeric' })
-}
+const SOURCE = 'fraicheur_banque'
 
 serve(async (req) => {
   if (req.method === 'OPTIONS') return new Response('ok')
@@ -36,43 +36,19 @@ serve(async (req) => {
     catch (e) { return json({ error: (e as Error).message }, 500) }
   }
   const muets = etat.filter(e => e.muet)
-  if (!muets.length) return json({ ok: true, muets: 0, etat })
-
-  const td = 'padding:10px 14px;border-bottom:1px solid #EDE6D8;font-size:13px;color:#2C2416;vertical-align:top'
-  const html = `<!DOCTYPE html><html><head><meta charset="utf-8"></head>
-<body style="margin:0;padding:0;background:#f5f0e8;font-family:Arial,sans-serif">
-  <table width="100%" cellpadding="0" cellspacing="0" style="background:#f5f0e8;padding:40px 20px"><tr><td align="center">
-    <table width="680" cellpadding="0" cellspacing="0" style="background:#fff;border-radius:10px;overflow:hidden;max-width:680px;width:100%">
-      <tr><td style="background:#C0392B;padding:24px 40px;text-align:center">
-        <p style="margin:0;color:#fff;font-size:11px;letter-spacing:2px;text-transform:uppercase;opacity:0.85">Destination Côte Basque</p>
-        <p style="margin:8px 0 0;color:#fff;font-size:19px;font-weight:bold">⚠ Relevé bancaire muet</p>
-        <p style="margin:6px 0 0;color:rgba(255,255,255,0.8);font-size:13px">${muets.length} compte${muets.length > 1 ? 's' : ''} sans nouvelle opération importée</p>
-      </td></tr>
-      <tr><td style="padding:10px 0 0"><table width="100%" cellpadding="0" cellspacing="0">
-        ${muets.map(m => `<tr><td style="${td}"><strong>${m.label}</strong><br><span style="color:#9C8E7D;font-size:11px">dernière opération : ${m.derniere ? fmtDate(m.derniere) + ` (il y a ${m.age} j, seuil ${m.jours} j)` : 'aucune'}</span></td>
-          <td style="${td};font-size:12px;color:#666">${m.action}</td></tr>`).join('')}
-      </table></td></tr>
-      <tr><td style="padding:16px 40px;font-size:12px;color:#666;line-height:1.5">
-        Tant qu'un compte n'est plus alimenté, rien de ce qui y passe n'est rapproché : paiements des
-        propriétaires, reversements, débours — et les relances automatiques peuvent partir à tort.
-      </td></tr>
-      <tr><td style="background:#f9f6f0;padding:14px 40px;text-align:center;font-size:11px;color:#9C8E7D">
-        Contrôle quotidien — ce mail revient chaque matin tant qu'un compte reste muet.
-      </td></tr>
-    </table>
-  </td></tr></table>
-</body></html>`
 
   if (!dryRun) {
-    const res = await fetch(`${SUPABASE_URL}/functions/v1/smtp-send`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${SERVICE_KEY}` },
-      body: JSON.stringify({ to: [DESTINATAIRE], subject: `⚠ Relevé bancaire muet : ${muets.map(m => m.label).join(', ')}`, html }),
-    })
-    if (!res.ok) return json({ error: 'erreur_smtp', detail: await res.text() }, 500)
-    await supabase.from('journal_ops').insert({
+    for (const agence of [...new Set(COMPTES_SUIVIS.map(c => c.agence))]) {
+      const items: ItemAlerte[] = muets.filter(m => m.agence === agence).map(m => ({
+        cle: `compte:${m.source}`,
+        libelle: `Relevé bancaire muet — ${m.label} : dernière opération ${m.derniere ? `${fmtDateFr(m.derniere)} (il y a ${m.age} j, seuil ${m.jours} j)` : 'aucune'}. ${m.action} Tant qu'il est muet, rien n'est rapproché et les relances sont suspendues.`,
+        detail: { source: m.source, derniere: m.derniere, urgent: true },
+      }))
+      await signaler(supabase, SOURCE, agence, items)
+    }
+    if (muets.length) await supabase.from('journal_ops').insert({
       categorie: 'banque', action: 'alerte_fraicheur_banque', source: 'cron', statut: 'warning',
-      message: `${muets.length} compte(s) muet(s) : ${muets.map(m => `${m.label} (dernière op. ${m.derniere ?? 'aucune'})`).join(' ; ')}`,
+      message: `${muets.length} compte(s) muet(s) : ${muets.map(m => `${m.label} (dernière op. ${m.derniere ?? 'aucune'})`).join(' ; ')} — publié pour le Point du matin`,
     })
   }
   return json({ dry_run: dryRun, muets: muets.length, etat })

@@ -91,6 +91,7 @@
  */
 import { serve } from 'https://deno.land/std@0.168.0/http/server.ts'
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
+import { signaler, type ItemAlerte } from '../_shared/alertes.ts'
 
 const SUPABASE_URL = Deno.env.get('SUPABASE_URL') ?? ''
 const SERVICE_KEY  = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? ''
@@ -104,10 +105,7 @@ const FENETRE_RESA_JOURS  = 3          // ± N jours autour de date_mission pour
 const DATE_MIN            = '2026-04-01'
 const MARQUEUR_IGNORE     = '#hors-resa'
 
-const STAFF_EMAIL: Record<string, string> = {
-  dcb: 'oihan@destinationcotebasque.com',
-  lauian: 'lauracoursan@hotmail.fr',
-}
+const SOURCE = 'menage_orphelin'
 
 function fmtEur(cts: number) {
   return (cts / 100).toLocaleString('fr-FR', { minimumFractionDigits: 2 }) + ' €'
@@ -124,66 +122,6 @@ function addDays(iso: string, n: number) {
 type Row = {
   date: string; anciennete: number; bien: string; titre: string; ae: string;
   statut: string; mois: string; clos: boolean; montant: string; suggestion: string | null;
-}
-
-function htmlRecap(rows: Row[], sansBien: Row[], total: string) {
-  const ligne = (r: Row) => `
-    <tr>
-      <td style="padding:10px 14px;border-bottom:1px solid #EDE6D8;font-size:13px;color:#2C2416">${r.date}<br><span style="color:#9C8E7D;font-size:11px">il y a ${r.anciennete} j · ${r.mois}${r.clos ? ' <span style="color:#C0392B;font-weight:bold">CLÔTURÉ</span>' : ''}</span></td>
-      <td style="padding:10px 14px;border-bottom:1px solid #EDE6D8;font-size:13px;color:#2C2416"><strong>${r.bien}</strong><br><span style="color:#9C8E7D;font-size:11px">${r.titre}</span></td>
-      <td style="padding:10px 14px;border-bottom:1px solid #EDE6D8;font-size:12px;color:#2C2416">${r.ae}<br><span style="color:#9C8E7D;font-size:11px;text-transform:uppercase">${r.statut}</span></td>
-      <td style="padding:10px 14px;border-bottom:1px solid #EDE6D8;font-size:13px;color:#CC9933;font-weight:bold">${r.montant}</td>
-      <td style="padding:10px 14px;border-bottom:1px solid #EDE6D8;font-size:12px;color:#666">${r.suggestion || '<span style="color:#C0392B">aucune résa à ±' + FENETRE_RESA_JOURS + ' j</span>'}</td>
-    </tr>`
-  const entete = `
-          <tr style="background:#FBF5E6"><th style="padding:8px 14px;font-size:10px;color:#9C8E7D;text-transform:uppercase;letter-spacing:.5px;text-align:left">Date ménage</th><th style="padding:8px 14px;font-size:10px;color:#9C8E7D;text-transform:uppercase;letter-spacing:.5px;text-align:left">Bien / mission</th><th style="padding:8px 14px;font-size:10px;color:#9C8E7D;text-transform:uppercase;letter-spacing:.5px;text-align:left">AE / statut</th><th style="padding:8px 14px;font-size:10px;color:#9C8E7D;text-transform:uppercase;letter-spacing:.5px;text-align:left">Coût AE</th><th style="padding:8px 14px;font-size:10px;color:#9C8E7D;text-transform:uppercase;letter-spacing:.5px;text-align:left">Résa probable</th></tr>`
-  const section1 = rows.length ? `
-      <tr><td style="padding:20px 24px 6px;font-size:13px;font-weight:bold;color:#2C2416">🧹 Ménages de départ jamais rattachés à une réservation (${rows.length})</td></tr>
-      <tr><td style="padding:0 0 10px">
-        <table width="100%" cellpadding="0" cellspacing="0">${entete}${rows.map(ligne).join('')}
-        </table>
-      </td></tr>` : ''
-  const section2 = sansBien.length ? `
-      <tr><td style="padding:20px 24px 6px;font-size:13px;font-weight:bold;color:#2C2416">❓ Missions sans bien identifié — ical_code introuvable (${sansBien.length})</td></tr>
-      <tr><td style="padding:0 0 10px">
-        <table width="100%" cellpadding="0" cellspacing="0">${entete}${sansBien.map(ligne).join('')}
-        </table>
-      </td></tr>
-      <tr><td style="padding:0 40px 6px;font-size:12px;color:#666;line-height:1.5">
-        Ces missions n'ont AUCUN bien : invisibles de tous les écrans (qui filtrent par bien + agence)
-        et refacturées nulle part. Corriger l'<code>ical_code</code> du bien dans PageBiens, puis relancer
-        la synchro iCal de l'AE concerné.
-      </td></tr>` : ''
-  return `<!DOCTYPE html><html><head><meta charset="utf-8"></head>
-<body style="margin:0;padding:0;background:#f5f0e8;font-family:Arial,sans-serif">
-  <table width="100%" cellpadding="0" cellspacing="0" style="background:#f5f0e8;padding:40px 20px"><tr><td align="center">
-    <table width="700" cellpadding="0" cellspacing="0" style="background:#fff;border-radius:10px;overflow:hidden;max-width:700px;width:100%">
-      <tr><td style="background:#CC9933;padding:26px 40px;text-align:center">
-        <p style="margin:0;color:#fff;font-size:11px;letter-spacing:2px;text-transform:uppercase;opacity:0.85">Destination Côte Basque</p>
-        <p style="margin:8px 0 0;color:#fff;font-size:19px;font-weight:bold">⚠ Ménage(s) AE payé(s) mais refacturé(s) à personne</p>
-        <p style="margin:6px 0 0;color:rgba(255,255,255,0.75);font-size:13px">${rows.length + sansBien.length} mission${rows.length + sansBien.length > 1 ? 's' : ''} sans réservation · ${total} de coût AE non recouvré</p>
-      </td></tr>
-      <tr><td style="padding:10px 0 0">
-        <table width="100%" cellpadding="0" cellspacing="0">
-          ${section1}
-          ${section2}
-        </table>
-      </td></tr>
-      <tr><td style="padding:16px 40px;font-size:12px;color:#666;line-height:1.5">
-        Une mission sans <code>reservation_id</code> n'a aucune ligne ventilation AUTO — elle n'est donc
-        déduite d'aucun reversement propriétaire et refacturée sur aucune facture Evoliz, alors que l'AE
-        est bien payé (export AUTO/Débours). À traiter en RATTACHANT la mission à sa réservation, pas en
-        touchant au calcul : rattacher, puis relancer la ventilation du bien/mois pour recréer le lien AUTO.
-        Un mois marqué <strong>CLÔTURÉ</strong> doit être réouvert avant refacturation.
-        Ménage réellement hors séjour (offert, réclamation, demande propriétaire) : écrire
-        <code>${MARQUEUR_IGNORE}</code> dans la note de la mission pour l'ignorer définitivement.
-      </td></tr>
-      <tr><td style="background:#f9f6f0;padding:16px 40px;text-align:center;font-size:11px;color:#9C8E7D">
-        Généré automatiquement chaque matin tant qu'une mission de plus de ${JOURS_DELAI} jours reste sans réservation — s'arrête dès le rattachement.
-      </td></tr>
-    </table>
-  </td></tr></table>
-</body></html>`
 }
 
 serve(async (req) => {
@@ -244,6 +182,7 @@ serve(async (req) => {
   const sansBienRet = missionsSansBien.filter(retenue)
 
   if (!orphelines.length && !sansBienRet.length) {
+    if (!dryRun) await signaler(supabase, SOURCE, AGENCE, []) // tout est rattaché : clôture des alertes ouvertes
     return json({ ok: true, agence: AGENCE, total: 0, sans_bien: 0 })
   }
 
@@ -309,23 +248,33 @@ serve(async (req) => {
   const rows     = orphelines.map(m => toRow(m, true))
   const sansBien = sansBienRet.map(m => toRow(m, false))
   const totalCts = [...orphelines, ...sansBienRet].reduce((s, m) => s + (m.montant || 0), 0)
-  const nb = rows.length + sansBien.length
 
-  const to = STAFF_EMAIL[AGENCE] || STAFF_EMAIL.dcb
+  // Résa probable en texte (le Point du matin est une ligne par anomalie)
+  const suggestionTexte = (m: any): string => {
+    const r = resas.filter(x => x.bien_id === m.bien_id)
+      .map(x => ({ x, e: Math.abs(new Date(x.departure_date + 'T00:00:00').getTime() - new Date(m.date_mission + 'T00:00:00').getTime()) }))
+      .sort((p, q) => p.e - q.e)[0]?.x
+    return r ? ` — résa probable : ${r.guest_name || r.code} (départ ${r.departure_date.split('-').reverse().join('/')})` : ''
+  }
+  const items: ItemAlerte[] = [
+    ...orphelines.map(m => ({
+      cle: `mission:${m.id}`,
+      libelle: `Ménage ${m.bien?.hospitable_name || m.bien?.code || '?'} du ${m.date_mission.split('-').reverse().join('/')} (${[m.ae?.prenom, m.ae?.nom].filter(Boolean).join(' ') || '—'}) sans réservation, coût AE non refacturé${closSet.has(`${m.bien_id}|${m.mois}`) ? ' — mois clos' : ''}${suggestionTexte(m)}`,
+      montant_cts: m.montant || 0,
+      detail: { mission_id: m.id, bien: m.bien?.code, mois: m.mois },
+    })),
+    ...sansBienRet.map(m => ({
+      cle: `mission:${m.id}`,
+      libelle: `Mission « ${m.titre_ical || m.type_mission} » du ${m.date_mission.split('-').reverse().join('/')} sans bien identifié (ical_code inconnu) — invisible des écrans`,
+      montant_cts: m.montant || 0,
+      detail: { mission_id: m.id },
+    })),
+  ]
   if (!dryRun) {
-    const res = await fetch(`${SUPABASE_URL}/functions/v1/smtp-send`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${SERVICE_KEY}` },
-      body: JSON.stringify({
-        to: [to],
-        subject: `⚠ ${nb} ménage${nb > 1 ? 's' : ''} AE sans réservation — ${fmtEur(totalCts)} non refacturé${nb > 1 ? 's' : ''}`,
-        html: htmlRecap(rows, sansBien, fmtEur(totalCts)),
-      }),
-    })
-    if (!res.ok) return json({ error: 'erreur_smtp', detail: await res.text() }, 500)
+    const res = await signaler(supabase, SOURCE, AGENCE, items)
     await supabase.from('journal_ops').insert({
       categorie: 'facturation', action: 'alerte_mission_menage_orpheline', source: 'cron', statut: 'ok',
-      message: `${rows.length} ménage(s) sans réservation + ${sansBien.length} mission(s) sans bien (agence ${AGENCE}), ${fmtEur(totalCts)} de coût AE non recouvré, alerte envoyée à ${to}`,
+      message: `${rows.length} ménage(s) sans réservation + ${sansBien.length} mission(s) sans bien (agence ${AGENCE}), ${fmtEur(totalCts)} de coût AE non recouvré — ${res.nouveaux} nouveau(x), publié(s) pour le Point du matin`,
     })
   }
 
@@ -333,7 +282,7 @@ serve(async (req) => {
     dry_run: dryRun, agence: AGENCE,
     seuil_jours: JOURS_DELAI, date_max: dateMax,
     total: rows.length, sans_bien: sansBien.length, montant_total: fmtEur(totalCts),
-    rows: { orphelines: rows, sans_bien: sansBien },
+    rows: { orphelines: rows, sans_bien: sansBien }, items,
   })
 })
 

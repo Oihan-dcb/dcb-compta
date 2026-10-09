@@ -36,6 +36,7 @@
  */
 import { serve } from 'https://deno.land/std@0.168.0/http/server.ts'
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
+import { signaler, type ItemAlerte } from '../_shared/alertes.ts'
 
 const SUPABASE_URL = Deno.env.get('SUPABASE_URL') ?? ''
 const SERVICE_KEY  = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? ''
@@ -44,10 +45,7 @@ const DATE_MIN        = '2026-01-01'
 const JOURS_DELAI      = 1
 const MARQUEUR_IGNORE  = '#dedup-ok'
 
-const STAFF_EMAIL: Record<string, string> = {
-  dcb: 'oihan@destinationcotebasque.com',
-  lauian: 'lauracoursan@hotmail.fr',
-}
+const SOURCE = 'prestation_doublon'
 
 function fmtEur(cts: number) {
   return (cts / 100).toLocaleString('fr-FR', { minimumFractionDigits: 2 }) + ' €'
@@ -64,44 +62,6 @@ function addDays(iso: string, n: number) {
 type Groupe = {
   bien: string; date: string; montant: string; type_imputation: string; description: string;
   ae: string; mois: string; clos: boolean; ids: string[]; n: number;
-}
-
-function htmlRecap(groupes: Groupe[], total: string) {
-  const ligne = (g: Groupe) => `
-    <tr>
-      <td style="padding:10px 14px;border-bottom:1px solid #EDE6D8;font-size:13px;color:#2C2416">${g.date}<br><span style="color:#9C8E7D;font-size:11px">${g.mois}${g.clos ? ' <span style="color:#C0392B;font-weight:bold">CLÔTURÉ</span>' : ''}</span></td>
-      <td style="padding:10px 14px;border-bottom:1px solid #EDE6D8;font-size:13px;color:#2C2416"><strong>${g.bien}</strong><br><span style="color:#9C8E7D;font-size:11px">${g.description}</span></td>
-      <td style="padding:10px 14px;border-bottom:1px solid #EDE6D8;font-size:12px;color:#2C2416">${g.ae}<br><span style="color:#9C8E7D;font-size:11px;text-transform:uppercase">${g.type_imputation}</span></td>
-      <td style="padding:10px 14px;border-bottom:1px solid #EDE6D8;font-size:13px;color:#CC9933;font-weight:bold">${g.montant} <span style="color:#9C8E7D;font-weight:normal">× ${g.n}</span></td>
-    </tr>`
-  const entete = `
-          <tr style="background:#FBF5E6"><th style="padding:8px 14px;font-size:10px;color:#9C8E7D;text-transform:uppercase;letter-spacing:.5px;text-align:left">Date</th><th style="padding:8px 14px;font-size:10px;color:#9C8E7D;text-transform:uppercase;letter-spacing:.5px;text-align:left">Bien / description</th><th style="padding:8px 14px;font-size:10px;color:#9C8E7D;text-transform:uppercase;letter-spacing:.5px;text-align:left">AE / imputation</th><th style="padding:8px 14px;font-size:10px;color:#9C8E7D;text-transform:uppercase;letter-spacing:.5px;text-align:left">Montant (× occurrences)</th></tr>`
-  return `<!DOCTYPE html><html><head><meta charset="utf-8"></head>
-<body style="margin:0;padding:0;background:#f5f0e8;font-family:Arial,sans-serif">
-  <table width="100%" cellpadding="0" cellspacing="0" style="background:#f5f0e8;padding:40px 20px"><tr><td align="center">
-    <table width="700" cellpadding="0" cellspacing="0" style="background:#fff;border-radius:10px;overflow:hidden;max-width:700px;width:100%">
-      <tr><td style="background:#CC9933;padding:26px 40px;text-align:center">
-        <p style="margin:0;color:#fff;font-size:11px;letter-spacing:2px;text-transform:uppercase;opacity:0.85">Destination Côte Basque</p>
-        <p style="margin:8px 0 0;color:#fff;font-size:19px;font-weight:bold">⚠ Prestation(s) hors forfait en double</p>
-        <p style="margin:6px 0 0;color:rgba(255,255,255,0.75);font-size:13px">${groupes.length} doublon${groupes.length > 1 ? 's' : ''} détecté${groupes.length > 1 ? 's' : ''} · ${total} en trop si non corrigé</p>
-      </td></tr>
-      <tr><td style="padding:10px 0 0">
-        <table width="100%" cellpadding="0" cellspacing="0">${entete}${groupes.map(ligne).join('')}
-        </table>
-      </td></tr>
-      <tr><td style="padding:16px 40px;font-size:12px;color:#666;line-height:1.5">
-        Même bien, même date, même montant, même type d'imputation, même description, même AE :
-        très probablement une double saisie (double-clic). Vérifier dans Auto-entrepreneurs / Prestations,
-        puis annuler la ligne en trop. Si le mois est <strong>CLÔTURÉ</strong>, rouvrir la saisie depuis
-        Facturation avant toute correction, puis reclôturer. Si les deux lignes sont légitimement
-        identiques, ajouter <code>${MARQUEUR_IGNORE}</code> dans la description pour ne plus être alerté.
-      </td></tr>
-      <tr><td style="background:#f9f6f0;padding:16px 40px;text-align:center;font-size:11px;color:#9C8E7D">
-        Généré automatiquement chaque matin tant que le doublon persiste — s'arrête dès qu'une des lignes est annulée.
-      </td></tr>
-    </table>
-  </td></tr></table>
-</body></html>`
 }
 
 serve(async (req) => {
@@ -168,23 +128,22 @@ serve(async (req) => {
     })
   }
 
-  if (!groupes.length) return json({ ok: true, agence: AGENCE, total: 0 })
+  if (!groupes.length) {
+    if (!dryRun) await signaler(supabase, SOURCE, AGENCE, [])
+    return json({ ok: true, agence: AGENCE, total: 0 })
+  }
 
-  const to = STAFF_EMAIL[AGENCE] || STAFF_EMAIL.dcb
+  const items: ItemAlerte[] = groupes.map(g => ({
+    cle: `doublon:${[...g.ids].sort()[0]}`,
+    libelle: `Prestation en double ×${g.n} — ${g.bien}, ${g.date}, ${g.montant} « ${g.description} » (${g.ae})${g.clos ? ' — mois clos' : ''}`,
+    montant_cts: Math.round(Number(String(g.montant).replace(/[^0-9,]/g, '').replace(',', '.')) * 100) * (g.n - 1),
+    detail: { ids: g.ids, mois: g.mois },
+  }))
   if (!dryRun) {
-    const res = await fetch(`${SUPABASE_URL}/functions/v1/smtp-send`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${SERVICE_KEY}` },
-      body: JSON.stringify({
-        to: [to],
-        subject: `⚠ ${groupes.length} prestation${groupes.length > 1 ? 's' : ''} en double détectée${groupes.length > 1 ? 's' : ''}`,
-        html: htmlRecap(groupes, fmtEur(totalCts)),
-      }),
-    })
-    if (!res.ok) return json({ error: 'erreur_smtp', detail: await res.text() }, 500)
+    const res = await signaler(supabase, SOURCE, AGENCE, items)
     await supabase.from('journal_ops').insert({
       categorie: 'prestation_hors_forfait', action: 'alerte_prestation_doublon', source: 'cron', statut: 'ok',
-      message: `${groupes.length} doublon(s) de prestation détecté(s) (agence ${AGENCE}), ${fmtEur(totalCts)} en trop si non corrigé, alerte envoyée à ${to}`,
+      message: `${groupes.length} doublon(s) de prestation détecté(s) (agence ${AGENCE}), ${fmtEur(totalCts)} en trop si non corrigé — ${res.nouveaux} nouveau(x), publié(s) pour le Point du matin`,
     })
   }
 
