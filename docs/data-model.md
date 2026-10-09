@@ -1051,3 +1051,13 @@ jamais saisis, facture n°168 (700 €) payée par le séquestre sans mission.
   Écriture : `alerte_signaler(source, agence, items jsonb, complet bool)`.
 - `point_du_matin_envoi (agence, jour)` — un envoi par agence et par jour.
 - `famille_statut_resa(text)` — accepted / cancelled / nul, utilisé par `trace_changement_post_facture`.
+
+## Ajout 2026-10-09 — « Mes missions » : `mission_acceptation` (migration 374)
+
+**`mission_acceptation`** (1 ligne par couple `(mission_id, ae_id)`, unique) : acceptation / refus d'une mission par son AE dans le portail AE (onglet « Mes missions »). Ligne **courante** = celle de l'AE actuel (`mission_menage.ae_id`) ; une réassignation crée une nouvelle ligne « en attente » pour le nouvel AE, le refus de l'ancien reste en historique.
+- `statut` `en_attente` | `acceptee` | `refusee` ; `source` `portail` | `hospitable` (déjà acceptée dans l'appli Hospitable, lue par le cron PowerHouse `cron-missions-acceptation`) | `reprise` (existant au lancement : passées, du jour, déjà démarrées) | `non_requise` (`auto_entrepreneur.acceptation_missions=false`, comptes bureau) | `bureau`.
+- Délais : `assigne_le`, `debut_mission` (date + heure Paris, 10:00 par défaut — `mission_debut()`), `derniere_minute` (< 24 h), `echeance_bureau` (`mission_acceptation_echeance()` : +2 h ou 08:00 si affectée 21:00-08:00 ; sinon 48 h avant). Horodatages des envois : `notif_ae_le`, `rappel_ae_le` (+24 h), `alerte_bureau_le`, `refus_notifie_le`.
+- Refus : `refus_motif` (`indisponible`/`horaire`/`trop_loin`/`autre`/`hospitable`), `refus_precision`, `refus_apres_acceptation` (« Je ne peux plus »), `hospitable_desassigne_le` / `hospitable_erreur` (PATCH /v2/tasks/{id} teammate_uuid=null), `traite_le`/`traite_par` (bureau).
+- Écriture : trigger `mission_acceptation_sync` (mission créée / réassignée / date changée / réactivée), RPC `mission_accepter(uuid[])`, `mission_refuser(uuid, motif, précision)` (AE propriétaire, mission non passée ni démarrée), `mission_acceptation_traiter(uuid)` (bureau), service_role (cron). RLS : lecture si la mission est visible ET (sa ligne, bureau ou manager).
+- Vues : `mission_acceptation_etat` (badges du Planning PowerHouse, `event_id` = `planning_events.id`), `missions_acceptation_a_signaler` (à lire par le Point du matin : `refus_a_reattribuer`, `derniere_minute_en_retard`, `en_attente_moins_48h`, colonne `agence`).
+- Ma journée (portail AE) n'affiche que les missions acceptées du jour ; la paie (`mission_menage.statut`) n'est pas concernée.
