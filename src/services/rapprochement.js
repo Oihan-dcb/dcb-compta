@@ -30,12 +30,20 @@ import { AGENCE } from '../lib/agence.js'
 
 // ── LECTURE ────────────────────────────────────────────────────
 
+// Compte COURANT de DCB (import Pennylane, source 'Powens_courant' — api/pennylane-courant-sync.js) : il ne
+// reçoit jamais de payin voyageur/plateforme (honoraires virés par DCB, paiements de propriétaires…) → exclu du
+// rapprochement des réservations, de ses statistiques et du matching auto (09/10/2026 : page Rapprochement
+// « polluée » par le courant depuis l'import de juin-octobre). Même convention que banque.js. Les rapprochements
+// de FACTURES (honoraires, débours) continuent, eux, de regarder les deux comptes.
+export const SOURCE_COURANT = 'Powens_courant'
+
 export async function getMouvementsMois(mois) {
   const { data, error } = await supabase
     .from('mouvement_bancaire')
     .select('*')
     .eq('mois_releve', mois)
     .eq('agence', AGENCE)
+    .or(`source.is.null,source.neq.${SOURCE_COURANT}`)
     .order('date_operation', { ascending: true })
   if (error) throw error
   const mouvements = data || []
@@ -556,7 +564,7 @@ export async function getResasEnAttentePayin(mois) {
 
 export async function getStatsRapprochement(mois) {
   const [{ data: m }, { data: r }] = await Promise.all([
-    supabase.from('mouvement_bancaire').select('statut_matching,credit,debit,canal').eq('mois_releve', mois).eq('agence', AGENCE),
+    supabase.from('mouvement_bancaire').select('statut_matching,credit,debit,canal').eq('mois_releve', mois).eq('agence', AGENCE).or(`source.is.null,source.neq.${SOURCE_COURANT}`),
     // bien!inner(agence) : sans ce filtre la tuile « Résas payin reçu » mélangeait les
     // résas des deux agences (ex. 93/141 affiché côté DCB au lieu de 78/125)
     supabase.from('reservation').select('rapprochee,final_status,bien!inner(agence)').eq('mois_comptable', mois)
@@ -1438,6 +1446,7 @@ export async function resetEtRematcher(mois) {
       .select('id')
       .eq('mois_releve', mois)
       .eq('agence', AGENCE)
+      .or(`source.is.null,source.neq.${SOURCE_COURANT}`)
       .in('statut_matching', ['rapproche', 'matche_auto'])
 
     if (!mouvements?.length) {

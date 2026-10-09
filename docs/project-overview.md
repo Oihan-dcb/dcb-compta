@@ -1723,3 +1723,11 @@ appelé que par les syncs Pennylane (`pennylane-courant-sync`, `pennylane-mouvem
 (relevés CSV importés à la main) → aucun remboursement de débours n'était jamais reconnu : Manivit (AMAÏA, débours juin
 2026, 200 €) payé le 15/07 mais relancé 3 fois. Désormais aussi lancé par le cron nightly `api/matching-auto.js`
 (chaque projet Vercel, donc DCB et Lauïan). Rattrapage exécuté : 1 facture rapprochée (Manivit).
+
+## Fix 09/10/2026 — Rapprochement pollué par le compte courant
+Depuis l'import du compte courant DCB (source `Powens_courant`, juin → octobre 2026), la page Rapprochement, ses tuiles
+et le matching auto des réservations lisaient AUSSI les mouvements du courant (honoraires virés par DCB, paiements de
+propriétaires — jamais de payin voyageur/plateforme). `src/services/rapprochement.js` : `SOURCE_COURANT`, exclu de
+`getMouvementsMois`, `getStatsRapprochement` et de la remise à zéro du mois ; compteur « virements en attente » de
+PageRapprochement filtré par agence (il mélangeait DCB et Lauïan) et sans le courant. Les rapprochements de FACTURES
+(honoraires, débours) regardent toujours les deux comptes. Même convention que `banque.js` et `verify-virements-sortants`.

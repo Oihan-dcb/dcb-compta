@@ -152,7 +152,7 @@ export default function PageRapprochement() {
       }
       const cutoff = new Date(Date.now() - 7*86400000).toISOString().slice(0,10)
       const [{ count: virCount }, resasNrRes] = await Promise.all([
-        supabase.from('mouvement_bancaire').select('*', { count: 'exact', head: true }).eq('mois_releve', mois).eq('statut_matching', 'en_attente').gt('credit', 0).lt('date_operation', cutoff),
+        supabase.from('mouvement_bancaire').select('*', { count: 'exact', head: true }).eq('mois_releve', mois).eq('agence', AGENCE).or('source.is.null,source.neq.Powens_courant').eq('statut_matching', 'en_attente').gt('credit', 0).lt('date_operation', cutoff),
         supabase.from('reservation')
           .select('id, code, platform, platform_id, guest_name, arrival_date, departure_date, fin_revenue, final_status, mois_comptable, ventilation_calculee, bien!inner(id, code, hospitable_name, agence, gestion_loyer), reservation_paiement(montant)')
           .eq('mois_comptable', mois)
