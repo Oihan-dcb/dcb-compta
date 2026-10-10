@@ -217,6 +217,21 @@ serve(async (req) => {
     ).join('<br>')
   }
 
+  // ── Séjours hors Hospitable (migration 399, Calendrier PowerHouse) : HomeExchange, famille… ─────
+  // Un ménage en face d'un tel séjour n'est pas « sans réservation » par erreur : il n'a simplement
+  // pas de résa Hospitable. Il reste signalé (le coût AE n'est toujours refacturé par aucun moteur),
+  // mais avec la bonne explication : « à refacturer au propriétaire » si le séjour le prévoit.
+  let hors: any[] = []
+  if (bienIds.length) {
+    const { data } = await supabase
+      .from('sejour_hors_hospitable')
+      .select('bien_id, date_debut, date_fin, note_blocage, menage_a_refacturer')
+      .is('annule_le', null)
+      .in('bien_id', bienIds)
+    hors = data || []
+  }
+  const horsPour = (m: any) => hors.find(h => h.bien_id === m.bien_id && h.date_debut <= m.date_mission && addDays(h.date_fin, FENETRE_RESA_JOURS) >= m.date_mission) || null
+
   // ── Clôture bien/mois : dit si une refacturation exige une réouverture ───────────────────
   const closSet = new Set<string>()
   if (bienIds.length) {
@@ -259,9 +274,11 @@ serve(async (req) => {
   const items: ItemAlerte[] = [
     ...orphelines.map(m => ({
       cle: `mission:${m.id}`,
-      libelle: `Ménage ${m.bien?.hospitable_name || m.bien?.code || '?'} du ${m.date_mission.split('-').reverse().join('/')} (${[m.ae?.prenom, m.ae?.nom].filter(Boolean).join(' ') || '—'}) sans réservation, coût AE non refacturé${closSet.has(`${m.bien_id}|${m.mois}`) ? ' — mois clos' : ''}${suggestionTexte(m)}`,
+      libelle: horsPour(m)
+        ? `Ménage ${m.bien?.hospitable_name || m.bien?.code || '?'} du ${m.date_mission.split('-').reverse().join('/')} (${[m.ae?.prenom, m.ae?.nom].filter(Boolean).join(' ') || '—'}) : séjour hors Hospitable « ${horsPour(m).note_blocage} »${horsPour(m).menage_a_refacturer ? ' — ménage à refacturer au propriétaire' : ' — ménage non refacturé (choix saisi dans le Calendrier)'}${closSet.has(`${m.bien_id}|${m.mois}`) ? ' — mois clos' : ''}`
+        : `Ménage ${m.bien?.hospitable_name || m.bien?.code || '?'} du ${m.date_mission.split('-').reverse().join('/')} (${[m.ae?.prenom, m.ae?.nom].filter(Boolean).join(' ') || '—'}) sans réservation, coût AE non refacturé${closSet.has(`${m.bien_id}|${m.mois}`) ? ' — mois clos' : ''}${suggestionTexte(m)}`,
       montant_cts: m.montant || 0,
-      detail: { mission_id: m.id, bien: m.bien?.code, mois: m.mois },
+      detail: { mission_id: m.id, bien: m.bien?.code, mois: m.mois, sejour_hors_hospitable: horsPour(m)?.note_blocage || null },
     })),
     ...sansBienRet.map(m => ({
       cle: `mission:${m.id}`,
