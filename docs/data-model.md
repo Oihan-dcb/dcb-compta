@@ -464,7 +464,7 @@ Prestations extras soumises par les AEs via le portail. Validées dans DCB Compt
 | `type_imputation` | text | `'deduction_loy'`, `'haowner'`, `'debours_proprio'`, `'dcb_direct'` | `deduction_loy` : déduit du reversement ✅. `haowner` : ligne HAOWNER TVA 20% dans la facture honoraires ✅. `debours_proprio` : absorption LOY bien-par-bien après AUTO + ligne DEBP avec TVA selon `ae.type` ✅ (CF-P1-BC, commit `b7bedc1`). `dcb_direct` : log interne `genererFacturesMois` uniquement — pas de facturation propriétaire, par conception ✅. |
 | `regime` | text | `'auto_dcb'` (défaut) ou `'sap'` | Axe FACTURATION (miroir de `mission_menage.regime`). `sap` = facturé en parallèle au crédit d'impôt (Service À la Personne) → **aucune imputation propriétaire** : exclu de `deduction_loy`/`debours_proprio` dans buildComptaMensuelle, buildRapportData, facturesEvoliz, PageFactures (juin 2026). |
 | `impute_salaire` | boolean | défaut false | Axe COÛT : true = couvert par le salaire d'un staff hybride (ex. Manon) → 0 débours AE. Indépendant de `regime`. |
-| `statut` | text | 'en_attente', 'valide', 'annule' | |
+| `statut` | text | 'en_attente', 'valide', 'annule', 'regle_hors_circuit' | `regle_hors_circuit` (migration 384, 10/10/2026) : extra déjà payé hors du circuit normal, mois clôturé intact — jamais imputé (tous les moteurs lisent `valide`), sorti des listes « en attente ». Posé seulement par la RPC `extra_regler_hors_circuit()` (bureau, motif obligatoire, journalisé dans `mission_journal`). |
 | `valide_par` | text | 'DCB' | |
 | `valide_at` | timestamptz | Date de validation | |
 | `created_at` | timestamptz | | |
@@ -1064,3 +1064,9 @@ jamais saisis, facture n°168 (700 €) payée par le séquestre sans mission.
 - Écriture : trigger `mission_acceptation_sync` (mission créée / réassignée / date changée / réactivée), RPC `mission_accepter(uuid[])`, `mission_refuser(uuid, motif, précision)` (AE propriétaire, mission non passée ni démarrée), `mission_acceptation_traiter(uuid)` (bureau), service_role (cron). RLS : lecture si la mission est visible ET (sa ligne, bureau ou manager).
 - Vues : `mission_acceptation_etat` (badges du Planning PowerHouse, `event_id` = `planning_events.id`), `missions_acceptation_a_signaler` (à lire par le Point du matin : `refus_a_reattribuer`, `derniere_minute_en_retard`, `en_attente_moins_48h`, colonne `agence`).
 - Ma journée (portail AE) n'affiche que les missions acceptées du jour ; la paie (`mission_menage.statut`) n'est pas concernée.
+
+
+### Hub des tâches — écarts Hospitable ↔ règles (migrations 384-386, 10/10/2026)
+- `mission_ecarts(p_du, p_au)` / vue `mission_ecart_v` (J-1 → J+21) / vue `mission_ecart_a_signaler` (en retard, pour le Point du matin, source `ecart_taches`) : `depart_sans_menage`, `menage_sans_sejour` (résa d'origine annulée seulement), `ae_conge` (staff_leave non récurrent + staff_off hors jours de repos récurrents), `refus_toujours_assigne`. Lecture service_role (PowerHouse api/mission-hub). Échéance `hub_echeance()` : J-2 18:00 Paris, ou 2 h après une cause apparue plus tard.
+- `mission_journal` : + `ecart_cle` (geste « c'est normal » = type `ecart_ignore`), + `prestation_id`, type `extra_regle_hors_circuit`. `staff_slug(prenom)` = `toStaffId()` PowerHouse (clé de staff_leave / staff_off).
+- Index `reservation(departure_date)` et `reservation(code)` (386).

@@ -1092,7 +1092,7 @@ export default function PageAutoEntrepreneurs() {
                               const statutBadge = isMission
                                 ? (m.montant ? <span style={{ fontSize: 11, color: '#16a34a' }}>✓</span> : <span style={{ fontSize: 11, color: '#d97706' }}>à saisir</span>)
                                 : <span style={{ padding: '2px 8px', borderRadius: 10, fontSize: 11, fontWeight: 600, background: `${STATUT_C[m.statut]}20`, color: STATUT_C[m.statut] || '#888' }}>
-                                    {m.statut === 'valide' ? '✓' : m.statut === 'annule' ? '✕' : '⏳'}
+                                    {m.statut === 'valide' || m.statut === 'regle_hors_circuit' ? '✓' : m.statut === 'annule' ? '✕' : '⏳'}
                                   </span>
                               return (
                                 <tr key={`${m._type}-${m.id}`} style={{ borderBottom: '1px solid #f3f4f6', background: isMission ? 'transparent' : '#FFFBF0' }}>

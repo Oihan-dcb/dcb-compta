@@ -6,8 +6,9 @@ import { useMoisCloture, BanniereCloture } from '../hooks/useMoisCloture'
 import { isMoisCloture } from '../services/cloture'
 import { frMois } from '../utils/dateFr'
 
-const STATUT_LABEL = { en_attente: 'En attente', valide: 'Validé', annule: 'Annulé' }
-const STATUT_COLOR = { en_attente: '#f59e0b', valide: '#16a34a', annule: '#dc2626' }
+// regle_hors_circuit (migration 384) : extra déjà payé hors circuit, mois clôturé intact, jamais imputé ni repayé
+const STATUT_LABEL = { en_attente: 'En attente', valide: 'Validé', annule: 'Annulé', regle_hors_circuit: 'Réglé hors circuit' }
+const STATUT_COLOR = { en_attente: '#f59e0b', valide: '#16a34a', annule: '#dc2626', regle_hors_circuit: '#8C7B65' }
 const IMPUTATION_LABEL = { deduction_loy: 'Déduction LOY proprio', debours_proprio: 'Facture débours proprio', dcb_direct: 'Facturé à DCB 🌅' }
 
 export default function PagePrestationsAE() {
@@ -268,6 +269,9 @@ export default function PagePrestationsAE() {
                     </span>
                     {p.regime === 'sap' && <span style={{ fontSize: 11, fontWeight: 700, background: '#F3E8FF', color: '#7C3AED', borderRadius: 4, padding: '2px 8px' }}>SAP · sans imputation proprio</span>}
                   </div>
+                  {p.statut === 'regle_hors_circuit' && (
+                    <div style={{ fontSize: 11, color: '#8C7B65', marginTop: 4 }}>Réglé hors circuit (déjà payé) — aucune déduction de loyer, rien à valider</div>
+                  )}
                   {p.valide_par && (
                     <div style={{ fontSize: 11, color: '#aaa', marginTop: 4 }}>
                       {p.statut === 'valide' ? 'Validé' : 'Annulé'} par {p.valide_par} le {new Date(p.valide_at).toLocaleDateString('fr-FR')}

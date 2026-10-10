@@ -25,6 +25,12 @@
  * Urgent (passe le week-end) : mission de dernière minute non acceptée, ou refus à réattribuer dont
  * la mission commence dans moins de 48 h.
  *
+ * Écarts planning ↔ Hospitable (Lot 3a du hub des tâches, 10/10/2026, migration 384) : la vue
+ * mission_ecart_a_signaler (EN RETARD seulement : AE en congé / jour off avec une mission, refus encore
+ * assigné dans Hospitable hors « Missions AE à réattribuer », ménage sans séjour) est publiée de la même
+ * façon (source 'ecart_taches', urgent). Les départs sans ménage n'y sont pas : alerte-sejour-sans-menage
+ * les signale déjà (pas de doublon).
+ *
  * Body : { agence?: 'dcb'|'lauian', dry_run?: true (rendu HTML renvoyé, aucune écriture),
  *          force?: true (ignore l'heure et l'anti-doublon), to?: string[] (test : remplace les
  *          destinataires, n'écrit rien en base — l'alerte reste « nouvelle » pour le vrai envoi),
@@ -44,8 +50,10 @@ const ECART_RAPPEL_ENSUITE = 7
 const MARGE_MS = 2 * 3600 * 1000     // tolérance d'horaire du cron
 
 const SOURCE_MISSIONS = 'mission_acceptation'
+const SOURCE_ECARTS = 'ecart_taches'
 const LIBELLES: Record<string, string> = {
   mission_acceptation: 'Missions AE à accepter ou à réattribuer',
+  ecart_taches: 'Planning ↔ Hospitable : écarts en retard',
   paiement_honoraires: 'Paiements reçus non enregistrés dans Evoliz',
   fraicheur_banque: 'Relevés bancaires muets',
   sequestre: 'Séquestre',
@@ -131,16 +139,30 @@ function itemsMissions(rows: any[]): Record<string, ItemAlerte[]> {
   }
   return out
 }
-// Sans écriture (dry_run / test) : ce que alerte_signaler() produirait, appliqué en mémoire
+// ── Écarts planning ↔ Hospitable en retard (vue mission_ecart_a_signaler, migration 384) ─────
 // deno-lint-ignore no-explicit-any
-function simulerSignalement(toutes: any[], items: Record<string, ItemAlerte[]>, agences: string[]) {
-  const garde = toutes.filter(a => a.source !== SOURCE_MISSIONS || !agences.includes(a.agence))
-  for (const ag of agences) {
-    const existants = new Map(toutes.filter(a => a.source === SOURCE_MISSIONS && a.agence === ag).map(a => [a.cle, a]))
-    for (const it of items[ag] || []) {
+function itemsEcarts(rows: any[]): Record<string, ItemAlerte[]> {
+  const out: Record<string, ItemAlerte[]> = { dcb: [], lauian: [] }
+  for (const r of rows) {
+    const ag = r.agence === 'lauian' ? 'lauian' : 'dcb'
+    const bien = r.bien_code || r.bien_nom || 'bien ?'
+    const quand = quandMission(r.date_ref, r.heure)
+    out[ag].push({ cle: r.cle, libelle: `⚠️ ${bien}, ${quand} — ${r.pourquoi} (à régler avant le ${leFr(r.echeance)})`, montant_cts: null,
+      detail: { urgent: true, genre: r.genre, mission_id: r.mission_id, debut: parisVersUtc(r.date_ref, r.heure).toISOString(), bien } })
+  }
+  return out
+}
+// Sans écriture (dry_run / test) : ce que alerte_signaler() produirait, appliqué en mémoire (une ou plusieurs sources)
+// deno-lint-ignore no-explicit-any
+function simulerSignalement(toutes: any[], parSourceItems: Record<string, Record<string, ItemAlerte[]>>, agences: string[]) {
+  const sources = Object.keys(parSourceItems)
+  const garde = toutes.filter(a => !sources.includes(a.source) || !agences.includes(a.agence))
+  for (const source of sources) for (const ag of agences) {
+    const existants = new Map(toutes.filter(a => a.source === source && a.agence === ag).map(a => [a.cle, a]))
+    for (const it of parSourceItems[source][ag] || []) {
       const ex = existants.get(it.cle)
       garde.push(ex ? { ...ex, libelle: it.libelle, detail: it.detail }
-        : { id: 'sim:' + ag + ':' + it.cle, source: SOURCE_MISSIONS, agence: ag, cle: it.cle, libelle: it.libelle, montant_cts: null, detail: it.detail,
+        : { id: 'sim:' + source + ':' + ag + ':' + it.cle, source, agence: ag, cle: it.cle, libelle: it.libelle, montant_cts: null, detail: it.detail,
             first_seen: new Date().toISOString(), last_seen: new Date().toISOString(), resolved_at: null, last_notified_at: null, nb_notifications: 0 })
     }
   }
@@ -211,10 +233,25 @@ serve(async (req) => {
     }
   }
 
+  // Écarts planning ↔ Hospitable en retard → alerte_etat (source 'ecart_taches', même mécanique)
+  const { data: rowsEcarts, error: errEcarts } = await supabase.from('mission_ecart_a_signaler').select('*').order('date_ref')
+  const itemsE = itemsEcarts(rowsEcarts || [])
+  if (errEcarts) {
+    await supabase.from('journal_ops').insert({ categorie: 'alerte', action: 'point_du_matin', source: 'cron', statut: 'error', message: `mission_ecart_a_signaler illisible : ${errEcarts.message}` })
+  } else if (ecrire) {
+    for (const ag of agences) {
+      try { await signaler(supabase, SOURCE_ECARTS, ag, itemsE[ag] || []) }
+      catch (e) { await supabase.from('journal_ops').insert({ categorie: 'alerte', action: 'point_du_matin', source: 'cron', statut: 'error', message: String((e as Error).message || e).slice(0, 300) }) }
+    }
+  }
+
   // Ouvertes de toutes les agences (ligne de synthèse Lauïan dans le point DCB)
   const { data: lues, error } = await supabase.from('alerte_etat').select('*').is('resolved_at', null)
   if (error) return json({ error: error.message }, 500)
-  const toutes = !ecrire && !errMissions ? simulerSignalement(lues || [], itemsM, agences) : (lues || [])
+  const aSimuler: Record<string, Record<string, ItemAlerte[]>> = {}
+  if (!errMissions) aSimuler[SOURCE_MISSIONS] = itemsM
+  if (!errEcarts) aSimuler[SOURCE_ECARTS] = itemsE
+  const toutes = !ecrire ? simulerSignalement(lues || [], aSimuler, agences) : (lues || [])
 
   for (const agence of agences) {
     if (!dryRun && !body.force && !test) {
