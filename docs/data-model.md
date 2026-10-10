@@ -438,7 +438,7 @@ Missions de ménage créées depuis le calendrier iCal Hospitable de chaque AE.
 | `ical_uid` | text UNIQUE | UID de l'événement iCal | Clé de conflit pour l'upsert |
 | `mois` | text | Format YYYY-MM | |
 | `statut` | text | `planifie` / `prevu` / `en_cours` / `valide` / `refuse` / `cancelled` | ⚠ **Statut de VALIDATION ADMINISTRATIVE pour la paie AE, PAS un signal de ménage terminé.** `valide` = l'admin a coché la mission pour déclencher la facturation, souvent plusieurs jours après le ménage réel. Pour savoir si un logement est physiquement prêt, lire `bien_pret_jour` (migration 243) — voir invariant I-133. |
-| `type_mission` | text | 'cleaning', 'checkin' | Déduit du titre iCal |
+| `type_mission` | text | 'checkout', 'checkin', 'recouche', 'fond', 'autre' | Déduit du titre iCal ; 'recouche' = tâche « Maintenance » dont la note iCal contient « recouche » (379) |
 | `ventilation_auto_id` | uuid FK → ventilation | Lien vers la ligne ventilation AUTO de la réservation correspondante | ON DELETE SET NULL (migration 002 — session 07/04/2026). Null si non lié. RPC `lier_ventilation_auto_mission` crée ce lien après chaque ventilation. |
 | `reservation_id` | uuid FK → reservation | Réservation associée (déduit du iCal) | Peut être null si ical_code non trouvé |
 | `created_at` | timestamptz | | |
@@ -1006,6 +1006,7 @@ La durée est écrite dans `mission_menage` par `dcb-portail-ae/src/lib/missionD
 - **323** `mission_terrain.duree_declaree_minutes` + RPC `terrain_declarer_duree` : l'AE déclare son temps sur place (base de paie plafonnée au prévu) ; le chrono (`duree_minutes`) reste un contrôle bureau.
 - **375** `mission_terrain.start_geo_statut` / `end_geo_statut` (`ok`/`refusee`/`delai`/`indisponible`/`non_supporte`/`ignoree`, NULL = ancienne app) : raison d'une position GPS absente, paramètre `p_geo_statut` (défaut NULL, rétrocompatible) de `terrain_demarrer` / `terrain_terminer` ; vue `terrain_geo_refus_ae` (security_invoker, 30 j) pour signaler les refus répétés dans PowerHouse.
 - **376** `mission_terrain.start_position_approx` / `end_position_approx` (jsonb `{source:'ip', lat, lng, ville, region, pays, at}`) : repli APPROXIMATIF réseau écrit par `dcb-portail-ae/api/terrain-geo-ip.js` (en-têtes `x-vercel-ip-*`) seulement si la position GPS correspondante est NULL, dans les 15 min. Jamais mélangé au GPS ; indicatif (IP mobile = souvent la ville de l'opérateur), jamais de contrôle de présence automatique.
+- **379** Lot 0 hub tâches terrain : `mission_menage.type_mission` accepte `recouche` (sync-ical-ae lit « Notes: » de la DESCRIPTION) ; trigger `trg_manual_missions_suivre_etat` (mission_state → `manual_missions.status`, `deleted`) ; `mission_terrain.fin_oubliee` / `fin_motif` + RPC `terrain_terminer_oubli(p_mission_id, p_fin, p_motif)` : `terrain_terminer` refuse (`fin_a_declarer`) une fin > 12 h ou un autre jour (`_terrain_fin_hors_delai`), l'AE déclare l'heure réelle de fin.
 
 ## Ajout 2026-10-06 — `com_rattrapage` (migration 336)
 

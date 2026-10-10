@@ -47,7 +47,7 @@ Deno.serve(async (req) => {
       null
 
     // Normaliser les events du périmètre
-    type Ev = { uid: string | null; titre: string; dateStr: string; mois: string; bien: any; duree: number | null; heure: string | null; cancelled: boolean; isCleaningCheckout: boolean; isCheckin: boolean }
+    type Ev = { uid: string | null; titre: string; dateStr: string; mois: string; bien: any; duree: number | null; heure: string | null; cancelled: boolean; isCleaningCheckout: boolean; isCheckin: boolean; isRecouche: boolean }
     const evs: Ev[] = []
     for (const e of events) {
       const titre = e.summary || ''
@@ -69,6 +69,9 @@ Deno.serve(async (req) => {
         cancelled: e.status?.toUpperCase() === 'CANCELLED',
         isCleaningCheckout: titreLC.startsWith('cleaning') || titreLC.startsWith('check-out') || titreLC.startsWith('checkout'),
         isCheckin: titreLC.startsWith('check-in') || titreLC.startsWith('checkin'),
+        // Recouche (migration 379) : Hospitable n'a pas ce type → tâche « Maintenance » + note
+        // (« ménage de recouche… »), lue dans la DESCRIPTION de l'iCal (partie « Notes: »).
+        isRecouche: titreLC.startsWith('maintenance') && /recouche/i.test(notesTache(e.description)),
       })
     }
 
@@ -156,7 +159,7 @@ Deno.serve(async (req) => {
         titre_ical: e.titre,
         ical_uid: e.uid,
         mois: e.mois,
-        type_mission: e.isCheckin ? 'checkin' : (e.isCleaningCheckout ? 'checkout' : 'autre'),
+        type_mission: e.isCheckin ? 'checkin' : (e.isCleaningCheckout ? 'checkout' : (e.isRecouche ? 'recouche' : 'autre')),
         imputation: 'ventilation_dcb',
         duree_prevue: e.duree,
         heure_mission: e.heure,
@@ -238,11 +241,21 @@ function parseIcal(text) {
       if (key === 'dtstart') current.dtstart = val
       else if (key === 'dtend') current.dtend = val
       else if (key === 'summary') current.summary = val
+      else if (key === 'description') current.description = val
       else if (key === 'uid') current.uid = val
       else if (key === 'status') current.status = val
     }
   }
   return events
+}
+
+// « …\n\nNotes: ménage de recouche sans changement de linge » → texte après « Notes: » (iCal échappe
+// les retours ligne en \n littéral). Seule la note de la tâche est lue (jamais les données voyageur).
+function notesTache(description?: string): string {
+  if (!description) return ''
+  const d = description.replace(/\\n/g, '\n').replace(/\\,/g, ',').replace(/\\;/g, ';')
+  const i = d.search(/(^|\n)Notes:/)
+  return i < 0 ? '' : d.slice(i).replace(/^\n?Notes:\s*/, '')
 }
 
 function parseDatetime(s: string): Date | null {
