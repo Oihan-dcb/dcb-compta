@@ -220,7 +220,7 @@ serve(async (req) => {
   // ── Séjours hors Hospitable (migration 399, Calendrier PowerHouse) : HomeExchange, famille… ─────
   // Un ménage en face d'un tel séjour n'est pas « sans réservation » par erreur : il n'a simplement
   // pas de résa Hospitable. Il reste signalé (le coût AE n'est toujours refacturé par aucun moteur),
-  // mais avec la bonne explication : « à refacturer au propriétaire » si le séjour le prévoit.
+  // mais avec la bonne explication : refacturé / non refacturé / question sans réponse (au cas par cas, migration 400).
   let hors: any[] = []
   if (bienIds.length) {
     const { data } = await supabase
@@ -275,7 +275,7 @@ serve(async (req) => {
     ...orphelines.map(m => ({
       cle: `mission:${m.id}`,
       libelle: horsPour(m)
-        ? `Ménage ${m.bien?.hospitable_name || m.bien?.code || '?'} du ${m.date_mission.split('-').reverse().join('/')} (${[m.ae?.prenom, m.ae?.nom].filter(Boolean).join(' ') || '—'}) : séjour hors Hospitable « ${horsPour(m).note_blocage} »${horsPour(m).menage_a_refacturer ? ' — ménage à refacturer au propriétaire' : ' — ménage non refacturé (choix saisi dans le Calendrier)'}${closSet.has(`${m.bien_id}|${m.mois}`) ? ' — mois clos' : ''}`
+        ? `Ménage ${m.bien?.hospitable_name || m.bien?.code || '?'} du ${m.date_mission.split('-').reverse().join('/')} (${[m.ae?.prenom, m.ae?.nom].filter(Boolean).join(' ') || '—'}) : séjour hors Hospitable « ${horsPour(m).note_blocage} »${horsPour(m).menage_a_refacturer === true ? ' — ménage refacturé au propriétaire (séjour propriétaire)' : horsPour(m).menage_a_refacturer === false ? ' — ménage non refacturé (choix saisi)' : ' — refacturer le ménage au propriétaire ? QUESTION SANS RÉPONSE (Calendrier ou « À faire » du hub)'}${closSet.has(`${m.bien_id}|${m.mois}`) ? ' — mois clos' : ''}`
         : `Ménage ${m.bien?.hospitable_name || m.bien?.code || '?'} du ${m.date_mission.split('-').reverse().join('/')} (${[m.ae?.prenom, m.ae?.nom].filter(Boolean).join(' ') || '—'}) sans réservation, coût AE non refacturé${closSet.has(`${m.bien_id}|${m.mois}`) ? ' — mois clos' : ''}${suggestionTexte(m)}`,
       montant_cts: m.montant || 0,
       detail: { mission_id: m.id, bien: m.bien?.code, mois: m.mois, sejour_hors_hospitable: horsPour(m)?.note_blocage || null },

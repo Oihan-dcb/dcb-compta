@@ -14,6 +14,11 @@
  *     → recalcule une réservation individuelle
  *     → retourne { ok: true }
  *
+ *   { simulation: { bien_id, platform?: 'manual', accommodation, fees: [{ label, amount, fee_type }] } }
+ *     → SIMULATION (11/10/2026, fiche bien PowerHouse / résa manuelle) : une résa HYPOTHÉTIQUE passée au noyau
+ *       partagé _calculerLignes — rien n'est lu ni écrit côté réservation/ventilation. Réservé au staff.
+ *     → retourne { ok, lignes: [{ code, libelle, montant_ht, montant_ttc }] }
+ *
  * Auth : Bearer JWT Supabase valide requis (tout utilisateur authentifié).
  */
 
@@ -40,6 +45,15 @@ async function verifyToken(token) {
     headers: { apikey: SUPABASE_ANON_KEY, Authorization: 'Bearer ' + token },
   })
   return r.ok
+}
+
+// Staff seulement pour la simulation (taux de commission du bien / du propriétaire). Secrets serveur acceptés.
+async function estStaff(token) {
+  if (token && SERVER_SECRETS.some(sec => sec.length === token.length && crypto.timingSafeEqual(Buffer.from(sec), Buffer.from(token)))) return true
+  const r = await fetch(`${SUPABASE_URL}/rest/v1/rpc/auth_user_is_staff`, {
+    method: 'POST', headers: { apikey: SUPABASE_ANON_KEY, Authorization: 'Bearer ' + token, 'Content-Type': 'application/json' }, body: '{}',
+  })
+  return r.ok && (await r.json().catch(() => false)) === true
 }
 
 // ── Détection ajustements Hospitable (Resolution Center) — voir migration 222 ─
@@ -415,6 +429,32 @@ export default async function handler(req, res) {
   const supa = createClient(SUPABASE_URL, SUPABASE_SRK)
 
   try {
+    // ── Mode simulation (résa hypothétique, aucune écriture) ───────────────────
+    if (req.body?.simulation) {
+      if (!(await estStaff(token))) return res.status(403).json({ error: 'Réservé au staff' })
+      const sim = req.body.simulation
+      const { data: bien, error: bErr } = await supa.from('bien').select(`
+        id, proprietaire_id, provision_ae_ref, forfait_dcb_ref, has_ae,
+        taux_commission_override, gestion_loyer, agence, skip_facturation,
+        proprietaire!proprietaire_id (id, taux_commission)
+      `).eq('id', sim.bien_id).single()
+      if (bErr || !bien) return res.status(404).json({ error: 'Bien introuvable' })
+      const platform = ['direct', 'manual', 'airbnb', 'booking'].includes(sim.platform) ? sim.platform : 'manual'
+      const fees = (Array.isArray(sim.fees) ? sim.fees : [])
+        .filter(f => f && Number.isFinite(Number(f.amount)) && Number(f.amount) !== 0)
+        .map(f => ({ label: String(f.label || '').slice(0, 80), amount: Math.round(Number(f.amount)),
+          fee_type: ['guest_fee', 'host_fee', 'tax'].includes(f.fee_type) ? f.fee_type : 'guest_fee' }))
+      const accommodation = Math.round(Number(sim.accommodation) || 0)
+      const revenue = accommodation + fees.filter(f => f.fee_type !== 'tax').reduce((t, f) => t + f.amount, 0)
+      const resa = { id: null, code: 'SIMULATION', platform, final_status: 'accepted', guest_name: '', mois_comptable: null,
+        fin_accommodation: accommodation, fin_revenue: revenue, reservation_fee: fees, reservation_ajustement: [], bien }
+      const { lignes } = _calculerLignes(resa, bien.agence || 'dcb')
+      return res.json({ ok: true, simulation: true, taux_commission: bien.taux_commission_override
+          || (bien.proprietaire?.taux_commission ? bien.proprietaire.taux_commission / 100 : null) || 0.25,
+        skip_facturation: !!bien.skip_facturation,
+        lignes: lignes.map(l => ({ code: l.code, libelle: l.libelle, montant_ht: l.montant_ht, montant_ttc: l.montant_ttc })) })
+    }
+
     // ── Mode mois complet ──────────────────────────────────────────────────────
     if (mois) {
       const result = await processMois(mois, agence, supa, dryRun)

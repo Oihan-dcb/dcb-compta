@@ -1038,3 +1038,9 @@ alertes Lauïan sur une boîte perso). Règles en vigueur :
   attente à moins de 48 h ; clôture auto quand la mission est acceptée, réattribuée, traitée ou passée.
   Urgent (week-end) : dernière minute non acceptée, ou refus à réattribuer d'une mission qui commence
   dans moins de 48 h. En `dry_run` / test (`to`) rien n'est écrit : le signalement est simulé en mémoire.
+
+## 21. Séjours hors Hospitable : refacturation du ménage au cas par cas (11/10/2026, migration 400)
+Décision d'Oïhan : pas de règle automatique. À la saisie (Calendrier PowerHouse) et dans « À faire » du hub quand le ménage arrive : « Refacturer le ménage au propriétaire ? » Oui (montant pré-rempli = `bien.forfait_menage_proprio`) / Non (motif) / plus tard. Tant que non répondu : **rien n'est facturé**. « Oui » = le séjour devient un **séjour propriétaire comptable** (ligne `reservation` HORS-…, owner_stay) : même ventilation FMEN/AUTO, même facture débours, même rapport, même règle « annulé avant l'arrivée = sans frais ». Biens gratuits famille (AITA/VIKY, LAGREOU/ASKIDA) : rien de spécial dans le moteur — c'est la réponse (Non + motif « famille ») qui décide ; pour LAGREOU/ASKIDA `skip_facturation` neutralise de toute façon FMEN.
+
+## 22. Simulation de ventilation (api/ventiler.js, mode `simulation`, 11/10/2026)
+Une résa HYPOTHÉTIQUE passée au noyau `_calculerLignes` (aucune lecture/écriture de réservation) : sert à la fiche bien PowerHouse (« Pour un séjour type ») et à l'étape montant des résas manuelles (« Qui touche quoi ? »). Staff uniquement. Propriétaire = LOY, DCB = HON + FMEN + COM (TTC), AE = AUTO, taxe = TAXE.
