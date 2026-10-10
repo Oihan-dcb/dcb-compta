@@ -744,6 +744,9 @@ export default function PageBiens() {
                       <option value="3_etoiles">3 ★</option>
                       <option value="4_etoiles">4 ★</option>
                       <option value="5_etoiles">5 ★</option>
+                      <option value="palace">Palace</option>
+                      <option value="chambre_hotes">Chambre d'hôtes</option>
+                      <option value="autre">Autre catégorie</option>
                     </select>
                     {bien.classification && bien.classification !== 'non_classe' && (() => {
                       const today = new Date().toISOString().slice(0, 10)

@@ -1044,3 +1044,11 @@ Décision d'Oïhan : pas de règle automatique. À la saisie (Calendrier PowerHo
 
 ## 22. Simulation de ventilation (api/ventiler.js, mode `simulation`, 11/10/2026)
 Une résa HYPOTHÉTIQUE passée au noyau `_calculerLignes` (aucune lecture/écriture de réservation) : sert à la fiche bien PowerHouse (« Pour un séjour type ») et à l'étape montant des résas manuelles (« Qui touche quoi ? »). Staff uniquement. Propriétaire = LOY, DCB = HON + FMEN + COM (TTC), AE = AUTO, taxe = TAXE.
+
+## 23. Taxe de séjour réglée PAR BIEN (11/10/2026, migration 401)
+Décision d'Oïhan : « il faut pouvoir configurer CHAQUE BIEN, car la taxe est définie par les étoiles ».
+- **Réglage sur le bien** (fiche PowerHouse 💶 Tarifs & frais › Taxe de séjour, ou PageBiens pour le classement) : `classification` (non classé, 1★…5★, palace, chambre d'hôtes, autre), `classification_confirmee`, dates de classement (5 ans), `taxe_commune` (repli `ville`), `taxe_regime` (réel / forfait), `taxe_collecte` par canal (Airbnb = plateforme ; Booking / Direct = nous par défaut), `taxe_tarif_saisi` (« autre » catégorie).
+- **Barème** = `taxe_sejour_config` (commune × catégorie × année, donnée légale ; lecture staff, écriture bureau) — retenu quelle que soit l'agence (même agence d'abord, année la plus proche).
+- **Calcul** (CGCT L2333-29 s.) : classé = tarif €/personne/nuit, taxes additionnelles comprises (Biarritz 1★ 1,15 € = 0,80 × 1,44) × ADULTES × nuits ; non classé = taux (1 à 5 %) × coût HT de la nuitée PAR OCCUPANT (enfants compris dans la division), plafonné au tarif le plus élevé voté par la commune (part communale, Biarritz 4,90 €), × coefficient additionnel (+10 % département, +34 % région → 1,44), × adultes × nuits. Exonérés : mineurs, saisonniers employés dans la commune, hébergement d'urgence. Classement expiré → non classé. Chambre d'hôtes → ligne 1★ si pas de ligne propre. Régime au forfait → rien facturé au voyageur.
+- Une seule règle, deux implémentations à garder alignées : SQL `taxe_sejour_bien(bien, jour)` (PowerHouse : résas manuelles, séjour type, fiche) et `src/lib/taxeSejour.js` (PageTaxeSejour). **La ventilation n'est pas concernée** : la ligne TAXE vient des taxes facturées par Hospitable.
+- PageTaxeSejour : Booking exclu pour un bien dont `taxe_collecte.booking = 'plateforme'` ; « Due » calculée sur les adultes (guests.adult_count Hospitable).

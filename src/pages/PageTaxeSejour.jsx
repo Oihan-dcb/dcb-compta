@@ -2,17 +2,11 @@ import { useState, useEffect } from 'react'
 import { supabase } from '../lib/supabase'
 import { AGENCE } from '../lib/agence'
 import { STATUTS_NON_VENTILABLES } from '../lib/constants'
+import { CLASSEMENTS, CLASSEMENT_LABEL, communeTaxe, classementEffectif, choisirBareme, calculTaxeResa } from '../lib/taxeSejour'
 
-const CLASSIFICATIONS = [
-  { value: 'non_classe', label: 'Non classé' },
-  { value: '1_etoile',   label: '1 ★' },
-  { value: '2_etoiles',  label: '2 ★' },
-  { value: '3_etoiles',  label: '3 ★' },
-  { value: '4_etoiles',  label: '4 ★' },
-  { value: '5_etoiles',  label: '5 ★' },
-]
-
-const CLASS_LABEL = Object.fromEntries(CLASSIFICATIONS.map(c => [c.value, c.label]))
+// Catégories du barème (taxe_sejour_config) : « autre » n'a pas de ligne de barème (tarif saisi sur le bien).
+const CLASSIFICATIONS = CLASSEMENTS.filter(c => c.value !== 'autre')
+const CLASS_LABEL = CLASSEMENT_LABEL
 
 function getQuarterRange(year, quarter) {
   const starts = { 1: '01', 2: '04', 3: '07', 4: '10' }
@@ -24,26 +18,9 @@ function getQuarterRange(year, quarter) {
   }
 }
 
-// Taxe théorique d'une résa selon le tarif de la commune (en euros).
-// - Classé (forfait) : tarif €/pers/nuit, déjà TTC (taxes additionnelles incluses : 1★ 1,15 € =
-//   0,80 € × 1,44 à Biarritz) → tarif × personnes × nuits.
-// - Non classé (pourcentage) : le taux s'applique au coût HT de la nuitée PAR PERSONNE (CGCT
-//   L2333-30), plafonné, puis × coefficient additionnel. Avant le 24/09/2026 le taux était appliqué
-//   au prix de la nuit du logement entier puis × personnes → taxe surestimée dès que le plafond
-//   n'était pas atteint (300 €/nuit à 4 : 19,60 € au lieu de 15,00 €).
-// Mineurs exonérés mais non connus (Hospitable ne donne que le total de voyageurs).
-function calculTaxe(resa, config) {
-  if (!config) return null
-  const nbPersonnes = resa.guest_count || 1
-  const nbNuits = resa.nights || 1
-  if (config.type_calcul === 'forfait') {
-    return config.tarif_pers_nuit * nbPersonnes * nbNuits
-  }
-  // fin_accommodation stocké en centimes
-  const prixNuitParPers = (resa.fin_accommodation || 0) / 100 / nbNuits / nbPersonnes
-  const partParPersParNuit = Math.min(prixNuitParPers * (config.taux_pct / 100), config.plafond_ht)
-  return partParPersParNuit * (config.coeff_additionnel || 1) * nbPersonnes * nbNuits
-}
+// Taxe théorique d'une résa : réglage PAR BIEN (commune, classement, régime — migration 401) + barème de la
+// commune, règle commune avec PowerHouse : src/lib/taxeSejour.js (classé : tarif TTC × adultes × nuits ; non
+// classé : taux × coût HT de la nuitée par occupant, plafonné, × coefficient additionnel, × adultes × nuits).
 
 function fmt(n) {
   return n == null ? '—' : n.toFixed(2) + ' €'
@@ -60,7 +37,8 @@ export default function PageTaxeSejour() {
   const [taxeEncaissee, setTaxeEncaissee] = useState({}) // reservation_id → euros (ventilation TAXE)
   // Service pas encore lancé : aucun bien n'a gestion_taxe_sejour → aperçu sur tous les biens
   const [apercu, setApercu] = useState(true)
-  const [configs, setConfigs] = useState([]) // taxe_sejour_config rows
+  const [configs, setConfigs] = useState([]) // taxe_sejour_config rows de l'agence (onglet Tarifs)
+  const [configsToutes, setConfigsToutes] = useState([]) // toutes agences : le barème est celui de la commune
   const [loading, setLoading] = useState(false)
   const [editingConfig, setEditingConfig] = useState(null)
   const [formConfig, setFormConfig] = useState({})
@@ -78,7 +56,7 @@ export default function PageTaxeSejour() {
 
     const [{ data: biensData }, { data: resaData }] = await Promise.all([
       supabase.from('bien')
-        .select('id, code, hospitable_name, ville, classification, agence, listed, gestion_taxe_sejour')
+        .select('id, code, hospitable_name, ville, classification, classification_date, classification_fin, agence, listed, gestion_taxe_sejour, taxe_commune, taxe_regime, taxe_collecte, taxe_tarif_saisi')
         .eq('agence', AGENCE)
         .eq('listed', true)
         .order('code'),
@@ -87,7 +65,7 @@ export default function PageTaxeSejour() {
       // Avant : platform='direct' seulement (manuel + Booking oubliés, ~la moitié de la taxe)
       // et résas annulées comptées.
       supabase.from('reservation')
-        .select('id, bien_id, guest_name, guest_count, arrival_date, departure_date, nights, fin_accommodation, platform, final_status, owner_stay')
+        .select('id, bien_id, guest_name, guest_count, adultes:hospitable_raw->guests->>adult_count, arrival_date, departure_date, nights, fin_accommodation, platform, final_status, owner_stay')
         .eq('agence', AGENCE)
         .neq('platform', 'airbnb')
         .gte('arrival_date', debut)
@@ -95,7 +73,10 @@ export default function PageTaxeSejour() {
         .order('arrival_date'),
     ])
 
-    const resas = (resaData || []).filter(r => !STATUTS_NON_VENTILABLES.includes(r.final_status) && !r.owner_stay)
+    // Booking : exclu quand la fiche du bien dit que la plateforme collecte elle-même (réglage par bien, 401).
+    const collecteParBien = Object.fromEntries((biensData || []).map(b => [b.id, b.taxe_collecte || {}]))
+    const resas = (resaData || []).filter(r => !STATUTS_NON_VENTILABLES.includes(r.final_status) && !r.owner_stay
+      && !(r.platform === 'booking' && collecteParBien[r.bien_id]?.booking === 'plateforme'))
     // Taxe réellement encaissée auprès du voyageur = lignes TAXE de la ventilation
     const encaisse = {}
     for (let i = 0; i < resas.length; i += 200) {
@@ -115,22 +96,16 @@ export default function PageTaxeSejour() {
   async function chargerConfigs() {
     const { data } = await supabase.from('taxe_sejour_config')
       .select('*')
-      .eq('agence', AGENCE)
       .order('commune').order('classification')
-    setConfigs(data || [])
+    setConfigsToutes(data || [])
+    setConfigs((data || []).filter(c => c.agence === AGENCE))
   }
 
-  function getConfig(ville, classification) {
-    const anneeConfig = annee
-    return configs.find(c =>
-      c.commune?.toLowerCase() === (ville || '').toLowerCase() &&
-      c.classification === classification &&
-      c.annee === anneeConfig
-    ) || configs.find(c =>
-      c.commune?.toLowerCase() === (ville || '').toLowerCase() &&
-      c.classification === classification
-    )
+  // Barème du bien pour l'année déclarée (classement en vigueur au début du trimestre).
+  function getConfig(bien) {
+    return choisirBareme(configsToutes, bien, annee, getQuarterRange(annee, trimestre).debut)
   }
+  const calculTaxe = (r, config, bien) => calculTaxeResa(r, config, bien)
 
   async function sauvegarderConfig(id, champ, valeur) {
     setSaving(true)
@@ -174,10 +149,11 @@ export default function PageTaxeSejour() {
   let totalGlobal = 0, totalEncaisse = 0
   const tarifsManquants = new Set()
   for (const b of biensAffiches) {
-    const config = getConfig(b.ville, b.classification || 'non_classe')
-    if (!config) tarifsManquants.add(`${b.ville || '(commune vide)'} — ${CLASS_LABEL[b.classification || 'non_classe']}`)
+    const config = getConfig(b)
+    const eff = classementEffectif(b, getQuarterRange(annee, trimestre).debut)
+    if (!config && b.taxe_regime !== 'forfait' && !(eff === 'autre' && b.taxe_tarif_saisi != null)) tarifsManquants.add(`${communeTaxe(b) || '(commune vide)'} — ${CLASS_LABEL[eff]}`)
     for (const r of resaParBien[b.id]) {
-      totalGlobal += calculTaxe(r, config) || 0
+      totalGlobal += calculTaxe(r, config, b) || 0
       totalEncaisse += taxeEncaissee[r.id] || 0
     }
   }
@@ -261,7 +237,7 @@ export default function PageTaxeSejour() {
           <div style={{ background: 'var(--brand-pale)', border: '1px solid #E4A853', borderRadius: 8, padding: '10px 16px', marginBottom: 12, fontSize: 12, color: '#92400E' }}>
             ℹ️ Service <strong>pas encore lancé</strong> : aujourd'hui la taxe encaissée est reversée au propriétaire avec son loyer, qui la déclare lui-même.
             Résas prises en compte : directes, manuelles et Booking (Booking ne reverse pas la taxe lui-même) — Airbnb la collecte et la reverse seul. Annulations et séjours propriétaires exclus.
-            « Encaissée » = taxe réellement facturée au voyageur ; « Due » = calcul selon le tarif de la commune (mineurs non déduits : Hospitable ne donne que le total de voyageurs).
+            « Encaissée » = taxe réellement facturée au voyageur ; « Due » = calcul selon le réglage taxe de séjour du bien (commune, classement, régime — fiche du bien dans PowerHouse) et le barème de la commune ; adultes seulement (mineurs exonérés, nombre d'adultes donné par Hospitable).
           </div>
           {tarifsManquants.size > 0 && (
             <div style={{ background: '#FEE2E2', borderRadius: 8, padding: '10px 16px', marginBottom: 20, fontSize: 12, color: '#B91C1C' }}>
@@ -278,9 +254,11 @@ export default function PageTaxeSejour() {
           )}
 
           {biensAffiches.map(b => {
-            const config = getConfig(b.ville, b.classification || 'non_classe')
+            const config = getConfig(b)
+            const eff = classementEffectif(b, getQuarterRange(annee, trimestre).debut)
             const resas = resaParBien[b.id] || []
-            const totalBien = resas.reduce((s, r) => s + (calculTaxe(r, config) || 0), 0)
+            const totalBien = resas.reduce((s, r) => s + (calculTaxe(r, config, b) || 0), 0)
+            const regle = b.taxe_regime === 'forfait' || config || (eff === 'autre' && b.taxe_tarif_saisi != null)
             const encaisseBien = resas.reduce((s, r) => s + (taxeEncaissee[r.id] || 0), 0)
 
             return (
@@ -288,10 +266,11 @@ export default function PageTaxeSejour() {
                 <div style={{ background: 'var(--header-bg)', padding: '10px 16px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', borderBottom: '2px solid var(--brand)' }}>
                   <div>
                     <span style={{ fontWeight: 700, fontSize: 14 }}>🏠 {b.code}</span>
-                    <span style={{ fontSize: 12, color: 'var(--text-muted)', marginLeft: 10 }}>{b.ville}</span>
-                    <span style={{ fontSize: 11, background: config ? '#DCFCE7' : '#FEE2E2', color: config ? '#15803D' : '#B91C1C', borderRadius: 4, padding: '2px 7px', marginLeft: 8, fontWeight: 600 }}>
-                      {CLASS_LABEL[b.classification || 'non_classe']}
-                      {!config && ' ⚠ tarif manquant'}
+                    <span style={{ fontSize: 12, color: 'var(--text-muted)', marginLeft: 10 }}>{communeTaxe(b)}</span>
+                    <span style={{ fontSize: 11, background: regle ? '#DCFCE7' : '#FEE2E2', color: regle ? '#15803D' : '#B91C1C', borderRadius: 4, padding: '2px 7px', marginLeft: 8, fontWeight: 600 }}>
+                      {CLASS_LABEL[eff]}{eff !== (b.classification || 'non_classe') ? ' (classement expiré)' : ''}
+                      {b.taxe_regime === 'forfait' && ' · régime au forfait'}
+                      {!regle && ' ⚠ tarif manquant'}
                     </span>
                   </div>
                   <div style={{ fontSize: 13 }}>
@@ -314,14 +293,14 @@ export default function PageTaxeSejour() {
                   </thead>
                   <tbody>
                     {resas.map(r => {
-                      const taxe = calculTaxe(r, config)
+                      const taxe = calculTaxe(r, config, b)
                       return (
                         <tr key={r.id}>
                           <td style={td}>{r.guest_name || '—'}</td>
                           <td style={{ ...td, fontSize: 11, color: 'var(--text-muted)' }}>{r.platform}</td>
                           <td style={td}>{r.arrival_date ? new Date(r.arrival_date + 'T12:00:00').toLocaleDateString('fr-FR') : '—'}</td>
                           <td style={{ ...td, textAlign: 'center' }}>{r.nights || '—'}</td>
-                          <td style={{ ...td, textAlign: 'center' }}>{r.guest_count || '—'}</td>
+                          <td style={{ ...td, textAlign: 'center' }} title="adultes / voyageurs (mineurs exonérés)">{r.adultes != null && Number(r.adultes) !== r.guest_count ? `${r.adultes} / ${r.guest_count}` : (r.guest_count || '—')}</td>
                           <td style={{ ...td, textAlign: 'right' }}>{r.fin_accommodation != null ? fmt(r.fin_accommodation / 100) : '—'}</td>
                           <td style={{ ...td, textAlign: 'right', color: taxeEncaissee[r.id] ? 'var(--text)' : '#B91C1C' }}>{taxeEncaissee[r.id] ? fmt(taxeEncaissee[r.id]) : '0,00 € ⚠'}</td>
                           <td style={{ ...td, textAlign: 'right', fontWeight: 600, color: taxe != null ? 'var(--brand)' : '#B91C1C' }}>{taxe != null ? fmt(taxe) : '⚠ tarif'}</td>
