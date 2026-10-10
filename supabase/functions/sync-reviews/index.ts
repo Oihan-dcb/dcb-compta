@@ -282,6 +282,11 @@ async function generatePreviewBody(
     ? `- La zone géographique du bien est "${propertyZone}" — tu peux l'utiliser si pertinent`
     : `- Ne mentionne AUCUNE région géographique dans le texte`
 
+  // 10/10/2026 (Oïhan, cas Maxime / Horizonte) : le modèle écrivait parfois son raisonnement (« Le commentaire est
+  // rédigé en français, donc la réponse sera en français. ») et le code collait « Prénom, » devant → message
+  // « Maxime, Le commentaire est rédigé… ». Désormais : réponse JSON stricte { "message": … } qui commence par la
+  // salutation avec le prénom (dans la langue du voyageur), aucune phrase sur la langue ; filet de sécurité qui
+  // retire toute phrase méta restante ; repli sur le modèle fixe si le texte n'est pas propre.
   if (anthropicKey && comment) {
     try {
       const res = await fetch('https://api.anthropic.com/v1/messages', {
@@ -290,22 +295,29 @@ async function generatePreviewBody(
         body: JSON.stringify({
           model: 'claude-haiku-5-5',
           thinking: { type: 'disabled' },
-          max_tokens: 250,
-          messages: [{ role: 'user', content: `Tu es l'assistant de ${agenceLabel}. Un voyageur vient de laisser un avis 5⭐ sur Airbnb pour "${propertyName}". Son commentaire : "${comment}"\nRédige un message de remerciement (160-220 caractères) DANS LA MÊME LANGUE QUE SON COMMENTAIRE (avis en anglais → réponse en anglais, en espagnol → espagnol, en allemand → allemand, etc.). Règles STRICTES :\n- N'inclus AUCUNE URL, AUCUN lien, AUCUN placeholder dans le texte\n${zoneRule}\n- La signature est "— ${agenceLabel}"\n- Invite à laisser un avis sur la fiche Google "${agenceLabel}" en citant uniquement le nom (pas d'URL)\n- Sans mention STOP\nRéponds uniquement avec le texte du message.` }],
+          max_tokens: 300,
+          messages: [{ role: 'user', content: `Tu es l'assistant de ${agenceLabel}. Un voyageur prénommé "${firstName}" vient de laisser un avis 5⭐ sur Airbnb pour "${propertyName}". Son commentaire : "${comment}"\nRédige le message de remerciement qu'on va lui envoyer (180-260 caractères), DANS LA MÊME LANGUE QUE SON COMMENTAIRE (avis en anglais → message en anglais, en espagnol → espagnol, en allemand → allemand, etc.). Règles STRICTES :\n- Commence par une salutation avec son prénom dans cette langue (ex. « Bonjour ${firstName}, » / « Hi ${firstName}, » / « Hola ${firstName}, »)\n- Ton naturel et chaleureux, comme un vrai message d'hôte ; ne parle JAMAIS de la langue du commentaire ni de ta démarche\n- N'inclus AUCUNE URL, AUCUN lien, AUCUN placeholder\n${zoneRule}\n- Invite à laisser un avis sur la fiche Google "${agenceLabel}" en citant uniquement le nom (pas d'URL)\n- Termine par la signature sur sa propre ligne : "— ${agenceLabel}"\n- Sans mention STOP\nRéponds UNIQUEMENT avec un objet JSON : {"message": "<le message complet>"}` }],
         }),
       })
       if (res.ok) {
         const d = await res.json()
-        const text = d.content?.[0]?.text?.trim()
-        if (text) return `${firstName}, ${text}`
+        const brut = (d.content?.[0]?.text || '').trim()
+        let text = ''
+        try { text = String(JSON.parse(brut.replace(/^```(?:json)?\s*|\s*```$/g, '')).message || '').trim() } catch { text = '' }
+        // Filet : phrases méta sur la langue / la démarche
+        text = text.replace(/(^|[,.!?]\s+)[^.!?,\n]*(r[ée]dig[ée]|written in|escrit[oa] en|en langue|la langue|language|idioma|la r[ée]ponse sera|the reply will|la respuesta ser[aá])[^.!?\n]*[.!?]\s*/gi, '$1').trim()
+          .replace(/^([^,\n]{1,40}, )(Merci|Nous|Un grand|Thank|Thanks|We|Gracias|Muchas|Nos|Danke|Vielen|Wir)\b/, (_m: string, a: string, b: string) => a + b[0].toLowerCase() + b.slice(1))
+        const propre = text.length >= 60 && text.length <= 600 && !/https?:|www\.|\{|\}|\[|\]/.test(text)
+          && text.toLowerCase().includes(firstName.toLowerCase())
+        if (propre) return text.includes(`— ${agenceLabel}`) ? text : `${text}\n— ${agenceLabel}`
       }
     } catch (_) {}
   }
 
   const t: Record<string, string> = {
-    FR: `${firstName}, merci pour votre avis 5⭐ sur ${propertyName} ! Votre retour nous touche beaucoup. Si vous avez un moment, laissez-nous un avis sur la fiche Google "${agenceLabel}", ça nous aide vraiment.\n— ${agenceLabel}`,
-    EN: `${firstName}, thank you for your 5-star review of ${propertyName}! Your feedback means so much to us. If you have a moment, a review on our Google listing "${agenceLabel}" would help us enormously.\n— ${agenceLabel}`,
-    ES: `${firstName}, ¡gracias por tu reseña 5⭐ de ${propertyName}! Tu opinión nos llena de alegría. Si tienes un momento, una reseña en nuestro perfil de Google "${agenceLabel}" nos ayudaría mucho.\n— ${agenceLabel}`,
+    FR: `Bonjour ${firstName}, merci pour votre avis 5⭐ sur ${propertyName} ! Votre retour nous touche beaucoup. Si vous avez un moment, laissez-nous un avis sur la fiche Google "${agenceLabel}", ça nous aide vraiment.\n— ${agenceLabel}`,
+    EN: `Hi ${firstName}, thank you for your 5-star review of ${propertyName}! Your feedback means so much to us. If you have a moment, a review on our Google listing "${agenceLabel}" would help us enormously.\n— ${agenceLabel}`,
+    ES: `Hola ${firstName}, ¡gracias por tu reseña 5⭐ de ${propertyName}! Tu opinión nos llena de alegría. Si tienes un momento, una reseña en nuestro perfil de Google "${agenceLabel}" nos ayudaría mucho.\n— ${agenceLabel}`,
   }
   return t[lang] ?? t['FR']
 }
