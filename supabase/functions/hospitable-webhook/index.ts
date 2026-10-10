@@ -428,13 +428,17 @@ async function handleMessage(supabase: any, event: string, data: any): Promise<s
 
   // Stocker TOUS les messages (guest + host) dans hospitable_messages pour contexte LLM
   const msgId = data.id || data.message_id
-  if (msgId && body.trim()) {
+  // 10/10/2026 : un message SANS texte (photo seule, ex. capture d'écran d'un voyageur) n'était jamais stocké →
+  // invisible dans la Messagerie PowerHouse. On le garde s'il a une pièce jointe (raw = payload, pour l'URL).
+  const pieces = Array.isArray(data.attachments) ? data.attachments : []
+  if (msgId && (body.trim() || pieces.length)) {
     await supabase.from('hospitable_messages').upsert({
       id:              typeof msgId === 'number' ? msgId : parseInt(msgId, 10) || null,
       reservation_id:  resaId || '',
       conversation_id: convId || null,
       platform:        data.platform || null,
       body:            body.trim(),
+      ...(pieces.length ? { raw: data } : {}),
       sender_type:     senderType,
       source:          data.source || null,
       created_at:      data.created_at || new Date().toISOString(),
