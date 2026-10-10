@@ -53,7 +53,7 @@ const SOURCE_MISSIONS = 'mission_acceptation'
 const SOURCE_ECARTS = 'ecart_taches'
 const LIBELLES: Record<string, string> = {
   mission_acceptation: 'Missions AE à accepter ou à réattribuer',
-  ecart_taches: 'Planning ↔ Hospitable : écarts en retard',
+  ecart_taches: 'Missions ↔ Hospitable : écarts en retard',
   paiement_honoraires: 'Paiements reçus non enregistrés dans Evoliz',
   fraicheur_banque: 'Relevés bancaires muets',
   sequestre: 'Séquestre',
