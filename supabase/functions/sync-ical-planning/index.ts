@@ -4,6 +4,8 @@
  * Remplace l'approche iCal manuelle.
  * Appelle GET /v2/properties/{hospitable_id}/calendar pour chaque bien,
  * groupe les jours indisponibles en spans, et upsert dans property_calendar.
+ * Depuis le 10/10/2026 (migration 398) : un seul RPC transactionnel par bien (diff, ids stables)
+ * + les prix / séjour minimum / fermetures du jour dans calendrier_jour.
  *
  * Avantages vs iCal :
  *  - Aucune URL à configurer manuellement
@@ -48,7 +50,7 @@ Deno.serve(async (_req) => {
   const startDate = dateOffset(now, -DAYS_BACK)
   const endDate   = dateOffset(now, DAYS_FORWARD)
 
-  const results: Array<{ bien: string; upserted: number; deleted: number; error?: string }> = []
+  const results: Array<{ bien: string; upserted: number; deleted: number; error?: string; [k: string]: unknown }> = []
 
   for (const bien of biens) {
     try {
@@ -57,17 +59,27 @@ Deno.serve(async (_req) => {
       console.log(`${bien.code}: ${result.upserted} spans, ${result.deleted} supprimés`)
     } catch (err: any) {
       console.error(`Erreur ${bien.code}:`, err.message)
+      // Les données du bien restent en place (rien n'est vidé) ; l'erreur se lit dans le Calendrier.
+      await sb.rpc('calendrier_sync_bien_erreur', { p_bien_id: bien.id, p_erreur: String(err.message || err) }).then(() => {}, () => {})
       results.push({ bien: bien.code || bien.hospitable_name, upserted: 0, deleted: 0, error: err.message })
     }
     // Petit délai pour ne pas burst l'API
     await new Promise(r => setTimeout(r, 100))
   }
 
+  // Tarifs des biens qui ne sont plus synchronisés (délistés, hospitable_id retiré) : retirés, pour
+  // qu'aucun prix figé ne s'affiche. Leurs spans property_calendar, eux, restent (historique, iCal).
+  const ids = biens.map(b => b.id)
+  await sb.from('calendrier_jour').delete().not('bien_id', 'in', `(${ids.join(',')})`).then(() => {}, () => {})
+
   return new Response(JSON.stringify({
     ok: true,
     biens: biens.length,
     window: { start: startDate, end: endDate },
     total_upserted: results.reduce((s, r) => s + r.upserted, 0),
+    total_deleted:  results.reduce((s, r) => s + r.deleted, 0),
+    total_jours_modifies: results.reduce((s, r) => s + Number(r.jours_modifies || 0), 0),
+    duree_ms: Date.now() - now.getTime(),
     synced_at: new Date().toISOString(),
     results,
   }), { headers: { 'Content-Type': 'application/json' } })
@@ -78,7 +90,7 @@ async function syncBienCalendar(
   bien: { id: string; hospitable_id: string; code: string | null; hospitable_name: string },
   startDate: string,
   endDate: string
-): Promise<{ upserted: number; deleted: number }> {
+): Promise<{ upserted: number; deleted: number; inseres: number; modifies: number; jours_modifies: number }> {
 
   // 2. Appel API Hospitable v2/calendar
   const url = `${HOSP_BASE}/properties/${bien.hospitable_id}/calendar?start_date=${startDate}&end_date=${endDate}`
@@ -93,48 +105,52 @@ async function syncBienCalendar(
 
   const json = await resp.json()
   const days: any[] = json.data?.days || []
+  // Réponse sans aucun jour = information INCONNUE, pas « calendrier entièrement libre » : on ne touche
+  // à rien (sinon le diff supprimerait tous les spans du bien).
+  if (!days.length) throw new Error('Hospitable : réponse calendrier sans jours (rien modifié)')
 
   // 3. Grouper les jours indisponibles en spans
   const spans = groupUnavailableDays(days)
 
-  // 4. Supprimer les anciennes entrées qui RECOUVRENT la fenêtre (remplacer proprement)
-  //
-  // Bug corrigé le 23/08/2026 : le filtre précédent (date_debut BETWEEN startDate ET endDate)
-  // ne supprimait que les spans dont le DÉBUT tombe dans la fenêtre courante. `startDate` avance
-  // de 1 jour à chaque run (J-14 glissant) : un span ancien dont `date_debut` est passé sous
-  // `startDate` — mais dont `date_fin` s'étend encore dans le futur (ex. un blocage inséré il y a
-  // 2 mois avec `date_fin` en novembre) — sortait alors du filtre et n'était PLUS JAMAIS supprimé,
-  // pendant que de nouveaux spans à jour continuaient d'être insérés à côté. Les deux
-  // coexistaient indéfiniment : 830 lignes fantômes sur 35 biens constatées en prod.
-  // Le bon test est un recouvrement d'intervalles : [date_debut, date_fin) recouvre
-  // [startDate, endDate) ⟺ date_debut < endDate ET date_fin > startDate — qui supprime tout span
-  // encore pertinent pour la fenêtre affichée, quel que soit son âge, et laisse intact ce qui est
-  // authentiquement du passé (date_fin <= startDate, hors de toute fenêtre affichable).
-  const { count: deleted } = await sb
-    .from('property_calendar')
-    .delete({ count: 'exact' })
-    .eq('bien_id', bien.id)
-    .lt('date_debut', endDate)
-    .gt('date_fin', startDate)
-
-  // 5. Insérer les nouveaux spans
-  if (spans.length === 0) return { upserted: 0, deleted: deleted ?? 0 }
-
-  const rows = spans.map(span => ({
-    bien_id:       bien.id,
-    uid_cal:      `${bien.id}:${span.date_debut}`,
-    source:        span.source,
-    date_debut:    span.date_debut,
-    date_fin:      span.date_fin,
-    titre:         span.titre,
-    statut:        'confirmed',
-    derniere_sync: new Date().toISOString(),
+  // 4. Jours (prix, séjour minimum, fermetures) — même réponse, aucun appel Hospitable en plus.
+  //    Stockés dans calendrier_jour pour la grille du Calendrier PowerHouse (migration 398), au lieu
+  //    que chaque navigateur ouvert relise Hospitable toutes les 5 min (api/dispo-pricing.js).
+  const jours = days.filter(d => d?.date).map(d => ({
+    jour:   String(d.date).slice(0, 10),
+    dispo:  d.status?.available === true,
+    prix:   typeof d.price?.amount === 'number' ? Math.round(d.price.amount) : null,
+    devise: d.price?.currency || null,
+    min:    typeof d.min_stay === 'number' ? d.min_stay : null,
+    ci:     d.closed_for_checkin === true,
+    co:     d.closed_for_checkout === true,
+    note:   d.note || null,
+    raison: d.status?.reason || null,
   }))
 
-  const { error } = await sb.from('property_calendar').insert(rows)
-  if (error) throw new Error(`Insert error: ${error.message}`)
+  // 5. Une seule transaction par bien (RPC calendrier_sync_bien, migration 398) : upsert sur
+  //    (bien_id, uid_cal) qui n'écrit que ce qui a changé, suppression des seuls spans disparus.
+  //
+  //    AVANT (jusqu'au 10/10/2026) : DELETE de tous les spans de la fenêtre puis INSERT, sans
+  //    transaction — 9 M insertions cumulées, ids qui changeaient toutes les 5 min, et un bien
+  //    VIDE pour tout lecteur tombant entre les deux requêtes (ou pendant 5 min si l'INSERT
+  //    échouait). La fenêtre de suppression reste celle du fix du 23/08/2026 (recouvrement
+  //    d'intervalles [startDate, endDate)) : rien d'authentiquement passé n'est touché.
+  const { data, error } = await sb.rpc('calendrier_sync_bien', {
+    p_bien_id: bien.id,
+    p_debut:   startDate,
+    p_fin:     endDate,
+    p_spans:   spans,
+    p_jours:   jours,
+  })
+  if (error) throw new Error(`RPC calendrier_sync_bien: ${error.message}`)
 
-  return { upserted: spans.length, deleted: deleted ?? 0 }
+  return {
+    upserted: (data?.inseres ?? 0) + (data?.modifies ?? 0),
+    deleted:  data?.supprimes ?? 0,
+    inseres:  data?.inseres ?? 0,
+    modifies: data?.modifies ?? 0,
+    jours_modifies: data?.jours_modifies ?? 0,
+  }
 }
 
 // ─── Segmentation ──────────────────────────────────────────────────────────────
