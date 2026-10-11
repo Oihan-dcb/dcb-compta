@@ -96,7 +96,10 @@ export async function buildComptaMensuelle(mois, bienIds = null, agence = AGENCE
       .from('ventilation')
       .select('bien_id, code, montant_ht, montant_tva, montant_ttc, montant_reel, reservation_id')
       .eq('mois_comptable', mois)
-      .in('code', ['HON', 'FMEN', 'MEN', 'AUTO', 'LOY', 'VIR', 'TAXE', 'COM'])),
+      .in('code', ['HON', 'FMEN', 'MEN', 'AUTO', 'LOY', 'VIR', 'TAXE', 'COM', 'PVOY']))
+      // PVOY (prestations voyageurs, migration 408) = revenu agence facturé sur la facture COM :
+      // agrégé avec COM (part agence, à virer séquestre → courant, hors séquestre).
+      .then(r => ({ ...r, data: (r.data || []).map(v => v.code === 'PVOY' ? { ...v, code: 'COM' } : v) })),
     supabase
       .from('facture_evoliz')
       .select('id, proprietaire_id, bien_id, statut, total_ht, total_ttc, montant_reversement')

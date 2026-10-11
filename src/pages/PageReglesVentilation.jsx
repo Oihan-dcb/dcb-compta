@@ -94,8 +94,9 @@ export default function PageReglesVentilation() {
               { code:'LOY',  label:'Reversement propriétaire', tva:'0%', base:'Airbnb: commissionableBase − HON + platformRemb\nBooking: fin_revenue_net − HON − FMEN − AUTO − taxes\nDirect: commissionableBase − HON + ownerFees', plat:'Toutes' },
               { code:'VIRProprio', label:'VIRProprio (virement calculé)', tva:'0%', base:'LOY + taxesTotal', plat:'Toutes' },
               { code:'TAXE', label:'Taxe de séjour',        tva:'0%',  base:'Σ fee_type=\'tax\' non remitted', plat:'Booking / Direct' },
-              { code:'MEN',  label:'Ménage brut voyageur',  tva:'0%',  base:'Σ guest_fees hors management/host service/resort fee', plat:'Toutes' },
-              { code:'COM',  label:'Commission DCB directe', tva:'20%', base:'managementFeeRaw (brut)', plat:'Direct uniquement' },
+              { code:'MEN',  label:'Ménage brut voyageur',  tva:'0%',  base:'Σ guest_fees hors management/host service/resort fee (et, depuis 10/2026, hors frais libres et frais de gestion Booking)', plat:'Toutes' },
+              { code:'COM',  label:'Commission agence', tva:'20%', base:'Direct : managementFeeRaw + resort fee (brut)\nBooking (depuis 10/2026) : frais de gestion / de service − part commission Booking × (1 − taux)', plat:'Direct / Booking' },
+              { code:'PVOY', label:'Prestation voyageur (frais libres : lit bébé…)', tva:'20%', base:'Frais libres de la fiche (bien_frais « autre », depuis 10/2026) − part commission plateforme × (1 − taux) ; facturé sur la facture COM', plat:'Toutes' },
               { code:'RGLM', label:'Règlement voyageur',    tva:'0%',  base:'fin_revenue − Σ paiements reçus', plat:'Direct / Manual uniquement' },
             ].map(r => (
               <tr key={r.code}>

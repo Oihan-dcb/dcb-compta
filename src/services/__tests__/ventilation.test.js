@@ -878,3 +878,117 @@ describe('Annulée à 0 € — aucune ligne (règle Oïhan 25/09/2026)', () => 
     expect(lignes.length).toBeGreaterThan(0)
   })
 })
+
+// ─────────────────────────────────────────────────────────────────────────
+// Décisions Oïhan 11/10/2026 (migration 408) — règle datée REGLE_FRAIS_AGENCE_DEPUIS = 2026-10
+//   • frais de gestion/service Booking → COM (agence), plus au propriétaire
+//   • frais libres de la fiche (bien_frais catégorie « autre ») → PVOY (prestation voyageur agence)
+// Invariant : le LOY propriétaire = (1 − taux) × (hébergement − commission plateforme sur
+// l'hébergement) — ces frais n'y changent plus rien.
+// ─────────────────────────────────────────────────────────────────────────
+describe('408 — frais de gestion Booking → COM agence', () => {
+  const resa = (mois, bienOverrides = {}, label = 'frais de service (10%)') => ({
+    id: 'test-booking-gestion', code: '5703038207', platform: 'booking', final_status: 'accepted', owner_stay: false,
+    fin_accommodation: 80000, fin_revenue: 73600, mois_comptable: mois,
+    reservation_fee: [
+      { label: 'Host service fee', amount: -14400, fee_type: 'host_fee' },
+      { label, amount: 8000, fee_type: 'guest_fee' },
+    ],
+    bien: makeBien(bienOverrides),
+  })
+  it('à partir de 2026-10 : COM = 8000 − part Booking (982) = 7018, LOY 50182, pas de MEN', () => {
+    const { lignes } = _calculerLignes(resa('2026-10'))
+    expect(ligne(lignes, 'COM').montant_ttc).toBe(7018)
+    expect(ligne(lignes, 'COM').montant_ht).toBe(5848)
+    expect(ligne(lignes, 'HON').montant_ttc).toBe(16400)
+    expect(ligne(lignes, 'LOY').montant_ttc).toBe(50182)
+    expect(ligne(lignes, 'VIR').montant_ttc).toBe(50182)
+    expect(ligne(lignes, 'MEN')).toBeUndefined()
+  })
+  it('LOY propriétaire = (1 − taux) × (hébergement − commission sur l’hébergement)', () => {
+    const { lignes } = _calculerLignes(resa('2026-10'))
+    expect(Math.abs(ligne(lignes, 'LOY').montant_ttc - 0.75 * (80000 - 14400 * 80000 / 88000))).toBeLessThan(1)
+  })
+  it('somme HON + COM + LOY = revenu (rien d’orphelin)', () => {
+    const { lignes } = _calculerLignes(resa('2026-10'))
+    const t = c => ligne(lignes, c)?.montant_ttc || 0
+    expect(t('HON') + t('COM') + t('LOY') + t('FMEN') + t('AUTO')).toBe(73600)
+  })
+  it('« Management fee » et « Resort fee » Booking aussi', () => {
+    for (const l of ['Management fee', 'frais de gestion', 'Resort fee', 'frais de service']) {
+      expect(ligne(_calculerLignes(resa('2026-11', {}, l)).lignes, 'COM').montant_ttc).toBe(7018)
+    }
+  })
+  it('mois antérieur (2026-09) : calcul d’origine inchangé (MEN 8000, LOY 57200, pas de COM)', () => {
+    const { lignes } = _calculerLignes(resa('2026-09'))
+    expect(ligne(lignes, 'COM')).toBeUndefined()
+    expect(ligne(lignes, 'MEN').montant_ttc).toBe(8000)
+    expect(ligne(lignes, 'LOY').montant_ttc).toBe(57200)
+  })
+  it('« frais de service (5%) » = alias historique du ménage : jamais COM', () => {
+    expect(ligne(_calculerLignes(resa('2026-10', {}, 'frais de service (5%)')).lignes, 'COM')).toBeUndefined()
+  })
+  it('skip_facturation : pas de COM, tout au propriétaire', () => {
+    const { lignes } = _calculerLignes(resa('2026-10', { skip_facturation: true }))
+    expect(ligne(lignes, 'COM')).toBeUndefined()
+    expect(ligne(lignes, 'LOY').montant_ttc).toBe(73600)
+  })
+  it('propriétaire qui encaisse (gestion_loyer=false) : règle non appliquée', () => {
+    const { lignes } = _calculerLignes(resa('2026-10', { gestion_loyer: false }))
+    expect(ligne(lignes, 'COM')).toBeUndefined()
+    expect(ligne(lignes, 'MEN').montant_ttc).toBe(8000)
+  })
+  it('Airbnb : « Management fee » inchangé (décision limitée à Booking)', () => {
+    const r = resa('2026-10', {}, 'Management fee'); r.platform = 'airbnb'
+    expect(ligne(_calculerLignes(r).lignes, 'COM')).toBeUndefined()
+  })
+})
+
+describe('408 — frais libres (lit bébé) → PVOY prestation voyageur agence', () => {
+  const fiche = { bien_frais: [{ libelle: 'Lit bébé', categorie: 'autre' }, { libelle: 'Ménage (community fee)', categorie: 'menage' }] }
+  const direct = mois => ({
+    id: 'test-direct-extra', code: 'HOST-TEST', platform: 'manual', final_status: 'accepted', owner_stay: false,
+    fin_accommodation: 80000, fin_revenue: 100700, mois_comptable: mois,
+    reservation_fee: [
+      { label: 'Community fee', amount: 9700, fee_type: 'guest_fee' },
+      { label: 'Management fee', amount: 8000, fee_type: 'guest_fee' },
+      { label: 'Lit bébé', amount: 3000, fee_type: 'guest_fee' },
+    ],
+    bien: makeBien(fiche),
+  })
+  it('Direct 2026-10 : PVOY 3000 TTC (2500 HT), MEN = ménage seul 9700, COM et LOY inchangés', () => {
+    const { lignes } = _calculerLignes(direct('2026-10'))
+    expect(ligne(lignes, 'PVOY').montant_ttc).toBe(3000)
+    expect(ligne(lignes, 'PVOY').montant_ht).toBe(2500)
+    expect(ligne(lignes, 'PVOY').libelle).toBe('Prestation voyageur : Lit bébé')
+    expect(ligne(lignes, 'MEN').montant_ttc).toBe(9700)
+    expect(ligne(lignes, 'COM').montant_ttc).toBe(8000)
+    expect(ligne(lignes, 'LOY').montant_ttc).toBe(60000)
+  })
+  it('Direct 2026-09 : ancien calcul (MEN 12700, pas d’PVOY)', () => {
+    const { lignes } = _calculerLignes(direct('2026-09'))
+    expect(ligne(lignes, 'PVOY')).toBeUndefined()
+    expect(ligne(lignes, 'MEN').montant_ttc).toBe(12700)
+  })
+  it('libellé non déclaré sur la fiche : pas d’PVOY (reste MEN)', () => {
+    const r = direct('2026-10'); r.bien = makeBien({ bien_frais: [] })
+    expect(ligne(_calculerLignes(r).lignes, 'PVOY')).toBeUndefined()
+  })
+  it('Airbnb 2026-10 : PVOY = 3000 − part Airbnb (340) = 2660, LOY 50939', () => {
+    const r = {
+      id: 'test-airbnb-extra', code: 'HMTEST', platform: 'airbnb', final_status: 'accepted', owner_stay: false,
+      fin_accommodation: 80000, fin_revenue: 78700, mois_comptable: '2026-10',
+      reservation_fee: [
+        { label: 'Host service fee', amount: -14000, fee_type: 'host_fee' },
+        { label: 'Cleaning fee', amount: 9700, fee_type: 'guest_fee' },
+        { label: 'Lit bébé', amount: 3000, fee_type: 'guest_fee' },
+      ],
+      bien: makeBien(fiche),
+    }
+    const { lignes } = _calculerLignes(r)
+    expect(ligne(lignes, 'PVOY').montant_ttc).toBe(2660)
+    expect(ligne(lignes, 'FMEN').montant_ttc).toBe(8601)
+    expect(ligne(lignes, 'LOY').montant_ttc).toBe(50939)
+    expect(ligne(lignes, 'MEN').montant_ttc).toBe(9700)
+  })
+})

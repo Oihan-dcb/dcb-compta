@@ -30,6 +30,39 @@ export { STATUTS_NON_VENTILABLES }
 
 export const TVA_RATE = 0.20
 
+// ── Frais revenant à l'agence sur une résa (décisions Oïhan 11/10/2026, migration 408) ──────────
+// 1. Frais de gestion / de service d'une résa BOOKING (« Management fee » de la fiche, que Booking
+//    affiche « frais de service », « frais de service (10%) »… ; « Resort fee ») : revenus de
+//    l'agence AU TITRE DE LA COM — plus versés au propriétaire.
+// 2. Frais LIBRES de la fiche Tarification (bien_frais.categorie='autre' : lit bébé, kit bébé…) :
+//    une PRESTATION voyageur de l'agence (règle « extras voyageurs » du 25/09/2026), code PVOY —
+//    plus comptés en MEN (ménage brut voyageur), tous canaux.
+// Règle DATÉE : s'applique aux résas de mois_comptable >= REGLE_FRAIS_AGENCE_DEPUIS (et aux
+// simulations, sans mois). Les mois antérieurs gardent leur calcul d'origine : ils sont facturés /
+// reversés (verrous de clôture incomplets avant 2026 — ex. Lauïan 2025 sans cloture_bien) et un
+// recalcul ne doit jamais les modifier en douce. Écart passé : rapport, pas de régularisation auto.
+// Non appliquée : biens skip_facturation (tout revient au propriétaire) et résas Airbnb/Booking
+// des biens où le propriétaire encaisse (gestion_loyer=false : aucune facture ne porterait ces
+// frais au propriétaire — à trancher par Oïhan).
+export const REGLE_FRAIS_AGENCE_DEPUIS = '2026-10'
+const LIBELLES_STANDARD = new Set(['cleaning fee', 'community fee', 'management fee', 'resort fee', 'linen fee',
+  'pet fee', 'extra guest fee', 'additional guest fee', 'host service fee', 'cancellation fee', 'frais de ménage'])
+export const normLibelle = l => String(l || '').toLowerCase().replace(/_/g, ' ').replace(/\s+/g, ' ').trim()
+// Frais de gestion / service perçus par Booking pour le compte de l'agence. « frais de service (5%) »
+// est exclu : alias historique du ménage (community fee, cf. LABEL_ALIASES).
+export function estFraisGestionBooking(label) {
+  const l = normLibelle(label)
+  if (!l || l === 'host service fee' || l === 'frais de service (5%)') return false
+  return /management|gestion|frais de service|service charge|resort fee/.test(l)
+}
+// Libellés des frais libres déclarés sur la fiche du bien (bien.bien_frais, catégorie « autre »).
+export function libellesFraisLibres(bien) {
+  return new Set((bien?.bien_frais || [])
+    .filter(f => f && f.categorie === 'autre' && f.libelle)
+    .map(f => normLibelle(f.libelle))
+    .filter(l => l && !LIBELLES_STANDARD.has(l)))
+}
+
 export function ligneTVA(code, libelle, montantHT, bien, resa, tauxCalcule, montantTTC) {
   const ttc = montantTTC || Math.round(montantHT * (1 + TVA_RATE))
   const tva = ttc - montantHT
@@ -150,6 +183,30 @@ export function _calculerLignes(resa, agence) {
 
   const totalFeesForOwnerRate = accommodation + guestFeesAll.reduce((s, f) => s + (f.amount || 0), 0)
 
+  const horsSequestre = bien.gestion_loyer === false
+    && (resa.platform === 'airbnb' || resa.platform === 'booking')
+
+  // Frais revenant à l'agence (règle datée, cf. REGLE_FRAIS_AGENCE_DEPUIS en tête de fichier).
+  const regleFraisAgence = (!resa.mois_comptable || resa.mois_comptable >= REGLE_FRAIS_AGENCE_DEPUIS)
+    && !bien.skip_facturation && !horsSequestre
+  const fraisLibresSet = regleFraisAgence ? libellesFraisLibres(bien) : new Set()
+  const estFraisLibre = f => fraisLibresSet.has(normLibelle(f.label))
+  const estGestionBooking = f => regleFraisAgence && resa.platform === 'booking' && !estFraisLibre(f) && estFraisGestionBooking(f.label)
+  const somme = arr => arr.reduce((s, f) => s + (f.amount || 0), 0)
+  // Part de la commission plateforme (Airbnb/Booking) qui porte sur ce frais, × (1 − taux) : même
+  // règle que dueToOwner pour le ménage — l'agence supporte la commission plateforme sur SES frais,
+  // le propriétaire ne supporte que celle de l'hébergement (son LOY reste inchangé par ces frais).
+  const partPlateforme = montant => ((resa.platform === 'airbnb' || resa.platform === 'booking') && totalFeesForOwnerRate > 0)
+    ? Math.round(Math.abs(hostServiceFee) * montant / totalFeesForOwnerRate * (1 - tauxCom)) : 0
+  const gestionBookingBrut = somme(guestFeesAll.filter(estGestionBooking))
+  const appliqueGestionBooking = gestionBookingBrut > 0
+  const comBookingTTC = appliqueGestionBooking ? gestionBookingBrut - partPlateforme(gestionBookingBrut) : 0
+  const fraisLibres = guestFeesAll.filter(estFraisLibre)
+  const extraBrut = somme(fraisLibres)
+  const appliqueExtra = extraBrut > 0
+  // Direct/manuel : partPlateforme = 0 → montant brut (comme la COM des frais de gestion Direct).
+  const extraTTC = appliqueExtra ? extraBrut - partPlateforme(extraBrut) : 0
+
   const totalFeesAirbnb    = cleaningFeeAirbnb + communityFeeRaw
   const airbnbFallbackActif = resa.platform === 'airbnb' && totalFeesAirbnb === 0 && (bien.forfait_dcb_ref || 0) > 0
   // Fallback Airbnb : Airbnb n'a pas transmis la ligne ménage → le ménage voyageur est FONDU
@@ -186,15 +243,17 @@ export function _calculerLignes(resa, agence) {
   }
 
   const menLabelsToExclude = ['management fee', 'host service fee', 'resort fee']
-  const menFees   = guestFeesAll.filter(f => !menLabelsToExclude.includes(f.label?.toLowerCase()))
+  const menFees   = guestFeesAll.filter(f => !menLabelsToExclude.includes(f.label?.toLowerCase())
+    && !(appliqueExtra && estFraisLibre(f)) && !(appliqueGestionBooking && estGestionBooking(f)))
   const menAmount = menFees.reduce((s, f) => s + (f.amount || 0), 0)
 
   const resortFeeRaw = guestFeesAll.find(f => f.label?.toLowerCase() === 'resort fee')?.amount || 0
   // skip_facturation : pas de COM non plus — le LOY reverse déjà 100 % du revenu (frais de
   // service compris). Avant (25/09/2026) : COM comptée EN PLUS du LOY intégral (ASKIDA août :
   // 433,60 € comptés deux fois, gonflant la part DCB « virable » du séquestre).
-  const comAmount    = isDirect && !bien.skip_facturation ? (managementFeeRaw + resortFeeRaw) : 0
+  const comAmount    = (isDirect && !bien.skip_facturation ? (managementFeeRaw + resortFeeRaw) : 0) + comBookingTTC
   const comHT        = comAmount > 0 ? Math.round(comAmount / (1 + TVA_RATE)) : 0
+  const extraHT      = extraTTC > 0 ? Math.round(extraTTC / (1 + TVA_RATE)) : 0
 
   const ownerFees = (isDirect && totalFeesForOwnerRate > 0)
     ? guestFeesAll.reduce((s, f) => s + Math.round(Math.abs(hostServiceFee) * (f.amount || 0) / totalFeesForOwnerRate * (1 - tauxCom)), 0)
@@ -221,15 +280,20 @@ export function _calculerLignes(resa, agence) {
     loyAmount = revenue - taxesTotal
   }
 
-  const horsSequestre = bien.gestion_loyer === false
-    && (resa.platform === 'airbnb' || resa.platform === 'booking')
+  // Airbnb/Booking : ces frais sont dans `revenue` → retirés du résidu propriétaire. Direct/manuel :
+  // jamais inclus dans le LOY (commissionableBase hors frais) → rien à retirer (avant : les frais
+  // libres n'étaient attribués à personne, seulement comptés dans MEN).
+  if (!isDirect) loyAmount -= comBookingTTC + extraTTC
 
   const lignes = []
 
   if (menAmount > 0)
     lignes.push(ligneHorsTVA('MEN',  'Ménage brut voyageur',       menAmount, bien, resa))
   if (comHT > 0)
-    lignes.push(ligneTVA(    'COM',  'Commission DCB',              comHT,     bien, resa, null,        comAmount))
+    lignes.push(ligneTVA(    'COM',  comBookingTTC > 0 ? 'Commission agence (frais de gestion Booking)' : 'Commission DCB', comHT, bien, resa, null, comAmount))
+  if (extraHT > 0)
+    lignes.push(ligneTVA(    'PVOY', `Prestation voyageur : ${[...new Set(fraisLibres.map(f => String(f.label).trim()))].join(', ')}`.slice(0, 120),
+      extraHT, bien, resa, null, extraTTC))
   if (honHT > 0)
     lignes.push(ligneTVA(    'HON',  'Honoraires de gestion',       honHT,     bien, resa, tauxCom,     honTTC))
   if (fmenHT !== 0)

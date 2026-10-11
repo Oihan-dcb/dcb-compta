@@ -2078,14 +2078,24 @@ export async function getRattrapagesCOM(mois, champ = 'mois_facturation') {
   return data || []
 }
 
-export async function genererFactureCOM(mois) {
-  const { data: comLines, error } = await supabase
+// Lignes facturées sur la facture COM (client CLI-RESA-WEB-<agence>) : COM (commissions / frais de
+// gestion) + PVOY (prestations voyageurs : frais libres de la fiche, migration 408) — des biens DE
+// L'AGENCE seulement. Avant le 11/10/2026 la requête ne filtrait pas l'agence : la facture COM DCB
+// comptait aussi les COM des biens Lauïan (avril 10 €, mai 36,90 €, juillet 2 169,50 €, août
+// 1 398,70 € TTC — factures déjà émises, non modifiées : rapport à Oïhan).
+export async function lignesFactureCOM(mois, codes = ['COM', 'PVOY']) {
+  const { data, error } = await supabase
     .from('ventilation')
-    .select('montant_ht, montant_tva, montant_ttc')
+    .select('code, montant_ht, montant_tva, montant_ttc, bien!inner(agence)')
     .eq('mois_comptable', mois)
-    .eq('code', 'COM')
-
+    .in('code', codes)
+    .eq('bien.agence', AGENCE)
   if (error) throw error
+  return data || []
+}
+
+export async function genererFactureCOM(mois) {
+  const comLines = await lignesFactureCOM(mois)
 
   const totals = (comLines || []).reduce((acc, l) => ({
     ht:  acc.ht  + (l.montant_ht  || 0),
@@ -2100,7 +2110,7 @@ export async function genererFactureCOM(mois) {
     totals.ht += ht; totals.tva += r.montant_ttc - ht; totals.ttc += r.montant_ttc
   }
 
-  if (totals.ttc === 0) throw new Error('Aucune commission directe (COM) ce mois — vérifier la ventilation.')
+  if (totals.ttc === 0) throw new Error('Aucune commission (COM) ni prestation voyageur (PVOY) ce mois — vérifier la ventilation.')
 
   const { data: existing } = await supabase
     .from('facture_evoliz')

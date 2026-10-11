@@ -316,7 +316,7 @@ const [pushing, setPushing] = useState(false)
           .select('bien_id, code, montant_ht, montant_ttc, montant_reel, reservation_id, reservation!inner(owner_stay, platform, fin_revenue)')
           .eq('mois_comptable', mois)
           .in('bien_id', uniqueBienIds)
-          .in('code', ['VIR', 'HON', 'FMEN', 'AUTO', 'COM'])
+          .in('code', ['VIR', 'HON', 'FMEN', 'AUTO', 'COM', 'PVOY'])
           .eq('reservation.owner_stay', false),
         supabase
           .from('prestation_hors_forfait')
@@ -557,7 +557,7 @@ const [pushing, setPushing] = useState(false)
         else if (v.code === 'HON') b.HON += (v.montant_ttc || 0)
         else if (v.code === 'FMEN') b.FMEN += (v.montant_ttc || 0)
         else if (v.code === 'AUTO') { b.AUTOREEL += (v.montant_reel != null ? v.montant_reel : (v.montant_ht || 0)); b.AUTOPROV += (v.montant_ht || 0) }
-        else if (v.code === 'COM') b.COM += (v.montant_ttc || 0)
+        else if (v.code === 'COM' || v.code === 'PVOY') b.COM += (v.montant_ttc || 0) // PVOY (408) : retenue agence comme COM
       }
 
       // Ménage séjour propriétaire par bien : MEN saisi sinon FMEN TTC + AUTO (réel sinon provision),

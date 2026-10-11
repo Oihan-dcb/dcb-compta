@@ -24,8 +24,9 @@ Huit codes produits par la ventilation. Chacun est une ligne dans la table `vent
 | LOY | Reversement propriétaire | 0% | Direct : `commissionableBase − HON_ttc + ownerFees`. Airbnb/Booking : balance depuis `fin_revenue` (voir §4) | ✅ |
 | VIR | Virement propriétaire | 0% | `LOY + taxesTotal` | ✅ |
 | TAXE | Taxe de séjour | 0% | Line items `fee_type='tax'` non remis | ✅ |
-| MEN | Ménage brut voyageur | 0% | Somme des `guest_fees` dont le label n'est pas `'management fee'`, `'host service fee'` ni `'resort fee'`. Exemple : cleaning fee + community fee + pet fee. | ✅ |
-| COM | Commission DCB directe | 20% | `managementFeeRaw` (directes uniquement) | ✅ |
+| MEN | Ménage brut voyageur | 0% | Somme des `guest_fees` dont le label n'est pas `'management fee'`, `'host service fee'` ni `'resort fee'`. Exemple : cleaning fee + community fee + pet fee. Depuis 2026-10 (§24) : hors frais libres (PVOY) et hors frais de gestion Booking (COM). | ✅ |
+| COM | Commission agence | 20% | Direct : `managementFeeRaw + resort fee` (brut). Booking (résas de mois ≥ 2026-10, §24) : frais de gestion / de service − part de la commission Booking × (1 − taux) | ✅ |
+| PVOY | Prestation voyageur de l'agence (frais libres : lit bébé…) | 20% | Depuis 2026-10 (§24) : frais libres de la fiche (`bien_frais.categorie='autre'`) − part commission plateforme × (1 − taux). Facturé sur la facture COM (ligne « Prestations voyageurs »). | ✅ |
 | RGLM | Règlement voyageur N | 0% | Solde restant à encaisser : `fin_revenue − sum(reservation_paiement.montant)`. Créé uniquement pour `platform = 'manual'` ou `'direct'`, après réception d'au moins un acompte. N = nombre de paiements reçus + 1. `calcul_source = 'residuel'`. **N'apparaît pas dans les rapports propriétaires, factures ni exports SEPA.** Visible uniquement dans le module de rapprochement bancaire. | ✅ |
 
 **Note** : les codes MGT et AE existent dans le code de facturation mais ne sont jamais produits par la ventilation (leur `sumByCode` retourne toujours 0).
@@ -1096,3 +1097,42 @@ par résa ci-dessus :
 - Effet sur T3 2026 (à déposer avant le 15/10) : aucun — les 37 résas Booking actives du trimestre (31 DCB, 6 Lauïan)
   portaient toutes « Withheld » (déjà exclues par 404), les 7 autres sont annulées. Déclaration inchangée : DCB 57 résas,
   2 730,50 € dus (2 917,27 € encaissés) ; Lauïan 22 résas, 982,71 € dus (2 042,04 € encaissés). Déclarations passées non modifiées.
+
+## 24. Frais qui reviennent à l'agence : Stripe, gestion Booking, frais libres (décisions Oïhan 11/10/2026, migration 408)
+Règles appliquées par le noyau `ventilationCore.js` (3 moteurs), **identiques pour DCB et Lauïan**, **datées** :
+`REGLE_FRAIS_AGENCE_DEPUIS = '2026-10'` (résas de `mois_comptable` ≥ 2026-10, et simulations sans mois). Les mois
+antérieurs gardent leur calcul d'origine : ils sont facturés / reversés et les verrous (`cloture_bien`, facture
+honoraires) n'existent pas pour tout l'historique (Lauïan 2025) — un recalcul ne doit jamais les modifier en douce.
+Vérifié à la mise en place : 0 écart ancien/nouveau moteur sur 4 904 résas réelles (aucune réécriture).
+
+1. **Coût des paiements Stripe** : à la charge de l'**agence propriétaire du compte Stripe** utilisé (DCB pour DCB,
+   Lauïan pour Lauïan). Pas dans la ventilation (VIRProprio calculé sur le brut) : le justificatif séquestre déduit
+   les frais Stripe de la part agence du mois (§ « Justificatif séquestre — part DCB mensuelle »). Comparaison des
+   canaux (PowerHouse) : `vente_directe_parametres.stripe_a_charge = 'agence'` (tarif ≈ 1,5 % + 0,25 € estimé ;
+   mesuré 2026 : DCB ≈ 2,0 %, Lauïan ≈ 1,6 %, commission Hospitable déduite).
+   ⚠ Les 6 paiements de résas Lauïan encaissés sur le **Stripe DCB** (juin → sept. 2026, avant le Stripe Lauïan) ont
+   eu leurs frais imputés à Lauïan : 209,37 € (+ 23,81 € de frais perdus sur l'annulation ALTHEA HOST-5EOGB8) —
+   mois clôturés, **non régularisé** (rapport Oïhan). Plus aucun paiement croisé depuis le 25/09/2026.
+2. **Frais de gestion Booking** (« Management fee » / « Resort fee » de la fiche, que Booking affiche « frais de
+   service », « frais de service (10%) »… ; libellés reconnus par `estFraisGestionBooking` : management, gestion,
+   frais de service, service charge, resort fee — sauf « frais de service (5%) », alias historique du ménage) :
+   revenus de l'agence **au titre de la COM**. COM = frais − part de la commission Booking portant sur ces frais ×
+   (1 − taux) ; retirés du LOY ; plus comptés en MEN. Le LOY propriétaire reste (1 − taux) × (hébergement − commission
+   Booking sur l'hébergement). Non appliqué : biens `skip_facturation` ; résas Booking des biens où le propriétaire
+   encaisse (`gestion_loyer=false` : aucune facture ne porterait la COM au propriétaire — à trancher).
+   **Airbnb non concerné** (décision limitée à Booking) : les « Management fee » Airbnb restent au propriétaire.
+   Historique (rapport, pas de régularisation) : 6 résas Booking MIRAMARVEL (Lauïan) — 08/2025 172,26 €, 09/2025
+   258,41 €, 01/2026 68,01 € versés au propriétaire au lieu de l'agence (498,68 € nets ; 580,53 € bruts).
+3. **Frais libres** de la fiche Tarification (`bien_frais.categorie='autre'` : lit bébé, kit bébé…) : **prestation
+   voyageur de l'agence** (règle « extras voyageurs » du 25/09/2026), code **PVOY** (TVA 20 %), plus comptés en MEN.
+   Reconnus par leur libellé (= `other_fees` envoyé à Hospitable par la résa manuelle PowerHouse, comparé sans casse ;
+   un libellé non déclaré sur la fiche reste traité comme avant). Direct/manuel : montant brut (avant : compté en MEN
+   et attribué à personne). Airbnb/Booking : frais − part commission × (1 − taux), retiré du LOY.
+   Ce n'est **ni un frais propriétaire** (`frais_proprietaire`) **ni une prestation AE** (`prestation_hors_forfait`).
+   Facturation : facture COM du mois (client CLI-RESA-WEB), ligne séparée « Prestations voyageurs » (référence PVOY,
+   classification Evoliz 02 « Produits des activités annexes ») ; figé avec la COM (verrou I-132 étendu). Comptabilité
+   mensuelle / séquestre / VIRProprioRéel : agrégé avec COM (part agence). Aucune résa réelle n'en porte au 11/10/2026.
+4. **Facture COM filtrée par agence** (`lignesFactureCOM`, `bien!inner(agence)`) : avant le 11/10/2026 la facture
+   COM d'une agence sommait les COM des DEUX agences (DCB a facturé les COM Lauïan : avril 10 €, mai 36,90 €, juillet
+   2 169,50 €, août 1 398,70 € TTC — factures émises non modifiées, rapport Oïhan).
+

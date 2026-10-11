@@ -50,6 +50,8 @@ interface Bien {
   gestion_loyer: boolean | null
   skip_facturation: boolean | null
   proprietaire: { id: string; taux_commission: number | null } | null
+  // Frais de la fiche Tarification (migration 406) — catégorie « autre » = frais libres → PVOY (408)
+  bien_frais?: { libelle: string; categorie: string }[] | null
 }
 interface Resa {
   id: string
@@ -321,7 +323,8 @@ async function calculerVentilationMois(mois: string, agence: string, supa: Retur
       id, proprietaire_id,
       provision_ae_ref, forfait_dcb_ref, has_ae,
       taux_commission_override, gestion_loyer, agence, skip_facturation,
-      proprietaire!proprietaire_id (id, taux_commission)
+      proprietaire!proprietaire_id (id, taux_commission),
+      bien_frais (libelle, categorie)
     ),
     reservation_fee (*),
     reservation_ajustement (*)

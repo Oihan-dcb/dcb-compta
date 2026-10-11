@@ -21,6 +21,7 @@ const CLASSIFICATION_CODE_MAP = {
   HON:     '01', // Gestion location saisonnière
   FMEN:    '04', // Forfait ménage
   COM:     '05', // Commission
+  PVOY:   '02', // Produits des activités annexes (prestations voyageurs : lit bébé…, migration 408)
   DIV:     '06', // Frais divers avancés
   HAOWNER: '07', // Achats refacturés propriétaires
   HON_ETU: '08', // Honoraires locations étudiantes
@@ -656,6 +657,19 @@ export async function pousserFactureCOMVersEvoliz(factureId, totals, mois) {
       .select('montant_ttc, libelle').eq('agence', AGENCE).eq('mois_facturation', mois)
     const itemsRattrapage = (rattrapages || []).map(r => itemCOM(r.libelle, Math.round(r.montant_ttc / 1.2)))
     const htRattrapage = itemsRattrapage.reduce((s, it) => s + Math.round(it.unitPrice * 100), 0)
+    // Prestations voyageurs (PVOY, frais libres de la fiche : lit bébé…, migration 408) : ligne à part,
+    // classification « Produits des activités annexes » (02), compte porté par la classification
+    // (pas de compte 706x dédié créé à ce jour). Biens de l'agence seulement (même filtre que
+    // lignesFactureCOM, facturesEvoliz.js).
+    const { data: lignesExtra, error: eExtra } = await supabase.from('ventilation')
+      .select('montant_ht, bien!inner(agence)').eq('mois_comptable', mois).eq('code', 'PVOY').eq('bien.agence', AGENCE)
+    if (eExtra) throw eExtra
+    const htExtra = (lignesExtra || []).reduce((s, l) => s + (l.montant_ht || 0), 0)
+    const extraClassifId = classifIdMap[CLASSIFICATION_CODE_MAP.PVOY]
+    const itemsExtra = htExtra !== 0 ? [{
+      designation: 'Prestations voyageurs (équipements, services en supplément)', reference: 'PVOY', quantity: 1,
+      unitPrice: htExtra / 100, vatRate: 20, ...(extraClassifId ? { classificationId: extraClassifId } : {}),
+    }] : []
     const { inv: createdInvoice, date: dateEmission } = await createInvoiceDateMois({
       clientId: parseInt(clientId),
       documentdate: dateFactureMois(mois),
@@ -663,7 +677,8 @@ export async function pousserFactureCOMVersEvoliz(factureId, totals, mois) {
       // businessProcess : ne pas envoyer avant août 2026 (valeur rejetée par Evoliz)
       comment: `Commissions sur réservations web directes — ${mois}`,
       items: [
-        ...(totals.ht - htRattrapage !== 0 ? [itemCOM('Commission gestion réservations directes', totals.ht - htRattrapage)] : []),
+        ...(totals.ht - htRattrapage - htExtra !== 0 ? [itemCOM('Commission gestion réservations directes', totals.ht - htRattrapage - htExtra)] : []),
+        ...itemsExtra,
         ...itemsRattrapage,
       ],
     })
@@ -678,7 +693,7 @@ export async function pousserFactureCOMVersEvoliz(factureId, totals, mois) {
       date_emission: dateEmission,
     }).eq('id', factureId)
 
-    // Verrou COM : au-delà de cet envoi, les lignes ventilation code=COM de ce mois sont figées
+    // Verrou COM : au-delà de cet envoi, les lignes ventilation code=COM/PVOY de ce mois sont figées
     // (trg_fige_cloture_com) — la facture COM est désormais la source de vérité.
     await cloturerCOM(mois, AGENCE)
 

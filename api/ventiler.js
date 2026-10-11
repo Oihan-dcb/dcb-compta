@@ -331,7 +331,8 @@ async function processMois(mois, agence, supa, dryRun = false) {
       id, proprietaire_id,
       provision_ae_ref, forfait_dcb_ref, has_ae,
       taux_commission_override, gestion_loyer, agence, skip_facturation,
-      proprietaire!proprietaire_id (id, taux_commission)
+      proprietaire!proprietaire_id (id, taux_commission),
+      bien_frais (libelle, categorie)
     ),
     reservation_fee (*),
     reservation_ajustement (*)
@@ -436,7 +437,8 @@ export default async function handler(req, res) {
       const { data: bien, error: bErr } = await supa.from('bien').select(`
         id, proprietaire_id, provision_ae_ref, forfait_dcb_ref, has_ae,
         taux_commission_override, gestion_loyer, agence, skip_facturation,
-        proprietaire!proprietaire_id (id, taux_commission)
+        proprietaire!proprietaire_id (id, taux_commission),
+        bien_frais (libelle, categorie)
       `).eq('id', sim.bien_id).single()
       if (bErr || !bien) return res.status(404).json({ error: 'Bien introuvable' })
       const platform = ['direct', 'manual', 'airbnb', 'booking'].includes(sim.platform) ? sim.platform : 'manual'
@@ -469,7 +471,8 @@ export default async function handler(req, res) {
           id, proprietaire_id,
           provision_ae_ref, forfait_dcb_ref, has_ae,
           taux_commission_override, gestion_loyer, agence, skip_facturation,
-          proprietaire!proprietaire_id (id, taux_commission)
+          proprietaire!proprietaire_id (id, taux_commission),
+          bien_frais (libelle, categorie)
         ),
         reservation_fee (*),
         reservation_ajustement (*)

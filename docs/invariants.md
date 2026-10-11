@@ -394,6 +394,15 @@ Aucun invariant actif violé à l'issue de la session du 12 avril 2026.
 | I-186 | **Une résa dont la plateforme collecte la taxe n'entre jamais dans notre déclaration.** Booking « … (Withheld Tax) » = Booking collecte et reverse → exclue de PageTaxeSejour (règle par résa `collecteurResa`, le constat prime sur `bien.taxe_collecte`) ; `bien.taxe_collecte.booking` passe à « plateforme » automatiquement (trigger 404). | ✅ 11/10/2026 |
 | I-187 | **PageTaxeSejour filtre les résas par l'agence du BIEN** (`bien!inner(agence)`) : `reservation` n'a pas de colonne `agence`. Avant : `.eq('agence')` sur reservation → 400 silencieux → déclaration toujours vide. | ✅ 11/10/2026 |
 
+### Invariants ajoutés (11/10/2026 — frais revenant à l'agence, migration 408)
+
+| ID | Invariant | Statut |
+|---|---|---|
+| I-188 | **Les frais de gestion / de service d'une résa Booking reviennent à l'agence (COM), pas au propriétaire.** Avant : exclus de rien, ils restaient dans le résidu LOY (et comptés en MEN). Règle datée 2026-10 dans `ventilationCore.js` ; LOY propriétaire inchangé par ces frais. | ✅ 11/10/2026 (mois ≥ 2026-10) · ⚠ historique MIRAMARVEL 498,68 € versés au propriétaire (2025-08/09, 2026-01) — non régularisé, rapport Oïhan |
+| I-189 | **Un frais libre de la fiche (lit bébé…) n'est jamais du ménage** : code PVOY (prestation voyageur agence, TVA 20 %), facturé sur la facture COM, figé avec elle. Avant : compté en MEN et, en Direct, attribué à personne. | ✅ 11/10/2026 (aucune résa concernée à date) |
+| I-190 | **La facture COM d'une agence ne porte que les lignes des biens de cette agence.** Avant : `genererFactureCOM` sommait COM de toutes les agences (DCB a facturé 3 615,10 € TTC de COM Lauïan, avril–août 2026). | ✅ 11/10/2026 (génération) · ⚠ factures émises non modifiées |
+| I-191 | **Le coût Stripe est à la charge de l'agence propriétaire du compte Stripe.** Vrai pour tout paiement arrivé sur le Stripe de l'agence de la résa. | ⚠ 6 paiements Lauïan sur Stripe DCB (06–09/2026) : 209,37 € + 23,81 € imputés à Lauïan — mois clôturés, non régularisé |
+
 ---
 
 *Fichier généré dans le cadre de l'audit structurel DCB Compta — mars 2026.*

@@ -15,7 +15,7 @@ export async function exportReservationsDetaillees(mois, bienIds = null) {
     supabase.from('ventilation')
       .select('reservation_id, code, montant_ht, montant_tva, montant_ttc, montant_reel')
       .eq('mois_comptable', mois)
-      .in('code', ['HON', 'FMEN', 'AUTO', 'LOY', 'VIR', 'TAXE', 'COM'])
+      .in('code', ['HON', 'FMEN', 'AUTO', 'LOY', 'VIR', 'TAXE', 'COM', 'PVOY'])
   ])
   if (resaErr) throw new Error(`Export réservations : ${resaErr.message}`)
   if (ventilErr) throw new Error(`Export réservations — ventilation : ${ventilErr.message}`)
@@ -50,7 +50,7 @@ export async function exportReservationsDetaillees(mois, bienIds = null) {
     'Code résa', 'Bien', 'Propriétaire', 'Plateforme', 'Voyageur',
     'Arrivée', 'Départ', 'Nuits', 'Revenu net EUR',
     'Ventilation calculée', 'Rapprochée', 'Séjour propriétaire', 'Statut',
-    'HON EUR', 'FMEN EUR', 'AUTO EUR', 'LOY EUR', 'VIR EUR', 'TAXE EUR', 'COM EUR'
+    'HON EUR', 'FMEN EUR', 'AUTO EUR', 'LOY EUR', 'VIR EUR', 'TAXE EUR', 'COM EUR', 'PVOY EUR'
   ]
 
   const lignes = (resas || []).map(r => {
@@ -79,7 +79,8 @@ export async function exportReservationsDetaillees(mois, bienIds = null) {
       vent.LOY  ? (vent.LOY.montant_ht   / 100).toFixed(2) : '',
       vent.VIR  ? (vent.VIR.montant_ht   / 100).toFixed(2) : '',
       vent.TAXE ? (vent.TAXE.montant_ht  / 100).toFixed(2) : '',
-      vent.COM  ? (vent.COM.montant_ttc  / 100).toFixed(2) : ''
+      vent.COM  ? (vent.COM.montant_ttc  / 100).toFixed(2) : '',
+      vent.PVOY ? (vent.PVOY.montant_ttc / 100).toFixed(2) : ''
     ]
   })
 
