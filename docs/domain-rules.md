@@ -1077,3 +1077,22 @@ Décision d'Oïhan : quand Booking indique « (Withheld Tax) », **Booking colle
   213 résas mars 2025 → oct. 2026, 7 417,98 € retenus par Booking (DCB 6 860,70 €, Lauïan 557,28 €) ; T3 2026 : DCB 1 474,61 €,
   Lauïan 93,60 €. Aucune déclaration n'a pu les inclure via la page (requête cassée, voir §23), et la ventilation ne les a
   jamais reversés aux propriétaires : risque seulement si une déclaration a été faite à la main en comptant Booking.
+
+**MISE À JOUR 11/10/2026 — migration 405 : Booking = « plateforme » pour TOUTES les résas Booking (règle générale).**
+Décision d'Oïhan : « Ce n'est pas à nous de déclarer la taxe pour Booking, Booking s'en charge. » Remplace la détection
+par résa ci-dessus :
+- Défaut `bien.taxe_collecte` = `{airbnb: plateforme, booking: plateforme, direct: nous}` (colonne, contrainte, JS
+  `COLLECTE_DEFAUT`, fiche PowerHouse 💶 Tarifs & frais). Les 82 biens réglés « nous » (valeur par défaut 401, aucun réglage
+  manuel dans le journal) sont passés à « plateforme », `taxe_maj_par = 'auto : règle générale — …'`, tracé au journal.
+- Trigger `trg_reservation_taxe_collecte_booking` **supprimé** (inutile, et il écraserait un « nous » forcé).
+  `taxe_booking_collecteur()` reste comme constat.
+- `collecteurResa()` : Booking « Withheld » → toujours plateforme (même si le bien est forcé « nous ») ; sinon le réglage
+  (défaut plateforme). Ligne taxe de séjour SANS « Withheld » alors que le bien dit plateforme → résa hors déclaration ET
+  `aVerifier` (bloc « À vérifier » de PageTaxeSejour) : **jamais réintégrée automatiquement**.
+- Forcer « nous » bien par bien reste possible (fiche › Taxe de séjour, réglage explicite journalisé) : seules les résas
+  Booking sans « Withheld » de ce bien reviennent alors dans la déclaration.
+- `taxe_sejour_bien().booking` = dernière ligne taxe de séjour Booking (avec ou sans Withheld, champ `retenue`) → la fiche
+  PowerHouse signale « À vérifier » une ligne sans Withheld de moins de 12 mois.
+- Effet sur T3 2026 (à déposer avant le 15/10) : aucun — les 37 résas Booking actives du trimestre (31 DCB, 6 Lauïan)
+  portaient toutes « Withheld » (déjà exclues par 404), les 7 autres sont annulées. Déclaration inchangée : DCB 57 résas,
+  2 730,50 € dus (2 917,27 € encaissés) ; Lauïan 22 résas, 982,71 € dus (2 042,04 € encaissés). Déclarations passées non modifiées.

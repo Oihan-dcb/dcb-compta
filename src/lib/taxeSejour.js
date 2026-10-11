@@ -12,7 +12,9 @@
 // QUI COLLECTE (migration 404, 11/10/2026) — décision Oïhan : quand Booking retient la taxe (« CITY_TAX (Withheld Tax) »),
 // c'est Booking qui la reverse à la commune → ces nuitées ne vont PAS dans notre déclaration (sinon déclarées deux fois).
 // Règle par résa (le fait constaté sur la résa prime sur le réglage du bien) : collecteurResa() ci-dessous ; même règle
-// en SQL : taxe_booking_collecteur() (détection automatique qui met bien.taxe_collecte.booking = « plateforme »).
+// en SQL : taxe_booking_collecteur().
+// RÈGLE GÉNÉRALE (migration 405, 11/10/2026) : Booking = « plateforme » pour TOUTES les résas Booking (défaut) ; la
+// détection automatique 404 est retirée ; une ligne taxe sans « Withheld » est seulement signalée (« À vérifier »).
 
 export const CLASSEMENTS = [
   { value: 'non_classe', label: 'Non classé' },
@@ -84,19 +86,28 @@ export function taxeBookingCollecteur(taxes) {
   if (l.some(x => RE_TAXE_SEJOUR.test(x))) return 'nous'
   return null
 }
-export const COLLECTE_DEFAUT = { airbnb: 'plateforme', booking: 'nous', direct: 'nous' }
-// Renvoie { collecteur: 'plateforme' | 'nous', source: 'resa' | 'reglage', montantRetenu (euros, Booking) }.
+// 405 (11/10/2026, décision Oïhan : « Ce n'est pas à nous de déclarer la taxe pour Booking, Booking s'en charge ») :
+// Booking = « plateforme » PAR DÉFAUT, « Withheld » ou pas. Forcer « nous » reste possible bien par bien (réglage
+// explicite, journalisé) : seules les résas Booking SANS « Withheld » reviennent alors dans la déclaration.
+export const COLLECTE_DEFAUT = { airbnb: 'plateforme', booking: 'plateforme', direct: 'nous' }
+// Renvoie { collecteur: 'plateforme' | 'nous', source: 'resa' | 'reglage', montantRetenu (euros, Booking),
+//           aVerifier: null | motif } — aVerifier = résa Booking portant une ligne taxe de séjour SANS « Withheld »
+// (taxe qui serait facturée par nous) alors que le bien dit « plateforme » : SIGNALÉE seulement, jamais réintégrée.
 export function collecteurResa(resa, bien) {
   const canal = resa.platform === 'airbnb' ? 'airbnb' : resa.platform === 'booking' ? 'booking' : 'direct'
-  const reglage = { ...COLLECTE_DEFAUT, ...(bien?.taxe_collecte || {}) }[canal]
+  const reglage = { ...COLLECTE_DEFAUT, ...(bien?.taxe_collecte || {}) }[canal] || COLLECTE_DEFAUT[canal]
   if (canal === 'booking') {
     const fait = taxeBookingCollecteur(resa.taxes_voyageur)
-    if (fait) {
-      const montantRetenu = fait === 'plateforme'
-        ? (resa.taxes_voyageur || []).filter(t => RE_RETENUE.test(t?.label || '')).reduce((s, t) => s + (Number(t.amount) || 0), 0) / 100
-        : 0
-      return { collecteur: fait, source: 'resa', montantRetenu, divergeReglage: fait !== reglage }
+    if (fait === 'plateforme') {
+      // Booking a retenu la taxe : toujours hors déclaration (même si le bien est forcé « nous »).
+      const montantRetenu = (resa.taxes_voyageur || []).filter(t => RE_RETENUE.test(t?.label || '')).reduce((s, t) => s + (Number(t.amount) || 0), 0) / 100
+      return { collecteur: 'plateforme', source: 'resa', montantRetenu, aVerifier: null }
+    }
+    if (fait === 'nous' && reglage === 'plateforme') {
+      const l = (resa.taxes_voyageur || []).find(t => RE_TAXE_SEJOUR.test(t?.label || ''))
+      return { collecteur: 'plateforme', source: 'reglage', montantRetenu: 0,
+        aVerifier: `ligne « ${l?.label || 'taxe'} » sans « Withheld »${l?.amount ? ` (${(Number(l.amount) / 100).toFixed(2).replace('.', ',')} €)` : ''} : taxe peut-être facturée par nous — vérifier l'extranet Booking ; si c'est nous qui la collectons, forcer Booking sur « nous » dans la fiche du bien` }
     }
   }
-  return { collecteur: reglage, source: 'reglage', montantRetenu: 0, divergeReglage: false }
+  return { collecteur: reglage, source: 'reglage', montantRetenu: 0, aVerifier: null }
 }

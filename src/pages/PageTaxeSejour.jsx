@@ -65,8 +65,8 @@ export default function PageTaxeSejour() {
         .eq('agence', AGENCE)
         .eq('listed', true)
         .order('code'),
-      // Direct, manuel, Booking (Airbnb : voir plus bas). Le canal ne suffit pas : qui collecte se décide PAR RÉSA
-      // (collecteurResa, 404) — Booking « Withheld » = Booking reverse lui-même → exclu de notre déclaration.
+      // Direct, manuel, Booking (Airbnb : voir plus bas). Booking est chargé pour être listé HORS déclaration (405 : Booking
+      // collecte par défaut) et signalé « À vérifier » s'il porte une taxe sans « Withheld » (collecteurResa).
       supabase.from('reservation')
         .select(SELECT_RESA)
         .eq('bien.agence', AGENCE)
@@ -254,7 +254,7 @@ export default function PageTaxeSejour() {
 
           <div style={{ background: 'var(--brand-pale)', border: '1px solid #E4A853', borderRadius: 8, padding: '10px 16px', marginBottom: 12, fontSize: 12, color: '#92400E' }}>
             ℹ️ Service <strong>pas encore lancé</strong> : aujourd'hui la taxe encaissée est reversée au propriétaire avec son loyer, qui la déclare lui-même.
-            Résas prises en compte : celles dont NOUS collectons la taxe — directes, manuelles, et Booking quand Booking ne la retient pas. Airbnb la collecte et la reverse seul ; Booking aussi quand la résa porte « CITY_TAX (Withheld Tax) » (retenue par Booking → exclue ici, sinon elle serait déclarée deux fois). Réglage par bien et par canal : fiche du bien › Taxe de séjour (PowerHouse). Annulations et séjours propriétaires exclus.
+            Résas prises en compte : celles dont NOUS collectons la taxe — directes et manuelles. Airbnb et Booking la collectent et la reversent eux-mêmes (décision du 11/10/2026 : aucune résa Booking dans notre déclaration, « Withheld » ou pas). Une résa Booking qui porte une ligne de taxe sans « Withheld » est signalée « À vérifier », jamais réintégrée d'office. Réglage par bien et par canal (forcer « nous » si un jour c'est le cas) : fiche du bien › Taxe de séjour (PowerHouse). Annulations et séjours propriétaires exclus.
             « Encaissée » = taxe réellement facturée au voyageur ; « Due » = calcul selon le réglage taxe de séjour du bien (commune, classement, régime — fiche du bien dans PowerHouse) et le barème de la commune ; adultes seulement (mineurs exonérés, nombre d'adultes donné par Hospitable).
           </div>
           {tarifsManquants.size > 0 && (
@@ -265,14 +265,19 @@ export default function PageTaxeSejour() {
 
           {exclues.length > 0 && (() => {
             const total = exclues.reduce((t, r) => t + (r._collecte.montantRetenu || 0), 0)
-            const divergents = exclues.filter(r => r._collecte.divergeReglage)
+            const aVerifier = exclues.filter(r => r._collecte.aVerifier)
             return (
               <div style={{ background: 'var(--white)', border: '1px solid var(--border)', borderRadius: 8, padding: '10px 16px', marginBottom: 16, fontSize: 12 }}>
                 <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
-                  <span>🧾 <strong>{exclues.length} résa{exclues.length > 1 ? 's' : ''} hors déclaration</strong> : taxe collectée et reversée par la plateforme (Booking « Withheld » : {fmt(total)} retenus par Booking).</span>
+                  <span>🧾 <strong>{exclues.length} résa{exclues.length > 1 ? 's' : ''} hors déclaration</strong> : taxe collectée et reversée par la plateforme (Booking collecte toujours ; dont « Withheld » constaté : {fmt(total)} retenus par Booking).</span>
                   <button onClick={() => setVoirExclues(v => !v)} style={{ background: 'none', border: '1px solid var(--border)', borderRadius: 6, padding: '2px 10px', fontSize: 12, cursor: 'pointer' }}>{voirExclues ? 'Masquer' : 'Voir'}</button>
                 </div>
-                {divergents.length > 0 && <div style={{ marginTop: 6, color: '#92400E' }}>⚠ {divergents.length} résa(s) où le constat Booking contredit le réglage du bien (le constat de la résa prime) : vérifier la fiche du bien.</div>}
+                {aVerifier.length > 0 && (
+                  <div style={{ marginTop: 8, background: '#FEF3C7', borderRadius: 6, padding: '8px 12px', color: '#92400E' }}>
+                    <div style={{ fontWeight: 700, marginBottom: 4 }}>À vérifier ({aVerifier.length}) — non comptées dans la déclaration</div>
+                    {aVerifier.map(r => <div key={r.id}>{biens.find(b => b.id === r.bien_id)?.code || '—'} · résa {r.code || '—'} du {r.arrival_date ? new Date(r.arrival_date + 'T12:00:00').toLocaleDateString('fr-FR') : '—'} : {r._collecte.aVerifier}.</div>)}
+                  </div>
+                )}
                 {voirExclues && (
                   <table style={{ width: '100%', borderCollapse: 'collapse', marginTop: 8 }}>
                     <thead><tr><th style={th}>Bien</th><th style={th}>Voyageur</th><th style={th}>Résa</th><th style={th}>Canal</th><th style={th}>Arrivée</th><th style={{ ...th, textAlign: 'center' }}>Nuits</th><th style={{ ...th, textAlign: 'right' }}>Retenue par la plateforme</th></tr></thead>
@@ -281,7 +286,7 @@ export default function PageTaxeSejour() {
                         <td style={td}>{biens.find(b => b.id === r.bien_id)?.code || '—'}</td>
                         <td style={td}>{r.guest_name || '—'}</td>
                         <td style={{ ...td, fontSize: 11, color: 'var(--text-muted)' }}>{r.code || '—'}</td>
-                        <td style={{ ...td, fontSize: 11 }}>{r.platform}{r._collecte.source === 'resa' ? ' · « Withheld »' : ' · réglage du bien'}</td>
+                        <td style={{ ...td, fontSize: 11 }}>{r.platform}{r._collecte.source === 'resa' ? ' · « Withheld »' : r._collecte.aVerifier ? ' · ⚠ à vérifier' : ' · réglage du bien'}</td>
                         <td style={td}>{r.arrival_date ? new Date(r.arrival_date + 'T12:00:00').toLocaleDateString('fr-FR') : '—'}</td>
                         <td style={{ ...td, textAlign: 'center' }}>{r.nights || '—'}</td>
                         <td style={{ ...td, textAlign: 'right' }}>{r._collecte.montantRetenu ? fmt(r._collecte.montantRetenu) : '—'}</td>
@@ -297,7 +302,7 @@ export default function PageTaxeSejour() {
             <div style={{ textAlign: 'center', padding: 60, background: 'var(--white)', borderRadius: 12, color: 'var(--text-muted)' }}>
               <div style={{ fontSize: 36, marginBottom: 12 }}>🏖️</div>
               <div style={{ fontWeight: 600, marginBottom: 6 }}>Aucune réservation concernée sur {trimLabel}</div>
-              <div style={{ fontSize: 13 }}>Réservations dont nous collectons la taxe : directes, manuelles, Booking non retenues par Booking (hors annulations)</div>
+              <div style={{ fontSize: 13 }}>Réservations dont nous collectons la taxe : directes et manuelles (hors annulations ; Airbnb et Booking collectent eux-mêmes)</div>
             </div>
           )}
 
