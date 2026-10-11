@@ -8,6 +8,11 @@
 //   • régime au forfait → rien n'est dû par nuitée (le propriétaire paie un forfait à la commune) ;
 //   • barème de la commune quelle que soit l'agence (donnée légale), la même agence d'abord, l'année la plus proche.
 // La ventilation n'utilise PAS ce barème (ligne TAXE = taxe facturée par Hospitable, ventilationCore.js).
+//
+// QUI COLLECTE (migration 404, 11/10/2026) — décision Oïhan : quand Booking retient la taxe (« CITY_TAX (Withheld Tax) »),
+// c'est Booking qui la reverse à la commune → ces nuitées ne vont PAS dans notre déclaration (sinon déclarées deux fois).
+// Règle par résa (le fait constaté sur la résa prime sur le réglage du bien) : collecteurResa() ci-dessous ; même règle
+// en SQL : taxe_booking_collecteur() (détection automatique qui met bien.taxe_collecte.booking = « plateforme »).
 
 export const CLASSEMENTS = [
   { value: 'non_classe', label: 'Non classé' },
@@ -65,4 +70,33 @@ export function calculTaxeResa(resa, config, bien) {
   const prixNuitParPers = (resa.fin_accommodation || 0) / 100 / nbNuits / occupants
   const part = Math.min(prixNuitParPers * (Number(config.taux_pct) / 100), Number(config.plafond_ht))
   return part * (Number(config.coeff_additionnel) || 1) * adultes * nbNuits
+}
+
+// ── Qui collecte la taxe d'une résa (404) ─────────────────────────────────────────────────────────────────
+// taxes = hospitable_raw.financials.guest.taxes (liste { label, amount }). Booking écrit « (Withheld Tax) » quand il
+// retient la taxe lui-même ; une ligne taxe de séjour SANS « Withheld » (ex. « taxe de séjour (5.5%) », 2022-2025) =
+// Booking la laissait dans le virement → c'est nous qui la collections.
+const RE_RETENUE = /withheld/i
+const RE_TAXE_SEJOUR = /(city.?tax|taxe de s[ée]jour|tourist.?tax)/i
+export function taxeBookingCollecteur(taxes) {
+  const l = (Array.isArray(taxes) ? taxes : []).map(t => String(t?.label || ''))
+  if (l.some(x => RE_RETENUE.test(x))) return 'plateforme'
+  if (l.some(x => RE_TAXE_SEJOUR.test(x))) return 'nous'
+  return null
+}
+export const COLLECTE_DEFAUT = { airbnb: 'plateforme', booking: 'nous', direct: 'nous' }
+// Renvoie { collecteur: 'plateforme' | 'nous', source: 'resa' | 'reglage', montantRetenu (euros, Booking) }.
+export function collecteurResa(resa, bien) {
+  const canal = resa.platform === 'airbnb' ? 'airbnb' : resa.platform === 'booking' ? 'booking' : 'direct'
+  const reglage = { ...COLLECTE_DEFAUT, ...(bien?.taxe_collecte || {}) }[canal]
+  if (canal === 'booking') {
+    const fait = taxeBookingCollecteur(resa.taxes_voyageur)
+    if (fait) {
+      const montantRetenu = fait === 'plateforme'
+        ? (resa.taxes_voyageur || []).filter(t => RE_RETENUE.test(t?.label || '')).reduce((s, t) => s + (Number(t.amount) || 0), 0) / 100
+        : 0
+      return { collecteur: fait, source: 'resa', montantRetenu, divergeReglage: fait !== reglage }
+    }
+  }
+  return { collecteur: reglage, source: 'reglage', montantRetenu: 0, divergeReglage: false }
 }

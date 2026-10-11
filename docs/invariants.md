@@ -387,6 +387,13 @@ Aucun invariant actif violé à l'issue de la session du 12 avril 2026.
 | I-184 | **« Rattrapage juin 2026 — Gestion comptable exceptionnelle » facturé en double** : 4 frais créés le 05/08 (DUL, B24, B16, GASQ, 50 € chacun) en croyant la ligne oubliée en juin, alors qu'elle figurait sur les factures de juin Evoliz (F-246/247/248/249, réglées) → refacturés sur F-327/331/341/369 (août, validées). Signalé par Karen Cresseveur 30/09. | ✅ **Corrigé** (30/09/2026) — avoirs Evoliz partiels validés A-20260000011 (F-327), A-…012 (F-341), A-…013 (F-331) — à imputer sur la facture dans Evoliz (Evoliz ne réduit pas seul le reste à payer) ; frais passés en brouillon (hors rapport). ⚠ GASQ F-369 : avoir impossible par `partial-credit` (facture déjà partiellement payée) → avoir manuel à créer dans Evoliz. Nouvelles actions proxy `createPartialCredit`, `finalizeCredit`, `getCredit`. Colonnes brut/net plateforme du rapport réactivées sur DUL/B24/B16 (rapport_config jamais enregistré). |
 | I-185 | **Mandat signé effacé en cascade avec sa fiche bien** : `mandat_signature` était en ON DELETE CASCADE sur `bien`/`proprietaire` → la suppression de l'ancien bien « BERRUA » (Hélène Elissalt, remplacé par ONGI) a fait disparaître MAND-2026-0001 signé le 22/06/2026 ; Hélène est réapparue dans les onboardings en cours (02/10/2026). | ✅ **Corrigé** (02/10/2026) — MAND-2026-0001 reconstitué sur ONGI depuis le PDF signé + CNI du stockage (`config.restaure_*`, hash SHA-256 conservé) ; migrations 293 (mandat_signature → RESTRICT) et 294 (owner_documents, cloture_bien, reversement_fait/resa, sequestre_perimetre_mensuel, mandat_gestion, proprietaire_onboarding → RESTRICT). Une fusion de fiches doit re-pointer avant de supprimer. |
 
+### Invariants ajoutés (11/10/2026 — taxe de séjour retenue par Booking, migration 404)
+
+| ID | Invariant | Statut |
+|---|---|---|
+| I-186 | **Une résa dont la plateforme collecte la taxe n'entre jamais dans notre déclaration.** Booking « … (Withheld Tax) » = Booking collecte et reverse → exclue de PageTaxeSejour (règle par résa `collecteurResa`, le constat prime sur `bien.taxe_collecte`) ; `bien.taxe_collecte.booking` passe à « plateforme » automatiquement (trigger 404). | ✅ 11/10/2026 |
+| I-187 | **PageTaxeSejour filtre les résas par l'agence du BIEN** (`bien!inner(agence)`) : `reservation` n'a pas de colonne `agence`. Avant : `.eq('agence')` sur reservation → 400 silencieux → déclaration toujours vide. | ✅ 11/10/2026 |
+
 ---
 
 *Fichier généré dans le cadre de l'audit structurel DCB Compta — mars 2026.*

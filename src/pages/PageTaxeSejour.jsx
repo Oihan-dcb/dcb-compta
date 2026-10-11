@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react'
 import { supabase } from '../lib/supabase'
 import { AGENCE } from '../lib/agence'
 import { STATUTS_NON_VENTILABLES } from '../lib/constants'
-import { CLASSEMENTS, CLASSEMENT_LABEL, communeTaxe, classementEffectif, choisirBareme, calculTaxeResa } from '../lib/taxeSejour'
+import { CLASSEMENTS, CLASSEMENT_LABEL, communeTaxe, classementEffectif, choisirBareme, calculTaxeResa, collecteurResa } from '../lib/taxeSejour'
 
 // Catégories du barème (taxe_sejour_config) : « autre » n'a pas de ligne de barème (tarif saisi sur le bien).
 const CLASSIFICATIONS = CLASSEMENTS.filter(c => c.value !== 'autre')
@@ -35,6 +35,8 @@ export default function PageTaxeSejour() {
   const [biens, setBiens] = useState([])
   const [reservations, setReservations] = useState([])
   const [taxeEncaissee, setTaxeEncaissee] = useState({}) // reservation_id → euros (ventilation TAXE)
+  const [exclues, setExclues] = useState([]) // résas dont la PLATEFORME collecte et reverse la taxe (404)
+  const [voirExclues, setVoirExclues] = useState(false)
   // Service pas encore lancé : aucun bien n'a gestion_taxe_sejour → aperçu sur tous les biens
   const [apercu, setApercu] = useState(true)
   const [configs, setConfigs] = useState([]) // taxe_sejour_config rows de l'agence (onglet Tarifs)
@@ -54,41 +56,57 @@ export default function PageTaxeSejour() {
     setError(null)
     const { debut, fin } = getQuarterRange(annee, trimestre)
 
-    const [{ data: biensData }, { data: resaData }] = await Promise.all([
+    // reservation n'a PAS de colonne agence : filtre par l'agence du bien (jointure). Avant le 11/10/2026 la page filtrait
+    // reservation.agence → erreur 400 silencieuse → la déclaration n'affichait AUCUNE résa.
+    const SELECT_RESA = 'bien!inner(agence), id, bien_id, code, guest_name, guest_count, adultes:hospitable_raw->guests->>adult_count, taxes_voyageur:hospitable_raw->financials->guest->taxes, arrival_date, departure_date, nights, fin_accommodation, platform, final_status, owner_stay'
+    const [{ data: biensData }, { data: resaData, error: resaErr }] = await Promise.all([
       supabase.from('bien')
         .select('id, code, hospitable_name, ville, classification, classification_date, classification_fin, agence, listed, gestion_taxe_sejour, taxe_commune, taxe_regime, taxe_collecte, taxe_tarif_saisi')
         .eq('agence', AGENCE)
         .eq('listed', true)
         .order('code'),
-      // Toutes les résas où l'agence encaisse la taxe : direct, manuel, Booking (qui ne la reverse
-      // pas lui-même — elle arrive dans le virement). Airbnb la collecte et la reverse seul.
-      // Avant : platform='direct' seulement (manuel + Booking oubliés, ~la moitié de la taxe)
-      // et résas annulées comptées.
+      // Direct, manuel, Booking (Airbnb : voir plus bas). Le canal ne suffit pas : qui collecte se décide PAR RÉSA
+      // (collecteurResa, 404) — Booking « Withheld » = Booking reverse lui-même → exclu de notre déclaration.
       supabase.from('reservation')
-        .select('id, bien_id, guest_name, guest_count, adultes:hospitable_raw->guests->>adult_count, arrival_date, departure_date, nights, fin_accommodation, platform, final_status, owner_stay')
-        .eq('agence', AGENCE)
+        .select(SELECT_RESA)
+        .eq('bien.agence', AGENCE)
         .neq('platform', 'airbnb')
         .gte('arrival_date', debut)
         .lte('arrival_date', fin)
         .order('arrival_date'),
     ])
+    if (resaErr) setError(resaErr.message)
+    // Airbnb collecte et reverse elle-même (réglage par défaut) : chargé seulement pour les biens réglés « nous ».
+    const biensAirbnbNous = (biensData || []).filter(b => (b.taxe_collecte?.airbnb || 'plateforme') === 'nous').map(b => b.id)
+    let resaAirbnb = []
+    if (biensAirbnbNous.length) {
+      const { data } = await supabase.from('reservation').select(SELECT_RESA).eq('bien.agence', AGENCE).eq('platform', 'airbnb')
+        .in('bien_id', biensAirbnbNous).gte('arrival_date', debut).lte('arrival_date', fin)
+      resaAirbnb = data || []
+    }
 
-    // Booking : exclu quand la fiche du bien dit que la plateforme collecte elle-même (réglage par bien, 401).
-    const collecteParBien = Object.fromEntries((biensData || []).map(b => [b.id, b.taxe_collecte || {}]))
-    const resas = (resaData || []).filter(r => !STATUTS_NON_VENTILABLES.includes(r.final_status) && !r.owner_stay
-      && !(r.platform === 'booking' && collecteParBien[r.bien_id]?.booking === 'plateforme'))
+    const bienParId = Object.fromEntries((biensData || []).map(b => [b.id, b]))
+    const actives = [...(resaData || []), ...resaAirbnb].filter(r => !STATUTS_NON_VENTILABLES.includes(r.final_status) && !r.owner_stay)
+    const resas = [], horsDeclaration = []
+    for (const r of actives) {
+      const c = collecteurResa(r, bienParId[r.bien_id])
+      if (c.collecteur === 'nous') resas.push({ ...r, _collecte: c })
+      else horsDeclaration.push({ ...r, _collecte: c })
+    }
     // Taxe réellement encaissée auprès du voyageur = lignes TAXE de la ventilation
     const encaisse = {}
     for (let i = 0; i < resas.length; i += 200) {
       const ids = resas.slice(i, i + 200).map(r => r.id)
       const { data: tx, error: txErr } = await supabase.from('ventilation')
-        .select('reservation_id, montant_ttc').eq('code', 'TAXE').in('reservation_id', ids)
+        .select('reservation_id, libelle, montant_ttc').eq('code', 'TAXE').in('reservation_id', ids)
       if (txErr) { setError(txErr.message); break }
-      for (const t of tx || []) encaisse[t.reservation_id] = (encaisse[t.reservation_id] || 0) + (t.montant_ttc || 0) / 100
+      // « TVA (10%) » de Booking est aussi une ligne TAXE de la ventilation : ce n'est pas de la taxe de séjour.
+      for (const t of tx || []) if (!/^tva\b/i.test(t.libelle || '')) encaisse[t.reservation_id] = (encaisse[t.reservation_id] || 0) + (t.montant_ttc || 0) / 100
     }
 
     setBiens(biensData || [])
     setReservations(resas)
+    setExclues(horsDeclaration.filter(r => r.platform !== 'airbnb' || r._collecte.source === 'resa'))
     setTaxeEncaissee(encaisse)
     setLoading(false)
   }
@@ -236,7 +254,7 @@ export default function PageTaxeSejour() {
 
           <div style={{ background: 'var(--brand-pale)', border: '1px solid #E4A853', borderRadius: 8, padding: '10px 16px', marginBottom: 12, fontSize: 12, color: '#92400E' }}>
             ℹ️ Service <strong>pas encore lancé</strong> : aujourd'hui la taxe encaissée est reversée au propriétaire avec son loyer, qui la déclare lui-même.
-            Résas prises en compte : directes, manuelles et Booking (Booking ne reverse pas la taxe lui-même) — Airbnb la collecte et la reverse seul. Annulations et séjours propriétaires exclus.
+            Résas prises en compte : celles dont NOUS collectons la taxe — directes, manuelles, et Booking quand Booking ne la retient pas. Airbnb la collecte et la reverse seul ; Booking aussi quand la résa porte « CITY_TAX (Withheld Tax) » (retenue par Booking → exclue ici, sinon elle serait déclarée deux fois). Réglage par bien et par canal : fiche du bien › Taxe de séjour (PowerHouse). Annulations et séjours propriétaires exclus.
             « Encaissée » = taxe réellement facturée au voyageur ; « Due » = calcul selon le réglage taxe de séjour du bien (commune, classement, régime — fiche du bien dans PowerHouse) et le barème de la commune ; adultes seulement (mineurs exonérés, nombre d'adultes donné par Hospitable).
           </div>
           {tarifsManquants.size > 0 && (
@@ -245,11 +263,41 @@ export default function PageTaxeSejour() {
             </div>
           )}
 
+          {exclues.length > 0 && (() => {
+            const total = exclues.reduce((t, r) => t + (r._collecte.montantRetenu || 0), 0)
+            const divergents = exclues.filter(r => r._collecte.divergeReglage)
+            return (
+              <div style={{ background: 'var(--white)', border: '1px solid var(--border)', borderRadius: 8, padding: '10px 16px', marginBottom: 16, fontSize: 12 }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
+                  <span>🧾 <strong>{exclues.length} résa{exclues.length > 1 ? 's' : ''} hors déclaration</strong> : taxe collectée et reversée par la plateforme (Booking « Withheld » : {fmt(total)} retenus par Booking).</span>
+                  <button onClick={() => setVoirExclues(v => !v)} style={{ background: 'none', border: '1px solid var(--border)', borderRadius: 6, padding: '2px 10px', fontSize: 12, cursor: 'pointer' }}>{voirExclues ? 'Masquer' : 'Voir'}</button>
+                </div>
+                {divergents.length > 0 && <div style={{ marginTop: 6, color: '#92400E' }}>⚠ {divergents.length} résa(s) où le constat Booking contredit le réglage du bien (le constat de la résa prime) : vérifier la fiche du bien.</div>}
+                {voirExclues && (
+                  <table style={{ width: '100%', borderCollapse: 'collapse', marginTop: 8 }}>
+                    <thead><tr><th style={th}>Bien</th><th style={th}>Voyageur</th><th style={th}>Résa</th><th style={th}>Canal</th><th style={th}>Arrivée</th><th style={{ ...th, textAlign: 'center' }}>Nuits</th><th style={{ ...th, textAlign: 'right' }}>Retenue par la plateforme</th></tr></thead>
+                    <tbody>{exclues.map(r => (
+                      <tr key={r.id}>
+                        <td style={td}>{biens.find(b => b.id === r.bien_id)?.code || '—'}</td>
+                        <td style={td}>{r.guest_name || '—'}</td>
+                        <td style={{ ...td, fontSize: 11, color: 'var(--text-muted)' }}>{r.code || '—'}</td>
+                        <td style={{ ...td, fontSize: 11 }}>{r.platform}{r._collecte.source === 'resa' ? ' · « Withheld »' : ' · réglage du bien'}</td>
+                        <td style={td}>{r.arrival_date ? new Date(r.arrival_date + 'T12:00:00').toLocaleDateString('fr-FR') : '—'}</td>
+                        <td style={{ ...td, textAlign: 'center' }}>{r.nights || '—'}</td>
+                        <td style={{ ...td, textAlign: 'right' }}>{r._collecte.montantRetenu ? fmt(r._collecte.montantRetenu) : '—'}</td>
+                      </tr>))}
+                    </tbody>
+                  </table>
+                )}
+              </div>
+            )
+          })()}
+
           {reservations.length === 0 && !loading && (
             <div style={{ textAlign: 'center', padding: 60, background: 'var(--white)', borderRadius: 12, color: 'var(--text-muted)' }}>
               <div style={{ fontSize: 36, marginBottom: 12 }}>🏖️</div>
               <div style={{ fontWeight: 600, marginBottom: 6 }}>Aucune réservation concernée sur {trimLabel}</div>
-              <div style={{ fontSize: 13 }}>Réservations directes, manuelles et Booking (hors annulations)</div>
+              <div style={{ fontSize: 13 }}>Réservations dont nous collectons la taxe : directes, manuelles, Booking non retenues par Booking (hors annulations)</div>
             </div>
           )}
 

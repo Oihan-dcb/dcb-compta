@@ -269,6 +269,11 @@ L'ancienne formule `platformRemb = feesDirectBruts − Math.round(feesDirectBrut
 - **Direct** : toutes les taxes → `taxesTotal = Σ taxes`
 - `VIR = LOY + taxesTotal`
 - Les taxes "remitted" Booking sont déduites de `fin_revenue` avant calcul LOY
+- **Booking « CITY_TAX (Withheld Tax) »** (taxe de séjour retenue et reversée par Booking, depuis mars 2025) : elle n'existe
+  que dans `hospitable_raw.financials.guest.taxes` ; la ventilation lit `financials.host` (revenue déjà net de cette taxe,
+  `host.taxes` sans elle) → **aucune ligne TAXE, rien dans VIR/LOY, rien pour DCB** : juste, ne pas modifier (vérifié
+  11/10/2026 : 0 ligne ventilation « withheld »). NB : la « TVA (10%) » Booking est, elle, ventilée en ligne TAXE (dans VIR) —
+  ce n'est pas de la taxe de séjour (PageTaxeSejour l'exclut de « Encaissée »).
 
 ---
 
@@ -1051,4 +1056,24 @@ Décision d'Oïhan : « il faut pouvoir configurer CHAQUE BIEN, car la taxe est 
 - **Barème** = `taxe_sejour_config` (commune × catégorie × année, donnée légale ; lecture staff, écriture bureau) — retenu quelle que soit l'agence (même agence d'abord, année la plus proche).
 - **Calcul** (CGCT L2333-29 s.) : classé = tarif €/personne/nuit, taxes additionnelles comprises (Biarritz 1★ 1,15 € = 0,80 × 1,44) × ADULTES × nuits ; non classé = taux (1 à 5 %) × coût HT de la nuitée PAR OCCUPANT (enfants compris dans la division), plafonné au tarif le plus élevé voté par la commune (part communale, Biarritz 4,90 €), × coefficient additionnel (+10 % département, +34 % région → 1,44), × adultes × nuits. Exonérés : mineurs, saisonniers employés dans la commune, hébergement d'urgence. Classement expiré → non classé. Chambre d'hôtes → ligne 1★ si pas de ligne propre. Régime au forfait → rien facturé au voyageur.
 - Une seule règle, deux implémentations à garder alignées : SQL `taxe_sejour_bien(bien, jour)` (PowerHouse : résas manuelles, séjour type, fiche) et `src/lib/taxeSejour.js` (PageTaxeSejour). **La ventilation n'est pas concernée** : la ligne TAXE vient des taxes facturées par Hospitable.
-- PageTaxeSejour : Booking exclu pour un bien dont `taxe_collecte.booking = 'plateforme'` ; « Due » calculée sur les adultes (guests.adult_count Hospitable).
+- PageTaxeSejour : « Due » calculée sur les adultes (guests.adult_count Hospitable) ; résas filtrées par l'agence DU BIEN (`bien!inner(agence)`) — `reservation` n'a pas de colonne `agence` : jusqu'au 11/10/2026 le filtre `reservation.agence` faisait échouer la requête (400 silencieux) et la déclaration n'affichait AUCUNE résa.
+
+### 23bis. Qui collecte la taxe : par bien ET par canal, constat de la résa d'abord (11/10/2026, migration 404)
+Décision d'Oïhan : quand Booking indique « (Withheld Tax) », **Booking collecte ET reverse** la taxe → ces nuitées ne vont
+**PAS** dans notre déclaration (sinon double déclaration). Constaté sur GAXUXA, IBANETA, M-MAITE, MIRAMARVEL, PANTXIKA, TXOMIN
+(« CITY_TAX (Withheld Tax) », « taxe de séjour (Withheld Tax) (7.20%) », « CITY TAX for Biarritz (Withheld Tax) »).
+- **Règle par résa** (`collecteurResa()` dans `src/lib/taxeSejour.js`, SQL `taxe_booking_collecteur(hospitable_raw)`) :
+  Booking + une taxe voyageur « Withheld » → plateforme ; Booking + ligne taxe de séjour SANS « Withheld » (ex.
+  « taxe de séjour (5.5%) », 2022-2025 : laissée dans le virement) → nous ; sinon → réglage du bien
+  `bien.taxe_collecte[canal]` (airbnb / booking / direct ; défaut plateforme / nous / nous). Le constat de la résa prime.
+- **Détection automatique** : trigger `trg_reservation_taxe_collecte_booking` (insert / update de `hospitable_raw` d'une résa
+  Booking) → `taxe_collecte.booking = 'plateforme'`, `taxe_maj_par = 'auto : Booking retient la taxe (« Withheld », résa …)'`,
+  tracé dans `bien_tarification_journal`. Jamais l'inverse automatiquement : réglage « plateforme » contredit par la
+  dernière résa Booking → ligne « À vérifier » dans la fiche PowerHouse ; retour à « nous » = à la main.
+- **Déclaration** (PageTaxeSejour) : seules les résas collectées par NOUS ; les autres listées à part (« hors déclaration »,
+  montant retenu par Booking), avec alerte si constat ≠ réglage.
+- **Déclarations passées** : jamais modifiées. Rapport en lecture seule : `node scripts/rapport-taxe-booking-retenue.mjs
+  [début] [fin]` (mois, agence, résas, nuitées, taxe retenue par Booking, taxe que la page aurait déclarée). Au 11/10/2026 :
+  213 résas mars 2025 → oct. 2026, 7 417,98 € retenus par Booking (DCB 6 860,70 €, Lauïan 557,28 €) ; T3 2026 : DCB 1 474,61 €,
+  Lauïan 93,60 €. Aucune déclaration n'a pu les inclure via la page (requête cassée, voir §23), et la ventilation ne les a
+  jamais reversés aux propriétaires : risque seulement si une déclaration a été faite à la main en comptant Booking.
