@@ -394,3 +394,18 @@ deboursPropSurplusTotal = DEBP non absorbé → facturé dans facture débours (
 
 *Fichier généré dans le cadre de l'audit structurel DCB Compta — mars 2026.*
 *Ne pas modifier sans relecture du code source.*
+
+## Savoir d'un bien et IA voyageurs (14/10/2026)
+
+| Information | Source qui fait foi | Écrit par | Lu par |
+|---|---|---|---|
+| Codes d'accès, Wi-Fi (`%%…%%`) | Custom codes Hospitable (Oïhan) → `bien_custom_code` (synchro 04:20) | Hospitable seulement | messages Hospitable, IA (fenêtres J-1 / voyageur présent), 🔑 Accès & arrivée (masqué, au clic) |
+| Horaires | `bien.heure_arrivee_defaut / heure_depart_defaut` (16:00 / 10:00, M-MAITE départ 12:00) | PowerHouse | contrats, IA, 🔑 Accès |
+| Savoir voyageur / IA / AE | `bien_savoir` (français) | PowerHouse 📚 Savoir | IA voyageurs (après bascule), Knowledge Hub (poussé en anglais après confirmation), portail AE (à venir) |
+| Knowledge Hub Hospitable | reste la référence de l'IA d'Hospitable ; alimenté depuis le Savoir par « Pousser vers Hospitable » | PowerHouse (clic + confirmation) / auto-détection Hospitable | IA Hospitable ; miroir `kh_chunk` (ancien contexte) |
+| Fiche « details » Hospitable | **périmée** — ne fait jamais foi | — | — |
+
+**Bascule de l'IA voyageurs vers le Savoir** (`ga_agency_config.savoir_ia`) :
+1. `parallele` (depuis le 14/10/2026) : l'IA lit l'ancien contexte (Hub miroité + extraits minés) ; à chaque proposition, le contexte Savoir est construit et comparé (`ga_savoir_comparaison`), sans appel IA en plus. Le dry-run `ga-process-message` accepte `savoir_mode: 'actif'` pour tester le nouveau contexte.
+2. Critères de bascule : Savoir importé et relu (aucun élément « à relire ») sur les biens saisonniers ; comparaison sur ≥ 2 semaines sans élément du Hub perdu ; dry-run de cas réels en `savoir_mode: 'actif'` sans réponse moins bonne que l'ancien contexte (mêmes garde-fous codes / Wi-Fi, vérifiés par `scripts/test-savoir-bien.js`).
+3. `actif` : `update ga_agency_config set savoir_ia='actif' where agence='dcb'`. Un bien sans Savoir importé reste sur l'ancien contexte (repli automatique). Retour arrière : remettre `parallele`.
