@@ -31,6 +31,11 @@
  * façon (source 'ecart_taches', urgent). Les départs sans ménage n'y sont pas : alerte-sejour-sans-menage
  * les signale déjà (pas de doublon).
  *
+ * Ménage pas démarré avant l'arrivée (14/10/2026, incident 416 du 13/10) : les alertes bureau parties la veille
+ * (terrain_rappel 'bureau_arrivee', PowerHouse cron-terrain-rappels, migration 412) sont reprises ici (source
+ * 'menage_en_retard_arrivee', urgent) avec l'heure réelle de démarrage et le sort de la réservation ; la liste ne
+ * contient que la veille → l'alerte se clôt d'elle-même le jour suivant.
+ *
  * Body : { agence?: 'dcb'|'lauian', dry_run?: true (rendu HTML renvoyé, aucune écriture),
  *          force?: true (ignore l'heure et l'anti-doublon), to?: string[] (test : remplace les
  *          destinataires, n'écrit rien en base — l'alerte reste « nouvelle » pour le vrai envoi),
@@ -51,7 +56,9 @@ const MARGE_MS = 2 * 3600 * 1000     // tolérance d'horaire du cron
 
 const SOURCE_MISSIONS = 'mission_acceptation'
 const SOURCE_ECARTS = 'ecart_taches'
+const SOURCE_RETARD_ARRIVEE = 'menage_en_retard_arrivee'
 const LIBELLES: Record<string, string> = {
+  menage_en_retard_arrivee: 'Ménages pas démarrés 2h30 avant l\'arrivée (hier)',
   mission_acceptation: 'Missions AE à accepter ou à réattribuer',
   ecart_taches: 'Missions ↔ Hospitable : écarts en retard',
   paiement_honoraires: 'Paiements reçus non enregistrés dans Evoliz',
@@ -152,6 +159,39 @@ function itemsEcarts(rows: any[]): Record<string, ItemAlerte[]> {
   }
   return out
 }
+// ── Ménages pas démarrés avant l'arrivée, hier (terrain_rappel 'bureau_arrivee', migration 412) ─
+// deno-lint-ignore no-explicit-any
+async function itemsRetardArrivee(supabase: any, jour: string): Promise<Record<string, ItemAlerte[]>> {
+  const out: Record<string, ItemAlerte[]> = { dcb: [], lauian: [] }
+  const hier = new Date(new Date(jour + 'T12:00:00Z').getTime() - 86400000).toISOString().slice(0, 10)
+  const { data: rap, error } = await supabase.from('terrain_rappel').select('mission_id, envoye_at')
+    .eq('type', 'bureau_arrivee').gte('envoye_at', parisVersUtc(hier, '00:00').toISOString()).lt('envoye_at', parisVersUtc(jour, '00:00').toISOString())
+  if (error) throw error
+  if (!rap?.length) return out
+  const ids = rap.map((r: any) => r.mission_id)
+  const [{ data: ms }, { data: ts }] = await Promise.all([
+    supabase.from('mission_menage').select('id, bien_id, date_mission, heure_mission, bien:bien_id(code, hospitable_name, agence), ae:ae_id(prenom)').in('id', ids),
+    supabase.from('mission_terrain').select('mission_id, started_at').in('mission_id', ids),
+  ])
+  const debutPar = new Map((ts || []).map((t: any) => [t.mission_id, t.started_at]))
+  for (const m of ms || []) {
+    const ag = m.bien?.agence === 'lauian' ? 'lauian' : 'dcb'
+    const bien = m.bien?.code || m.bien?.hospitable_name || 'bien ?'
+    const { data: resas } = await supabase.from('reservation').select('checkin_time, final_status, fin_revenue, guest_name')
+      .eq('bien_id', m.bien_id).eq('arrival_date', m.date_mission)
+    const resa = (resas || [])[0]
+    const arrivee = resa?.checkin_time ? leFr(resa.checkin_time).split(' à ')[1] : '16h'
+    const debut = debutPar.get(m.id) as string | undefined
+    const annulee = resa?.final_status === 'cancelled'
+    const libelle = `🚨 ${bien}, ${quandMission(m.date_mission, m.heure_mission)} — ${m.ae?.prenom || 'pas d\'AE'} : ménage pas démarré 2h30 avant l'arrivée (${arrivee}) · `
+      + (debut ? `démarré le ${leFr(debut)}` : 'jamais démarré')
+      + (annulee ? ` · ⚠️ réservation ${resa?.guest_name || ''} annulée` : '')
+    out[ag].push({ cle: `retard_arrivee:${m.id}`, libelle, montant_cts: annulee ? (resa?.fin_revenue ?? null) : null,
+      detail: { urgent: true, mission_id: m.id, debut: parisVersUtc(m.date_mission, m.heure_mission).toISOString(), bien } })
+  }
+  return out
+}
+
 // Sans écriture (dry_run / test) : ce que alerte_signaler() produirait, appliqué en mémoire (une ou plusieurs sources)
 // deno-lint-ignore no-explicit-any
 function simulerSignalement(toutes: any[], parSourceItems: Record<string, Record<string, ItemAlerte[]>>, agences: string[]) {
@@ -245,12 +285,26 @@ serve(async (req) => {
     }
   }
 
+  // Ménages pas démarrés avant l'arrivée, hier → alerte_etat (source 'menage_en_retard_arrivee', même mécanique)
+  let itemsR: Record<string, ItemAlerte[]> = { dcb: [], lauian: [] }
+  let errRetard: string | null = null
+  try { itemsR = await itemsRetardArrivee(supabase, now.jour) } catch (e) { errRetard = String((e as Error).message || e) }
+  if (errRetard) {
+    await supabase.from('journal_ops').insert({ categorie: 'alerte', action: 'point_du_matin', source: 'cron', statut: 'error', message: `ménages en retard avant arrivée illisibles : ${errRetard}`.slice(0, 300) })
+  } else if (ecrire) {
+    for (const ag of agences) {
+      try { await signaler(supabase, SOURCE_RETARD_ARRIVEE, ag, itemsR[ag] || []) }
+      catch (e) { await supabase.from('journal_ops').insert({ categorie: 'alerte', action: 'point_du_matin', source: 'cron', statut: 'error', message: String((e as Error).message || e).slice(0, 300) }) }
+    }
+  }
+
   // Ouvertes de toutes les agences (ligne de synthèse Lauïan dans le point DCB)
   const { data: lues, error } = await supabase.from('alerte_etat').select('*').is('resolved_at', null)
   if (error) return json({ error: error.message }, 500)
   const aSimuler: Record<string, Record<string, ItemAlerte[]>> = {}
   if (!errMissions) aSimuler[SOURCE_MISSIONS] = itemsM
   if (!errEcarts) aSimuler[SOURCE_ECARTS] = itemsE
+  if (!errRetard) aSimuler[SOURCE_RETARD_ARRIVEE] = itemsR
   const toutes = !ecrire ? simulerSignalement(lues || [], aSimuler, agences) : (lues || [])
 
   for (const agence of agences) {
