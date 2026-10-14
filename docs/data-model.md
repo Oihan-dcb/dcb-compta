@@ -1140,3 +1140,8 @@ jamais saisis, facture n°168 (700 €) payée par le séquestre sans mission.
 - `devis_option` : + `origine` bureau|web, `widget_id`, `consentement`, `promo` ; `blocage` + valeur `aucun` (option web SANS blocage Hospitable, 20 min, `jetons_jours=[]`).
 - `devis_option_creer(jsonb)` : mêmes contrôles + champs optionnels ci-dessus + plafond d'options web simultanées par bien (`max_options_web`, défaut 3) sous le même verrou consultatif. Toujours service_role seul.
 - RLS : lecture staff (+ périmètre secteur pour demandes / événements), aucune écriture client, rien pour anon. Accès public uniquement via `api/direct.js` (PowerHouse).
+
+## Ajout 2026-10-14 — Page « Metrics » PowerHouse (migration 416)
+- `bien.gestion_offerte boolean not null default false` : gestion offerte par DCB (LAGREOU / ASKIDA biens perso d'Oïhan, AITA / VIKY famille — HON/FMEN calculés mais jamais facturés). Exclus des performances, comptés à part.
+- `ph_metrics(p_debut date, p_fin date, p_agence text)` (security definer, `authenticated`) : contrôle `ph_droit` (414 : perf tout / agence:x / scope ; honoraires), renvoie `{perimetre, honoraires, agences, n, n1}` ; N-1 = mêmes dates un an plus tôt, résas réservées au plus tard aujourd'hui − 1 an.
+- `ph_metrics_calc(biens, début, fin, coupure, réf, honoraires)` : calcul pur, NON exécutable par `authenticated`/`anon`. Règles : domain-rules §25.

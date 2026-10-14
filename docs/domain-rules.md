@@ -1136,3 +1136,12 @@ Vérifié à la mise en place : 0 écart ancien/nouveau moteur sur 4 904 résas 
    COM d'une agence sommait les COM des DEUX agences (DCB a facturé les COM Lauïan : avril 10 €, mai 36,90 €, juillet
    2 169,50 €, août 1 398,70 € TTC — factures émises non modifiées, rapport Oïhan).
 
+
+## 25. Performances PowerHouse — page « Metrics » (14/10/2026, migration 416)
+Calcul côté base (`ph_metrics_calc`), mêmes règles que `buildRapportData.js` sauf mention :
+- Rattachement à la période = **date d'arrivée** (= `mois_comptable`). Résas = acceptées + annulées avec montant conservé (`fin_revenue > 0` : revenus, VIRProprio, honoraires, pas de nuits). Séjours propriétaire et biens `gestion_offerte` exclus (comptés à part).
+- Brut voyageur : Airbnb `guest.total_price` ; Direct/manuelle `fin_gross_revenue` (total payé) ; Booking hébergement + frais + taxes non « remitted » (repli total − « withheld »). **Écart voulu** : `computeGrossRevenue` (rapports) ajoute hébergement + frais + taxes pour une résa *manuelle* sans retirer la remise (brut surévalué de la remise, ex. R34GYX 07/2026 : 9 945,62 € au lieu de 8 000 €).
+- Hébergement = `fin_accommodation − remise` ; prix moyen/nuit = hébergement ÷ nuits des séjours arrivés ; RevPAR = prix moyen × occupation.
+- VIRProprio = `ventilation` VIR (`montant_ttc`) ; honoraires = HON + COM HT (FMEN à part) ; commission plateforme = −`fin_host_service_fee` (Airbnb/Booking), brut − `fin_revenue` (Direct/manuelle).
+- Occupation = nuits occupées DANS la période (tous séjours qui la chevauchent, pas seulement ceux arrivés dans le mois — écart voulu avec `tauxOcc` des rapports, qui ignore les séjours débordant du mois précédent) ÷ nuits disponibles réelles : bien en exploitation saisonnière (entre deux séjours espacés de moins de 90 nuits, ou depuis aujourd'hui s'il est saisonnier actif), hors bail `etudiant`, hors séjour propriétaire.
+- Concordance vérifiée (IBANETA, MIRAMARVEL, DUL2 × 07-09/2026) : brut, VIRProprio, HON, nombre de résas, durée, notes identiques au rapport mensuel ; écarts expliqués = nuits/occupation (séjours débordants, résas annulées sans revenu ou avec indemnité dont le rapport compte les nuits).
