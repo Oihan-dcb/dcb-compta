@@ -1121,3 +1121,13 @@ jamais saisis, facture n°168 (700 €) payée par le séquestre sans mission.
 - `bien_code_consultation` : chaque affichage d'un code dans 🔑 Accès & arrivée (bien, code, qui, quand — pas la valeur).
 - `ga_agency_config.savoir_ia` : off | **parallele** (défaut) | actif — voir `source-of-truth.md` « Savoir d'un bien ». `ga_savoir_comparaison` : une ligne par proposition de l'IA voyageurs (ancien contexte Hub + extraits vs Savoir : nombres d'éléments et de caractères, éléments du Hub repris).
 - Consignes AE (onglet Terrain, à venir — modèle seulement) : `bien_particularite.origine` (bureau | savoir | suggestion_ae) et `savoir_id` ; `bien_consigne_suggestion` (bien, AE, mission, texte, médias, statut proposee | validee | refusee, `particularite_id` de la fiche publiée, traité par / le). RLS : l'auteur lit et propose (statut proposee) ; les rédacteurs de fiches du périmètre lisent et traitent.
+
+## Ajout 2026-10-14 — Fiche bien : Terrain, Messages, Historique (migration 413, appliquée en 413 + 413b-g)
+
+- `bien_consigne_suggestion.vu_par_ae_at` : l'AE a vu la décision du bureau (bandeau Ma journée).
+- RPC `consigne_proposer(p_mission_id, p_texte, p_medias)` — SECURITY DEFINER, AE : la mission doit être la sienne (`auth_user_owns_ae`), bien et AE déduits de la mission ; même texte déjà en attente = pas de doublon.
+- RPC `consigne_traiter(p_id, 'valider'|'refuser', p_titre, p_contenu, p_categorie, p_importance, p_motif)` — SECURITY INVOKER (RLS de `bien_particularite` / `bien_consigne_suggestion`, périmètre secteur) ; valider crée la `bien_particularite` (`origine='suggestion_ae'`, lue dans Ma journée).
+- RPC `consigne_marquer_vue(p_ids)` — AE, ses propres propositions traitées.
+- Trigger `trace_fiche_historique_masque(colonnes…)` : `bien_toolbox` (code_entree, code_coffre, mdp_arrivee, lien_arrivee masqués « •••• ») et `bien_particularite` (contenu, medias masqués) tracés dans `fiche_historique` ; `avant = {}` à la création.
+- `hospitable_regle_message` (RLS sans policy, service_role) : dernier relevé des règles de messages Hospitable (nom, actif, événement, délai, portée biens/canaux, balises %%…%%) — sans les textes. Rempli par PowerHouse quand l'API répond (source 'api'), relevé initial MCP du 14/10/2026 (source 'mcp').
+- `bien_historique(p_bien_id, p_depuis, p_limite)` — SECURITY DEFINER, **service_role seul** : union des journaux d'un bien (fiche_historique bien / toolbox / particularités, suggestions, tarification, Savoir, codes (clé seule) et affichages de codes, tickets, signalements, mission_journal, contrôles « à reprendre », mandat_signature, mandat_lien, dispo_action_log). Libellés faits par PowerHouse (`api/_ficheOnglets.js`).
