@@ -63,6 +63,11 @@ export function libellesFraisLibres(bien) {
     .filter(l => l && !LIBELLES_STANDARD.has(l)))
 }
 
+// Services / upsells vendus en ligne (dcb-planning api/_services.js, migration 423, 15/10/2026) : ligne de résa
+// « Option voyageur : <nom> » (lit bébé, chaise haute, ménage en cours de séjour…) = frais libre → PVOY, comme les
+// frais « autre » de la fiche, sans avoir à les déclarer dans bien_frais (ils ne s'appliquent qu'aux résas qui les ont choisis).
+export const estOptionVoyageur = label => /^option voyageur\s*:/.test(normLibelle(label))
+
 export function ligneTVA(code, libelle, montantHT, bien, resa, tauxCalcule, montantTTC) {
   const ttc = montantTTC || Math.round(montantHT * (1 + TVA_RATE))
   const tva = ttc - montantHT
@@ -190,7 +195,7 @@ export function _calculerLignes(resa, agence) {
   const regleFraisAgence = (!resa.mois_comptable || resa.mois_comptable >= REGLE_FRAIS_AGENCE_DEPUIS)
     && !bien.skip_facturation && !horsSequestre
   const fraisLibresSet = regleFraisAgence ? libellesFraisLibres(bien) : new Set()
-  const estFraisLibre = f => fraisLibresSet.has(normLibelle(f.label))
+  const estFraisLibre = f => fraisLibresSet.has(normLibelle(f.label)) || (regleFraisAgence && estOptionVoyageur(f.label))
   const estGestionBooking = f => regleFraisAgence && resa.platform === 'booking' && !estFraisLibre(f) && estFraisGestionBooking(f.label)
   const somme = arr => arr.reduce((s, f) => s + (f.amount || 0), 0)
   // Part de la commission plateforme (Airbnb/Booking) qui porte sur ce frais, × (1 − taux) : même

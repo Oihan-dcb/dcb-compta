@@ -992,3 +992,31 @@ describe('408 — frais libres (lit bébé) → PVOY prestation voyageur agence'
     expect(ligne(lignes, 'MEN').montant_ttc).toBe(9700)
   })
 })
+
+describe('423 — services vendus en ligne « Option voyageur : … » → PVOY (sans déclaration bien_frais)', () => {
+  const direct = (mois, fees) => ({
+    id: 'test-direct-upsell', code: 'HOST-UPSELL', platform: 'manual', final_status: 'accepted', owner_stay: false,
+    fin_accommodation: 43200, fin_revenue: 43200 + 9700 + 4320 + fees.reduce((s, f) => s + f.amount, 0), mois_comptable: mois,
+    reservation_fee: [
+      { label: 'Community fee', amount: 9700, fee_type: 'guest_fee' },
+      { label: 'Management fee', amount: 4320, fee_type: 'guest_fee' },
+      ...fees,
+    ],
+    bien: makeBien({ bien_frais: [] }),
+  })
+  const opts = [{ label: 'Option voyageur : Lit bébé', amount: 5000, fee_type: 'guest_fee' }, { label: 'Option voyageur : Ménage en cours de séjour', amount: 7500, fee_type: 'guest_fee' }]
+  it('2026-10 : PVOY 12500 TTC, MEN = ménage seul, COM et LOY identiques à la même résa sans options', () => {
+    const avec = _calculerLignes(direct('2026-10', opts)).lignes, sans = _calculerLignes(direct('2026-10', [])).lignes
+    expect(ligne(avec, 'PVOY').montant_ttc).toBe(12500)
+    expect(ligne(avec, 'PVOY').libelle).toContain('Option voyageur : Lit bébé')
+    expect(ligne(avec, 'MEN').montant_ttc).toBe(ligne(sans, 'MEN').montant_ttc)
+    expect(ligne(avec, 'COM').montant_ttc).toBe(ligne(sans, 'COM').montant_ttc)
+    expect(ligne(avec, 'LOY').montant_ttc).toBe(ligne(sans, 'LOY').montant_ttc)
+  })
+  it('mois antérieur à la règle (2026-09) : pas de PVOY', () => {
+    expect(ligne(_calculerLignes(direct('2026-09', opts)).lignes, 'PVOY')).toBeUndefined()
+  })
+  it('libellé ordinaire non déclaré : pas de PVOY', () => {
+    expect(ligne(_calculerLignes(direct('2026-10', [{ label: 'Lit bébé', amount: 5000, fee_type: 'guest_fee' }])).lignes, 'PVOY')).toBeUndefined()
+  })
+})
