@@ -163,6 +163,9 @@ export default async function handler(req, res) {
       geo_lat: prop.address?.coordinates?.latitude != null ? parseFloat(prop.address.coordinates.latitude) : null,
       geo_lng: prop.address?.coordinates?.longitude != null ? parseFloat(prop.address.coordinates.longitude) : null,
       hospitable_amenities: Array.isArray(prop.amenities) ? prop.amenities : null,
+      // Pièces + lits et capacité (429) : préremplissent les couchages du bien (bien_lit) s'il n'en a aucun.
+      hospitable_room_details: Array.isArray(prop.room_details) ? prop.room_details : null,
+      hospitable_capacite: Number.isInteger(prop.capacity?.max) ? prop.capacity.max : null,
       timezone: prop.timezone,
       currency: prop.currency || 'EUR',
       listed: prop.listed !== false,
