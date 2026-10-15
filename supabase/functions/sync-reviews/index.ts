@@ -135,6 +135,12 @@ Deno.serve(async (req) => {
         // "axes d'amélioration" par bien.
         private_feedback:          review.private?.feedback ?? null,
         detailed_ratings:          review.private?.detailed_ratings ?? null,
+        // 421 (15/10/2026) — Metrics › Avis : réponse publique de l'hôte, possibilité de répondre, plateforme
+        reponse:                   review.public?.response ?? null,
+        repondu_le:                review.responded_at ?? null,
+        peut_repondre:             typeof review.can_respond === 'boolean' ? review.can_respond : null,
+        plateforme:                review.platform ?? null,
+        note_origine:              review.public?.rating_platform_original != null ? String(review.public.rating_platform_original) : null,
       }
 
       const { error } = await sb

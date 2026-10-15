@@ -597,8 +597,12 @@ Avis voyageurs reçus via Hospitable webhook. Associés à une réservation.
 | `comment` | text | Commentaire | |
 | `submitted_at` | timestamptz | Date de soumission | |
 | `created_at` | timestamptz | | |
+| `private_feedback`, `detailed_ratings` | text, jsonb | Message privé, sous-notes par type (Booking sur 10) | sync-reviews |
+| `reponse`, `repondu_le` | text, timestamptz | Réponse publique de l'hôte (Hospitable `public.response`, `responded_at`) | 421, sync-reviews |
+| `peut_repondre` | boolean | Hospitable `can_respond` (vrai pour presque tous les avis Airbnb, même anciens) | 421 |
+| `plateforme`, `note_origine` | text | `platform` de l'avis, note d'origine de la plateforme | 421 |
 
-**Créée par** : `hospitable-webhook` (handleReview — upsert). Lue par : `rapportProprietaire.js` → `getReviewsMois`, `PageRapports`.
+**Créée par** : `hospitable-webhook` (handleReview — upsert) et `sync-reviews` (quotidien, rattrapage `backfill:true` sans SMS). Lue aussi par Metrics PowerHouse (`ph_metrics_avis`, 421). Lue par : `rapportProprietaire.js` → `getReviewsMois`, `PageRapports`.
 
 ---
 

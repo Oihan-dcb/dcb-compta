@@ -1731,3 +1731,10 @@ propriétaires — jamais de payin voyageur/plateforme). `src/services/rapproche
 `getMouvementsMois`, `getStatsRapprochement` et de la remise à zéro du mois ; compteur « virements en attente » de
 PageRapprochement filtré par agence (il mélangeait DCB et Lauïan) et sans le courant. Les rapprochements de FACTURES
 (honoraires, débours) regardent toujours les deux comptes. Même convention que `banque.js` et `verify-virements-sortants`.
+
+## Fix 15/10/2026 — Taxe de séjour : T2 et T3 vides
+`PageTaxeSejour.getQuarterRange` bornait chaque trimestre au « 31 » (`2026-06-31`, `2026-09-31`) : Postgres refuse ces
+dates (22008) → la requête des résas échouait et la déclaration T2 / T3 restait vide. Fin de trimestre = dernier jour
+réel. Trouvé en vérifiant l'onglet Metrics › Taxes de séjour de PowerHouse (migrations 421-421c), qui reprend les mêmes
+règles (copie conforme de `src/lib/taxeSejour.js` dans PowerHouse `api/_taxeSejour.js`, à régénérer par
+`node scripts/copier-taxe-sejour.js` après toute modification ici).

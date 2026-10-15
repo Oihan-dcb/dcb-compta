@@ -10,10 +10,12 @@ const CLASS_LABEL = CLASSEMENT_LABEL
 
 function getQuarterRange(year, quarter) {
   const starts = { 1: '01', 2: '04', 3: '07', 4: '10' }
-  const ends   = { 1: '03', 2: '06', 3: '09', 4: '12' }
+  // Dernier jour RÉEL du trimestre (15/10/2026) : « 06-31 » / « 09-31 » faisaient échouer la requête (date invalide pour
+  // Postgres → 400) : T2 et T3 n'affichaient aucune résa. Constaté en vérifiant Metrics › Taxes de séjour.
+  const ends   = { 1: '03-31', 2: '06-30', 3: '09-30', 4: '12-31' }
   return {
     debut: `${year}-${starts[quarter]}-01`,
-    fin:   `${year}-${ends[quarter]}-31`,
+    fin:   `${year}-${ends[quarter]}`,
     label: `T${quarter} ${year}`,
   }
 }
