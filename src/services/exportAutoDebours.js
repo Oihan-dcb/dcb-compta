@@ -21,6 +21,7 @@ async function fetchData(mois, bienIds = null) {
     .eq('mois', mois)
     .eq('bien.agence', AGENCE)
     .not('statut', 'in', '(cancelled,refuse)')
+    .not('ae_id', 'is', null) // recouche vendue en ligne pas encore attribuée (migration 425) : rien à payer
     .order('date_mission', { ascending: true })
   if (bienIds) missQuery = missQuery.in('bien_id', bienIds)
   const [{ data: missionsRaw, error: missErr }, { data: prestationsRaw, error: prestErr }] = await Promise.all([

@@ -431,7 +431,7 @@ Missions de ménage créées depuis le calendrier iCal Hospitable de chaque AE.
 | Champ | Type | Description | Notes |
 |---|---|---|---|
 | `id` | uuid PK | | |
-| `ae_id` | uuid FK → auto_entrepreneur | | |
+| `ae_id` | uuid FK → auto_entrepreneur | | NULL permis SEULEMENT pour une recouche vendue en ligne pas encore attribuée (check `mission_menage_ae_ou_vente`, migration 425) — hors paie / export AUTO tant que null |
 | `bien_id` | uuid FK → bien | | Null si ical_code non trouvé |
 | `date_mission` | date | Date de la mission | |
 | `titre_ical` | text | Titre de l'événement iCal (ex: "Cleaning (CERES0394)") | |
@@ -442,6 +442,12 @@ Missions de ménage créées depuis le calendrier iCal Hospitable de chaque AE.
 | `ventilation_auto_id` | uuid FK → ventilation | Lien vers la ligne ventilation AUTO de la réservation correspondante | ON DELETE SET NULL (migration 002 — session 07/04/2026). Null si non lié. RPC `lier_ventilation_auto_mission` crée ce lien après chaque ventilation. |
 | `reservation_id` | uuid FK → reservation | Réservation associée (déduit du iCal) | Peut être null si ical_code non trouvé |
 | `created_at` | timestamptz | | |
+| `vente_source` | text UNIQUE (partiel) | `devis:<id>:<service>:<rang>` — mission créée par un service vendu en ligne (425) | Idempotence (webhook rejoué) |
+| `vente_resa_hospitable_id` | text | `reservation.hospitable_id` du séjour servi | JAMAIS reservation_id (réservé au ménage de départ / ventilation) |
+| `vente_rang`, `vente_qte` | smallint | k-ième recouche sur q | Date = `recouche_vendue_date(arrivée, départ, k, q)` |
+| `vente_date_auto` | boolean | true = suit le milieu du séjour ; false = décalée à la main (hub) | |
+| `vente_date_confirmee_le` | timestamptz | Date confirmée avec le voyageur | |
+| `vente_annulee_auto` | boolean | Annulée par le suivi du séjour (réactivable) | Trigger `trg_recouche_vendue_suivre` sur reservation |
 
 ---
 
