@@ -1156,3 +1156,13 @@ jamais saisis, facture n°168 (700 €) payée par le séquestre sans mission.
 - `ph_metrics(p_debut date, p_fin date, p_agence text)` (security definer, `authenticated`) : contrôle `ph_droit` (414 : perf tout / agence:x / scope ; honoraires), renvoie `{perimetre, honoraires, agences, n, n1}` ; N-1 = mêmes dates un an plus tôt, résas réservées au plus tard aujourd'hui − 1 an.
 - `ph_metrics_calc(biens, début, fin, coupure, réf, honoraires)` : calcul pur, NON exécutable par `authenticated`/`anon`. Règles : domain-rules §25.
 - Migration 418 (14/10/2026) : `ph_metrics_biens()` (biens filtrables = périmètre du compte, hors gestion offerte), `ph_metrics_comparer(périodes jsonb [1..4], mode 'date'|'complet', agence, biens uuid[])` (biens TOUJOURS intersectés avec le périmètre ; coupure 'date' = même date l'an dernier pour un décalage d'années pleines, sinon même nombre de jours), `ph_metrics_perimetre()` (interne). `ph_metrics_calc` renvoie aussi `mois`, `jours`, `pickup`, `evenements`, VIRProprio/honoraires par canal. 418b : `ph_metrics(début, fin, agence)` conservé comme enveloppe de compatibilité.
+
+## Ajout 2026-10-16 — Anonymisation des conversations voyageurs à 5 ans (migrations 438, 439)
+
+- `ga_agency_config.anonymize_after_months` **supprimée** (réglage 12 mois remplacé par une durée fixe : `anon_delai_conversations()` = 5 ans, `anon_delai_avis()` = 3 ans pour `sms_queue` / `sms_logs`). `ga_scrub` supprimée ; `ga_anonymize_due()` conservée comme simple appel de la nouvelle fonction.
+- Colonne `anonymise_le timestamptz` ajoutée à : `hospitable_messages`, `guest_thread`, `guest_thread_note`, `guest_thread_action`, `guest_reply_log`, `guest_inquiry`, `guest_scheduled_cache`, `guest_campaign_recipient`, `ga_replay_result`, `ga_fact_claim`, `devis_option`, `direct_demande`, `sejour_note`, `signalements`, `email_jobs`, `mail_messages`, `mail_ai_analysis`, `webhook_log`, `sms_queue`, `sms_logs` (`ga_conversation`, `chat_llm_jobs`, `ga_correction` gardent `anonymized_at`).
+- `anonymisation_journal` : comptes par exécution / règle / table, sans donnée personnelle (lecture staff).
+- Fonctions : `anon_texte(text, text[])`, `anon_jsonb(jsonb, text[])`, `anon_noms`, `anon_luhn`, `anon_mois` (pures) ; `anon_conversations_candidats(jour, limite)`, `anon_noms_conversation`, `anon_mail_voyageur`, `anon_conversations_executer(jour, dry, limite)` (service_role). Tests : `supabase/tests/438_anonymisation_tests.sql`.
+- `trg_guest_thread_a_recalculer` ignore les mises à jour faites pendant l'anonymisation (`dcb.anonymisation = '1'`).
+- `identite_purge_journal.piece` accepte `assurance` (439).
+- Non touchés (comptabilité 10 ans) : `reservation`, `ventilation`, factures, `journal_ops`.
