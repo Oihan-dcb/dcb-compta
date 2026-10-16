@@ -958,6 +958,18 @@ Annulée / refusée / expirée avec `fin_revenue = 0` (remboursée en totalité,
 de ventilation** : ni HON, ni FMEN, ni MEN, ni AUTO, ni LOY/VIR, ni TAXE — on n'invente pas d'argent.
 Annulée **avec** un montant retenu (`fin_revenue > 0`) : ventilation normale (le ménage retenu reste un FMEN).
 
+### Résa directe annulée par le bouton « Annuler et rembourser » (PowerHouse, migration 447, 16/10/2026)
+Résa directe / manuelle payée en ligne (Stripe), annulée depuis PowerHouse (`api/_annulationResa.js`) : `resa_annulation`
+garde payé / remboursé / conservé. Étape compta : `final_status='cancelled'`, `fin_revenue` = montant **conservé**.
+- 0 € conservé (remboursement total) → règle ci-dessus : aucune ligne de ventilation (supprimée).
+- Montant conservé > 0 → `ventilation_manuelle=true` + lignes `calcul_source='manual'` : frais bancaires conservés (~2,5 %,
+  quand la politique les déduit) → **COM** agence (TVA 20 %, le coût Stripe est à la charge de l'agence) ; le reste (pénalité,
+  montant gardé) = loyer du propriétaire (« les sommes versées restent acquises au bailleur ») → **HON** au taux du bien
+  (arrondi inférieur, comme le Direct) + **LOY** / **VIRProprio** du reste.
+- Trigger `trg_reservation_annulation_bouton` : la synchro / le webhook Hospitable (prix total d'une manuelle annulée, ou 0
+  faute de paiement Hospitable) ne peuvent plus écraser ce `fin_revenue`.
+- Mois clôturé (`cloture_comptable.cloture_ventil`) : rien n'est modifié, alerte « à régulariser à la main ».
+
 ### Séquestre — clôtures et journal (migration 283, 26/09/2026)
 - **Clôture mensuelle** (page Séquestre › Clôtures) : fige le justificatif calculé au dernier jour du mois
   (poches, dû/payé par ayant droit, écart) dans `sequestre_cloture_mensuelle` et **verrouille** le mois : une
