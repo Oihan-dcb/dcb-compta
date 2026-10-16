@@ -560,7 +560,7 @@ export async function buildRapportData(bienId, propId, mois, opts = {}) {
   const [{ data: revData }, { data: allReviewsData }] = await Promise.all([
     supabase
       .from('reservation_review')
-      .select('id, reviewer_name, rating, comment, submitted_at')
+      .select('id, hospitable_reservation_id, reviewer_name, rating, comment, submitted_at')
       [isGlobal ? 'in' : 'eq']('bien_id', isGlobal ? maiteIds : bienId)
       .gte('submitted_at', `${mois}-01`)
       .lt('submitted_at', `${nextMoisStr}-01`)
@@ -572,10 +572,12 @@ export async function buildRapportData(bienId, propId, mois, opts = {}) {
       .not('rating', 'is', null),
   ])
   // Dédup : webhook review.created + review.updated peut insérer deux lignes pour le même avis
-  // Clé de dédup = (reviewer_name, rating, 100 premiers chars du comment)
+  // Clé de dédup = (réservation, reviewer_name, rating, 100 premiers chars du comment). La réservation évite de fusionner
+  // deux avis différents anonymisés (« Voyageur », même note, sans commentaire — 441, avis > 5 ans).
   const reviewsSeen = new Set()
   const reviews = (revData || []).filter(r => {
-    const key = `${r.reviewer_name}|${r.rating}|${(r.comment || '').substring(0, 100)}`
+    const anonyme = !r.reviewer_name || r.reviewer_name === 'Voyageur'
+    const key = `${anonyme ? (r.hospitable_reservation_id || r.id) : ''}|${r.reviewer_name}|${r.rating}|${(r.comment || '').substring(0, 100)}`
     if (reviewsSeen.has(key)) return false
     reviewsSeen.add(key)
     return true
