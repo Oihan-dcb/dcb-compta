@@ -58,3 +58,9 @@ alter table public.penalite_depart enable row level security;
 drop policy if exists penalite_depart_lecture on public.penalite_depart;
 create policy penalite_depart_lecture on public.penalite_depart for select to authenticated using (auth_user_is_staff());
 revoke insert, update, delete on public.penalite_depart from anon, authenticated;
+
+-- 470b (même jour, appliquée) : date de la notification écrite envoyée par le bureau (PowerHouse n'envoie rien) ;
+-- débit réel possible 7 jours après (contrat saisonnier art. 11 : 7 jours pour présenter des observations).
+alter table public.penalite_depart add column if not exists notifie_le date;
+alter table public.penalite_depart add column if not exists notifie_par_label text;
+comment on column public.penalite_depart.notifie_le is 'Date de la notification écrite envoyée au voyageur PAR LE BUREAU (heure constatée + calcul) ; débit réel possible 7 jours après (contrat art. 11). PowerHouse n''envoie rien.';
