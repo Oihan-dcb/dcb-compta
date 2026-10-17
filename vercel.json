@@ -1,4 +1,5 @@
 {
+  "regions": ["dub1"],
   "functions": {
     "api/generate-pdf.js": {
       "memory": 1024,
