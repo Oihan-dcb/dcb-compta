@@ -39,7 +39,7 @@ Deux applications React (DCB Compta + Portail AE) partagent une base Supabase co
 │    create-ae-user       sync-ical-ae                           │
 │    sync-ical-cron       hospitable-webhook                     │
 │    global-sync          evoliz-proxy                           │
-│    smtp-send (Resend API)                                      │
+│    smtp-send (Resend / Brevo / SMTP OVH — MAIL_PROVIDER)        │
 │    [reset-ae-password]                                         │
 └────────────────────────┬────────────────────────────────────────┘
                          │ API HTTPS
@@ -306,7 +306,7 @@ dcb-portail-ae (React, repo privé)
 | `process-sms-queue` | pg_cron (toutes les minutes) | Envoie les SMS en attente via Twilio | ✅ pg_cron job ID 2 actif (`* * * * *`). Lit `sms_queue WHERE status='pending' AND send_at <= now()`, envoie via Twilio, logue dans `sms_logs`. Claude Haiku génère le corps si commentaire disponible. |
 | `sync-reviews` | Manuel (UI Config) | Sync tous les avis Hospitable → `reservation_review` | ✅ Existe — remplit `bien_id`, `rating` depuis `review.public.rating`, `comment` depuis `review.public.review`. Ne déclenche PAS de SMS — alimentation DB uniquement. Pas de cron. |
 | `review-sms-trigger` | Manuel (UI SMS Reviews — Test + Campagnes) | Envoi SMS direct bypass queue | ✅ Existe — modes `test` et `campaign`. Bypass de `sms_queue` — envoi immédiat via Twilio. |
-| `smtp-send` | rapportProprietaire.js | Envoi email via Resend API HTTP | ✅ Migration Resend 05/04/2026 — fetch natif vers api.resend.com. From: rapports@mail.destinationcotebasque.com. Supporte to/cc/subject/html/attachments. Secret: RESEND_API_KEY. |
+| `smtp-send` | rapportProprietaire.js | Envoi email (prestataire choisi par le secret MAIL_PROVIDER : resend par défaut, brevo, ovh_smtp — `_shared/mail.ts`, préparé 17/10/2026 pour le rapatriement FR) | ✅ Migration Resend 05/04/2026 — fetch natif vers api.resend.com (chemin par défaut inchangé). From: rapports@mail.destinationcotebasque.com. Supporte to/cc/subject/html/attachments. Secret: RESEND_API_KEY. |
 | `ventiler_toutes_resas` | hospitable-webhook (RPC Postgres) | Ventilation post-webhook | 🔶 **Probablement inexistante** en base |
 
 ---

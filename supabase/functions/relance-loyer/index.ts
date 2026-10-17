@@ -16,12 +16,13 @@
  *
  * Variables d'env requises :
  *   SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY (auto Supabase)
- *   TWILIO_ACCOUNT_SID, TWILIO_AUTH_TOKEN, TWILIO_FROM_NUMBER
+ *   SMS : SMS_PROVIDER (twilio par défaut : TWILIO_ACCOUNT_SID, TWILIO_AUTH_TOKEN, TWILIO_FROM_NUMBER ; ovh : OVH_*)
  *   APP_URL  (pour appel smtp-send)
  */
 
 import { serve } from 'https://deno.land/std@0.168.0/http/server.ts'
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
+import { envoyerSms, smsConfigure } from '../_shared/sms.ts'
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -30,23 +31,7 @@ const corsHeaders = {
 
 // ── SMS ────────────────────────────────────────────────────────────────────
 
-async function envoyerSMS(sid: string, token: string, from: string, to: string, body: string) {
-  try {
-    const res = await fetch(`https://api.twilio.com/2010-04-01/Accounts/${sid}/Messages.json`, {
-      method: 'POST',
-      headers: {
-        'Authorization': 'Basic ' + btoa(`${sid}:${token}`),
-        'Content-Type': 'application/x-www-form-urlencoded',
-      },
-      body: new URLSearchParams({ From: from, To: to, Body: body }).toString(),
-    })
-    const data = await res.json()
-    if (res.ok) return { ok: true, sid: data.sid }
-    return { ok: false, error: data.message || JSON.stringify(data) }
-  } catch (err: any) {
-    return { ok: false, error: err?.message || String(err) }
-  }
-}
+// Prestataire SMS : SMS_PROVIDER (twilio par défaut | ovh) — _shared/sms.ts (rapatriement FR, 17/10/2026)
 
 // ── Textes de relance ──────────────────────────────────────────────────────
 
@@ -110,9 +95,7 @@ serve(async (req) => {
 
     const SUPABASE_URL  = Deno.env.get('SUPABASE_URL')!
     const SERVICE_KEY   = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!
-    const TWILIO_SID    = Deno.env.get('TWILIO_ACCOUNT_SID')
-    const TWILIO_TOKEN  = Deno.env.get('TWILIO_AUTH_TOKEN')
-    const TWILIO_FROM   = Deno.env.get('TWILIO_FROM_NUMBER')
+    const SMS_OK        = smsConfigure()
 
     const supabase = createClient(SUPABASE_URL, SERVICE_KEY)
 
@@ -207,9 +190,9 @@ serve(async (req) => {
         }
 
         // ── SMS ─────────────────────────────────────────────────────────
-        if (e.telephone && TWILIO_SID && TWILIO_TOKEN && TWILIO_FROM) {
+        if (e.telephone && SMS_OK) {
           const corps = texteSMS(prenom, mois, montantTotal, nbRelances)
-          const result = await envoyerSMS(TWILIO_SID, TWILIO_TOKEN, TWILIO_FROM, e.telephone, corps)
+          const result = await envoyerSms(e.telephone, corps)
           smsOk = result.ok
         }
 
@@ -245,7 +228,7 @@ serve(async (req) => {
             canal: 'sms', destinataire: e.telephone, statut: 'ok', mois: loyer.mois,
             details: { nb_relance: nbRelances + 1, montant: montantTotal },
           })
-        } else if (e.telephone && TWILIO_SID) {
+        } else if (e.telephone && SMS_OK) {
           logEntries.push({
             agence: e.agence, etudiant_id: e.id, loyer_suivi_id: loyer.id,
             type: forceManuel ? 'relance_manuelle' : 'sms_relance',

@@ -1,4 +1,6 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts"
+// Prestataire mail : MAIL_PROVIDER (resend par défaut | brevo | ovh_smtp) — _shared/mail.ts (rapatriement FR, 17/10/2026)
+import { envoyerMail, mailConfigure } from "../_shared/mail.ts"
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -20,10 +22,9 @@ serve(async (req) => {
       )
     }
 
-    const RESEND_API_KEY = Deno.env.get('RESEND_API_KEY')
-    if (!RESEND_API_KEY) {
+    if (!mailConfigure()) {
       return new Response(
-        JSON.stringify({ error: 'RESEND_API_KEY non configuré' }),
+        JSON.stringify({ error: 'Prestataire mail non configuré (MAIL_PROVIDER)' }),
         { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       )
     }
@@ -59,14 +60,7 @@ serve(async (req) => {
       }))
     }
 
-    const res = await fetch('https://api.resend.com/emails', {
-      method: 'POST',
-      headers: {
-        'Authorization': `Bearer ${RESEND_API_KEY}`,
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify(payload),
-    })
+    const res = await envoyerMail(payload)
 
     const data = await res.json()
 
