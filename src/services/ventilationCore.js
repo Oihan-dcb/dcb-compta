@@ -218,6 +218,13 @@ export function _calculerLignes(resa, agence) {
   const optionsPortail = (Array.isArray(resa.options_portail) ? resa.options_portail : []).filter(o => Number(o?.montant) > 0)
   const optionsPortailTTC = optionsPortail.reduce((s, o) => s + Math.round(Number(o.montant)), 0)
   const pvoyTTC = extraTTC + optionsPortailTTC
+  // PÉNALITÉS DE DÉPART TARDIF NON AUTORISÉ ENCAISSÉES (migration 471, 17/10/2026, décision d'Oïhan) : revenu de l'AGENCE
+  // → ligne COM dédiée « Pénalité départ tardif non autorisé » (TVA 20 %, facture COM du mois), au montant encaissé,
+  // hors Hospitable (débit de la carte de garantie sur le Stripe de l'agence, ou réclamation plateforme encaissée) :
+  // jamais dans MEN, HON, LOY ni VIRProprio. reservation.penalites_depart = [{libelle, montant (centimes TTC), penalite_id}],
+  // tenu à jour par trigger. Absent / vide → calcul strictement inchangé.
+  const penalitesDepartTTC = (Array.isArray(resa.penalites_depart) ? resa.penalites_depart : [])
+    .reduce((s, p) => s + (Number(p?.montant) > 0 ? Math.round(Number(p.montant)) : 0), 0)
 
   const totalFeesAirbnb    = cleaningFeeAirbnb + communityFeeRaw
   const airbnbFallbackActif = resa.platform === 'airbnb' && totalFeesAirbnb === 0 && (bien.forfait_dcb_ref || 0) > 0
@@ -306,6 +313,8 @@ export function _calculerLignes(resa, agence) {
   if (extraHT > 0)
     lignes.push(ligneTVA(    'PVOY', `Prestation voyageur : ${[...new Set([...(appliqueExtra ? fraisLibres.map(f => String(f.label).trim()) : []), ...optionsPortail.map(o => String(o.libelle || 'Option voyageur').trim())])].join(', ')}`.slice(0, 120),
       extraHT, bien, resa, null, pvoyTTC))
+  if (penalitesDepartTTC > 0)
+    lignes.push(ligneTVA(    'COM',  'Pénalité départ tardif non autorisé', Math.round(penalitesDepartTTC / (1 + TVA_RATE)), bien, resa, null, penalitesDepartTTC))
   if (honHT > 0)
     lignes.push(ligneTVA(    'HON',  'Honoraires de gestion',       honHT,     bien, resa, tauxCom,     honTTC))
   if (fmenHT !== 0)

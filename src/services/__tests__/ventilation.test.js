@@ -1055,3 +1055,33 @@ describe('463 — options payées dans le portail voyageur (Stripe agence, hors 
     expect(ligne(_calculerLignes(resa('manual', [{ libelle: 'x', montant: 0 }])).lignes, 'PVOY')).toBeUndefined()
   })
 })
+
+describe('471 — pénalité de départ tardif non autorisé encaissée → ligne COM dédiée (revenu agence)', () => {
+  const resa = (platform, penalites_depart) => ({
+    id: 'test-penalite', code: 'HOST-PEN', platform, final_status: 'accepted', owner_stay: false,
+    fin_accommodation: 43200, fin_revenue: platform === 'airbnb' ? 50000 : 43200 + 9700 + 4320, mois_comptable: '2026-10', penalites_depart,
+    reservation_fee: platform === 'airbnb'
+      ? [{ label: 'Cleaning fee', amount: 9700, fee_type: 'guest_fee' }, { label: 'Host service fee', amount: -2900, fee_type: 'host_fee' }]
+      : [{ label: 'Community fee', amount: 9700, fee_type: 'guest_fee' }, { label: 'Management fee', amount: 4320, fee_type: 'guest_fee' }],
+    bien: makeBien({ bien_frais: [] }),
+  })
+  const pen = l => l.find(x => x.code === 'COM' && x.libelle === 'Pénalité départ tardif non autorisé')
+  const horsPen = l => l.filter(x => !(x.code === 'COM' && x.libelle === 'Pénalité départ tardif non autorisé'))
+  for (const platform of ['manual', 'airbnb', 'booking']) {
+    it(`${platform} : COM dédiée 6000 TTC (5000 HT, TVA 20 %), toutes les autres lignes IDENTIQUES (HON, LOY, VIRProprio…)`, () => {
+      const avec = _calculerLignes(resa(platform, [{ libelle: 'Pénalité départ tardif', montant: 6000, penalite_id: 'p' }])).lignes
+      const sans = _calculerLignes(resa(platform, null)).lignes
+      expect(pen(avec).montant_ttc).toBe(6000)
+      expect(pen(avec).montant_ht).toBe(5000)
+      expect(pen(avec).montant_tva).toBe(1000)
+      expect(pen(avec).mois_comptable).toBe('2026-10')
+      expect(horsPen(avec)).toEqual(sans)
+    })
+  }
+  it('plusieurs pénalités : une seule ligne, cumulée ; montants nuls ignorés', () => {
+    const l = _calculerLignes(resa('manual', [{ montant: 6000 }, { montant: 1200 }, { montant: 0 }])).lignes
+    expect(l.filter(x => x.libelle === 'Pénalité départ tardif non autorisé')).toHaveLength(1)
+    expect(pen(l).montant_ttc).toBe(7200)
+    expect(pen(_calculerLignes(resa('manual', [{ montant: 0 }])).lignes)).toBeUndefined()
+  })
+})
