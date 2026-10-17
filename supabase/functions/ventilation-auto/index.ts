@@ -177,7 +177,13 @@ async function calculerVentilationResa(resa: Resa, agence: string, supa: ReturnT
   const revenue = resa.fin_revenue || 0
   // Revenu 0 mais options du portail payées (463/471) : ventilée quand même (PVOY seule, voir optionsSeules).
   if (revenue === 0 && !optionsSeules(resa)) {
-    if (!dryRun) await supa.from('reservation').update({ ventilation_calculee: true }).eq('id', resa.id)
+    if (!dryRun) {
+      // 17/10/2026 (chaise haute 4XUWQQ refusée) : options du portail toutes remboursées sur une résa à 0 € → les lignes
+      // auto déjà posées (PVOY) restaient en compta. Règle « revenu 0 → aucune ligne » : on retire les lignes auto non
+      // rapprochées (une ligne liée à un mouvement bancaire n'est jamais supprimée) et on remet le témoin à 0.
+      await supa.from('ventilation').delete().eq('reservation_id', resa.id).eq('calcul_source', 'auto').is('mouvement_id', null)
+      await supa.from('reservation').update({ ventilation_calculee: true, options_compta_centimes: 0 }).eq('id', resa.id)
+    }
     return null
   }
 
