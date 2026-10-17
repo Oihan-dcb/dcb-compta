@@ -66,6 +66,13 @@ export function libellesFraisLibres(bien) {
 // Services / upsells vendus en ligne (dcb-planning api/_services.js, migration 423, 15/10/2026) : ligne de résa
 // « Option voyageur : <nom> » (lit bébé, chaise haute, ménage en cours de séjour…) = frais libre → PVOY, comme les
 // frais « autre » de la fiche, sans avoir à les déclarer dans bien_frais (ils ne s'appliquent qu'aux résas qui les ont choisis).
+// Options payées dans le portail voyageur (463) : montant TTC encore dû (lignes non remboursées).
+export const optionsPortailTTC = resa => (Array.isArray(resa?.options_portail) ? resa.options_portail : [])
+  .filter(o => Number(o?.montant) > 0).reduce((s, o) => s + Math.round(Number(o.montant)), 0)
+// Résa SANS revenu Hospitable (ex. résa manuelle à 0 €, séjour offert / de test) mais avec des options payées dans le portail
+// (17/10/2026, 1er vrai paiement 4XUWQQ) : les moteurs ne doivent plus la sauter (« revenu 0 → pas de ventilation ») —
+// seule la ligne PVOY des options est produite.
+export const optionsSeules = resa => !(resa?.fin_revenue > 0) && optionsPortailTTC(resa) > 0
 export const estOptionVoyageur = label => /^option voyageur\s*:/.test(normLibelle(label))
 
 export function ligneTVA(code, libelle, montantHT, bien, resa, tauxCalcule, montantTTC) {
@@ -346,7 +353,7 @@ export function _calculerLignes(resa, agence) {
   }
 
   return {
-    lignes, isProlongation,
+    lignes: optionsSeules(resa) ? lignes.filter(l => l.code === 'PVOY') : lignes, isProlongation,
     fallbackAirbnb: airbnbFallbackActif ? {
       motif: 'airbnb_fees_missing',
       forfait_dcb_ref: bien.forfait_dcb_ref,

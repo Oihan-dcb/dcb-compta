@@ -1085,3 +1085,20 @@ describe('471 — pénalité de départ tardif non autorisé encaissée → lign
     expect(pen(_calculerLignes(resa('manual', [{ montant: 0 }])).lignes)).toBeUndefined()
   })
 })
+
+describe('471 — résa à 0 € avec options payées dans le portail (1er vrai paiement 4XUWQQ)', () => {
+  const resa0 = opts => ({ id: 'r0', code: '4XUWQQ-T', platform: 'manual', final_status: 'accepted', owner_stay: false, fin_accommodation: 0, fin_revenue: 0,
+    mois_comptable: '2026-10', options_portail: opts, reservation_fee: [], bien: makeBien({ bien_frais: [], provision_ae_ref: 2500 }) })
+  it('seule la ligne PVOY (20 € TTC, 16,67 € HT) est produite', () => {
+    const { lignes } = _calculerLignes(resa0([{ libelle: 'Option voyageur : Chaise haute', montant: 2000 }]))
+    expect(lignes.map(l => l.code)).toEqual(['PVOY'])
+    expect(ligne(lignes, 'PVOY').montant_ttc).toBe(2000)
+    expect(ligne(lignes, 'PVOY').montant_ht).toBe(1667)
+  })
+  it('optionsSeules : vrai seulement sans revenu et avec options', async () => {
+    const { optionsSeules } = await import('../ventilationCore.js')
+    expect(optionsSeules(resa0([{ libelle: 'x', montant: 2000 }]))).toBe(true)
+    expect(optionsSeules(resa0(null))).toBe(false)
+    expect(optionsSeules({ ...resa0([{ libelle: 'x', montant: 2000 }]), fin_revenue: 5000 })).toBe(false)
+  })
+})

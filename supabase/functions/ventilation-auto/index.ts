@@ -18,7 +18,7 @@ import { logError } from '../_shared/logError.ts'
 // Noyau partagé (Étape 4, audit fusion des moteurs, 21/08/2026) — Deno importe le .js ESM
 // nativement, aucune transpilation nécessaire. Source unique avec api/ventiler.js (Vercel)
 // et src/services/ventilation.js (navigateur) : plus de divergence possible entre les 3.
-import { TVA_RATE, STATUTS_NON_VENTILABLES, ligneTVA, ligneHorsTVA, _calculerLignes } from '../../../src/services/ventilationCore.js'
+import { TVA_RATE, STATUTS_NON_VENTILABLES, ligneTVA, ligneHorsTVA, _calculerLignes, optionsSeules } from '../../../src/services/ventilationCore.js'
 
 const CORS = {
   'Access-Control-Allow-Origin': '*',
@@ -175,7 +175,8 @@ async function calculerVentilationResa(resa: Resa, agence: string, supa: ReturnT
   }
 
   const revenue = resa.fin_revenue || 0
-  if (revenue === 0) {
+  // Revenu 0 mais options du portail payées (463/471) : ventilée quand même (PVOY seule, voir optionsSeules).
+  if (revenue === 0 && !optionsSeules(resa)) {
     if (!dryRun) await supa.from('reservation').update({ ventilation_calculee: true }).eq('id', resa.id)
     return null
   }

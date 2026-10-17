@@ -26,7 +26,7 @@ import crypto from 'crypto'
 import { createClient } from '@supabase/supabase-js'
 // Noyau partagé (Étape 4, audit fusion des moteurs, 21/08/2026) — même pattern déjà
 // éprouvé en prod par api/matching-auto.js → src/services/rapprochement.js.
-import { TVA_RATE, STATUTS_NON_VENTILABLES, ligneTVA, ligneHorsTVA, _calculerLignes } from '../src/services/ventilationCore.js'
+import { TVA_RATE, STATUTS_NON_VENTILABLES, ligneTVA, ligneHorsTVA, _calculerLignes, optionsSeules } from '../src/services/ventilationCore.js'
 
 const SUPABASE_URL      = process.env.SUPABASE_URL || 'https://omuncchvypbtxkpalwcr.supabase.co'
 const SUPABASE_ANON_KEY = process.env.SUPABASE_ANON_KEY
@@ -144,7 +144,8 @@ async function _writeResa(resa, agence, supa, dryRun = false) {
   }
 
   const revenue = resa.fin_revenue || 0
-  if (revenue === 0) {
+  // Revenu 0 mais options du portail payées (463/471) : ventilée quand même (PVOY seule, voir optionsSeules).
+  if (revenue === 0 && !optionsSeules(resa)) {
     if (!dryRun) await supa.from('reservation').update({ ventilation_calculee: true }).eq('id', resa.id)
     return null
   }
