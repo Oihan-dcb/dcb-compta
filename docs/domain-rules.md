@@ -1166,3 +1166,11 @@ Calcul côté base (`ph_metrics_calc`), mêmes règles que `buildRapportData.js`
 - Suivi : trigger `trg_recouche_vendue_suivre` (reservation, dates / final_status) → `recouche_vendue_suivre` déplace, annule (séjour annulé ou < 3 nuits) ou réactive ; jamais une mission démarrée ou validée. Journal `mission_journal` types `service_vendu` / `date_changee`.
 - Compta : la ligne payée reste « Option voyageur : … » → PVOY. La mission sans AE a `montant` NULL et est exclue de l'export AUTO/débours (`exportAutoDebours` filtre `ae_id` non null) et de la paie PowerHouse ; une fois attribuée elle suit le circuit normal (forfait / taux de l'AE, imputation `ventilation_dcb`).
 
+
+## 27. Options payées dans le portail voyageur (17/10/2026, migration 463)
+- Le voyageur paie une option de SON séjour (lit bébé, recouche, départ tardif…) dans le portail voyageur PowerHouse, par carte, sur le compte Stripe de l'AGENCE du bien — **hors Hospitable** (rien n'est ajouté à la résa Hospitable, `fin_revenue` inchangé).
+- `portail_voyageur_commande` (paiement_mode `stripe`, essai false, statut `payee` / `a_verifier` / `remboursee_partiel` / `effet_en_cours`) → trigger `trg_portail_commande_vers_reservation` → `reservation.options_portail` = lignes payées NON remboursées `[{libelle, montant (centimes TTC), commande_id}]`, et `ventilation_calculee = false` (recalcul de nuit).
+- `ventilationCore._calculerLignes` : `options_portail` → ajouté à la ligne **PVOY** « Prestation voyageur » (TVA 20 %), au montant payé, **sans part plateforme** (encaissé directement par l'agence), jamais dans MEN, LOY ni VIRProprio. Absent / vide → calcul strictement identique (tests vitest « 463 »). Facture COM : ligne « Prestations voyageurs » comme les autres PVOY.
+- Remboursement d'une option (bouton PowerHouse, ou « Annuler et rembourser » du séjour qui rend TOUJOURS les options en totalité) : la ligne sort de `options_portail` → PVOY recalculée. Mois clôturé : pas de recalcul automatique (régularisation à la main, comme toute modification après clôture).
+- Rapprochement : l'encaissement arrive dans le versement Stripe de l'agence (PAYIN Stripe), pas dans un payout de plateforme.
+- `reservation_horaire` : arrivée anticipée / départ tardif vendus → heure du séjour dans PowerHouse (jamais Hospitable) ; sans effet comptable propre (le prix est une option PVOY).

@@ -211,6 +211,13 @@ export function _calculerLignes(resa, agence) {
   const appliqueExtra = extraBrut > 0
   // Direct/manuel : partPlateforme = 0 → montant brut (comme la COM des frais de gestion Direct).
   const extraTTC = appliqueExtra ? extraBrut - partPlateforme(extraBrut) : 0
+  // Options PAYÉES DANS LE PORTAIL VOYAGEUR (migration 463, 17/10/2026) : encaissées sur le Stripe de l'AGENCE, HORS
+  // Hospitable (jamais dans revenue / fees) → prestation voyageur de l'agence (PVOY) au montant payé, sans part plateforme ;
+  // ni dans le LOY / VIRProprio, ni dans MEN. reservation.options_portail = [{libelle, montant (centimes TTC)}], tenu à jour
+  // par trigger (lignes remboursées retirées). Absent / vide → calcul strictement inchangé.
+  const optionsPortail = (Array.isArray(resa.options_portail) ? resa.options_portail : []).filter(o => Number(o?.montant) > 0)
+  const optionsPortailTTC = optionsPortail.reduce((s, o) => s + Math.round(Number(o.montant)), 0)
+  const pvoyTTC = extraTTC + optionsPortailTTC
 
   const totalFeesAirbnb    = cleaningFeeAirbnb + communityFeeRaw
   const airbnbFallbackActif = resa.platform === 'airbnb' && totalFeesAirbnb === 0 && (bien.forfait_dcb_ref || 0) > 0
@@ -258,7 +265,7 @@ export function _calculerLignes(resa, agence) {
   // 433,60 € comptés deux fois, gonflant la part DCB « virable » du séquestre).
   const comAmount    = (isDirect && !bien.skip_facturation ? (managementFeeRaw + resortFeeRaw) : 0) + comBookingTTC
   const comHT        = comAmount > 0 ? Math.round(comAmount / (1 + TVA_RATE)) : 0
-  const extraHT      = extraTTC > 0 ? Math.round(extraTTC / (1 + TVA_RATE)) : 0
+  const extraHT      = pvoyTTC > 0 ? Math.round(pvoyTTC / (1 + TVA_RATE)) : 0
 
   const ownerFees = (isDirect && totalFeesForOwnerRate > 0)
     ? guestFeesAll.reduce((s, f) => s + Math.round(Math.abs(hostServiceFee) * (f.amount || 0) / totalFeesForOwnerRate * (1 - tauxCom)), 0)
@@ -297,8 +304,8 @@ export function _calculerLignes(resa, agence) {
   if (comHT > 0)
     lignes.push(ligneTVA(    'COM',  comBookingTTC > 0 ? 'Commission agence (frais de gestion Booking)' : 'Commission DCB', comHT, bien, resa, null, comAmount))
   if (extraHT > 0)
-    lignes.push(ligneTVA(    'PVOY', `Prestation voyageur : ${[...new Set(fraisLibres.map(f => String(f.label).trim()))].join(', ')}`.slice(0, 120),
-      extraHT, bien, resa, null, extraTTC))
+    lignes.push(ligneTVA(    'PVOY', `Prestation voyageur : ${[...new Set([...(appliqueExtra ? fraisLibres.map(f => String(f.label).trim()) : []), ...optionsPortail.map(o => String(o.libelle || 'Option voyageur').trim())])].join(', ')}`.slice(0, 120),
+      extraHT, bien, resa, null, pvoyTTC))
   if (honHT > 0)
     lignes.push(ligneTVA(    'HON',  'Honoraires de gestion',       honHT,     bien, resa, tauxCom,     honTTC))
   if (fmenHT !== 0)

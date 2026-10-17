@@ -1020,3 +1020,38 @@ describe('423 — services vendus en ligne « Option voyageur : … » → PVOY 
     expect(ligne(_calculerLignes(direct('2026-10', [{ label: 'Lit bébé', amount: 5000, fee_type: 'guest_fee' }])).lignes, 'PVOY')).toBeUndefined()
   })
 })
+
+describe('463 — options payées dans le portail voyageur (Stripe agence, hors Hospitable) → PVOY', () => {
+  const resa = (platform, options_portail, extraFees = []) => ({
+    id: 'test-portail-opt', code: 'HOST-PORTAIL', platform, final_status: 'accepted', owner_stay: false,
+    fin_accommodation: 43200, fin_revenue: platform === 'airbnb' ? 50000 : 43200 + 9700 + 4320, mois_comptable: '2026-10', options_portail,
+    reservation_fee: platform === 'airbnb'
+      ? [{ label: 'Cleaning fee', amount: 9700, fee_type: 'guest_fee' }, { label: 'Host service fee', amount: -2900, fee_type: 'host_fee' }, ...extraFees]
+      : [{ label: 'Community fee', amount: 9700, fee_type: 'guest_fee' }, { label: 'Management fee', amount: 4320, fee_type: 'guest_fee' }, ...extraFees],
+    bien: makeBien({ bien_frais: [] }),
+  })
+  const opts = [{ libelle: 'Option voyageur : Lit bébé', montant: 5000 }, { libelle: 'Option voyageur : Départ tardif', montant: 2500 }]
+  const sansPVOY = l => l.filter(x => x.code !== 'PVOY')
+  it('Direct : PVOY 7500 TTC (6250 HT), toutes les autres lignes IDENTIQUES à la résa sans options', () => {
+    const avec = _calculerLignes(resa('manual', opts)).lignes, sans = _calculerLignes(resa('manual', null)).lignes
+    expect(ligne(avec, 'PVOY').montant_ttc).toBe(7500)
+    expect(ligne(avec, 'PVOY').montant_ht).toBe(6250)
+    expect(ligne(avec, 'PVOY').libelle).toBe('Prestation voyageur : Option voyageur : Lit bébé, Option voyageur : Départ tardif')
+    expect(sansPVOY(avec)).toEqual(sansPVOY(sans))
+    expect(ligne(sans, 'PVOY')).toBeUndefined()
+  })
+  it('Airbnb (si activé un jour) : PVOY au montant payé (aucune part plateforme), LOY / VIR inchangés', () => {
+    const avec = _calculerLignes(resa('airbnb', opts)).lignes, sans = _calculerLignes(resa('airbnb', [])).lignes
+    expect(ligne(avec, 'PVOY').montant_ttc).toBe(7500)
+    expect(ligne(avec, 'LOY').montant_ttc).toBe(ligne(sans, 'LOY').montant_ttc)
+    expect(ligne(avec, 'VIR').montant_ttc).toBe(ligne(sans, 'VIR').montant_ttc)
+  })
+  it('cumul avec un frais « Option voyageur » vendu avec la résa : une seule ligne PVOY', () => {
+    const avec = _calculerLignes(resa('manual', [opts[0]], [{ label: 'Option voyageur : Chaise haute', amount: 1500, fee_type: 'guest_fee' }])).lignes
+    expect(avec.filter(x => x.code === 'PVOY')).toHaveLength(1)
+    expect(ligne(avec, 'PVOY').montant_ttc).toBe(6500)
+  })
+  it('montants nuls / absents ignorés', () => {
+    expect(ligne(_calculerLignes(resa('manual', [{ libelle: 'x', montant: 0 }])).lignes, 'PVOY')).toBeUndefined()
+  })
+})

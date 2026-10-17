@@ -1166,3 +1166,9 @@ jamais saisis, facture n°168 (700 €) payée par le séquestre sans mission.
 - `trg_guest_thread_a_recalculer` ignore les mises à jour faites pendant l'anonymisation (`dcb.anonymisation = '1'`).
 - `identite_purge_journal.piece` accepte `assurance` (439).
 - Non touchés (comptabilité 10 ans) : `reservation`, `ventilation`, factures, `journal_ops`.
+
+### Migration 463 — paiement des options du portail voyageur (17/10/2026)
+- `portail_voyageur_commande` : statuts + `paiement_attente`, `effet_en_cours`, `a_verifier`, `remboursee`, `remboursee_partiel`, `echec_paiement` ; colonnes `paiement_mode` (stripe|simule), `stripe_customer_id`, `stripe_livemode`, `montant_paye_centimes`, `recu_url`, `carte`, `effets` (ce qui a été créé, pour le défaire), `verrou_le`, `erreur`, `rembourse_centimes`, `rembourse_le`, `remboursements`, `conditions` (texte accepté), `langue`, `tenu_jusqu` (stock tenu 30 min), `arrivee`, `depart`, `maj_le` ; index unique sur `stripe_payment_intent_id`. Lignes : `rembourse_le` / `rembourse_centimes` / `refund_id` par ligne remboursée.
+- `reservation.options_portail` (jsonb) : options payées non remboursées, tenu par le trigger `trg_portail_commande_vers_reservation` → PVOY (domain-rules §27).
+- `reservation_horaire` (resa_hospitable_id, reservation_id, bien_id, sens arrivee|depart, heure HH:MM, source portail|devis|bureau, commande_id, note, annule_le) — une heure active par séjour et par sens ; RLS sans politique (service_role).
+- `direct_service.horaire` (arrivee_anticipee|depart_tardif) + `horaire_heure` (HH:MM).
