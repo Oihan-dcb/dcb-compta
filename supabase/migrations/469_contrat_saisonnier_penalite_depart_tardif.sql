@@ -11,6 +11,9 @@
 --   §6 Obligations du locataire (règlement intérieur) : puce « Libérer le logement à l'heure de départ du séjour (article 3) ».
 --   §11 Retenues : « Retard de départ : facturation au prorata du loyer journalier » remplacé par la nouvelle règle (renvoi art. 3).
 -- Contrats déjà envoyés / signés : INCHANGÉS (relisent LEUR modèle par template_id ; vérifié 96/96 identique, banc du vrai handler).
+-- APPLIQUÉE le 17/10/2026 via l'API REST service après déploiement PowerHouse b760649 (6 lignes inactives : dcb en 65288a66,
+-- es bc085e1c, fr 2318a79a ; lauian en a94a3ab6, es 1c54e584, fr 34cd16fa) puis bascule is_active — rejouable sans effet.
+-- Aperçus PDF locaux : scratchpad penalite/apercu/. Sauvegarde des modèles actifs avant : scratchpad penalite/sauvegarde/.
 -- Prérequis : PowerHouse déployé avec les variables penalite_* AVANT la bascule (sinon : phrase générale sans montant, sans erreur).
 
 -- dcb saisonnier en : 2026-v5 → 2026-v6
