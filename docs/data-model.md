@@ -65,6 +65,8 @@ Référentiel central. Chaque ligne représente un logement géré par DCB ou La
 
 **Trigger `sync_bien_toolbox()`** (migration 242, 17/08/2026) : à chaque INSERT/UPDATE de `code`/`ville`, upsert automatique de la ligne `bien_toolbox` correspondante (match par `bien_id`, fallback `nom_csv`). `bien_toolbox` (créée par import CSV, migrations 098/099) alimente la "Boîte à outils" du Portail AE (`dcb-portail-ae` — accès, codes, linge). Voir I-130 dans `invariants.md`.
 
+**Codes d'accès (migration 505, 20/10/2026)** : la table `bien_toolbox` n'est plus lisible directement que par le staff PowerHouse (`bien_toolbox_staff_all`). Le portail AE lit la vue `bien_toolbox_ae` (mêmes lignes, sans `code_entree` / `code_coffre` / `lien_arrivee` / `mdp_arrivee`, avec `a_<champ>` = renseigné) ; les valeurs passent par la RPC `ae_codes_acces(p_bien_ids, p_source)` qui ne les rend que si `ae_codes_droit(bien)` (bureau dans son périmètre, ou AE assigné à une mission non annulée / non refusée sur ce bien datée de la veille, du jour ou du lendemain, heure de Paris) et trace chaque remise dans `bien_code_consultation` (`fiche_ae:` / `ma_journee:` + champ, 1 ligne / compte / bien / champ / 10 min, jamais la valeur). Même règle que le guide d'arrivée AE (PowerHouse `api/_aeGuide.js`, préfixe `guide_ae:`).
+
 ---
 
 ### `proprietaire`
