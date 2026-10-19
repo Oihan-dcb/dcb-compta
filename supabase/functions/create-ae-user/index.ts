@@ -21,16 +21,59 @@ Deno.serve(async (req) => {
       Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? ''
     )
 
+    // Réservé au bureau (ou à un appel serveur en clé de service) : cette fonction peut
+    // désormais relier un compte EXISTANT à une fiche, un AE ne doit pas pouvoir l'appeler.
+    const jeton = (req.headers.get('Authorization') ?? '').replace(/^Bearer\s+/i, '').trim()
+    // Clé serveur (ancien ou nouveau format) = seule à pouvoir lister les comptes auth.
+    let estService = jeton !== '' && jeton === (Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? '')
+    if (!estService && jeton) {
+      const test = createClient(Deno.env.get('SUPABASE_URL') ?? '', jeton)
+      const { error: tErr } = await test.auth.admin.listUsers({ page: 1, perPage: 1 })
+      estService = !tErr
+    }
+    if (!estService) {
+      const appelant = createClient(Deno.env.get('SUPABASE_URL') ?? '', Deno.env.get('SUPABASE_ANON_KEY') ?? '', {
+        global: { headers: { Authorization: `Bearer ${jeton}` } },
+      })
+      const { data: bureau } = await appelant.rpc('auth_user_is_bureau')
+      if (bureau !== true) {
+        return new Response(JSON.stringify({ error: 'Réservé au bureau' }), {
+          status: 403, headers: { ...corsHeaders, 'Content-Type': 'application/json' }
+        })
+      }
+    }
+
     // Créer le compte avec un mot de passe aléatoire (jamais connu de personne)
     // email_confirm:true pour que le compte soit actif sans validation email préalable
-    const { data: userData, error: createErr } = await supabaseAdmin.auth.admin.createUser({
-      email,
-      password: crypto.randomUUID() + crypto.randomUUID(), // fort, jetable
-      email_confirm: true,
-    })
-    if (createErr) throw createErr
-
-    const userId = userData.user.id
+    // Compte déjà existant pour cet e-mail (essai précédent interrompu, 19/10/2026 : le lien
+    // ae_user_id avait été refusé après la création du compte) → on le réutilise au lieu
+    // d'échouer, sauf s'il est déjà relié à une AUTRE fiche AE.
+    const emailNorm = String(email).trim().toLowerCase()
+    let userId: string | null = null
+    for (let page = 1; page <= 20 && !userId; page++) {
+      const { data: lst, error: lstErr } = await supabaseAdmin.auth.admin.listUsers({ page, perPage: 1000 })
+      if (lstErr) throw lstErr
+      const u = (lst?.users ?? []).find((x) => (x.email ?? '').toLowerCase() === emailNorm)
+      if (u) userId = u.id
+      if ((lst?.users ?? []).length < 1000) break
+    }
+    if (userId) {
+      const { data: autre } = await supabaseAdmin.from('auto_entrepreneur')
+        .select('id, prenom, nom').eq('ae_user_id', userId).neq('id', ae_id).limit(1)
+      if (autre?.length) {
+        return new Response(JSON.stringify({ error: `Ce compte est déjà relié à la fiche de ${autre[0].prenom} ${autre[0].nom ?? ''}`.trim() }), {
+          status: 409, headers: { ...corsHeaders, 'Content-Type': 'application/json' }
+        })
+      }
+    } else {
+      const { data: userData, error: createErr } = await supabaseAdmin.auth.admin.createUser({
+        email: emailNorm,
+        password: crypto.randomUUID() + crypto.randomUUID(), // fort, jetable
+        email_confirm: true,
+      })
+      if (createErr) throw createErr
+      userId = userData.user.id
+    }
 
     // Lier l'ae_user_id à la fiche AE
     const { error: updateErr } = await supabaseAdmin
@@ -54,7 +97,7 @@ Deno.serve(async (req) => {
     return new Response(JSON.stringify({
       success: true,
       user_id: userId,
-      email: userData.user.email,
+      email: emailNorm,
       link: linkData.properties.action_link,
     }), {
       headers: { ...corsHeaders, 'Content-Type': 'application/json' }
