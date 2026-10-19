@@ -5,12 +5,12 @@ create or replace function pg_temp.je(uid text) returns void language sql as $$
   select set_config('request.jwt.claims', json_build_object('sub', uid, 'role', 'authenticated')::text, true); $$;
 do $$
 declare oihan text := '414218dc-b91b-454e-a0f2-9b4a3a0c5676'; laura text := '8cb18dc9-1366-47d2-b120-13b57a9630d5';
-  a_drap uuid; a_pq uuid; mfc uuid; cave uuid; loge uuid; sale uuid; r uuid; v jsonb; q numeric; val numeric; c uuid; m uuid; n int; ok boolean;
+  a_drap uuid; a_pq uuid; mfc uuid; cave uuid; loge uuid; sale uuid; garb uuid; r uuid; v jsonb; q numeric; val numeric; c uuid; m uuid; n int; ok boolean;
 begin
   select id into a_drap from stock_article where code = 'DRAP-KING';
   select id into a_pq from stock_article where code = 'PQ';
   select id into mfc from stock_depot where code = 'MFC';  select id into cave from stock_depot where code = 'CAVE-ML';
-  select id into loge from stock_depot where code = 'LOGEMENTS'; select id into sale from stock_depot where code = 'SALE';
+  select id into loge from stock_depot where code = 'LOGEMENTS'; select id into garb from stock_depot where code = 'GARBITOKI'; select id into sale from stock_depot where code = 'SALE';
   perform pg_temp.je(oihan);
   insert into t_res (test, ok, detail) values ('niveau Oïhan = admin', stock_niveau() = 'admin', stock_niveau());
 
@@ -21,7 +21,7 @@ begin
   perform stock_comptage_saisir(c, a_drap, mfc, -1, true);         -- bouton − : 41
   perform stock_comptage_saisir(c, a_drap, loge, 26);
   perform stock_comptage_saisir(c, a_drap, sale, 12);
-  perform stock_comptage_saisir(c, a_pq, cave, 75);
+  perform stock_comptage_saisir(c, a_pq, cave, 75);   -- PQ fait partie du mini stock de la Cave ML
   begin perform stock_comptage_saisir(c, a_pq, loge, 3); ok := false; exception when others then ok := sqlerrm = 'emplacement_reserve_au_linge'; end;
   insert into t_res (test, ok) values ('PQ refusé dans « Dans les logements » (linge seulement)', ok);
   perform pg_temp.je(laura);
@@ -32,9 +32,22 @@ begin
   insert into t_res (test, ok) values ('Laura ne peut pas valider un inventaire', ok);
   v := stock_comptage_detail(c);
   insert into t_res (test, ok, detail) values ('Laura ne voit pas le théorique', v->'theorique' = 'null'::jsonb or v->>'theorique' is null, left(v->>'theorique', 40));
-  begin perform stock_mouvement_saisir(jsonb_build_object('article_id', a_pq, 'depot_id', mfc, 'quantite', 1, 'type', 'perte')); ok := false;
+  begin perform stock_mouvement_saisir(jsonb_build_object('article_id', a_pq, 'depot_id', mfc, 'quantite', 1, 'type', 'ajustement')); ok := false;
   exception when others then ok := sqlerrm = 'acces_refuse'; end;
-  insert into t_res (test, ok) values ('Laura ne peut pas saisir de mouvement', ok);
+  insert into t_res (test, ok) values ('Laura ne peut pas saisir d''ajustement (495)', ok);
+    perform stock_comptage_statut(c, 'rouvrir');
+  begin perform stock_comptage_saisir(c, (select id from stock_article where code = 'GRANDE-SERV'), garb, 3); ok := false;
+  exception when others then ok := sqlerrm = 'blanchisserie_linge_plat'; end;
+  insert into t_res (test, ok) values ('Garbitoki : serviettes refusées (linge plat seulement)', ok);
+  perform stock_comptage_saisir(c, (select id from stock_article where code = 'HOUSSE-KING'), garb, 8);
+  begin perform stock_comptage_saisir(c, (select id from stock_article where code = 'GRANDE-SERV'), cave, 3); ok := false;
+  exception when others then ok := sqlerrm = 'hors_liste_courte'; end;
+  insert into t_res (test, ok) values ('Cave ML : article hors mini stock refusé', ok);
+  begin perform stock_comptage_saisir(c, (select id from stock_article where code = 'LIT-BEBE'), mfc, 1); ok := false;
+  exception when others then ok := sqlerrm = 'article_suivi_par_equipements'; end;
+  insert into t_res (test, ok) values ('Lit bébé : compté dans 📦 Équipements, refusé ici', ok);
+  perform stock_comptage_statut(c, 'soumettre');
+  insert into t_res (test, ok) values ('Laura peut saisir une perte (495)', (stock_mouvement_saisir(jsonb_build_object('article_id', a_pq, 'depot_id', mfc, 'quantite', 1, 'type', 'perte', 'cle', 'test:laura')))->>'ok' = 'true');
   v := stock_etat();
   insert into t_res (test, ok) values ('Laura : pas de coûts dans les articles', not ((v->'articles'->0) ? 'cmp_centimes') and (v->'articles'->0->>'cout_centimes') is null);
 
@@ -46,7 +59,7 @@ begin
   select sum(quantite) into q from stock_solde where article_id = a_drap;
   insert into t_res (test, ok, detail) values ('parc total drap King = 41 + 26 + 12 = 79', q = 79, q::text);
   select count(*) into n from stock_mouvement where source_id = c::text and type = 'stock_initial';
-  insert into t_res (test, ok, detail) values ('1er inventaire validé → mouvements stock_initial', n = 5, n::text);
+  insert into t_res (test, ok, detail) values ('1er inventaire validé → mouvements stock_initial', n = 6, n::text);
   select valeur_centimes into val from stock_solde where article_id = a_drap and depot_id = mfc;
   insert into t_res (test, ok, detail) values ('valeur au coût par défaut (41 × 10 €)', val = 41000, val::text);
 
