@@ -403,6 +403,15 @@ Aucun invariant actif violé à l'issue de la session du 12 avril 2026.
 | I-190 | **La facture COM d'une agence ne porte que les lignes des biens de cette agence.** Avant : `genererFactureCOM` sommait COM de toutes les agences (DCB a facturé 3 615,10 € TTC de COM Lauïan, avril–août 2026). | ✅ 11/10/2026 (génération) · ⚠ factures émises non modifiées |
 | I-191 | **Le coût Stripe est à la charge de l'agence propriétaire du compte Stripe.** Vrai pour tout paiement arrivé sur le Stripe de l'agence de la résa. | ⚠ 6 paiements Lauïan sur Stripe DCB (06–09/2026) : 209,37 € + 23,81 € imputés à Lauïan — mois clôturés, non régularisé |
 
+
+### Invariants ajoutés (19/10/2026 — Booking : virement et relevé, lot L0)
+
+| ID | Invariant | Statut |
+|---|---|---|
+| I-192 | **Un PAYIN Booking est rapproché sans relevé quand la règle est sûre** (cohorte du mois / séjour unique, `proposerRapprochementBookingSansReleve`), jamais au hasard (montants égaux → refus). Avant : aucun PAYIN Booking rapproché sans CSV (payout_hospitable vide pour Booking). | ✅ 19/10/2026 (14/14 virements réels identiques depuis 05/2026) |
+| I-193 | **Importer un relevé Booking est idempotent et passe par un aperçu** : réimporter ne double rien ; Σ lignes = virement exigé pour « rapproché » ; mois clôturé = rien d'écrit. Avant : import direct sans contrôle, lignes non « Réservation » ignorées, CSV seulement. | ✅ 19/10/2026 |
+| I-194 | **Le canal « booking » est réservé aux virements émis par Booking.com.** Avant : tout libellé contenant « booking » (virement voyageur « Booking Scheuer ») était classé payout Booking. | ✅ 19/10/2026 (3 mouvements Lauïan 06/2026 reclassés) |
+
 ---
 
 *Fichier généré dans le cadre de l'audit structurel DCB Compta — mars 2026.*

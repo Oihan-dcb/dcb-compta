@@ -1247,3 +1247,49 @@ Demande d'Oïhan : « ferme tout et demande confirmation des dates de dispo aux 
 - Rien n'est écrit dans Hospitable : Accueil › À faire liste « Ouvrir / Refermer dans Hospitable du … au … », cochés dans la fiche bien (`hospitable_ouvert_le` / `hospitable_ferme_le`).
 - Mail de demande : envoi COUPÉ tant que `DISPO_PROPRIO_ENVOI=actif` n'est pas posé (feu vert d'Oïhan) + confirmation explicite.
 - **498 (19/10/2026) — pas de double comptage** : une pénalité réclamée via Airbnb / Booking et payée par la plateforme arrive DANS le virement (déjà dans `fin_revenue`). `reservation.penalites_depart[].dans_revenu = true` (mode `plateforme`) → `ventilationCore` retire ce montant du LOY (donc du VIRProprio) et garde la ligne COM, comme les réclamations (497). Mois du séjour figé + plateforme : aucune ligne automatique, trace `penalite_depart_regul` en erreur (ligne rouge « à régulariser à la main » dans À faire). Débit de carte / encaissement d'une directe : inchangé. Aucun cas réel au 19/10/2026.
+
+## 34. Booking.com : rapprochement du virement et relevé de versements (lot L0, 19/10/2026)
+
+Contexte (étude PowerHouse `docs/etude-booking-vrbo-paiement-contrat-2026-10.md`) : toutes les résas Booking sont payées par
+« Payments by Booking.com » ; Booking verse un **PAYIN groupé** (DCB : 1 par mois, ~le 2 ; Lauïan : 1 par séjour, quelques jours
+après le départ). Hospitable ne fournit aucun payout Booking (`payout_hospitable` vide) → avant ce lot, aucun PAYIN Booking n'était
+rapproché sans le CSV de l'extranet (09 et 10/2026 DCB rapprochés à la main).
+
+**1. Rapprochement SANS relevé** (`lancerMatchingAuto` → `_rapprocherBookingSansReleve`, règle pure
+`bookingReleveCore.proposerRapprochementBookingSansReleve`) — PAYIN Booking resté en attente après la promotion des lignes CSV :
+- candidats = résas Booking de l'agence, bien `gestion_loyer`, `fin_revenue > 0`, **sans aucun** `reservation_paiement` ;
+- **cohorte du mois** : tous les candidats partis **avant le 1er du mois du virement** (≤ 75 j) ; accepté si
+  |Σ fin_revenue − virement| ≤ max(2 €, 0,30 € × nb résas) (arrondis des frais de paiement Booking) ;
+- sinon **séjour unique** : un seul candidat parti dans les 30 j, à ±2 € ;
+- sinon rien (« relevé nécessaire ») ; mois du virement clôturé (Rapprochement) : rien.
+- Montant par résa = `fin_revenue` (le relevé corrige ensuite au net exact). Détail du mouvement : « rapproché sans relevé ».
+- Vérifié sur l'historique réel : 14/14 virements depuis 05/2026 (DCB et Lauïan) = exactement les résas réellement payées,
+  0 faux rapprochement ; les 17 virements antérieurs sont refusés (le revenu Hospitable incluait alors taxe / frais).
+
+**2. Relevé de versements** (page Banque › « 📋 Relevés Booking », `importBooking.preparerImportBooking` / `validerImportBooking`,
+script `scripts/releve-booking.mjs`) :
+- Fichiers : extranet › Finances › Versements › détail d'un versement › Télécharger (CSV FR/EN « Identifiant du paiement »),
+  ancien « Payout_from…until… », ou leurs versions .xlsx. Plusieurs fichiers à la fois ; doublons entre fichiers ignorés.
+- Montant voyageur − taxe de séjour retenue − commission − frais de paiement = **net** ; Σ nets d'un versement = PAYIN.
+- Appariement versement ↔ PAYIN : référence `NO.<payout id>` du libellé bancaire, sinon montant (±2 €) + date J+0…J+7, unique.
+- **Aperçu** (rien d'écrit) : par versement, état `ok` (Σ lignes = virement) / `ecart` / `sans_virement` / `deja_importe` / `cloture`,
+  et par ligne l'écart net Booking − revenu Hospitable expliqué (`expliquerEcartLigne` : arrondi ≤ 1 €, taxe retenue comptée dans
+  le revenu, frais de paiement non déduits, annulation, remboursement, séjour absent d'Hospitable, inexpliqué).
+- **Validation** (idempotente) : `booking_payout_line` upsert (booking_ref, payout_date) ; `reservation_paiement` créé si absent ou
+  **montant corrigé au net** s'il diffère ; jamais modifié si la résa est déjà sur un AUTRE virement (signalé) ; mouvement
+  « rapproché » seulement si Σ lignes = virement. Une ligne d'une autre agence bloque le versement (mauvais compte Booking).
+- **Mois clôturé** (étape Rapprochement du mois du virement) : rien n'est écrit, tout est listé « à régulariser » ; résa d'un mois
+  clôturé sur un virement ouvert : la ligne de détail est enregistrée, le paiement de la résa n'est pas touché (listé).
+- Suivi : tableau des PAYIN Booking des 12 derniers mois (détail importé / relevé à importer / non rapproché) avec la référence
+  du versement à télécharger.
+- La ventilation ne lit pas `booking_payout_line` : importer un relevé ne change aucun montant ventilé.
+
+**3. Canal bancaire** : `detectCanal` ne classe « booking » que si l'émetteur est Booking.com (`/booking\.?\s?com/`) ; le mot
+« Booking » dans le motif d'un virement voyageur (« Part 1/3 - Booking Scheuer », Lauïan 06/2026, 3 virements reclassés
+`sepa_manuel`) n'en fait plus un payout Booking.
+
+**Écarts historiques constatés (non régularisés, aucune écriture)** : Lauïan 01-03/2026, 4 résas MIRAMARVEL ventilées sur un revenu
+Hospitable qui incluait la taxe retenue par Booking (62,47 € ventilés de plus que reçus) ; MIRAMARVEL 6610427759 (12/2025, 761,10 €
+reçus) et TXOMIN 6554316846 (07/2026, 831,83 € reçus) sans aucune ligne de ventilation alors que `ventilation_calculee = true` ;
+« TVA (10 %) » Booking = 10 % de l'hébergement ajoutés au prix voyageur, compris dans le versement et la commission Booking,
+ventilés en TAXE (§ 4.3) — décision d'Oïhan attendue.

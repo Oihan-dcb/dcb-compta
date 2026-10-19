@@ -1,8 +1,12 @@
 /**
- * importBooking.js - Import CSV Booking.com Payout
+ * importBooking.js - Import du relevé de versements Booking.com (CSV ou XLSX)
  *
- * Usage : importer le fichier "Payout_from_XXXX_until_XXXX.csv"
- * telecharge depuis Booking.com Extranet > Finance > Transactions
+ * Fichiers acceptés (extranet Booking › Finances › Versements, DCB ou Lauïan) :
+ *  - détail d'un versement « <payout_id>.csv » (FR ou EN, colonne « Identifiant du paiement »)
+ *  - ancien relevé « Payout_from_XXXX_until_XXXX.csv » (Finance › Transactions)
+ *  - les mêmes en .xlsx / .xls
+ * Flux (lot L0, 19/10/2026) : preparerImportBooking(fichiers) → aperçu (rien d'écrit) →
+ * validerImportBooking(analyse) → écritures idempotentes. Le noyau pur est bookingReleveCore.js.
  *
  * Anti-doublons :
  * - Contrainte UNIQUE (mouvement_id, booking_ref, payout_date) en base
@@ -15,7 +19,7 @@
  */
 import { supabase } from '../lib/supabase'
 import { AGENCE } from '../lib/agence'
-import { propagerRapprochementResas } from './rapprochement'
+import { regrouperParVersement, analyserReleveBooking, detailMouvementBooking, suiviVirementsBooking } from './bookingReleveCore'
 
 function parseCSVLine(line, sep = ',') {
   const result = []
@@ -123,7 +127,9 @@ function parseBookingPayoutDetailCSV(lines, sep, headers) {
   for (let i = 1; i < lines.length; i++) {
     const cols = parseCSVLine(lines[i], sep)
     const rowType = iType >= 0 ? stripAccents(cols[iType] || '').toLowerCase() : 'reservation'
-    if (!rowType.includes('reservation')) continue
+    // Lignes « résumé » (total du versement) : contrôle seulement, jamais stockées
+    const estResume = rowType.includes('payout') || rowType.includes('versement')
+    if (!rowType) continue
 
     const pdate    = parseDate(cols[iPayoutDate] || '')
     if (!pdate) continue
@@ -147,6 +153,8 @@ function parseBookingPayoutDetailCSV(lines, sep, headers) {
       tourism_tax_cents:  Math.round(Math.abs(parseFloat2(iTourismTax >= 0 ? cols[iTourismTax] || '0' : '0')) * 100),
       service_fee_cents:  Math.round(Math.abs(parseFloat2(iServiceFee >= 0 ? cols[iServiceFee] || '0' : '0')) * 100),
       reservation_status: status,
+      type_ligne:         rowType,
+      est_resume:         estResume,
     })
   }
   return rowsByPayoutDate
@@ -156,8 +164,12 @@ function parseBookingPayoutDetailCSV(lines, sep, headers) {
  * Parse le CSV Booking.com et retourne les lignes groupees par payout_date
  */
 export function parseBookingCSV(text) {
-  const lines = text.split('\n').map(l => l.trim()).filter(Boolean)
+  let lines = String(text || '').replace(/^\uFEFF/, '').split(/\r?\n/).map(l => l.trim()).filter(Boolean)
   if (!lines.length) throw new Error('Fichier vide')
+  // Ligne d'en-tête = 1re ligne qui contient une colonne de date de versement (un export XLSX peut
+  // commencer par un titre ou une ligne vide)
+  const iEntete = lines.findIndex(l => /payout date|date du paiement|date du versement/i.test(stripAccents(l)))
+  if (iEntete > 0) lines = lines.slice(iEntete)
 
   // Booking.com exporte parfois en TSV (onglets) malgré l'extension .csv
   const sep = lines[0].includes('\t') ? '\t' : lines[0].includes(';') ? ';' : ','
@@ -248,160 +260,190 @@ export function parseBookingCSV(text) {
       tourism_tax_cents:  0,
       service_fee_cents:  0,
       reservation_status: status,
+      type_ligne:         isPayout ? 'payout' : 'reservation',
+      est_resume:         isPayout,
     })
   }
 
   return rowsByPayoutDate
 }
 
-/**
- * Importe un CSV Booking.com :
- * 1. Parse le CSV
- * 2. Pour chaque payout_date, cherche le mouvement bancaire (+1 a 5j)
- * 3. Insere les lignes (ignore doublons via contrainte UNIQUE)
- * 4. Marque les mouvements comme rapproches
- */
-export async function importBookingCSV(csvText) {
-  const log = { parsed: 0, matched: 0, inserted: 0, already_existing: 0, errors: 0, details: [] }
 
-  try {
-    const rowsByPayoutDate = parseBookingCSV(csvText)
-    const allPayoutDates = Object.keys(rowsByPayoutDate).sort()
-    log.parsed = Object.values(rowsByPayoutDate).reduce((s, r) => s + r.length, 0)
+// ── Lecture des fichiers (CSV ou XLSX) ───────────────────────────────────────
 
-    if (!allPayoutDates.length) {
-      log.details.push('Aucune payout date trouvee dans le CSV')
-      return log
-    }
-
-    const dateMin = allPayoutDates[0]
-    const dateMax = allPayoutDates[allPayoutDates.length - 1]
-    const d = new Date(dateMax)
-    d.setDate(d.getDate() + 5)
-    const dateMaxStr = d.toISOString().slice(0, 10)
-
-    const { data: mouvs } = await supabase
-      .from('mouvement_bancaire')
-      .select('id, credit, date_operation, statut_matching, libelle, detail')
-      .eq('canal', 'booking')
-      // Ne matcher que les virements du compte de L'AGENCE COURANTE — sans ce filtre,
-      // un CSV Booking Lauian pouvait se coller sur un virement DCB (cas Sinnika 02/07/2026)
-      .eq('agence', AGENCE)
-      .gte('date_operation', dateMin)
-      .lte('date_operation', dateMaxStr)
-      .order('date_operation')
-
-    if (!mouvs?.length) {
-      log.details.push('Aucun mouvement Booking entre ' + dateMin + ' et ' + dateMaxStr)
-    }
-
-    const usedMouvIds = new Set()
-
-    for (const pdate of allPayoutDates) {
-      const rows = rowsByPayoutDate[pdate]
-      const pdateMs = new Date(pdate).getTime()
-
-      // Nouveau format : match exact via Payout ID extrait du libellé bancaire (NO.{payout_id})
-      const firstPayoutId = rows.find(r => r.payout_id)?.payout_id
-      let mouv = null
-      if (firstPayoutId) {
-        mouv = mouvs?.find(m => {
-          if (usedMouvIds.has(m.id)) return false
-          const lib = ((m.libelle || '') + ' ' + (m.detail || '')).toUpperCase()
-          return lib.includes('NO.' + firstPayoutId.toUpperCase())
-        })
-      }
-      // Fallback : match par date (anciens fichiers ou payout_id absent)
-      // Garde-fou montant : la somme des nets du payout doit ≈ le crédit bancaire (±2 €),
-      // comme importAirbnb et _promouvoirBookingLignes. Sans lui, un payout dont le virement
-      // n'est pas encore arrivé se collait par date sur le virement d'un AUTRE payout
-      // (cas Sinnika 02/07/2026 : payout 1 369,25 € rattaché au virement 8 427,32 €).
-      if (!mouv) {
-        const sommeNets = rows.reduce((s, r) => s + (r.amount_cents || 0), 0)
-        mouv = mouvs?.find(m => {
-          if (usedMouvIds.has(m.id)) return false
-          const diff = (new Date(m.date_operation).getTime() - pdateMs) / 86400000
-          return diff >= 0 && diff <= 5 && Math.abs(m.credit - sommeNets) <= 200
-        })
-      }
-
-      if (!mouv) {
-        // Stocker les lignes sans mouvement bancaire (payout futur ou relevé non importé)
-        const orphans = rows.filter(r => r.booking_ref).map(r => ({ ...r, mouvement_id: null }))
-        if (orphans.length) {
-          await supabase
-            .from('booking_payout_line')
-            .upsert(orphans, { onConflict: 'booking_ref,payout_date', ignoreDuplicates: true })
-          log.details.push('Payout ' + pdate + ' stocké sans mouvement (' + orphans.length + ' ligne(s) — relevé bancaire manquant)')
-        } else {
-          log.details.push('Pas de mouvement pour payout_date ' + pdate + ' (' + rows.length + ' lignes ignorées)')
-        }
-        continue
-      }
-
-      usedMouvIds.add(mouv.id)
-      log.matched++
-
-      // Si des lignes orphelines existent déjà pour ce payout, les mettre à jour avec le mouvement
-      const refs = rows.filter(r => r.booking_ref).map(r => r.booking_ref)
-      if (refs.length) {
-        await supabase
-          .from('booking_payout_line')
-          .update({ mouvement_id: mouv.id })
-          .eq('payout_date', pdate)
-          .in('booking_ref', refs)
-          .is('mouvement_id', null)
-      }
-
-      // N'insérer QUE les lignes réservation (booking_ref non-null). Les lignes "résumé
-      // payout" (booking_ref NULL) se dupliquent à chaque ré-import — la contrainte
-      // UNIQUE(booking_ref, payout_date) ne dédoublonne pas les NULL en Postgres — et
-      // l'enrichissement les ignore. On ne les stocke donc pas.
-      const toInsert = rows.filter(r => r.booking_ref).map(r => ({ ...r, mouvement_id: mouv.id }))
-
-      const { error } = toInsert.length ? await supabase
-        .from('booking_payout_line')
-        .upsert(toInsert, {
-          onConflict: 'booking_ref,payout_date',
-          ignoreDuplicates: false,
-        }) : { error: null }
-
-      if (error) {
-        log.errors++
-        log.details.push('Erreur ' + pdate + ': ' + error.message)
-        continue
-      }
-
-      log.inserted += toInsert.length
-      log.matched++
-
-      const nbResas = rows.filter(r => r.booking_ref).length
-      const totalComm = rows.reduce((s, r) => s + Math.abs(r.commission_cents), 0)
-      const totalTax  = rows.reduce((s, r) => s + (r.tourism_tax_cents || 0), 0)
-      const props = [...new Set(rows.filter(r => r.property_name).map(r => r.property_name))]
-      const pidSuffix = firstPayoutId ? ' | ref: ' + firstPayoutId : ''
-      const taxSuffix = totalTax > 0 ? ' | taxe séjour: ' + (totalTax / 100).toFixed(2) + String.fromCharCode(8364) : ''
-      const detail = 'Booking | ' + nbResas + ' resa(s) | commission: ' + (totalComm / 100).toFixed(2) + String.fromCharCode(8364) + taxSuffix + (props.length ? ' | ' + props.slice(0, 2).join(', ') : '') + pidSuffix
-
-      await supabase
-        .from('mouvement_bancaire')
-        .update({ statut_matching: 'rapproche', detail })
-        .eq('id', mouv.id)
-
-      // Propager au niveau réservation (reservation_paiement + rapprochee) —
-      // sinon la résa reste « sans virement » dans son mois comptable jusqu'à
-      // l'ouverture de la page Rapprochement du mois du mouvement
-      const nProp = await propagerRapprochementResas(
-        mouv, 'booking',
-        rows.filter(r => r.booking_ref).map(r => ({ ref: r.booking_ref, amount_cents: r.amount_cents }))
-      )
-      if (nProp) log.details.push(nProp + ' réservation(s) marquée(s) rapprochée(s)')
-    }
-
-  } catch (e) {
-    log.errors++
-    log.details.push('Erreur: ' + e.message)
+/** Contenu texte CSV d'un fichier déposé (File navigateur, ou { name, buffer } en script) */
+export async function lireFichierBooking(file) {
+  const nom = (file.name || '').toLowerCase()
+  if (/\.xlsx?$/.test(nom)) {
+    const XLSX = await import('xlsx')
+    const buf = file.buffer || await file.arrayBuffer()
+    const wb = XLSX.read(buf, { type: 'array', cellDates: false, raw: false })
+    const ws = wb.Sheets[wb.SheetNames[0]]
+    return XLSX.utils.sheet_to_csv(ws, { FS: ',', blankrows: false })
   }
+  if (file.text) return await file.text()
+  return new TextDecoder('utf-8').decode(file.buffer)
+}
 
+/** Fusionne les lignes de plusieurs fichiers (même versement présent deux fois = une seule fois) */
+function fusionnerFichiers(parses) {
+  const out = {}
+  const vues = new Set()
+  for (const rowsByDate of parses) {
+    for (const [d, rows] of Object.entries(rowsByDate)) {
+      for (const r of rows) {
+        const k = [r.payout_id || '', d, r.booking_ref || '', r.amount_cents, r.est_resume ? 'R' : 'L'].join('|')
+        if (vues.has(k)) continue
+        vues.add(k)
+        ;(out[d] ||= []).push(r)
+      }
+    }
+  }
+  return out
+}
+
+async function enLots(ids, taille, fn) {
+  const out = []
+  for (let i = 0; i < ids.length; i += taille) out.push(...(await fn(ids.slice(i, i + taille))))
+  return out
+}
+
+// ── Aperçu (aucune écriture) ─────────────────────────────────────────────────
+
+/**
+ * Lit les fichiers, charge le contexte (virements Booking de l'agence, résas, paiements, lignes
+ * déjà importées, mois clôturés) et retourne l'analyse — RIEN n'est écrit.
+ */
+export async function preparerImportBooking(files) {
+  const fichiers = []
+  const parses = []
+  for (const f of files) {
+    try {
+      const txt = await lireFichierBooking(f)
+      const rows = parseBookingCSV(txt)
+      parses.push(rows)
+      fichiers.push({ nom: f.name, lignes: Object.values(rows).reduce((s, r) => s + r.length, 0), erreur: null })
+    } catch (e) {
+      fichiers.push({ nom: f.name, lignes: 0, erreur: e.message })
+    }
+  }
+  const groupes = regrouperParVersement(fusionnerFichiers(parses))
+  if (!groupes.length) return { fichiers, versements: [], resume: { versements: 0, lignes: 0, a_valider: 0 } }
+
+  const dMin = groupes[0].payout_date
+  const dMaxD = new Date(groupes[groupes.length - 1].payout_date); dMaxD.setDate(dMaxD.getDate() + 8)
+  const dMax = dMaxD.toISOString().slice(0, 10)
+  const { data: mouvements, error: eM } = await supabase.from('mouvement_bancaire')
+    .select('id, date_operation, credit, libelle, detail, statut_matching, mois_releve')
+    .eq('canal', 'booking').eq('agence', AGENCE).gt('credit', 0)
+    .gte('date_operation', dMin).lte('date_operation', dMax)
+  if (eM) throw eM
+
+  const refs = [...new Set(groupes.flatMap(g => g.lignes.map(l => l.booking_ref)))]
+  const reservations = await enLots(refs, 200, async lot => {
+    const { data, error } = await supabase.from('reservation')
+      .select('id, code, platform_id, fin_revenue, final_status, mois_comptable, rapprochee, departure_date, bien!inner(agence, code, gestion_loyer)')
+      .eq('platform', 'booking').in('platform_id', lot)
+    if (error) throw error
+    return data || []
+  })
+  const paiements = await enLots(reservations.map(r => r.id), 200, async lot => {
+    const { data, error } = await supabase.from('reservation_paiement').select('id, reservation_id, mouvement_id, montant').in('reservation_id', lot)
+    if (error) throw error
+    return data || []
+  })
+  const lignesExistantes = await enLots(refs, 200, async lot => {
+    const { data, error } = await supabase.from('booking_payout_line')
+      .select('id, booking_ref, payout_date, amount_cents, commission_cents, service_fee_cents, tourism_tax_cents, mouvement_id').in('booking_ref', lot)
+    if (error) throw error
+    return data || []
+  })
+  const { data: clotures } = await supabase.from('cloture_comptable').select('mois, cloture_rappro').eq('agence', AGENCE)
+  const moisClotures = new Set((clotures || []).filter(c => c.cloture_rappro).map(c => c.mois))
+
+  const analyse = analyserReleveBooking(groupes, { agence: AGENCE, mouvements: mouvements || [], reservations, paiements, lignesExistantes, moisClotures })
+  return { fichiers, ...analyse, agence: AGENCE }
+}
+
+// ── Validation (écritures idempotentes) ──────────────────────────────────────
+
+/**
+ * Écrit les versements validables de l'analyse :
+ *  - booking_payout_line (upsert sur booking_ref + payout_date : réimporter ne double rien)
+ *  - reservation_paiement de chaque résa (VIRPayinProuvé) : créé si absent, montant corrigé au net
+ *    Booking s'il diffère ; jamais touché si la résa est déjà sur un AUTRE virement ou si le mois est
+ *    clôturé (listé « à régulariser »)
+ *  - mouvement_bancaire : détail + statut « rapproché » seulement si Σ lignes = virement reçu
+ * @param cles  sous-ensemble de versements à valider (défaut : tous les validables)
+ */
+export async function validerImportBooking(analyse, cles = null) {
+  const log = { versements: 0, lignes: 0, paiements_crees: 0, paiements_corriges: 0, mouvements_rapproches: 0, a_regulariser: [], erreurs: [] }
+  for (const v of analyse.versements) {
+    if (!v.validable || (cles && !cles.includes(v.cle))) continue
+    try {
+      const mid = v.mouvement?.id || null
+      const rows = v.lignes.map(l => ({
+        mouvement_id: mid, payout_date: l.payout_date, payout_id: l.payout_id || v.payout_id || null,
+        booking_ref: l.booking_ref, guest_name: l.guest_name || null, checkin: l.checkin, checkout: l.checkout,
+        property_name: l.property_name || null, property_id: l.property_id || null,
+        amount_cents: l.amount_cents, gross_cents: l.gross_cents || 0, commission_cents: l.commission_cents || 0,
+        tourism_tax_cents: l.tourism_tax_cents || 0, service_fee_cents: l.service_fee_cents || 0,
+        reservation_status: l.reservation_status || null,
+      }))
+      if (rows.length) {
+        const { error } = await supabase.from('booking_payout_line').upsert(rows, { onConflict: 'booking_ref,payout_date', ignoreDuplicates: false })
+        if (error) throw error
+      }
+      log.lignes += rows.length
+      if (mid) {
+        for (const l of v.lignes) {
+          if (l.action_paiement === 'creer') {
+            const complet = (l.fin_revenue || 0) === 0 || l.amount_cents >= (l.fin_revenue || 0) * 0.96
+            const { error } = await supabase.from('reservation_paiement').upsert({
+              reservation_id: l.resa_id, mouvement_id: mid, montant: l.amount_cents, date_paiement: v.mouvement.date_operation,
+              type_paiement: complet ? 'total' : 'acompte', note: 'Relevé Booking ' + (v.payout_id || v.payout_date),
+            }, { onConflict: 'reservation_id,mouvement_id', ignoreDuplicates: true })
+            if (error) throw error
+            if (complet) await supabase.from('reservation').update({ rapprochee: true }).eq('id', l.resa_id)
+            log.paiements_crees++
+          } else if (l.action_paiement === 'corriger_montant') {
+            const { error } = await supabase.from('reservation_paiement').update({ montant: l.amount_cents })
+              .eq('reservation_id', l.resa_id).eq('mouvement_id', mid)
+            if (error) throw error
+            log.paiements_corriges++
+          }
+        }
+        const upd = { detail: detailMouvementBooking(v) }
+        if (v.ecart_virement === 0 && v.lignes.every(l => l.resa_id)) upd.statut_matching = 'rapproche'
+        const { error } = await supabase.from('mouvement_bancaire').update(upd).eq('id', mid)
+        if (error) throw error
+        if (upd.statut_matching) log.mouvements_rapproches++
+      }
+      log.a_regulariser.push(...v.a_regulariser)
+      log.versements++
+    } catch (e) {
+      log.erreurs.push(`${v.payout_id || v.payout_date} : ${e.message}`)
+    }
+  }
   return log
+}
+
+// ── Suivi : quels virements Booking ont leur détail ───────────────────────────
+
+export async function getSuiviVirementsBooking(depuis) {
+  const { data: mouvements, error } = await supabase.from('mouvement_bancaire')
+    .select('id, date_operation, credit, libelle, detail, statut_matching')
+    .eq('canal', 'booking').eq('agence', AGENCE).gt('credit', 0).gte('date_operation', depuis)
+    .order('date_operation', { ascending: false })
+  if (error) throw error
+  const ids = (mouvements || []).map(m => m.id)
+  const paiements = await enLots(ids, 200, async lot => {
+    const { data } = await supabase.from('reservation_paiement').select('mouvement_id, montant').in('mouvement_id', lot)
+    return data || []
+  })
+  const lignes = await enLots(ids, 200, async lot => {
+    const { data } = await supabase.from('booking_payout_line').select('mouvement_id, amount_cents').in('mouvement_id', lot).not('booking_ref', 'is', null)
+    return data || []
+  })
+  return suiviVirementsBooking(mouvements || [], paiements, lignes)
 }

@@ -3,7 +3,7 @@ import { useMoisCloture, BanniereCloture } from '../hooks/useMoisCloture'
 import { getMouvementsMois, getMoisDispos } from '../services/banque'
 import { useMoisPersisted } from '../hooks/useMoisPersisted'
 import { supabase } from '../lib/supabase'
-import { importBookingCSV } from '../services/importBooking'
+import RelevesBooking from '../components/RelevesBooking'
 import { annulerRapprochement, estMouvementReference, lancerMatchingAuto } from '../services/rapprochement'
 import { parserFichierBancaire, importerMouvementsBancaires } from '../services/importBanque'
 import { syncPayoutsServer } from '../services/syncPayouts'
@@ -18,12 +18,6 @@ import { fr } from 'date-fns/locale'
 import { frDate, frMois } from '../utils/dateFr'
 
 const moisCourant = new Date().toISOString().substring(0, 7)
-
-// hotel_id de l'extranet Booking.com DCB -- confirmé via le libellé bancaire des virements
-// Booking DCB ("...ID.10415482"). Pas de token de session (`ses=`) dans ce lien : il expire
-// vite et ce repo est public sur GitHub -- le figer en dur exposerait une session active.
-// Le navigateur réutilise la session déjà ouverte de l'utilisateur.
-const BOOKING_EXTRANET_URL = 'https://admin.booking.com/hotel/hoteladmin/extranet_ng/manage/payouts.html?hotel_id=10415482&lang=fr'
 
 const CANAUX = {
   airbnb:            { label: 'Airbnb',      cls: 'badge-airbnb' },
@@ -52,12 +46,10 @@ export default function PageBanque() {
   const [suppression, setSuppression] = useState(null) // { source, mois, count }
   const [supprimant, setSupprimant] = useState(false)
   const [supprimantId, setSupprimantId] = useState(null)
-  const [bookingLog, setBookingLog] = useState(null)
+  const [voirBooking, setVoirBooking] = useState(false)
   const [syncPayoutsLog, setSyncPayoutsLog] = useState(null)
   const [confirmModal, setConfirmModal] = useState(null)
-  const [importingBooking, setImportingBooking] = useState(false)
   const [syncingPayouts, setSyncingPayouts] = useState(false)
-  const bookingRef = useRef()
 
   const { bloque: moisBloque } = useMoisCloture(mois, 'rappro')
 
@@ -74,24 +66,6 @@ export default function PageBanque() {
       setError(e.message)
     } finally {
       setLoading(false)
-    }
-  }
-
-  async function handleBookingFile(e) {
-    const file = e.target.files?.[0]
-    if (!file) return
-    setImportingBooking(true)
-    setBookingLog(null)
-    try {
-      const text = await file.text()
-      const log = await importBookingCSV(text)
-      setBookingLog(log)
-      await charger()
-    } catch(err) {
-      setBookingLog({ errors: 1, details: [err.message] })
-    } finally {
-      setImportingBooking(false)
-      if (bookingRef.current) bookingRef.current.value = ''
     }
   }
 
@@ -284,17 +258,11 @@ export default function PageBanque() {
               <input ref={fileRef} type='file' accept='.csv' style={{ display: 'none' }} onChange={handleFile} />
             </label>
           )}
-          {AGENCE === 'dcb' && (
-            <a href={BOOKING_EXTRANET_URL} target='_blank' rel='noopener noreferrer'
-               style={{ textDecoration:'none', cursor:'pointer', background:'#fff', color:'#0071C2', border:'1.5px solid #0071C2', borderRadius:8, padding:'8px 14px', fontWeight:600, fontSize:14, display:'inline-flex', alignItems:'center', gap:6 }}
-               title='Ouvrir Booking.com Extranet — Paiements'>
-              🔗 Extranet Booking
-            </a>
-          )}
-          <label style={{ cursor:'pointer', background:'#0071C2', color:'#fff', border:'none', borderRadius:8, padding:'8px 14px', fontWeight:600, fontSize:14, display:'inline-flex', alignItems:'center', gap:6 }}>
-            {importingBooking ? '⏳' : '📋'} CSV Booking
-            <input ref={bookingRef} type='file' accept='.csv' style={{ display:'none' }} onChange={handleBookingFile} />
-          </label>
+          <button onClick={() => setVoirBooking(v => !v)}
+            style={{ cursor:'pointer', background: voirBooking ? '#003580' : '#0071C2', color:'#fff', border:'none', borderRadius:8, padding:'8px 14px', fontWeight:600, fontSize:14, display:'inline-flex', alignItems:'center', gap:6 }}
+            title='Relevés Booking : suivi des virements, import CSV / Excel avec aperçu'>
+            📋 Relevés Booking
+          </button>
           <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 2 }}>
             <button
               onClick={handleSyncPayouts}
@@ -361,16 +329,7 @@ export default function PageBanque() {
           {syncPayoutsLog.details?.length > 0 && <div style={{ color:'#666', marginTop:4 }}>{syncPayoutsLog.details.slice(0, 10).join(' | ')}</div>}
         </div>
       )}
-      {bookingLog && (
-        <div style={{ background: bookingLog.errors > 0 ? '#FEF2F2' : '#F0FDF4', border: '1px solid ' + (bookingLog.errors > 0 ? '#FCA5A5' : '#86EFAC'), borderRadius:8, padding:'10px 16px', marginBottom:12, fontSize:13 }}>
-          <strong>Import Booking :</strong>{' '}
-          <span style={{ color:'#2E7D32' }}>{bookingLog.matched || 0} virements matchés</span>{' · '}
-          <span>{bookingLog.inserted || 0} nouvelles lignes</span>
-          {(bookingLog.already_existing || 0) > 0 && <span style={{ color:'#888' }}>{' · '}{bookingLog.already_existing} déjà présentes (ignorées)</span>}
-          {bookingLog.errors > 0 && <span style={{ color:'#B91C1C' }}>{' · '}{bookingLog.errors} erreur(s)</span>}
-          {bookingLog.details?.length > 0 && <div style={{ color:'#666', marginTop:4 }}>{bookingLog.details.join(' | ')}</div>}
-        </div>
-      )}
+      {voirBooking && <RelevesBooking onChange={charger} />}
       {formatDetecte && (
         <div style={{ marginBottom: 12, padding: '8px 14px', borderRadius: 8,
           background: formatBadge.bg, border: formatBadge.border,

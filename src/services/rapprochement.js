@@ -27,6 +27,7 @@
 import { supabase } from '../lib/supabase.js'
 import { logOp } from './journal.js'
 import { AGENCE } from '../lib/agence.js'
+import { proposerRapprochementBookingSansReleve, refPayoutDuLibelle } from './bookingReleveCore.js'
 
 // ── LECTURE ────────────────────────────────────────────────────
 
@@ -602,6 +603,10 @@ export async function lancerMatchingAuto(mois, source = 'manuel') {
     // (lignes orphelines mouvement_id=NULL). On promeut ici en 'rapproche' AVANT la passe
     // d'enrichissement, qui ne traite que les mouvements déjà rapprochés.
     await _promouvoirBookingLignes(libres, log)
+    // ── Booking SANS relevé : règle du mois (DCB) / séjour unique (Lauïan) ──
+    // Booking ne passe pas par payout_hospitable : sans relevé CSV, aucun virement Booking
+    // n'était jamais rapproché automatiquement (09 et 10/2026 DCB rapprochés à la main).
+    await _rapprocherBookingSansReleve(libres, mois, log)
 
     // Charger TOUS les payouts sans mouvement (pas de filtre par date)
     // Les payouts Hospitable peuvent dater de n importe quand
@@ -1417,6 +1422,9 @@ async function _promouvoirBookingLignes(libres, log) {
 
       await supabase.from('mouvement_bancaire')
         .update({ statut_matching: 'rapproche', detail }).eq('id', mvt.id)
+      // Relier aussi chaque résa (VIRPayinProuvé) : un relevé importé AVANT le relevé bancaire
+      // laissait les résas « sans virement » une fois le mouvement promu (lot L0 Booking, 19/10/2026)
+      await propagerRapprochementResas(mvt, 'booking', lignes.map(l => ({ ref: l.booking_ref, amount_cents: l.amount_cents })))
       mvt.statut_matching = 'rapproche' // pour la passe d'enrichissement de ce même run
       mvt.detail = detail
       log.matched++
@@ -1424,6 +1432,60 @@ async function _promouvoirBookingLignes(libres, log) {
     } catch (e) {
       log.errors++
       console.error('promotion booking', mvt.id, e?.message)
+    }
+  }
+}
+
+/**
+ * Rapproche un PAYIN Booking resté en attente SANS relevé Booking (lot L0, 19/10/2026).
+ * Règle (bookingReleveCore.proposerRapprochementBookingSansReleve) : « cohorte du mois » = toutes
+ * les résas Booking de l'agence non encore payées, parties avant le 1er du mois du virement
+ * (DCB : 1 virement / mois) ; sinon « séjour unique » à ±2 € (Lauïan : 1 virement / séjour).
+ * Vérifiée sur 31 virements réels (06/2025 → 10/2026) : la cohorte = exactement les résas payées.
+ * Montant par résa = fin_revenue ; le relevé importé ensuite corrige au net Booking exact.
+ * Mois clôturé (Rapprochement) : rien n'est fait.
+ */
+async function _rapprocherBookingSansReleve(libres, mois, log) {
+  const bookings = libres.filter(m => m.canal === 'booking' && m.statut_matching === 'en_attente' && (m.credit || 0) > 0)
+  if (!bookings.length) return
+  const { data: clo } = await supabase.from('cloture_comptable').select('cloture_rappro').eq('mois', mois).eq('agence', AGENCE).maybeSingle()
+  if (clo?.cloture_rappro) return
+  for (const mvt of bookings) {
+    try {
+      const d = new Date(mvt.date_operation); d.setDate(d.getDate() - 80)
+      const { data: resas, error } = await supabase.from('reservation')
+        .select('id, platform_id, departure_date, fin_revenue, bien!inner(agence, gestion_loyer)')
+        .eq('platform', 'booking').eq('bien.agence', AGENCE).eq('bien.gestion_loyer', true)
+        .gt('fin_revenue', 0).lt('departure_date', mvt.date_operation).gte('departure_date', d.toISOString().slice(0, 10))
+      if (error) throw error
+      const ids = (resas || []).map(r => r.id)
+      const payees = new Set()
+      for (let i = 0; i < ids.length; i += 200) {
+        const { data: ps } = await supabase.from('reservation_paiement').select('reservation_id').in('reservation_id', ids.slice(i, i + 200))
+        for (const p of ps || []) payees.add(p.reservation_id)
+      }
+      const candidats = (resas || []).filter(r => !payees.has(r.id))
+      const prop = proposerRapprochementBookingSansReleve(mvt, candidats)
+      if (!prop) {
+        log.skipped++
+        log.details.push({ type: 'booking_sans_releve_non_explique', montant: mvt.credit / 100, ref: refPayoutDuLibelle(mvt) })
+        continue
+      }
+      await propagerRapprochementResas(mvt, 'booking', prop.resas.map(r => ({ ref: r.platform_id, amount_cents: r.fin_revenue })))
+      const E = String.fromCharCode(8364)
+      const ref = refPayoutDuLibelle(mvt)
+      const detail = `Booking | ${prop.resas.length} résa(s) | rapproché sans relevé (${prop.regle === 'cohorte' ? 'séjours du mois précédent' : 'séjour unique'})`
+        + (prop.ecart ? ` | écart ${(prop.ecart / 100).toFixed(2)}${E} à expliquer par le relevé` : '') + ' | relevé à importer pour le détail' + (ref ? ' | ref: ' + ref : '')
+        // détail bancaire d'origine (référence NO.<payout>/ID.<extranet>) conservé à la suite
+        + ((mvt.detail || '').trim() ? ' || banque: ' + mvt.detail.trim() : '')
+      await supabase.from('mouvement_bancaire').update({ statut_matching: 'rapproche', detail }).eq('id', mvt.id)
+      mvt.statut_matching = 'rapproche'
+      mvt.detail = detail
+      log.matched++
+      log.details.push({ type: 'booking_sans_releve_' + prop.regle, montant: mvt.credit / 100, nb_resas: prop.resas.length, ecart: prop.ecart / 100 })
+    } catch (e) {
+      log.errors++
+      console.error('booking sans relevé', mvt.id, e?.message)
     }
   }
 }

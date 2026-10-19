@@ -100,8 +100,11 @@ PageBanque.jsx
   → banque.js             → table: mouvement_bancaire (SELECT)
   → importBanque.js       → table: mouvement_bancaire (INSERT via upsert)
                           → table: import_log
-  → importBooking.js      → table: booking_payout_line (INSERT)
-                          → table: mouvement_bancaire (UPDATE statut)
+  → RelevesBooking.jsx → importBooking.js (preparer = aperçu sans écriture / valider)
+                          → bookingReleveCore.js (noyau pur : appariement, écarts, règle sans relevé)
+                          → table: booking_payout_line (UPSERT booking_ref+payout_date)
+                          → table: reservation_paiement (INSERT / montant corrigé au net)
+                          → table: mouvement_bancaire (UPDATE detail + statut si Σ = virement)
   Suppression inline      → table: mouvement_bancaire (DELETE brut ⚠)
 ```
 
@@ -324,7 +327,7 @@ dcb-portail-ae (React, repo privé)
 | `payout_hospitable` | syncReservations (Airbnb synthétique) / global-sync (schéma divergent) | rapprochement (mouvement_id) | rapprochement.js, lancerMatchingAuto |
 | `payout_reservation` | syncReservations / global-sync | fusionnerDoublons (❌ non migré) | rapprochement.js (liens payout↔résa) |
 | `reservation_paiement` | rapprochement._lier / importBooking / importStripe | annulerRapprochement (DELETE) | getMouvementsMois (enrichissement), exportCSV |
-| `booking_payout_line` | importBooking.js | (aucune mise à jour après insertion) | rapprochement.js (enrichissement passe 3) |
+| `booking_payout_line` | importBooking.js (validerImportBooking) | upsert au réimport (idempotent) ; mouvement_id posé par _promouvoirBookingLignes | rapprochement.js (enrichissement passe 3) |
 | `stripe_payout_line` | syncStripe.js | (aucune mise à jour après insertion) | rapprochement.js (enrichissement passe 3) |
 | `facture_evoliz` | facturesEvoliz.js | facturesEvoliz.js (statut), evoliz.js (id_evoliz) | PageFactures |
 | `facture_evoliz_ligne` | facturesEvoliz.js | (DELETE+INSERT à chaque génération) | PageFactures (affichage détail) |

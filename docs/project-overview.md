@@ -1744,3 +1744,12 @@ règles (copie conforme de `src/lib/taxeSejour.js` dans PowerHouse `api/_taxeSej
 
 ### Fix 19/10/2026 — Inventaire rangé sous le mauvais bien (migration 480)
 Cause : aucune clé étrangère n'imposait `bien_toolbox.id` sur les tables d'inventaire ; la pré-population du 26/05/2026 a d'abord été lancée avec `bien.id` (33 articles sur 64 biens sans tri), puis relancée correctement sans retirer la 1re passe ; le portail retombait en plus sur l'identifiant brut quand la fiche n'était pas trouvée. Correctif : FK vers `bien_toolbox`, portail sans repli, 4 224 lignes sauvegardées (`inventaire_reparation_480`) puis retirées (aucune touchée depuis mai ; 682 / 595 doublons, le reste = articles volontairement écartés par la 2e passe).
+
+## Fix 19/10/2026 — Booking : virement rapproché sans relevé + relevé avec aperçu (lot L0)
+Cause : Hospitable ne fournit aucun payout Booking ; le rapprochement d'un virement Booking dépendait du CSV de l'extranet
+importé à la main (souvent oublié : DCB 09-10/2026, Lauïan presque toujours) et l'import écrivait sans aperçu ni contrôle.
+Fait : règle « cohorte du mois / séjour unique » dans `lancerMatchingAuto` (domain-rules §34, I-192) ; panneau
+« 📋 Relevés Booking » (page Banque) : dépôt CSV/XLSX multiple, aperçu par versement (Σ lignes = virement, écarts expliqués),
+validation idempotente, mois clôturé = rien d'écrit (I-193) ; suivi des virements sans détail ; `detectCanal` strict (I-194).
+Rattrapage : 14 relevés Lauïan 2026 retrouvés dans Téléchargements, 7 versements importés (01-03 et 09/2026), 7 déjà présents.
+Tests : `src/services/__tests__/bookingReleve.test.js` (21).

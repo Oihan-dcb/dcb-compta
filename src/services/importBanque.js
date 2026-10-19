@@ -40,7 +40,10 @@ export function detectCanal(lib, det, debit) {
   // interne classait le mouvement en payout OTA → faux « virement OTA sans réservation »
   if (l.includes('airbnb payments')) return 'airbnb'
   if (l.includes('stripe technology') || l.includes('stripe payments')) return 'stripe'
-  if (l.includes('booking')) return 'booking'
+  // Booking seulement si l'émetteur est Booking.com (« VIR SEPA Booking.com B.V. ») : le mot
+  // « booking » dans le motif d'un virement voyageur (« Part 1/3 - Booking Scheuer… », Lauïan
+  // 06/2026) classait un paiement direct en payout Booking
+  if (/booking\.?\s?com/.test(l)) return 'booking'
 
   // --- Mouvements hors périmètre résa (crédit OU débit) ---
   // ⚠️ NE PAS utiliser "Destination cote basque" comme signal interne : ce nom apparaît
