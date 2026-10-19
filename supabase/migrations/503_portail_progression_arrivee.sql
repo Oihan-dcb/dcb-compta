@@ -4,7 +4,7 @@
 -- Données MINIMALES : aucune géolocalisation, aucune adresse IP, aucun appareil ; seulement pour la réservation du lien,
 -- seulement quand le voyageur a vérifié son identité (le guide n'est visible qu'après) et jamais en aperçu équipe.
 -- Finalité : assistance à l'arrivée et organisation (ménage, accueil) — intérêt légitime ; mention dans le guide.
--- Conservation : supprimé 30 jours après le départ (cron purge-portail-voyageur-journal).
+-- Conservation : supprimé dès la fin du séjour, la nuit qui suit le départ (cron purge-portail-voyageur-journal, voir 503b).
 -- Lecture : staff PowerHouse (RLS) pour l'affichage en direct (Realtime) ; écriture : service seulement (api/sejour.js).
 
 create table if not exists public.portail_voyageur_progression (
@@ -42,4 +42,16 @@ select cron.alter_job(
   delete from public.portail_voyageur_code where cree_le < now() - interval '12 months';
   delete from public.portail_voyageur_session where least(coalesce(revoque_le, expire_le), expire_le) < now() - interval '12 months';
   delete from public.portail_voyageur_progression where depart_date < current_date - 30;
+$cmd$);
+
+-- 503b (décision d'Oïhan, 19/10/2026) : la progression est supprimée DÈS LA FIN DU SÉJOUR — la nuit qui suit le jour du
+-- départ (job 03h45 UTC) — et non plus 30 jours après.
+select cron.alter_job(
+  (select jobid from cron.job where jobname = 'purge-portail-voyageur-journal'),
+  command := $cmd$
+  delete from public.portail_voyageur_consultation where le < now() - interval '12 months';
+  delete from public.portail_voyageur_evenement where le < now() - interval '12 months';
+  delete from public.portail_voyageur_code where cree_le < now() - interval '12 months';
+  delete from public.portail_voyageur_session where least(coalesce(revoque_le, expire_le), expire_le) < now() - interval '12 months';
+  delete from public.portail_voyageur_progression where depart_date < (now() at time zone 'Europe/Paris')::date;
 $cmd$);
