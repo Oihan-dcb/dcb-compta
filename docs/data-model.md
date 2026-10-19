@@ -1177,7 +1177,7 @@ jamais saisis, facture n°168 (700 €) payée par le séquestre sans mission.
 - `reservation_horaire` (resa_hospitable_id, reservation_id, bien_id, sens arrivee|depart, heure HH:MM, source portail|devis|bureau, commande_id, note, annule_le) — une heure active par séjour et par sens ; RLS sans politique (service_role).
 - `direct_service.horaire` (arrivee_anticipee|depart_tardif) + `horaire_heure` (HH:MM).
 - `penalite_depart` (470/471) : départs tardifs non autorisés constatés (calcul figé, mode essai/debit/plateforme/manuel, statut, notifie_le, encaisse_centimes / encaisse_le, compta_statut 'agence'). Une seule ligne non annulée par séjour. Lecture staff, écriture serveur.
-- `reservation.penalites_depart` (jsonb, 471) : pénalités encaissées → ligne COM « Pénalité départ tardif non autorisé » (domain-rules §28).
+- `reservation.penalites_depart` (jsonb, 471 ; `dans_revenu` 498) : pénalités encaissées → ligne COM « Pénalité départ tardif non autorisé » (domain-rules §28).
 - `penalite_depart_regul` (471) : régularisations COM après clôture du mois du séjour (alerte « À faire » jusqu'à vu_le).
 
 ## Ajout 2026-10-19 — Extras PRÉVUS par le bureau sur une mission (migration 476, appliquée en 476 + 476b)

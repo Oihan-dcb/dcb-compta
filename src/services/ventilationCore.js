@@ -230,8 +230,12 @@ export function _calculerLignes(resa, agence) {
   // hors Hospitable (débit de la carte de garantie sur le Stripe de l'agence, ou réclamation plateforme encaissée) :
   // jamais dans MEN, HON, LOY ni VIRProprio. reservation.penalites_depart = [{libelle, montant (centimes TTC), penalite_id}],
   // tenu à jour par trigger. Absent / vide → calcul strictement inchangé.
-  const penalitesDepartTTC = (Array.isArray(resa.penalites_depart) ? resa.penalites_depart : [])
-    .reduce((s, p) => s + (Number(p?.montant) > 0 ? Math.round(Number(p.montant)) : 0), 0)
+  const penalitesDepart = (Array.isArray(resa.penalites_depart) ? resa.penalites_depart : []).filter(p => Number(p?.montant) > 0)
+  const penalitesDepartTTC = penalitesDepart.reduce((s, p) => s + Math.round(Number(p.montant)), 0)
+  // 498 (19/10/2026) : réclamation payée par Airbnb / Booking (dans_revenu) = argent arrivé DANS le virement de la plateforme,
+  // déjà dans fin_revenue → retirée du résidu propriétaire (LOY / VIRProprio), comme les réclamations (497). Sinon (débit de
+  // la carte de garantie, encaissement d'une directe) : hors revenu, rien à retirer.
+  const penalitesDansRevenu = penalitesDepart.filter(p => p.dans_revenu).reduce((s, p) => s + Math.round(Number(p.montant)), 0)
   // RÉCLAMATIONS VOYAGEURS ENCAISSÉES — part AGENCE (migration 497, 19/10/2026, décision d'Oïhan : avec TVA, sous COM comme
   // la pénalité de départ tardif). reservation.reclamations_agence = [{libelle, montant (centimes TTC), reclamation_id,
   // dans_revenu, tva}] posé par reclamation_compta_appliquer() au clic « Appliquer en compta » (PowerHouse). dans_revenu =
@@ -320,7 +324,7 @@ export function _calculerLignes(resa, agence) {
   // jamais inclus dans le LOY (commissionableBase hors frais) → rien à retirer (avant : les frais
   // libres n'étaient attribués à personne, seulement comptés dans MEN).
   if (!isDirect) loyAmount -= comBookingTTC + extraTTC
-  loyAmount -= reclamationsDansRevenu
+  loyAmount -= reclamationsDansRevenu + penalitesDansRevenu
 
   const lignes = []
 

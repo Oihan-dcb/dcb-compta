@@ -1131,3 +1131,31 @@ describe('471 — résa à 0 € avec options payées dans le portail (1er vrai 
     expect(optionsSeules({ ...resa0([{ libelle: 'x', montant: 2000 }]), fin_revenue: 5000 })).toBe(false)
   })
 })
+
+describe('498 — pénalité de départ tardif payée via Airbnb / Booking (dans le virement) : COM ET retirée du LOY / VIRProprio', () => {
+  const resa = (platform, revenuEnPlus, penalites_depart) => ({
+    id: 'test-pen-pf', code: 'HM-PEN', platform, final_status: 'accepted', owner_stay: false,
+    fin_accommodation: 43200, fin_revenue: (platform === 'airbnb' ? 50000 : 43200 + 9700 + 4320) + revenuEnPlus, mois_comptable: '2026-10', penalites_depart,
+    reservation_fee: platform === 'airbnb'
+      ? [{ label: 'Cleaning fee', amount: 9700, fee_type: 'guest_fee' }, { label: 'Host service fee', amount: -2900, fee_type: 'host_fee' }]
+      : [{ label: 'Community fee', amount: 9700, fee_type: 'guest_fee' }, { label: 'Management fee', amount: 4320, fee_type: 'guest_fee' }],
+    bien: makeBien({ bien_frais: [] }),
+  })
+  const code = (l, c) => l.find(x => x.code === c)
+  const pen = l => l.find(x => x.libelle === 'Pénalité départ tardif non autorisé')
+  for (const platform of ['airbnb', 'booking']) {
+    it(`${platform} : virement + 6000 avec la pénalité → COM 6000, LOY / VIRProprio IDENTIQUES à la résa sans pénalité (pas de double comptage)`, () => {
+      const sans = _calculerLignes(resa(platform, 0, null)).lignes
+      const avec = _calculerLignes(resa(platform, 6000, [{ montant: 6000, dans_revenu: true }])).lignes
+      expect(pen(avec).montant_ttc).toBe(6000)
+      expect(code(avec, 'LOY').montant_ttc).toBe(code(sans, 'LOY').montant_ttc)
+      expect(code(avec, 'VIR').montant_ttc).toBe(code(sans, 'VIR').montant_ttc)
+    })
+  }
+  it('débit de la carte de garantie (hors revenu, dans_revenu absent) : LOY inchangé, COM en plus (471 inchangé)', () => {
+    const sans = _calculerLignes(resa('manual', 0, null)).lignes
+    const avec = _calculerLignes(resa('manual', 0, [{ montant: 6000 }])).lignes
+    expect(pen(avec).montant_ttc).toBe(6000)
+    expect(code(avec, 'LOY')?.montant_ttc).toBe(code(sans, 'LOY')?.montant_ttc)
+  })
+})
