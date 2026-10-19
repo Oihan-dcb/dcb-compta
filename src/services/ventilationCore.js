@@ -232,6 +232,16 @@ export function _calculerLignes(resa, agence) {
   // tenu à jour par trigger. Absent / vide → calcul strictement inchangé.
   const penalitesDepartTTC = (Array.isArray(resa.penalites_depart) ? resa.penalites_depart : [])
     .reduce((s, p) => s + (Number(p?.montant) > 0 ? Math.round(Number(p.montant)) : 0), 0)
+  // RÉCLAMATIONS VOYAGEURS ENCAISSÉES — part AGENCE (migration 497, 19/10/2026, décision d'Oïhan : avec TVA, sous COM comme
+  // la pénalité de départ tardif). reservation.reclamations_agence = [{libelle, montant (centimes TTC), reclamation_id,
+  // dans_revenu, tva}] posé par reclamation_compta_appliquer() au clic « Appliquer en compta » (PowerHouse). dans_revenu =
+  // l'argent est arrivé DANS le virement de la plateforme (ajustement Airbnb « Resolution payout » / « AirCover » inclus dans
+  // fin_revenue) → retiré du résidu propriétaire (LOY) ; sinon (débit carte de garantie / encaissement agence) hors revenue,
+  // rien à retirer. La part PROPRIÉTAIRE n'est pas ici : elle reste dans le LOY (plateforme) ou passe par un frais
+  // « remboursement » (carte). Absent / vide → calcul strictement inchangé.
+  const reclamationsAgence = (Array.isArray(resa.reclamations_agence) ? resa.reclamations_agence : []).filter(x => Number(x?.montant) > 0)
+  const reclamationsAgenceTTC = reclamationsAgence.reduce((s, x) => s + Math.round(Number(x.montant)), 0)
+  const reclamationsDansRevenu = reclamationsAgence.filter(x => x.dans_revenu).reduce((s, x) => s + Math.round(Number(x.montant)), 0)
 
   const totalFeesAirbnb    = cleaningFeeAirbnb + communityFeeRaw
   const airbnbFallbackActif = resa.platform === 'airbnb' && totalFeesAirbnb === 0 && (bien.forfait_dcb_ref || 0) > 0
@@ -310,6 +320,7 @@ export function _calculerLignes(resa, agence) {
   // jamais inclus dans le LOY (commissionableBase hors frais) → rien à retirer (avant : les frais
   // libres n'étaient attribués à personne, seulement comptés dans MEN).
   if (!isDirect) loyAmount -= comBookingTTC + extraTTC
+  loyAmount -= reclamationsDansRevenu
 
   const lignes = []
 
@@ -322,6 +333,12 @@ export function _calculerLignes(resa, agence) {
       extraHT, bien, resa, null, pvoyTTC))
   if (penalitesDepartTTC > 0)
     lignes.push(ligneTVA(    'COM',  'Pénalité départ tardif non autorisé', Math.round(penalitesDepartTTC / (1 + TVA_RATE)), bien, resa, null, penalitesDepartTTC))
+  if (reclamationsAgenceTTC > 0) {
+    const avecTva = reclamationsAgence.filter(x => x.tva !== false).reduce((s, x) => s + Math.round(Number(x.montant)), 0)
+    const sansTva = reclamationsAgenceTTC - avecTva
+    if (avecTva > 0) lignes.push(ligneTVA('COM', 'Indemnité voyageur (réclamation dégâts / ménage)', Math.round(avecTva / (1 + TVA_RATE)), bien, resa, null, avecTva))
+    if (sansTva > 0) lignes.push(ligneHorsTVA('COM', 'Indemnité voyageur (réclamation, hors TVA)', sansTva, bien, resa))
+  }
   if (honHT > 0)
     lignes.push(ligneTVA(    'HON',  'Honoraires de gestion',       honHT,     bien, resa, tauxCom,     honTTC))
   if (fmenHT !== 0)

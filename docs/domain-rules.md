@@ -946,10 +946,13 @@ avant correction.
 Dossier `reclamation_voyageur` (1 actif par résa) créé par trigger depuis un signalement `degat`/`salete` (rattachement :
 mission d'origine → code → dernier départ du logement ≤ 7 j ; le signalement est aussi complété : code, voyageur, départ).
 Barème et répartition par agence dans `reclamation_reglage` (défaut = art. 11 du contrat ; ménage → agence, casse → propriétaire).
-Encaissement : Airbnb/Booking → l'ajustement de la résa (« Resolution payout » / « AirCover ») est qualifié en `menage` via
-`/api/qualifier-ajustement` avec `montant_fmen` = part agence (le reste remonte au propriétaire par le LOY) ; carte de garantie
-(Stripe agence) → part propriétaire reversée par un `frais_proprietaire` `remboursement`, part agence conservée. Indemnité hors
-champ TVA par défaut (`tva_indemnite`, à confirmer par l'expert-comptable). Rien n'est appliqué sans le clic « Appliquer en compta ».
+Compta (497, décision Oïhan 19/10/2026 : AVEC TVA) : au clic « Appliquer en compta », `reclamation_compta_appliquer()` :
+part AGENCE → `reservation.reclamations_agence` → ligne COM « Indemnité voyageur (réclamation dégâts / ménage) » (TVA 20 %),
+retirée du LOY si `dans_revenu` (argent arrivé dans le virement Airbnb/Booking, donc déjà dans `fin_revenue`) ; part
+PROPRIÉTAIRE = débours sans TVA agence : reste dans le LOY (plateforme) ou frais `remboursement` (carte de garantie /
+encaissement agence) ; l'ajustement Airbnb rapproché est qualifié `menage` avec `montant_fmen = 0`. Mois du séjour figé →
+rien n'est écrit (régularisation manuelle). Répartition par ligne : agence / propriétaire / partagé (% agence). Montants du
+barème = TTC demandés au voyageur.
 
 ### AirCover — à qui revient le remboursement (règle Oïhan 25/09/2026)
 Un « Resolution Payout: AirCover damage reimbursement » Airbnb revient à qui a payé la réparation :

@@ -1086,6 +1086,35 @@ describe('471 — pénalité de départ tardif non autorisé encaissée → lign
   })
 })
 
+describe('497 — réclamation voyageur encaissée : part agence → COM (TVA 20 %), retirée du LOY si elle est dans le virement plateforme', () => {
+  const resa = (platform, reclamations_agence, plus = 0) => ({
+    id: 'test-rec', code: 'HM-REC', platform, final_status: 'accepted', owner_stay: false,
+    fin_accommodation: 43200, fin_revenue: (platform === 'airbnb' ? 50000 : 43200 + 9700 + 4320) + plus, mois_comptable: '2026-10', reclamations_agence,
+    reservation_fee: platform === 'airbnb'
+      ? [{ label: 'Cleaning fee', amount: 9700, fee_type: 'guest_fee' }, { label: 'Host service fee', amount: -2900, fee_type: 'host_fee' }]
+      : [{ label: 'Community fee', amount: 9700, fee_type: 'guest_fee' }, { label: 'Management fee', amount: 4320, fee_type: 'guest_fee' }],
+    bien: makeBien({ bien_frais: [] }),
+  })
+  const rec = l => l.find(x => x.code === 'COM' && /Indemnité voyageur/.test(x.libelle))
+  const sansRec = l => l.filter(x => !(x.code === 'COM' && /Indemnité voyageur/.test(x.libelle)))
+  it('carte de garantie (hors revenu) : COM 6000 TTC, toutes les autres lignes identiques', () => {
+    const avec = _calculerLignes(resa('manual', [{ montant: 6000, dans_revenu: false, tva: true }])).lignes
+    expect(rec(avec).montant_ttc).toBe(6000); expect(rec(avec).montant_ht).toBe(5000)
+    expect(sansRec(avec)).toEqual(_calculerLignes(resa('manual', null)).lignes)
+  })
+  it('Airbnb (ajustement dans le revenu) : +9000 de revenu dont 6000 agence → LOY +3000 seulement', () => {
+    const base = _calculerLignes(resa('airbnb', null)).lignes
+    const avec = _calculerLignes(resa('airbnb', [{ montant: 6000, dans_revenu: true, tva: true }], 9000)).lignes
+    expect(rec(avec).montant_ttc).toBe(6000)
+    expect(ligne(avec, 'LOY').montant_ttc - ligne(base, 'LOY').montant_ttc).toBe(3000)
+  })
+  it('sans TVA (réglage) : COM hors TVA', () => {
+    const l = _calculerLignes(resa('manual', [{ montant: 6000, dans_revenu: false, tva: false }])).lignes
+    expect(rec(l).montant_ttc).toBe(6000); expect(rec(l).montant_tva || 0).toBe(0)
+  })
+  it('absent / nul : rien', () => { expect(rec(_calculerLignes(resa('manual', [{ montant: 0 }])).lignes)).toBeUndefined() })
+})
+
 describe('471 — résa à 0 € avec options payées dans le portail (1er vrai paiement 4XUWQQ)', () => {
   const resa0 = opts => ({ id: 'r0', code: '4XUWQQ-T', platform: 'manual', final_status: 'accepted', owner_stay: false, fin_accommodation: 0, fin_revenue: 0,
     mois_comptable: '2026-10', options_portail: opts, reservation_fee: [], bien: makeBien({ bien_frais: [], provision_ae_ref: 2500 }) })
