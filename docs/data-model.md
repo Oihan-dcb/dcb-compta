@@ -418,6 +418,7 @@ Prestataires ménage. Partagée entre DCB Compta et le Portail AE.
 | `note` | text | Note interne DCB | |
 | `actif` | boolean | AE actif | ❓ Présence en base non confirmée — utilisé dans le code comme filtre |
 | `type` | text | 'ae' ou 'staff_dcb' | |
+| `hospitable_teammate_id` | text UNIQUE (si non null) | UUID du teammate Hospitable (/v2/teammates) | Migration 474 (19/10/2026). Prioritaire sur l'e-mail pour assigner les tâches créées depuis PowerHouse (api/hospitable-task-create.js) ; réglable depuis la fiche Staff PowerHouse |
 | `created_at` | timestamptz | | |
 
 ⚠ **Rupture de chaîne** : `mdp_temporaire` jamais sauvegardé + `reset-ae-password` inexistante → accès portail inutilisable sans intervention Supabase Dashboard.
