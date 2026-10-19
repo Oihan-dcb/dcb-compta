@@ -611,6 +611,8 @@ Avis voyageurs reçus via Hospitable webhook. Associés à une réservation.
 
 **Créée par** : `hospitable-webhook` (handleReview — upsert) et `sync-reviews` (quotidien, rattrapage `backfill:true` sans SMS). Lue aussi par Metrics PowerHouse (`ph_metrics_avis`, 421). Lue par : `rapportProprietaire.js` → `getReviewsMois`, `PageRapports`.
 
+**PowerHouse ⭐ Avis clients (493, 19/10/2026)** : `avis_reponse` (PK `review_id` → reservation_review) = brouillon de réponse publique, cache IA (`ia_empreinte`, `ia_genere_le`, `ia_cout_usd`), journal de publication (`hospitable_review_uuid`, `publie_le`, `publie_par`, `erreur`) ; statut brouillon | relu | publie | erreur | ignore. Après publication PowerHouse écrit aussi `reponse` / `repondu_le`. `avis_hote_voyageur` (PK `review_id` = id plateforme Airbnb **en texte**) = avis de l'hôte sur le voyageur : notes, message, note privée, étiquettes, `delay_publication`, faits relevés, statut brouillon | relu | attendre | publie | programme | erreur. Les avis hôte en attente viennent en direct d'Hospitable (`GET /v2/guest-reviews?status=pending`, Airbnb seulement). RLS sans politique (service role, api/avis-voyageurs.js).
+
 ---
 
 ---
