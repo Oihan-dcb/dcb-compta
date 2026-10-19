@@ -36,6 +36,12 @@
  * 'menage_en_retard_arrivee', urgent) avec l'heure réelle de démarrage et le sort de la réservation ; la liste ne
  * contient que la veille → l'alerte se clôt d'elle-même le jour suivant.
  *
+ * Rapports d'intervention à relire (19/10/2026, migration 483) : mission de ménage poussé / ménage de fond terminée
+ * depuis plus de 48 h, avec au moins une photo, dont le rapport n'est ni gardé en interne ni envoyé (même règle que
+ * l'Accueil › À faire de PowerHouse, api/_aFaire.js). Source 'rapport_intervention', publiée dans le point DCB seul
+ * (la relecture est faite par le bureau, y compris pour les biens Lauïan), non urgente → attend lundi le week-end.
+ * Se clôt d'elle-même quand le rapport est gardé ou envoyé.
+ *
  * Body : { agence?: 'dcb'|'lauian', dry_run?: true (rendu HTML renvoyé, aucune écriture),
  *          force?: true (ignore l'heure et l'anti-doublon), to?: string[] (test : remplace les
  *          destinataires, n'écrit rien en base — l'alerte reste « nouvelle » pour le vrai envoi),
@@ -57,10 +63,13 @@ const MARGE_MS = 2 * 3600 * 1000     // tolérance d'horaire du cron
 const SOURCE_MISSIONS = 'mission_acceptation'
 const SOURCE_ECARTS = 'ecart_taches'
 const SOURCE_RETARD_ARRIVEE = 'menage_en_retard_arrivee'
+const SOURCE_RAPPORTS = 'rapport_intervention'
+const RAPPORT_DELAI_MS = 48 * 3600 * 1000
 const LIBELLES: Record<string, string> = {
   menage_en_retard_arrivee: 'Ménages pas démarrés 2h30 avant l\'arrivée (hier)',
   mission_acceptation: 'Missions AE à accepter ou à réattribuer',
   ecart_taches: 'Missions ↔ Hospitable : écarts en retard',
+  rapport_intervention: 'Rapports d\'intervention à relire (PowerHouse › Missions › Rapports)',
   paiement_honoraires: 'Paiements reçus non enregistrés dans Evoliz',
   fraicheur_banque: 'Relevés bancaires muets',
   sequestre: 'Séquestre',
@@ -192,6 +201,41 @@ async function itemsRetardArrivee(supabase: any, jour: string): Promise<Record<s
   return out
 }
 
+// ── Rapports d'intervention à relire (migration 483) ────────────────────────────────────────
+// Tous dans le point DCB (bureau). Libellé : « 416 — mission du 15/10 terminée il y a 3 j · 12 photos ».
+// deno-lint-ignore no-explicit-any
+async function itemsRapports(supabase: any): Promise<Record<string, ItemAlerte[]>> {
+  const out: Record<string, ItemAlerte[]> = { dcb: [], lauian: [] }
+  const { data: ps, error } = await supabase.from('mission_extra_prevu_photo').select('mission_id')
+    .is('supprimee_le', null).gte('created_at', new Date(Date.now() - 120 * 86400000).toISOString()).limit(20000)
+  if (error) throw error
+  const nb = new Map<string, number>()
+  for (const p of ps || []) nb.set(p.mission_id, (nb.get(p.mission_id) || 0) + 1)
+  if (!nb.size) return out
+  const ids = [...nb.keys()]
+  const [{ data: ms, error: e1 }, { data: ts, error: e2 }, { data: rs, error: e3 }] = await Promise.all([
+    supabase.from('mission_menage').select('id, date_mission, bien:bien_id(code, hospitable_name, agence)').in('id', ids),
+    supabase.from('mission_terrain').select('mission_id, ended_at').in('mission_id', ids),
+    supabase.from('intervention_rapport').select('mission_id').in('mission_id', ids).in('statut', ['interne', 'envoye']),
+  ])
+  if (e1 || e2 || e3) throw (e1 || e2 || e3)
+  // deno-lint-ignore no-explicit-any
+  const fin = new Map((ts || []).map((x: any) => [x.mission_id, x.ended_at as string | null]))
+  // deno-lint-ignore no-explicit-any
+  const traite = new Set((rs || []).map((r: any) => r.mission_id))
+  for (const m of ms || []) {
+    if (traite.has(m.id)) continue
+    const f = fin.get(m.id) || (m.date_mission ? m.date_mission + 'T22:00:00Z' : null)
+    if (!f || Date.now() - new Date(f).getTime() < RAPPORT_DELAI_MS) continue
+    const bien = m.bien?.code || m.bien?.hospitable_name || 'bien ?'
+    const n = nb.get(m.id) || 0
+    out.dcb.push({ cle: `rapport:${m.id}`, montant_cts: null,
+      libelle: `📸 ${bien}${m.bien?.agence === 'lauian' ? ' (Lauïan)' : ''} — mission du ${m.date_mission.slice(8, 10)}/${m.date_mission.slice(5, 7)} terminée il y a ${jours(f)} j · ${n} photo${n > 1 ? 's' : ''}`,
+      detail: { urgent: false, mission_id: m.id, debut: f, bien } })
+  }
+  return out
+}
+
 // Sans écriture (dry_run / test) : ce que alerte_signaler() produirait, appliqué en mémoire (une ou plusieurs sources)
 // deno-lint-ignore no-explicit-any
 function simulerSignalement(toutes: any[], parSourceItems: Record<string, Record<string, ItemAlerte[]>>, agences: string[]) {
@@ -298,6 +342,19 @@ serve(async (req) => {
     }
   }
 
+  // Rapports d'intervention à relire → alerte_etat (source 'rapport_intervention', point DCB seulement)
+  let itemsI: Record<string, ItemAlerte[]> = { dcb: [], lauian: [] }
+  let errRapports: string | null = null
+  try { itemsI = await itemsRapports(supabase) } catch (e) { errRapports = String((e as Error).message || e) }
+  if (errRapports) {
+    await supabase.from('journal_ops').insert({ categorie: 'alerte', action: 'point_du_matin', source: 'cron', statut: 'error', message: `rapports d'intervention illisibles : ${errRapports}`.slice(0, 300) })
+  } else if (ecrire) {
+    for (const ag of agences) {
+      try { await signaler(supabase, SOURCE_RAPPORTS, ag, itemsI[ag] || []) }
+      catch (e) { await supabase.from('journal_ops').insert({ categorie: 'alerte', action: 'point_du_matin', source: 'cron', statut: 'error', message: String((e as Error).message || e).slice(0, 300) }) }
+    }
+  }
+
   // Ouvertes de toutes les agences (ligne de synthèse Lauïan dans le point DCB)
   const { data: lues, error } = await supabase.from('alerte_etat').select('*').is('resolved_at', null)
   if (error) return json({ error: error.message }, 500)
@@ -305,6 +362,7 @@ serve(async (req) => {
   if (!errMissions) aSimuler[SOURCE_MISSIONS] = itemsM
   if (!errEcarts) aSimuler[SOURCE_ECARTS] = itemsE
   if (!errRetard) aSimuler[SOURCE_RETARD_ARRIVEE] = itemsR
+  if (!errRapports) aSimuler[SOURCE_RAPPORTS] = itemsI
   const toutes = !ecrire ? simulerSignalement(lues || [], aSimuler, agences) : (lues || [])
 
   for (const agence of agences) {
