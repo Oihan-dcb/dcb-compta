@@ -1741,3 +1741,6 @@ règles (copie conforme de `src/lib/taxeSejour.js` dans PowerHouse `api/_taxeSej
 
 ## Fix 19/10/2026 — gardes auto_entrepreneur et fonctions serveur (migration 475)
 `auto_entrepreneur_prevent_self_elevation` et `check_ae_self_update_scope` ne laissaient passer que les comptes bureau/staff connectés (`auth.uid()`). Une Edge Function en clé secrète (service_role, pas d'utilisateur) était refusée : `create-ae-user` créait le compte auth mais ne pouvait pas poser `ae_user_id` (« Modification de champs réservés au bureau refusée », fiche Claudine). Les deux gardes acceptent maintenant aussi `auth.role() = 'service_role'`. Le service_role ne sort jamais côté navigateur.
+
+### Fix 19/10/2026 — Inventaire rangé sous le mauvais bien (migration 480)
+Cause : aucune clé étrangère n'imposait `bien_toolbox.id` sur les tables d'inventaire ; la pré-population du 26/05/2026 a d'abord été lancée avec `bien.id` (33 articles sur 64 biens sans tri), puis relancée correctement sans retirer la 1re passe ; le portail retombait en plus sur l'identifiant brut quand la fiche n'était pas trouvée. Correctif : FK vers `bien_toolbox`, portail sans repli, 4 224 lignes sauvegardées (`inventaire_reparation_480`) puis retirées (aucune touchée depuis mai ; 682 / 595 doublons, le reste = articles volontairement écartés par la 2e passe).
