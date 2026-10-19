@@ -976,6 +976,7 @@ Virement est ✓ tant que `ecart_cts = ecart_accepte_cts`. Jamais écrits par `v
   `conjoint_nom` — renseignés par le lien d'onboarding mandat (dcb-contrats `mandat-onb-complete`), backfill depuis
   `proprietaire_onboarding.reponses`. Éditables dans la fiche PowerHouse (bloc « Identité (mandat) »).
 - `bien` : `statut_occupation` (RP entière / annexe RP / secondaire / mixte étudiant+saisonnier / société),
+  → source du plafond légal des nuits d'une résidence principale (486 : `est_residence_principale`, `nuits_louees_annee`).
   `numero_enregistrement` (meublé de tourisme), `identifiant_fiscal`. Le classement n'est PAS écrasé par la réponse
   (sert à la taxe de séjour).
 - `fiche_historique` : trigger AFTER UPDATE sur `proprietaire` et `bien` — une ligne par modification effective,

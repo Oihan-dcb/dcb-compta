@@ -1211,3 +1211,18 @@ Règle voyageur (contrat saisonnier art. 3, CGL) : tolérance 10 min, puis 10 % 
 - Aucun effet comptable : le paiement reste celui de l'extra prévu (§29) ou de la mission.
 - **Hors réseau (485)** : le portail range chaque photo sur le téléphone (IndexedDB : mission, zone, moment, commentaire, heure de prise, `client_id`) puis l'envoie au retour du réseau (online, retour sur l'app, toutes les 45 s), dans l'ordre de prise ; arrêt au premier échec passager pour garder l'ordre. Envoi **idempotent** (`client_id` ; chemin du fichier dérivé du `client_id`). Le contrôle « prise pendant la mission » porte sur l'heure de **prise** : une photo prise pendant la mission (jusqu'à fin + 2 h) est acceptée même arrivée plus tard (≤ 14 jours après la fin) ; le point de vérification du hub, calculé à la lecture, se recalcule dès son arrivée. Refus définitif (mission annulée, plus de ménage poussé, mission réattribuée…) : la photo reste sur le téléphone marquée « refusée », retirée par l'intervenante seulement. Stockage plein : gardée en mémoire tant que l'app est ouverte, alerte, mission jamais bloquée.
 - **Temps d'intervention (485)** : « Temps d'intervention : X h Y min » dans la relecture et l'en-tête du PDF (justifie la refacturation au temps), case « Afficher le temps passé dans le rapport propriétaire » (`intervention_rapport.afficher_temps`, cochée par défaut). Source : ménage poussé = durée de la `prestation_hors_forfait` liée à l'extra (validée / refacturée), sinon `mission_extra_prevu.duree_reelle_minutes` (somme si plusieurs extras faits) ; ménage de fond = durée de la mission (`duree_declaree_minutes`, sinon `duree_corrigee_minutes`, sinon `duree_minutes`). Ménage poussé sans durée saisie : pas de temps (jamais la durée du ménage ordinaire).
+
+## 32. Plafond légal des nuits louées — résidence principale (19/10/2026, migration 486)
+
+- **Résidence principale** = `bien.statut_occupation` (déclaration du propriétaire : questionnaire du portail owner,
+  recopiée par dcb-contrats `mandat-onb-complete`, reprise dans le mandat clause `occ_rp_entiere`) commençant par
+  « Résidence principale ». Fonction `est_residence_principale(text)`. Une « Annexe de la résidence principale » et une
+  résidence secondaire ne sont pas plafonnées. `bien.type_exploitation = 'residence_principale'` (356) est aligné mais
+  n'est PAS la source du plafond.
+- **Plafond** = `config.limite_jours` du dernier `mandat_signature` signé du bien (BACALAN 90 à Bordeaux), sinon 120.
+- **Compteur** `nuits_louees_annee(p_annee, p_biens)` : année civile, séjours `accepted`, toutes plateformes, hors
+  `owner_stay`, hors séjours > 240 nuits (bail étudiant), séjour à cheval compté dans chaque année — même règle que
+  `cron-alerte-120j` (email, déjà en place).
+- Lecteurs : PowerHouse vente directe (`api/_direct.js` : devis refusé `plafond_rp`, calendrier grisé, compteur
+  illisible → refus `dispo_inconnue`), Accueil › À faire › Vérifier (orange dès plafond − 20, rouge au-delà), fiche bien
+  (compteur N / plafond). Airbnb / Booking ne bloquent rien : fermer les dates à la main.
