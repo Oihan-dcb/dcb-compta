@@ -29,3 +29,9 @@ from (values
 where lower(trim(auto_entrepreneur.email)) = v.email
   and auto_entrepreneur.actif = true
   and auto_entrepreneur.hospitable_teammate_id is null;
+
+-- Ajout du 19/10/2026 (appliqué à la main après la migration) : Claudine Veynac, créée le jour même,
+-- reliée au teammate 41882e39-3cb2-423c-a6aa-c308d94c6ba7 (« Claudine veyrac », claudine.veyrac@gmail.com
+-- dans Hospitable — orthographe différente de PowerHouse claudine.veynac@gmail.com ; à vérifier).
+update public.auto_entrepreneur set hospitable_teammate_id = '41882e39-3cb2-423c-a6aa-c308d94c6ba7'
+where lower(trim(email)) = 'claudine.veynac@gmail.com' and hospitable_teammate_id is null;
