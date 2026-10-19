@@ -942,6 +942,15 @@ avant correction.
 *Fichier généré dans le cadre de l'audit structurel DCB Compta — mars 2026.*
 *Mis à jour avril 2026 — ne pas modifier sans relecture de `src/services/ventilation.js` V1, `src/services/facturesEvoliz.js`, `src/services/buildRapportData.js` et `src/pages/PageFactures.jsx`.*
 
+### Réclamations voyageurs — dégâts, saleté, casse (19/10/2026, migration 492)
+Dossier `reclamation_voyageur` (1 actif par résa) créé par trigger depuis un signalement `degat`/`salete` (rattachement :
+mission d'origine → code → dernier départ du logement ≤ 7 j ; le signalement est aussi complété : code, voyageur, départ).
+Barème et répartition par agence dans `reclamation_reglage` (défaut = art. 11 du contrat ; ménage → agence, casse → propriétaire).
+Encaissement : Airbnb/Booking → l'ajustement de la résa (« Resolution payout » / « AirCover ») est qualifié en `menage` via
+`/api/qualifier-ajustement` avec `montant_fmen` = part agence (le reste remonte au propriétaire par le LOY) ; carte de garantie
+(Stripe agence) → part propriétaire reversée par un `frais_proprietaire` `remboursement`, part agence conservée. Indemnité hors
+champ TVA par défaut (`tva_indemnite`, à confirmer par l'expert-comptable). Rien n'est appliqué sans le clic « Appliquer en compta ».
+
 ### AirCover — à qui revient le remboursement (règle Oïhan 25/09/2026)
 Un « Resolution Payout: AirCover damage reimbursement » Airbnb revient à qui a payé la réparation :
 si une réparation du même montant (±1 €, ±60 jours) a été retenue au propriétaire (frais
