@@ -1738,3 +1738,6 @@ dates (22008) → la requête des résas échouait et la déclaration T2 / T3 re
 réel. Trouvé en vérifiant l'onglet Metrics › Taxes de séjour de PowerHouse (migrations 421-421c), qui reprend les mêmes
 règles (copie conforme de `src/lib/taxeSejour.js` dans PowerHouse `api/_taxeSejour.js`, à régénérer par
 `node scripts/copier-taxe-sejour.js` après toute modification ici).
+
+## Fix 19/10/2026 — gardes auto_entrepreneur et fonctions serveur (migration 475)
+`auto_entrepreneur_prevent_self_elevation` et `check_ae_self_update_scope` ne laissaient passer que les comptes bureau/staff connectés (`auth.uid()`). Une Edge Function en clé secrète (service_role, pas d'utilisateur) était refusée : `create-ae-user` créait le compte auth mais ne pouvait pas poser `ae_user_id` (« Modification de champs réservés au bureau refusée », fiche Claudine). Les deux gardes acceptent maintenant aussi `auth.role() = 'service_role'`. Le service_role ne sort jamais côté navigateur.
