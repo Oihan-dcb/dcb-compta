@@ -1201,3 +1201,9 @@ jamais saisis, facture n°168 (700 €) payée par le séquestre sans mission.
 - `mission_extra_prevu_photo.client_id` (uuid, index unique partiel) : identifiant fabriqué par le téléphone, un par photo.
 - `intervention_photo_ajouter(…, prise_le, client_id)` (9 arguments, remplace la version à 8) : idempotente par `client_id` (renvoie la photo existante) ; mission finie depuis plus de 2 h acceptée si `prise_le` est entre le démarrage (−10 min) et la fin + 2 h, dans les 14 jours suivant la fin ; `photo_avant_mission` si `prise_le` précède le démarrage.
 - `intervention_rapport.afficher_temps` (bool, défaut vrai) : temps d'intervention dans le PDF propriétaire.
+
+## Ajout 2026-10-19 — Disponibilités confirmées par le propriétaire (migration 487)
+- `dispo_proprio_bien` (bien_id PK, exige, depuis, par, motif) : bien fermé en vente directe jusqu'à confirmation.
+- `dispo_proprio_demande` (bien_id, proprietaire_id, annee, statut preparee|demandee|repondue|expiree|annulee, token_hash unique, expire_le, langue, contexte jsonb {rp, plafond, bail, saison}, demandee_le, mail_envoye_le, nb_relances, ouverte_le, repondue_le, repondu_par, modifiee_le, test) ; une seule demande ouverte (non test) par bien et année.
+- `dispo_proprio_periode` (demande_id, bien_id, debut, fin = dernière nuit, type louable|occupe, actif, remplace_le, hospitable_ouvert_le/_par, hospitable_ferme_le/_par).
+- `dispo_proprio_historique` (demande_id, bien_id, le, qui, action, detail jsonb). RLS staff (auth_user_is_staff) sur les 4 tables.

@@ -1226,3 +1226,11 @@ Règle voyageur (contrat saisonnier art. 3, CGL) : tolérance 10 min, puis 10 % 
 - Lecteurs : PowerHouse vente directe (`api/_direct.js` : devis refusé `plafond_rp`, calendrier grisé, compteur
   illisible → refus `dispo_inconnue`), Accueil › À faire › Vérifier (orange dès plafond − 20, rouge au-delà), fiche bien
   (compteur N / plafond). Airbnb / Booking ne bloquent rien : fermer les dates à la main.
+
+## 33. Disponibilités confirmées par le propriétaire (19/10/2026, migration 487)
+
+Demande d'Oïhan : « ferme tout et demande confirmation des dates de dispo aux proprios » (GASQ, B16, B24, DUL, CERES, EKIA, MUNDUZ, ERDIGUNEA).
+- `dispo_proprio_bien.exige = true` : la vente directe (dcb-planning `api/_direct.js` via `api/_dispoProprio.js`) ne vend QUE les nuits comprises dans une période `louable` active d'une demande `repondue`/`expiree` non test — en plus d'Hospitable, de la saison (459) et du plafond RP (486). Aucune réponse = rien de vendable en direct.
+- Le propriétaire répond dans le portail owner (page « Mes disponibilités », `api/dispos.js`, connexion habituelle par code e-mail) via le lien `?dispos=<jeton>` (unique par bien/année, expirant 30 j, seule l'empreinte SHA-256 est stockée, nouveau jeton à chaque préparation/relance/envoi). Modifiable jusqu'à expiration ; chaque version garde l'ancienne (`actif=false`, `remplace_le`).
+- Rien n'est écrit dans Hospitable : Accueil › À faire liste « Ouvrir / Refermer dans Hospitable du … au … », cochés dans la fiche bien (`hospitable_ouvert_le` / `hospitable_ferme_le`).
+- Mail de demande : envoi COUPÉ tant que `DISPO_PROPRIO_ENVOI=actif` n'est pas posé (feu vert d'Oïhan) + confirmation explicite.
