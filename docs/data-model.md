@@ -1195,3 +1195,8 @@ jamais saisis, facture n°168 (700 €) payée par le séquestre sans mission.
 - `intervention_rapport` (mission_id PK, statut a_relire|interne|envoye, synthese, commentaires_zones jsonb { piece_id | « libre:<nom> » : texte }, owner_document_id, envoye_le, envoye_par_nom, modifie_par_nom) : lecture staff, écriture PowerHouse `api/intervention-rapport` seulement.
 - `owner_documents.categorie` + `intervention`.
 - `mission_hub_periode` : colonne interne `photos_anom` + anomalie (patch par ancres, repère « 483 », à conserver avec ceux de 482).
+
+## Ajout 2026-10-19 — Photos hors réseau et temps passé (migration 485)
+- `mission_extra_prevu_photo.client_id` (uuid, index unique partiel) : identifiant fabriqué par le téléphone, un par photo.
+- `intervention_photo_ajouter(…, prise_le, client_id)` (9 arguments, remplace la version à 8) : idempotente par `client_id` (renvoie la photo existante) ; mission finie depuis plus de 2 h acceptée si `prise_le` est entre le démarrage (−10 min) et la fin + 2 h, dans les 14 jours suivant la fin ; `photo_avant_mission` si `prise_le` précède le démarrage.
+- `intervention_rapport.afficher_temps` (bool, défaut vrai) : temps d'intervention dans le PDF propriétaire.
