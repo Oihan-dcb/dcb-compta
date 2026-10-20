@@ -1211,6 +1211,7 @@ jamais saisis, facture n°168 (700 €) payée par le séquestre sans mission.
 - `dispo_proprio_demande` (bien_id, proprietaire_id, annee, statut preparee|demandee|repondue|expiree|annulee, token_hash unique, expire_le, langue, contexte jsonb {rp, plafond, bail, saison}, demandee_le, mail_envoye_le, nb_relances, ouverte_le, repondue_le, repondu_par, modifiee_le, test) ; une seule demande ouverte (non test) par bien et année.
 - `dispo_proprio_periode` (demande_id, bien_id, debut, fin = dernière nuit, type louable|occupe, actif, remplace_le, hospitable_ouvert_le/_par, hospitable_ferme_le/_par).
 - `dispo_proprio_historique` (demande_id, bien_id, le, qui, action, detail jsonb). RLS staff (auth_user_is_staff) sur les 4 tables.
+- 513 (20/10/2026) : `dispo_proprio_periode.validation` proposee|validee|refusee (+ valide_le/_par, refus_motif, hospitable_bloque_le/_par, hospitable_resultat jsonb) ; `dispo_proprio_demande.origine` dcb|proprietaire (demande ouverte par le propriétaire depuis le portail). `property_calendar.titre = 'AVAILABILITY_WINDOW'` (sync-ical-planning) = jours fermés par la fenêtre de disponibilité Hospitable, span séparé.
 
 ## Ajout 2026-10-19 — 📦 Stock du bureau (migrations 491, 491b)
 - `stock_depot` (code unique, type physique|virtuel, role stock|logements|sale, zone, agence, bien_id, codes_zone_sac[]) : MFC (bien 01), CAVE-ML, LOGEMENTS (« Dans les logements »), SALE (« Au sale »).

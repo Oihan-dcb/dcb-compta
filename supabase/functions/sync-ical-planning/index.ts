@@ -203,12 +203,16 @@ function groupUnavailableDays(days: any[]): Span[] {
   for (const day of days) {
     if (!day.status?.available) {
       const source = detectSource(day)
-      const titre  = day.note || day.status?.reason || null
+      // Fenêtre de disponibilité Hospitable (réglage availability_window : dates fermées par défaut, ouvertes à la main) :
+      // ce n'est pas un blocage du propriétaire ni de l'équipe → titre sentinelle AVAILABILITY_WINDOW, span séparé
+      // (portail owner « Pas encore ouvert à la location », PowerHouse « fermé par défaut ») — 20/10/2026.
+      const fenetre = day.status?.source_type === 'AVAILABILITY_WINDOW' && !day.note
+      const titre  = fenetre ? 'AVAILABILITY_WINDOW' : (day.note || day.status?.reason || null)
 
       if (!current) {
         // Début d'un nouveau span
         current = { date_debut: day.date, date_fin: day.date, source, titre }
-      } else if (current.source === source) {
+      } else if (current.source === source && (current.titre === 'AVAILABILITY_WINDOW') === fenetre) {
         // Même type → prolonger le span
         current.date_fin = day.date
       } else {
