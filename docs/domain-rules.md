@@ -982,6 +982,16 @@ garde payé / remboursé / conservé. Étape compta : `final_status='cancelled'`
   faute de paiement Hospitable) ne peuvent plus écraser ce `fin_revenue`.
 - Mois clôturé (`cloture_comptable.cloture_ventil`) : rien n'est modifié, alerte « à régulariser à la main ».
 
+### Résa directe / manuelle MODIFIÉE par le bouton « ✏️ Modifier » (PowerHouse, migration 511, 20/10/2026)
+Dates, voyageurs, voyageur, horaires ou prix d'une résa directe / manuelle changés depuis PowerHouse (`api/_modificationResa.js`) :
+`resa_modification` garde avant / après, lignes de prix, écart, complément, trop-perçu et étapes.
+- La compta n'est **jamais patchée à la main** : la résa est mise à jour dans Hospitable, la synchro réécrit `reservation`
+  (prix, dates, `mois_comptable`), puis PowerHouse demande la **re-ventilation** de la résa (`api/ventiler.js` { reservation_id }).
+  Taxe de séjour comprise (financials Hospitable). Mois clôturé : rien n'est touché, « à régulariser à la main ».
+- Complément payé par le lien (PaymentIntent `metadata.origine = resa_complement`, `metadata.reservation_code`) : charge Stripe
+  rattachée à la résa comme les autres paiements directs (`stripe-acomptes-sequestre`, recherche par `reservation_code`).
+- Trop-perçu : remboursé seulement au clic (Stripe, partiel, même PaymentIntent) ; jamais automatique.
+
 ### Séquestre — clôtures et journal (migration 283, 26/09/2026)
 - **Clôture mensuelle** (page Séquestre › Clôtures) : fige le justificatif calculé au dernier jour du mois
   (poches, dû/payé par ayant droit, écart) dans `sequestre_cloture_mensuelle` et **verrouille** le mois : une
