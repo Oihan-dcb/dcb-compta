@@ -26,6 +26,11 @@ const HOSP_BASE     = 'https://public.api.hospitable.com/v2'
 // Fenêtre de sync : J-14 → J+365
 const DAYS_BACK    = 14
 const DAYS_FORWARD = 365
+// Hospitable ralentit parfois (délais dépassés, 502 du 20/10/2026 sur 14 biens) : un appel lent ou en
+// erreur passagère est retenté au lieu d'abandonner le bien jusqu'au passage suivant.
+const TIMEOUT_MS   = 20_000
+const TENTATIVES   = 3            // 1 appel + 2 reprises (délai dépassé, 429, 5xx)
+const BUDGET_MS    = 240_000      // au-delà, les biens restants attendent le passage suivant (toutes les 5 min)
 
 Deno.serve(async (_req) => {
   const sb = createClient(SUPABASE_URL, SERVICE_KEY)
@@ -52,7 +57,17 @@ Deno.serve(async (_req) => {
 
   const results: Array<{ bien: string; upserted: number; deleted: number; error?: string; [k: string]: unknown }> = []
 
+  // Les biens les moins fraîchement synchronisés passent en premier : si Hospitable ralentit et que le
+  // budget de temps du passage est atteint, ce sont toujours les plus anciens qui sont repris ensuite.
+  const { data: etats } = await sb.from('calendrier_sync_bien_etat').select('bien_id, synchro_le, ok')
+  const fraicheur = new Map((etats || []).map((e: any) => [e.bien_id, e.ok ? Date.parse(e.synchro_le) : 0]))
+  biens.sort((a, b) => (fraicheur.get(a.id) ?? 0) - (fraicheur.get(b.id) ?? 0))
+
   for (const bien of biens) {
+    if (Date.now() - now.getTime() > BUDGET_MS) {
+      results.push({ bien: bien.code || bien.hospitable_name, upserted: 0, deleted: 0, reporte: true })
+      continue
+    }
     try {
       const result = await syncBienCalendar(sb, bien, startDate, endDate)
       results.push({ bien: bien.code || bien.hospitable_name, ...result })
@@ -94,16 +109,7 @@ async function syncBienCalendar(
 
   // 2. Appel API Hospitable v2/calendar
   const url = `${HOSP_BASE}/properties/${bien.hospitable_id}/calendar?start_date=${startDate}&end_date=${endDate}`
-  const resp = await fetch(url, {
-    headers: { Authorization: `Bearer ${HOSP_TOKEN}`, Accept: 'application/json' },
-    signal: AbortSignal.timeout(15_000),
-  })
-  if (!resp.ok) {
-    const body = await resp.text()
-    throw new Error(`Hospitable API ${resp.status}: ${body.substring(0, 200)}`)
-  }
-
-  const json = await resp.json()
+  const json = await appelHospitable(url)
   const days: any[] = json.data?.days || []
   // Réponse sans aucun jour = information INCONNUE, pas « calendrier entièrement libre » : on ne touche
   // à rien (sinon le diff supprimerait tous les spans du bien).
@@ -151,6 +157,34 @@ async function syncBienCalendar(
     modifies: data?.modifies ?? 0,
     jours_modifies: data?.jours_modifies ?? 0,
   }
+}
+
+// Appel GET avec reprises. Les messages d'erreur sont lisibles (ils s'affichent dans le Calendrier) :
+// jamais de page HTML brute de la passerelle.
+async function appelHospitable(url: string): Promise<any> {
+  let derniere = ''
+  for (let i = 1; i <= TENTATIVES; i++) {
+    let reprendre = false
+    try {
+      const resp = await fetch(url, {
+        headers: { Authorization: `Bearer ${HOSP_TOKEN}`, Accept: 'application/json' },
+        signal: AbortSignal.timeout(TIMEOUT_MS),
+      })
+      if (resp.ok) return await resp.json()
+      const corps = (await resp.text().catch(() => '')).replace(/<[^>]*>/g, ' ').replace(/\s+/g, ' ').trim()
+      reprendre = resp.status === 429 || resp.status >= 500
+      derniere = resp.status >= 500 ? `Hospitable indisponible (erreur ${resp.status})`
+        : resp.status === 429 ? 'Hospitable : trop de requêtes (429)'
+        : `Hospitable a refusé la lecture du calendrier (erreur ${resp.status}${corps && !/^<|html/i.test(corps) ? ' : ' + corps.slice(0, 120) : ''})`
+    } catch (err: any) {
+      const delai = err?.name === 'TimeoutError' || /timed out/i.test(String(err?.message))
+      derniere = delai ? `Hospitable n'a pas répondu en ${TIMEOUT_MS / 1000} s` : `Hospitable injoignable (${String(err?.message || err).slice(0, 120)})`
+      reprendre = true
+    }
+    if (!reprendre || i === TENTATIVES) break
+    await new Promise(r => setTimeout(r, i * 3000))
+  }
+  throw new Error(derniere + (TENTATIVES > 1 ? ` après ${TENTATIVES} essais` : ''))
 }
 
 // ─── Segmentation ──────────────────────────────────────────────────────────────
