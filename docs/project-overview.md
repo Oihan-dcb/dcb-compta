@@ -1753,3 +1753,13 @@ Fait : règle « cohorte du mois / séjour unique » dans `lancerMatchingAuto` (
 validation idempotente, mois clôturé = rien d'écrit (I-193) ; suivi des virements sans détail ; `detectCanal` strict (I-194).
 Rattrapage : 14 relevés Lauïan 2026 retrouvés dans Téléchargements, 7 versements importés (01-03 et 09/2026), 7 déjà présents.
 Tests : `src/services/__tests__/bookingReleve.test.js` (21).
+
+## Fix 21/10/2026 — Portail owner : e-mail de la fiche et compte de connexion alignés (migration 519)
+Cause : la connexion au portail lit `auth.users.email`, la fiche `proprietaire.email` ; rien ne les reliait après la
+1re invitation. Inviter une autre adresse que celle du compte lié faisait créer par `generateLink` un compte orphelin
+sans fiche (RICHOU : « adresse non reconnue »). Fait : `proprio_portail_aligner_compte(fiche)` (service_role) + trigger
+`trg_proprio_portail_email` sur `email`/`email_cc` (seulement si le compte correspondait à la fiche avant le changement) :
+le compte passe sur la 1re adresse de la fiche, ou la fiche est reliée au compte existant de cette adresse (sessions de
+l'ancien fermées) ; jamais pour is_super, adresse staff ou AE. `owner-portal-invite` refuse une adresse absente de la
+fiche et ne fait plus de `generateLink` vers une adresse sans compte lié. Écarts historiques laissés tels quels
+(CAMPANDEGUI Marc, NICOLLE, DASCON, SPERADIO, PINONCELY : compte ouvert à une autre adresse que la fiche).

@@ -48,22 +48,45 @@ Deno.serve(async (req) => {
     const { proprio_id, email, mode = 'invite' } = await req.json()
     if (!proprio_id || !email) return jsonError('proprio_id et email requis', 400)
 
-    const emailLower = email.trim().toLowerCase()
+    // Une fiche peut porter plusieurs adresses « a;b » : on invite la première.
+    const emailLower = String(email).split(/[,;\s]+/).map((e: string) => e.trim().toLowerCase()).find(Boolean) ?? ''
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(emailLower)) return jsonError('Adresse e-mail invalide', 400)
 
     // ── Vérifier que le proprio existe ────────────────────────────────────────
     const { data: proprio, error: propErr } = await supabaseAdmin
       .from('proprietaire')
-      .select('id, nom, prenom, agence, auth_user_id')
+      .select('id, nom, prenom, agence, auth_user_id, email, email_cc')
       .eq('id', proprio_id)
       .single()
 
     if (propErr || !proprio) return jsonError('Propriétaire non trouvé', 404)
 
+    // L'adresse invitée doit être celle de la fiche (21/10/2026, RICHOU) : la connexion au portail
+    // lit l'adresse du COMPTE ; inviter une autre adresse que celle de la fiche créait un compte
+    // orphelin (generateLink) sans fiche → « adresse non reconnue ».
+    const adressesFiche = `${proprio.email ?? ''} ${proprio.email_cc ?? ''}`.split(/[,;\s]+/).map(e => e.trim().toLowerCase()).filter(Boolean)
+    if (!adressesFiche.includes(emailLower)) {
+      return jsonError(`L'adresse ${emailLower} n'est pas sur la fiche. Modifiez d'abord l'e-mail de la fiche (Enregistrer), puis renvoyez l'accès.`, 400)
+    }
+
     let userId: string
 
     if (proprio.auth_user_id) {
-      // Déjà un compte lié → utiliser l'existant, juste renvoyer un nouveau lien
-      userId = proprio.auth_user_id
+      // Déjà un compte lié. Si son adresse n'est plus sur la fiche (e-mail changé), on aligne le
+      // compte sur l'adresse de la fiche (migration 519) : l'ancienne adresse ne connecte plus.
+      const { data: lie } = await supabaseAdmin.auth.admin.getUserById(proprio.auth_user_id)
+      if ((lie?.user?.email ?? '').toLowerCase() !== emailLower) {
+        const { error: alignErr } = await supabaseAdmin.rpc('proprio_portail_aligner_compte', { p_proprio: proprio_id })
+        if (alignErr) throw alignErr
+      }
+      const { data: apres } = await supabaseAdmin.from('proprietaire').select('auth_user_id').eq('id', proprio_id).single()
+      userId = apres?.auth_user_id ?? proprio.auth_user_id
+      const { data: compte } = await supabaseAdmin.auth.admin.getUserById(userId)
+      const emailCompte = (compte?.user?.email ?? '').toLowerCase()
+      if (emailCompte !== emailLower) {
+        // Jamais de generateLink vers une adresse sans compte lié : il créerait un compte orphelin.
+        return jsonError(`Le compte portail de cette fiche est ouvert à ${emailCompte || '(adresse inconnue)'}. Pour inviter ${emailLower}, mettez cette adresse en premier dans l'e-mail de la fiche, ou créez un accès partagé.`, 409)
+      }
     } else {
       // Chercher si un compte auth existe déjà pour cet email
       // Paginé : listUsers() sans argument ne renvoie que la 1re page (50 comptes). Le projet en
