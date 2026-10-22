@@ -615,6 +615,8 @@ Avis voyageurs reçus via Hospitable webhook. Associés à une réservation.
 
 **PowerHouse ⭐ Avis clients (493, 19/10/2026)** : `avis_reponse` (PK `review_id` → reservation_review) = brouillon de réponse publique, cache IA (`ia_empreinte`, `ia_genere_le`, `ia_cout_usd`), journal de publication (`hospitable_review_uuid`, `publie_le`, `publie_par`, `erreur`) ; statut brouillon | relu | publie | erreur | ignore. Après publication PowerHouse écrit aussi `reponse` / `repondu_le`. `avis_hote_voyageur` (PK `review_id` = id plateforme Airbnb **en texte**) = avis de l'hôte sur le voyageur : notes, message, note privée, étiquettes, `delay_publication`, faits relevés, statut brouillon | relu | attendre | publie | programme | erreur. Les avis hôte en attente viennent en direct d'Hospitable (`GET /v2/guest-reviews?status=pending`, Airbnb seulement). RLS sans politique (service role, api/avis-voyageurs.js).
 
+**Réponse automatique aux avis (536, 22/10/2026)** : `avis_reponse.auto_redige_le` (brouillon écrit par le cron PowerHouse `cron-avis-reponse-auto`), `publication_prevue_le` (rédaction + 7 j, avis POSITIFS seulement ; null = jamais automatique), `publication_suspendue_le` / `_par` (« Ne pas publier »), `publication_reservee_le` (UPDATE conditionnel juste avant l'appel Hospitable : une seule publication). Journal : `avis_auto_journal` actions reponse_redigee / reponse_publiee / reponse_ignoree_* / erreur_*, mode essai | reel. Interrupteurs Vercel AVIS_REPONSE_AUTO_REDACTION / AVIS_REPONSE_AUTO_PUBLICATION.
+
 ---
 
 ---
