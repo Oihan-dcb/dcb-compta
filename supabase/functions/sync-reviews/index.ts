@@ -126,6 +126,8 @@ Deno.serve(async (req) => {
         reservation_id:            resaRow?.id || null,
         bien_id:                   bien.id,
         hospitable_reservation_id: resaHospId,
+        // 535 (22/10/2026) : identifiant de l'avis chez Hospitable → publication d'une réponse sans relire la liste
+        hospitable_review_id:      review.id ?? null,
         reviewer_name:             review.reviewer?.name || review.guest?.name || null,
         rating:                    review.public?.rating ?? null,
         comment:                   review.public?.review ?? null,

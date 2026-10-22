@@ -559,6 +559,8 @@ async function handleReview(supabase: any, event: string, data: any): Promise<st
     reservation_id:              resa?.id || null,
     bien_id:                     resa?.bien_id || null,
     hospitable_reservation_id:   resaHospId,
+    // 535 : identifiant de l'avis chez Hospitable (publication d'une réponse sans relire la liste) ; jamais écrasé par null
+    ...(data.id ? { hospitable_review_id: String(data.id) } : {}),
     reviewer_name:               reviewer,
     rating,
     comment,
