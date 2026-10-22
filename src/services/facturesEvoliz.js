@@ -1867,7 +1867,7 @@ export async function envoyerEmailDeboursProprio(facture) {
       // proprio.email peut contenir plusieurs adresses séparées par virgule — Resend rejette
       // un seul élément "a@x.com,b@x.com" (422 Invalid `to` field)
       to: proprio.email.split(',').map(e => e.trim()).filter(Boolean),
-      ...(AGENCE === 'lauian' ? { cc: ['laura@destinationcotebasque.com'] } : {}),
+      ...(AGENCE === 'lauian' ? { cc: ['laura@lauian-immo.com'] } : {}),
       subject: `Remboursement débours auto-entrepreneur — ${moisLabel} — ${bienNom}`,
       html,
     }),
