@@ -1181,6 +1181,8 @@ jamais saisis, facture n°168 (700 €) payée par le séquestre sans mission.
 - `reservation.options_portail` (jsonb) : options payées non remboursées, tenu par le trigger `trg_portail_commande_vers_reservation` → PVOY (domain-rules §27).
 - `reservation_horaire` (resa_hospitable_id, reservation_id, bien_id, sens arrivee|depart, heure HH:MM, source portail|devis|bureau, commande_id, note, annule_le) — une heure active par séjour et par sens ; RLS sans politique (service_role).
 - `direct_service.horaire` (arrivee_anticipee|depart_tardif) + `horaire_heure` (HH:MM).
+- 592 (23/10/2026) : `direct_service.accueil_en_personne` boolean (option réservée aux logements accueillis en personne : `bien.type_arrivee = 'en_personne'` ou `accueil_proprio`) ; 4 options arrivée tardive DCB/Lauïan désactivées (50 / 70 / 100 / 170 €).
+- 593 (23/10/2026) : `ga_agency_config.alertes_auto` boolean défaut true (false = aucune alerte automatique SMS/appel/push sur urgence IA ; Lauïan).
 - `penalite_depart` (470/471) : départs tardifs non autorisés constatés (calcul figé, mode essai/debit/plateforme/manuel, statut, notifie_le, encaisse_centimes / encaisse_le, compta_statut 'agence'). Une seule ligne non annulée par séjour. Lecture staff, écriture serveur.
 - `reservation.penalites_depart` (jsonb, 471 ; `dans_revenu` 498) : pénalités encaissées → ligne COM « Pénalité départ tardif non autorisé » (domain-rules §28).
 - `penalite_depart_regul` (471) : régularisations COM après clôture du mois du séjour (alerte « À faire » jusqu'à vu_le).

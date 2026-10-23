@@ -1337,3 +1337,29 @@ Calcul INCHANGÉ. Reversement direct aux communes par l'agence : chantier prévu
 
 **Canonical** : la page /reserver/<bien> d'un bien de l'agence Lauïan déclare sa page lauian-immo.com (`X.SITES_WEB["lauian-immo.com"].pages`)
 quand elle existe (Miramar, Eneko), jamais une page destinationcotebasque.com ; elle sort alors du sitemap.
+
+## 36. Arrivées et fiches tranchées (décisions d'Oïhan du 23/10/2026, migrations 592 / 593)
+
+**Arrivée anticipée : « non, jamais ».** L'IA voyageurs (DCB et Lauïan, dcb-planning `api/ga-process-message.js`) n'accorde
+JAMAIS une arrivée anticipée, même si le logement est prêt (avant : verdict OUI / PROBABLE tiré du ménage → « Oui, avec plaisir,
+dès 12h », gratuit). Réponse : l'heure d'arrivée est celle de la réservation ; une arrivée plus tôt n'est possible qu'en option
+payante (CGL art. 10 : dès 14h00 25 €, dès 13h00 35 €), sous réserve, confirmée une fois réglée ; la demande est transmise à
+l'équipe. Classification `arrivee_anticipee` → `needs_human` (jamais d'envoi auto) + note interne « 🕑 Arrivée anticipée
+demandée » (nuit précédente, ménage confirmé ou planifié, technique) pour décider de proposer l'option. L'IA ne promet plus ni
+délai de réponse (« dès demain ») ni canal (textos, appel) absent du contexte. Savoir / fiches alignés (lot
+`arbitrage_arrivees_20261023`).
+
+**Arrivée tardive avec accueil EN PERSONNE** (`api/_arriveeTardive.js`, source unique) : avant 19h30 inclus ; à partir de
+19h30 : 50 € ; de 22h00 à 23h00 : 70 € ; de 23h00 à minuit : 100 € ; après minuit : 170 €. Jamais pour une arrivée autonome
+(boîte à clés, serrure). Migration 592 : `direct_service.accueil_en_personne` + 4 options (`arrivee_tardive_1930`, `_22h`,
+`_23h`, `_minuit`, DCB et Lauïan) **désactivées** ; proposées seulement aux logements `bien.type_arrivee = 'en_personne'` ou
+`accueil_proprio` (raison `arrivee_autonome` sinon). Comptabilité : comme toute option voyageur (PVOY, § 27). Les CGL publiées ne
+mentionnent pas l'arrivée tardive (à ajouter à l'art. 10 si Oïhan le souhaite).
+
+**Alertes automatiques de l'IA par agence** (593) : `ga_agency_config.alertes_auto` ; Lauïan = false → urgence sans SMS, sans
+appel, sans push « 🚨 URGENCE » ni message d'urgence automatique. Toute urgence (les deux agences) est affichée dans PowerHouse :
+`guest_thread.attend_humain` (« 🚨 Urgence signalée : … »), fil non lu en tête de la Messagerie, ligne rouge À faire › Répondre.
+
+**Recherche croisée DCB ↔ Lauïan** : un logement de l'agence partenaire hors de la région du site (`bien.zone_logistique`,
+région du site `SITES_WEB[h].region`, défaut Côte Basque) reste listé dans « Également disponibles » avec le badge « Autre région :
+<zone> » et une mention en tête de section ; il passe après ceux de la région.
