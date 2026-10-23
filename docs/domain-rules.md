@@ -1304,3 +1304,36 @@ Hospitable qui incluait la taxe retenue par Booking (62,47 € ventilés de plus
 reçus) et TXOMIN 6554316846 (07/2026, 831,83 € reçus) sans aucune ligne de ventilation alors que `ventilation_calculee = true` ;
 « TVA (10 %) » Booking = 10 % de l'hébergement ajoutés au prix voyageur, compris dans le versement et la commission Booking,
 ventilés en TAXE (§ 4.3) — décision d'Oïhan attendue.
+
+## 35. Décisions d'Oïhan du 23/10/2026 (arbitrage des faits appris des mails, migrations 570 / 571)
+
+**Annulation des résas directes / manuelles = par logement.** Règle : villas et maisons « Stricte », appartements, studios et
+chambres « Modérée ». Stockage : `bien_tarification` cle `annulation_contrat` (canal `tous`, source `powerhouse`, texte = clé de
+`api/_annulation.js` POLITIQUES). Migration 570 : choix explicite écrit sur les 34 biens ayant une fiche de vente directe ou
+saisonniers sous mandat (6 Stricte : BELEZIA, COTREL, EKIA, M-MAITE, AITZINA, ARROSA ; 28 Modérée, dont les chambres de la Maison
+Maïté et ONGI, type non renseigné mais appartement). Sans choix : `_annulation.politiqueParType(bien.type_logement)` (maison / villa
+→ stricte, sinon moderee). Lu par la page Réserver / widget / devis (`_direct.reglesBien`), la résa manuelle
+(`_resaManuelle.paiementParDefaut`), le repli des brouillons de contrat direct / manuel sans choix du bureau
+(`_paiementResa.politiqueDuBien`). **Nouveaux devis et contrats seulement** : `rental_contracts.politique_annulation` d'un contrat
+existant est relue à chaque regénération (y compris la mise à jour automatique vers le modèle actif, 520), donc jamais changée.
+Barèmes exacts = CGL art. 8.1 = `_annulation.js` (Modérée : 24 h remboursé hors frais bancaires ~2,5 %, > 30 j 100 % hors frais,
+30-7 j 50 %, < 7 j rien ; Stricte : 24 h remboursé hors frais, > 30 j 50 %, < 30 j rien). Remboursement sur le moyen de paiement
+d'origine sous 30 jours.
+
+**IA voyageurs** : `ga-process-message.annulationResa` ajoute au prompt la politique de LA réservation (Airbnb : celle de
+l'annonce Airbnb ; Booking : conditions Booking ; direct / manuelle : `rental_contracts.politique_annulation` du contrat, sinon
+la politique du bien). Fiches Savoir policy DCB réécrites (« annulation directe » dépend du logement, « conditions standards
+d'Airbnb » détaillée par canal) ; copies Lauïan (agence `lauian`, doc `mined/_general-policy`, 7 fiches adaptées : e-mail
+laura@lauian-immo.com, Stripe Lauïan) — l'IA Lauïan reste désactivée (`ga_agency_config.enabled = false`).
+
+**Mandats** : migration 571 = `mandat_administration` DCB et Lauïan 2026-v4 actifs (« solde un mois avant la mise à disposition »
+remplacé par les modalités des CGL art. 6 : solde 30 jours avant l'arrivée, ou 7 jours après une réservation faite moins de
+37 jours avant ; totalité à la réservation si arrivée dans moins de 30 jours). Mandats signés ou en cours : leur `template_id`.
+
+**Taxe de séjour des résas directes en 2026** : encaissée par l'agence avec le séjour, reversée au propriétaire dans son
+VIRProprio (§ 8), déclarée par le propriétaire (`bien.gestion_taxe_sejour = false` pour tous les biens). `bien.taxe_collecte.direct
+= 'nous'` veut dire « encaissée par l'agence », pas « déclarée par l'agence » (libellés PowerHouse corrigés le 23/10/2026).
+Calcul INCHANGÉ. Reversement direct aux communes par l'agence : chantier prévu au 01/01/2027 (backlog PowerHouse).
+
+**Canonical** : la page /reserver/<bien> d'un bien de l'agence Lauïan déclare sa page lauian-immo.com (`X.SITES_WEB["lauian-immo.com"].pages`)
+quand elle existe (Miramar, Eneko), jamais une page destinationcotebasque.com ; elle sort alors du sitemap.
